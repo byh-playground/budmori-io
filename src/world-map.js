@@ -336,6 +336,18 @@ export function finishFarmBuild(map, plotId) {
         return -1;
     }
     map.farms.push({ plotId, tile });
+    // The ring around a new farm is always in sight, so the first thing left to explore is never next door.
+    const X = tileX(tile),
+        Y = tileY(tile);
+    for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+            const NEXT = tileIndex(X + dx, Y + dy);
+            if (inside(X + dx, Y + dy) && !map.revealed.includes(NEXT)) {
+                map.revealed.push(NEXT);
+            }
+        }
+    }
+    map.revealed.sort((a, b) => a - b);
     return tile;
 }
 export function markCleared(map, index) {

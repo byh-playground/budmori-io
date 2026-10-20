@@ -902,7 +902,15 @@
       unit.workOut = true;
     }
     const DISTANCE = Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y);
-    return { x: SPOT.x, y: SPOT.y, fx: SPOT.fx, fy: SPOT.fy, speed: 7, hold: DISTANCE <= 0.6, face: DISTANCE <= 0.6 };
+    return {
+      x: SPOT.x,
+      y: SPOT.y,
+      fx: SPOT.fx,
+      fy: SPOT.fy,
+      speed: SPOT.speed,
+      hold: DISTANCE <= 0.6,
+      face: DISTANCE <= 0.6
+    };
   }
   function workOrder(world, unit) {
     const ASSIGN = world._workAssign.get(unit.id);
@@ -2265,6 +2273,16 @@
       return -1;
     }
     map.farms.push({ plotId, tile });
+    const X = tileX(tile), Y = tileY(tile);
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const NEXT = tileIndex(X + dx, Y + dy);
+        if (inside(X + dx, Y + dy) && !map.revealed.includes(NEXT)) {
+          map.revealed.push(NEXT);
+        }
+      }
+    }
+    map.revealed.sort((a, b) => a - b);
     return tile;
   }
   function markCleared(map, index) {
@@ -8565,7 +8583,7 @@
     }
     return true;
   }
-  var import_definition51, SEEDED_PRNG, CREATE_BUDGETED_SCHEDULER, EMPTY_FOOD_SEARCH_BUCKET, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, BREED_RESERVATION_OWNER, MERGE_RESERVATION_OWNER, FARM_MAX_UNITS, RAID_PLAYER_UNITS, RAID_MAX_PLAYERS, RAID_PLAYER_ID_STRIDE, MAX_PEANUT_SPLIT_CHILDREN, MAX_BOSS_SUMMONS, RAID_MAX_UNITS, WORLD_ARENA, FARM_ARENA, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, FARM_BOSS_PHASES, PROJECTILE_BEHAVIORS, FARM_MODES, BOSS_BEHAVIORS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, CREATE_UNIT_SPECIAL_ABILITY, SIMULATION_SCENES, ATTACKING_BODY, UNIT, GARDEN;
+  var import_definition51, SEEDED_PRNG, CREATE_BUDGETED_SCHEDULER, EMPTY_FOOD_SEARCH_BUCKET, EXPLORE_PACE, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, BREED_RESERVATION_OWNER, MERGE_RESERVATION_OWNER, FARM_MAX_UNITS, RAID_PLAYER_UNITS, RAID_MAX_PLAYERS, RAID_PLAYER_ID_STRIDE, MAX_PEANUT_SPLIT_CHILDREN, MAX_BOSS_SUMMONS, RAID_MAX_UNITS, WORLD_ARENA, FARM_ARENA, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, FARM_BOSS_PHASES, PROJECTILE_BEHAVIORS, FARM_MODES, BOSS_BEHAVIORS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, CREATE_UNIT_SPECIAL_ABILITY, SIMULATION_SCENES, ATTACKING_BODY, UNIT, GARDEN;
   var init_farm_model = __esm({
     "src/farm-model.js"() {
       init_farm_offline();
@@ -8609,6 +8627,7 @@
       ({ SeededPRNG: SEEDED_PRNG } = globalThis.BloomGamekitDeterministic);
       ({ createBudgetedScheduler: CREATE_BUDGETED_SCHEDULER } = globalThis.BloomGamekitWorkScheduler);
       EMPTY_FOOD_SEARCH_BUCKET = Object.freeze([]);
+      EXPLORE_PACE = Object.freeze({ plain: 1, forest: 0.85, rock: 0.75, swamp: 0.6 });
       PRESENTATION_CLOCKS = /* @__PURE__ */ new WeakMap();
       PRESENTATION_EVENT_TIMES = /* @__PURE__ */ new WeakMap();
       BREED_COOLDOWN_SECONDS = 10;
@@ -11097,14 +11116,41 @@
           return this._workCount;
         }
         // Explorers keep working while the map screen is open and the farm itself is paused, so this is its own step.
-        tickExploration(seconds) {
-          if (this.scene === "farm" && advanceExploration(this.worldMap, this.exploreRate * seconds).length > 0) {
+        // Only explorers who have reached the tile add to the gauge, so the walk out is part of the time it takes.
+        // Farms that are not on screen are not walked, so their explorers count at once. With the farm paused behind the
+        // map screen nobody can walk, so every explorer counts then.
+        tickExploration(seconds, everyoneCounts = false) {
+          const RATE = everyoneCounts ? this.exploreRate : this.exploreWorkRate;
+          if (this.scene === "farm" && advanceExploration(this.worldMap, RATE * seconds).length > 0) {
             this.markProgressChanged();
           }
         }
         // Where an explorer goes. A tile within two cells of this farm is walked into: explorers spread out inside it
         // and the fog lifts around them. A farther one is looked at from the rim of the farm on its side.
         exploreSpot(unit) {
+          const GOAL = this._refreshExploreGoal();
+          if (!GOAL) {
+            return null;
+          }
+          if (GOAL.near) {
+            const SPOT = restingSpot(unit, this.time * 2, CONFIG.farm.arena), X2 = GOAL.x + SPOT.x, Y2 = GOAL.y + SPOT.y;
+            return { x: X2, y: Y2, fx: X2 + 1, fy: Y2, out: true, speed: GOAL.speed * 0.5, travel: GOAL.speed * 1.8 };
+          }
+          const ANGLE = Math.atan2(GOAL.y, GOAL.x) + (unit.id % 5 - 2) * 0.22, ARENA = CONFIG.farm.arena, REACH = Math.min(
+            (ARENA.radiusX - 1.6) / Math.max(Math.abs(Math.cos(ANGLE)), 1e-6),
+            (ARENA.radiusY - 1.4) / Math.max(Math.abs(Math.sin(ANGLE)), 1e-6)
+          ), X = Math.cos(ANGLE) * REACH, Y = Math.sin(ANGLE) * REACH;
+          return {
+            x: X,
+            y: Y,
+            fx: X + Math.cos(ANGLE) * 3,
+            fy: Y + Math.sin(ANGLE) * 3,
+            out: false,
+            speed: GOAL.speed,
+            travel: GOAL.speed * 1.8
+          };
+        }
+        _refreshExploreGoal() {
           const MAP = this.worldMap, KEY2 = `${MAP.revealed.length}|${MAP.exploreTarget}|${this.activePlotId}|${MAP.farms.length}`;
           if (this._exploreGoalKey !== KEY2) {
             this._exploreGoalKey = KEY2;
@@ -11116,24 +11162,47 @@
                 dx: DX,
                 dy: DY,
                 near: Math.max(Math.abs(DX), Math.abs(DY)) <= 2,
+                // The ground sets the pace: through swamp and over rock explorers go slower.
+                speed: 7 * EXPLORE_PACE[tileTerrain(MAP, TARGET)],
                 x: DX * FARM_CELL.width,
                 y: -DY * FARM_CELL.height
               };
             }
           }
-          const GOAL = this._exploreGoal;
-          if (!GOAL) {
-            return null;
+          return this._exploreGoal;
+        }
+        // Is this explorer standing where the exploring is done?
+        exploreOnSite(id) {
+          if (this._workerPlots.get(id) !== this.activePlotId) {
+            return true;
           }
+          const UNIT3 = this._unitById.get(id), GOAL = this._exploreGoal;
+          if (!UNIT3 || !GOAL) {
+            return true;
+          }
+          const ARENA = CONFIG.farm.arena;
           if (GOAL.near) {
-            const ANGLE2 = unit.id * 2.39996, RADIUS2 = 3 + unit.id * 7 % 11 * 1.5, X2 = GOAL.x + Math.cos(ANGLE2) * RADIUS2, Y2 = GOAL.y + Math.sin(ANGLE2) * RADIUS2 * 0.75;
-            return { x: X2, y: Y2, fx: X2 + Math.cos(ANGLE2), fy: Y2 + Math.sin(ANGLE2), out: true };
+            return Math.abs(UNIT3.x - GOAL.x) <= ARENA.radiusX && Math.abs(UNIT3.y - GOAL.y) <= ARENA.radiusY;
           }
-          const ANGLE = Math.atan2(GOAL.y, GOAL.x) + (unit.id % 5 - 2) * 0.22, ARENA = CONFIG.farm.arena, REACH = Math.min(
-            (ARENA.radiusX - 1.6) / Math.max(Math.abs(Math.cos(ANGLE)), 1e-6),
-            (ARENA.radiusY - 1.4) / Math.max(Math.abs(Math.sin(ANGLE)), 1e-6)
-          ), X = Math.cos(ANGLE) * REACH, Y = Math.sin(ANGLE) * REACH;
-          return { x: X, y: Y, fx: X + Math.cos(ANGLE) * 3, fy: Y + Math.sin(ANGLE) * 3, out: false };
+          const SPOT = this.exploreSpot(UNIT3);
+          return !SPOT || Math.hypot(UNIT3.x - SPOT.x, UNIT3.y - SPOT.y) <= 2;
+        }
+        get exploreWorkRate() {
+          this._refreshExploreGoal();
+          let rate = 0;
+          for (const [ID, KIND] of this._workerKinds) {
+            if (KIND === "explore" && this.exploreOnSite(ID)) {
+              rate += this._workerRates.get(ID) || 0;
+            }
+          }
+          return rate;
+        }
+        get exploreOnSiteCount() {
+          let count = 0;
+          for (const [ID, KIND] of this._workerKinds) {
+            count += KIND === "explore" && this.exploreOnSite(ID) ? 1 : 0;
+          }
+          return count;
         }
         // Exploration points per second from the explorers of every farm; the whole map is worked on at once.
         get exploreRate() {
@@ -15065,7 +15134,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.13.12";
+      PRODUCT_VERSION = "0.13.14";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -23456,7 +23525,7 @@
       return;
     }
     const MAP = personalGarden.worldMap;
-    const WORKERS = personalGarden.workerKindCounts.explore, GAUGE = `탐사 ${Math.floor(MAP.gauge)}/${currentExploreCost(MAP)} · 탐사 일꾼 ${WORKERS}마리`, TILE = bossMapTile;
+    const WORKERS = personalGarden.workerKindCounts.explore, GAUGE = `탐사 ${Math.floor(Math.min(1, MAP.gauge / currentExploreCost(MAP)) * 100)}% · 탐사 일꾼 ${WORKERS}마리 · 현장 ${personalGarden.exploreOnSiteCount}마리`, TILE = bossMapTile;
     let title = "칸을 눌러 보세요", info = GAUGE, canExplore = false, canBuild = false;
     if (TILE >= 0) {
       const POSITION = `(${tileX(TILE)}, ${tileY(TILE)})`;
@@ -23519,7 +23588,7 @@
       renderWorldMap();
       startWorldMapView();
       bossMapTicker = setInterval(() => {
-        personalGarden?.tickExploration(0.25);
+        personalGarden?.tickExploration(0.25, true);
         renderWorldMap();
       }, 250);
     } else {

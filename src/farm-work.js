@@ -293,7 +293,15 @@ function exploreOrder(world, unit) {
         unit.workOut = true;
     }
     const DISTANCE = Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y);
-    return { x: SPOT.x, y: SPOT.y, fx: SPOT.fx, fy: SPOT.fy, speed: 7, hold: DISTANCE <= 0.6, face: DISTANCE <= 0.6 };
+    return {
+        x: SPOT.x,
+        y: SPOT.y,
+        fx: SPOT.fx,
+        fy: SPOT.fy,
+        speed: SPOT.speed,
+        hold: DISTANCE <= 0.6,
+        face: DISTANCE <= 0.6,
+    };
 }
 // What a worker should do this tick: where to go and how fast, or hold still while winding up or recoiling.
 export function workOrder(world, unit) {

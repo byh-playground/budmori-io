@@ -921,7 +921,7 @@ function renderWorldMap() {
     }
     const MAP = personalGarden.worldMap;
     const WORKERS = personalGarden.workerKindCounts.explore,
-        GAUGE = `탐사 ${Math.floor(MAP.gauge)}/${currentExploreCost(MAP)} · 탐사 일꾼 ${WORKERS}마리`,
+        GAUGE = `탐사 ${Math.floor(Math.min(1, MAP.gauge / currentExploreCost(MAP)) * 100)}% · 탐사 일꾼 ${WORKERS}마리 · 현장 ${personalGarden.exploreOnSiteCount}마리`,
         TILE = bossMapTile;
     let title = '칸을 눌러 보세요',
         info = GAUGE,
@@ -1002,7 +1002,7 @@ function setBossView(mapMode) {
         renderWorldMap();
         startWorldMapView();
         bossMapTicker = setInterval(() => {
-            personalGarden?.tickExploration(0.25);
+            personalGarden?.tickExploration(0.25, true);
             renderWorldMap();
         }, 250);
     } else {
