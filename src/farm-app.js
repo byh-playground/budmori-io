@@ -796,11 +796,31 @@ function worldMapFrame() {
         rate: personalGarden.exploreRate,
     };
 }
+// Boss sprites for the map: the neutral SVG of each species, turned into an image once and reused.
+const MAP_BOSS_SPRITES = new Map();
+function mapBossSprite(species) {
+    if (MAP_BOSS_SPRITES.has(species)) {
+        return MAP_BOSS_SPRITES.get(species);
+    }
+    MAP_BOSS_SPRITES.set(species, null);
+    const ENTRY = speciesById(species);
+    if (ENTRY) {
+        createNeutralBossPreview(species, ENTRY.asset)
+            .then((svg) => {
+                const IMAGE = new Image();
+                IMAGE.onload = () => MAP_BOSS_SPRITES.set(species, IMAGE);
+                IMAGE.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(svg))}`;
+            })
+            .catch((error) => console.error('Unable to load map boss sprite', error));
+    }
+    return null;
+}
 function startWorldMapView() {
     worldMapView ??= createWorldMapView(DOLLAR('worldMapCanvas'), {
         interactive: true,
         onSelect: selectWorldMapTile,
         fps: 30,
+        bossSprite: mapBossSprite,
     });
     worldMapView.start(worldMapFrame);
 }
@@ -814,7 +834,7 @@ function syncMiniMap(visible) {
         MINI.hidden = !visible;
     }
     if (visible && !miniMapView) {
-        miniMapView = createWorldMapView(DOLLAR('miniMapCanvas'), { fps: 12 });
+        miniMapView = createWorldMapView(DOLLAR('miniMapCanvas'), { fps: 12, bossSprite: mapBossSprite });
         miniMapView.start(worldMapFrame);
     } else if (!visible && miniMapView) {
         miniMapView.stop();
