@@ -99,7 +99,7 @@ await check('new game boots with a minimal HUD', async () => {
     expect(STATE.roles.length === 10, `the four role bars should have ten parts, has ${STATE.roles.length}`);
 });
 
-await check('resource workers hit, drop and carry material home', async () => {
+await check('resource workers hit piles, haulers carry the pieces to the store', async () => {
     await WORLD(async () => {
         const MAP = await import('/src/world-map.js'),
             W = BUDMORI.sim;
@@ -113,26 +113,24 @@ await check('resource workers hit, drop and carry material home', async () => {
         W.setWoodShare(6000);
         W._nextWorkerRefreshTick = 0;
         W.refreshWorkers();
-        // A load already lying on the nearest tile, so the carrying half does not depend on how fast trees fall.
-        W._drops.set(MAP.nearestResourceTile(W.worldMap, W.activePlotId), 9);
     });
     await PAGE.waitForFunction(() => BUDMORI.sim.materials.wood + BUDMORI.sim.materials.stone > 0, null, {
         timeout: 45000,
     }).catch(() => {});
     const GOT = await WORLD(() => ({
         counts: BUDMORI.sim.workerKindCounts,
-        drops: [...BUDMORI.sim._drops.values()].reduce((total, amount) => total + amount, 0),
+        items: BUDMORI.sim.fieldItems.length,
         materials: BUDMORI.sim.materials.wood + BUDMORI.sim.materials.stone,
     }));
     expect(GOT.counts.resource > 0 && GOT.counts.haul > 0, `roles missing ${JSON.stringify(GOT.counts)}`);
     expect(GOT.materials > 0, `nothing reached the farm ${JSON.stringify(GOT)}`);
 });
 
-await check('a tile holds at most twelve and drops are not lost', async () => {
+await check('at most twelve pieces lie on the ground', async () => {
     let most = 0;
     for (let round = 0; round < 8; round++) {
         await PAGE.waitForTimeout(1000);
-        most = Math.max(most, await WORLD(() => Math.max(0, ...BUDMORI.sim._drops.values())));
+        most = Math.max(most, await WORLD(() => BUDMORI.sim.fieldItems.length));
     }
     expect(most <= 12 + 1e-6, `ground over the limit: ${most}`);
 });

@@ -248,20 +248,6 @@ export function tileLook(index, salt) {
     h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
     return ((h ^ (h >>> 12)) >>> 0) / 4294967296;
 }
-// The trees or rocks still standing on a forest or rock tile, as offsets from the tile's centre.
-export function tileSpots(map, index) {
-    const TERRAIN = tileTerrain(map, index),
-        COUNT = Math.ceil((TERRAIN === 'forest' ? 9 : TERRAIN === 'rock' ? 7 : 0) * tileFill(map, index)),
-        SALT = TERRAIN === 'forest' ? [40, 60] : [80, 100],
-        SPOTS = [];
-    for (let at = 0; at < COUNT; at++) {
-        SPOTS.push({
-            x: (tileLook(index, SALT[0] + at) - 0.5) * FARM_CELL.width * 0.85,
-            y: (tileLook(index, SALT[1] + at) - 0.5) * FARM_CELL.height * 0.85,
-        });
-    }
-    return SPOTS;
-}
 // How full a tile still is, from 0 to 1, for drawing.
 export function tileFill(map, index) {
     const TOTAL = tileStockTotal(map, index);
