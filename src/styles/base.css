@@ -379,6 +379,9 @@ body > header {
 }
 #workHudBuild {
     background: #b9774a;
+}
+#workHudExplore {
+    background: #7c9bb0;
     justify-content: flex-end;
 }
 .work-hud__track {

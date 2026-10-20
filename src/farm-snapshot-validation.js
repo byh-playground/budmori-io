@@ -9,6 +9,7 @@ import { BOSS_PATTERN_IDS } from './boss-patterns.js';
 import { BOSS_REWARD_SETTINGS, bossStageStats } from './boss-rewards.js';
 import { FACTION_CONFIG, hasFaction } from './factions.js';
 import { FARM_SNAPSHOT_SHAPE as GARDEN_SHAPE, UNIT_SNAPSHOT_SHAPE as UNIT_SHAPE } from './farm-snapshot.js';
+import { isValidWorldMap } from './world-map.js';
 import { CORN_ATTACHMENT_FEATURE } from './features/abilities/corn-attachment/definition.js';
 const INTEGER = (v, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(v) && v >= min && v <= max;
 const VALID_BATTLE_UNIT_ID = (id, bossSummonSerial) =>
@@ -137,6 +138,12 @@ export function validateSnapshot(raw) {
     shape(raw, GARDEN_SHAPE);
     ASSERT(isValidFormationRuntime(raw.formationRuntime));
     ASSERT(INTEGER(raw.materials.wood, 0, 1e12) && INTEGER(raw.materials.stone, 0, 1e12));
+    ASSERT(
+        isValidWorldMap(raw.worldMap) &&
+            raw.worldMap.farms.every((farm) =>
+                raw.playerProgression.farmPlots.plots.some((plot) => plot.id === farm.plotId),
+            ),
+    );
     ASSERT(
         INTEGER(raw.seed, 0, 0xffffffff) &&
             INTEGER(raw.rng.state, 0, 0xffffffff) &&

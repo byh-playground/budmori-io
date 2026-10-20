@@ -28,6 +28,7 @@ import { MutationNotifications } from './mutation-notifications.js';
 import { UnitCollection } from './unit-collection.js';
 import { FarmingRoster } from './farm-roster.js';
 import { FACILITY_IDS, FACILITY_MAX_LEVEL, FarmPlot, INITIAL_FARM_PLOT_ID, RESERVE_PLOT_ID } from './farm-plot.js';
+import { advanceExploration, createWorldMap } from './world-map.js';
 import { createSimulationScenes } from './simulation-scenes.js';
 import { createProjectileBehaviors } from './projectile-behaviors.js';
 import { createFarmBossEventPhases } from './features/scenes/farm/boss-event-phases.js';
@@ -129,6 +130,7 @@ const CONFIG = Object.freeze({
             maxAttackers: 3,
             defaultResourceBasisPoints: 3000,
             defaultBuildBasisPoints: 1500,
+            defaultExploreBasisPoints: 1000,
             facilityMaxLevel: FACILITY_MAX_LEVEL,
             levelCostStep: 0.75,
             levelHitsStep: 0.6,
@@ -1348,6 +1350,8 @@ const GARDEN = class Garden {
         this.resourceBasisPoints = CONFIG.farm.work.defaultResourceBasisPoints;
         this.materials = { wood: 0, stone: 0 };
         this.buildBasisPoints = CONFIG.farm.work.defaultBuildBasisPoints;
+        this.exploreBasisPoints = CONFIG.farm.work.defaultExploreBasisPoints;
+        this.worldMap = createWorldMap(this.seed >>> 0, INITIAL_FARM_PLOT_ID);
         this.buildRush = false;
         this._workerKinds = new Map();
         this._workerIds = new Set();
@@ -2761,26 +2765,30 @@ const GARDEN = class Garden {
         basisPoints,
         resourceBasisPoints = this.resourceBasisPoints,
         buildBasisPoints = this.buildBasisPoints,
+        exploreBasisPoints = this.exploreBasisPoints,
     ) {
         const VALID = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 10000;
         if (
             !VALID(basisPoints) ||
             !VALID(resourceBasisPoints) ||
             !VALID(buildBasisPoints) ||
-            resourceBasisPoints + buildBasisPoints > 10000
+            !VALID(exploreBasisPoints) ||
+            resourceBasisPoints + buildBasisPoints + exploreBasisPoints > 10000
         ) {
             return false;
         }
         if (
             basisPoints === this.workBasisPoints &&
             resourceBasisPoints === this.resourceBasisPoints &&
-            buildBasisPoints === this.buildBasisPoints
+            buildBasisPoints === this.buildBasisPoints &&
+            exploreBasisPoints === this.exploreBasisPoints
         ) {
             return true;
         }
         this.workBasisPoints = basisPoints;
         this.resourceBasisPoints = resourceBasisPoints;
         this.buildBasisPoints = buildBasisPoints;
+        this.exploreBasisPoints = exploreBasisPoints;
         this._nextWorkerRefreshTick = 0;
         this.refreshWorkers();
         return true;
@@ -2859,9 +2867,15 @@ const GARDEN = class Garden {
                               Math.round((PLOT_TOTAL * this.buildBasisPoints) / 10000),
                           ),
                       ),
+                EXPLORERS = RUSHING
+                    ? 0
+                    : Math.min(PLOT_TOTAL - BUILDERS, Math.round((PLOT_TOTAL * this.exploreBasisPoints) / 10000)),
                 GATHERERS = RUSHING
                     ? 0
-                    : Math.min(PLOT_TOTAL - BUILDERS, Math.round((PLOT_TOTAL * this.resourceBasisPoints) / 10000)),
+                    : Math.min(
+                          PLOT_TOTAL - BUILDERS - EXPLORERS,
+                          Math.round((PLOT_TOTAL * this.resourceBasisPoints) / 10000),
+                      ),
                 PLOT = this.farmPlots.get(PLOT_ID),
                 MULTIPLIER = {
                     food: 1 + WORK.levelEffectStep * PLOT.facilityLevel('windmill'),
@@ -2869,11 +2883,13 @@ const GARDEN = class Garden {
                 };
             SORTED_WORKERS.forEach((id, index) => {
                 const KIND =
-                    index >= PLOT_TOTAL - BUILDERS
-                        ? 'build'
-                        : index >= PLOT_TOTAL - BUILDERS - GATHERERS
-                          ? 'resource'
-                          : 'food';
+                    index >= PLOT_TOTAL - EXPLORERS
+                        ? 'explore'
+                        : index >= PLOT_TOTAL - EXPLORERS - BUILDERS
+                          ? 'build'
+                          : index >= PLOT_TOTAL - EXPLORERS - BUILDERS - GATHERERS
+                            ? 'resource'
+                            : 'food';
                 this._workerKinds.set(id, KIND);
                 this._workerPlots.set(id, PLOT_ID);
                 const BOOSTED = this._workerRates.get(id) * (MULTIPLIER[KIND] || 1);
@@ -2890,15 +2906,27 @@ const GARDEN = class Garden {
     }
     get workerKindCounts() {
         let resource = 0,
-            build = 0;
+            build = 0,
+            explore = 0;
         for (const KIND of this._workerKinds.values()) {
             resource += KIND === 'resource' ? 1 : 0;
             build += KIND === 'build' ? 1 : 0;
+            explore += KIND === 'explore' ? 1 : 0;
         }
-        return { food: this._workerKinds.size - resource - build, resource, build };
+        return { food: this._workerKinds.size - resource - build - explore, resource, build, explore };
     }
     get workerCount() {
         return this._workCount;
+    }
+    // Exploration points per second from the explorers of every farm; the whole map is worked on at once.
+    get exploreRate() {
+        let rate = 0;
+        for (const [ID, KIND] of this._workerKinds) {
+            if (KIND === 'explore') {
+                rate += this._workerRates.get(ID) || 0;
+            }
+        }
+        return rate;
     }
     // Food per minute produced by workers right now.
     get workFoodPerMinute() {
@@ -2928,6 +2956,9 @@ const GARDEN = class Garden {
         }
         if (this.scene === 'farm') {
             stepWork(this, CONFIG, Math.min(elapsed, 0.1));
+            if (advanceExploration(this.worldMap, this.exploreRate * Math.min(elapsed, 0.1)).length > 0) {
+                this.markProgressChanged();
+            }
         }
     }
     spawnFood(x, y, count = 1, { allowBossEvent = true, from = null } = {}) {

@@ -621,7 +621,8 @@ class FarmSession {
                 return W.scene === 'farm' && W.setSpeciesTarget(c.speciesId, c.basisPoints);
             case 'farm-work':
                 return (
-                    W.scene === 'farm' && W.setWorkBasisPoints(c.basisPoints, c.resourceBasisPoints, c.buildBasisPoints)
+                    W.scene === 'farm' &&
+                    W.setWorkBasisPoints(c.basisPoints, c.resourceBasisPoints, c.buildBasisPoints, c.exploreBasisPoints)
                 );
             case 'farm-build':
                 return W.scene === 'farm' && typeof c.facilityId === 'string' && W.startBuild(c.facilityId);

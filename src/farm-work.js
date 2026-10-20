@@ -132,6 +132,9 @@ function worksOn(world, unit, pile) {
     if (KIND === 'build') {
         return pile.kind === 'site';
     }
+    if (KIND === 'explore') {
+        return false;
+    }
     return KIND === 'resource' ? pile.kind === 'wood' || pile.kind === 'stone' : pile.kind === 'grain';
 }
 function capacity(config, pile, siteCapacity) {
