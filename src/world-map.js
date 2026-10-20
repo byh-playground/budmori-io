@@ -216,9 +216,45 @@ export function advanceSpawns(map, seconds) {
 
 export const TERRAIN_NAMES = { plain: '평지', forest: '숲', rock: '바위산', swamp: '늪' };
 // The ground of a tile never changes. It is only known once the tile is lit, but it decides how long the fog takes.
-export function tileTerrain(map, index) {
-    const ROLL = tileUnit(map.seed, index, 4);
+function naturalTerrain(seed, index) {
+    const ROLL = tileUnit(seed, index, 4);
     return ROLL < 0.55 ? 'plain' : ROLL < 0.75 ? 'forest' : ROLL < 0.9 ? 'rock' : 'swamp';
+}
+// The first farm always has a forest and a rock right next to it, so the first wood and stone are never far. Where the
+// dice give none, one of the eight neighbours is turned into one (always the same tile for a seed).
+const START_RESOURCES = new Map();
+function startResources(seed) {
+    let found = START_RESOURCES.get(seed);
+    if (!found) {
+        const FARM = tileIndex(0, 0),
+            NEIGHBOURS = [];
+        for (let y = -1; y <= 1; y++) {
+            for (let x = -1; x <= 1; x++) {
+                if (x !== 0 || y !== 0) {
+                    NEIGHBOURS.push(tileIndex(x, y));
+                }
+            }
+        }
+        NEIGHBOURS.sort((a, b) => tileUnit(seed, a, 5) - tileUnit(seed, b, 5));
+        const HAS = (kind) => NEIGHBOURS.some((tile) => tile !== FARM && naturalTerrain(seed, tile) === kind),
+            FOREST = HAS('forest') ? -1 : NEIGHBOURS.find((tile) => naturalTerrain(seed, tile) !== 'rock'),
+            ROCK = HAS('rock')
+                ? -1
+                : NEIGHBOURS.find((tile) => tile !== FOREST && naturalTerrain(seed, tile) !== 'forest');
+        found = { forest: FOREST ?? -1, rock: ROCK ?? -1 };
+        START_RESOURCES.set(seed, found);
+    }
+    return found;
+}
+export function tileTerrain(map, index) {
+    const FIXED = startResources(map.seed);
+    if (index === FIXED.forest) {
+        return 'forest';
+    }
+    if (index === FIXED.rock) {
+        return 'rock';
+    }
+    return naturalTerrain(map.seed, index);
 }
 // Gauge points one more tile costs; later tiles cost more.
 export function exploreCost(map) {
