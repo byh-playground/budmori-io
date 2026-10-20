@@ -21,7 +21,7 @@ import { bindBossSocketAsset, unbindBossSocketAsset } from './boss-vector-socket
 import { BossPresentation, bossAttackPresentation } from './farm-render-boss.js';
 import { CONFIG, clamp, bossAttackArea } from './farm-model.js';
 import { facilityPosition } from './farm-work.js';
-import { FARM_CELL, isRevealed, tileTerrain, tileX, tileY, tileIndex } from './world-map.js';
+import { FARM_CELL, isRevealed, nextExploreTile, tileCost, tileTerrain, tileX, tileY, tileIndex } from './world-map.js';
 import { bossDangerContour } from './attack-telegraph.js';
 const { bosses: BOSS_VECTOR_ASSETS, troops: TROOP_VECTOR_ASSETS } = globalThis.BudmoriVectorResources;
 // Original SVG sources are compiled once by the startup loader before this module runs.
@@ -551,6 +551,89 @@ const DIORAMA = class Diorama {
         C.fillStyle = color2;
         C.fillRect(Math.floor(A.x), Math.floor(A.y), Math.ceil(B.x - A.x) + 1, Math.ceil(B.y - A.y) + 1);
     }
+    // One tile's ground and what stands on it: meadow, forest, rock or swamp.
+    paintLand(map, index, ox, oy, paint, look, lights = null) {
+        const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena;
+        const TERRAIN = tileTerrain(map, index),
+            [GROUND, SURFACE] = paint[TERRAIN];
+        const { radiusX: HALF_X, radiusY: HALF_Y } = CONFIG.farm.arena;
+        // With lights, only the patches they reach are painted, kept inside the tile.
+        const SEEN = (x, y) => !lights || lights.some((light) => Math.hypot(x - light.x, y - light.y) <= light.r * 0.9);
+        if (lights) {
+            for (const LIGHT of lights) {
+                const RX_LIT = Math.min(LIGHT.r, HALF_X - Math.abs(LIGHT.x - ox)),
+                    RY_LIT = Math.min(LIGHT.r, HALF_Y - Math.abs(LIGHT.y - oy));
+                this.groundEllipse(LIGHT.x, LIGHT.y, RX_LIT, RY_LIT, GROUND);
+                this.groundEllipse(LIGHT.x, LIGHT.y, RX_LIT * 0.92, RY_LIT * 0.92, SURFACE);
+            }
+        } else {
+            this.groundCell(ox, oy, GROUND);
+            this.groundCell(ox, oy, SURFACE, 0.7);
+        }
+        const S = this.scale;
+        if (TERRAIN === 'forest') {
+            for (let tree = 0; tree < 9; tree++) {
+                const TX = ox + (look(index, 40 + tree) - 0.5) * RX * 1.7,
+                    TY = oy + (look(index, 60 + tree) - 0.5) * RY * 1.7;
+                if (!SEEN(TX, TY)) {
+                    continue;
+                }
+                const P = this.project(TX, TY, 0);
+                this.ellipse(P.x, P.y - 0.9 * S, 0.9 * S, 0.8 * S, '#9db58a');
+                this.ellipse(P.x, P.y - 0.2 * S, 0.12 * S, 0.35 * S, '#8a7a5a');
+            }
+        } else if (TERRAIN === 'rock') {
+            for (let rock = 0; rock < 7; rock++) {
+                const TX = ox + (look(index, 80 + rock) - 0.5) * RX * 1.7,
+                    TY = oy + (look(index, 100 + rock) - 0.5) * RY * 1.7;
+                if (!SEEN(TX, TY)) {
+                    continue;
+                }
+                const P = this.project(TX, TY, 0);
+                this.ellipse(P.x, P.y - 0.4 * S, 1.1 * S, 0.7 * S, '#a79f8d');
+                this.ellipse(P.x - 0.2 * S, P.y - 0.6 * S, 0.6 * S, 0.35 * S, '#c5bfae');
+            }
+        } else if (TERRAIN === 'swamp') {
+            for (let pool = 0; pool < 5; pool++) {
+                const TX = ox + (look(index, 120 + pool) - 0.5) * RX * 1.6,
+                    TY = oy + (look(index, 140 + pool) - 0.5) * RY * 1.6;
+                if (SEEN(TX, TY)) {
+                    this.groundEllipse(TX, TY, 2.2 + 1.6 * look(index, 160 + pool), 1.4, '#9fbfc4');
+                }
+            }
+        }
+    }
+    // The tile being explored: the land shows only where an explorer's light reaches, and the lit patches
+    // grow with the exploration gauge until the whole tile is bright.
+    drawLantern(world, map, index, ox, oy, paint, look) {
+        const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena,
+            PROGRESS = Math.min(1, map.gauge / tileCost(map, index)),
+            REACH = 5 + 24 * PROGRESS,
+            LIGHTS = [{ x: ox, y: oy, r: REACH * 0.7 * PROGRESS + 0.1 }];
+        for (const UNIT of world.units) {
+            if (
+                world._workerKinds.get(UNIT.id) === 'explore' &&
+                Math.abs(UNIT.x - ox) <= RX &&
+                Math.abs(UNIT.y - oy) <= RY
+            ) {
+                LIGHTS.push({ x: UNIT.x, y: UNIT.y, r: REACH });
+            }
+        }
+        if (LIGHTS.length === 1 && PROGRESS === 0) {
+            return;
+        }
+        this.paintLand(map, index, ox, oy, paint, look, LIGHTS);
+        for (const LIGHT of LIGHTS) {
+            this.strokeGroundEllipse(
+                LIGHT.x,
+                LIGHT.y,
+                Math.min(LIGHT.r, RX - Math.abs(LIGHT.x - ox)),
+                Math.min(LIGHT.r, RY - Math.abs(LIGHT.y - oy)),
+                'rgba(255,248,214,0.7)',
+                0.12,
+            );
+        }
+    }
     drawBackdrop(world) {
         const MAP = world.worldMap,
             HERE = this.farmTileOf(world, world.activePlotId);
@@ -563,7 +646,9 @@ const DIORAMA = class Diorama {
             FY = tileY(HERE),
             LIT = new Set(MAP.revealed),
             MARGIN = FARM_CELL.width * this.scale,
-            PLOT_AT = new Map(MAP.farms.map((farm) => [farm.tile, farm.plotId]));
+            PLOT_AT = new Map(MAP.farms.map((farm) => [farm.tile, farm.plotId])),
+            EXPLORING = nextExploreTile(MAP),
+            S = this.scale;
         const LOOK = (index, salt) => {
             let h = Math.imul(index + 1, 0x9e3779b1) ^ Math.imul(salt, 0x85ebca6b);
             h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
@@ -600,44 +685,12 @@ const DIORAMA = class Diorama {
                         this.groundCell(OX, OY, '#e9e5d2');
                         this.groundCell(OX, OY, '#efecdc', 0.6);
                     }
+                    if (INDEX === EXPLORING) {
+                        this.drawLantern(world, MAP, INDEX, OX, OY, PAINT, LOOK);
+                    }
                     continue;
                 }
-                const TERRAIN = tileTerrain(MAP, INDEX),
-                    [GROUND, SURFACE] = PAINT[TERRAIN];
-                this.groundCell(OX, OY, GROUND);
-                this.groundCell(OX, OY, SURFACE, 0.7);
-                const S = this.scale;
-                if (TERRAIN === 'forest') {
-                    for (let tree = 0; tree < 9; tree++) {
-                        const P = this.project(
-                            OX + (LOOK(INDEX, 40 + tree) - 0.5) * RX * 1.7,
-                            OY + (LOOK(INDEX, 60 + tree) - 0.5) * RY * 1.7,
-                            0,
-                        );
-                        this.ellipse(P.x, P.y - 0.9 * S, 0.9 * S, 0.8 * S, '#9db58a');
-                        this.ellipse(P.x, P.y - 0.2 * S, 0.12 * S, 0.35 * S, '#8a7a5a');
-                    }
-                } else if (TERRAIN === 'rock') {
-                    for (let rock = 0; rock < 7; rock++) {
-                        const P = this.project(
-                            OX + (LOOK(INDEX, 80 + rock) - 0.5) * RX * 1.7,
-                            OY + (LOOK(INDEX, 100 + rock) - 0.5) * RY * 1.7,
-                            0,
-                        );
-                        this.ellipse(P.x, P.y - 0.4 * S, 1.1 * S, 0.7 * S, '#a79f8d');
-                        this.ellipse(P.x - 0.2 * S, P.y - 0.6 * S, 0.6 * S, 0.35 * S, '#c5bfae');
-                    }
-                } else if (TERRAIN === 'swamp') {
-                    for (let pool = 0; pool < 5; pool++) {
-                        this.groundEllipse(
-                            OX + (LOOK(INDEX, 120 + pool) - 0.5) * RX * 1.6,
-                            OY + (LOOK(INDEX, 140 + pool) - 0.5) * RY * 1.6,
-                            2.2 + 1.6 * LOOK(INDEX, 160 + pool),
-                            1.4,
-                            '#9fbfc4',
-                        );
-                    }
-                }
+                this.paintLand(MAP, INDEX, OX, OY, PAINT, LOOK);
                 const PLOT_ID = PLOT_AT.get(INDEX);
                 if (PLOT_ID && PLOT_ID !== world.activePlotId) {
                     // Another farm: its units, where they last stood.

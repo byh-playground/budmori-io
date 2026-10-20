@@ -282,11 +282,15 @@ function impact(world, config, pile) {
         assignWorkers(world, config);
     }
 }
-// Explorers have no pile: they walk to the rim of the farm on the side of the tile they are exploring and look out.
+// Explorers have no pile: they walk into the tile they are exploring and look around; the fog lifts where they stand.
 function exploreOrder(world, unit) {
     const SPOT = world.exploreSpot(unit);
     if (!SPOT) {
-        return null;
+        // Nothing left to explore: an explorer still out in the fog comes home.
+        return unit.workOut ? { x: 0, y: 0, fx: 0, fy: 0, speed: 7, hold: false, face: false } : null;
+    }
+    if (SPOT.out) {
+        unit.workOut = true;
     }
     const DISTANCE = Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y);
     return { x: SPOT.x, y: SPOT.y, fx: SPOT.fx, fy: SPOT.fy, speed: 7, hold: DISTANCE <= 0.6, face: DISTANCE <= 0.6 };

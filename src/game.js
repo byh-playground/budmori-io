@@ -896,7 +896,10 @@
   function exploreOrder(world, unit) {
     const SPOT = world.exploreSpot(unit);
     if (!SPOT) {
-      return null;
+      return unit.workOut ? { x: 0, y: 0, fx: 0, fy: 0, speed: 7, hold: false, face: false } : null;
+    }
+    if (SPOT.out) {
+      unit.workOut = true;
     }
     const DISTANCE = Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y);
     return { x: SPOT.x, y: SPOT.y, fx: SPOT.fx, fy: SPOT.fy, speed: 7, hold: DISTANCE <= 0.6, face: DISTANCE <= 0.6 };
@@ -11076,7 +11079,6 @@
           }
           this._workCount = NEXT.size;
           this._workRate = total;
-          this._exploreAngle = this._exploreDirection();
           assignWorkers(this, CONFIG);
         }
         get warehouseFull() {
@@ -11098,28 +11100,40 @@
         tickExploration(seconds) {
           if (this.scene === "farm" && advanceExploration(this.worldMap, this.exploreRate * seconds).length > 0) {
             this.markProgressChanged();
-            this._exploreAngle = this._exploreDirection();
           }
         }
-        // Which way the explorers face: from the first farm toward the tile being explored, in farm coordinates
-        // (the map's y runs down the screen, the farm's y runs up).
-        _exploreDirection() {
-          const TARGET = nextExploreTile(this.worldMap), FARM = this.worldMap.farms[0]?.tile;
-          if (TARGET < 0 || FARM === void 0) {
-            return null;
-          }
-          return Math.atan2(-(tileY(TARGET) - tileY(FARM)), tileX(TARGET) - tileX(FARM));
-        }
-        // Explorers wait at the rim of the farm on the side of the tile they are exploring, spread out along it.
+        // Where an explorer goes. A tile within two cells of this farm is walked into: explorers spread out inside it
+        // and the fog lifts around them. A farther one is looked at from the rim of the farm on its side.
         exploreSpot(unit) {
-          if (this._exploreAngle === null || this._exploreAngle === void 0) {
+          const MAP = this.worldMap, KEY2 = `${MAP.revealed.length}|${MAP.exploreTarget}|${this.activePlotId}|${MAP.farms.length}`;
+          if (this._exploreGoalKey !== KEY2) {
+            this._exploreGoalKey = KEY2;
+            const TARGET = nextExploreTile(MAP), HERE = MAP.farms.find((farm) => farm.plotId === this.activePlotId)?.tile;
+            this._exploreGoal = null;
+            if (TARGET >= 0 && HERE !== void 0) {
+              const DX = tileX(TARGET) - tileX(HERE), DY = tileY(TARGET) - tileY(HERE);
+              this._exploreGoal = {
+                dx: DX,
+                dy: DY,
+                near: Math.max(Math.abs(DX), Math.abs(DY)) <= 2,
+                x: DX * FARM_CELL.width,
+                y: -DY * FARM_CELL.height
+              };
+            }
+          }
+          const GOAL = this._exploreGoal;
+          if (!GOAL) {
             return null;
           }
-          const ANGLE = this._exploreAngle + (unit.id % 5 - 2) * 0.22, ARENA = CONFIG.farm.arena, REACH = Math.min(
+          if (GOAL.near) {
+            const ANGLE2 = unit.id * 2.39996, RADIUS2 = 3 + unit.id * 7 % 11 * 1.5, X2 = GOAL.x + Math.cos(ANGLE2) * RADIUS2, Y2 = GOAL.y + Math.sin(ANGLE2) * RADIUS2 * 0.75;
+            return { x: X2, y: Y2, fx: X2 + Math.cos(ANGLE2), fy: Y2 + Math.sin(ANGLE2), out: true };
+          }
+          const ANGLE = Math.atan2(GOAL.y, GOAL.x) + (unit.id % 5 - 2) * 0.22, ARENA = CONFIG.farm.arena, REACH = Math.min(
             (ARENA.radiusX - 1.6) / Math.max(Math.abs(Math.cos(ANGLE)), 1e-6),
             (ARENA.radiusY - 1.4) / Math.max(Math.abs(Math.sin(ANGLE)), 1e-6)
           ), X = Math.cos(ANGLE) * REACH, Y = Math.sin(ANGLE) * REACH;
-          return { x: X, y: Y, fx: X + Math.cos(ANGLE) * 3, fy: Y + Math.sin(ANGLE) * 3 };
+          return { x: X, y: Y, fx: X + Math.cos(ANGLE) * 3, fy: Y + Math.sin(ANGLE) * 3, out: false };
         }
         // Exploration points per second from the explorers of every farm; the whole map is worked on at once.
         get exploreRate() {
@@ -15051,7 +15065,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.13.11";
+      PRODUCT_VERSION = "0.13.12";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -18450,12 +18464,82 @@
       C.fillStyle = color2;
       C.fillRect(Math.floor(A.x), Math.floor(A.y), Math.ceil(B.x - A.x) + 1, Math.ceil(B.y - A.y) + 1);
     }
+    // One tile's ground and what stands on it: meadow, forest, rock or swamp.
+    paintLand(map, index, ox, oy, paint, look2, lights = null) {
+      const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena;
+      const TERRAIN = tileTerrain(map, index), [GROUND, SURFACE] = paint[TERRAIN];
+      const { radiusX: HALF_X, radiusY: HALF_Y } = CONFIG.farm.arena;
+      const SEEN = (x, y) => !lights || lights.some((light) => Math.hypot(x - light.x, y - light.y) <= light.r * 0.9);
+      if (lights) {
+        for (const LIGHT of lights) {
+          const RX_LIT = Math.min(LIGHT.r, HALF_X - Math.abs(LIGHT.x - ox)), RY_LIT = Math.min(LIGHT.r, HALF_Y - Math.abs(LIGHT.y - oy));
+          this.groundEllipse(LIGHT.x, LIGHT.y, RX_LIT, RY_LIT, GROUND);
+          this.groundEllipse(LIGHT.x, LIGHT.y, RX_LIT * 0.92, RY_LIT * 0.92, SURFACE);
+        }
+      } else {
+        this.groundCell(ox, oy, GROUND);
+        this.groundCell(ox, oy, SURFACE, 0.7);
+      }
+      const S = this.scale;
+      if (TERRAIN === "forest") {
+        for (let tree = 0; tree < 9; tree++) {
+          const TX = ox + (look2(index, 40 + tree) - 0.5) * RX * 1.7, TY = oy + (look2(index, 60 + tree) - 0.5) * RY * 1.7;
+          if (!SEEN(TX, TY)) {
+            continue;
+          }
+          const P = this.project(TX, TY, 0);
+          this.ellipse(P.x, P.y - 0.9 * S, 0.9 * S, 0.8 * S, "#9db58a");
+          this.ellipse(P.x, P.y - 0.2 * S, 0.12 * S, 0.35 * S, "#8a7a5a");
+        }
+      } else if (TERRAIN === "rock") {
+        for (let rock = 0; rock < 7; rock++) {
+          const TX = ox + (look2(index, 80 + rock) - 0.5) * RX * 1.7, TY = oy + (look2(index, 100 + rock) - 0.5) * RY * 1.7;
+          if (!SEEN(TX, TY)) {
+            continue;
+          }
+          const P = this.project(TX, TY, 0);
+          this.ellipse(P.x, P.y - 0.4 * S, 1.1 * S, 0.7 * S, "#a79f8d");
+          this.ellipse(P.x - 0.2 * S, P.y - 0.6 * S, 0.6 * S, 0.35 * S, "#c5bfae");
+        }
+      } else if (TERRAIN === "swamp") {
+        for (let pool = 0; pool < 5; pool++) {
+          const TX = ox + (look2(index, 120 + pool) - 0.5) * RX * 1.6, TY = oy + (look2(index, 140 + pool) - 0.5) * RY * 1.6;
+          if (SEEN(TX, TY)) {
+            this.groundEllipse(TX, TY, 2.2 + 1.6 * look2(index, 160 + pool), 1.4, "#9fbfc4");
+          }
+        }
+      }
+    }
+    // The tile being explored: the land shows only where an explorer's light reaches, and the lit patches
+    // grow with the exploration gauge until the whole tile is bright.
+    drawLantern(world, map, index, ox, oy, paint, look2) {
+      const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena, PROGRESS = Math.min(1, map.gauge / tileCost(map, index)), REACH = 5 + 24 * PROGRESS, LIGHTS = [{ x: ox, y: oy, r: REACH * 0.7 * PROGRESS + 0.1 }];
+      for (const UNIT3 of world.units) {
+        if (world._workerKinds.get(UNIT3.id) === "explore" && Math.abs(UNIT3.x - ox) <= RX && Math.abs(UNIT3.y - oy) <= RY) {
+          LIGHTS.push({ x: UNIT3.x, y: UNIT3.y, r: REACH });
+        }
+      }
+      if (LIGHTS.length === 1 && PROGRESS === 0) {
+        return;
+      }
+      this.paintLand(map, index, ox, oy, paint, look2, LIGHTS);
+      for (const LIGHT of LIGHTS) {
+        this.strokeGroundEllipse(
+          LIGHT.x,
+          LIGHT.y,
+          Math.min(LIGHT.r, RX - Math.abs(LIGHT.x - ox)),
+          Math.min(LIGHT.r, RY - Math.abs(LIGHT.y - oy)),
+          "rgba(255,248,214,0.7)",
+          0.12
+        );
+      }
+    }
     drawBackdrop(world) {
       const MAP = world.worldMap, HERE = this.farmTileOf(world, world.activePlotId);
       if (HERE === null) {
         return;
       }
-      const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena, PRESENTATION = this.scenePresentation, FX = tileX(HERE), FY = tileY(HERE), LIT = new Set(MAP.revealed), MARGIN = FARM_CELL.width * this.scale, PLOT_AT = new Map(MAP.farms.map((farm) => [farm.tile, farm.plotId]));
+      const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena, PRESENTATION = this.scenePresentation, FX = tileX(HERE), FY = tileY(HERE), LIT = new Set(MAP.revealed), MARGIN = FARM_CELL.width * this.scale, PLOT_AT = new Map(MAP.farms.map((farm) => [farm.tile, farm.plotId])), EXPLORING = nextExploreTile(MAP), S = this.scale;
       const LOOK = (index, salt) => {
         let h = Math.imul(index + 1, 2654435761) ^ Math.imul(salt, 2246822507);
         h = Math.imul(h ^ h >>> 15, 739982445);
@@ -18485,43 +18569,12 @@
               this.groundCell(OX, OY, "#e9e5d2");
               this.groundCell(OX, OY, "#efecdc", 0.6);
             }
+            if (INDEX === EXPLORING) {
+              this.drawLantern(world, MAP, INDEX, OX, OY, PAINT, LOOK);
+            }
             continue;
           }
-          const TERRAIN = tileTerrain(MAP, INDEX), [GROUND, SURFACE] = PAINT[TERRAIN];
-          this.groundCell(OX, OY, GROUND);
-          this.groundCell(OX, OY, SURFACE, 0.7);
-          const S = this.scale;
-          if (TERRAIN === "forest") {
-            for (let tree = 0; tree < 9; tree++) {
-              const P = this.project(
-                OX + (LOOK(INDEX, 40 + tree) - 0.5) * RX * 1.7,
-                OY + (LOOK(INDEX, 60 + tree) - 0.5) * RY * 1.7,
-                0
-              );
-              this.ellipse(P.x, P.y - 0.9 * S, 0.9 * S, 0.8 * S, "#9db58a");
-              this.ellipse(P.x, P.y - 0.2 * S, 0.12 * S, 0.35 * S, "#8a7a5a");
-            }
-          } else if (TERRAIN === "rock") {
-            for (let rock = 0; rock < 7; rock++) {
-              const P = this.project(
-                OX + (LOOK(INDEX, 80 + rock) - 0.5) * RX * 1.7,
-                OY + (LOOK(INDEX, 100 + rock) - 0.5) * RY * 1.7,
-                0
-              );
-              this.ellipse(P.x, P.y - 0.4 * S, 1.1 * S, 0.7 * S, "#a79f8d");
-              this.ellipse(P.x - 0.2 * S, P.y - 0.6 * S, 0.6 * S, 0.35 * S, "#c5bfae");
-            }
-          } else if (TERRAIN === "swamp") {
-            for (let pool = 0; pool < 5; pool++) {
-              this.groundEllipse(
-                OX + (LOOK(INDEX, 120 + pool) - 0.5) * RX * 1.6,
-                OY + (LOOK(INDEX, 140 + pool) - 0.5) * RY * 1.6,
-                2.2 + 1.6 * LOOK(INDEX, 160 + pool),
-                1.4,
-                "#9fbfc4"
-              );
-            }
-          }
+          this.paintLand(MAP, INDEX, OX, OY, PAINT, LOOK);
           const PLOT_ID = PLOT_AT.get(INDEX);
           if (PLOT_ID && PLOT_ID !== world.activePlotId) {
             for (const U of world.unitCollection.unitsInPlot(PLOT_ID)) {
