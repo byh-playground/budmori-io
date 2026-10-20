@@ -15675,7 +15675,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.19.3";
+      PRODUCT_VERSION = "0.19.4";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -22850,7 +22850,7 @@
     const CAMERA = { x: 0, y: 0, scale: 28 };
     const POINTERS = /* @__PURE__ */ new Map();
     const POP_AT = /* @__PURE__ */ new Map();
-    let width = 0, height = 0, ratio = 1, manual = false, previousLit = null, frame2 = 0, lastDraw = 0, gesture = null, provider = null, partyPhase = 0, lastRender = 0;
+    let width = 0, height = 0, ratio = 1, manual = false, previousLit = null, frame2 = 0, lastDraw = 0, gesture = null, provider = null, partyPhase = 0, focusMove = null, lastRender = 0;
     function resize() {
       ratio = Math.min(2, globalThis.devicePixelRatio || 1);
       width = Math.max(1, canvas.clientWidth);
@@ -23143,7 +23143,7 @@
         }
       }
     }
-    function drawParty(from, target, count, now) {
+    function drawParty(from, target, count, now, once = -1) {
       const FARM = from;
       if (FARM === void 0 || target < 0 || !(count > 0)) {
         return;
@@ -23161,7 +23161,7 @@
       CONTEXT.globalAlpha = 1;
       const COUNT = Math.min(60, count);
       for (let member = 0; member < COUNT; member++) {
-        const T = (partyPhase + member / COUNT) % 1, SWAY = Math.sin(now / 300 + member * 2.1) * CAMERA.scale * 0.05;
+        const T = once >= 0 ? CLAMP3(once * 1.4 - member / COUNT * 0.4, 0, 1) : (partyPhase + member / COUNT) % 1, SWAY = Math.sin(now / 300 + member * 2.1) * CAMERA.scale * 0.05;
         CONTEXT.fillStyle = COLORS.scout;
         CONTEXT.strokeStyle = COLORS.paper;
         CONTEXT.lineWidth = 1.5;
@@ -23179,6 +23179,16 @@
     }
     function render(map, state = {}, now = performance.now()) {
       resize();
+      if (focusMove) {
+        const K = CLAMP3((now - focusMove.start) / focusMove.ms, 0, 1), EASE = K * K * (3 - 2 * K);
+        CAMERA.x = focusMove.x + (focusMove.toX - focusMove.x) * EASE;
+        CAMERA.y = focusMove.y + (focusMove.toY - focusMove.y) * EASE;
+        CAMERA.scale = focusMove.scale + (focusMove.toScale - focusMove.scale) * EASE;
+        manual = true;
+        if (K >= 1) {
+          focusMove = null;
+        }
+      }
       const LIT = new Set(map.revealed);
       if (previousLit) {
         for (const INDEX of LIT) {
@@ -23236,6 +23246,15 @@
             );
           }
         }
+      }
+      if (state.approach) {
+        drawParty(
+          state.approach.from,
+          state.approach.tile,
+          state.approach.count,
+          now,
+          CLAMP3((now - state.approach.start) / state.approach.ms, 0, 1)
+        );
       }
       const TARGETS = state.targets ?? [];
       if (TARGETS.length > 0) {
@@ -23361,6 +23380,19 @@
         frame2 = 0;
         provider = null;
       },
+      // Glide the camera onto a tile (used when a party walks out to fight a boss).
+      focus(tile, scale, ms) {
+        focusMove = {
+          start: performance.now(),
+          ms,
+          x: CAMERA.x,
+          y: CAMERA.y,
+          scale: CAMERA.scale,
+          toX: tileX(tile),
+          toY: tileY(tile),
+          toScale: CLAMP3(scale, MIN_SCALE, MAX_SCALE)
+        };
+      },
       // Show the whole lit land again after the player moved the camera.
       recenter(map) {
         fit(map);
@@ -23391,6 +23423,8 @@
   var farmPanelRevision = -1;
   var bossEncounterOpen = false;
   var bossMapTile = -1;
+  var raidApproach = null;
+  var RAID_APPROACH_MS = 1800;
   var worldMapView = null;
   var miniMapView = null;
   var lastLit = null;
@@ -24004,6 +24038,7 @@
       map: MAP,
       selected: bossMapTile,
       targets: personalGarden.exploreTargets,
+      approach: raidApproach,
       explorers: personalGarden.workerKindCounts.explore,
       rate: personalGarden.exploreRate
     };
@@ -24455,7 +24490,7 @@
     return settled;
   }
   function beginRaid(push = true) {
-    if (!personalGarden || active.world.scene === "raid" || personalGarden.activeRaidRunSequence !== null || personalGarden.farmBossEvent?.phase !== "idle" || !raidRosterEntries(personalGarden.roster.residents(), 1).length) {
+    if (raidApproach || !personalGarden || active.world.scene === "raid" || personalGarden.activeRaidRunSequence !== null || personalGarden.farmBossEvent?.phase !== "idle" || !raidRosterEntries(personalGarden.roster.residents(), 1).length) {
       return;
     }
     if (!persist()) {
@@ -24474,11 +24509,29 @@
     if (!RESERVED) {
       return;
     }
+    const FARM_TILE = personalGarden.worldMap.farms.find((farm) => farm.plotId === personalGarden.activePlotId)?.tile, BOSS_TILE = bossMapTile;
+    raidApproach = {
+      from: FARM_TILE ?? personalGarden.worldMap.farms[0]?.tile,
+      tile: BOSS_TILE,
+      count: Math.min(
+        40,
+        raidRosterEntries(personalGarden.roster.residents(), CONFIG.raid.capacity.playerUnits).length
+      ),
+      start: performance.now(),
+      ms: RAID_APPROACH_MS
+    };
+    worldMapView?.focus(BOSS_TILE, 80, RAID_APPROACH_MS);
+    setTimeout(() => {
+      raidApproach = null;
+      startRaidBattle(BOSS_STAGE, RESERVED, push);
+    }, RAID_APPROACH_MS);
+  }
+  function startRaidBattle(bossStage, reserved, push) {
     closeBossEncounter(false);
     const BATTLE = GARDEN.createRaidBattle(
       personalGarden.seed + Math.floor(performance.now()) >>> 0,
       ["solo"],
-      BOSS_STAGE
+      bossStage
     );
     install(BATTLE);
     active.queue("register-roster", {
@@ -24486,9 +24539,9 @@
       abilitySnapshot: createAbilityRuntimeSnapshot(personalGarden.playerProgression),
       deploymentCardSpecies: raidDeploymentCardSpecies(personalGarden.playerProgression.raidDeploymentCards),
       settlement: {
-        sessionId: RESERVED.sessionId,
-        runSequence: RESERVED.runSequence,
-        encounterId: RESERVED.runSequence
+        sessionId: reserved.sessionId,
+        runSequence: reserved.runSequence,
+        encounterId: reserved.runSequence
       }
     });
     setHome(false, push);
@@ -24570,7 +24623,6 @@
       say(REASON);
       return;
     }
-    closeBossEncounter(false);
     beginRaid(true);
   };
   DOLLAR2("abortRaidRun").onclick = () => {

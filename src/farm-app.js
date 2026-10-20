@@ -76,6 +76,9 @@ let farmPanelRevision = -1;
 let bossEncounterOpen = false;
 // A raid is a boss met on the world map; the screen is the map.
 let bossMapTile = -1;
+// While the party walks out to a boss on the map: where from, where to, and when it set off.
+let raidApproach = null;
+const RAID_APPROACH_MS = 1800;
 let worldMapView = null;
 let miniMapView = null;
 let lastLit = null;
@@ -792,6 +795,7 @@ function worldMapFrame() {
         map: MAP,
         selected: bossMapTile,
         targets: personalGarden.exploreTargets,
+        approach: raidApproach,
         explorers: personalGarden.workerKindCounts.explore,
         rate: personalGarden.exploreRate,
     };
@@ -1303,6 +1307,7 @@ function persistRaidSettlement(raidWorld, ownerId) {
 }
 function beginRaid(push = true) {
     if (
+        raidApproach ||
         !personalGarden ||
         active.world.scene === 'raid' ||
         personalGarden.activeRaidRunSequence !== null ||
@@ -1328,11 +1333,31 @@ function beginRaid(push = true) {
     if (!RESERVED) {
         return;
     }
+    // The party walks out to the boss while the camera closes in on it, then the fight starts.
+    const FARM_TILE = personalGarden.worldMap.farms.find((farm) => farm.plotId === personalGarden.activePlotId)?.tile,
+        BOSS_TILE = bossMapTile;
+    raidApproach = {
+        from: FARM_TILE ?? personalGarden.worldMap.farms[0]?.tile,
+        tile: BOSS_TILE,
+        count: Math.min(
+            40,
+            raidRosterEntries(personalGarden.roster.residents(), CONFIG.raid.capacity.playerUnits).length,
+        ),
+        start: performance.now(),
+        ms: RAID_APPROACH_MS,
+    };
+    worldMapView?.focus(BOSS_TILE, 80, RAID_APPROACH_MS);
+    setTimeout(() => {
+        raidApproach = null;
+        startRaidBattle(BOSS_STAGE, RESERVED, push);
+    }, RAID_APPROACH_MS);
+}
+function startRaidBattle(bossStage, reserved, push) {
     closeBossEncounter(false);
     const BATTLE = Garden.createRaidBattle(
         (personalGarden.seed + Math.floor(performance.now())) >>> 0,
         ['solo'],
-        BOSS_STAGE,
+        bossStage,
     );
     install(BATTLE);
     active.queue('register-roster', {
@@ -1340,9 +1365,9 @@ function beginRaid(push = true) {
         abilitySnapshot: createAbilityRuntimeSnapshot(personalGarden.playerProgression),
         deploymentCardSpecies: raidDeploymentCardSpecies(personalGarden.playerProgression.raidDeploymentCards),
         settlement: {
-            sessionId: RESERVED.sessionId,
-            runSequence: RESERVED.runSequence,
-            encounterId: RESERVED.runSequence,
+            sessionId: reserved.sessionId,
+            runSequence: reserved.runSequence,
+            encounterId: reserved.runSequence,
         },
     });
     setHome(false, push);
@@ -1426,7 +1451,6 @@ DOLLAR('bossEncounterChallenge').onclick = () => {
         say(REASON);
         return;
     }
-    closeBossEncounter(false);
     beginRaid(true);
 };
 DOLLAR('abortRaidRun').onclick = () => {

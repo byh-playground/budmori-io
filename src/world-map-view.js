@@ -97,6 +97,7 @@ export function createWorldMapView(
         gesture = null,
         provider = null,
         partyPhase = 0,
+        focusMove = null,
         lastRender = 0;
 
     function resize() {
@@ -415,7 +416,7 @@ export function createWorldMapView(
         }
     }
     // Each farm's explorers walk from that farm out to the tile it is exploring, one dot per explorer.
-    function drawParty(from, target, count, now) {
+    function drawParty(from, target, count, now, once = -1) {
         const FARM = from;
         if (FARM === undefined || target < 0 || !(count > 0)) {
             return;
@@ -436,7 +437,7 @@ export function createWorldMapView(
         CONTEXT.globalAlpha = 1;
         const COUNT = Math.min(60, count);
         for (let member = 0; member < COUNT; member++) {
-            const T = (partyPhase + member / COUNT) % 1,
+            const T = once >= 0 ? CLAMP(once * 1.4 - (member / COUNT) * 0.4, 0, 1) : (partyPhase + member / COUNT) % 1,
                 SWAY = Math.sin(now / 300 + member * 2.1) * CAMERA.scale * 0.05;
             CONTEXT.fillStyle = COLORS.scout;
             CONTEXT.strokeStyle = COLORS.paper;
@@ -456,6 +457,17 @@ export function createWorldMapView(
 
     function render(map, state = {}, now = performance.now()) {
         resize();
+        if (focusMove) {
+            const K = CLAMP((now - focusMove.start) / focusMove.ms, 0, 1),
+                EASE = K * K * (3 - 2 * K);
+            CAMERA.x = focusMove.x + (focusMove.toX - focusMove.x) * EASE;
+            CAMERA.y = focusMove.y + (focusMove.toY - focusMove.y) * EASE;
+            CAMERA.scale = focusMove.scale + (focusMove.toScale - focusMove.scale) * EASE;
+            manual = true;
+            if (K >= 1) {
+                focusMove = null;
+            }
+        }
         const LIT = new Set(map.revealed);
         if (previousLit) {
             for (const INDEX of LIT) {
@@ -525,6 +537,15 @@ export function createWorldMapView(
                     );
                 }
             }
+        }
+        if (state.approach) {
+            drawParty(
+                state.approach.from,
+                state.approach.tile,
+                state.approach.count,
+                now,
+                CLAMP((now - state.approach.start) / state.approach.ms, 0, 1),
+            );
         }
         const TARGETS = state.targets ?? [];
         if (TARGETS.length > 0) {
@@ -654,6 +675,19 @@ export function createWorldMapView(
             cancelAnimationFrame(frame);
             frame = 0;
             provider = null;
+        },
+        // Glide the camera onto a tile (used when a party walks out to fight a boss).
+        focus(tile, scale, ms) {
+            focusMove = {
+                start: performance.now(),
+                ms,
+                x: CAMERA.x,
+                y: CAMERA.y,
+                scale: CAMERA.scale,
+                toX: tileX(tile),
+                toY: tileY(tile),
+                toScale: CLAMP(scale, MIN_SCALE, MAX_SCALE),
+            };
         },
         // Show the whole lit land again after the player moved the camera.
         recenter(map) {
