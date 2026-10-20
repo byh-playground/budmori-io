@@ -8612,8 +8612,9 @@
             starterFood: 0,
             maxFood: 50,
             maxAttackers: 3,
-            defaultResourceBasisPoints: 4e3,
-            defaultBuildBasisPoints: 1500,
+            defaultResourceBasisPoints: 2500,
+            defaultHaulBasisPoints: 1500,
+            defaultBuildBasisPoints: 1e3,
             defaultExploreBasisPoints: 1e3,
             facilityMaxLevel: FACILITY_MAX_LEVEL,
             levelCostStep: 0.75,
@@ -9697,6 +9698,7 @@
           this.resourceBasisPoints = CONFIG.farm.work.defaultResourceBasisPoints;
           this.woodBasisPoints = 5e3;
           this.materials = { wood: 0, stone: 0 };
+          this.haulBasisPoints = CONFIG.farm.work.defaultHaulBasisPoints;
           this.buildBasisPoints = CONFIG.farm.work.defaultBuildBasisPoints;
           this.exploreBasisPoints = CONFIG.farm.work.defaultExploreBasisPoints;
           this.neighbourWalkers = CONFIG.farm.work.neighbourWalkers;
@@ -10782,16 +10784,17 @@
           return unit.breedingEligible !== false && !this._workerIds.has(unit.id);
         }
         // workers share of the farm, and the share of those workers that gather materials instead of grain.
-        setWorkBasisPoints(basisPoints, resourceBasisPoints = this.resourceBasisPoints, buildBasisPoints = this.buildBasisPoints, exploreBasisPoints = this.exploreBasisPoints) {
+        setWorkBasisPoints(basisPoints, resourceBasisPoints = this.resourceBasisPoints, haulBasisPoints = this.haulBasisPoints, buildBasisPoints = this.buildBasisPoints, exploreBasisPoints = this.exploreBasisPoints) {
           const VALID = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1e4;
-          if (!VALID(basisPoints) || !VALID(resourceBasisPoints) || !VALID(buildBasisPoints) || !VALID(exploreBasisPoints) || resourceBasisPoints + buildBasisPoints + exploreBasisPoints > 1e4) {
+          if (!VALID(basisPoints) || !VALID(resourceBasisPoints) || !VALID(haulBasisPoints) || !VALID(buildBasisPoints) || !VALID(exploreBasisPoints) || resourceBasisPoints + haulBasisPoints + buildBasisPoints + exploreBasisPoints > 1e4) {
             return false;
           }
-          if (basisPoints === this.workBasisPoints && resourceBasisPoints === this.resourceBasisPoints && buildBasisPoints === this.buildBasisPoints && exploreBasisPoints === this.exploreBasisPoints) {
+          if (basisPoints === this.workBasisPoints && resourceBasisPoints === this.resourceBasisPoints && haulBasisPoints === this.haulBasisPoints && buildBasisPoints === this.buildBasisPoints && exploreBasisPoints === this.exploreBasisPoints) {
             return true;
           }
           this.workBasisPoints = basisPoints;
           this.resourceBasisPoints = resourceBasisPoints;
+          this.haulBasisPoints = haulBasisPoints;
           this.buildBasisPoints = buildBasisPoints;
           this.exploreBasisPoints = exploreBasisPoints;
           this._nextWorkerRefreshTick = 0;
@@ -10854,18 +10857,21 @@
             ), EXPLORERS = RUSHING ? 0 : Math.min(PLOT_TOTAL - BUILDERS, Math.round(PLOT_TOTAL * this.exploreBasisPoints / 1e4)), GATHERERS = RUSHING ? 0 : Math.min(
               PLOT_TOTAL - BUILDERS - EXPLORERS,
               Math.round(PLOT_TOTAL * this.resourceBasisPoints / 1e4)
-            ), HITTERS = GATHERERS < 2 ? GATHERERS : GATHERERS - Math.max(1, Math.round(GATHERERS / 3)), PLOT = this.farmPlots.get(PLOT_ID), MULTIPLIER = {
+            ), HAULERS = RUSHING ? 0 : Math.min(
+              PLOT_TOTAL - BUILDERS - EXPLORERS - GATHERERS,
+              Math.round(PLOT_TOTAL * this.haulBasisPoints / 1e4)
+            ), PLOT = this.farmPlots.get(PLOT_ID), MULTIPLIER = {
               food: 1 + WORK.levelEffectStep * PLOT.facilityLevel("windmill"),
               resource: 1 + WORK.levelEffectStep * PLOT.facilityLevel("rack")
             };
             const COUNTS = {
               build: BUILDERS,
-              food: PLOT_TOTAL - BUILDERS - EXPLORERS - GATHERERS,
-              wood: Math.round(HITTERS * this.woodBasisPoints / 1e4),
-              haul: GATHERERS - HITTERS,
+              food: PLOT_TOTAL - BUILDERS - EXPLORERS - GATHERERS - HAULERS,
+              wood: Math.round(GATHERERS * this.woodBasisPoints / 1e4),
+              haul: HAULERS,
               explore: EXPLORERS
             }, POOL = SORTED_WORKERS.map((id) => this._unitById.get(id)).filter(Boolean);
-            COUNTS.stone = HITTERS - COUNTS.wood;
+            COUNTS.stone = GATHERERS - COUNTS.wood;
             for (const ROLE of APTITUDE_ORDER) {
               const PICKED = pickForRole(POOL, ROLE, COUNTS[ROLE]);
               for (const PICK of PICKED) {
@@ -15038,7 +15044,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.21.17";
+      PRODUCT_VERSION = "0.21.18";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -19259,7 +19265,13 @@
         case "farm-target":
           return W.scene === "farm" && W.setSpeciesTarget(c.speciesId, c.basisPoints);
         case "farm-work":
-          return W.scene === "farm" && W.setWorkBasisPoints(c.basisPoints, c.resourceBasisPoints, c.buildBasisPoints, c.exploreBasisPoints);
+          return W.scene === "farm" && W.setWorkBasisPoints(
+            c.basisPoints,
+            c.resourceBasisPoints,
+            c.haulBasisPoints,
+            c.buildBasisPoints,
+            c.exploreBasisPoints
+          );
         case "farm-build":
           return W.scene === "farm" && typeof c.facilityId === "string" && W.startBuild(c.facilityId, { tile: Number.isSafeInteger(c.tile) ? c.tile : -1 });
         case "farm-rush":
@@ -22372,6 +22384,7 @@
     work: "budmori.work.basisPoints",
     resource: "budmori.work.resourceBasisPoints",
     wood: "budmori.work.woodBasisPoints",
+    haul: "budmori.work.haulBasisPoints",
     build: "budmori.work.buildBasisPoints",
     explore: "budmori.work.exploreBasisPoints",
     walkers: "budmori.neighbourWalkers"
@@ -22399,21 +22412,23 @@
     }
   }
   function workCuts(world) {
-    const WORK = world.workBasisPoints / 100, JOBS = world.resourceBasisPoints + world.buildBasisPoints + world.exploreBasisPoints, ROUND = (value) => Math.round(value / 5) * 5;
+    const WORK = world.workBasisPoints / 100, JOBS = world.resourceBasisPoints + world.haulBasisPoints + world.buildBasisPoints + world.exploreBasisPoints, ROUND = (value) => Math.round(value / 5) * 5, SHARE = (points) => JOBS > 0 ? ROUND(points / JOBS * 100) : null;
     return {
       a: ROUND(100 - WORK),
       b: ROUND(100 - WORK * JOBS / 1e4),
-      c: JOBS > 0 ? ROUND(world.resourceBasisPoints / JOBS * 100) : null,
-      d: JOBS > 0 ? ROUND((world.resourceBasisPoints + world.buildBasisPoints) / JOBS * 100) : null
+      c: SHARE(world.resourceBasisPoints),
+      d: SHARE(world.resourceBasisPoints + world.haulBasisPoints),
+      e: SHARE(world.resourceBasisPoints + world.haulBasisPoints + world.buildBasisPoints)
     };
   }
-  function cutsToBasisPoints(a, b, c, d) {
-    const WORK = 100 - a, JOBS = WORK > 0 ? Math.round((100 - b) / WORK * 1e4) : 0, RESOURCE = Math.round(JOBS * c / 100), BUILD = Math.round(JOBS * (d - c) / 100);
+  function cutsToBasisPoints(a, b, c, d, e) {
+    const WORK = 100 - a, JOBS = WORK > 0 ? Math.round((100 - b) / WORK * 1e4) : 0, PART = (from, to) => Math.round(JOBS * (to - from) / 100), RESOURCE = PART(0, c), HAUL = PART(c, d), BUILD = PART(d, e);
     return {
       work: WORK * 100,
       resource: RESOURCE,
+      haul: HAUL,
       build: BUILD,
-      explore: Math.max(0, Math.min(Math.round(JOBS * (100 - d) / 100), 1e4 - RESOURCE - BUILD))
+      explore: Math.max(0, Math.min(PART(e, 100), 1e4 - RESOURCE - HAUL - BUILD))
     };
   }
   function install(world) {
@@ -22431,6 +22446,7 @@
     world.setWorkBasisPoints(
       loadWorkSetting(WORK_STORAGE_KEYS.work, world.workBasisPoints),
       loadWorkSetting(WORK_STORAGE_KEYS.resource, world.resourceBasisPoints),
+      loadWorkSetting(WORK_STORAGE_KEYS.haul, world.haulBasisPoints),
       loadWorkSetting(WORK_STORAGE_KEYS.build, world.buildBasisPoints),
       loadWorkSetting(WORK_STORAGE_KEYS.explore, world.exploreBasisPoints)
     );
@@ -23220,20 +23236,28 @@
       beginFarmSortTransition(BUTTON.dataset.farmSort);
     }
   });
-  var WORK_CUT_IDS = ["workCutA", "workCutB", "workCutC", "workCutD"];
+  var WORK_CUT_IDS = ["workCutA", "workCutB", "workCutC", "workCutD", "workCutE"];
   function applyWorkCuts(...cuts) {
-    const [CUT_A, CUT_B] = [cuts[0], cuts[1]].sort((x, y) => x - y), [CUT_C, CUT_D] = [cuts[2], cuts[3]].sort((x, y) => x - y), POINTS = cutsToBasisPoints(CUT_A, CUT_B, CUT_C, CUT_D);
-    [CUT_A, CUT_B, CUT_C, CUT_D].forEach((value, index) => {
+    const [CUT_A, CUT_B] = [cuts[0], cuts[1]].sort((x, y) => x - y), [CUT_C, CUT_D, CUT_E] = [cuts[2], cuts[3], cuts[4]].sort((x, y) => x - y), POINTS = cutsToBasisPoints(CUT_A, CUT_B, CUT_C, CUT_D, CUT_E);
+    [CUT_A, CUT_B, CUT_C, CUT_D, CUT_E].forEach((value, index) => {
       DOLLAR2(WORK_CUT_IDS[index]).value = String(value);
     });
     saveWorkSetting(WORK_STORAGE_KEYS.work, POINTS.work);
     saveWorkSetting(WORK_STORAGE_KEYS.resource, POINTS.resource);
+    saveWorkSetting(WORK_STORAGE_KEYS.haul, POINTS.haul);
     saveWorkSetting(WORK_STORAGE_KEYS.build, POINTS.build);
     saveWorkSetting(WORK_STORAGE_KEYS.explore, POINTS.explore);
-    (personalGarden || active.world).setWorkBasisPoints(POINTS.work, POINTS.resource, POINTS.build, POINTS.explore);
+    (personalGarden || active.world).setWorkBasisPoints(
+      POINTS.work,
+      POINTS.resource,
+      POINTS.haul,
+      POINTS.build,
+      POINTS.explore
+    );
     active.queue("farm-work", {
       basisPoints: POINTS.work,
       resourceBasisPoints: POINTS.resource,
+      haulBasisPoints: POINTS.haul,
       buildBasisPoints: POINTS.build,
       exploreBasisPoints: POINTS.explore
     });
@@ -23886,7 +23910,7 @@
       DOLLAR2(ID).disabled = !!farmSortTransition;
     }
     if (!WORK_CUT_IDS.some((id) => document.activeElement === DOLLAR2(id))) {
-      [CUTS.a, CUTS.b, CUTS.c, CUTS.d].forEach((value, index) => {
+      [CUTS.a, CUTS.b, CUTS.c, CUTS.d, CUTS.e].forEach((value, index) => {
         if (value !== null) {
           DOLLAR2(WORK_CUT_IDS[index]).value = String(value);
         }
@@ -23907,7 +23931,7 @@
     syncText("workHudNote", note);
     syncText("workHudBreed", `번식 ${BREEDERS}`);
     syncText("workHudFood", `먹이 ${KINDS.food}`);
-    syncText("workHudRes", `자원 ${KINDS.resource + KINDS.haul}`);
+    syncText("workHudRes", `자원 ${KINDS.resource}`);
     {
       const WOOD = Math.round(WORK_WORLD.woodBasisPoints / 100);
       if (document.activeElement !== DOLLAR2("woodCut")) {
@@ -23919,22 +23943,24 @@
       DOLLAR2("workHudStone").style.flex = `${Math.max(1, 100 - WOOD)} 1 0`;
     }
     syncText("workHudJobs", `일꾼 ${KINDS.resource + KINDS.haul + KINDS.build + KINDS.explore}`);
+    syncText("workHudHaul", `운반 ${KINDS.haul}`);
     syncText("workHudBuild", `건설 ${KINDS.build}`);
     syncText("workHudExplore", `탐사 ${KINDS.explore}`);
     syncText("materialWood", String(W.materials.wood));
     syncText("materialStone", String(W.materials.stone));
     syncData("workHud", "warn", warn);
-    const CUT_C = CUTS.c ?? Number(DOLLAR2("workCutC").value), CUT_D = CUTS.d ?? Number(DOLLAR2("workCutD").value);
+    const CUT_C = CUTS.c ?? Number(DOLLAR2("workCutC").value), CUT_D = CUTS.d ?? Number(DOLLAR2("workCutD").value), CUT_E = CUTS.e ?? Number(DOLLAR2("workCutE").value);
     DOLLAR2("workHudBreed").style.flex = `${Math.max(1, CUTS.a)} 1 0`;
     DOLLAR2("workHudFood").style.flex = `${Math.max(1, CUTS.b - CUTS.a)} 1 0`;
     DOLLAR2("workHudJobs").style.flex = `${Math.max(1, 100 - CUTS.b)} 1 0`;
     DOLLAR2("workHudRes").style.flex = `${Math.max(1, CUT_C)} 1 0`;
-    DOLLAR2("workHudBuild").style.flex = `${Math.max(1, CUT_D - CUT_C)} 1 0`;
-    DOLLAR2("workHudExplore").style.flex = `${Math.max(1, 100 - CUT_D)} 1 0`;
+    DOLLAR2("workHudHaul").style.flex = `${Math.max(1, CUT_D - CUT_C)} 1 0`;
+    DOLLAR2("workHudBuild").style.flex = `${Math.max(1, CUT_E - CUT_D)} 1 0`;
+    DOLLAR2("workHudExplore").style.flex = `${Math.max(1, 100 - CUT_E)} 1 0`;
     for (const BUTTON of DOLLAR2("workHud").querySelectorAll("[data-work-preset]")) {
       BUTTON.setAttribute(
         "aria-pressed",
-        String(BUTTON.dataset.workPreset === `${CUTS.a},${CUTS.b},${CUT_C},${CUT_D}`)
+        String(BUTTON.dataset.workPreset === `${CUTS.a},${CUTS.b},${CUT_C},${CUT_D},${CUT_E}`)
       );
       BUTTON.disabled = !!farmSortTransition;
     }

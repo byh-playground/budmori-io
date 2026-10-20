@@ -92,8 +92,8 @@ await check('new game boots with a minimal HUD', async () => {
     }));
     expect(STATE.units > 0 && STATE.scene === 'farm', 'farm did not start');
     expect(STATE.removed.length === 0, `removed controls are back: ${STATE.removed}`);
-    expect(STATE.handles.join() === '2,2,1', `each role bar needs at most two handles (2,2,1), has ${STATE.handles}`);
-    expect(STATE.roles.length === 8, `the three role bars should have eight parts, has ${STATE.roles.length}`);
+    expect(STATE.handles.join() === '2,3,1', `each role bar needs at most two handles (2,3,1), has ${STATE.handles}`);
+    expect(STATE.roles.length === 9, `the three role bars should have nine parts, has ${STATE.roles.length}`);
 });
 
 await check('resource workers hit piles, haulers carry the pieces to the store', async () => {
@@ -106,7 +106,7 @@ await check('resource workers hit piles, haulers carry the pieces to the store',
         W.worldMap.revealed = Array.from({ length: 625 }, (_, index) => index).filter(
             (index) => Math.max(Math.abs(MAP.tileX(index)), Math.abs(MAP.tileY(index))) <= 3,
         );
-        W.setWorkBasisPoints(5000, 4000, 500, 500);
+        W.setWorkBasisPoints(5000, 4000, 1500, 500, 500);
         W.setWoodShare(6000);
         W._nextWorkerRefreshTick = 0;
         W.refreshWorkers();

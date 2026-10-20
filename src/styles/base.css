@@ -446,6 +446,9 @@ body > header {
     background: #8b8a7c;
     justify-content: flex-end;
 }
+#workHudHaul {
+    background: #a58f5f;
+}
 #workHudBuild {
     background: #b9774a;
 }
