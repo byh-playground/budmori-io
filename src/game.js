@@ -4627,8 +4627,43 @@
     }
     return best;
   }
-  function exploreFraction(map, index) {
-    return Math.min(1, (map.progress[index] ?? 0) / tileCost(map, index));
+  function countBits(mask) {
+    let count = 0;
+    for (let rest = mask; rest > 0; rest >>= 1) {
+      count += rest & 1;
+    }
+    return count;
+  }
+  function fogPieceCenter(piece) {
+    return {
+      x: (piece % FOG_GRID + 0.5) * PIECE_W - FARM_CELL.width / 2,
+      y: (Math.floor(piece / FOG_GRID) + 0.5) * PIECE_H - FARM_CELL.height / 2
+    };
+  }
+  function fogPieceAt(x, y) {
+    const COL = Math.min(FOG_GRID - 1, Math.max(0, Math.floor((x + FARM_CELL.width / 2) / PIECE_W))), ROW = Math.min(FOG_GRID - 1, Math.max(0, Math.floor((y + FARM_CELL.height / 2) / PIECE_H)));
+    return ROW * FOG_GRID + COL;
+  }
+  function nearestFogPiece(map, tile, x, y) {
+    const MASK = map.progress[tile] ?? 0;
+    let best = -1, bestDistance = Infinity;
+    for (let piece = 0; piece < FOG_PIECES; piece++) {
+      if (MASK >> piece & 1) {
+        continue;
+      }
+      const C = fogPieceCenter(piece), D = Math.hypot(C.x - x, C.y - y);
+      if (D < bestDistance) {
+        best = piece;
+        bestDistance = D;
+      }
+    }
+    return best;
+  }
+  function fogPieceCost(map, tile) {
+    return tileCost(map, tile) / FOG_PIECES;
+  }
+  function exploreFraction(map, index, partial = 0) {
+    return Math.min(1, (countBits(map.progress[index] ?? 0) + partial) / FOG_PIECES);
   }
   function canExploreTile(map, index) {
     return Number.isSafeInteger(index) && index >= 0 && index < WORLD_MAP_TILE_COUNT && !isRevealed(map, index) && touchesLight(index, new Set(map.revealed)) && inReach(map, index);
@@ -4648,13 +4683,13 @@
     map.exploreTarget = index;
     return true;
   }
-  function advanceExploration(map, tile, points) {
-    if (!(points > 0) || !Number.isSafeInteger(tile) || tile < 0 || tile >= WORLD_MAP_TILE_COUNT || isRevealed(map, tile)) {
+  function liftFogPiece(map, tile, piece) {
+    if (!Number.isSafeInteger(tile) || tile < 0 || tile >= WORLD_MAP_TILE_COUNT || isRevealed(map, tile) || !(piece >= 0 && piece < FOG_PIECES)) {
       return [];
     }
-    const TOTAL = (map.progress[tile] ?? 0) + points;
-    if (TOTAL < tileCost(map, tile)) {
-      map.progress[tile] = TOTAL;
+    const MASK = (map.progress[tile] ?? 0) | 1 << piece;
+    if (countBits(MASK) < FOG_LIT_AT) {
+      map.progress[tile] = MASK;
       return [];
     }
     delete map.progress[tile];
@@ -4753,7 +4788,7 @@
       (farm) => farm && typeof farm === "object" && Object.keys(farm).sort().join(",") === "plotId,tile" && typeof farm.plotId === "string" && farm.plotId.length > 0 && Number.isSafeInteger(farm.tile) && LIT.has(farm.tile)
     );
   }
-  var WORLD_MAP_SETTINGS, FARM_CELL, SIDE, WORLD_MAP_TILE_COUNT, NEIGHBOURS, REACH_PROVIDERS, TERRAIN_NAMES, SORTED_INDEXES, VALID_PROGRESS;
+  var WORLD_MAP_SETTINGS, FARM_CELL, SIDE, WORLD_MAP_TILE_COUNT, NEIGHBOURS, REACH_PROVIDERS, TERRAIN_NAMES, FOG_GRID, FOG_PIECES, FOG_LIT_AT, PIECE_W, PIECE_H, SORTED_INDEXES, VALID_PROGRESS;
   var init_world_map = __esm({
     "src/world-map.js"() {
       init_boss_rewards();
@@ -4788,11 +4823,16 @@
       ];
       REACH_PROVIDERS = /* @__PURE__ */ new WeakMap();
       TERRAIN_NAMES = { plain: "평지", forest: "숲", rock: "바위산", swamp: "늪" };
+      FOG_GRID = 4;
+      FOG_PIECES = FOG_GRID * FOG_GRID;
+      FOG_LIT_AT = FOG_PIECES - 2;
+      PIECE_W = FARM_CELL.width / FOG_GRID;
+      PIECE_H = FARM_CELL.height / FOG_GRID;
       SORTED_INDEXES = (list) => Array.isArray(list) && list.every(
         (value, position2) => Number.isSafeInteger(value) && value >= 0 && value < WORLD_MAP_TILE_COUNT && (position2 === 0 || value > list[position2 - 1])
       );
       VALID_PROGRESS = (progress) => !!progress && typeof progress === "object" && !Array.isArray(progress) && Object.entries(progress).every(
-        ([key, value]) => /^\d+$/.test(key) && Number(key) < WORLD_MAP_TILE_COUNT && Number.isFinite(value) && value > 0
+        ([key, value]) => /^\d+$/.test(key) && Number(key) < WORLD_MAP_TILE_COUNT && Number.isSafeInteger(value) && value > 0 && value < 1 << FOG_PIECES
       );
     }
   });
@@ -9817,6 +9857,7 @@
           this._workerKinds = /* @__PURE__ */ new Map();
           this._exploreGoals = /* @__PURE__ */ new Map();
           this._idleLead = /* @__PURE__ */ new Map();
+          this._pieceWork = /* @__PURE__ */ new Map();
           this._idleCarry = { materials: 0, food: 0 };
           this._workerIds = /* @__PURE__ */ new Set();
           resetWork(this);
@@ -11137,7 +11178,7 @@
           if (this.scene !== "farm") {
             return;
           }
-          const POINTS = /* @__PURE__ */ new Map();
+          const WORK = /* @__PURE__ */ new Map();
           for (const PLOT_ID of this.farmPlots.keys()) {
             const GOAL = this.exploreGoal(PLOT_ID);
             if (!GOAL) {
@@ -11151,19 +11192,35 @@
               if (!REAL) {
                 this._walkExplorer(UNIT3, seconds);
               }
-              if (this.exploreOnSite(UNIT3)) {
-                POINTS.set(
-                  GOAL.tile,
-                  (POINTS.get(GOAL.tile) ?? 0) + (this._workerRates.get(UNIT3.id) || 0) * seconds
-                );
+              if (!this.exploreOnSite(UNIT3)) {
+                continue;
+              }
+              const PIECE = nearestFogPiece(this.worldMap, GOAL.tile, UNIT3.x - GOAL.x, UNIT3.y - GOAL.y);
+              if (PIECE >= 0) {
+                const KEY2 = GOAL.tile * FOG_PIECES + PIECE;
+                WORK.set(KEY2, (WORK.get(KEY2) ?? 0) + (this._workerRates.get(UNIT3.id) || 0) * seconds);
               }
             }
           }
-          for (const [TILE, GAIN] of POINTS) {
-            if (advanceExploration(this.worldMap, TILE, GAIN).length > 0) {
-              this.markProgressChanged();
+          for (const [KEY2, GAIN] of WORK) {
+            const TILE = Math.floor(KEY2 / FOG_PIECES), PIECE = KEY2 % FOG_PIECES, COST = fogPieceCost(this.worldMap, TILE), TOTAL = (this._pieceWork.get(KEY2) ?? 0) + GAIN;
+            if (TOTAL < COST) {
+              this._pieceWork.set(KEY2, TOTAL);
+              continue;
             }
+            this._pieceWork.delete(KEY2);
+            liftFogPiece(this.worldMap, TILE, PIECE);
+            this.markProgressChanged();
           }
+        }
+        // The share of a tile's pieces being worked on but not yet lifted, for a smooth bar.
+        pieceWorkShare(tile) {
+          let share = 0;
+          const COST = fogPieceCost(this.worldMap, tile);
+          for (let piece = 0; piece < FOG_PIECES; piece++) {
+            share += Math.min(1, (this._pieceWork.get(tile * FOG_PIECES + piece) ?? 0) / COST);
+          }
+          return share;
         }
         // Farms that are not on screen: their workers walk to the job in a straight line, then work at their normal
         // rate (builders hit the site, gatherers bring materials, food workers feed the warehouse).
@@ -11242,15 +11299,18 @@
           this._exploreGoals.set(plotId, { key: KEY2, goal });
           return goal;
         }
-        // Where an explorer goes: into the tile, wherever it is inside the farm's sight. Explorers sweep it, each
-        // walking to a spot, looking around, then picking the next, so the lit patch travels over the whole tile for
-        // as long as the exploring takes.
+        // Where an explorer goes: to the nearest piece of fog in its tile, wherever that tile is inside the farm's
+        // sight. Without a piece left to lift it stays where it is.
         exploreSpot(unit) {
           const GOAL = this.exploreGoal(unit.plotId);
           if (!GOAL) {
             return null;
           }
-          const SPOT = restingSpot(unit, this.time * 2, CONFIG.farm.arena), X = GOAL.x + SPOT.x, Y = GOAL.y + SPOT.y;
+          const PIECE = nearestFogPiece(this.worldMap, GOAL.tile, unit.x - GOAL.x, unit.y - GOAL.y);
+          if (PIECE < 0) {
+            return null;
+          }
+          const C = fogPieceCenter(PIECE), X = GOAL.x + C.x, Y = GOAL.y + C.y;
           return { x: X, y: Y, fx: X + 1, fy: Y, out: true, speed: GOAL.speed * 0.5, travel: GOAL.speed * 1.8 };
         }
         // The same walk as a straight line, for explorers of a farm that is not being simulated.
@@ -11316,7 +11376,7 @@
               tile: GOAL.tile,
               from: FARM.tile,
               count,
-              progress: exploreFraction(this.worldMap, GOAL.tile)
+              progress: exploreFraction(this.worldMap, GOAL.tile, this.pieceWorkShare(GOAL.tile))
             });
           }
           return GROUPS;
@@ -11324,7 +11384,7 @@
         // How far along the tile the farm on screen is exploring.
         get exploreProgress() {
           const GOAL = this.exploreGoal(this.activePlotId);
-          return GOAL ? exploreFraction(this.worldMap, GOAL.tile) : 0;
+          return GOAL ? exploreFraction(this.worldMap, GOAL.tile, this.pieceWorkShare(GOAL.tile)) : 0;
         }
         // Food per minute produced by workers right now.
         get workFoodPerMinute() {
@@ -15252,7 +15312,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.14.2";
+      PRODUCT_VERSION = "0.15.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -18646,22 +18706,41 @@
       return FARM && isRevealed(world.worldMap, TILE) ? FARM.plotId : null;
     }
     // One farm's square of ground, from corner to corner, a hair larger than its cell so neighbours never show a seam.
+    // A rectangle of ground around a centre, half-width and half-height in world units.
+    groundBlock(x, y, halfX, halfY, color2) {
+      const A = this.project(x - halfX, y + halfY), B = this.project(x + halfX, y - halfY);
+      this.ctx.fillStyle = color2;
+      this.ctx.fillRect(Math.floor(A.x), Math.floor(A.y), Math.ceil(B.x - A.x) + 1, Math.ceil(B.y - A.y) + 1);
+    }
     groundCell(x, y, color2, inset = 0) {
       const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena, A = this.project(x - RX + inset, y + RY - inset), B = this.project(x + RX - inset, y - RY + inset), C = this.ctx;
       C.fillStyle = color2;
       C.fillRect(Math.floor(A.x), Math.floor(A.y), Math.ceil(B.x - A.x) + 1, Math.ceil(B.y - A.y) + 1);
     }
     // One tile's ground and what stands on it: meadow, forest, rock or swamp.
-    paintLand(map, index, ox, oy, paint, look2, lights = null) {
+    paintLand(map, index, ox, oy, paint, look2, mask = null) {
       const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena;
       const TERRAIN = tileTerrain(map, index), [GROUND, SURFACE] = paint[TERRAIN];
-      const { radiusX: HALF_X, radiusY: HALF_Y } = CONFIG.farm.arena;
-      const SEEN = (x, y) => !lights || lights.some((light) => Math.hypot(x - light.x, y - light.y) <= light.r * 0.9);
-      if (lights) {
-        for (const LIGHT of lights) {
-          const RX_LIT = Math.min(LIGHT.r, HALF_X - Math.abs(LIGHT.x - ox)), RY_LIT = Math.min(LIGHT.r, HALF_Y - Math.abs(LIGHT.y - oy));
-          this.groundEllipse(LIGHT.x, LIGHT.y, RX_LIT, RY_LIT, GROUND);
-          this.groundEllipse(LIGHT.x, LIGHT.y, RX_LIT * 0.92, RY_LIT * 0.92, SURFACE);
+      const SEEN = (x, y) => mask === null || (mask >> fogPieceAt(x - ox, y - oy) & 1) === 1;
+      if (mask !== null) {
+        for (let piece = 0; piece < FOG_PIECES; piece++) {
+          if (mask >> piece & 1) {
+            const C = fogPieceCenter(piece);
+            this.groundBlock(
+              ox + C.x,
+              oy + C.y,
+              FARM_CELL.width / FOG_GRID / 2,
+              FARM_CELL.height / FOG_GRID / 2,
+              GROUND
+            );
+            this.groundBlock(
+              ox + C.x,
+              oy + C.y,
+              FARM_CELL.width / FOG_GRID / 2 - 0.4,
+              FARM_CELL.height / FOG_GRID / 2 - 0.4,
+              SURFACE
+            );
+          }
         }
       } else {
         this.groundCell(ox, oy, GROUND);
@@ -18697,28 +18776,19 @@
         }
       }
     }
-    // The tile being explored: the land shows only where an explorer's light reaches, and the lit patches
-    // grow with the exploration gauge until the whole tile is bright.
-    drawLantern(world, map, index, ox, oy, paint, look2) {
-      const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena, PROGRESS = exploreFraction(map, index), REACH = 5 + 24 * PROGRESS, LIGHTS = [{ x: ox, y: oy, r: REACH * 0.7 * PROGRESS + 0.1 }];
-      for (const UNIT3 of world.units) {
-        if (world._workerKinds.get(UNIT3.id) === "explore" && Math.abs(UNIT3.x - ox) <= RX && Math.abs(UNIT3.y - oy) <= RY) {
-          LIGHTS.push({ x: UNIT3.x, y: UNIT3.y, r: REACH });
+    // The tile being explored: the fog lifts piece by piece. A piece being worked on grows from its centre.
+    drawFog(world, map, index, ox, oy, paint, look2) {
+      const MASK = map.progress[index] ?? 0;
+      this.paintLand(map, index, ox, oy, paint, look2, MASK);
+      const COST = fogPieceCost(map, index), [GROUND, SURFACE] = paint[tileTerrain(map, index)];
+      for (let piece = 0; piece < FOG_PIECES; piece++) {
+        const SHARE = Math.min(1, (world._pieceWork.get(index * FOG_PIECES + piece) ?? 0) / COST);
+        if (MASK >> piece & 1 || SHARE <= 0) {
+          continue;
         }
-      }
-      if (LIGHTS.length === 1 && PROGRESS === 0) {
-        return;
-      }
-      this.paintLand(map, index, ox, oy, paint, look2, LIGHTS);
-      for (const LIGHT of LIGHTS) {
-        this.strokeGroundEllipse(
-          LIGHT.x,
-          LIGHT.y,
-          Math.min(LIGHT.r, RX - Math.abs(LIGHT.x - ox)),
-          Math.min(LIGHT.r, RY - Math.abs(LIGHT.y - oy)),
-          "rgba(255,248,214,0.7)",
-          0.12
-        );
+        const C = fogPieceCenter(piece), HX = FARM_CELL.width / FOG_GRID / 2 * Math.sqrt(SHARE), HY = FARM_CELL.height / FOG_GRID / 2 * Math.sqrt(SHARE);
+        this.groundBlock(ox + C.x, oy + C.y, HX, HY, GROUND);
+        this.groundBlock(ox + C.x, oy + C.y, Math.max(0, HX - 0.4), Math.max(0, HY - 0.4), SURFACE);
       }
     }
     drawBackdrop(world) {
@@ -18757,7 +18827,7 @@
               this.groundCell(OX, OY, "#efecdc", 0.6);
             }
             if (INDEX === EXPLORING || (MAP.progress[INDEX] ?? 0) > 0) {
-              this.drawLantern(world, MAP, INDEX, OX, OY, PAINT, LOOK);
+              this.drawFog(world, MAP, INDEX, OX, OY, PAINT, LOOK);
             }
             continue;
           }

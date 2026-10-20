@@ -31,7 +31,11 @@ import { UnitCollection } from './unit-collection.js';
 import { FarmingRoster } from './farm-roster.js';
 import { FACILITY_IDS, FACILITY_MAX_LEVEL, FarmPlot, INITIAL_FARM_PLOT_ID, RESERVE_PLOT_ID } from './farm-plot.js';
 import {
-    advanceExploration,
+    FOG_PIECES,
+    fogPieceCenter,
+    fogPieceCost,
+    liftFogPiece,
+    nearestFogPiece,
     beginFarmBuild,
     canBuildFarm,
     createWorldMap,
@@ -1418,6 +1422,7 @@ const GARDEN = class Garden {
         this._workerKinds = new Map();
         this._exploreGoals = new Map();
         this._idleLead = new Map();
+        this._pieceWork = new Map();
         this._idleCarry = { materials: 0, food: 0 };
         this._workerIds = new Set();
         resetWork(this);
@@ -3005,7 +3010,9 @@ const GARDEN = class Garden {
         if (this.scene !== 'farm') {
             return;
         }
-        const POINTS = new Map();
+        // Each explorer works on the nearest piece of fog; explorers on the same piece add up, and whatever a piece
+        // does not need is wasted, so a crowd helps less and less.
+        const WORK = new Map();
         for (const PLOT_ID of this.farmPlots.keys()) {
             const GOAL = this.exploreGoal(PLOT_ID);
             if (!GOAL) {
@@ -3019,19 +3026,38 @@ const GARDEN = class Garden {
                 if (!REAL) {
                     this._walkExplorer(UNIT, seconds);
                 }
-                if (this.exploreOnSite(UNIT)) {
-                    POINTS.set(
-                        GOAL.tile,
-                        (POINTS.get(GOAL.tile) ?? 0) + (this._workerRates.get(UNIT.id) || 0) * seconds,
-                    );
+                if (!this.exploreOnSite(UNIT)) {
+                    continue;
+                }
+                const PIECE = nearestFogPiece(this.worldMap, GOAL.tile, UNIT.x - GOAL.x, UNIT.y - GOAL.y);
+                if (PIECE >= 0) {
+                    const KEY = GOAL.tile * FOG_PIECES + PIECE;
+                    WORK.set(KEY, (WORK.get(KEY) ?? 0) + (this._workerRates.get(UNIT.id) || 0) * seconds);
                 }
             }
         }
-        for (const [TILE, GAIN] of POINTS) {
-            if (advanceExploration(this.worldMap, TILE, GAIN).length > 0) {
-                this.markProgressChanged();
+        for (const [KEY, GAIN] of WORK) {
+            const TILE = Math.floor(KEY / FOG_PIECES),
+                PIECE = KEY % FOG_PIECES,
+                COST = fogPieceCost(this.worldMap, TILE),
+                TOTAL = (this._pieceWork.get(KEY) ?? 0) + GAIN;
+            if (TOTAL < COST) {
+                this._pieceWork.set(KEY, TOTAL);
+                continue;
             }
+            this._pieceWork.delete(KEY);
+            liftFogPiece(this.worldMap, TILE, PIECE);
+            this.markProgressChanged();
         }
+    }
+    // The share of a tile's pieces being worked on but not yet lifted, for a smooth bar.
+    pieceWorkShare(tile) {
+        let share = 0;
+        const COST = fogPieceCost(this.worldMap, tile);
+        for (let piece = 0; piece < FOG_PIECES; piece++) {
+            share += Math.min(1, (this._pieceWork.get(tile * FOG_PIECES + piece) ?? 0) / COST);
+        }
+        return share;
     }
     // Farms that are not on screen: their workers walk to the job in a straight line, then work at their normal
     // rate (builders hit the site, gatherers bring materials, food workers feed the warehouse).
@@ -3120,17 +3146,20 @@ const GARDEN = class Garden {
         this._exploreGoals.set(plotId, { key: KEY, goal });
         return goal;
     }
-    // Where an explorer goes: into the tile, wherever it is inside the farm's sight. Explorers sweep it, each
-    // walking to a spot, looking around, then picking the next, so the lit patch travels over the whole tile for
-    // as long as the exploring takes.
+    // Where an explorer goes: to the nearest piece of fog in its tile, wherever that tile is inside the farm's
+    // sight. Without a piece left to lift it stays where it is.
     exploreSpot(unit) {
         const GOAL = this.exploreGoal(unit.plotId);
         if (!GOAL) {
             return null;
         }
-        const SPOT = restingSpot(unit, this.time * 2, CONFIG.farm.arena),
-            X = GOAL.x + SPOT.x,
-            Y = GOAL.y + SPOT.y;
+        const PIECE = nearestFogPiece(this.worldMap, GOAL.tile, unit.x - GOAL.x, unit.y - GOAL.y);
+        if (PIECE < 0) {
+            return null;
+        }
+        const C = fogPieceCenter(PIECE),
+            X = GOAL.x + C.x,
+            Y = GOAL.y + C.y;
         return { x: X, y: Y, fx: X + 1, fy: Y, out: true, speed: GOAL.speed * 0.5, travel: GOAL.speed * 1.8 };
     }
     // The same walk as a straight line, for explorers of a farm that is not being simulated.
@@ -3198,7 +3227,7 @@ const GARDEN = class Garden {
                 tile: GOAL.tile,
                 from: FARM.tile,
                 count,
-                progress: exploreFraction(this.worldMap, GOAL.tile),
+                progress: exploreFraction(this.worldMap, GOAL.tile, this.pieceWorkShare(GOAL.tile)),
             });
         }
         return GROUPS;
@@ -3206,7 +3235,7 @@ const GARDEN = class Garden {
     // How far along the tile the farm on screen is exploring.
     get exploreProgress() {
         const GOAL = this.exploreGoal(this.activePlotId);
-        return GOAL ? exploreFraction(this.worldMap, GOAL.tile) : 0;
+        return GOAL ? exploreFraction(this.worldMap, GOAL.tile, this.pieceWorkShare(GOAL.tile)) : 0;
     }
     // Food per minute produced by workers right now.
     get workFoodPerMinute() {

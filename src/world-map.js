@@ -235,9 +235,57 @@ export function exploreTargetFor(map, plotId) {
     }
     return best;
 }
-// How much of a tile's cost the explorers have already paid, from 0 to 1.
-export function exploreFraction(map, index) {
-    return Math.min(1, (map.progress[index] ?? 0) / tileCost(map, index));
+// A tile's fog is a grid of pieces. The explorers' work lifts them one at a time, and the tile is lit once
+// nearly all of them are gone. map.progress keeps, per fogged tile, the lifted pieces as bits.
+export const FOG_GRID = 4;
+export const FOG_PIECES = FOG_GRID * FOG_GRID;
+export const FOG_LIT_AT = FOG_PIECES - 2;
+const PIECE_W = FARM_CELL.width / FOG_GRID,
+    PIECE_H = FARM_CELL.height / FOG_GRID;
+export function countBits(mask) {
+    let count = 0;
+    for (let rest = mask; rest > 0; rest >>= 1) {
+        count += rest & 1;
+    }
+    return count;
+}
+// A piece's centre and the piece under a point, in the tile's own coordinates (centre 0,0; farm y runs up).
+export function fogPieceCenter(piece) {
+    return {
+        x: ((piece % FOG_GRID) + 0.5) * PIECE_W - FARM_CELL.width / 2,
+        y: (Math.floor(piece / FOG_GRID) + 0.5) * PIECE_H - FARM_CELL.height / 2,
+    };
+}
+export function fogPieceAt(x, y) {
+    const COL = Math.min(FOG_GRID - 1, Math.max(0, Math.floor((x + FARM_CELL.width / 2) / PIECE_W))),
+        ROW = Math.min(FOG_GRID - 1, Math.max(0, Math.floor((y + FARM_CELL.height / 2) / PIECE_H)));
+    return ROW * FOG_GRID + COL;
+}
+// The piece an explorer standing at (x, y) in the tile works on: the nearest one still under fog, -1 if none.
+export function nearestFogPiece(map, tile, x, y) {
+    const MASK = map.progress[tile] ?? 0;
+    let best = -1,
+        bestDistance = Infinity;
+    for (let piece = 0; piece < FOG_PIECES; piece++) {
+        if ((MASK >> piece) & 1) {
+            continue;
+        }
+        const C = fogPieceCenter(piece),
+            D = Math.hypot(C.x - x, C.y - y);
+        if (D < bestDistance) {
+            best = piece;
+            bestDistance = D;
+        }
+    }
+    return best;
+}
+// Work one piece of a tile's fog takes.
+export function fogPieceCost(map, tile) {
+    return tileCost(map, tile) / FOG_PIECES;
+}
+// How much of the tile's fog is gone, from 0 to 1; `partial` is the worked-on share of pieces not yet lifted.
+export function exploreFraction(map, index, partial = 0) {
+    return Math.min(1, (countBits(map.progress[index] ?? 0) + partial) / FOG_PIECES);
 }
 // A fogged tile can be picked as the next exploration target when it touches lit ground.
 export function canExploreTile(map, index) {
@@ -266,20 +314,20 @@ export function setExploreTarget(map, index) {
     map.exploreTarget = index;
     return true;
 }
-// Adds explorer work to one tile and lifts its fog once it is paid for. Returns the tiles revealed.
-export function advanceExploration(map, tile, points) {
+// Lifts one piece of a tile's fog; the tile is lit once all but a couple of pieces are gone. Returns the tiles lit.
+export function liftFogPiece(map, tile, piece) {
     if (
-        !(points > 0) ||
         !Number.isSafeInteger(tile) ||
         tile < 0 ||
         tile >= WORLD_MAP_TILE_COUNT ||
-        isRevealed(map, tile)
+        isRevealed(map, tile) ||
+        !(piece >= 0 && piece < FOG_PIECES)
     ) {
         return [];
     }
-    const TOTAL = (map.progress[tile] ?? 0) + points;
-    if (TOTAL < tileCost(map, tile)) {
-        map.progress[tile] = TOTAL;
+    const MASK = (map.progress[tile] ?? 0) | (1 << piece);
+    if (countBits(MASK) < FOG_LIT_AT) {
+        map.progress[tile] = MASK;
         return [];
     }
     delete map.progress[tile];
@@ -377,14 +425,18 @@ const SORTED_INDEXES = (list) =>
             value < WORLD_MAP_TILE_COUNT &&
             (position === 0 || value > list[position - 1]),
     );
-// Progress is kept per tile: only tiles still in the fog, with a positive amount.
+// Progress is kept per tile: only tiles still in the fog, as the bits of the fog pieces already lifted.
 const VALID_PROGRESS = (progress) =>
     !!progress &&
     typeof progress === 'object' &&
     !Array.isArray(progress) &&
     Object.entries(progress).every(
         ([key, value]) =>
-            /^\d+$/.test(key) && Number(key) < WORLD_MAP_TILE_COUNT && Number.isFinite(value) && value > 0,
+            /^\d+$/.test(key) &&
+            Number(key) < WORLD_MAP_TILE_COUNT &&
+            Number.isSafeInteger(value) &&
+            value > 0 &&
+            value < 1 << FOG_PIECES,
     );
 export function isValidWorldMap(map) {
     if (!map || typeof map !== 'object' || Array.isArray(map)) {
