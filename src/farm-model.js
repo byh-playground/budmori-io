@@ -34,6 +34,7 @@ import {
     canBuildFarm,
     createWorldMap,
     FARM_CELL,
+    tileTerrain,
     finishFarmBuild,
     nextExploreTile,
     setReachProvider,
@@ -53,6 +54,7 @@ import { CornAttachmentModel } from './features/abilities/corn-attachment/model.
 const { SeededPRNG: SEEDED_PRNG } = globalThis.BloomGamekitDeterministic;
 const { createBudgetedScheduler: CREATE_BUDGETED_SCHEDULER } = globalThis.BloomGamekitWorkScheduler;
 const EMPTY_FOOD_SEARCH_BUCKET = Object.freeze([]);
+const EXPLORE_PACE = Object.freeze({ plain: 1, forest: 0.85, rock: 0.75, swamp: 0.6 });
 import {
     baseUnitStatsFor,
     resolveUnitStats,
@@ -2987,14 +2989,50 @@ const GARDEN = class Garden {
         return this._workCount;
     }
     // Explorers keep working while the map screen is open and the farm itself is paused, so this is its own step.
-    tickExploration(seconds) {
-        if (this.scene === 'farm' && advanceExploration(this.worldMap, this.exploreRate * seconds).length > 0) {
+    // Only explorers who have reached the tile add to the gauge, so the walk out is part of the time it takes.
+    // Farms that are not on screen are not walked, so their explorers count at once. With the farm paused behind the
+    // map screen nobody can walk, so every explorer counts then.
+    tickExploration(seconds, everyoneCounts = false) {
+        const RATE = everyoneCounts ? this.exploreRate : this.exploreWorkRate;
+        if (this.scene === 'farm' && advanceExploration(this.worldMap, RATE * seconds).length > 0) {
             this.markProgressChanged();
         }
     }
     // Where an explorer goes. A tile within two cells of this farm is walked into: explorers spread out inside it
     // and the fog lifts around them. A farther one is looked at from the rim of the farm on its side.
     exploreSpot(unit) {
+        const GOAL = this._refreshExploreGoal();
+        if (!GOAL) {
+            return null;
+        }
+        if (GOAL.near) {
+            // Explorers sweep the tile: each walks to a spot, looks around, then picks the next, so the lit patch
+            // travels over the whole tile for as long as the exploring takes.
+            const SPOT = restingSpot(unit, this.time * 2, CONFIG.farm.arena),
+                X = GOAL.x + SPOT.x,
+                Y = GOAL.y + SPOT.y;
+            return { x: X, y: Y, fx: X + 1, fy: Y, out: true, speed: GOAL.speed * 0.5, travel: GOAL.speed * 1.8 };
+        }
+        const ANGLE = Math.atan2(GOAL.y, GOAL.x) + ((unit.id % 5) - 2) * 0.22,
+            ARENA = CONFIG.farm.arena,
+            // Out along the ray to the edge of the square farm.
+            REACH = Math.min(
+                (ARENA.radiusX - 1.6) / Math.max(Math.abs(Math.cos(ANGLE)), 1e-6),
+                (ARENA.radiusY - 1.4) / Math.max(Math.abs(Math.sin(ANGLE)), 1e-6),
+            ),
+            X = Math.cos(ANGLE) * REACH,
+            Y = Math.sin(ANGLE) * REACH;
+        return {
+            x: X,
+            y: Y,
+            fx: X + Math.cos(ANGLE) * 3,
+            fy: Y + Math.sin(ANGLE) * 3,
+            out: false,
+            speed: GOAL.speed,
+            travel: GOAL.speed * 1.8,
+        };
+    }
+    _refreshExploreGoal() {
         const MAP = this.worldMap,
             KEY = `${MAP.revealed.length}|${MAP.exploreTarget}|${this.activePlotId}|${MAP.farms.length}`;
         if (this._exploreGoalKey !== KEY) {
@@ -3009,33 +3047,48 @@ const GARDEN = class Garden {
                     dx: DX,
                     dy: DY,
                     near: Math.max(Math.abs(DX), Math.abs(DY)) <= 2,
+                    // The ground sets the pace: through swamp and over rock explorers go slower.
+                    speed: 7 * EXPLORE_PACE[tileTerrain(MAP, TARGET)],
                     x: DX * FARM_CELL.width,
                     y: -DY * FARM_CELL.height,
                 };
             }
         }
-        const GOAL = this._exploreGoal;
-        if (!GOAL) {
-            return null;
+        return this._exploreGoal;
+    }
+    // Is this explorer standing where the exploring is done?
+    exploreOnSite(id) {
+        if (this._workerPlots.get(id) !== this.activePlotId) {
+            return true;
         }
+        const UNIT = this._unitById.get(id),
+            GOAL = this._exploreGoal;
+        if (!UNIT || !GOAL) {
+            return true;
+        }
+        const ARENA = CONFIG.farm.arena;
         if (GOAL.near) {
-            // Scattered over the tile the way seeds fall, so no two explorers stand on the same spot.
-            const ANGLE = unit.id * 2.39996,
-                RADIUS = 3 + ((unit.id * 7) % 11) * 1.5,
-                X = GOAL.x + Math.cos(ANGLE) * RADIUS,
-                Y = GOAL.y + Math.sin(ANGLE) * RADIUS * 0.75;
-            return { x: X, y: Y, fx: X + Math.cos(ANGLE), fy: Y + Math.sin(ANGLE), out: true };
+            return Math.abs(UNIT.x - GOAL.x) <= ARENA.radiusX && Math.abs(UNIT.y - GOAL.y) <= ARENA.radiusY;
         }
-        const ANGLE = Math.atan2(GOAL.y, GOAL.x) + ((unit.id % 5) - 2) * 0.22,
-            ARENA = CONFIG.farm.arena,
-            // Out along the ray to the edge of the square farm.
-            REACH = Math.min(
-                (ARENA.radiusX - 1.6) / Math.max(Math.abs(Math.cos(ANGLE)), 1e-6),
-                (ARENA.radiusY - 1.4) / Math.max(Math.abs(Math.sin(ANGLE)), 1e-6),
-            ),
-            X = Math.cos(ANGLE) * REACH,
-            Y = Math.sin(ANGLE) * REACH;
-        return { x: X, y: Y, fx: X + Math.cos(ANGLE) * 3, fy: Y + Math.sin(ANGLE) * 3, out: false };
+        const SPOT = this.exploreSpot(UNIT);
+        return !SPOT || Math.hypot(UNIT.x - SPOT.x, UNIT.y - SPOT.y) <= 2;
+    }
+    get exploreWorkRate() {
+        this._refreshExploreGoal();
+        let rate = 0;
+        for (const [ID, KIND] of this._workerKinds) {
+            if (KIND === 'explore' && this.exploreOnSite(ID)) {
+                rate += this._workerRates.get(ID) || 0;
+            }
+        }
+        return rate;
+    }
+    get exploreOnSiteCount() {
+        let count = 0;
+        for (const [ID, KIND] of this._workerKinds) {
+            count += KIND === 'explore' && this.exploreOnSite(ID) ? 1 : 0;
+        }
+        return count;
     }
     // Exploration points per second from the explorers of every farm; the whole map is worked on at once.
     get exploreRate() {
