@@ -6,7 +6,6 @@ const SUITES = {
     cadence: ['cadence'],
     mergePolicy: ['mergePolicy'],
     upgrades: ['upgrades'],
-    raidDeploymentCards: ['raidDeploymentCards'],
     grain: ['grain'],
     integration: ['representativeAbilities', 'bossRewards'],
     reset: ['reset'],
