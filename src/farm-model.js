@@ -1422,11 +1422,6 @@ const GARDEN = class Garden {
         this.bossSummonSerial = 0;
         this.combatLog = [];
         this.scene = 'farm';
-        this.running = false;
-        this.encounter = {
-            outcome: 'idle',
-            elapsed: 0,
-        };
         this.farmBossEvent = {
             phase: 'idle',
             elapsed: 0,
@@ -1674,12 +1669,7 @@ const GARDEN = class Garden {
         return PLOTS.find((plot) => OCCUPANCY.get(plot.id) < plot.capacity) || null;
     }
     switchFarmPlot(plotId) {
-        if (
-            this.scene !== 'farm' ||
-            this.running ||
-            this.farmBossEvent?.phase !== 'idle' ||
-            !this.farmPlots.has(plotId)
-        ) {
+        if (this.scene !== 'farm' || this.farmBossEvent?.phase !== 'idle' || !this.farmPlots.has(plotId)) {
             return false;
         }
         if (plotId === this.activePlotId) {
@@ -1787,7 +1777,6 @@ const GARDEN = class Garden {
     sortActiveFarm(order = 'mixed') {
         if (
             this.scene !== 'farm' ||
-            this.running ||
             this.farmBossEvent?.phase !== 'idle' ||
             this._breedPlans.size > 0 ||
             !['species', 'tier-high', 'tier-low'].includes(order)
@@ -1853,7 +1842,7 @@ const GARDEN = class Garden {
         return TIERS;
     }
     investAbilityNode(abilityId, nodeId) {
-        const IN_COMBAT = this.running || this.farmBossEvent?.phase !== 'idle';
+        const IN_COMBAT = this.farmBossEvent?.phase !== 'idle';
         const RESULT = purchaseAbilityNode(this.playerProgression, abilityId, nodeId, {
             location: this.scene,
             inCombat: IN_COMBAT,
@@ -1867,7 +1856,7 @@ const GARDEN = class Garden {
         return RESULT;
     }
     investFarmUpgrade(nodeId) {
-        const IN_COMBAT = this.running || this.farmBossEvent?.phase !== 'idle';
+        const IN_COMBAT = this.farmBossEvent?.phase !== 'idle';
         const RESULT = purchaseFarmUpgrade(this.playerProgression, nodeId, {
             location: this.scene,
             inCombat: IN_COMBAT,
@@ -1880,7 +1869,7 @@ const GARDEN = class Garden {
         return RESULT;
     }
     resetProgression(scope) {
-        const IN_COMBAT = this.running || this.farmBossEvent?.phase !== 'idle';
+        const IN_COMBAT = this.farmBossEvent?.phase !== 'idle';
         const RESULT = resetPlayerProgression(this.playerProgression, scope, {
             location: this.scene,
             inCombat: IN_COMBAT,
@@ -2525,7 +2514,6 @@ const GARDEN = class Garden {
             this.siteOf(kind) ||
             (kind === 'plot' && (this.worldMap.buildTile >= 0 || !canBuildFarm(this.worldMap, tile))) ||
             (kind === 'mine' && !canBuildMine(this.worldMap, tile, this.activePlotId)) ||
-            this.running ||
             this.farmBossEvent?.phase !== 'idle' ||
             this.materials.wood < INFO.cost.wood ||
             this.materials.stone < INFO.cost.stone
@@ -3579,62 +3567,6 @@ const GARDEN = class Garden {
         this.boss.hp = this.boss.maxHp = STATS.hp;
         this.boss.attackPower = STATS.attackPower;
         return this.boss;
-    }
-    setScene(scene) {
-        return this.mutateUnits(this._setScene, scene);
-    }
-    _setScene(scene) {
-        if (scene === this.scene) {
-            return;
-        }
-        this.formationSkills.end();
-        this.cancelMergeTasks();
-        this._foodSearchScheduler.cancelOwner(this);
-        this._foodSearchStates = new WeakMap();
-        for (const UNIT_LOCAL of this.units) {
-            this.releaseMate(UNIT_LOCAL);
-        }
-        this.projectiles = [];
-        this.scene = scene;
-        this.running = false;
-        this.encounter = {
-            outcome: this.running ? 'fighting' : 'idle',
-            elapsed: 0,
-        };
-        this.farmBossEvent = {
-            phase: 'idle',
-            elapsed: 0,
-            outcome: 'idle',
-            encounterId: 0,
-            rewardStatus: 'none',
-            rewardChance: 0,
-            rewardRoll: 0,
-            rewardUnitId: 0,
-        };
-        this.boss = this.createBoss(this.running ? this.randomBossSpecies() : 3);
-        const SCENE = SIMULATION_SCENES[scene];
-        const ID_MAP = new Map(this.units.map((u, index) => [u.id, SCENE.unitId(u, index)]));
-        for (let i = 0; i < this.units.length; i++) {
-            const U = this.units[i],
-                OLD_MATE_ID = U.mateId;
-            SCENE.enterUnit(this, U, i);
-            U.mateId = ID_MAP.get(OLD_MATE_ID) || 0;
-            U.ability = CREATE_UNIT_ATTACK_CYCLE(U);
-            U.specialAbility = CREATE_UNIT_ATTACK_CYCLE.createSpecial(U);
-            U.ability.resetCombatEffects?.();
-            Object.assign(U, {
-                z: 0,
-                vx: 0,
-                vy: 0,
-                vz: 0,
-                stun: 0,
-                down: 0,
-                hp: STATS(U.tier, U.species).maxHp,
-            });
-        }
-        this.unitCollection.refreshIndexes();
-        SCENE.setupRoster(this);
-        this._unitSpatialDirty = true;
     }
     canBreedPair(a, b, requireContact = false) {
         const BATCH = !this._spatialStepActive;
@@ -6486,33 +6418,6 @@ const GARDEN = class Garden {
         }
         u.ability.begin(this, TARGET);
     }
-    finish(outcome) {
-        return this.mutateUnits(this._finish, outcome);
-    }
-    _finish(outcome) {
-        if (!this.running) {
-            return;
-        }
-        const BOSS_PATTERN_ELAPSED = this.boss.patternRuntime.active?.phaseElapsed || 0;
-        this.running = false;
-        this.boss.active = false;
-        this.encounter.outcome = outcome;
-        this.projectiles = [];
-        this.boss.patternRuntime.active = null;
-        for (const U of this.units) {
-            U.ability.interrupt();
-            U.specialAbility?.interrupt();
-            this.clearPeaRecoveryBoost(U);
-        }
-        this.formationSkills.end();
-        this.cleanupBattleSummons();
-        this.combat(outcome, {
-            x: this.boss.x,
-            y: this.boss.y,
-            z: 0,
-            bossPatternElapsed: BOSS_PATTERN_ELAPSED,
-        });
-    }
     finishFarmBossEvent(outcome) {
         return this.mutateUnits(this._finishFarmBossEvent, outcome);
     }
@@ -7396,22 +7301,9 @@ const GARDEN = class Garden {
             return;
         }
         if (B_LOCAL.hp <= 0) {
-            if (this.running) {
-                this.finish('victory');
-            } else {
-                B_LOCAL.active = false;
-                B_LOCAL.patternRuntime.active = null;
-            }
+            B_LOCAL.active = false;
+            B_LOCAL.patternRuntime.active = null;
             return;
-        }
-        // Lost when everyone sent in has fallen, or when the time runs out.
-        if (this.running && this.raidRosters.length) {
-            const ALIVE = this.units.some((u) => hasFaction(u, FACTION_CONFIG.PLAYER) && u.hp > 0);
-            this._battleFielded ||= ALIVE;
-            if ((this._battleFielded && !ALIVE) || this.encounter.elapsed >= this.battleTimeLimit()) {
-                this.finish('defeat');
-                return;
-            }
         }
         if (B_LOCAL.stun > 0) {
             B_LOCAL.stun = Math.max(0, B_LOCAL.stun - dt);

@@ -1236,7 +1236,7 @@ DOLLAR('merge').addEventListener('keydown', (e) => {
 });
 function drawTree() {
     const W = personalGarden || active.world,
-        IN_COMBAT = W.running || W.farmBossEvent?.phase !== 'idle';
+        IN_COMBAT = W.farmBossEvent?.phase !== 'idle';
     DOLLAR('treeNodes').innerHTML = renderFarmUpgradeTreeMarkup(W.playerProgression, {
         location: active.world.scene,
         inCombat: IN_COMBAT,
@@ -1263,8 +1263,7 @@ function drawFarmPanel() {
         return;
     }
     farmPanelRevision = W.progressRevision;
-    const LOCKED =
-        !!farmSortTransition || active?.world?.scene !== 'farm' || W.running || W.farmBossEvent?.phase !== 'idle';
+    const LOCKED = !!farmSortTransition || active?.world?.scene !== 'farm' || W.farmBossEvent?.phase !== 'idle';
     DOLLAR('farmStatPlaced').textContent = String(W.placedPopulation);
     DOLLAR('farmStatCapacity').textContent = `/ ${W.totalFarmCapacity}`;
     DOLLAR('farmStatReserved').textContent = String(W.reservedPopulation);
@@ -1307,7 +1306,7 @@ function drawFarmPanel() {
 }
 function drawAbilityTree() {
     const W = personalGarden || active.world,
-        IN_COMBAT = W.running || W.farmBossEvent?.phase !== 'idle';
+        IN_COMBAT = W.farmBossEvent?.phase !== 'idle';
     const SELECTED_SPECIES = Number(DOLLAR('abilityPanel').dataset.selectedSpecies || 0);
     DOLLAR('abilityPoints').textContent = String(W.playerProgression.availablePoints);
     for (const BUTTON of DOLLAR('abilitySpeciesTabs').querySelectorAll('[data-ability-species]')) {
@@ -1342,7 +1341,7 @@ function renderProgressionResetActions() {
         return;
     }
     const W = personalGarden || active.world,
-        IN_COMBAT = W.running || W.farmBossEvent?.phase !== 'idle',
+        IN_COMBAT = W.farmBossEvent?.phase !== 'idle',
         CONTEXT = { location: active.world.scene, inCombat: IN_COMBAT },
         SCOPE = currentProgressionResetScope(),
         CURRENT_CHECK = canResetPlayerProgression(W.playerProgression, SCOPE, CONTEXT),
@@ -1800,12 +1799,7 @@ function cancelFarmSortTransition() {
     return true;
 }
 function beginFarmSortTransition(order) {
-    if (
-        farmSortTransition ||
-        active.world.scene !== 'farm' ||
-        active.world.running ||
-        active.world.farmBossEvent?.phase !== 'idle'
-    ) {
+    if (farmSortTransition || active.world.scene !== 'farm' || active.world.farmBossEvent?.phase !== 'idle') {
         return false;
     }
     [...document.querySelectorAll('#farmPlotActions button, #farmPlotList button, #farmRatioList input')].forEach(
@@ -2105,8 +2099,8 @@ function sync(display, now, notices) {
             `${PLOT_WORLD.roster.placedPopulation(PLOT_WORLD.activePlotId)} / ${PLOT_WORLD.activeFarmPlot.capacity}`,
         );
         syncText('plotBarFood', `먹이 ${CURRENT.food} · 배고픔 ${CURRENT.hungry}`);
-        syncFlag('plotPrev', 'disabled', !!farmSortTransition || W.running);
-        syncFlag('plotNext', 'disabled', !!farmSortTransition || W.running);
+        syncFlag('plotPrev', 'disabled', !!farmSortTransition);
+        syncFlag('plotNext', 'disabled', !!farmSortTransition);
         syncData('plotPrev', 'alert', String(NEEDS_VISIT));
         syncData('plotNext', 'alert', String(NEEDS_VISIT));
     }

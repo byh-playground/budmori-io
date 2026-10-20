@@ -56,7 +56,7 @@ export function applyOffline(world, config, rawSeconds) {
     const OFFLINE = config.farm.offline,
         WORK = config.farm.work,
         BREEDING = config.farm.breeding;
-    if (world.scene !== 'farm' || world.running || world.farmBossEvent?.phase !== 'idle') {
+    if (world.scene !== 'farm' || world.farmBossEvent?.phase !== 'idle') {
         return null;
     }
     const AWAY = Math.min(rawSeconds, OFFLINE.capSeconds);

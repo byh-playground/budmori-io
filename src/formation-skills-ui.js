@@ -78,7 +78,7 @@ export class FormationSkillsUI {
         if (!STATE) {
             return;
         }
-        const LOCKED = world.scene !== 'farm' || world.running || world.farmBossEvent?.phase !== 'idle',
+        const LOCKED = world.scene !== 'farm' || world.farmBossEvent?.phase !== 'idle',
             POINTS = PLAYER.availablePoints,
             KEY = JSON.stringify([STATE, POINTS, LOCKED]);
         if (KEY !== this.fingerprint) {

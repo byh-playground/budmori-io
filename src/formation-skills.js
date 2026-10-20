@@ -114,7 +114,7 @@ export class FormationSkills {
         return this.world.farmBossEvent?.phase === 'fighting';
     }
     editable() {
-        return this.world.scene === 'farm' && !this.world.running && this.world.farmBossEvent?.phase === 'idle';
+        return this.world.scene === 'farm' && this.world.farmBossEvent?.phase === 'idle';
     }
     purchase(id) {
         return this.world.mutationNotifications.run(() => {
