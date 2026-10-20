@@ -40,7 +40,9 @@ import {
     beginChallenge,
     canChallenge,
     canExploreTile,
-    exploreCost,
+    currentExploreCost,
+    TERRAIN_NAMES,
+    tileTerrain,
     hasNest,
     isCleared,
     isRevealed,
@@ -835,8 +837,9 @@ function worldMapFrame() {
     return {
         map: MAP,
         selected: bossMapTile,
-        progress: Math.min(1, MAP.gauge / exploreCost(MAP)),
+        progress: Math.min(1, MAP.gauge / currentExploreCost(MAP)),
         explorers: personalGarden.workerKindCounts.explore,
+        rate: personalGarden.exploreRate,
     };
 }
 function startWorldMapView() {
@@ -865,7 +868,7 @@ function syncMiniMap(visible) {
     }
     if (visible && personalGarden) {
         const MAP = personalGarden.worldMap,
-            PERCENT = Math.floor(Math.min(1, MAP.gauge / exploreCost(MAP)) * 100);
+            PERCENT = Math.floor(Math.min(1, MAP.gauge / currentExploreCost(MAP)) * 100);
         syncText('miniMapLabel', `탐사 ${PERCENT}% · ${MAP.revealed.length}칸`);
     }
 }
@@ -904,7 +907,7 @@ function renderWorldMap() {
     }
     const MAP = personalGarden.worldMap;
     const WORKERS = personalGarden.workerKindCounts.explore,
-        GAUGE = `탐사 ${Math.floor(MAP.gauge)}/${exploreCost(MAP)} · 탐사 일꾼 ${WORKERS}마리`,
+        GAUGE = `탐사 ${Math.floor(MAP.gauge)}/${currentExploreCost(MAP)} · 탐사 일꾼 ${WORKERS}마리`,
         TILE = bossMapTile;
     let title = '칸을 눌러 보세요',
         info = GAUGE,
@@ -924,10 +927,10 @@ function renderWorldMap() {
             const STAGE = tileDanger(MAP, TILE),
                 SPECIES = tileSpecies(MAP, TILE),
                 STATS = bossStageStats(STAGE);
-            title = `${giantSpeciesName(SPECIES)} · 위험도 ${STAGE}단계`;
+            title = `${giantSpeciesName(SPECIES)} · 위험도 ${STAGE}단계 (${TERRAIN_NAMES[tileTerrain(MAP, TILE)]})`;
             info = `체력 ${Math.round(STATS.hp).toLocaleString('ko-KR')} · 공격력 ${Number(STATS.attackPower.toPrecision(3)).toLocaleString('ko-KR')} · 승리 +${STATS.xp.toLocaleString('ko-KR')} XP`;
         } else {
-            title = `빈 칸 ${POSITION}`;
+            title = `${TERRAIN_NAMES[tileTerrain(MAP, TILE)]} ${POSITION}`;
             info = '아무것도 없는 칸이에요.';
         }
     }

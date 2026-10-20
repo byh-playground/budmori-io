@@ -10,6 +10,7 @@ import {
     isCleared,
     nextExploreTile,
     tileDanger,
+    tileTerrain,
     tileIndex,
     tileX,
     tileY,
@@ -22,6 +23,12 @@ const COLORS = {
     fogPuff: '#ece7d4',
     fogEdge: '#cfc8ae',
     land: ['#d3dfc6', '#cbd9be', '#d9e4cd'],
+    forestLand: ['#c3d5b3', '#bcd0ac'],
+    rockLand: ['#dbd6c6', '#d2cdbd'],
+    swampLand: ['#c5d6cb', '#bdd0c8'],
+    rock: '#a79f8d',
+    rockLight: '#c5bfae',
+    water: '#9fbfc4',
     shore: '#a9bc99',
     cleared: '#9fbf98',
     farm: '#c2913e',
@@ -32,6 +39,12 @@ const COLORS = {
     paper: '#fffaf0',
     tree: '#8fae86',
     trunk: '#a08358',
+};
+const TERRAIN_LAND = {
+    plain: COLORS.land,
+    forest: COLORS.forestLand,
+    rock: COLORS.rockLand,
+    swamp: COLORS.swampLand,
 };
 const NEIGHBOURS = [
     [-1, -1],
@@ -50,6 +63,9 @@ const SIDES = [
     [-1, 0],
 ];
 const POP_MS = 650;
+// Exploration points per second of one untrained explorer, and how long a dot takes to walk out to the tile.
+const BASE_EXPLORER_RATE = 0.125;
+const PARTY_TRIP_SECONDS = 2;
 const MIN_SCALE = 10;
 const MAX_SCALE = 72;
 
@@ -78,6 +94,8 @@ export function createWorldMapView(canvas, { interactive = false, onSelect = () 
         lastDraw = 0,
         gesture = null,
         provider = null,
+        partyPhase = 0,
+        lastRender = 0,
         targetKey = '',
         targetTile = -1;
 
@@ -137,8 +155,78 @@ export function createWorldMapView(canvas, { interactive = false, onSelect = () 
         return targetTile;
     }
 
-    function drawLand(index, x, y, s, lit, now) {
-        const VARIANT = COLORS.land[Math.floor(look(index, 1) * COLORS.land.length)],
+    function drawTree(cx, cy, r) {
+        CONTEXT.fillStyle = COLORS.trunk;
+        CONTEXT.fillRect(cx - r * 0.18, cy + r * 0.5, r * 0.36, r * 0.8);
+        CONTEXT.fillStyle = COLORS.tree;
+        CONTEXT.beginPath();
+        CONTEXT.arc(cx, cy, r, 0, Math.PI * 2);
+        CONTEXT.fill();
+    }
+    function drawGround(index, x, y, s, terrain) {
+        if (terrain === 'forest') {
+            for (let tree = 0; tree < 3; tree++) {
+                drawTree(
+                    x + s * (0.22 + 0.56 * look(index, 40 + tree)),
+                    y + s * (0.3 + 0.3 * look(index, 50 + tree)),
+                    s * (0.12 + 0.05 * look(index, 60 + tree)),
+                );
+            }
+        } else if (terrain === 'rock') {
+            for (let rock = 0; rock < 2; rock++) {
+                const RX = x + s * (0.28 + 0.44 * look(index, 70 + rock)),
+                    RY = y + s * (0.55 + 0.25 * look(index, 80 + rock)),
+                    RR = s * (0.12 + 0.07 * look(index, 90 + rock));
+                CONTEXT.fillStyle = COLORS.rock;
+                CONTEXT.beginPath();
+                CONTEXT.moveTo(RX - RR * 1.3, RY + RR * 0.7);
+                CONTEXT.lineTo(RX - RR * 0.4, RY - RR);
+                CONTEXT.lineTo(RX + RR * 0.7, RY - RR * 0.5);
+                CONTEXT.lineTo(RX + RR * 1.3, RY + RR * 0.7);
+                CONTEXT.closePath();
+                CONTEXT.fill();
+                CONTEXT.fillStyle = COLORS.rockLight;
+                CONTEXT.beginPath();
+                CONTEXT.moveTo(RX - RR * 0.4, RY - RR);
+                CONTEXT.lineTo(RX + RR * 0.7, RY - RR * 0.5);
+                CONTEXT.lineTo(RX, RY);
+                CONTEXT.closePath();
+                CONTEXT.fill();
+            }
+        } else if (terrain === 'swamp') {
+            CONTEXT.fillStyle = COLORS.water;
+            for (let pool = 0; pool < 2; pool++) {
+                CONTEXT.beginPath();
+                CONTEXT.ellipse(
+                    x + s * (0.3 + 0.4 * look(index, 100 + pool)),
+                    y + s * (0.35 + 0.35 * look(index, 110 + pool)),
+                    s * 0.18,
+                    s * 0.09,
+                    0,
+                    0,
+                    Math.PI * 2,
+                );
+                CONTEXT.fill();
+            }
+        } else if (look(index, 2) < 0.16) {
+            drawTree(x + s * 0.5, y + s * 0.5, s * 0.17);
+        } else if (look(index, 2) < 0.4) {
+            CONTEXT.strokeStyle = COLORS.tree;
+            CONTEXT.lineWidth = Math.max(1, s * 0.04);
+            CONTEXT.beginPath();
+            const TX = x + s * (0.3 + 0.4 * look(index, 3)),
+                TY = y + s * (0.5 + 0.3 * look(index, 4));
+            CONTEXT.moveTo(TX - s * 0.06, TY);
+            CONTEXT.lineTo(TX - s * 0.09, TY - s * 0.12);
+            CONTEXT.moveTo(TX, TY);
+            CONTEXT.lineTo(TX, TY - s * 0.16);
+            CONTEXT.moveTo(TX + s * 0.06, TY);
+            CONTEXT.lineTo(TX + s * 0.09, TY - s * 0.12);
+            CONTEXT.stroke();
+        }
+    }
+    function drawLand(index, x, y, s, lit, now, terrain) {
+        const VARIANT = TERRAIN_LAND[terrain][Math.floor(look(index, 1) * TERRAIN_LAND[terrain].length)],
             POP = POP_AT.get(index),
             AGE = POP === undefined ? POP_MS : now - POP;
         let size = s;
@@ -157,30 +245,9 @@ export function createWorldMapView(canvas, { interactive = false, onSelect = () 
             CONTEXT.stroke();
             CONTEXT.globalAlpha = 1;
         }
-        // Tufts and trees are only decoration, picked from the tile so the land does not look stamped.
-        const SEED = look(index, 2);
+        // The ground decides what is drawn on it; the small variations come from the tile so nothing looks stamped.
         if (s >= 16) {
-            if (SEED < 0.16) {
-                CONTEXT.fillStyle = COLORS.trunk;
-                CONTEXT.fillRect(x + s * 0.47, y + s * 0.6, s * 0.06, s * 0.2);
-                CONTEXT.fillStyle = COLORS.tree;
-                CONTEXT.beginPath();
-                CONTEXT.arc(x + s * 0.5, y + s * 0.5, s * 0.17, 0, Math.PI * 2);
-                CONTEXT.fill();
-            } else if (SEED < 0.4) {
-                CONTEXT.strokeStyle = COLORS.tree;
-                CONTEXT.lineWidth = Math.max(1, s * 0.04);
-                CONTEXT.beginPath();
-                const TX = x + s * (0.3 + 0.4 * look(index, 3)),
-                    TY = y + s * (0.5 + 0.3 * look(index, 4));
-                CONTEXT.moveTo(TX - s * 0.06, TY);
-                CONTEXT.lineTo(TX - s * 0.09, TY - s * 0.12);
-                CONTEXT.moveTo(TX, TY);
-                CONTEXT.lineTo(TX, TY - s * 0.16);
-                CONTEXT.moveTo(TX + s * 0.06, TY);
-                CONTEXT.lineTo(TX + s * 0.09, TY - s * 0.12);
-                CONTEXT.stroke();
-            }
+            drawGround(index, x, y, s, terrain);
         }
         // Shoreline: the edge of the lit land where the fog begins.
         CONTEXT.strokeStyle = COLORS.shore;
@@ -326,9 +393,10 @@ export function createWorldMapView(canvas, { interactive = false, onSelect = () 
         }
     }
     // The party walks from the farm out to the tile being explored and starts over, so exploring is always in motion.
-    function drawParty(map, target, explorers, now) {
+    // One dot per base explorer's worth of work: the number of dots arriving per second is the exploration rate.
+    function drawParty(map, target, rate, now) {
         const FARM = map.farms[0]?.tile;
-        if (FARM === undefined || target < 0 || !(explorers > 0)) {
+        if (FARM === undefined || target < 0 || !(rate > 0)) {
             return;
         }
         const FROM_X = screenX(tileX(FARM)),
@@ -345,9 +413,9 @@ export function createWorldMapView(canvas, { interactive = false, onSelect = () 
         CONTEXT.stroke();
         CONTEXT.setLineDash([]);
         CONTEXT.globalAlpha = 1;
-        const COUNT = Math.min(5, Math.ceil(explorers / 2));
+        const COUNT = Math.min(60, Math.max(1, Math.round(rate / BASE_EXPLORER_RATE)));
         for (let member = 0; member < COUNT; member++) {
-            const T = (now / 2600 + member / COUNT) % 1,
+            const T = (partyPhase + member / COUNT) % 1,
                 SWAY = Math.sin(now / 300 + member * 2.1) * CAMERA.scale * 0.05;
             CONTEXT.fillStyle = COLORS.scout;
             CONTEXT.strokeStyle = COLORS.paper;
@@ -403,7 +471,7 @@ export function createWorldMapView(canvas, { interactive = false, onSelect = () 
                     PX = screenX(x - 0.5),
                     PY = screenY(y - 0.5);
                 if (LIT.has(INDEX)) {
-                    drawLand(INDEX, PX, PY, S, LIT, now);
+                    drawLand(INDEX, PX, PY, S, LIT, now, tileTerrain(map, INDEX));
                 } else if (
                     NEIGHBOURS.some(([dx, dy]) => INSIDE(x + dx, y + dy) && LIT.has(tileIndex(x + dx, y + dy)))
                 ) {
@@ -430,7 +498,8 @@ export function createWorldMapView(canvas, { interactive = false, onSelect = () 
         }
         if (TARGET >= 0) {
             drawExploreTarget(screenX(tileX(TARGET) - 0.5), screenY(tileY(TARGET) - 0.5), S, state.progress ?? 0, now);
-            drawParty(map, TARGET, state.explorers ?? 0, now);
+            partyPhase = (partyPhase + Math.min(100, now - lastRender) / 1000 / PARTY_TRIP_SECONDS) % 1;
+            drawParty(map, TARGET, state.rate ?? 0, now);
         }
         if (state.selected >= 0 && state.selected < WORLD_MAP_TILE_COUNT) {
             CONTEXT.strokeStyle = COLORS.ink;
@@ -445,6 +514,7 @@ export function createWorldMapView(canvas, { interactive = false, onSelect = () 
             );
             CONTEXT.stroke();
         }
+        lastRender = now;
     }
     function loop(now) {
         frame = requestAnimationFrame(loop);
