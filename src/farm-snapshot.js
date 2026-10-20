@@ -188,6 +188,7 @@ export const FARM_SNAPSHOT_SHAPE = {
         mined: {},
         mines: [],
         farms: [],
+        bossAges: {},
     },
     foodTaps: {
         remainder: 0,
