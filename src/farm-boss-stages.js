@@ -1,4 +1,5 @@
 import { BOSS_REWARD_SETTINGS, bossStageStats, chooseBossSpecies } from './boss-rewards.js';
+import { tileDanger, tileSpecies } from './world-map.js';
 const CLAMP_UINT32 = (value) => (Number.isSafeInteger(value) ? value >>> 0 : 0);
 export function createFarmBossProgress(seed = 731) {
     return {
@@ -37,7 +38,8 @@ export function advanceFarmBossEncounterEpoch(progress) {
     progress.selections = [];
     return progress.encounterEpoch;
 }
-export function selectFarmBossStage(progress, stage) {
+// `unlocked` skips the "one stage past the highest clear" rule for stages the world map has already earned.
+export function selectFarmBossStage(progress, stage, { unlocked = false } = {}) {
     if (
         !progress ||
         !Number.isSafeInteger(progress.highestClearedRaidStage) ||
@@ -45,7 +47,10 @@ export function selectFarmBossStage(progress, stage) {
         progress.highestClearedRaidStage > BOSS_REWARD_SETTINGS.maxStage ||
         !Number.isSafeInteger(stage) ||
         stage < 1 ||
-        stage > Math.min(BOSS_REWARD_SETTINGS.maxStage, progress.highestClearedRaidStage + 2)
+        stage >
+            (unlocked
+                ? BOSS_REWARD_SETTINGS.maxStage
+                : Math.min(BOSS_REWARD_SETTINGS.maxStage, progress.highestClearedRaidStage + 2))
     ) {
         throw new RangeError('Boss stage is outside the supported range');
     }
@@ -67,4 +72,12 @@ export function selectFarmBossStage(progress, stage) {
         ...selection,
         ...STATS,
     };
+}
+// The boss of a nest on the world map: the stage comes from the distance to the farms, the species from the tile.
+export function selectMapBossStage(progress, map, tile) {
+    const PREVIOUS = progress.currentStage,
+        SELECTION = selectFarmBossStage(progress, tileDanger(map, tile), { unlocked: true });
+    // The legacy stage picker keeps its own position; a map fight must not leave it past the unlocked stages.
+    progress.currentStage = PREVIOUS;
+    return { ...SELECTION, species: tileSpecies(map, tile) };
 }

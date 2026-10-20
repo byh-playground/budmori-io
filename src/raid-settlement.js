@@ -12,6 +12,7 @@ import { FACTION_CONFIG, hasFaction } from './factions.js';
 import { SPECIES_COUNT } from './species-catalog.js';
 import { advanceFarmBossEncounterEpoch } from './farm-boss-stages.js';
 import { BOSS_REWARD_SETTINGS } from './boss-rewards.js';
+import { finishChallenge, tileDanger } from './world-map.js';
 export const RAID_SLEEP_SECONDS = 60;
 export const RAID_SETTLEMENT_RECEIPT_LIMIT = 128;
 const FAIL = (message) => {
@@ -421,14 +422,19 @@ export function settleRaidOwnerFarm(
         FAIL('Raid settlement does not match the active Farm-local run');
     }
     const RAID_STAGE = raidWorld?.boss?.stage,
-        HIGHEST_CLEARED_STAGE = farm.farmBossProgress?.highestClearedRaidStage;
+        HIGHEST_CLEARED_STAGE = farm.farmBossProgress?.highestClearedRaidStage,
+        // A nest the world map has opened up may sit further out than the stage rule alone allows.
+        MAP_STAGE =
+            farm.worldMap && (farm.worldMap.challengeTile ?? -1) >= 0
+                ? tileDanger(farm.worldMap, farm.worldMap.challengeTile)
+                : -1;
     if (
         !Number.isSafeInteger(HIGHEST_CLEARED_STAGE) ||
         HIGHEST_CLEARED_STAGE < 0 ||
         HIGHEST_CLEARED_STAGE > BOSS_REWARD_SETTINGS.maxStage ||
         ((outcome !== 'aborted' || RAID_STAGE !== undefined) &&
             (!Number.isSafeInteger(RAID_STAGE) || RAID_STAGE < 1 || RAID_STAGE > BOSS_REWARD_SETTINGS.maxStage)) ||
-        (Number.isSafeInteger(RAID_STAGE) && RAID_STAGE > HIGHEST_CLEARED_STAGE + 1)
+        (Number.isSafeInteger(RAID_STAGE) && RAID_STAGE > HIGHEST_CLEARED_STAGE + 1 && RAID_STAGE !== MAP_STAGE)
     ) {
         FAIL('Raid stage is locked or the private stage progress is invalid');
     }
@@ -521,6 +527,9 @@ export function settleRaidOwnerFarm(
     // duplicate callbacks never advance the epoch.
     if (outcome === 'victory' || outcome === 'defeat') {
         advanceFarmBossEncounterEpoch(privateFarm.farmBossProgress);
+        if (privateFarm.worldMap) {
+            finishChallenge(privateFarm.worldMap, outcome === 'victory' && RAID_STAGE === MAP_STAGE);
+        }
     }
     const RECEIPT = {
         key: KEY,
