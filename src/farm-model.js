@@ -32,6 +32,7 @@ import { FarmingRoster } from './farm-roster.js';
 import { FACILITY_IDS, FACILITY_MAX_LEVEL, FarmPlot, INITIAL_FARM_PLOT_ID, RESERVE_PLOT_ID } from './farm-plot.js';
 import {
     FOG_PIECES,
+    advanceSpawns,
     fogPieceCenter,
     fogPieceCost,
     liftFogPiece,
@@ -3462,6 +3463,9 @@ const GARDEN = class Garden {
             stepWork(this, CONFIG, Math.min(elapsed, 0.1));
             this.tickExploration(Math.min(elapsed, 0.1));
             this.tickIdleWork(Math.min(elapsed, 0.1));
+            if (advanceSpawns(this.worldMap, Math.min(elapsed, 0.1)).length > 0) {
+                this.markProgressChanged();
+            }
             this._stepMigration(Math.min(elapsed, 0.1));
             this._stepNeighbours(Math.min(elapsed, 0.1));
         }

@@ -1,20 +1,20 @@
 // The shared world map: one grid of tiles that every farm sits on.
-// Explorers pay for one tile at a time; once a tile is paid for its fog lifts. Which tiles hold a
-// boss nest, and how dangerous they are, is a pure function of the map seed and the distance to the nearest
-// farm, so the map needs no stored layout and can be settled offline with plain arithmetic.
+// Explorers lift the fog tile by tile. Bosses spawn over time on lit tiles within a farm's sight and stay until
+// someone beats them; how dangerous a boss is depends only on how far its tile lies from the nearest farm.
 import { chooseBossSpecies } from './boss-rewards.js';
 export const WORLD_MAP_SETTINGS = {
     radius: 12,
-    // Tiles within this many steps of a farm start lit and never hold a nest.
+    // Tiles within this many steps of a farm start lit and never hold a boss.
     safeRadius: 1,
-    nestChance: 0.34,
+    // A boss turns up this often (game seconds) while fewer than maxBosses are out.
+    spawnSeconds: 150,
+    maxBosses: 3,
     firstTileCost: 60,
     tileCostStep: 4,
     maxDanger: 61,
-    // How much harder a tile is to explore than the base cost: the ground it lies on, and a nest on top of it.
+    // How much harder a tile is to explore than the base cost: the ground it lies on.
     terrainCost: { plain: 1, forest: 1.5, rock: 2, swamp: 2.5 },
-    nestCost: 1.5,
-    // Stages added per tile of straight-line distance beyond the first ring of nests.
+    // Stages added per tile of straight-line distance beyond the first ring of bosses.
     dangerPerTile: 4,
     // How far from a farm explorers may lift the fog, in tiles (a square around the farm). Towers add to it.
     baseReach: 2,
@@ -92,7 +92,9 @@ export function createWorldMap(seed, firstPlotId) {
         challengeTile: -1,
         buildTile: -1,
         revealed: [],
-        cleared: [],
+        bosses: [],
+        spawnClock: 0,
+        spawnCount: 0,
         farms: [{ plotId: firstPlotId, tile: tileIndex(0, 0) }],
     };
     for (let y = -WORLD_MAP_SETTINGS.safeRadius; y <= WORLD_MAP_SETTINGS.safeRadius; y++) {
@@ -106,9 +108,6 @@ export function createWorldMap(seed, firstPlotId) {
 export function isRevealed(map, index) {
     return map.revealed.includes(index);
 }
-export function isCleared(map, index) {
-    return map.cleared.includes(index);
-}
 // Straight-line distance from a tile to the nearest farm tile.
 function farmReach(map, index) {
     const X = tileX(index),
@@ -119,47 +118,33 @@ function farmReach(map, index) {
     }
     return best;
 }
-// Danger is the stage the existing raid curve already knows: the first ring of nests is stage 1.
+// Danger is the stage the existing raid curve already knows: a boss two tiles from a farm is stage 1.
 export function tileDanger(map, index) {
     const STAGE = Math.round(1 + (farmReach(map, index) - 2) * WORLD_MAP_SETTINGS.dangerPerTile);
     return Math.max(1, Math.min(WORLD_MAP_SETTINGS.maxDanger, STAGE));
 }
-export function hasNest(map, index) {
-    return (
-        farmDistance(map, index) > WORLD_MAP_SETTINGS.safeRadius &&
-        tileUnit(map.seed, index, 1) < WORLD_MAP_SETTINGS.nestChance
-    );
+export function hasBoss(map, index) {
+    return map.bosses.includes(index);
 }
 export function tileInfo(map, index) {
     const REVEALED = isRevealed(map, index),
-        NEST = hasNest(map, index);
+        BOSS = hasBoss(map, index);
     return {
         index,
         x: tileX(index),
         y: tileY(index),
         revealed: REVEALED,
-        nest: REVEALED && NEST,
-        cleared: isCleared(map, index),
+        boss: REVEALED && BOSS,
         danger: tileDanger(map, index),
     };
 }
-// The boss species that holds a nest never changes, so a nest looks the same every time the map is opened.
+// The species of a boss on a tile never changes, so it looks the same every time the map is opened.
 export function tileSpecies(map, index) {
     return chooseBossSpecies(() => tileUnit(map.seed, index, 3));
 }
-// A tile belongs to the player when it lies next to a farm or has been cleared.
-function claimed(map, index) {
-    return isCleared(map, index) || farmDistance(map, index) <= WORLD_MAP_SETTINGS.safeRadius;
-}
-// Nests can only be challenged from the edge of the claimed land, so the map is taken one step at a time.
+// A boss can be challenged when its tile is lit and inside the sight of a farm.
 export function canChallenge(map, index) {
-    // A cleared nest can be challenged again, for the repeat rewards.
-    if (!isRevealed(map, index) || !hasNest(map, index)) {
-        return false;
-    }
-    const X = tileX(index),
-        Y = tileY(index);
-    return NEIGHBOURS.some(([dx, dy]) => inside(X + dx, Y + dy) && claimed(map, tileIndex(X + dx, Y + dy)));
+    return isRevealed(map, index) && hasBoss(map, index) && inReach(map, index);
 }
 export function beginChallenge(map, index) {
     if (!canChallenge(map, index)) {
@@ -168,12 +153,40 @@ export function beginChallenge(map, index) {
     map.challengeTile = index;
     return true;
 }
-// A won raid clears the tile for good; a lost or dropped one only ends the challenge.
+// A won raid removes the boss (another one spawns later); a lost or dropped one only ends the challenge.
 export function finishChallenge(map, victory) {
     const TILE = map.challengeTile ?? -1;
     map.challengeTile = -1;
-    return victory && TILE >= 0 ? markCleared(map, TILE) : false;
+    if (!victory || TILE < 0 || !hasBoss(map, TILE)) {
+        return false;
+    }
+    map.bosses = map.bosses.filter((boss) => boss !== TILE);
+    return true;
 }
+// Time passes: a boss spawns on a random lit tile in some farm's sight each time the clock runs out, while there
+// are fewer than the cap. Returns the tiles that got a boss.
+export function advanceSpawns(map, seconds) {
+    const SPAWNED = [];
+    map.spawnClock += seconds;
+    while (map.spawnClock >= WORLD_MAP_SETTINGS.spawnSeconds) {
+        const CANDIDATES = map.revealed.filter(
+            (tile) =>
+                farmDistance(map, tile) > WORLD_MAP_SETTINGS.safeRadius && !hasBoss(map, tile) && inReach(map, tile),
+        );
+        if (map.bosses.length >= WORLD_MAP_SETTINGS.maxBosses || CANDIDATES.length === 0) {
+            map.spawnClock = WORLD_MAP_SETTINGS.spawnSeconds;
+            break;
+        }
+        map.spawnClock -= WORLD_MAP_SETTINGS.spawnSeconds;
+        const TILE = CANDIDATES[Math.floor(tileUnit(map.seed, map.spawnCount, 11) * CANDIDATES.length)];
+        map.spawnCount++;
+        map.bosses.push(TILE);
+        map.bosses.sort((a, b) => a - b);
+        SPAWNED.push(TILE);
+    }
+    return SPAWNED;
+}
+
 export const TERRAIN_NAMES = { plain: '평지', forest: '숲', rock: '바위산', swamp: '늪' };
 // The ground of a tile never changes. It is only known once the tile is lit, but it decides how long the fog takes.
 export function tileTerrain(map, index) {
@@ -185,12 +198,9 @@ export function exploreCost(map) {
     const REVEALED_BEYOND_START = Math.max(0, map.revealed.length - (WORLD_MAP_SETTINGS.safeRadius * 2 + 1) ** 2);
     return WORLD_MAP_SETTINGS.firstTileCost + WORLD_MAP_SETTINGS.tileCostStep * REVEALED_BEYOND_START;
 }
-// What it takes to lift the fog from one particular tile: the base cost times its ground and any nest on it.
+// What it takes to lift the fog from one particular tile: the base cost times its ground.
 export function tileCost(map, index) {
-    const MULTIPLIER =
-        WORLD_MAP_SETTINGS.terrainCost[tileTerrain(map, index)] *
-        (hasNest(map, index) ? WORLD_MAP_SETTINGS.nestCost : 1);
-    return Math.round(exploreCost(map) * MULTIPLIER);
+    return Math.round(exploreCost(map) * WORLD_MAP_SETTINGS.terrainCost[tileTerrain(map, index)]);
 }
 function touchesLight(index, lit) {
     const X = tileX(index),
@@ -350,7 +360,7 @@ export function liftFogPiece(map, tile, piece) {
     }
     return [tile];
 }
-// A new farm goes on lit ground that no farm holds yet, once every nest in the tile and the ring around it is cleared.
+// A new farm goes on lit ground that no farm holds yet, with no boss on the tile or the ring around it.
 export function farmBuildBlock(map, index) {
     if (!Number.isSafeInteger(index) || index < 0 || index >= WORLD_MAP_TILE_COUNT || !isRevealed(map, index)) {
         return 'unexplored';
@@ -366,8 +376,8 @@ export function farmBuildBlock(map, index) {
                 continue;
             }
             const AROUND = tileIndex(X + dx, Y + dy);
-            if (hasNest(map, AROUND) && !isCleared(map, AROUND)) {
-                return 'nest';
+            if (hasBoss(map, AROUND)) {
+                return 'boss';
             }
         }
     }
@@ -420,14 +430,6 @@ export function finishFarmBuild(map, plotId) {
     map.revealed.sort((a, b) => a - b);
     return tile;
 }
-export function markCleared(map, index) {
-    if (!isRevealed(map, index) || isCleared(map, index)) {
-        return false;
-    }
-    map.cleared.push(index);
-    map.cleared.sort((a, b) => a - b);
-    return true;
-}
 const SORTED_INDEXES = (list) =>
     Array.isArray(list) &&
     list.every(
@@ -458,7 +460,7 @@ export function isValidWorldMap(map) {
         .filter((key) => key !== 'challengeTile' && key !== 'buildTile')
         .sort()
         .join(',');
-    if (KEYS !== 'cleared,exploreTarget,farms,progress,revealed,seed') {
+    if (KEYS !== 'bosses,exploreTarget,farms,progress,revealed,seed,spawnClock,spawnCount') {
         return false;
     }
     if (
@@ -480,7 +482,11 @@ export function isValidWorldMap(map) {
             (Number.isSafeInteger(map.buildTile) && map.buildTile >= -1 && map.buildTile < WORLD_MAP_TILE_COUNT)
         ) ||
         !SORTED_INDEXES(map.revealed) ||
-        !SORTED_INDEXES(map.cleared) ||
+        !SORTED_INDEXES(map.bosses) ||
+        !Number.isFinite(map.spawnClock) ||
+        map.spawnClock < 0 ||
+        !Number.isSafeInteger(map.spawnCount) ||
+        map.spawnCount < 0 ||
         !Array.isArray(map.farms) ||
         map.farms.length === 0
     ) {
@@ -488,7 +494,7 @@ export function isValidWorldMap(map) {
     }
     const LIT = new Set(map.revealed);
     return (
-        map.cleared.every((index) => LIT.has(index)) &&
+        map.bosses.every((index) => LIT.has(index)) &&
         new Set(map.farms.map((farm) => farm.tile)).size === map.farms.length &&
         map.farms.every(
             (farm) =>

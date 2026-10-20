@@ -43,8 +43,7 @@ import {
     inReach,
     TERRAIN_NAMES,
     tileTerrain,
-    hasNest,
-    isCleared,
+    hasBoss,
     isRevealed,
     setExploreTarget,
     tileDanger,
@@ -72,7 +71,7 @@ let foodHold = null;
 let farmSortTransition = null;
 let farmPanelRevision = -1;
 let bossEncounterOpen = false;
-// A raid is a nest met on the world map; the screen is the map.
+// A raid is a boss met on the world map; the screen is the map.
 let bossMapTile = -1;
 let worldMapView = null;
 let miniMapView = null;
@@ -773,7 +772,7 @@ function mapChallengeBlockReason() {
         return raidStartBlockReason();
     }
     if (bossMapTile < 0 || !canChallenge(personalGarden.worldMap, bossMapTile)) {
-        return '도전할 둥지를 골라 주세요. 농장이나 정리한 칸과 맞닿은 둥지만 도전할 수 있어요.';
+        return '도전할 보스를 골라 주세요. 농장 시야 안의 밝은 칸에 있는 보스만 도전할 수 있어요.';
     }
     return raidStartBlockReason();
 }
@@ -837,26 +836,18 @@ function announceExploration() {
         return;
     }
     if (!lastLit || lastLit.world !== personalGarden) {
-        lastLit = { world: personalGarden, set: new Set(MAP.revealed) };
+        lastLit = { world: personalGarden, set: new Set(MAP.revealed), bosses: new Set(MAP.bosses) };
         return;
     }
-    if (MAP.revealed.length === lastLit.set.size) {
-        return;
-    }
-    const FOUND = MAP.revealed.filter((index) => !lastLit.set.has(index)),
-        NESTS = FOUND.filter((index) => hasNest(MAP, index)).length,
-        NOTICE = DOLLAR('exploreNotice');
+    const FOUND = MAP.revealed.filter((index) => !lastLit.set.has(index)).length,
+        APPEARED = MAP.bosses.filter((index) => !lastLit.bosses.has(index)).length;
     lastLit.set = new Set(MAP.revealed);
-    if (FOUND.length === 0) {
-        return;
+    lastLit.bosses = new Set(MAP.bosses);
+    if (APPEARED > 0) {
+        say('보스가 나타났어요! 지도에서 확인해 보세요.');
+    } else if (FOUND > 0) {
+        say(`새 칸 ${FOUND}개를 발견했어요`);
     }
-    NOTICE.textContent =
-        NESTS > 0 ? `새 칸 ${FOUND.length}개 발견 · 보스 둥지가 있어요!` : `새 칸 ${FOUND.length}개를 발견했어요`;
-    NOTICE.hidden = false;
-    clearTimeout(announceExploration.timer);
-    announceExploration.timer = setTimeout(() => {
-        NOTICE.hidden = true;
-    }, 4000);
 }
 // "Exploring 0%" reads like a bug, so say what the explorers are doing: walking there, or lifting fog.
 const EXPLORE_PHASE_TEXT = {
@@ -898,12 +889,12 @@ function renderWorldMap() {
                 : !inReach(MAP, TILE)
                   ? '농장 반경 밖이에요. 망루를 올리거나 새 농장을 지으면 닿아요.'
                   : `밝은 칸과 맞닿은 칸만 고를 수 있어요. ${GAUGE}`;
-        } else if (hasNest(MAP, TILE)) {
+        } else if (hasBoss(MAP, TILE)) {
             const STAGE = tileDanger(MAP, TILE),
                 SPECIES = tileSpecies(MAP, TILE),
                 STATS = bossStageStats(STAGE);
-            title = `${giantSpeciesName(SPECIES)} · 위험도 ${STAGE}단계 (${TERRAIN_NAMES[tileTerrain(MAP, TILE)]})${isCleared(MAP, TILE) ? ' · 정리함' : ''}`;
-            info = `${isCleared(MAP, TILE) ? '정리한 둥지예요. 다시 도전할 수 있어요. ' : ''}체력 ${Math.round(STATS.hp).toLocaleString('ko-KR')} · 공격력 ${Number(STATS.attackPower.toPrecision(3)).toLocaleString('ko-KR')} · 승리 +${STATS.xp.toLocaleString('ko-KR')} XP`;
+            title = `${giantSpeciesName(SPECIES)} · 위험도 ${STAGE}단계 (${TERRAIN_NAMES[tileTerrain(MAP, TILE)]})`;
+            info = `체력 ${Math.round(STATS.hp).toLocaleString('ko-KR')} · 공격력 ${Number(STATS.attackPower.toPrecision(3)).toLocaleString('ko-KR')} · 승리 +${STATS.xp.toLocaleString('ko-KR')} XP`;
         } else {
             title = `${TERRAIN_NAMES[tileTerrain(MAP, TILE)]} ${POSITION}`;
             info = '아무것도 없는 칸이에요.';
@@ -917,8 +908,8 @@ function renderWorldMap() {
         if (MAP.farms.some((farm) => farm.tile === TILE)) {
             title = `농장 ${tileX(TILE)}, ${tileY(TILE)}`;
             info = '여기서 탐사 반경이 뻗어요. 농장 안에 망루를 지으면 더 멀리 닿아요.';
-        } else if (BLOCK === 'nest') {
-            info = `${info} 새 농장은 이 칸과 둘레 1칸의 둥지를 모두 정리해야 지을 수 있어요.`;
+        } else if (BLOCK === 'boss') {
+            info = `${info} 새 농장은 이 칸과 둘레 1칸에 보스가 없어야 지을 수 있어요.`;
         } else if (BLOCK === null) {
             canBuild = !BUILDING && !!PLOT;
             info = `${info} ${BUILDING ? '다른 새 농장을 짓는 중이에요.' : `새 농장을 지을 수 있어요 · ${COST}`}`;
@@ -934,8 +925,7 @@ function renderWorldMap() {
         personalGarden.materials.wood < personalGarden.projectInfo('plot').cost.wood ||
         personalGarden.materials.stone < personalGarden.projectInfo('plot').cost.stone;
     DOLLAR('bossEncounterHint').textContent = mapChallengeBlockReason();
-    DOLLAR('bossStageCounter').textContent = `정리 ${MAP.cleared.length}칸`;
-    DOLLAR('bossEncounterChallenge').textContent = TILE >= 0 && isCleared(MAP, TILE) ? '다시 도전' : '둥지 도전';
+    DOLLAR('bossStageCounter').textContent = `보스 ${MAP.bosses.length}마리`;
 }
 function selectWorldMapTile(index) {
     bossMapTile = bossMapTile === index ? -1 : index;
@@ -1280,7 +1270,7 @@ function beginRaid(push = true) {
     if (!persist()) {
         return;
     }
-    // A nest on the world map: its stage and species come from the tile, and the tile is cleared on a win.
+    // A boss on the world map: its stage and species come from the tile, and it is gone once beaten.
     if (bossMapTile < 0 || !beginChallenge(personalGarden.worldMap, bossMapTile)) {
         return;
     }

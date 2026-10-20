@@ -182,7 +182,9 @@ export const FARM_SNAPSHOT_SHAPE = {
         challengeTile: -1,
         buildTile: -1,
         revealed: [],
-        cleared: [],
+        bosses: [],
+        spawnClock: 0,
+        spawnCount: 0,
         farms: [],
     },
     foodTaps: {
