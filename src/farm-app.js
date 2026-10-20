@@ -2210,8 +2210,6 @@ function sync(display, now, notices) {
     syncFlag('menuTabFarms', 'disabled', FARM_EVENT_ACTIVE || bossEncounterOpen);
     syncFlag('menuTabGrowth', 'disabled', FARM_EVENT_ACTIVE || bossEncounterOpen);
     syncFlag('menuTabAbilities', 'disabled', !personalGarden);
-    syncText('warehouseStock', String(W.warehouseFood));
-    syncFlag('warehouseCount', 'hidden', !(W.warehouseFood > 0));
     const WORK_WORLD = personalGarden || W;
     const KINDS = WORK_WORLD.workerKindCounts,
         WORKERS = WORK_WORLD.workerCount,

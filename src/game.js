@@ -15110,7 +15110,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.21.4";
+      PRODUCT_VERSION = "0.21.5";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -23980,8 +23980,6 @@
     syncFlag("menuTabFarms", "disabled", FARM_EVENT_ACTIVE || bossEncounterOpen);
     syncFlag("menuTabGrowth", "disabled", FARM_EVENT_ACTIVE || bossEncounterOpen);
     syncFlag("menuTabAbilities", "disabled", !personalGarden);
-    syncText("warehouseStock", String(W.warehouseFood));
-    syncFlag("warehouseCount", "hidden", !(W.warehouseFood > 0));
     const WORK_WORLD = personalGarden || W;
     const KINDS = WORK_WORLD.workerKindCounts, WORKERS = WORK_WORLD.workerCount, BREEDERS = Math.max(0, WORK_WORLD.units.length - WORKERS), CUTS = workCuts(WORK_WORLD), SITES = WORK_WORLD.buildSites;
     let note = `일꾼 ${WORKERS}마리 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분 · 자원 ${WORK_WORLD.workResourcePerMinute.toFixed(1)}/분`, warn = false;
