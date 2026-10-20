@@ -1380,6 +1380,10 @@ async function returnToFarm(push = true) {
     if (!personalGarden) {
         return;
     }
+    // Leaving a fight that is still going is a retreat, and counts as a defeat.
+    if (active?.world?.scene === 'raid' && active.world.running) {
+        active.world.finish('defeat');
+    }
     const RAID_WORLD = active?.world?.scene === 'raid' ? snapshot(active.world) : null;
     if (RAID_WORLD && personalGarden.activeRaidRunSequence !== null) {
         const OWNER_ID = active.localPlayerId,
@@ -2665,6 +2669,7 @@ function sync(display, now, notices) {
     syncFlag('menuTabFarms', 'disabled', RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
     syncFlag('menuTabGrowth', 'disabled', RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
     syncFlag('menuTabAbilities', 'disabled', RAID || !personalGarden);
+    syncText('return', RAID && W.running ? '후퇴' : '농장으로 돌아가기');
     syncText('pause', active.paused ? '▶' : 'Ⅱ');
     syncAttribute('pause', 'aria-label', active.paused ? '계속하기' : '일시정지');
     syncAttribute('pause', 'title', active.paused ? '계속하기' : '일시정지');

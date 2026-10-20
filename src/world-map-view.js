@@ -339,6 +339,23 @@ export function createWorldMapView(
             CONTEXT.globalAlpha = 1;
         }
     }
+    // A boss that is being fought right now.
+    function drawFighting(x, y, s, now) {
+        CONTEXT.strokeStyle = '#b5483a';
+        CONTEXT.globalAlpha = 0.6 + 0.4 * Math.sin(now / 150);
+        CONTEXT.lineWidth = 3;
+        CONTEXT.beginPath();
+        CONTEXT.roundRect(x + 1.5, y + 1.5, s - 3, s - 3, s * 0.18);
+        CONTEXT.stroke();
+        CONTEXT.globalAlpha = 1;
+        if (s >= 22) {
+            CONTEXT.fillStyle = '#b5483a';
+            CONTEXT.font = `700 ${Math.max(9, s * 0.2)}px system-ui, sans-serif`;
+            CONTEXT.textAlign = 'center';
+            CONTEXT.textBaseline = 'alphabetic';
+            CONTEXT.fillText('전투 중', x + s / 2, y + s * 0.97);
+        }
+    }
     function drawNest(x, y, s, danger, open, now) {
         CONTEXT.fillStyle = COLORS.nest;
         CONTEXT.beginPath();
@@ -535,6 +552,9 @@ export function createWorldMapView(
                         now,
                         tileSpecies(map, INDEX),
                     );
+                    if (map.challengeTile === INDEX) {
+                        drawFighting(PX, PY, S, now);
+                    }
                 }
             }
         }
