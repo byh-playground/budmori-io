@@ -3756,6 +3756,10 @@ const GARDEN = class Garden {
             },
         };
     }
+    // A boss fight lasts 90 seconds at stage 1 and 10 seconds longer for every stage after it.
+    raidTimeLimit() {
+        return 90 + 10 * Math.max(0, (this.boss.stage ?? 1) - 1);
+    }
     configureBossStage(stage, species = this.boss.species) {
         const STATS = bossStageStats(stage);
         this.boss.generation = ++this.entityGenerationSerial;
@@ -7599,14 +7603,14 @@ const GARDEN = class Garden {
             }
             return;
         }
-        if (
-            this.running &&
-            this.raidRosters.length &&
-            this.raidRosters.every((r) => r.troops.every((t) => t.deployed)) &&
-            !this.units.some((u) => hasFaction(u, FACTION_CONFIG.PLAYER) && u.hp > 0)
-        ) {
-            this.finish('defeat');
-            return;
+        // Lost when everyone sent in has fallen, or when the time runs out.
+        if (this.running && this.raidRosters.length) {
+            const ALIVE = this.units.some((u) => hasFaction(u, FACTION_CONFIG.PLAYER) && u.hp > 0);
+            this._raidFielded ||= ALIVE;
+            if ((this._raidFielded && !ALIVE) || this.encounter.elapsed >= this.raidTimeLimit()) {
+                this.finish('defeat');
+                return;
+            }
         }
         if (B_LOCAL.stun > 0) {
             B_LOCAL.stun = Math.max(0, B_LOCAL.stun - dt);
