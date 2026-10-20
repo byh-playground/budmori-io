@@ -339,16 +339,33 @@ function haulOrder(world, unit) {
     unit.workOut = true;
     const DISTANCE = Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y),
         WORKING = world._haul.get(unit.id)?.phase === 'work' && SPOT.cx !== undefined;
-    // At the forest or rock it works on, a gatherer holds still and faces the tile's centre while it swings.
-    return {
-        x: SPOT.x,
-        y: SPOT.y,
-        fx: WORKING ? SPOT.cx : SPOT.x + 1,
-        fy: WORKING ? SPOT.cy : SPOT.y,
-        speed: SPOT.speed,
-        hold: DISTANCE <= 0.6,
-        face: WORKING && DISTANCE <= 0.6,
-    };
+    // At the forest or rock it works on, a gatherer fights it like a pile: it faces the tree, winds up, charges into it
+    // and bounces back, then walks to its standing place again.
+    const SWING = world._swings.get(unit.id);
+    if (!WORKING || DISTANCE > NEAR_PILE + 4) {
+        return {
+            x: SPOT.x,
+            y: SPOT.y,
+            fx: WORKING ? SPOT.cx : SPOT.x + 1,
+            fy: WORKING ? SPOT.cy : SPOT.y,
+            speed: SPOT.speed,
+            hold: DISTANCE <= 0.6,
+            face: WORKING && DISTANCE <= 0.6,
+        };
+    }
+    const ORDER = { x: SPOT.x, y: SPOT.y, fx: SPOT.cx, fy: SPOT.cy, speed: SPOT.speed, hold: false, face: false };
+    if (!SWING || SWING.phase === 'idle') {
+        ORDER.hold = DISTANCE <= 0.6;
+        ORDER.face = ORDER.hold;
+    } else if (SWING.phase === 'fire') {
+        ORDER.x = SPOT.cx;
+        ORDER.y = SPOT.cy;
+        ORDER.speed = CHARGE_SPEED;
+    } else {
+        ORDER.hold = true;
+        ORDER.face = SWING.phase === 'windup';
+    }
+    return ORDER;
 }
 // What a worker should do this tick: where to go and how fast, or hold still while winding up or recoiling.
 export function workOrder(world, unit) {
@@ -411,7 +428,7 @@ function pushOutOfPiles(world) {
 }
 // A gatherer at its forest or rock swings in place with the same clips as a worker at a pile: wind up, strike,
 // recover, and wait a moment. The load itself is settled by the hauling trip; this is the picture of the work.
-const GATHER_STRIKE_SECONDS = 0.3,
+const GATHER_REACH = 1.1,
     GATHER_PAUSE_SECONDS = 0.3;
 export function stepHaulSwing(world, unit, haul, dt) {
     if (haul?.phase !== 'work') {
@@ -425,7 +442,9 @@ export function stepHaulSwing(world, unit, haul, dt) {
     }
     if (swing.phase === 'idle') {
         swing.wait -= dt;
-        if (swing.wait <= 0) {
+        const SPOT = world.haulSpot(unit);
+        // Only a worker standing at its place winds up.
+        if (swing.wait <= 0 && SPOT && Math.hypot(unit.x - SPOT.x, unit.y - SPOT.y) <= 1.5) {
             swing.phase = 'windup';
             swing.elapsed = 0;
         }
@@ -435,9 +454,22 @@ export function stepHaulSwing(world, unit, haul, dt) {
     if (swing.phase === 'windup' && swing.elapsed >= SWING_WINDUP) {
         swing.phase = 'fire';
         swing.elapsed = 0;
-    } else if (swing.phase === 'fire' && swing.elapsed >= GATHER_STRIKE_SECONDS) {
-        swing.phase = 'recover';
-        swing.elapsed = 0;
+    } else if (swing.phase === 'fire') {
+        const SPOT = world.haulSpot(unit),
+            D = SPOT?.cx === undefined ? 0 : Math.hypot(unit.x - SPOT.cx, unit.y - SPOT.cy);
+        if (SPOT?.cx === undefined || D <= GATHER_REACH + unit.radius * 0.6 + 0.12) {
+            // Body slam: the tree takes the hit and the worker bounces back off it.
+            if (SPOT?.cx !== undefined) {
+                world.emit('thresh', SPOT.cx, SPOT.cy, 0, { big: false, duration: 0.55 });
+                unit.vx = ((unit.x - SPOT.cx) / Math.max(D, 1e-6)) * RECOIL_SPEED;
+                unit.vy = ((unit.y - SPOT.cy) / Math.max(D, 1e-6)) * RECOIL_SPEED;
+            }
+            swing.phase = 'recover';
+            swing.elapsed = 0;
+        } else if (swing.elapsed >= CHARGE_TIMEOUT) {
+            swing.phase = 'recover';
+            swing.elapsed = 0;
+        }
     } else if (swing.phase === 'recover' && swing.elapsed >= SWING_RECOVER) {
         swing.phase = 'idle';
         swing.elapsed = 0;
