@@ -9,7 +9,6 @@ import {
     hasNest,
     isCleared,
     inReach,
-    nextExploreTile,
     tileDanger,
     tileTerrain,
     tileIndex,
@@ -97,9 +96,7 @@ export function createWorldMapView(canvas, { interactive = false, onSelect = () 
         gesture = null,
         provider = null,
         partyPhase = 0,
-        lastRender = 0,
-        targetKey = '',
-        targetTile = -1;
+        lastRender = 0;
 
     function resize() {
         ratio = Math.min(2, globalThis.devicePixelRatio || 1);
@@ -148,15 +145,6 @@ export function createWorldMapView(canvas, { interactive = false, onSelect = () 
             Y = Math.round((clientY - BOX.top - height / 2) / CAMERA.scale + CAMERA.y);
         return INSIDE(X, Y) ? tileIndex(X, Y) : -1;
     }
-    function exploreTarget(map) {
-        const KEY = `${map.revealed.length}:${map.exploreTarget}`;
-        if (KEY !== targetKey) {
-            targetKey = KEY;
-            targetTile = nextExploreTile(map);
-        }
-        return targetTile;
-    }
-
     function drawTree(cx, cy, r) {
         CONTEXT.fillStyle = COLORS.trunk;
         CONTEXT.fillRect(cx - r * 0.18, cy + r * 0.5, r * 0.36, r * 0.8);
@@ -459,7 +447,6 @@ export function createWorldMapView(canvas, { interactive = false, onSelect = () 
             MAX_X = Math.min(RADIUS, Math.ceil(CAMERA.x + width / 2 / S) + 1),
             MIN_Y = Math.max(-RADIUS, Math.floor(CAMERA.y - height / 2 / S) - 1),
             MAX_Y = Math.min(RADIUS, Math.ceil(CAMERA.y + height / 2 / S) + 1),
-            TARGET = exploreTarget(map),
             FARMS = new Set(map.farms.map((farm) => farm.tile));
         CONTEXT.setTransform(ratio, 0, 0, ratio, 0, 0);
         CONTEXT.fillStyle = COLORS.background;
@@ -501,10 +488,19 @@ export function createWorldMapView(canvas, { interactive = false, onSelect = () 
                 }
             }
         }
-        if (TARGET >= 0) {
-            drawExploreTarget(screenX(tileX(TARGET) - 0.5), screenY(tileY(TARGET) - 0.5), S, state.progress ?? 0, now);
+        const TARGETS = state.targets ?? [];
+        if (TARGETS.length > 0) {
             partyPhase = (partyPhase + Math.min(100, now - lastRender) / 1000 / PARTY_TRIP_SECONDS) % 1;
-            drawParty(map, TARGET, state.rate ?? 0, now);
+        }
+        for (const TARGET of TARGETS) {
+            drawExploreTarget(
+                screenX(tileX(TARGET.tile) - 0.5),
+                screenY(tileY(TARGET.tile) - 0.5),
+                S,
+                TARGET.progress,
+                now,
+            );
+            drawParty(map, TARGET.tile, (state.rate ?? 0) / TARGETS.length, now);
         }
         if (state.selected >= 0 && state.selected < WORLD_MAP_TILE_COUNT) {
             CONTEXT.strokeStyle = COLORS.ink;
