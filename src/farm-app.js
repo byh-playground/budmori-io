@@ -828,7 +828,7 @@ function renderBossEncounterStage(stage) {
     }
     const REASON = raidStartBlockReason(STAGE_LOCKED);
     DOLLAR('bossStageNotice').textContent = REASON;
-    DOLLAR('bossEncounterChallenge').disabled = REASON !== '';
+    DOLLAR('bossEncounterChallenge').setAttribute('aria-disabled', String(REASON !== ''));
     DOLLAR('bossEncounterChallenge').title = REASON;
     return SELECTION;
 }
@@ -882,6 +882,16 @@ function syncMiniMap(visible) {
     if (visible && personalGarden) {
         syncText('miniMapLabel', exploreLine(personalGarden.activePlotId, true));
     }
+}
+// A short line on screen, for a press that cannot do what it says: a button never just does nothing.
+function say(text) {
+    const NOTICE = DOLLAR('exploreNotice');
+    NOTICE.textContent = text;
+    NOTICE.hidden = false;
+    clearTimeout(announceExploration.timer);
+    announceExploration.timer = setTimeout(() => {
+        NOTICE.hidden = true;
+    }, 4000);
 }
 // A tile lifted from the fog is announced where the player is looking, whether the map is open or not.
 function announceExploration() {
@@ -1030,19 +1040,27 @@ function setBossView(mapMode) {
 function openBossEncounter(push = true) {
     stopWorldInput();
     if (active?.world?.scene === 'raid') {
+        say('이미 레이드 중이에요.');
         return false;
     }
     if (!personalGarden) {
         if (STORAGE.world && STORAGE.world.activeRaidRunSequence === null) {
             start(restore(snapshot(STORAGE.world)), false);
         } else {
+            say('내 정원으로 돌아간 뒤에 레이드를 열 수 있어요.');
             return false;
         }
     }
-    if (personalGarden.farmBossEvent?.phase !== 'idle' || personalGarden.activeRaidRunSequence !== null) {
+    if (personalGarden.farmBossEvent?.phase !== 'idle') {
+        say('농장 이벤트가 끝난 뒤에 열 수 있어요.');
+        return false;
+    }
+    if (personalGarden.activeRaidRunSequence !== null) {
+        say('진행 중인 레이드를 먼저 마쳐 주세요.');
         return false;
     }
     if (!persist()) {
+        say(`저장하지 못해서 레이드를 열지 못했어요: ${STORAGE.error || '저장 오류'}`);
         return false;
     }
     if (menuOpen) {
@@ -1455,7 +1473,10 @@ DOLLAR('worldMapExplore').onclick = () => {
     }
 };
 DOLLAR('bossEncounterChallenge').onclick = () => {
-    if (DOLLAR('bossEncounterChallenge').disabled) {
+    // Never a dead button: when the raid cannot start, the reason is said right here.
+    const REASON = DOLLAR('bossStageNotice').textContent;
+    if (REASON !== '') {
+        say(REASON);
         return;
     }
     closeBossEncounter(false);
@@ -2734,13 +2755,12 @@ function sync(display, now, notices) {
                             personalGarden.farmBossProgress.highestClearedRaidStage + 1
                       : false,
               );
-        syncFlag('bossEncounterChallenge', 'disabled', REASON !== '');
+        syncAttribute('bossEncounterChallenge', 'aria-disabled', String(REASON !== ''));
         syncText('bossStageNotice', REASON);
     }
     syncFlag('menuTabFarms', 'disabled', RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
     syncFlag('menuTabGrowth', 'disabled', RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
     syncFlag('menuTabAbilities', 'disabled', RAID || !personalGarden);
-    syncFlag('raid', 'disabled', RAID || FARM_EVENT_ACTIVE || !personalGarden);
     syncText('pause', active.paused ? '▶' : 'Ⅱ');
     syncAttribute('pause', 'aria-label', active.paused ? '계속하기' : '일시정지');
     syncAttribute('pause', 'title', active.paused ? '계속하기' : '일시정지');
