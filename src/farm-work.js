@@ -121,6 +121,37 @@ function plotHasSite(world, plotId = world.activePlotId) {
     return pilesOf(world, plotId).some((pile) => pile.kind === 'site');
 }
 export { plotHasSite };
+// Builders' hits on one plot are shared evenly between its sites, a finished site hands its share to the others.
+// Used wherever the walk is not watched (away from the game, or a farm that is not on screen).
+// Returns the names of what got finished and the hits nobody needed.
+export function spreadBuildHits(world, plotId, hits) {
+    const BUILT = [],
+        OPEN = [...sitesOf(world, plotId)];
+    let left = hits;
+    while (OPEN.length > 0 && left > 0) {
+        const SHARE = left / OPEN.length,
+            DONE = OPEN.filter((site) => SHARE >= site.need - site.done);
+        if (DONE.length === 0) {
+            for (const SITE of OPEN) {
+                SITE.fraction = (SITE.fraction || 0) + (SHARE % 1);
+                SITE.done += Math.floor(SHARE) + Math.floor(SITE.fraction);
+                SITE.fraction %= 1;
+            }
+            left = 0;
+            break;
+        }
+        for (const SITE of DONE) {
+            left -= SITE.need - SITE.done;
+            BUILT.push(world.siteName(SITE));
+            const LIST = pilesOf(world, plotId);
+            LIST.splice(LIST.indexOf(SITE), 1);
+            world.completeFacility(SITE);
+            OPEN.splice(OPEN.indexOf(SITE), 1);
+        }
+    }
+    return { built: BUILT, open: OPEN, left };
+}
+export const HITS_PER_WORK = STACKS_PER_FOOD;
 // Food workers fight grain piles, resource workers fight trees and rocks, builders work the construction site.
 // Builders with nothing to build gather materials instead.
 function effectiveKind(world, unit) {
