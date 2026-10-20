@@ -189,6 +189,9 @@ const CONFIG = Object.freeze({
                 wood: Object.freeze({ count: 1, amount: 8 }),
                 stone: Object.freeze({ count: 1, amount: 8 }),
             }),
+            // Resting units drift to a neighbouring farm that has more room: one at a time, every few seconds,
+            // when the neighbour is at least this much emptier (as a share of its size) and not nearly full.
+            migration: Object.freeze({ intervalSeconds: 20, emptierBy: 0.15, neighbourMaxFill: 0.9 }),
             facilitySpacing: 7,
             facilityRowX: 2,
             facilityRowY: 7.6,
@@ -3017,6 +3020,107 @@ const GARDEN = class Garden {
         }
         return rate;
     }
+    // Farms on neighbouring tiles of the shared map; a resting unit may walk across the border to one that has room.
+    _neighbourPlots() {
+        const FARMS = this.worldMap.farms,
+            HERE = FARMS.find((farm) => farm.plotId === this.activePlotId);
+        if (!HERE) {
+            return [];
+        }
+        return FARMS.filter(
+            (farm) =>
+                farm !== HERE &&
+                Math.max(
+                    Math.abs(tileX(farm.tile) - tileX(HERE.tile)),
+                    Math.abs(tileY(farm.tile) - tileY(HERE.tile)),
+                ) === 1,
+        ).map((farm) => ({
+            plotId: farm.plotId,
+            // The way out, in this farm's coordinates (the map's y runs down the screen, the farm's up).
+            angle: Math.atan2(-(tileY(farm.tile) - tileY(HERE.tile)), tileX(farm.tile) - tileX(HERE.tile)),
+        }));
+    }
+    _fillOf(plotId) {
+        const PLOT = this.farmPlots.get(plotId);
+        return PLOT
+            ? (this.roster.placedPopulation(plotId) + (this._breedPlotReservations.get(plotId) || 0)) / PLOT.capacity
+            : 1;
+    }
+    _stepMigration(seconds) {
+        const SETTINGS = CONFIG.farm.work.migration;
+        this._migrationClock = (this._migrationClock || 0) + seconds;
+        if (this._migrationClock < SETTINGS.intervalSeconds || this.farmBossEvent?.phase !== 'idle') {
+            return;
+        }
+        this._migrationClock = 0;
+        if (this.units.some((unit) => unit.migrate)) {
+            return;
+        }
+        const HERE = this._fillOf(this.activePlotId);
+        let target = null;
+        for (const NEIGHBOUR of this._neighbourPlots()) {
+            const FILL = this._fillOf(NEIGHBOUR.plotId);
+            if (
+                HERE - FILL >= SETTINGS.emptierBy &&
+                FILL < SETTINGS.neighbourMaxFill &&
+                (!target || FILL < target.fill)
+            ) {
+                target = { ...NEIGHBOUR, fill: FILL };
+            }
+        }
+        if (!target) {
+            return;
+        }
+        const RESIDENTS = this.unitCollection.residentsInPlot(this.activePlotId),
+            COUNTS = new Map();
+        for (const UNIT of RESIDENTS) {
+            COUNTS.set(UNIT.species, (COUNTS.get(UNIT.species) || 0) + 1);
+        }
+        const CANDIDATES = RESIDENTS.filter(
+            (unit) =>
+                !this.isWorker(unit) &&
+                !unit.mateId &&
+                !this.breedPlanFor(unit) &&
+                unit.hp > 0 &&
+                (COUNTS.get(unit.species) || 0) > 2,
+        );
+        if (CANDIDATES.length) {
+            CANDIDATES[this.simulationTick % CANDIDATES.length].migrate = {
+                plotId: target.plotId,
+                angle: target.angle,
+            };
+        }
+    }
+    // One step of a unit on its way to the border; it crosses when it gets there. False when it no longer goes.
+    stepMigrant(unit, dt) {
+        const MIGRATE = unit.migrate,
+            TARGET = MIGRATE && this._neighbourPlots().find((plot) => plot.plotId === MIGRATE.plotId);
+        if (
+            !TARGET ||
+            unit.plotId !== this.activePlotId ||
+            this.isWorker(unit) ||
+            this._fillOf(TARGET.plotId) >= CONFIG.farm.work.migration.neighbourMaxFill
+        ) {
+            delete unit.migrate;
+            return false;
+        }
+        const ARENA = CONFIG.farm.arena,
+            X = Math.cos(TARGET.angle) * (ARENA.radiusX - 1),
+            Y = Math.sin(TARGET.angle) * (ARENA.radiusY - 0.8);
+        if (Math.hypot(X - unit.x, Y - unit.y) > 1.4) {
+            this.steer(unit, X, Y, dt, scaleMoveSpeed(1.7, unit));
+            return true;
+        }
+        delete unit.migrate;
+        if (this.unitCollection.moveUnitsToPlots([{ unitId: unit.id, plotId: TARGET.plotId }])) {
+            // It arrives on the far side of the neighbour, as if it had walked in from here.
+            unit.x = Math.cos(TARGET.angle + Math.PI) * (ARENA.radiusX - 1.5);
+            unit.y = Math.sin(TARGET.angle + Math.PI) * (ARENA.radiusY - 1.2);
+            unit.moveControlVx = unit.moveControlVy = unit.vx = unit.vy = 0;
+            this.markProgressChanged();
+        }
+        return true;
+    }
     advanceAutoTaps(elapsed) {
         // Real elapsed time, independent of demo speed. Do not replay hidden/stalled frames.
         if (!Number.isFinite(elapsed) || elapsed <= 0) {
@@ -3029,6 +3133,7 @@ const GARDEN = class Garden {
         if (this.scene === 'farm') {
             stepWork(this, CONFIG, Math.min(elapsed, 0.1));
             this.tickExploration(Math.min(elapsed, 0.1));
+            this._stepMigration(Math.min(elapsed, 0.1));
         }
     }
     spawnFood(x, y, count = 1, { allowBossEvent = true, from = null } = {}) {

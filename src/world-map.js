@@ -19,6 +19,8 @@ export const WORLD_MAP_SETTINGS = {
     // How far from a farm explorers may lift the fog, in tiles (a square around the farm). Towers add to it.
     baseReach: 2,
 };
+// How far apart the centres of neighbouring farm cells sit in farm units: a farm's ground is about 48 by 36.
+export const FARM_CELL = { width: 50, height: 38 };
 const SIDE = WORLD_MAP_SETTINGS.radius * 2 + 1;
 export const WORLD_MAP_TILE_COUNT = SIDE * SIDE;
 const NEIGHBOURS = [

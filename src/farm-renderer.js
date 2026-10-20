@@ -21,6 +21,7 @@ import { bindBossSocketAsset, unbindBossSocketAsset } from './boss-vector-socket
 import { BossPresentation, bossAttackPresentation } from './farm-render-boss.js';
 import { CONFIG, clamp, bossAttackArea } from './farm-model.js';
 import { facilityPosition } from './farm-work.js';
+import { FARM_CELL, isRevealed, tileTerrain, tileX, tileY, tileIndex } from './world-map.js';
 import { bossDangerContour } from './attack-telegraph.js';
 const { bosses: BOSS_VECTOR_ASSETS, troops: TROOP_VECTOR_ASSETS } = globalThis.BudmoriVectorResources;
 // Original SVG sources are compiled once by the startup loader before this module runs.
@@ -64,6 +65,8 @@ const EMPTY_UNIT_IDS = new Set();
 const GRADE_RING_COLORS = UNIT_GRADES.map(({ outlineColor }) => outlineColor);
 const GRADE_RING_WIDTHS = UNIT_GRADES.map(({ tier }) => 0.05 + 0.012 * (tier - 2));
 const CORN_ATTACHMENT_PRESENTATION = new CornAttachmentPresentation();
+const MIN_TILE = (map, axis) => Math.min(...map.revealed.map((index) => (axis === 'x' ? tileX(index) : tileY(index))));
+const MAX_TILE = (map, axis) => Math.max(...map.revealed.map((index) => (axis === 'x' ? tileX(index) : tileY(index))));
 const DIORAMA = class Diorama {
     constructor(canvas) {
         this.canvas = canvas;
@@ -222,6 +225,12 @@ const DIORAMA = class Diorama {
             bottom: -(RY + 1.3) * WORLD_DEPTH_PROJECTION,
             top: (RY + 1.3) * WORLD_DEPTH_PROJECTION,
         };
+        if (this.extent && scene === 'farm') {
+            BOUNDS.left = Math.min(BOUNDS.left, this.extent.left - RX - 1.3);
+            BOUNDS.right = Math.max(BOUNDS.right, this.extent.right + RX + 1.3);
+            BOUNDS.bottom = Math.min(BOUNDS.bottom, (this.extent.bottom - RY - 1.3) * WORLD_DEPTH_PROJECTION);
+            BOUNDS.top = Math.max(BOUNDS.top, (this.extent.top + RY + 1.3) * WORLD_DEPTH_PROJECTION);
+        }
         const BOSS_SCALE = bossVectorScale(CONFIG.boss.radius),
             BOSS_X = RX - CONFIG.boss.radius,
             BOSS_Y = (RY - CONFIG.boss.radius) * WORLD_DEPTH_PROJECTION;
@@ -401,6 +410,183 @@ const DIORAMA = class Diorama {
         C.moveTo(a.x, a.y);
         C.lineTo(b.x, b.y);
         C.stroke();
+    }
+    // The land around the farm on screen: lit tiles of the shared map as meadows, with the units of the other
+    // farms standing on theirs, and one ring of fog beyond. Nothing here is simulated; it is only drawn.
+    farmTileOf(world, plotId) {
+        return world.worldMap.farms.find((farm) => farm.plotId === plotId)?.tile ?? null;
+    }
+    backdropExtent(world) {
+        const MAP = world.worldMap,
+            HERE = this.farmTileOf(world, world.activePlotId);
+        if (HERE === null) {
+            return null;
+        }
+        let minX = Infinity,
+            maxX = -Infinity,
+            minY = Infinity,
+            maxY = -Infinity;
+        for (const INDEX of MAP.revealed) {
+            minX = Math.min(minX, tileX(INDEX));
+            maxX = Math.max(maxX, tileX(INDEX));
+            minY = Math.min(minY, tileY(INDEX));
+            maxY = Math.max(maxY, tileY(INDEX));
+        }
+        const FX = tileX(HERE),
+            FY = tileY(HERE);
+        // One tile of fog beyond the lit land can be looked at.
+        return {
+            key: `${minX},${maxX},${minY},${maxY},${FX},${FY}`,
+            left: (minX - 1 - FX) * FARM_CELL.width,
+            right: (maxX + 1 - FX) * FARM_CELL.width,
+            bottom: -(maxY + 1 - FY) * FARM_CELL.height,
+            top: -(minY - 1 - FY) * FARM_CELL.height,
+        };
+    }
+    // Keeps the camera limits, and the camera itself, in step with the land and with which farm is on screen.
+    syncBackdrop(world) {
+        const EXTENT = this.backdropExtent(world);
+        if (EXTENT && EXTENT.key !== this.extent?.key) {
+            this.extent = EXTENT;
+            this.configure(this.scene, true);
+        }
+        const PLOT = world.activePlotId;
+        if (this.shownPlot !== undefined && this.shownPlot !== PLOT) {
+            const FROM = this.farmTileOf(world, this.shownPlot),
+                TO = this.farmTileOf(world, PLOT);
+            if (this.cameraSwitch === PLOT && FROM !== null && TO !== null) {
+                // The camera walked into the next farm: keep looking at the same ground.
+                const OX = (tileX(TO) - tileX(FROM)) * FARM_CELL.width,
+                    OY = -(tileY(TO) - tileY(FROM)) * FARM_CELL.height;
+                this.pan.x += OX;
+                this.pan.y += OY * WORLD_DEPTH_PROJECTION;
+                this.extent = this.backdropExtent(world);
+                this.configure(this.scene, true);
+            } else {
+                this.resetPan();
+            }
+            this.cameraSwitch = null;
+        }
+        this.shownPlot = PLOT;
+    }
+    // The farm whose ground the middle of the screen is over, when it is not the one being simulated.
+    cameraPlot(world) {
+        const HERE = this.farmTileOf(world, world.activePlotId);
+        if (HERE === null || !this.scale) {
+            return null;
+        }
+        const CENTRE = {
+                x: this.canvas.width / 2 / this.scale - this.offset[0] - this.view[0],
+                y: (this.view[1] - this.canvas.height / 2 / this.scale - this.offset[1]) / WORLD_DEPTH_PROJECTION,
+            },
+            DX = Math.round(CENTRE.x / FARM_CELL.width),
+            DY = -Math.round(CENTRE.y / FARM_CELL.height);
+        if (DX === 0 && DY === 0) {
+            return null;
+        }
+        const TILE = tileIndex(tileX(HERE) + DX, tileY(HERE) + DY);
+        const FARM = world.worldMap.farms.find((farm) => farm.tile === TILE);
+        return FARM && isRevealed(world.worldMap, TILE) ? FARM.plotId : null;
+    }
+    drawBackdrop(world) {
+        const MAP = world.worldMap,
+            HERE = this.farmTileOf(world, world.activePlotId);
+        if (HERE === null) {
+            return;
+        }
+        const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena,
+            PRESENTATION = this.scenePresentation,
+            FX = tileX(HERE),
+            FY = tileY(HERE),
+            LIT = new Set(MAP.revealed),
+            MARGIN = FARM_CELL.width * this.scale,
+            PLOT_AT = new Map(MAP.farms.map((farm) => [farm.tile, farm.plotId]));
+        const LOOK = (index, salt) => {
+            let h = Math.imul(index + 1, 0x9e3779b1) ^ Math.imul(salt, 0x85ebca6b);
+            h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
+            return ((h ^ (h >>> 12)) >>> 0) / 4294967296;
+        };
+        const PAINT = {
+            plain: [PRESENTATION.groundColor, PRESENTATION.surfaceColor],
+            forest: ['#b7c9a4', '#c4d5b1'],
+            rock: ['#cbc6b3', '#d9d4c3'],
+            swamp: ['#b5c9be', '#c5d7cc'],
+        };
+        for (let ty = MIN_TILE(MAP, 'y') - 1; ty <= MAX_TILE(MAP, 'y') + 1; ty++) {
+            for (let tx = MIN_TILE(MAP, 'x') - 1; tx <= MAX_TILE(MAP, 'x') + 1; tx++) {
+                const INDEX = tileIndex(tx, ty);
+                if (INDEX === HERE || Math.abs(tx) > 12 || Math.abs(ty) > 12) {
+                    continue;
+                }
+                const OX = (tx - FX) * FARM_CELL.width,
+                    OY = -(ty - FY) * FARM_CELL.height,
+                    AT = this.project(OX, OY, 0);
+                if (
+                    AT.x < -MARGIN ||
+                    AT.x > this.canvas.width + MARGIN ||
+                    AT.y < -MARGIN ||
+                    AT.y > this.canvas.height + MARGIN
+                ) {
+                    continue;
+                }
+                if (!LIT.has(INDEX)) {
+                    const NEXT_TO_LIT = [-1, 0, 1].some((dy) =>
+                        [-1, 0, 1].some((dx) => (dx || dy) && LIT.has(tileIndex(tx + dx, ty + dy))),
+                    );
+                    if (NEXT_TO_LIT) {
+                        this.groundEllipse(OX, OY, RX + 1.2, RY + 1.0, '#e6e1cc');
+                    }
+                    continue;
+                }
+                const TERRAIN = tileTerrain(MAP, INDEX),
+                    [GROUND, SURFACE] = PAINT[TERRAIN];
+                this.groundEllipse(OX, OY - 0.2, RX + 1.3, RY + 1.1, '#bcc7a6');
+                this.groundEllipse(OX, OY, RX + 1.2, RY + 1.1, GROUND);
+                this.groundEllipse(OX, OY + 0.15, RX + 0.3, RY + 0.3, SURFACE);
+                const S = this.scale;
+                if (TERRAIN === 'forest') {
+                    for (let tree = 0; tree < 9; tree++) {
+                        const P = this.project(
+                            OX + (LOOK(INDEX, 40 + tree) - 0.5) * RX * 1.7,
+                            OY + (LOOK(INDEX, 60 + tree) - 0.5) * RY * 1.6,
+                            0,
+                        );
+                        this.ellipse(P.x, P.y - 0.9 * S, 0.9 * S, 0.8 * S, '#9db58a');
+                        this.ellipse(P.x, P.y - 0.2 * S, 0.12 * S, 0.35 * S, '#8a7a5a');
+                    }
+                } else if (TERRAIN === 'rock') {
+                    for (let rock = 0; rock < 7; rock++) {
+                        const P = this.project(
+                            OX + (LOOK(INDEX, 80 + rock) - 0.5) * RX * 1.7,
+                            OY + (LOOK(INDEX, 100 + rock) - 0.5) * RY * 1.6,
+                            0,
+                        );
+                        this.ellipse(P.x, P.y - 0.4 * S, 1.1 * S, 0.7 * S, '#a79f8d');
+                        this.ellipse(P.x - 0.2 * S, P.y - 0.6 * S, 0.6 * S, 0.35 * S, '#c5bfae');
+                    }
+                } else if (TERRAIN === 'swamp') {
+                    for (let pool = 0; pool < 5; pool++) {
+                        this.groundEllipse(
+                            OX + (LOOK(INDEX, 120 + pool) - 0.5) * RX * 1.6,
+                            OY + (LOOK(INDEX, 140 + pool) - 0.5) * RY * 1.5,
+                            2.2 + 1.6 * LOOK(INDEX, 160 + pool),
+                            1.4,
+                            '#9fbfc4',
+                        );
+                    }
+                }
+                const PLOT_ID = PLOT_AT.get(INDEX);
+                if (PLOT_ID) {
+                    // Another farm: its units, where they last stood, and a roof.
+                    for (const U of world.unitCollection.unitsInPlot(PLOT_ID)) {
+                        const SWAY = Math.sin(this.displayTimeMs * 0.0006 + U.seed) * 0.5,
+                            P = this.project(OX + U.x + SWAY, OY + U.y, 0);
+                        this.ellipse(P.x, P.y, U.size * 0.5 * S, U.size * 0.31 * S, 'rgba(42,61,35,0.2)');
+                        this.ellipse(P.x, P.y - U.size * 0.45 * S, U.size * 0.4 * S, U.size * 0.4 * S, '#ddd3a8');
+                    }
+                }
+            }
+        }
     }
     terrain(sim2) {
         const S = this.scale,
@@ -617,6 +803,10 @@ const DIORAMA = class Diorama {
             height: this.canvas.height,
             clearColor: [0.9, 0.92, 0.87, 1],
         });
+        if (sim2.scene === 'farm' && this.backdrop) {
+            this.syncBackdrop(this.backdrop);
+            this.drawBackdrop(this.backdrop);
+        }
         this.terrain(sim2);
         for (const U of sim2.units) {
             const A = clamp(0.22 / (1 + U.z * 0.3), 0.045, 0.22),

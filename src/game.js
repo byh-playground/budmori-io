@@ -2284,7 +2284,7 @@
       (farm) => farm && typeof farm === "object" && Object.keys(farm).sort().join(",") === "plotId,tile" && typeof farm.plotId === "string" && farm.plotId.length > 0 && Number.isSafeInteger(farm.tile) && LIT.has(farm.tile)
     );
   }
-  var WORLD_MAP_SETTINGS, SIDE, WORLD_MAP_TILE_COUNT, NEIGHBOURS, REACH_PROVIDERS, TERRAIN_NAMES, SORTED_INDEXES;
+  var WORLD_MAP_SETTINGS, FARM_CELL, SIDE, WORLD_MAP_TILE_COUNT, NEIGHBOURS, REACH_PROVIDERS, TERRAIN_NAMES, SORTED_INDEXES;
   var init_world_map = __esm({
     "src/world-map.js"() {
       init_boss_rewards();
@@ -2304,6 +2304,7 @@
         // How far from a farm explorers may lift the fog, in tiles (a square around the farm). Towers add to it.
         baseReach: 2
       };
+      FARM_CELL = { width: 50, height: 38 };
       SIDE = WORLD_MAP_SETTINGS.radius * 2 + 1;
       WORLD_MAP_TILE_COUNT = SIDE * SIDE;
       NEIGHBOURS = [
@@ -7022,6 +7023,9 @@
         // around the middle and piled up there. Spots are spread evenly over the ground (square root of the radius),
         // and the same unit and time always pick the same spot.
         wander(world, unit, dt) {
+          if (unit.migrate && world.stepMigrant(unit, dt)) {
+            return;
+          }
           const ARENA = this.config.farm.arena, PERIOD = WANDER_SECONDS_MIN + WANDER_SECONDS_SPREAD * wanderUnit(unit.seed, 7), EPOCH = Math.floor(world.time / PERIOD + wanderUnit(unit.seed, 3)), ANGLE = wanderUnit(unit.seed, EPOCH * 2 + 11) * Math.PI * 2, RADIUS2 = Math.sqrt(wanderUnit(unit.seed, EPOCH * 2 + 12)) * WANDER_EXTENT, X = Math.cos(ANGLE) * RADIUS2 * ARENA.radiusX, Y = Math.sin(ANGLE) * RADIUS2 * ARENA.radiusY;
           if (Math.hypot(X - unit.x, Y - unit.y) < WANDER_ARRIVE) {
             return;
@@ -8684,6 +8688,9 @@
               wood: Object.freeze({ count: 1, amount: 8 }),
               stone: Object.freeze({ count: 1, amount: 8 })
             }),
+            // Resting units drift to a neighbouring farm that has more room: one at a time, every few seconds,
+            // when the neighbour is at least this much emptier (as a share of its size) and not nearly full.
+            migration: Object.freeze({ intervalSeconds: 20, emptierBy: 0.15, neighbourMaxFill: 0.9 }),
             facilitySpacing: 7,
             facilityRowX: 2,
             facilityRowY: 7.6,
@@ -11113,6 +11120,83 @@
           }
           return rate;
         }
+        // Farms on neighbouring tiles of the shared map; a resting unit may walk across the border to one that has room.
+        _neighbourPlots() {
+          const FARMS = this.worldMap.farms, HERE = FARMS.find((farm) => farm.plotId === this.activePlotId);
+          if (!HERE) {
+            return [];
+          }
+          return FARMS.filter(
+            (farm) => farm !== HERE && Math.max(
+              Math.abs(tileX(farm.tile) - tileX(HERE.tile)),
+              Math.abs(tileY(farm.tile) - tileY(HERE.tile))
+            ) === 1
+          ).map((farm) => ({
+            plotId: farm.plotId,
+            // The way out, in this farm's coordinates (the map's y runs down the screen, the farm's up).
+            angle: Math.atan2(-(tileY(farm.tile) - tileY(HERE.tile)), tileX(farm.tile) - tileX(HERE.tile))
+          }));
+        }
+        _fillOf(plotId) {
+          const PLOT = this.farmPlots.get(plotId);
+          return PLOT ? (this.roster.placedPopulation(plotId) + (this._breedPlotReservations.get(plotId) || 0)) / PLOT.capacity : 1;
+        }
+        _stepMigration(seconds) {
+          const SETTINGS = CONFIG.farm.work.migration;
+          this._migrationClock = (this._migrationClock || 0) + seconds;
+          if (this._migrationClock < SETTINGS.intervalSeconds || this.farmBossEvent?.phase !== "idle") {
+            return;
+          }
+          this._migrationClock = 0;
+          if (this.units.some((unit) => unit.migrate)) {
+            return;
+          }
+          const HERE = this._fillOf(this.activePlotId);
+          let target = null;
+          for (const NEIGHBOUR of this._neighbourPlots()) {
+            const FILL = this._fillOf(NEIGHBOUR.plotId);
+            if (HERE - FILL >= SETTINGS.emptierBy && FILL < SETTINGS.neighbourMaxFill && (!target || FILL < target.fill)) {
+              target = { ...NEIGHBOUR, fill: FILL };
+            }
+          }
+          if (!target) {
+            return;
+          }
+          const RESIDENTS = this.unitCollection.residentsInPlot(this.activePlotId), COUNTS = /* @__PURE__ */ new Map();
+          for (const UNIT3 of RESIDENTS) {
+            COUNTS.set(UNIT3.species, (COUNTS.get(UNIT3.species) || 0) + 1);
+          }
+          const CANDIDATES = RESIDENTS.filter(
+            (unit) => !this.isWorker(unit) && !unit.mateId && !this.breedPlanFor(unit) && unit.hp > 0 && (COUNTS.get(unit.species) || 0) > 2
+          );
+          if (CANDIDATES.length) {
+            CANDIDATES[this.simulationTick % CANDIDATES.length].migrate = {
+              plotId: target.plotId,
+              angle: target.angle
+            };
+          }
+        }
+        // One step of a unit on its way to the border; it crosses when it gets there. False when it no longer goes.
+        stepMigrant(unit, dt) {
+          const MIGRATE = unit.migrate, TARGET = MIGRATE && this._neighbourPlots().find((plot) => plot.plotId === MIGRATE.plotId);
+          if (!TARGET || unit.plotId !== this.activePlotId || this.isWorker(unit) || this._fillOf(TARGET.plotId) >= CONFIG.farm.work.migration.neighbourMaxFill) {
+            delete unit.migrate;
+            return false;
+          }
+          const ARENA = CONFIG.farm.arena, X = Math.cos(TARGET.angle) * (ARENA.radiusX - 1), Y = Math.sin(TARGET.angle) * (ARENA.radiusY - 0.8);
+          if (Math.hypot(X - unit.x, Y - unit.y) > 1.4) {
+            this.steer(unit, X, Y, dt, scaleMoveSpeed(1.7, unit));
+            return true;
+          }
+          delete unit.migrate;
+          if (this.unitCollection.moveUnitsToPlots([{ unitId: unit.id, plotId: TARGET.plotId }])) {
+            unit.x = Math.cos(TARGET.angle + Math.PI) * (ARENA.radiusX - 1.5);
+            unit.y = Math.sin(TARGET.angle + Math.PI) * (ARENA.radiusY - 1.2);
+            unit.moveControlVx = unit.moveControlVy = unit.vx = unit.vy = 0;
+            this.markProgressChanged();
+          }
+          return true;
+        }
         advanceAutoTaps(elapsed) {
           if (!Number.isFinite(elapsed) || elapsed <= 0) {
             return;
@@ -11124,6 +11208,7 @@
           if (this.scene === "farm") {
             stepWork(this, CONFIG, Math.min(elapsed, 0.1));
             this.tickExploration(Math.min(elapsed, 0.1));
+            this._stepMigration(Math.min(elapsed, 0.1));
           }
         }
         spawnFood(x, y, count = 1, { allowBossEvent = true, from = null } = {}) {
@@ -14882,7 +14967,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.13.6";
+      PRODUCT_VERSION = "0.13.7";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -17741,6 +17826,7 @@
   // src/farm-renderer.js
   init_farm_model();
   init_farm_work();
+  init_world_map();
 
   // src/attack-telegraph.js
   var TAU4 = Math.PI * 2;
@@ -17849,6 +17935,8 @@
   var GRADE_RING_COLORS = UNIT_GRADES.map(({ outlineColor }) => outlineColor);
   var GRADE_RING_WIDTHS = UNIT_GRADES.map(({ tier }) => 0.05 + 0.012 * (tier - 2));
   var CORN_ATTACHMENT_PRESENTATION = new CornAttachmentPresentation();
+  var MIN_TILE = (map, axis) => Math.min(...map.revealed.map((index) => axis === "x" ? tileX(index) : tileY(index)));
+  var MAX_TILE = (map, axis) => Math.max(...map.revealed.map((index) => axis === "x" ? tileX(index) : tileY(index)));
   var DIORAMA = class Diorama {
     constructor(canvas) {
       this.canvas = canvas;
@@ -17996,6 +18084,12 @@
         bottom: -(RY + 1.3) * import_vector_sockets5.WORLD_DEPTH_PROJECTION,
         top: (RY + 1.3) * import_vector_sockets5.WORLD_DEPTH_PROJECTION
       };
+      if (this.extent && scene === "farm") {
+        BOUNDS.left = Math.min(BOUNDS.left, this.extent.left - RX - 1.3);
+        BOUNDS.right = Math.max(BOUNDS.right, this.extent.right + RX + 1.3);
+        BOUNDS.bottom = Math.min(BOUNDS.bottom, (this.extent.bottom - RY - 1.3) * import_vector_sockets5.WORLD_DEPTH_PROJECTION);
+        BOUNDS.top = Math.max(BOUNDS.top, (this.extent.top + RY + 1.3) * import_vector_sockets5.WORLD_DEPTH_PROJECTION);
+      }
       const BOSS_SCALE = (0, import_vector_sockets5.bossVectorScale)(CONFIG.boss.radius), BOSS_X = RX - CONFIG.boss.radius, BOSS_Y = (RY - CONFIG.boss.radius) * import_vector_sockets5.WORLD_DEPTH_PROJECTION;
       const INCLUDE_BOSS = (record) => {
         const [X, Y, W, H] = record.compiled.viewBox, G = record.anchors.ground;
@@ -18153,6 +18247,155 @@
       C.moveTo(a.x, a.y);
       C.lineTo(b.x, b.y);
       C.stroke();
+    }
+    // The land around the farm on screen: lit tiles of the shared map as meadows, with the units of the other
+    // farms standing on theirs, and one ring of fog beyond. Nothing here is simulated; it is only drawn.
+    farmTileOf(world, plotId) {
+      return world.worldMap.farms.find((farm) => farm.plotId === plotId)?.tile ?? null;
+    }
+    backdropExtent(world) {
+      const MAP = world.worldMap, HERE = this.farmTileOf(world, world.activePlotId);
+      if (HERE === null) {
+        return null;
+      }
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const INDEX of MAP.revealed) {
+        minX = Math.min(minX, tileX(INDEX));
+        maxX = Math.max(maxX, tileX(INDEX));
+        minY = Math.min(minY, tileY(INDEX));
+        maxY = Math.max(maxY, tileY(INDEX));
+      }
+      const FX = tileX(HERE), FY = tileY(HERE);
+      return {
+        key: `${minX},${maxX},${minY},${maxY},${FX},${FY}`,
+        left: (minX - 1 - FX) * FARM_CELL.width,
+        right: (maxX + 1 - FX) * FARM_CELL.width,
+        bottom: -(maxY + 1 - FY) * FARM_CELL.height,
+        top: -(minY - 1 - FY) * FARM_CELL.height
+      };
+    }
+    // Keeps the camera limits, and the camera itself, in step with the land and with which farm is on screen.
+    syncBackdrop(world) {
+      const EXTENT = this.backdropExtent(world);
+      if (EXTENT && EXTENT.key !== this.extent?.key) {
+        this.extent = EXTENT;
+        this.configure(this.scene, true);
+      }
+      const PLOT = world.activePlotId;
+      if (this.shownPlot !== void 0 && this.shownPlot !== PLOT) {
+        const FROM = this.farmTileOf(world, this.shownPlot), TO = this.farmTileOf(world, PLOT);
+        if (this.cameraSwitch === PLOT && FROM !== null && TO !== null) {
+          const OX = (tileX(TO) - tileX(FROM)) * FARM_CELL.width, OY = -(tileY(TO) - tileY(FROM)) * FARM_CELL.height;
+          this.pan.x += OX;
+          this.pan.y += OY * import_vector_sockets5.WORLD_DEPTH_PROJECTION;
+          this.extent = this.backdropExtent(world);
+          this.configure(this.scene, true);
+        } else {
+          this.resetPan();
+        }
+        this.cameraSwitch = null;
+      }
+      this.shownPlot = PLOT;
+    }
+    // The farm whose ground the middle of the screen is over, when it is not the one being simulated.
+    cameraPlot(world) {
+      const HERE = this.farmTileOf(world, world.activePlotId);
+      if (HERE === null || !this.scale) {
+        return null;
+      }
+      const CENTRE = {
+        x: this.canvas.width / 2 / this.scale - this.offset[0] - this.view[0],
+        y: (this.view[1] - this.canvas.height / 2 / this.scale - this.offset[1]) / import_vector_sockets5.WORLD_DEPTH_PROJECTION
+      }, DX = Math.round(CENTRE.x / FARM_CELL.width), DY = -Math.round(CENTRE.y / FARM_CELL.height);
+      if (DX === 0 && DY === 0) {
+        return null;
+      }
+      const TILE = tileIndex(tileX(HERE) + DX, tileY(HERE) + DY);
+      const FARM = world.worldMap.farms.find((farm) => farm.tile === TILE);
+      return FARM && isRevealed(world.worldMap, TILE) ? FARM.plotId : null;
+    }
+    drawBackdrop(world) {
+      const MAP = world.worldMap, HERE = this.farmTileOf(world, world.activePlotId);
+      if (HERE === null) {
+        return;
+      }
+      const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena, PRESENTATION = this.scenePresentation, FX = tileX(HERE), FY = tileY(HERE), LIT = new Set(MAP.revealed), MARGIN = FARM_CELL.width * this.scale, PLOT_AT = new Map(MAP.farms.map((farm) => [farm.tile, farm.plotId]));
+      const LOOK = (index, salt) => {
+        let h = Math.imul(index + 1, 2654435761) ^ Math.imul(salt, 2246822507);
+        h = Math.imul(h ^ h >>> 15, 739982445);
+        return ((h ^ h >>> 12) >>> 0) / 4294967296;
+      };
+      const PAINT = {
+        plain: [PRESENTATION.groundColor, PRESENTATION.surfaceColor],
+        forest: ["#b7c9a4", "#c4d5b1"],
+        rock: ["#cbc6b3", "#d9d4c3"],
+        swamp: ["#b5c9be", "#c5d7cc"]
+      };
+      for (let ty = MIN_TILE(MAP, "y") - 1; ty <= MAX_TILE(MAP, "y") + 1; ty++) {
+        for (let tx = MIN_TILE(MAP, "x") - 1; tx <= MAX_TILE(MAP, "x") + 1; tx++) {
+          const INDEX = tileIndex(tx, ty);
+          if (INDEX === HERE || Math.abs(tx) > 12 || Math.abs(ty) > 12) {
+            continue;
+          }
+          const OX = (tx - FX) * FARM_CELL.width, OY = -(ty - FY) * FARM_CELL.height, AT = this.project(OX, OY, 0);
+          if (AT.x < -MARGIN || AT.x > this.canvas.width + MARGIN || AT.y < -MARGIN || AT.y > this.canvas.height + MARGIN) {
+            continue;
+          }
+          if (!LIT.has(INDEX)) {
+            const NEXT_TO_LIT = [-1, 0, 1].some(
+              (dy) => [-1, 0, 1].some((dx) => (dx || dy) && LIT.has(tileIndex(tx + dx, ty + dy)))
+            );
+            if (NEXT_TO_LIT) {
+              this.groundEllipse(OX, OY, RX + 1.2, RY + 1, "#e6e1cc");
+            }
+            continue;
+          }
+          const TERRAIN = tileTerrain(MAP, INDEX), [GROUND, SURFACE] = PAINT[TERRAIN];
+          this.groundEllipse(OX, OY - 0.2, RX + 1.3, RY + 1.1, "#bcc7a6");
+          this.groundEllipse(OX, OY, RX + 1.2, RY + 1.1, GROUND);
+          this.groundEllipse(OX, OY + 0.15, RX + 0.3, RY + 0.3, SURFACE);
+          const S = this.scale;
+          if (TERRAIN === "forest") {
+            for (let tree = 0; tree < 9; tree++) {
+              const P = this.project(
+                OX + (LOOK(INDEX, 40 + tree) - 0.5) * RX * 1.7,
+                OY + (LOOK(INDEX, 60 + tree) - 0.5) * RY * 1.6,
+                0
+              );
+              this.ellipse(P.x, P.y - 0.9 * S, 0.9 * S, 0.8 * S, "#9db58a");
+              this.ellipse(P.x, P.y - 0.2 * S, 0.12 * S, 0.35 * S, "#8a7a5a");
+            }
+          } else if (TERRAIN === "rock") {
+            for (let rock = 0; rock < 7; rock++) {
+              const P = this.project(
+                OX + (LOOK(INDEX, 80 + rock) - 0.5) * RX * 1.7,
+                OY + (LOOK(INDEX, 100 + rock) - 0.5) * RY * 1.6,
+                0
+              );
+              this.ellipse(P.x, P.y - 0.4 * S, 1.1 * S, 0.7 * S, "#a79f8d");
+              this.ellipse(P.x - 0.2 * S, P.y - 0.6 * S, 0.6 * S, 0.35 * S, "#c5bfae");
+            }
+          } else if (TERRAIN === "swamp") {
+            for (let pool = 0; pool < 5; pool++) {
+              this.groundEllipse(
+                OX + (LOOK(INDEX, 120 + pool) - 0.5) * RX * 1.6,
+                OY + (LOOK(INDEX, 140 + pool) - 0.5) * RY * 1.5,
+                2.2 + 1.6 * LOOK(INDEX, 160 + pool),
+                1.4,
+                "#9fbfc4"
+              );
+            }
+          }
+          const PLOT_ID = PLOT_AT.get(INDEX);
+          if (PLOT_ID) {
+            for (const U of world.unitCollection.unitsInPlot(PLOT_ID)) {
+              const SWAY = Math.sin(this.displayTimeMs * 6e-4 + U.seed) * 0.5, P = this.project(OX + U.x + SWAY, OY + U.y, 0);
+              this.ellipse(P.x, P.y, U.size * 0.5 * S, U.size * 0.31 * S, "rgba(42,61,35,0.2)");
+              this.ellipse(P.x, P.y - U.size * 0.45 * S, U.size * 0.4 * S, U.size * 0.4 * S, "#ddd3a8");
+            }
+          }
+        }
+      }
     }
     terrain(sim2) {
       const S = this.scale, PRESENTATION = this.scenePresentation, { radiusX: RX, radiusY: RY } = CONFIG[sim2.scene].arena;
@@ -18352,6 +18595,10 @@
         height: this.canvas.height,
         clearColor: [0.9, 0.92, 0.87, 1]
       });
+      if (sim2.scene === "farm" && this.backdrop) {
+        this.syncBackdrop(this.backdrop);
+        this.drawBackdrop(this.backdrop);
+      }
       this.terrain(sim2);
       for (const U of sim2.units) {
         const A = CLAMP2(0.22 / (1 + U.z * 0.3), 0.045, 0.22), SHADOW = U.size * 0.66 / (1 + U.z * 0.65);
@@ -24265,7 +24512,8 @@
     const POINT2 = RENDERER.screenToWorld(e.clientX, e.clientY);
     panPointer = {
       id: e.pointerId,
-      mode: active.world.scene === "farm" ? "pending" : "pan",
+      // Food only goes on this farm's own ground; the land around it can be looked at and dragged.
+      mode: active.world.scene === "farm" && ARENA_GEOMETRY.inside(POINT2, "farm") ? "pending" : "pan",
       startX: e.clientX,
       startY: e.clientY,
       x: e.clientX,
@@ -24651,6 +24899,14 @@
       COMBAT_FEEL.observe(active.world, DISPLAY.displayTimeMs, DISPLAY.presentationRevision, NOTICES);
       PERFORMANCE_DIAGNOSTICS.end("presentation", PRESENTATION_START);
       const RENDER_START = PERFORMANCE_DIAGNOSTICS.start();
+      RENDERER.backdrop = active.world.scene === "farm" ? active.world : null;
+      if (RENDERER.backdrop && panPointer?.mode === "pan") {
+        const NEXT_PLOT = RENDERER.cameraPlot(active.world);
+        if (NEXT_PLOT) {
+          RENDERER.cameraSwitch = NEXT_PLOT;
+          active.queue("farm-plot-switch", { plotId: NEXT_PLOT });
+        }
+      }
       RENDERER.render(DISPLAY, COMBAT_FEEL, DISPLAY.displayTimeMs);
       PERFORMANCE_DIAGNOSTICS.end("render", RENDER_START);
       const UI_START = PERFORMANCE_DIAGNOSTICS.start();
