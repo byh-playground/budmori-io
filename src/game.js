@@ -15667,7 +15667,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.19.1";
+      PRODUCT_VERSION = "0.19.2";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -22837,7 +22837,7 @@
   var CLAMP3 = (value, min, max) => Math.min(max, Math.max(min, value));
   var EASE_OUT_BACK = (t) => 1 + 2.2 * (t - 1) ** 3 + 1.2 * (t - 1) ** 2;
   function createWorldMapView(canvas, { interactive = false, onSelect = () => {
-  }, fps = 30 } = {}) {
+  }, fps = 30, bossSprite = () => null } = {}) {
     const CONTEXT = canvas.getContext("2d");
     const CAMERA = { x: 0, y: 0, scale: 28 };
     const POINTERS = /* @__PURE__ */ new Map();
@@ -23025,6 +23025,41 @@
       CONTEXT.fillStyle = "#c9a15a";
       CONTEXT.fillRect(x + s * 0.28, y + s * 0.44, s * 0.44, s * 0.08);
     }
+    function drawBoss(x, y, s, index, danger, open, now, species) {
+      const SPRITE = bossSprite(species);
+      if (!SPRITE || !SPRITE.complete || !SPRITE.naturalWidth) {
+        drawNest(x, y, s, danger, open, now);
+        return;
+      }
+      const BOB = Math.sin(now / 380 + index) * s * 0.025, SIZE = s * (0.7 + Math.min(0.2, danger * 0.02));
+      CONTEXT.fillStyle = "rgba(0,0,0,0.16)";
+      CONTEXT.beginPath();
+      CONTEXT.ellipse(x + s * 0.5, y + s * 0.84, SIZE * 0.36, SIZE * 0.1, 0, 0, Math.PI * 2);
+      CONTEXT.fill();
+      CONTEXT.drawImage(SPRITE, x + (s - SIZE) / 2, y + s * 0.86 - SIZE + BOB, SIZE, SIZE);
+      if (s >= 16) {
+        const FONT = Math.max(9, s * 0.3), LABEL = String(danger);
+        CONTEXT.font = `700 ${FONT}px system-ui, sans-serif`;
+        const BADGE_WIDTH = CONTEXT.measureText(LABEL).width + FONT * 0.7;
+        CONTEXT.fillStyle = COLORS.paper;
+        CONTEXT.beginPath();
+        CONTEXT.roundRect(x + s - BADGE_WIDTH - s * 0.04, y + s * 0.04, BADGE_WIDTH, FONT * 1.2, FONT * 0.5);
+        CONTEXT.fill();
+        CONTEXT.fillStyle = COLORS.ink;
+        CONTEXT.textAlign = "center";
+        CONTEXT.textBaseline = "middle";
+        CONTEXT.fillText(LABEL, x + s - BADGE_WIDTH / 2 - s * 0.04, y + s * 0.04 + FONT * 0.62);
+      }
+      if (open) {
+        CONTEXT.strokeStyle = COLORS.nest;
+        CONTEXT.globalAlpha = 0.55 + 0.45 * Math.sin(now / 260);
+        CONTEXT.lineWidth = 2.5;
+        CONTEXT.beginPath();
+        CONTEXT.roundRect(x + 1.5, y + 1.5, s - 3, s - 3, s * 0.18);
+        CONTEXT.stroke();
+        CONTEXT.globalAlpha = 1;
+      }
+    }
     function drawNest(x, y, s, danger, open, now) {
       CONTEXT.fillStyle = COLORS.nest;
       CONTEXT.beginPath();
@@ -23181,7 +23216,16 @@
           if (FARMS.has(INDEX)) {
             drawFarm(PX, PY, S);
           } else if (hasBoss(map, INDEX)) {
-            drawNest(PX, PY, S, tileDanger(map, INDEX), canChallenge(map, INDEX), now);
+            drawBoss(
+              PX,
+              PY,
+              S,
+              INDEX,
+              tileDanger(map, INDEX),
+              canChallenge(map, INDEX),
+              now,
+              tileSpecies(map, INDEX)
+            );
           }
         }
       }
@@ -23956,11 +24000,28 @@
       rate: personalGarden.exploreRate
     };
   }
+  var MAP_BOSS_SPRITES = /* @__PURE__ */ new Map();
+  function mapBossSprite(species) {
+    if (MAP_BOSS_SPRITES.has(species)) {
+      return MAP_BOSS_SPRITES.get(species);
+    }
+    MAP_BOSS_SPRITES.set(species, null);
+    const ENTRY = speciesById(species);
+    if (ENTRY) {
+      createNeutralBossPreview(species, ENTRY.asset).then((svg) => {
+        const IMAGE = new Image();
+        IMAGE.onload = () => MAP_BOSS_SPRITES.set(species, IMAGE);
+        IMAGE.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(svg))}`;
+      }).catch((error) => console.error("Unable to load map boss sprite", error));
+    }
+    return null;
+  }
   function startWorldMapView() {
     worldMapView ??= createWorldMapView(DOLLAR2("worldMapCanvas"), {
       interactive: true,
       onSelect: selectWorldMapTile,
-      fps: 30
+      fps: 30,
+      bossSprite: mapBossSprite
     });
     worldMapView.start(worldMapFrame);
   }
@@ -23973,7 +24034,7 @@
       MINI.hidden = !visible;
     }
     if (visible && !miniMapView) {
-      miniMapView = createWorldMapView(DOLLAR2("miniMapCanvas"), { fps: 12 });
+      miniMapView = createWorldMapView(DOLLAR2("miniMapCanvas"), { fps: 12, bossSprite: mapBossSprite });
       miniMapView.start(worldMapFrame);
     } else if (!visible && miniMapView) {
       miniMapView.stop();
