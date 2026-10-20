@@ -70,7 +70,7 @@ Cull은 죽음이나 inventory detach가 아니다. HP/deadEffect 변경, death/
 
 ## 이전 검증 기록 (아카이브)
 
-아래 PASS 기록은 당시 임시 검증 파일로 확인한 개발 이력이며 현재 재실행 가능한 테스트 목록이 아닙니다. 프로젝트의 영구 브라우저 검증은 `tests/farm.e2e.mjs`의 사용자 흐름만 유지하고, 현재 PR CI는 `npm ci`와 `npm run build`를 실행합니다.
+아래 PASS 기록은 당시 임시 검증 파일로 확인한 개발 이력이며 현재 재실행 가능한 테스트 목록이 아닙니다. 프로젝트의 영구 브라우저 검증은 `tests/smoke.e2e.mjs`의 스모크 흐름만 유지하고, 현재 PR CI는 `npm ci`와 `npm run build`를 실행합니다.
 
 최종 HTML에서 `BLOOM_COMBAT_BASELINE=<검증된 pinned HTML> npm test` 전체 PASS. 초기 별도 checkout에는 기존 validator 기준 Git 객체가 없었으나, 원본 checkout의 정확한 d0636e4 이력을 read-only fetch하여 해결한 뒤 최종 전체 suite를 재실행했다. 테스트 기준이나 assertion을 약화하지 않았다.
 
