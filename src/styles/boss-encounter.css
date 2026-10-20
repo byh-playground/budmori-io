@@ -347,3 +347,7 @@
     font-weight: var(--ui-fw-b);
     color: var(--ui-ink-2);
 }
+/* A button that cannot do its job yet stays pressable (it says why) but looks resting. */
+#bossEncounterChallenge[aria-disabled='true'] {
+    opacity: 0.55;
+}
