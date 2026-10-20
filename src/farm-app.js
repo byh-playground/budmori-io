@@ -2597,7 +2597,14 @@ function sync(display, now, notices) {
     syncText('bossName', !RAID && BOSS.stage ? `${ENCOUNTER_NAME} · 레이드 ${BOSS.stage}단계` : ENCOUNTER_NAME);
     syncAttribute('bossHealth', 'aria-label', `${ENCOUNTER_NAME} 체력`);
     syncText('bossHealthText', Math.ceil(BOSS.hp) + ' / ' + BOSS.maxHp + ' HP');
-    syncText('bossHealthNote', FARM_EVENT_ACTIVE ? '상대 능력치 고정' : '쓰러진 병력 포함 최대 체력');
+    syncText(
+        'bossHealthNote',
+        RAID && W.running
+            ? `남은 시간 ${Math.max(0, Math.ceil(W.raidTimeLimit() - W.encounter.elapsed))}초`
+            : FARM_EVENT_ACTIVE
+              ? '상대 능력치 고정'
+              : '쓰러진 병력 포함 최대 체력',
+    );
     syncAttribute('allyHealth', 'aria-valuenow', armyCurrent);
     syncAttribute('allyHealth', 'aria-valuemax', armyMax);
     syncAttribute('bossHealth', 'aria-valuenow', BOSS.hp);
@@ -2609,7 +2616,7 @@ function sync(display, now, notices) {
             ? BATTLE_OUTCOME === 'victory'
                 ? `${STAGE_NAME} · ${ENCOUNTER_NAME} 승리 · +${SETTLED_REWARD?.xp?.amount ?? bossStageStats(BOSS.stage || 1).xp} XP · ${SETTLED_REWARD ? rewardReceiptSummary(SETTLED_REWARD_RECEIPT || SETTLED_REWARD.acquisition) : '농장으로 돌아가면 보상을 받아요'}`
                 : BATTLE_OUTCOME === 'defeat'
-                  ? `${STAGE_NAME} · ${ENCOUNTER_NAME} 패배 · 농장에서 다시 준비해요`
+                  ? `${STAGE_NAME} · ${ENCOUNTER_NAME} 패배${W.encounter.elapsed >= W.raidTimeLimit() ? '(시간 초과)' : ''} · 농장에서 다시 준비해요`
                   : ''
             : BATTLE_OUTCOME === 'victory'
               ? FARM_EVENT.rewardStatus === 'granted'

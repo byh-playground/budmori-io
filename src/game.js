@@ -12011,6 +12011,10 @@
             }
           };
         }
+        // A boss fight lasts 90 seconds at stage 1 and 10 seconds longer for every stage after it.
+        raidTimeLimit() {
+          return 90 + 10 * Math.max(0, (this.boss.stage ?? 1) - 1);
+        }
         configureBossStage(stage, species = this.boss.species) {
           const STATS2 = bossStageStats(stage);
           this.boss.generation = ++this.entityGenerationSerial;
@@ -15061,9 +15065,13 @@
             }
             return;
           }
-          if (this.running && this.raidRosters.length && this.raidRosters.every((r) => r.troops.every((t) => t.deployed)) && !this.units.some((u) => hasFaction(u, FACTION_CONFIG.PLAYER) && u.hp > 0)) {
-            this.finish("defeat");
-            return;
+          if (this.running && this.raidRosters.length) {
+            const ALIVE = this.units.some((u) => hasFaction(u, FACTION_CONFIG.PLAYER) && u.hp > 0);
+            this._raidFielded ||= ALIVE;
+            if (this._raidFielded && !ALIVE || this.encounter.elapsed >= this.raidTimeLimit()) {
+              this.finish("defeat");
+              return;
+            }
           }
           if (B_LOCAL.stun > 0) {
             B_LOCAL.stun = Math.max(0, B_LOCAL.stun - dt);
@@ -15667,7 +15675,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.19.2";
+      PRODUCT_VERSION = "0.19.3";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -25626,7 +25634,10 @@
     syncText("bossName", !RAID && BOSS2.stage ? `${ENCOUNTER_NAME} · 레이드 ${BOSS2.stage}단계` : ENCOUNTER_NAME);
     syncAttribute("bossHealth", "aria-label", `${ENCOUNTER_NAME} 체력`);
     syncText("bossHealthText", Math.ceil(BOSS2.hp) + " / " + BOSS2.maxHp + " HP");
-    syncText("bossHealthNote", FARM_EVENT_ACTIVE ? "상대 능력치 고정" : "쓰러진 병력 포함 최대 체력");
+    syncText(
+      "bossHealthNote",
+      RAID && W.running ? `남은 시간 ${Math.max(0, Math.ceil(W.raidTimeLimit() - W.encounter.elapsed))}초` : FARM_EVENT_ACTIVE ? "상대 능력치 고정" : "쓰러진 병력 포함 최대 체력"
+    );
     syncAttribute("allyHealth", "aria-valuenow", armyCurrent);
     syncAttribute("allyHealth", "aria-valuemax", armyMax);
     syncAttribute("bossHealth", "aria-valuenow", BOSS2.hp);
@@ -25634,7 +25645,7 @@
     syncWidth("bossHealth", BOSS2.maxHp ? BOSS2.hp / BOSS2.maxHp * 100 + "%" : "0%");
     syncText(
       "battleOutcome",
-      RAID ? BATTLE_OUTCOME === "victory" ? `${STAGE_NAME} · ${ENCOUNTER_NAME} 승리 · +${SETTLED_REWARD?.xp?.amount ?? bossStageStats(BOSS2.stage || 1).xp} XP · ${SETTLED_REWARD ? rewardReceiptSummary(SETTLED_REWARD_RECEIPT || SETTLED_REWARD.acquisition) : "농장으로 돌아가면 보상을 받아요"}` : BATTLE_OUTCOME === "defeat" ? `${STAGE_NAME} · ${ENCOUNTER_NAME} 패배 · 농장에서 다시 준비해요` : "" : BATTLE_OUTCOME === "victory" ? FARM_EVENT.rewardStatus === "granted" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 농장에 합류했어요` : FARM_EVENT.rewardStatus === "pending" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요` : `${ENCOUNTER_NAME} 격파` : BATTLE_OUTCOME === "defeat" ? `${ENCOUNTER_NAME} 레이드 종료 · 병력이 회복하는 동안 잠자요` : ""
+      RAID ? BATTLE_OUTCOME === "victory" ? `${STAGE_NAME} · ${ENCOUNTER_NAME} 승리 · +${SETTLED_REWARD?.xp?.amount ?? bossStageStats(BOSS2.stage || 1).xp} XP · ${SETTLED_REWARD ? rewardReceiptSummary(SETTLED_REWARD_RECEIPT || SETTLED_REWARD.acquisition) : "농장으로 돌아가면 보상을 받아요"}` : BATTLE_OUTCOME === "defeat" ? `${STAGE_NAME} · ${ENCOUNTER_NAME} 패배${W.encounter.elapsed >= W.raidTimeLimit() ? "(시간 초과)" : ""} · 농장에서 다시 준비해요` : "" : BATTLE_OUTCOME === "victory" ? FARM_EVENT.rewardStatus === "granted" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 농장에 합류했어요` : FARM_EVENT.rewardStatus === "pending" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요` : `${ENCOUNTER_NAME} 격파` : BATTLE_OUTCOME === "defeat" ? `${ENCOUNTER_NAME} 레이드 종료 · 병력이 회복하는 동안 잠자요` : ""
     );
     syncFlag(
       "battleOutcome",
