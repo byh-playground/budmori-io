@@ -971,8 +971,6 @@ export function validateSnapshot(raw) {
             validatePath(A.path);
         }
     }
-    ASSERT(['idle', 'fighting', 'victory', 'defeat'].includes(raw.encounter.outcome) && raw.encounter.elapsed >= 0);
-    ASSERT(raw.running === (raw.encounter.outcome === 'fighting'));
     return true;
 }
 function validatePath(p) {

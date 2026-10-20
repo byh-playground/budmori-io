@@ -199,11 +199,6 @@ export const FARM_SNAPSHOT_SHAPE = {
     bossSummonSerial: 0,
     combatLog: [],
     scene: 'farm',
-    running: false,
-    encounter: {
-        outcome: 'idle',
-        elapsed: 0,
-    },
     farmBossEvent: {
         phase: 'idle',
         elapsed: 0,

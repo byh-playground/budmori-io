@@ -2423,7 +2423,7 @@
   }
   function applyOffline(world, config, rawSeconds) {
     const OFFLINE = config.farm.offline, WORK = config.farm.work, BREEDING = config.farm.breeding;
-    if (world.scene !== "farm" || world.running || world.farmBossEvent?.phase !== "idle") {
+    if (world.scene !== "farm" || world.farmBossEvent?.phase !== "idle") {
       return null;
     }
     const AWAY = Math.min(rawSeconds, OFFLINE.capSeconds);
@@ -3896,7 +3896,7 @@
           return this.world.farmBossEvent?.phase === "fighting";
         }
         editable() {
-          return this.world.scene === "farm" && !this.world.running && this.world.farmBossEvent?.phase === "idle";
+          return this.world.scene === "farm" && this.world.farmBossEvent?.phase === "idle";
         }
         purchase(id) {
           return this.world.mutationNotifications.run(() => {
@@ -9639,11 +9639,6 @@
           this.bossSummonSerial = 0;
           this.combatLog = [];
           this.scene = "farm";
-          this.running = false;
-          this.encounter = {
-            outcome: "idle",
-            elapsed: 0
-          };
           this.farmBossEvent = {
             phase: "idle",
             elapsed: 0,
@@ -9863,7 +9858,7 @@
           return PLOTS.find((plot) => OCCUPANCY.get(plot.id) < plot.capacity) || null;
         }
         switchFarmPlot(plotId) {
-          if (this.scene !== "farm" || this.running || this.farmBossEvent?.phase !== "idle" || !this.farmPlots.has(plotId)) {
+          if (this.scene !== "farm" || this.farmBossEvent?.phase !== "idle" || !this.farmPlots.has(plotId)) {
             return false;
           }
           if (plotId === this.activePlotId) {
@@ -9948,7 +9943,7 @@
           return true;
         }
         sortActiveFarm(order = "mixed") {
-          if (this.scene !== "farm" || this.running || this.farmBossEvent?.phase !== "idle" || this._breedPlans.size > 0 || !["species", "tier-high", "tier-low"].includes(order)) {
+          if (this.scene !== "farm" || this.farmBossEvent?.phase !== "idle" || this._breedPlans.size > 0 || !["species", "tier-high", "tier-low"].includes(order)) {
             return false;
           }
           const UNITS = this.unitCollection.residentsInPlot(this.activePlotId);
@@ -10007,7 +10002,7 @@
           return TIERS;
         }
         investAbilityNode(abilityId, nodeId) {
-          const IN_COMBAT = this.running || this.farmBossEvent?.phase !== "idle";
+          const IN_COMBAT = this.farmBossEvent?.phase !== "idle";
           const RESULT = purchaseAbilityNode(this.playerProgression, abilityId, nodeId, {
             location: this.scene,
             inCombat: IN_COMBAT,
@@ -10021,7 +10016,7 @@
           return RESULT;
         }
         investFarmUpgrade(nodeId) {
-          const IN_COMBAT = this.running || this.farmBossEvent?.phase !== "idle";
+          const IN_COMBAT = this.farmBossEvent?.phase !== "idle";
           const RESULT = purchaseFarmUpgrade(this.playerProgression, nodeId, {
             location: this.scene,
             inCombat: IN_COMBAT
@@ -10034,7 +10029,7 @@
           return RESULT;
         }
         resetProgression(scope) {
-          const IN_COMBAT = this.running || this.farmBossEvent?.phase !== "idle";
+          const IN_COMBAT = this.farmBossEvent?.phase !== "idle";
           const RESULT = resetPlayerProgression(this.playerProgression, scope, {
             location: this.scene,
             inCombat: IN_COMBAT
@@ -10614,7 +10609,7 @@
         // Starts a construction. The materials are paid up front; the work itself is done by the units.
         startBuild(kind, { tile = -1 } = {}) {
           const INFO = this.projectInfo(kind);
-          if (this.scene !== "farm" || !INFO || this.siteOf(kind) || kind === "plot" && (this.worldMap.buildTile >= 0 || !canBuildFarm(this.worldMap, tile)) || kind === "mine" && !canBuildMine(this.worldMap, tile, this.activePlotId) || this.running || this.farmBossEvent?.phase !== "idle" || this.materials.wood < INFO.cost.wood || this.materials.stone < INFO.cost.stone) {
+          if (this.scene !== "farm" || !INFO || this.siteOf(kind) || kind === "plot" && (this.worldMap.buildTile >= 0 || !canBuildFarm(this.worldMap, tile)) || kind === "mine" && !canBuildMine(this.worldMap, tile, this.activePlotId) || this.farmBossEvent?.phase !== "idle" || this.materials.wood < INFO.cost.wood || this.materials.stone < INFO.cost.stone) {
             return false;
           }
           this.materials.wood -= INFO.cost.wood;
@@ -11522,61 +11517,6 @@
           this.boss.hp = this.boss.maxHp = STATS2.hp;
           this.boss.attackPower = STATS2.attackPower;
           return this.boss;
-        }
-        setScene(scene) {
-          return this.mutateUnits(this._setScene, scene);
-        }
-        _setScene(scene) {
-          if (scene === this.scene) {
-            return;
-          }
-          this.formationSkills.end();
-          this.cancelMergeTasks();
-          this._foodSearchScheduler.cancelOwner(this);
-          this._foodSearchStates = /* @__PURE__ */ new WeakMap();
-          for (const UNIT_LOCAL of this.units) {
-            this.releaseMate(UNIT_LOCAL);
-          }
-          this.projectiles = [];
-          this.scene = scene;
-          this.running = false;
-          this.encounter = {
-            outcome: this.running ? "fighting" : "idle",
-            elapsed: 0
-          };
-          this.farmBossEvent = {
-            phase: "idle",
-            elapsed: 0,
-            outcome: "idle",
-            encounterId: 0,
-            rewardStatus: "none",
-            rewardChance: 0,
-            rewardRoll: 0,
-            rewardUnitId: 0
-          };
-          this.boss = this.createBoss(this.running ? this.randomBossSpecies() : 3);
-          const SCENE = SIMULATION_SCENES[scene];
-          const ID_MAP = new Map(this.units.map((u, index) => [u.id, SCENE.unitId(u, index)]));
-          for (let i = 0; i < this.units.length; i++) {
-            const U = this.units[i], OLD_MATE_ID = U.mateId;
-            SCENE.enterUnit(this, U, i);
-            U.mateId = ID_MAP.get(OLD_MATE_ID) || 0;
-            U.ability = CREATE_UNIT_ATTACK_CYCLE(U);
-            U.specialAbility = CREATE_UNIT_ATTACK_CYCLE.createSpecial(U);
-            U.ability.resetCombatEffects?.();
-            Object.assign(U, {
-              z: 0,
-              vx: 0,
-              vy: 0,
-              vz: 0,
-              stun: 0,
-              down: 0,
-              hp: STATS(U.tier, U.species).maxHp
-            });
-          }
-          this.unitCollection.refreshIndexes();
-          SCENE.setupRoster(this);
-          this._unitSpatialDirty = true;
         }
         canBreedPair(a, b, requireContact = false) {
           const BATCH = !this._spatialStepActive;
@@ -13791,33 +13731,6 @@
           }
           u.ability.begin(this, TARGET);
         }
-        finish(outcome) {
-          return this.mutateUnits(this._finish, outcome);
-        }
-        _finish(outcome) {
-          if (!this.running) {
-            return;
-          }
-          const BOSS_PATTERN_ELAPSED = this.boss.patternRuntime.active?.phaseElapsed || 0;
-          this.running = false;
-          this.boss.active = false;
-          this.encounter.outcome = outcome;
-          this.projectiles = [];
-          this.boss.patternRuntime.active = null;
-          for (const U of this.units) {
-            U.ability.interrupt();
-            U.specialAbility?.interrupt();
-            this.clearPeaRecoveryBoost(U);
-          }
-          this.formationSkills.end();
-          this.cleanupBattleSummons();
-          this.combat(outcome, {
-            x: this.boss.x,
-            y: this.boss.y,
-            z: 0,
-            bossPatternElapsed: BOSS_PATTERN_ELAPSED
-          });
-        }
         finishFarmBossEvent(outcome) {
           return this.mutateUnits(this._finishFarmBossEvent, outcome);
         }
@@ -14554,21 +14467,9 @@
             return;
           }
           if (B_LOCAL.hp <= 0) {
-            if (this.running) {
-              this.finish("victory");
-            } else {
-              B_LOCAL.active = false;
-              B_LOCAL.patternRuntime.active = null;
-            }
+            B_LOCAL.active = false;
+            B_LOCAL.patternRuntime.active = null;
             return;
-          }
-          if (this.running && this.raidRosters.length) {
-            const ALIVE = this.units.some((u) => hasFaction(u, FACTION_CONFIG.PLAYER) && u.hp > 0);
-            this._battleFielded ||= ALIVE;
-            if (this._battleFielded && !ALIVE || this.encounter.elapsed >= this.battleTimeLimit()) {
-              this.finish("defeat");
-              return;
-            }
           }
           if (B_LOCAL.stun > 0) {
             B_LOCAL.stun = Math.max(0, B_LOCAL.stun - dt);
@@ -15110,7 +15011,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.21.6";
+      PRODUCT_VERSION = "0.21.7";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15641,7 +15542,7 @@
       if (!STATE) {
         return;
       }
-      const LOCKED = world.scene !== "farm" || world.running || world.farmBossEvent?.phase !== "idle", POINTS = PLAYER.availablePoints, KEY2 = JSON.stringify([STATE, POINTS, LOCKED]);
+      const LOCKED = world.scene !== "farm" || world.farmBossEvent?.phase !== "idle", POINTS = PLAYER.availablePoints, KEY2 = JSON.stringify([STATE, POINTS, LOCKED]);
       if (KEY2 !== this.fingerprint) {
         this.fingerprint = KEY2;
         this.drawEditor(STATE, POINTS, LOCKED);
@@ -19879,11 +19780,6 @@
     bossSummonSerial: 0,
     combatLog: [],
     scene: "farm",
-    running: false,
-    encounter: {
-      outcome: "idle",
-      elapsed: 0
-    },
     farmBossEvent: {
       phase: "idle",
       elapsed: 0,
@@ -20619,8 +20515,6 @@
         validatePath(A.path);
       }
     }
-    ASSERT2(["idle", "fighting", "victory", "defeat"].includes(raw.encounter.outcome) && raw.encounter.elapsed >= 0);
-    ASSERT2(raw.running === (raw.encounter.outcome === "fighting"));
     return true;
   }
   function validatePath(p) {
@@ -23023,7 +22917,7 @@
     }
   });
   function drawTree() {
-    const W = personalGarden || active.world, IN_COMBAT = W.running || W.farmBossEvent?.phase !== "idle";
+    const W = personalGarden || active.world, IN_COMBAT = W.farmBossEvent?.phase !== "idle";
     DOLLAR2("treeNodes").innerHTML = renderFarmUpgradeTreeMarkup(W.playerProgression, {
       location: active.world.scene,
       inCombat: IN_COMBAT
@@ -23050,7 +22944,7 @@
       return;
     }
     farmPanelRevision = W.progressRevision;
-    const LOCKED = !!farmSortTransition || active?.world?.scene !== "farm" || W.running || W.farmBossEvent?.phase !== "idle";
+    const LOCKED = !!farmSortTransition || active?.world?.scene !== "farm" || W.farmBossEvent?.phase !== "idle";
     DOLLAR2("farmStatPlaced").textContent = String(W.placedPopulation);
     DOLLAR2("farmStatCapacity").textContent = `/ ${W.totalFarmCapacity}`;
     DOLLAR2("farmStatReserved").textContent = String(W.reservedPopulation);
@@ -23077,7 +22971,7 @@
     }).join("");
   }
   function drawAbilityTree() {
-    const W = personalGarden || active.world, IN_COMBAT = W.running || W.farmBossEvent?.phase !== "idle";
+    const W = personalGarden || active.world, IN_COMBAT = W.farmBossEvent?.phase !== "idle";
     const SELECTED_SPECIES = Number(DOLLAR2("abilityPanel").dataset.selectedSpecies || 0);
     DOLLAR2("abilityPoints").textContent = String(W.playerProgression.availablePoints);
     for (const BUTTON of DOLLAR2("abilitySpeciesTabs").querySelectorAll("[data-ability-species]")) {
@@ -23109,7 +23003,7 @@
       HOST.hidden = true;
       return;
     }
-    const W = personalGarden || active.world, IN_COMBAT = W.running || W.farmBossEvent?.phase !== "idle", CONTEXT = { location: active.world.scene, inCombat: IN_COMBAT }, SCOPE = currentProgressionResetScope(), CURRENT_CHECK = canResetPlayerProgression(W.playerProgression, SCOPE, CONTEXT), ALL_CHECK = canResetPlayerProgression(W.playerProgression, { type: "all" }, CONTEXT), LABEL = menuTab === "growth" ? "성장 항목 초기화" : menuTab === "formation" ? "형성 능력 초기화" : "이 종 특성 초기화";
+    const W = personalGarden || active.world, IN_COMBAT = W.farmBossEvent?.phase !== "idle", CONTEXT = { location: active.world.scene, inCombat: IN_COMBAT }, SCOPE = currentProgressionResetScope(), CURRENT_CHECK = canResetPlayerProgression(W.playerProgression, SCOPE, CONTEXT), ALL_CHECK = canResetPlayerProgression(W.playerProgression, { type: "all" }, CONTEXT), LABEL = menuTab === "growth" ? "성장 항목 초기화" : menuTab === "formation" ? "형성 능력 초기화" : "이 종 특성 초기화";
     HOST.hidden = false;
     CURRENT.hidden = menuTab === "abilities";
     CURRENT.disabled = !CURRENT_CHECK.allowed;
@@ -23542,7 +23436,7 @@
     return true;
   }
   function beginFarmSortTransition(order) {
-    if (farmSortTransition || active.world.scene !== "farm" || active.world.running || active.world.farmBossEvent?.phase !== "idle") {
+    if (farmSortTransition || active.world.scene !== "farm" || active.world.farmBossEvent?.phase !== "idle") {
       return false;
     }
     [...document.querySelectorAll("#farmPlotActions button, #farmPlotList button, #farmRatioList input")].forEach(
@@ -23824,8 +23718,8 @@
         `${PLOT_WORLD.roster.placedPopulation(PLOT_WORLD.activePlotId)} / ${PLOT_WORLD.activeFarmPlot.capacity}`
       );
       syncText("plotBarFood", `먹이 ${CURRENT.food} · 배고픔 ${CURRENT.hungry}`);
-      syncFlag("plotPrev", "disabled", !!farmSortTransition || W.running);
-      syncFlag("plotNext", "disabled", !!farmSortTransition || W.running);
+      syncFlag("plotPrev", "disabled", !!farmSortTransition);
+      syncFlag("plotNext", "disabled", !!farmSortTransition);
       syncData("plotPrev", "alert", String(NEEDS_VISIT));
       syncData("plotNext", "alert", String(NEEDS_VISIT));
     }
