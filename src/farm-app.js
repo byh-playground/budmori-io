@@ -2177,7 +2177,7 @@ function sync(display, now, notices) {
     syncWidth('allyHealth', (armyMax ? (armyCurrent / armyMax) * 100 : 0) + '%');
     syncText(
         'allyHealthText',
-        Math.ceil(armyCurrent) + ' / ' + Math.ceil(armyMax) + ' 체력 · ' + armyLiving + '/' + armyTotal + ' 생존',
+        Math.ceil(armyCurrent) + '/' + Math.ceil(armyMax) + ' · ' + armyLiving + '/' + armyTotal + '마리',
     );
     const BOSS = display.boss,
         FARM_REWARD =
@@ -2188,9 +2188,9 @@ function sync(display, now, notices) {
                 : null,
         REWARD_NAME = speciesRewardName(BOSS.species),
         ENCOUNTER_NAME = giantSpeciesName(BOSS.species);
-    syncText('bossName', BOSS.stage ? `${ENCOUNTER_NAME} · 위험도 ${BOSS.stage}단계` : ENCOUNTER_NAME);
+    syncText('bossName', BOSS.stage ? `${ENCOUNTER_NAME} ${BOSS.stage}단계` : ENCOUNTER_NAME);
     syncAttribute('bossHealth', 'aria-label', `${ENCOUNTER_NAME} 체력`);
-    syncText('bossHealthText', Math.ceil(BOSS.hp) + ' / ' + BOSS.maxHp + ' HP');
+    syncText('bossHealthText', Math.ceil(BOSS.hp) + '/' + BOSS.maxHp);
     syncText(
         'bossHealthNote',
         FARM_EVENT_ACTIVE && FARM_EVENT.phase === 'dropping'

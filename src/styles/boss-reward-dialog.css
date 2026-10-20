@@ -260,11 +260,6 @@ path.cr-line {
         padding: 12px;
     }
 }
-@media (max-width: 700px) and (orientation: portrait) {
-    .bossbar {
-        top: max(128px, calc(env(safe-area-inset-top) + 118px));
-    }
-}
 @media (max-height: 500px) {
     .boss-reward-dialog__card {
         grid-template-rows: auto auto auto minmax(140px, 1fr) auto auto;
