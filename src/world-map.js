@@ -8,6 +8,8 @@ export const WORLD_MAP_SETTINGS = {
     safeRadius: 1,
     // A boss turns up this often (game seconds) while fewer than maxBosses are out.
     spawnSeconds: 150,
+    // A boss stays this long, then moves on whether or not anyone fought it.
+    bossLifetimeSeconds: 480,
     maxBosses: 3,
     firstTileCost: 60,
     tileCostStep: 4,
@@ -174,21 +176,30 @@ export function finishChallenge(map, victory) {
 // time the clock runs out while there are fewer than the cap. A boss lands on a random lit tile in some farm's
 // sight, next to a farm included. Returns the tiles that got a boss.
 export function advanceSpawns(map, seconds) {
-    const SPAWNED = [],
-        PLACE = () => {
-            const CANDIDATES = map.revealed.filter(
-                (tile) => farmDistance(map, tile) > 0 && !hasBoss(map, tile) && inReach(map, tile),
-            );
-            if (CANDIDATES.length === 0) {
-                return false;
-            }
-            const TILE = CANDIDATES[Math.floor(tileUnit(map.seed, map.spawnCount, 11) * CANDIDATES.length)];
-            map.spawnCount++;
-            map.bosses.push(TILE);
-            map.bosses.sort((x, y) => x - y);
-            SPAWNED.push(TILE);
-            return true;
-        };
+    const SPAWNED = [];
+    map.bossAges ??= {};
+    for (const TILE of [...map.bosses]) {
+        map.bossAges[TILE] = (map.bossAges[TILE] ?? 0) + seconds;
+        if (map.bossAges[TILE] >= WORLD_MAP_SETTINGS.bossLifetimeSeconds && TILE !== map.challengeTile) {
+            map.bosses = map.bosses.filter((boss) => boss !== TILE);
+            delete map.bossAges[TILE];
+        }
+    }
+    const PLACE = () => {
+        const CANDIDATES = map.revealed.filter(
+            (tile) => farmDistance(map, tile) > 0 && !hasBoss(map, tile) && inReach(map, tile),
+        );
+        if (CANDIDATES.length === 0) {
+            return false;
+        }
+        const TILE = CANDIDATES[Math.floor(tileUnit(map.seed, map.spawnCount, 11) * CANDIDATES.length)];
+        map.spawnCount++;
+        map.bosses.push(TILE);
+        map.bosses.sort((x, y) => x - y);
+        map.bossAges[TILE] = 0;
+        SPAWNED.push(TILE);
+        return true;
+    };
     if (map.bosses.length === 0) {
         PLACE();
     }
@@ -566,7 +577,7 @@ export function isValidWorldMap(map) {
         return false;
     }
     const KEYS = Object.keys(map)
-        .filter((key) => key !== 'challengeTile' && key !== 'buildTile')
+        .filter((key) => key !== 'challengeTile' && key !== 'buildTile' && key !== 'bossAges')
         .sort()
         .join(',');
     if (KEYS !== 'bosses,exploreTarget,farms,mined,mines,progress,revealed,seed,spawnClock,spawnCount') {
@@ -591,6 +602,15 @@ export function isValidWorldMap(map) {
             (Number.isSafeInteger(map.buildTile) && map.buildTile >= -1 && map.buildTile < WORLD_MAP_TILE_COUNT)
         ) ||
         !SORTED_INDEXES(map.revealed) ||
+        (map.bossAges !== undefined &&
+            !(
+                map.bossAges &&
+                typeof map.bossAges === 'object' &&
+                Object.entries(map.bossAges).every(
+                    ([key, value]) =>
+                        /^\d+$/.test(key) && Number(key) < WORLD_MAP_TILE_COUNT && Number.isFinite(value) && value >= 0,
+                )
+            )) ||
         !SORTED_INDEXES(map.bosses) ||
         !SORTED_INDEXES(map.mines) ||
         !VALID_MINED(map.mined) ||

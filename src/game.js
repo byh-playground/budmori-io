@@ -2217,7 +2217,16 @@
     return true;
   }
   function advanceSpawns(map, seconds) {
-    const SPAWNED = [], PLACE = () => {
+    const SPAWNED = [];
+    map.bossAges ??= {};
+    for (const TILE of [...map.bosses]) {
+      map.bossAges[TILE] = (map.bossAges[TILE] ?? 0) + seconds;
+      if (map.bossAges[TILE] >= WORLD_MAP_SETTINGS.bossLifetimeSeconds && TILE !== map.challengeTile) {
+        map.bosses = map.bosses.filter((boss) => boss !== TILE);
+        delete map.bossAges[TILE];
+      }
+    }
+    const PLACE = () => {
       const CANDIDATES = map.revealed.filter(
         (tile) => farmDistance(map, tile) > 0 && !hasBoss(map, tile) && inReach(map, tile)
       );
@@ -2228,6 +2237,7 @@
       map.spawnCount++;
       map.bosses.push(TILE);
       map.bosses.sort((x, y) => x - y);
+      map.bossAges[TILE] = 0;
       SPAWNED.push(TILE);
       return true;
     };
@@ -2496,11 +2506,13 @@
     if (!map || typeof map !== "object" || Array.isArray(map)) {
       return false;
     }
-    const KEYS = Object.keys(map).filter((key) => key !== "challengeTile" && key !== "buildTile").sort().join(",");
+    const KEYS = Object.keys(map).filter((key) => key !== "challengeTile" && key !== "buildTile" && key !== "bossAges").sort().join(",");
     if (KEYS !== "bosses,exploreTarget,farms,mined,mines,progress,revealed,seed,spawnClock,spawnCount") {
       return false;
     }
-    if (!Number.isSafeInteger(map.seed) || map.seed < 0 || map.seed > 4294967295 || !VALID_PROGRESS(map.progress) || !Number.isSafeInteger(map.exploreTarget) || map.exploreTarget < -1 || map.exploreTarget >= WORLD_MAP_TILE_COUNT || !(map.challengeTile === void 0 || Number.isSafeInteger(map.challengeTile) && map.challengeTile >= -1 && map.challengeTile < WORLD_MAP_TILE_COUNT) || !(map.buildTile === void 0 || Number.isSafeInteger(map.buildTile) && map.buildTile >= -1 && map.buildTile < WORLD_MAP_TILE_COUNT) || !SORTED_INDEXES(map.revealed) || !SORTED_INDEXES(map.bosses) || !SORTED_INDEXES(map.mines) || !VALID_MINED(map.mined) || !Number.isFinite(map.spawnClock) || map.spawnClock < 0 || !Number.isSafeInteger(map.spawnCount) || map.spawnCount < 0 || !Array.isArray(map.farms) || map.farms.length === 0) {
+    if (!Number.isSafeInteger(map.seed) || map.seed < 0 || map.seed > 4294967295 || !VALID_PROGRESS(map.progress) || !Number.isSafeInteger(map.exploreTarget) || map.exploreTarget < -1 || map.exploreTarget >= WORLD_MAP_TILE_COUNT || !(map.challengeTile === void 0 || Number.isSafeInteger(map.challengeTile) && map.challengeTile >= -1 && map.challengeTile < WORLD_MAP_TILE_COUNT) || !(map.buildTile === void 0 || Number.isSafeInteger(map.buildTile) && map.buildTile >= -1 && map.buildTile < WORLD_MAP_TILE_COUNT) || !SORTED_INDEXES(map.revealed) || map.bossAges !== void 0 && !(map.bossAges && typeof map.bossAges === "object" && Object.entries(map.bossAges).every(
+      ([key, value]) => /^\d+$/.test(key) && Number(key) < WORLD_MAP_TILE_COUNT && Number.isFinite(value) && value >= 0
+    )) || !SORTED_INDEXES(map.bosses) || !SORTED_INDEXES(map.mines) || !VALID_MINED(map.mined) || !Number.isFinite(map.spawnClock) || map.spawnClock < 0 || !Number.isSafeInteger(map.spawnCount) || map.spawnCount < 0 || !Array.isArray(map.farms) || map.farms.length === 0) {
       return false;
     }
     const LIT = new Set(map.revealed);
@@ -2518,6 +2530,8 @@
         safeRadius: 1,
         // A boss turns up this often (game seconds) while fewer than maxBosses are out.
         spawnSeconds: 150,
+        // A boss stays this long, then moves on whether or not anyone fought it.
+        bossLifetimeSeconds: 480,
         maxBosses: 3,
         firstTileCost: 60,
         tileCostStep: 4,
@@ -15675,7 +15689,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.19.4";
+      PRODUCT_VERSION = "0.19.5";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -23068,6 +23082,22 @@
         CONTEXT.globalAlpha = 1;
       }
     }
+    function drawFighting(x, y, s, now) {
+      CONTEXT.strokeStyle = "#b5483a";
+      CONTEXT.globalAlpha = 0.6 + 0.4 * Math.sin(now / 150);
+      CONTEXT.lineWidth = 3;
+      CONTEXT.beginPath();
+      CONTEXT.roundRect(x + 1.5, y + 1.5, s - 3, s - 3, s * 0.18);
+      CONTEXT.stroke();
+      CONTEXT.globalAlpha = 1;
+      if (s >= 22) {
+        CONTEXT.fillStyle = "#b5483a";
+        CONTEXT.font = `700 ${Math.max(9, s * 0.2)}px system-ui, sans-serif`;
+        CONTEXT.textAlign = "center";
+        CONTEXT.textBaseline = "alphabetic";
+        CONTEXT.fillText("전투 중", x + s / 2, y + s * 0.97);
+      }
+    }
     function drawNest(x, y, s, danger, open, now) {
       CONTEXT.fillStyle = COLORS.nest;
       CONTEXT.beginPath();
@@ -23244,6 +23274,9 @@
               now,
               tileSpecies(map, INDEX)
             );
+            if (map.challengeTile === INDEX) {
+              drawFighting(PX, PY, S, now);
+            }
           }
         }
       }
@@ -24554,6 +24587,9 @@
     if (!personalGarden) {
       return;
     }
+    if (active?.world?.scene === "raid" && active.world.running) {
+      active.world.finish("defeat");
+    }
     const RAID_WORLD = active?.world?.scene === "raid" ? snapshot(active.world) : null;
     if (RAID_WORLD && personalGarden.activeRaidRunSequence !== null) {
       const OWNER_ID = active.localPlayerId, RUN = {
@@ -25712,6 +25748,7 @@
     syncFlag("menuTabFarms", "disabled", RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
     syncFlag("menuTabGrowth", "disabled", RAID || FARM_EVENT_ACTIVE || bossEncounterOpen);
     syncFlag("menuTabAbilities", "disabled", RAID || !personalGarden);
+    syncText("return", RAID && W.running ? "후퇴" : "농장으로 돌아가기");
     syncText("pause", active.paused ? "▶" : "Ⅱ");
     syncAttribute("pause", "aria-label", active.paused ? "계속하기" : "일시정지");
     syncAttribute("pause", "title", active.paused ? "계속하기" : "일시정지");
