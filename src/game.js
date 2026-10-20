@@ -15110,7 +15110,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.21.1";
+      PRODUCT_VERSION = "0.21.2";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -23967,14 +23967,14 @@
     syncWidth("allyHealth", (armyMax ? armyCurrent / armyMax * 100 : 0) + "%");
     syncText(
       "allyHealthText",
-      Math.ceil(armyCurrent) + " / " + Math.ceil(armyMax) + " 체력 · " + armyLiving + "/" + armyTotal + " 생존"
+      Math.ceil(armyCurrent) + "/" + Math.ceil(armyMax) + " · " + armyLiving + "/" + armyTotal + "마리"
     );
     const BOSS2 = display.boss, FARM_REWARD = FARM_EVENT?.outcome === "victory" ? W.bossRewardReceipts.find(
       (reward) => reward.source === "farm" && reward.encounterId === FARM_EVENT.encounterId
     ) : null, REWARD_NAME = speciesRewardName(BOSS2.species), ENCOUNTER_NAME = giantSpeciesName(BOSS2.species);
-    syncText("bossName", BOSS2.stage ? `${ENCOUNTER_NAME} · 위험도 ${BOSS2.stage}단계` : ENCOUNTER_NAME);
+    syncText("bossName", BOSS2.stage ? `${ENCOUNTER_NAME} ${BOSS2.stage}단계` : ENCOUNTER_NAME);
     syncAttribute("bossHealth", "aria-label", `${ENCOUNTER_NAME} 체력`);
-    syncText("bossHealthText", Math.ceil(BOSS2.hp) + " / " + BOSS2.maxHp + " HP");
+    syncText("bossHealthText", Math.ceil(BOSS2.hp) + "/" + BOSS2.maxHp);
     syncText(
       "bossHealthNote",
       FARM_EVENT_ACTIVE && FARM_EVENT.phase === "dropping" ? "보스가 있는 칸으로 가는 중이에요" : FARM_EVENT_ACTIVE && FARM_EVENT.phase === "fighting" ? `남은 시간 ${Math.max(0, Math.ceil(W.battleTimeLimit() - FARM_EVENT.elapsed))}초` : FARM_EVENT_ACTIVE ? "" : "쓰러진 병력 포함 최대 체력"
