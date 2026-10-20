@@ -1045,6 +1045,2441 @@
     }
   });
 
+  // src/farm-offline.js
+  function applyOffline(world, config, rawSeconds) {
+    const OFFLINE = config.farm.offline, WORK = config.farm.work, BREEDING = config.farm.breeding;
+    if (world.scene !== "farm" || world.running || world.farmBossEvent?.phase !== "idle") {
+      return null;
+    }
+    const AWAY = Math.min(rawSeconds, OFFLINE.capSeconds);
+    if (!(AWAY >= OFFLINE.minSeconds)) {
+      return null;
+    }
+    const SECONDS = AWAY * OFFLINE.efficiency;
+    world.refreshWorkers();
+    const SUMMARY = { seconds: AWAY, food: 0, wood: 0, stone: 0, births: 0, sites: [], built: [] };
+    let foodRate = 0, gatherRate = 0;
+    const BUILD_RATES = /* @__PURE__ */ new Map();
+    for (const [ID, KIND] of world._workerKinds) {
+      const RATE = world._workerRates.get(ID) || 0;
+      if (KIND === "food") {
+        foodRate += RATE;
+      } else if (KIND === "explore") {
+        continue;
+      } else if (KIND === "resource") {
+        gatherRate += RATE;
+      } else {
+        const PLOT_ID = world._workerPlots.get(ID);
+        BUILD_RATES.set(PLOT_ID, (BUILD_RATES.get(PLOT_ID) || 0) + RATE);
+      }
+    }
+    for (const PLOT_ID of [...world._pilesByPlot.keys()]) {
+      const RATE = BUILD_RATES.get(PLOT_ID) || 0, SITES = sitesOf(world, PLOT_ID);
+      if (SITES.length === 0) {
+        gatherRate += RATE;
+        continue;
+      }
+      if (!(RATE > 0)) {
+        continue;
+      }
+      const HITS_PER_SECOND = RATE * STACKS_PER_FOOD2, HITS = HITS_PER_SECOND * SECONDS;
+      let left = HITS;
+      const OPEN = [...SITES];
+      while (OPEN.length > 0 && left > 0) {
+        const SHARE = left / OPEN.length, DONE = OPEN.filter((site) => SHARE >= site.need - site.done);
+        if (DONE.length === 0) {
+          for (const SITE of OPEN) {
+            SITE.done += Math.floor(SHARE);
+          }
+          left = 0;
+          break;
+        }
+        for (const SITE of DONE) {
+          left -= SITE.need - SITE.done;
+          SUMMARY.built.push(world.siteName(SITE));
+          const LIST = pilesOf(world, PLOT_ID);
+          LIST.splice(LIST.indexOf(SITE), 1);
+          world.completeFacility(SITE);
+          OPEN.splice(OPEN.indexOf(SITE), 1);
+        }
+      }
+      for (const SITE of OPEN) {
+        SUMMARY.sites.push({ name: world.siteName(SITE), percent: Math.floor(SITE.done / SITE.need * 100) });
+      }
+      gatherRate += left / (STACKS_PER_FOOD2 * SECONDS);
+    }
+    const MATERIALS = Math.floor(gatherRate * SECONDS), WOOD = Math.ceil(MATERIALS / 2);
+    world.materials.wood += WOOD;
+    world.materials.stone += MATERIALS - WOOD;
+    SUMMARY.wood = WOOD;
+    SUMMARY.stone = MATERIALS - WOOD;
+    let pool = Math.floor(foodRate * SECONDS);
+    SUMMARY.food = pool;
+    const RESIDENTS = world.roster.residents().filter((unit) => unit.plotId !== RESERVE_PLOT_ID);
+    for (const UNIT3 of RESIDENTS) {
+      UNIT3.cooldown = 0;
+      if (UNIT3.down > 0) {
+        UNIT3.down = Math.min(UNIT3.down, 0.05);
+      }
+      if (!UNIT3.mature && pool >= BREEDING.matureMeals) {
+        pool -= BREEDING.matureMeals;
+        UNIT3.growthElapsed = UNIT3.growthDuration;
+      }
+    }
+    const COST = 2 + BREEDING.matureMeals, ROUND_SECONDS = BREEDING.cooldownSeconds + BREEDING.growthSeconds, ROUNDS = Math.floor(AWAY / ROUND_SECONDS), CAPACITY = world.totalFarmCapacity, SPECIES_COUNT2 = world.farmTargets.length, COUNTS = new Array(SPECIES_COUNT2).fill(0), ADULTS = new Array(SPECIES_COUNT2).fill(0);
+    for (const UNIT3 of world.roster.residents()) {
+      if (UNIT3.plotId === RESERVE_PLOT_ID || UNIT3.isBattleOnlySummon) {
+        continue;
+      }
+      COUNTS[UNIT3.species]++;
+      if (UNIT3.mature && UNIT3.hp > 0 && !world._workerIds.has(UNIT3.id)) {
+        ADULTS[UNIT3.species]++;
+      }
+    }
+    for (let round = 0; round < ROUNDS && pool >= COST; round++) {
+      let progressed = false;
+      for (let species = 0; species < SPECIES_COUNT2; species++) {
+        const TARGET = Math.floor(world.farmTargets[species] / 1e4 * CAPACITY), ROOM = CAPACITY - world.ownedPopulation - world.birthReservations;
+        let births = Math.min(
+          Math.floor(ADULTS[species] / 2),
+          TARGET - COUNTS[species],
+          ROOM,
+          Math.floor(pool / COST)
+        );
+        while (births-- > 0) {
+          const CHILD = world.spawn(species, 1, (world.random() - 0.5) * 10, (world.random() - 0.5) * 6);
+          if (!CHILD) {
+            break;
+          }
+          CHILD.growthElapsed = CHILD.growthDuration;
+          pool -= COST;
+          COUNTS[species]++;
+          ADULTS[species]++;
+          SUMMARY.births++;
+          progressed = true;
+        }
+      }
+      if (!progressed) {
+        break;
+      }
+    }
+    world.warehouseFood = Math.min(WORK.warehouseLimit, world.warehouseFood + pool);
+    world.metrics.births += SUMMARY.births;
+    world._nextWorkerRefreshTick = 0;
+    world.refreshWorkers();
+    world.markProgressChanged();
+    return SUMMARY;
+  }
+  var STACKS_PER_FOOD2;
+  var init_farm_offline = __esm({
+    "src/farm-offline.js"() {
+      init_farm_work();
+      init_farm_plot();
+      STACKS_PER_FOOD2 = 5;
+    }
+  });
+
+  // src/unit-grades.js
+  function mergeMaterialCostForTier(resultTier) {
+    if (!Number.isInteger(resultTier) || resultTier < 2 || resultTier > MAX_UNIT_TIER) {
+      return 0;
+    }
+    return UNIT_GRADES[resultTier - 1].materialCost;
+  }
+  function isValidUnitTier(tier) {
+    return Number.isInteger(tier) && tier >= 1 && tier <= MAX_UNIT_TIER;
+  }
+  var UNIT_GRADES, MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT;
+  var init_unit_grades = __esm({
+    "src/unit-grades.js"() {
+      UNIT_GRADES = Object.freeze([
+        Object.freeze({
+          tier: 1,
+          name: "Common",
+          materialCost: 0,
+          outlineColor: "#d8d4bd"
+        }),
+        Object.freeze({
+          tier: 2,
+          name: "Uncommon",
+          materialCost: 2,
+          outlineColor: "#83ce76"
+        }),
+        Object.freeze({
+          tier: 3,
+          name: "Rare",
+          materialCost: 2,
+          outlineColor: "#78b9ff"
+        }),
+        Object.freeze({
+          tier: 4,
+          name: "Epic",
+          materialCost: 3,
+          outlineColor: "#bd8cff"
+        }),
+        Object.freeze({
+          tier: 5,
+          name: "Legendary",
+          materialCost: 4,
+          outlineColor: "#ffb354"
+        }),
+        Object.freeze({
+          tier: 6,
+          name: "Mythic",
+          materialCost: 5,
+          outlineColor: "#ff7086"
+        })
+      ]);
+      MAX_UNIT_TIER = UNIT_GRADES.length;
+      MAX_GRADE_MATERIAL_COUNT = Math.max(...UNIT_GRADES.map((grade) => grade.materialCost));
+    }
+  });
+
+  // src/unit-stats.js
+  function createBaseStats(tier, speciesProfile) {
+    let maxHp = TIER_HP;
+    let attackPower = TIER_ATTACK;
+    for (let resultTier = 2; resultTier <= tier; resultTier++) {
+      const TRANSITION_MULTIPLIER = UNIT_GRADES[resultTier - 1].materialCost / 2;
+      maxHp *= TIER_HP_SCALE * TRANSITION_MULTIPLIER;
+      attackPower *= TIER_ATTACK_SCALE * TRANSITION_MULTIPLIER;
+    }
+    return Object.freeze({
+      maxHp,
+      attackPower,
+      ...COMMON_UNIT_STAT_DEFAULTS,
+      ...speciesProfile
+    });
+  }
+  function baseUnitStatsFor(tier, species) {
+    tier = Math.max(1, Math.min(MAX_UNIT_TIER, Number.isInteger(tier) ? tier : 1));
+    const PROFILE = COMMON_UNIT_STAT_PROFILES[species] || COMMON_UNIT_STAT_DEFAULTS;
+    return BASE_STATS_BY_PROFILE.get(PROFILE)?.[tier - 1] || createBaseStats(tier, PROFILE);
+  }
+  function resolveUnitStats(unit, overrides) {
+    const BASE = baseUnitStatsFor(unit?.tier, unit?.species), MULTIPLIER = Number.isFinite(unit?.permanentStatMultiplier) ? Math.max(0, unit.permanentStatMultiplier) : 1;
+    return {
+      ...BASE,
+      maxHp: BASE.maxHp * MULTIPLIER,
+      attackPower: BASE.attackPower * MULTIPLIER,
+      ...unit?.isFormationClone ? { maxHp: 1 } : {},
+      ...overrides
+    };
+  }
+  function combatStats(unit, overrides) {
+    return overrides === void 0 && !unit?.isFormationClone ? baseUnitStatsFor(unit?.tier, unit?.species) : resolveUnitStats(unit, overrides);
+  }
+  function resolveDamage(rawDamage, armor = 0, armorPenetration = 0, critical = false, critMultiplier = COMMON_UNIT_STAT_DEFAULTS.critMultiplier) {
+    const RAW = Number.isFinite(rawDamage) ? Math.max(0, rawDamage) : 0;
+    const PENETRATION = clamp(Number.isFinite(armorPenetration) ? armorPenetration : 0, 0, 1);
+    const EFFECTIVE_ARMOR = Math.max(0, Number.isFinite(armor) ? armor : 0) * (1 - PENETRATION);
+    const CRIT = critical ? Math.max(1, Number.isFinite(critMultiplier) ? critMultiplier : 1) : 1;
+    const MITIGATED = RAW * CRIT * ARMOR_SCALE / (ARMOR_SCALE + EFFECTIVE_ARMOR);
+    return {
+      rawDamage: RAW,
+      effectiveArmor: EFFECTIVE_ARMOR,
+      critical,
+      damage: MITIGATED
+    };
+  }
+  function resolveCritical(stats, roll = 1) {
+    const CHANCE = clamp(Number.isFinite(stats?.critChance) ? stats.critChance : 0, 0, 1);
+    return CHANCE > 0 && roll < CHANCE;
+  }
+  function scaleMoveSpeed(baseSpeed, unit, overrides) {
+    return Math.max(0, Number.isFinite(baseSpeed) ? baseSpeed : 0) * Math.max(0, combatStats(unit, overrides).moveSpeed);
+  }
+  function scaleAttackRecovery(baseRecovery, unit, overrides) {
+    return Math.max(0, Number.isFinite(baseRecovery) ? baseRecovery : 0) / Math.max(0.05, combatStats(unit, overrides).attackSpeed);
+  }
+  function scaleAttackArea(baseArea, unit, overrides) {
+    return Math.max(0, Number.isFinite(baseArea) ? baseArea : 0) * Math.max(0, combatStats(unit, overrides).attackArea);
+  }
+  function applyDamage(target, rawDamage, {
+    armor = 0,
+    armorPenetration = 0,
+    critical = false,
+    critMultiplier = COMMON_UNIT_STAT_DEFAULTS.critMultiplier
+  } = {}) {
+    if (!target || !Number.isFinite(target.hp)) {
+      return {
+        actualLoss: 0,
+        ...resolveDamage(rawDamage, armor, armorPenetration, critical, critMultiplier)
+      };
+    }
+    const RESOLVED = resolveDamage(rawDamage, armor, armorPenetration, critical, critMultiplier);
+    const ACTUAL_LOSS = Math.min(Math.max(0, target.hp), RESOLVED.damage);
+    setHealth(target, Math.max(0, target.hp - ACTUAL_LOSS));
+    return {
+      ...RESOLVED,
+      actualLoss: ACTUAL_LOSS
+    };
+  }
+  function applyHealing(target, amount, receiverStats = combatStats(target)) {
+    if (!target || !Number.isFinite(target.hp) || target.hp <= 0) {
+      return 0;
+    }
+    const MAX_HP = target.isFormationClone ? 1 : Number.isFinite(receiverStats?.maxHp) ? receiverStats.maxHp : 0;
+    const RECEIVED = Number.isFinite(receiverStats?.healingReceivedMultiplier) ? Math.max(0, receiverStats.healingReceivedMultiplier) : 1;
+    const REQUESTED = Number.isFinite(amount) ? Math.max(0, amount) * RECEIVED : 0;
+    const HEALED = Math.min(Math.max(0, MAX_HP - target.hp), REQUESTED);
+    setHealth(target, target.hp + HEALED);
+    return HEALED;
+  }
+  function applyDamageToTargets(source, targets, {
+    rawDamage,
+    area = false,
+    sourceKind = "direct",
+    sourceStatOverrides,
+    armorForTarget = (target) => combatStats(target).armor,
+    roll = () => 1
+  } = {}) {
+    const SOURCE_STATS = source ? combatStats(source, sourceStatOverrides) : null;
+    const CRITICAL = !!SOURCE_STATS && SOURCE_STATS.critChance > 0 && resolveCritical(SOURCE_STATS, roll());
+    const HITS = [];
+    let totalActualLoss = 0;
+    for (const TARGET of targets || []) {
+      const RESULT = applyDamage(TARGET, rawDamage, {
+        armor: armorForTarget(TARGET),
+        armorPenetration: SOURCE_STATS?.armorPenetration || 0,
+        critical: CRITICAL,
+        critMultiplier: SOURCE_STATS?.critMultiplier ?? COMMON_UNIT_STAT_DEFAULTS.critMultiplier
+      });
+      HITS.push(RESULT);
+      totalActualLoss += RESULT.actualLoss;
+    }
+    const BASE_RATE = sourceKind === "direct" ? SOURCE_STATS?.lifesteal || 0 : 0;
+    const HEAL_RATE = area ? BASE_RATE / 3 : BASE_RATE;
+    const HEALED = source && HEAL_RATE > 0 ? applyHealing(source, totalActualLoss * HEAL_RATE, SOURCE_STATS) : 0;
+    return {
+      hits: HITS,
+      totalActualLoss,
+      healed: HEALED,
+      critical: CRITICAL
+    };
+  }
+  function resolveStatusDuration(baseDuration, source, target, { sourceStatOverrides, targetStatOverrides } = {}) {
+    const SOURCE_STATS = source ? combatStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+    const TARGET_STATS = target ? combatStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+    const DURATION_SCALE = Number.isFinite(SOURCE_STATS.statusDuration) ? Math.max(0, SOURCE_STATS.statusDuration) : 1;
+    const RESISTANCE = clamp(Number.isFinite(TARGET_STATS.statusResistance) ? TARGET_STATS.statusResistance : 0, 0, 1);
+    return Math.max(0, Number.isFinite(baseDuration) ? baseDuration : 0) * DURATION_SCALE * (1 - RESISTANCE);
+  }
+  function resolveKnockback(basePower, source, target, { sourceStatOverrides, targetStatOverrides } = {}) {
+    const SOURCE_STATS = source ? combatStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+    const TARGET_STATS = target ? combatStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+    const POWER = Number.isFinite(SOURCE_STATS.knockbackPower) ? Math.max(0, SOURCE_STATS.knockbackPower) : 1;
+    const RESISTANCE = clamp(
+      Number.isFinite(TARGET_STATS.knockbackResistance) ? TARGET_STATS.knockbackResistance : 0,
+      0,
+      1
+    );
+    return Math.max(0, Number.isFinite(basePower) ? basePower : 0) * POWER * (1 - RESISTANCE);
+  }
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+  function setHealth(target, value) {
+    if (typeof target.setHealth === "function") {
+      target.setHealth(value);
+    } else {
+      target.hp = value;
+    }
+  }
+  var TIER_HP, TIER_HP_SCALE, TIER_ATTACK, TIER_ATTACK_SCALE, ARMOR_SCALE, COMMON_UNIT_STAT_DEFAULTS, COMMON_UNIT_STAT_PROFILES, BASE_STATS_BY_PROFILE;
+  var init_unit_stats = __esm({
+    "src/unit-stats.js"() {
+      init_unit_grades();
+      init_species_catalog();
+      TIER_HP = 40;
+      TIER_HP_SCALE = 1.5;
+      TIER_ATTACK = 4;
+      TIER_ATTACK_SCALE = 1.2;
+      ARMOR_SCALE = 100;
+      COMMON_UNIT_STAT_DEFAULTS = Object.freeze({
+        armor: 0,
+        moveSpeed: 1,
+        attackSpeed: 1,
+        critChance: 0,
+        critMultiplier: 2,
+        armorPenetration: 0,
+        attackArea: 1,
+        lifesteal: 0,
+        regen: 0,
+        healingReceivedMultiplier: 1,
+        knockbackPower: 1,
+        knockbackResistance: 0,
+        statusDuration: 1,
+        statusResistance: 0
+      });
+      COMMON_UNIT_STAT_PROFILES = Object.freeze(
+        Array.from(
+          {
+            length: SPECIES_COUNT
+          },
+          () => Object.freeze({
+            ...COMMON_UNIT_STAT_DEFAULTS
+          })
+        )
+      );
+      BASE_STATS_BY_PROFILE = new Map(
+        [COMMON_UNIT_STAT_DEFAULTS, ...COMMON_UNIT_STAT_PROFILES].map((profile) => [
+          profile,
+          Array.from(
+            {
+              length: MAX_UNIT_TIER
+            },
+            (_, index) => createBaseStats(index + 1, profile)
+          )
+        ])
+      );
+    }
+  });
+
+  // src/spatial-grid.js
+  var CELL_SIZE, WORLD_MIN, WORLD_SIZE, CELL_COUNT, WORLD_MAX, CELL_TOTAL, FixedSpatialGrid;
+  var init_spatial_grid = __esm({
+    "src/spatial-grid.js"() {
+      CELL_SIZE = 1.5;
+      WORLD_MIN = -64;
+      WORLD_SIZE = 128;
+      CELL_COUNT = Math.ceil(WORLD_SIZE / CELL_SIZE);
+      WORLD_MAX = WORLD_MIN + CELL_COUNT * CELL_SIZE;
+      CELL_TOTAL = CELL_COUNT * CELL_COUNT;
+      FixedSpatialGrid = class {
+        constructor() {
+          this.cellSize = CELL_SIZE;
+          this.cellCount = CELL_COUNT;
+          this.cells = new Array(CELL_TOTAL);
+          this.usedCells = [];
+          this.touched = new Uint8Array(CELL_TOTAL);
+          this.itemCells = /* @__PURE__ */ new Map();
+          this.overflowItems = [];
+        }
+        clear() {
+          for (const KEY2 of this.usedCells) {
+            this.cells[KEY2].length = 0;
+            this.touched[KEY2] = 0;
+          }
+          this.usedCells.length = 0;
+          this.itemCells.clear();
+          this.overflowItems.length = 0;
+        }
+        cellX(x) {
+          return Math.floor((x - WORLD_MIN) / CELL_SIZE);
+        }
+        cellY(y) {
+          return Math.floor((y - WORLD_MIN) / CELL_SIZE);
+        }
+        _cellKey(x, y) {
+          if (!Number.isFinite(x) || !Number.isFinite(y)) {
+            return -1;
+          }
+          const CX = this.cellX(x), CY = this.cellY(y);
+          return CX < 0 || CY < 0 || CX >= CELL_COUNT || CY >= CELL_COUNT ? -1 : CY * CELL_COUNT + CX;
+        }
+        insert(item, x = item?.x, y = item?.y) {
+          if (!item) {
+            return false;
+          }
+          const PREVIOUS = this.itemCells.get(item);
+          if (PREVIOUS !== void 0) {
+            if (PREVIOUS >= 0) {
+              this._removeFromCell(item, PREVIOUS);
+            } else {
+              this._removeOverflow(item);
+            }
+          }
+          const KEY2 = this._cellKey(x, y);
+          this.itemCells.set(item, KEY2);
+          if (KEY2 < 0) {
+            this.overflowItems.push(item);
+            return false;
+          }
+          let bucket = this.cells[KEY2];
+          if (!bucket) {
+            bucket = this.cells[KEY2] = [];
+          }
+          if (!this.touched[KEY2]) {
+            this.touched[KEY2] = 1;
+            this.usedCells.push(KEY2);
+          }
+          bucket.push(item);
+          return true;
+        }
+        update(item, x = item?.x, y = item?.y) {
+          if (!item) {
+            return false;
+          }
+          const PREVIOUS = this.itemCells.get(item);
+          const NEXT = this._cellKey(x, y);
+          if (PREVIOUS === NEXT) {
+            return NEXT >= 0;
+          }
+          if (PREVIOUS !== void 0) {
+            if (PREVIOUS >= 0) {
+              this._removeFromCell(item, PREVIOUS);
+            } else {
+              this._removeOverflow(item);
+            }
+          }
+          this.itemCells.set(item, NEXT);
+          if (NEXT < 0) {
+            this.overflowItems.push(item);
+            return false;
+          }
+          let bucket = this.cells[NEXT];
+          if (!bucket) {
+            bucket = this.cells[NEXT] = [];
+          }
+          if (!this.touched[NEXT]) {
+            this.touched[NEXT] = 1;
+            this.usedCells.push(NEXT);
+          }
+          bucket.push(item);
+          return true;
+        }
+        remove(item) {
+          const KEY2 = this.itemCells.get(item);
+          if (KEY2 === void 0) {
+            return false;
+          }
+          if (KEY2 >= 0) {
+            this._removeFromCell(item, KEY2);
+          } else {
+            this._removeOverflow(item);
+          }
+          this.itemCells.delete(item);
+          return true;
+        }
+        _removeOverflow(item) {
+          const INDEX = this.overflowItems.indexOf(item);
+          if (INDEX < 0) {
+            return;
+          }
+          const LAST = this.overflowItems.pop();
+          if (INDEX < this.overflowItems.length) {
+            this.overflowItems[INDEX] = LAST;
+          }
+        }
+        _removeFromCell(item, key) {
+          const BUCKET = this.cells[key];
+          if (!BUCKET) {
+            return;
+          }
+          const INDEX = BUCKET.indexOf(item);
+          if (INDEX < 0) {
+            return;
+          }
+          const LAST = BUCKET.pop();
+          if (INDEX < BUCKET.length) {
+            BUCKET[INDEX] = LAST;
+          }
+        }
+        queryAABB(minX, minY, maxX, maxY, out) {
+          out.length = 0;
+          if (![minX, minY, maxX, maxY].every(Number.isFinite)) {
+            return out;
+          }
+          if (maxX >= WORLD_MIN && maxY >= WORLD_MIN && minX < WORLD_MAX && minY < WORLD_MAX) {
+            const X0 = Math.max(0, this.cellX(minX)), Y0 = Math.max(0, this.cellY(minY));
+            const X1 = Math.min(CELL_COUNT - 1, this.cellX(maxX)), Y1 = Math.min(CELL_COUNT - 1, this.cellY(maxY));
+            for (let y = Y0; y <= Y1; y++) {
+              const ROW = y * CELL_COUNT;
+              for (let x = X0; x <= X1; x++) {
+                const BUCKET = this.cells[ROW + x];
+                if (BUCKET) {
+                  for (let i = 0; i < BUCKET.length; i++) {
+                    out.push(BUCKET[i]);
+                  }
+                }
+              }
+            }
+          }
+          for (const ITEM of this.overflowItems) {
+            if (ITEM.x >= minX && ITEM.x <= maxX && ITEM.y >= minY && ITEM.y <= maxY) {
+              out.push(ITEM);
+            }
+          }
+          return out;
+        }
+        queryCellRing(centerX, centerY, radius, out) {
+          out.length = 0;
+          const X0 = centerX - radius, X1 = centerX + radius;
+          const Y0 = centerY - radius, Y1 = centerY + radius;
+          if (radius === 0) {
+            this._appendCell(centerX, centerY, out);
+            return out;
+          }
+          for (let x = X0; x <= X1; x++) {
+            this._appendCell(x, Y0, out);
+            this._appendCell(x, Y1, out);
+          }
+          for (let y = Y0 + 1; y < Y1; y++) {
+            this._appendCell(X0, y, out);
+            this._appendCell(X1, y, out);
+          }
+          return out;
+        }
+        _appendCell(x, y, out) {
+          if (x < 0 || y < 0 || x >= CELL_COUNT || y >= CELL_COUNT) {
+            return;
+          }
+          const BUCKET = this.cells[y * CELL_COUNT + x];
+          if (BUCKET) {
+            for (let i = 0; i < BUCKET.length; i++) {
+              out.push(BUCKET[i]);
+            }
+          }
+        }
+        distanceToOutsideRing(x, y, centerX, centerY, radius) {
+          const LEFT = Math.max(0, centerX - radius), RIGHT = Math.min(CELL_COUNT - 1, centerX + radius);
+          const BOTTOM = Math.max(0, centerY - radius), TOP = Math.min(CELL_COUNT - 1, centerY + radius);
+          let nearest = Infinity;
+          if (LEFT > 0) {
+            nearest = Math.min(nearest, x - (WORLD_MIN + LEFT * CELL_SIZE));
+          }
+          if (RIGHT < CELL_COUNT - 1) {
+            nearest = Math.min(nearest, WORLD_MIN + (RIGHT + 1) * CELL_SIZE - x);
+          }
+          if (BOTTOM > 0) {
+            nearest = Math.min(nearest, y - (WORLD_MIN + BOTTOM * CELL_SIZE));
+          }
+          if (TOP < CELL_COUNT - 1) {
+            nearest = Math.min(nearest, WORLD_MIN + (TOP + 1) * CELL_SIZE - y);
+          }
+          return Math.max(0, nearest);
+        }
+      };
+    }
+  });
+
+  // src/vector-sockets.cjs
+  var require_vector_sockets = __commonJS({
+    "src/vector-sockets.cjs"(exports, module) {
+      "use strict";
+      function readVectorSockets3({ metadata, viewBox, sourcePath }, label = sourcePath || metadata?.id || "unknown asset") {
+        const FAIL4 = (message) => {
+          throw new Error(`Vector socket contract (${label}): ${message}`);
+        };
+        if (!Array.isArray(viewBox) || viewBox.length !== 4 || !viewBox.every(Number.isFinite) || viewBox[2] <= 0 || viewBox[3] <= 0) {
+          FAIL4("a finite SVG viewBox is required");
+        }
+        const PARTS = new Map((metadata?.parts || []).map((part) => [part.id, part]));
+        const ANCHORS = {};
+        for (const NAME of ["mouth", "ground"]) {
+          const SOCKET = metadata?.sockets?.[NAME];
+          if (!SOCKET || !PARTS.has(SOCKET.part)) {
+            FAIL4(`${NAME} must name an authored part`);
+          }
+          if (!Array.isArray(SOCKET.point) || SOCKET.point.length !== 2 || !SOCKET.point.every(Number.isFinite)) {
+            FAIL4(`${NAME} must contain two finite canvas coordinates`);
+          }
+          const [X, Y] = SOCKET.point;
+          if (X < viewBox[0] || X > viewBox[0] + viewBox[2] || Y < viewBox[1] || Y > viewBox[1] + viewBox[3]) {
+            FAIL4(`${NAME} lies outside the SVG canvas`);
+          }
+          ANCHORS[NAME] = Object.freeze({
+            part: SOCKET.part,
+            x: X,
+            y: Y
+          });
+        }
+        if (ANCHORS.ground.part !== "body") {
+          FAIL4("ground must belong to body");
+        }
+        if (ANCHORS.mouth.y >= ANCHORS.ground.y) {
+          FAIL4("mouth must be above the authored ground baseline");
+        }
+        return Object.freeze(ANCHORS);
+      }
+      var BOSS_VECTOR_DIAMETER = 220;
+      var BOSS_VECTOR_RADIUS_SCALE = 1.16;
+      var WORLD_HEIGHT_PROJECTION4 = 0.785;
+      var WORLD_DEPTH_PROJECTION3 = 0.62;
+      function bossVectorScale3(radius) {
+        return 2 * radius * BOSS_VECTOR_RADIUS_SCALE / BOSS_VECTOR_DIAMETER;
+      }
+      function socketWorldPoint2(boss, socket, ground) {
+        const SCALE = bossVectorScale3(boss.radius);
+        return {
+          x: boss.x + (socket.x - ground.x) * SCALE,
+          y: boss.y,
+          z: (boss.z || 0) + (ground.y - socket.y) * SCALE / WORLD_HEIGHT_PROJECTION4
+        };
+      }
+      module.exports = {
+        readVectorSockets: readVectorSockets3,
+        bossVectorScale: bossVectorScale3,
+        socketWorldPoint: socketWorldPoint2,
+        WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION4,
+        WORLD_DEPTH_PROJECTION: WORLD_DEPTH_PROJECTION3
+      };
+    }
+  });
+
+  // src/features/unit-body/definition.cjs
+  var require_definition = __commonJS({
+    "src/features/unit-body/definition.cjs"(exports, module) {
+      "use strict";
+      var { WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION4 } = require_vector_sockets();
+      var AUTHORED_BODIES = [
+        {
+          species: 0,
+          asset: "assets/troops/pea.svg",
+          shapeId: "body-outline",
+          sourceSha256: "4d4d6311b69aafb79bf271deea9c0898a2de81c46137503df23041ea843b0365",
+          viewBox: [0, 0, 320, 350],
+          bounds: {
+            left: 57.00453577435779,
+            top: 103.16243270259355,
+            right: 278.93153243769814,
+            bottom: 312.75
+          },
+          ground: {
+            x: 160,
+            y: 350
+          },
+          mouth: {
+            x: 176,
+            y: 211.76175
+          }
+        },
+        {
+          species: 1,
+          asset: "assets/troops/corn-kernel.svg",
+          shapeId: "corn-body-outline",
+          sourceSha256: "ffa82f15e14bef8e9d450a5f105bb66d66cbe18022c948c8a27740eaaf065790",
+          viewBox: [0, 0, 285, 295],
+          bounds: {
+            left: 23.038415422304524,
+            top: 7.394271983516546,
+            right: 258.5,
+            bottom: 243.25
+          },
+          ground: {
+            x: 142.5,
+            y: 295
+          },
+          mouth: {
+            x: 140,
+            y: 113.6965
+          }
+        },
+        {
+          species: 2,
+          asset: "assets/troops/kidney-bean.svg",
+          shapeId: "bean-body-outline",
+          sourceSha256: "201e77f6097da10d06b5aea94437b146a213e59a50cf3b81ddc57fe3157f713e",
+          viewBox: [0, 0, 260, 320],
+          bounds: {
+            left: 35.860000000000014,
+            top: 12.298798725449615,
+            right: 223.18548295320454,
+            bottom: 279.2683248982993
+          },
+          ground: {
+            x: 130,
+            y: 320
+          },
+          mouth: {
+            x: 119,
+            y: 110.4355
+          }
+        },
+        {
+          species: 3,
+          asset: "assets/troops/chestnut.svg",
+          shapeId: "chestnut-shell",
+          sourceSha256: "a35483cf970c33886b311346d2032df16275cb7382d80f91581b35bb36248ee1",
+          viewBox: [0, 0, 320, 300],
+          bounds: {
+            left: 38.666666666666664,
+            top: 19,
+            right: 281.3333333333333,
+            bottom: 233
+          },
+          ground: {
+            x: 160,
+            y: 261
+          },
+          mouth: {
+            x: 160,
+            y: 140
+          }
+        },
+        {
+          species: 4,
+          asset: "assets/troops/peanut.svg",
+          shapeId: "peanut-pod-outline",
+          sourceSha256: "79c2dc3bdb2f576662fd620b8b1be8795a33399fdfe42e527e8e8eeaae782c84",
+          viewBox: [0, 0, 320, 300],
+          bounds: {
+            left: 101.3125,
+            top: 63.5,
+            right: 215.25,
+            bottom: 252.4375
+          },
+          ground: {
+            x: 160,
+            y: 269
+          },
+          mouth: {
+            x: 160,
+            y: 139.42
+          }
+        },
+        {
+          species: 5,
+          asset: "assets/troops/walnut.svg",
+          shapeId: "walnut-body-outline",
+          sourceSha256: "6f3f16d7548daa981439764dd2646817349dfd644f6d8e8f4beb1defe9342c57",
+          viewBox: [0, 0, 320, 300],
+          bounds: {
+            left: 83.5,
+            top: 71,
+            right: 247.75,
+            bottom: 252.75
+          },
+          ground: {
+            x: 160,
+            y: 273
+          },
+          mouth: {
+            x: 160,
+            y: 161
+          }
+        },
+        {
+          species: 6,
+          asset: "assets/troops/rice.svg",
+          shapeId: "rice-body-outline",
+          sourceSha256: "5aef9bd138b053edc1f87908dffb623139d981c401aa21e6b59e401edd484de2",
+          viewBox: [0, 0, 320, 350],
+          bounds: {
+            left: 70.60885389809643,
+            top: 80.465,
+            right: 244.56002549222026,
+            bottom: 308.5244145408352
+          },
+          ground: {
+            x: 160,
+            y: 320
+          },
+          mouth: {
+            x: 159,
+            y: 181
+          }
+        },
+        {
+          species: 7,
+          asset: "assets/troops/wheat.svg",
+          shapeId: "wheat-grain-outline",
+          sourceSha256: "4bcb07c0d461f030e9fb54d0709cc162d3ef33514f21b5c691574fecf6628697",
+          viewBox: [0, 0, 320, 350],
+          bounds: {
+            left: 85.19999999999996,
+            top: 41.26666666666667,
+            right: 221.6,
+            bottom: 303.6
+          },
+          ground: {
+            x: 160,
+            y: 320
+          },
+          mouth: {
+            x: 153,
+            y: 173
+          }
+        },
+        {
+          species: 8,
+          asset: "assets/troops/barley.svg",
+          shapeId: "barley-seed-outline",
+          sourceSha256: "b91f433fd962b33dca843436712f12658565a0818161442f9674ffdc8ea3fb8d",
+          viewBox: [0, 0, 320, 350],
+          bounds: {
+            left: 69.30899999999998,
+            top: 101.629,
+            right: 252.47099999999998,
+            bottom: 297.4735
+          },
+          ground: {
+            x: 160,
+            y: 320
+          },
+          mouth: {
+            x: 160,
+            y: 171.85
+          }
+        }
+      ];
+      var UNIT_BODIES = Object.freeze(
+        AUTHORED_BODIES.map(
+          (body) => Object.freeze({
+            ...body,
+            viewBox: Object.freeze(body.viewBox),
+            bounds: Object.freeze(body.bounds),
+            ground: Object.freeze(body.ground),
+            mouth: Object.freeze(body.mouth)
+          })
+        )
+      );
+      var UNIT_BODY_CONFIG = Object.freeze({
+        baseSize: 0.55,
+        sizePerTier: 0.1,
+        birthScale: 0.5,
+        vectorRadiusScale: 0.78
+      });
+      function unitBodyDefinition3(species) {
+        const BODY2 = UNIT_BODIES[species];
+        if (!BODY2) {
+          throw new RangeError("Missing authored unit body for species " + species);
+        }
+        return BODY2;
+      }
+      function unitVisualSize2(unit) {
+        const MATURE = unit.growthElapsed >= unit.growthDuration - 1e-9, GROWTH = MATURE || !(unit.growthDuration > 0) ? 1 : Math.max(0, Math.min(1, unit.growthElapsed / unit.growthDuration));
+        return (UNIT_BODY_CONFIG.baseSize + UNIT_BODY_CONFIG.sizePerTier * unit.tier) * (UNIT_BODY_CONFIG.birthScale + (1 - UNIT_BODY_CONFIG.birthScale) * GROWTH);
+      }
+      function unitVectorScale2(unit) {
+        const BODY2 = unitBodyDefinition3(unit.species);
+        return unitVisualSize2(unit) * 2 * UNIT_BODY_CONFIG.vectorRadiusScale / Math.max(BODY2.viewBox[2], BODY2.viewBox[3]);
+      }
+      function bodyRadiusAtScale(body, scale) {
+        return Math.max(body.ground.x - body.bounds.left, body.bounds.right - body.ground.x) * scale;
+      }
+      function unitBodyRadius3(unit) {
+        return bodyRadiusAtScale(unitBodyDefinition3(unit.species), unitVectorScale2(unit));
+      }
+      function unitBodyHeight2(unit) {
+        const BODY2 = unitBodyDefinition3(unit.species);
+        return (BODY2.ground.y - BODY2.bounds.top) * unitVectorScale2(unit) / WORLD_HEIGHT_PROJECTION4;
+      }
+      function unitTorsoHeight2(unit) {
+        const BODY2 = unitBodyDefinition3(unit.species);
+        return (BODY2.bounds.bottom - BODY2.bounds.top) * unitVectorScale2(unit) / WORLD_HEIGHT_PROJECTION4;
+      }
+      function maximumUnitRadius2(tier) {
+        return Math.max(
+          ...UNIT_BODIES.map(
+            (body) => unitBodyRadius3({
+              species: body.species,
+              tier,
+              growthElapsed: 1,
+              growthDuration: 1
+            })
+          )
+        );
+      }
+      function unitDisplayScale3(body, vectorScale, pixelsPerWorldUnit, minimumRadiusPixels) {
+        return Math.max(
+          vectorScale * pixelsPerWorldUnit,
+          2 * minimumRadiusPixels / Math.max(body.viewBox[2], body.viewBox[3])
+        );
+      }
+      function validateUnitBodySource(species, source) {
+        const BODY2 = unitBodyDefinition3(species);
+        if (source.sha256 !== BODY2.sourceSha256 || source.file !== BODY2.asset) {
+          throw new Error("Authored unit body must be remeasured after SVG changes: " + BODY2.asset);
+        }
+      }
+      module.exports = {
+        UNIT_BODIES,
+        UNIT_BODY_CONFIG,
+        unitBodyDefinition: unitBodyDefinition3,
+        unitVisualSize: unitVisualSize2,
+        unitVectorScale: unitVectorScale2,
+        unitBodyRadius: unitBodyRadius3,
+        unitBodyHeight: unitBodyHeight2,
+        unitTorsoHeight: unitTorsoHeight2,
+        maximumUnitRadius: maximumUnitRadius2,
+        unitDisplayScale: unitDisplayScale3,
+        validateUnitBodySource
+      };
+    }
+  });
+
+  // src/features/formation-skills/model-base.js
+  function targetBodyDimensions(target) {
+    const BODY_HEIGHT = Number.isFinite(target?.height) ? Math.max(0, target.height) : T1_DIAMETER * 1.7, BODY_RADIUS = Number.isFinite(target?.radius) ? Math.max(0, target.radius) : T1_DIAMETER * 0.5, BASE_Z = Number.isFinite(target?.z) ? target.z : 0;
+    return {
+      z: BASE_Z,
+      bodyHeight: BODY_HEIGHT,
+      bodyRadius: BODY_RADIUS,
+      topZ: BASE_Z + BODY_HEIGHT
+    };
+  }
+  function targetTop(_owner, target) {
+    const BODY2 = targetBodyDimensions(target), MARGIN = Math.max(T1_DIAMETER * 0.12, BODY2.bodyHeight * 0.06);
+    return BODY2.topZ + MARGIN;
+  }
+  var import_definition10, T1_DIAMETER, FormationSkill, MeteorSkill, FlyingSkill;
+  var init_model_base = __esm({
+    "src/features/formation-skills/model-base.js"() {
+      import_definition10 = __toESM(require_definition(), 1);
+      T1_DIAMETER = (0, import_definition10.unitBodyRadius)({ species: 0, tier: 1, growthElapsed: 1, growthDuration: 1 }) * 2;
+      FormationSkill = class {
+        constructor(definition) {
+          this.definition = definition;
+        }
+        power(level, base) {
+          return base * (this.definition.upgradeFactor ?? 1.5) ** (level - 1);
+        }
+        cast(_owner, _slot) {
+          return false;
+        }
+        update(_owner, effect, dt) {
+          effect.age += dt;
+          return effect.age <= effect.duration;
+        }
+      };
+      MeteorSkill = class extends FormationSkill {
+        launch(owner, slot, index = 0) {
+          const TARGET = owner.enemy();
+          if (!TARGET) {
+            return false;
+          }
+          const ANGLE = owner.world.random() * Math.PI * 2, DISTANCE = Math.sqrt(owner.world.random()) * (TARGET.radius + T1_DIAMETER * 3);
+          owner.addEffect(this.definition.id, {
+            x: TARGET.x + Math.cos(ANGLE) * DISTANCE,
+            y: TARGET.y + Math.sin(ANGLE) * DISTANCE,
+            z: 12,
+            delay: index * 0.25,
+            duration: index * 0.25 + 1.25,
+            radius: T1_DIAMETER * 3,
+            damage: this.power(slot.level, this.definition.upgradeBase),
+            impacted: false
+          });
+          return true;
+        }
+        cast(owner, slot) {
+          return this.launch(owner, slot);
+        }
+        update(owner, effect, dt) {
+          effect.age += dt;
+          if (!effect.impacted && effect.age + 1e-9 >= effect.delay + 0.75) {
+            effect.impacted = true;
+            owner.areaDamage(effect.x, effect.y, effect.radius, effect.damage, this.knockback === true);
+          }
+          return effect.age < effect.duration;
+        }
+      };
+      FlyingSkill = class extends FormationSkill {
+        cast(owner, slot) {
+          const TARGET = owner.enemy();
+          if (!TARGET) {
+            return false;
+          }
+          const ANGLE = owner.world.random() * Math.PI * 2, STATE = this.effectState(owner, TARGET, slot, ANGLE);
+          owner.addEffect(this.definition.id, STATE);
+          return true;
+        }
+        effectState(owner, target, slot, angle) {
+          const BODY2 = targetBodyDimensions(target), TARGET_Z = targetTop(owner, target);
+          return {
+            x: target.x + Math.cos(angle) * 0.6,
+            y: target.y + Math.sin(angle) * 0.6,
+            z: TARGET_Z + 2,
+            bodyHeight: BODY2.bodyHeight,
+            bodyRadius: BODY2.bodyRadius,
+            targetId: owner.targetId(target),
+            duration: this.definition.upgradeBase + this.definition.upgradeStep * (slot.level - 1),
+            pulse: 0,
+            lastPulse: -10,
+            targetX: target.x,
+            targetY: target.y,
+            targetZ: TARGET_Z
+          };
+        }
+        onPulse(_owner, _effect, _target) {
+        }
+        strike(_owner, _effect, _target) {
+        }
+        update(owner, effect, dt) {
+          effect.age += dt;
+          const TARGET = owner.target(effect.targetId) || owner.enemy(effect);
+          if (TARGET) {
+            const BODY2 = targetBodyDimensions(TARGET);
+            effect.targetId = owner.targetId(TARGET);
+            const DX = TARGET.x - effect.x, DY = TARGET.y - effect.y, TARGET_Z = targetTop(owner, TARGET), RATE = 1 - Math.exp(-dt * 6);
+            effect.x += DX * RATE;
+            effect.y += DY * RATE;
+            effect.z += (TARGET_Z + 2 - effect.z) * RATE;
+            effect.targetX = TARGET.x;
+            effect.targetY = TARGET.y;
+            effect.targetZ = TARGET_Z;
+            effect.bodyHeight = BODY2.bodyHeight;
+            effect.bodyRadius = BODY2.bodyRadius;
+          }
+          owner.separateAir(effect, dt);
+          const ACTIVE_AGE = effect.age - 0.5;
+          const INTERVAL = this.definition.pulseInterval;
+          if (ACTIVE_AGE >= 0 && effect.pulse < Math.floor((effect.duration + 1e-9) / INTERVAL)) {
+            const DUE = Math.min(
+              Math.floor((Math.min(ACTIVE_AGE, effect.duration) + 1e-9) / INTERVAL),
+              Math.floor((effect.duration + 1e-9) / INTERVAL)
+            );
+            while (effect.pulse < DUE) {
+              effect.pulse++;
+              effect.lastPulse = effect.age;
+              this.onPulse(owner, effect, TARGET);
+              if (TARGET && Math.hypot(TARGET.x - effect.x, TARGET.y - effect.y) <= 18) {
+                this.strike(owner, effect, TARGET);
+              }
+            }
+          }
+          return effect.age < effect.duration + 1;
+        }
+      };
+    }
+  });
+
+  // src/features/formation-skills/giant/model.js
+  var GiantSkill;
+  var init_model = __esm({
+    "src/features/formation-skills/giant/model.js"() {
+      init_definition();
+      init_model_base();
+      init_formation_skill_state();
+      GiantSkill = class extends FormationSkill {
+        constructor() {
+          super(DEFINITION);
+        }
+        cast(owner, slot) {
+          const CANDIDATES = owner.allies().filter((unit) => unit.giantUntil <= owner.world.time);
+          if (!CANDIDATES.length) {
+            return false;
+          }
+          const TARGET_COUNT = Math.min(CANDIDATES.length, formationUpgradeValue(this.definition, slot.level));
+          for (let i = 0; i < TARGET_COUNT; i++) {
+            const J = i + Math.floor(owner.world.random() * (CANDIDATES.length - i)), UNIT3 = CANDIDATES[J];
+            CANDIDATES[J] = CANDIDATES[i];
+            CANDIDATES[i] = UNIT3;
+            UNIT3.giantUntil = owner.world.time + this.definition.durationSeconds;
+            owner.addEffect(DEFINITION.id, {
+              x: UNIT3.x,
+              y: UNIT3.y,
+              radius: UNIT3.radius,
+              unitId: UNIT3.id,
+              duration: this.definition.durationSeconds
+            });
+          }
+          return true;
+        }
+        update(owner, effect, dt) {
+          effect.age += dt;
+          const UNIT3 = owner.world._unitForId(effect.unitId);
+          if (!UNIT3 || UNIT3.hp <= 0) {
+            return false;
+          }
+          effect.x = UNIT3.x;
+          effect.y = UNIT3.y;
+          effect.radius = UNIT3.radius;
+          if (effect.age >= effect.duration) {
+            UNIT3.giantUntil = 0;
+            UNIT3.giantEndedAt = owner.world.time;
+            return false;
+          }
+          return true;
+        }
+      };
+    }
+  });
+
+  // src/features/formation-skills/lightning/model.js
+  var LightningSkill;
+  var init_model2 = __esm({
+    "src/features/formation-skills/lightning/model.js"() {
+      init_definition2();
+      init_model_base();
+      LightningSkill = class extends FormationSkill {
+        constructor() {
+          super(DEFINITION2);
+        }
+        cast(owner, slot) {
+          const TARGET = owner.enemy();
+          if (!TARGET) {
+            return false;
+          }
+          const BODY2 = targetBodyDimensions(TARGET);
+          owner.addEffect(DEFINITION2.id, {
+            x: TARGET.x,
+            y: TARGET.y,
+            z: BODY2.z,
+            bodyHeight: BODY2.bodyHeight,
+            bodyRadius: BODY2.bodyRadius,
+            duration: 0.65
+          });
+          owner.damage(TARGET, this.power(slot.level, this.definition.upgradeBase));
+          return true;
+        }
+      };
+    }
+  });
+
+  // src/features/formation-skills/meteor/model.js
+  var LargeMeteorSkill;
+  var init_model3 = __esm({
+    "src/features/formation-skills/meteor/model.js"() {
+      init_definition3();
+      init_model_base();
+      LargeMeteorSkill = class extends MeteorSkill {
+        constructor() {
+          super(DEFINITION3);
+          this.knockback = true;
+        }
+      };
+    }
+  });
+
+  // src/features/formation-skills/meteor-shower/model.js
+  var MeteorShowerSkill;
+  var init_model4 = __esm({
+    "src/features/formation-skills/meteor-shower/model.js"() {
+      init_definition4();
+      init_model_base();
+      MeteorShowerSkill = class extends MeteorSkill {
+        constructor() {
+          super(DEFINITION4);
+        }
+        cast(owner, slot) {
+          if (!owner.enemy()) {
+            return false;
+          }
+          for (let i = 0; i < this.definition.upgradeBase + slot.level - 1; i++) {
+            this.launch(owner, slot, i);
+            const EFFECT = owner.effects[owner.effects.length - 1];
+            EFFECT.radius = T1_DIAMETER;
+            EFFECT.damage = 25;
+          }
+          return true;
+        }
+      };
+    }
+  });
+
+  // src/features/formation-skills/copy/model.js
+  var CopySkill;
+  var init_model5 = __esm({
+    "src/features/formation-skills/copy/model.js"() {
+      init_definition5();
+      init_model_base();
+      CopySkill = class extends FormationSkill {
+        constructor() {
+          super(DEFINITION5);
+        }
+        cast(owner, slot) {
+          const ORIGINALS = owner.allies().filter((unit) => !unit.isBattleOnlySummon), RADIUS2 = this.power(slot.level, T1_DIAMETER * this.definition.upgradeBase);
+          let center = null;
+          let targets = [];
+          for (const UNIT3 of ORIGINALS) {
+            const NEAR = owner.nearby(UNIT3.x, UNIT3.y, RADIUS2).filter(
+              (candidate) => candidate.faction === "player" && !candidate.isBattleOnlySummon && candidate.hp > 0 && Math.hypot(candidate.x - UNIT3.x, candidate.y - UNIT3.y) <= RADIUS2
+            );
+            if (NEAR.length > targets.length) {
+              center = UNIT3;
+              targets = NEAR;
+            }
+          }
+          if (!center || !targets.length || !owner.canClone(targets.length)) {
+            return false;
+          }
+          owner.addEffect(DEFINITION5.id, { x: center.x, y: center.y, radius: RADIUS2, duration: 0.7 });
+          for (const UNIT3 of targets) {
+            owner.world.createFormationClone(UNIT3);
+          }
+          return true;
+        }
+      };
+    }
+  });
+
+  // src/features/formation-skills/healing-rain/model.js
+  var HealingRainSkill;
+  var init_model6 = __esm({
+    "src/features/formation-skills/healing-rain/model.js"() {
+      init_definition6();
+      init_model_base();
+      init_unit_stats();
+      HealingRainSkill = class extends FormationSkill {
+        constructor() {
+          super(DEFINITION6);
+          this.injuredScratch = [];
+        }
+        cast(owner, slot) {
+          if (owner.injuredAllies().length === 0) {
+            return false;
+          }
+          owner.addEffect(DEFINITION6.id, {
+            x: 0,
+            y: 0,
+            duration: 3,
+            total: this.power(slot.level, this.definition.upgradeBase)
+          });
+          return true;
+        }
+        update(owner, effect, dt) {
+          const SPAN = Math.min(dt, Math.max(0, effect.duration - effect.age));
+          effect.age += dt;
+          let amount = effect.total * SPAN / effect.duration;
+          const INJURED = owner.injuredAllies(this.injuredScratch);
+          let injuredCount = INJURED.length;
+          while (amount > 1e-9 && injuredCount) {
+            const SHARE = amount / injuredCount;
+            let spent = 0;
+            for (let i = 0; i < injuredCount; i++) {
+              const UNIT3 = INJURED[i];
+              spent += applyHealing(UNIT3, SHARE, { ...resolveUnitStats(UNIT3), healingReceivedMultiplier: 1 });
+            }
+            amount -= spent;
+            let remaining = 0;
+            for (let i = 0; i < injuredCount; i++) {
+              const UNIT3 = INJURED[i];
+              if (UNIT3.hp < resolveUnitStats(UNIT3).maxHp - 1e-9) {
+                INJURED[remaining++] = UNIT3;
+              }
+            }
+            injuredCount = remaining;
+            if (spent < 1e-9) {
+              break;
+            }
+          }
+          return effect.age < effect.duration;
+        }
+      };
+    }
+  });
+
+  // src/features/formation-skills/hammer/model.js
+  var HammerSkill;
+  var init_model7 = __esm({
+    "src/features/formation-skills/hammer/model.js"() {
+      init_definition7();
+      init_model_base();
+      HammerSkill = class extends FormationSkill {
+        constructor() {
+          super(DEFINITION7);
+        }
+        cast(owner, slot) {
+          const TARGET = owner.enemy();
+          if (!TARGET) {
+            return false;
+          }
+          const BODY2 = targetBodyDimensions(TARGET);
+          owner.addEffect(DEFINITION7.id, {
+            x: TARGET.x,
+            y: TARGET.y,
+            z: BODY2.z,
+            bodyHeight: BODY2.bodyHeight,
+            bodyRadius: BODY2.bodyRadius,
+            duration: 0.7
+          });
+          owner.damage(TARGET, this.power(slot.level, this.definition.upgradeBase));
+          TARGET.stun = Math.max(TARGET.stun || 0, 1);
+          return true;
+        }
+      };
+    }
+  });
+
+  // src/features/formation-skills/ufo/model.js
+  var UfoSkill;
+  var init_model8 = __esm({
+    "src/features/formation-skills/ufo/model.js"() {
+      init_definition8();
+      init_model_base();
+      UfoSkill = class extends FlyingSkill {
+        constructor() {
+          super(DEFINITION8);
+        }
+        onPulse(owner, effect) {
+          const TARGET = owner.verticalTarget(effect.x, effect.y);
+          if (TARGET) {
+            owner.damage(TARGET, this.definition.pulseDamage);
+          }
+          effect.beamTargetZ = TARGET ? targetBodyDimensions(TARGET).topZ : 0;
+        }
+        update(owner, effect, dt) {
+          const ALIVE = super.update(owner, effect, dt), TARGET = owner.verticalTarget(effect.x, effect.y);
+          effect.beamTarget = !!TARGET;
+          effect.beamTargetZ = TARGET ? targetBodyDimensions(TARGET).topZ : 0;
+          return ALIVE;
+        }
+      };
+    }
+  });
+
+  // src/features/formation-skills/storm-cloud/model.js
+  var StormCloudSkill;
+  var init_model9 = __esm({
+    "src/features/formation-skills/storm-cloud/model.js"() {
+      init_definition9();
+      init_model_base();
+      StormCloudSkill = class extends FlyingSkill {
+        constructor() {
+          super(DEFINITION9);
+        }
+        strike(owner, _effect, target) {
+          owner.damage(target, this.definition.pulseDamage);
+        }
+      };
+    }
+  });
+
+  // src/formation-skills.js
+  var MODELS, FormationSkills;
+  var init_formation_skills = __esm({
+    "src/formation-skills.js"() {
+      init_formation_skill_state();
+      init_unit_stats();
+      init_spatial_grid();
+      init_model();
+      init_model2();
+      init_model3();
+      init_model4();
+      init_model5();
+      init_model6();
+      init_model7();
+      init_model8();
+      init_model9();
+      MODELS = new Map(
+        [
+          new GiantSkill(),
+          new LightningSkill(),
+          new LargeMeteorSkill(),
+          new MeteorShowerSkill(),
+          new CopySkill(),
+          new HealingRainSkill(),
+          new HammerSkill(),
+          new UfoSkill(),
+          new StormCloudSkill()
+        ].map((model) => [model.definition.id, model])
+      );
+      FormationSkills = class {
+        constructor(world) {
+          this.world = world;
+          this.members = new Set(world.units);
+          this.injured = /* @__PURE__ */ new Set();
+          this.rebuildInjured();
+          this.scratch = [];
+          this.air = new FixedSpatialGrid();
+          this.airScratch = [];
+          this.subscriptions = [
+            world.unitCollection.onAdded.on(({ unitId }) => {
+              const UNIT3 = world._unitForId(unitId);
+              if (UNIT3) {
+                this.members.add(UNIT3);
+                this.trackHealth(UNIT3);
+              }
+            }),
+            world.unitCollection.onRemoved.on(({ unitId }) => {
+              for (const UNIT3 of this.members) {
+                if (UNIT3.id === unitId) {
+                  this.members.delete(UNIT3);
+                  this.injured.delete(UNIT3);
+                }
+              }
+            }),
+            world.unitCollection.onReset.on(() => {
+              this.members = new Set(world.units);
+              this.rebuildInjured();
+            }),
+            world.unitCollection.onReplaced.on(() => {
+              this.members = new Set(world.units);
+              this.rebuildInjured();
+            }),
+            world.unitCollection.onHealthChanged.on(({ unitId }) => {
+              const UNIT3 = world._unitForId(unitId);
+              if (UNIT3) {
+                this.trackHealth(UNIT3);
+              }
+            }),
+            world.onCombatResolved.on((event) => this.contribute(event))
+          ];
+        }
+        trackHealth(unit) {
+          const MAX_HP = unit.isFormationClone ? 1 : baseUnitStatsFor(unit.tier, unit.species).maxHp;
+          if (unit.faction === "player" && unit.hp > 0 && unit.hp < MAX_HP) {
+            this.injured.add(unit);
+          } else {
+            this.injured.delete(unit);
+          }
+        }
+        rebuildInjured() {
+          this.injured.clear();
+          for (const UNIT3 of this.members) {
+            this.trackHealth(UNIT3);
+          }
+        }
+        injuredAllies(out = []) {
+          out.length = 0;
+          for (const UNIT3 of this.injured) {
+            out.push(UNIT3);
+          }
+          return out;
+        }
+        includeBuild(ownerId, state) {
+          if (!this.runtime.active || this.slots.some((slot) => slot.ownerId === ownerId)) {
+            return;
+          }
+          for (const ID of state.equipped) {
+            if (ID) {
+              this.slots.push({ id: ID, ownerId, level: state.levels[ID], charge: 0, cooldown: 0 });
+            }
+          }
+        }
+        get runtime() {
+          return this.world.formationRuntime;
+        }
+        get slots() {
+          return this.runtime.slots;
+        }
+        get effects() {
+          return this.runtime.effects;
+        }
+        get active() {
+          return this.world.scene === "raid" ? this.world.running : this.world.farmBossEvent?.phase === "fighting";
+        }
+        editable() {
+          return this.world.scene === "farm" && !this.world.running && this.world.farmBossEvent?.phase === "idle";
+        }
+        purchase(id) {
+          return this.world.mutationNotifications.run(() => {
+            const PLAYER = this.world.playerProgression, STATE = PLAYER.formationSkills;
+            if (!this.editable() || !isValidFormationSkillState(STATE) || typeof id !== "string" || !Object.hasOwn(STATE.levels, id) || STATE.levels[id] >= FORMATION_MAX_LEVEL || PLAYER.availablePoints < 1) {
+              return false;
+            }
+            STATE.levels[id]++;
+            PLAYER.availablePoints--;
+            this.world.markProgressChanged();
+            return true;
+          });
+        }
+        buySlot() {
+          return this.world.mutationNotifications.run(() => {
+            const PLAYER = this.world.playerProgression;
+            if (!this.editable() || PLAYER.formationSkills.slots >= 3 || PLAYER.availablePoints < 1) {
+              return false;
+            }
+            PLAYER.formationSkills.slots++;
+            PLAYER.availablePoints--;
+            this.world.markProgressChanged();
+            return true;
+          });
+        }
+        equip(slot, id) {
+          return this.world.mutationNotifications.run(() => {
+            const STATE = this.world.playerProgression.formationSkills;
+            if (!this.editable() || !Number.isInteger(slot) || slot < 0 || slot >= STATE.slots || id !== null && (typeof id !== "string" || !Object.hasOwn(STATE.levels, id) || !STATE.levels[id] || STATE.equipped.includes(id))) {
+              return false;
+            }
+            while (STATE.equipped.length <= slot) {
+              STATE.equipped.push(null);
+            }
+            STATE.equipped[slot] = id;
+            this.world.markProgressChanged();
+            return true;
+          });
+        }
+        synchronize() {
+          if (this.active && !this.runtime.active) {
+            const SERIAL = this.runtime.serial;
+            this.world.formationRuntime = createFormationRuntime();
+            this.runtime.serial = SERIAL;
+            this.rebuildInjured();
+            this.runtime.active = true;
+            const BUILDS = this.world.scene === "raid" && this.world.raidRosters.length ? this.world.raidRosters.map((roster) => ({
+              ownerId: roster.ownerId,
+              state: roster.abilitySnapshot.formationSkills || createFormationSkillState()
+            })) : [{ ownerId: "", state: this.world.playerProgression.formationSkills }];
+            for (const BUILD of BUILDS) {
+              for (const ID of BUILD.state.equipped) {
+                if (ID) {
+                  this.slots.push({
+                    id: ID,
+                    ownerId: BUILD.ownerId,
+                    level: BUILD.state.levels[ID],
+                    charge: 0,
+                    cooldown: 0
+                  });
+                }
+              }
+            }
+          } else if (!this.active && this.runtime.active) {
+            this.end();
+          }
+        }
+        end() {
+          for (const UNIT3 of this.members) {
+            UNIT3.giantUntil = 0;
+            UNIT3.giantEndedAt = -10;
+          }
+          this.world.unitCollection.removeWhere((unit) => unit.isFormationClone, { markProgress: false });
+          const SERIAL = this.runtime.serial;
+          this.world.formationRuntime = createFormationRuntime();
+          this.runtime.serial = SERIAL;
+          this.air.clear();
+        }
+        contribute(event) {
+          this.synchronize();
+          if (!this.runtime.active || event.excluded) {
+            return;
+          }
+          for (const SLOT of this.slots) {
+            const DEFINITION13 = MODELS.get(SLOT.id).definition;
+            SLOT.charge = Math.min(DEFINITION13.required, SLOT.charge + Math.max(0, event[DEFINITION13.condition] || 0));
+          }
+        }
+        update(dt) {
+          this.synchronize();
+          if (!this.runtime.active) {
+            return;
+          }
+          this.contribute({ time: dt });
+          this.air.clear();
+          for (const EFFECT of this.effects) {
+            if (EFFECT.kind === "ufo" || EFFECT.kind === "storm-cloud") {
+              this.air.insert(EFFECT);
+            }
+          }
+          let write = 0;
+          const COUNT = this.effects.length;
+          for (let i = 0; i < COUNT; i++) {
+            const EFFECT = this.effects[i];
+            if (MODELS.get(EFFECT.kind).update(this, EFFECT, dt)) {
+              this.effects[write++] = EFFECT;
+            }
+          }
+          this.effects.length = write;
+          for (const SLOT of this.slots) {
+            SLOT.cooldown = Math.max(0, SLOT.cooldown - dt);
+            const MODEL = MODELS.get(SLOT.id);
+            if (SLOT.cooldown < 1e-9 && SLOT.charge >= MODEL.definition.required && MODEL.cast(this, SLOT)) {
+              SLOT.charge = 0;
+              SLOT.cooldown = FORMATION_COOLDOWN_SECONDS;
+              this.world.combat("formation-cast", { skillId: SLOT.id, x: 0, y: 0, z: 0 });
+            }
+          }
+        }
+        addEffect(kind, data) {
+          const EFFECT = { id: ++this.runtime.serial, kind, age: 0, x: 0, y: 0, z: 0, ...data };
+          this.effects.push(EFFECT);
+          return EFFECT;
+        }
+        allies() {
+          return [...this.members].filter((unit) => unit.faction === "player" && unit.hp > 0);
+        }
+        targetId(target) {
+          return target === this.world.boss ? "boss" : target.id;
+        }
+        target(id) {
+          const TARGET = id === "boss" ? this.world.boss : this.world._unitForId(id);
+          return TARGET?.hp > 0 && TARGET.faction === "enemy" ? TARGET : null;
+        }
+        enemy(origin = null) {
+          const BOSS2 = this.world.boss;
+          if (BOSS2.active && BOSS2.hp > 0 && (!origin || Math.hypot(origin.x - BOSS2.x, origin.y - BOSS2.y) <= 18)) {
+            return BOSS2;
+          }
+          for (const UNIT3 of this.members) {
+            if (UNIT3.faction === "enemy" && UNIT3.hp > 0 && (!origin || Math.hypot(origin.x - UNIT3.x, origin.y - UNIT3.y) <= 18)) {
+              return UNIT3;
+            }
+          }
+          return null;
+        }
+        nearby(x, y, radius) {
+          this.world._beginSpatialQueryBatch();
+          try {
+            return this.world.unitSpatial.queryAABB(x - radius, y - radius, x + radius, y + radius, this.scratch);
+          } finally {
+            this.world._endSpatialQueryBatch();
+          }
+        }
+        damage(target, amount) {
+          if (!target || target.hp <= 0) {
+            return;
+          }
+          applyDamage(target, amount, { armor: this.world.combatTargetDefense(target).armor });
+          target.flash = 0.15;
+          if (target !== this.world.boss) {
+            this.world._syncUnitAliveCount(target);
+            if (target.hp <= 0) {
+              this.world.handleUnitDeath(target);
+            }
+          }
+        }
+        verticalTarget(x, y) {
+          const BOSS2 = this.world.boss;
+          if (BOSS2.active && BOSS2.hp > 0 && BOSS2.z <= 0.5 && Math.hypot(BOSS2.x - x, BOSS2.y - y) <= BOSS2.radius + 0.12) {
+            return BOSS2;
+          }
+          return this.nearby(x, y, 6).find(
+            (unit) => unit.faction === "enemy" && unit.hp > 0 && unit.z <= 0.5 && Math.hypot(unit.x - x, unit.y - y) <= unit.radius + 0.12
+          ) || null;
+        }
+        areaDamage(x, y, radius, amount, knock = false, vertical = false) {
+          const TARGETS = [...this.nearby(x, y, radius + 6)];
+          if (this.world.boss.active) {
+            TARGETS.push(this.world.boss);
+          }
+          for (const TARGET of TARGETS) {
+            if (TARGET.faction !== "enemy" || TARGET.hp <= 0 || Math.hypot(TARGET.x - x, TARGET.y - y) > radius + TARGET.radius || vertical && TARGET.z > 0.5) {
+              continue;
+            }
+            this.damage(TARGET, amount);
+            if (knock) {
+              const DX = TARGET.x - x, DY = TARGET.y - y, N = Math.hypot(DX, DY) || 1;
+              if (TARGET.knock) {
+                TARGET.knock(DX / N, DY / N, 5, 2);
+              } else {
+                const POWER = resolveKnockback(5, null, TARGET);
+                TARGET.knockVx += DX / N * POWER;
+                TARGET.knockVy += DY / N * POWER;
+              }
+            }
+          }
+        }
+        canClone(count) {
+          return this.world.units.length + count <= this.world.battleCapacity;
+        }
+        separateAir(effect, dt) {
+          for (const OTHER of this.air.queryAABB(
+            effect.x - 1.4,
+            effect.y - 1.4,
+            effect.x + 1.4,
+            effect.y + 1.4,
+            this.airScratch
+          )) {
+            if (OTHER === effect) {
+              continue;
+            }
+            const DX = effect.x - OTHER.x, DY = effect.y - OTHER.y, DISTANCE = Math.hypot(DX, DY), ANGLE = effect.id * 2.39996, FORCE = Math.max(0, 1.4 - DISTANCE) * Math.min(dt * 3, 0.25);
+            effect.x += (DISTANCE ? DX / DISTANCE : Math.cos(ANGLE)) * FORCE;
+            effect.y += (DISTANCE ? DY / DISTANCE : Math.sin(ANGLE)) * FORCE;
+          }
+          this.air.update(effect);
+        }
+        dispose() {
+          for (const OFF of this.subscriptions) {
+            OFF();
+          }
+          this.air.clear();
+          this.members.clear();
+          this.injured.clear();
+        }
+      };
+    }
+  });
+
+  // src/signal.js
+  var Signal;
+  var init_signal = __esm({
+    "src/signal.js"() {
+      Signal = class {
+        constructor(scope = null, immediate = false) {
+          this.listeners = /* @__PURE__ */ new Set();
+          this.scope = scope;
+          this.immediate = immediate;
+        }
+        on(listener) {
+          if (typeof listener !== "function") {
+            throw new TypeError("A signal listener must be a function.");
+          }
+          this.listeners.add(listener);
+          return () => this.off(listener);
+        }
+        off(listener) {
+          return this.listeners.delete(listener);
+        }
+        emit(event) {
+          if (this.scope) {
+            this.scope.publish(this, event, this.immediate);
+          } else {
+            this.raise(this.deliver(event));
+          }
+        }
+        deliver(event) {
+          const ERRORS = [];
+          for (const LISTENER of [...this.listeners]) {
+            try {
+              LISTENER(event);
+            } catch (error) {
+              ERRORS.push(error);
+            }
+          }
+          return ERRORS;
+        }
+        raise(errors) {
+          if (errors.length) {
+            throw errors.length === 1 ? errors[0] : new AggregateError(errors, "Signal subscribers failed.");
+          }
+        }
+        clear() {
+          this.listeners.clear();
+        }
+      };
+    }
+  });
+
+  // src/features/projectiles/seed/definition.js
+  function seedEllipseRadii(projectile) {
+    const Y = projectile.height * import_vector_sockets.WORLD_HEIGHT_PROJECTION * 0.5 / VERTICAL_EXTENT;
+    return { x: Y * FEATURE.widthToHeight, y: Y };
+  }
+  function seedProjectileDimensions(unit) {
+    const HEIGHT = unit.bodyHeight * FEATURE.bodyHeightFraction, RADII = seedEllipseRadii({ height: HEIGHT });
+    return { radius: RADII.y * HORIZONTAL_EXTENT, height: HEIGHT };
+  }
+  var import_vector_sockets, FEATURE, VERTICAL_EXTENT, HORIZONTAL_EXTENT;
+  var init_definition10 = __esm({
+    "src/features/projectiles/seed/definition.js"() {
+      import_vector_sockets = __toESM(require_vector_sockets(), 1);
+      FEATURE = Object.freeze({
+        id: "seed",
+        landingEffect: "shell-land",
+        bodyHeightFraction: 0.2,
+        widthToHeight: 0.7,
+        rotation: 0.3
+      });
+      VERTICAL_EXTENT = Math.hypot(FEATURE.widthToHeight * Math.sin(FEATURE.rotation), Math.cos(FEATURE.rotation));
+      HORIZONTAL_EXTENT = Math.hypot(FEATURE.widthToHeight * Math.cos(FEATURE.rotation), Math.sin(FEATURE.rotation));
+    }
+  });
+
+  // src/mutation-notifications.js
+  var MutationNotifications;
+  var init_mutation_notifications = __esm({
+    "src/mutation-notifications.js"() {
+      MutationNotifications = class {
+        constructor() {
+          this.depth = 0;
+          this.flushing = false;
+          this.pending = [];
+          this.errors = [];
+        }
+        begin() {
+          this.depth++;
+        }
+        end(failure = null) {
+          this.depth--;
+          if (failure && (this.depth > 0 || this.flushing)) {
+            throw failure;
+          }
+          if (failure) {
+            this.errors.push(failure);
+          }
+          if (this.depth === 0 && !this.flushing) {
+            this.flush();
+          }
+        }
+        run(action, owner = null, a, b, c, d, e) {
+          this.begin();
+          let result;
+          let failure = null;
+          try {
+            result = action.call(owner, a, b, c, d, e);
+          } catch (error) {
+            failure = error;
+          }
+          this.end(failure);
+          return result;
+        }
+        publish(signal, event, immediate) {
+          if (!immediate) {
+            this.pending.push({ signal, event });
+            if (this.depth === 0 && !this.flushing) {
+              this.flush();
+            }
+            return;
+          }
+          const ERRORS = signal.deliver(event);
+          if (this.depth > 0 || this.flushing) {
+            this.errors.push(...ERRORS);
+          } else {
+            signal.raise(ERRORS);
+          }
+        }
+        flush() {
+          if (!this.pending.length && !this.errors.length) {
+            return;
+          }
+          this.flushing = true;
+          try {
+            for (let index = 0; index < this.pending.length; index++) {
+              const { signal: SIGNAL, event: EVENT } = this.pending[index];
+              this.errors.push(...SIGNAL.deliver(EVENT));
+            }
+          } finally {
+            this.pending.length = 0;
+            this.flushing = false;
+          }
+          if (this.errors.length) {
+            const ERRORS = this.errors;
+            this.errors = [];
+            throw ERRORS.length === 1 ? ERRORS[0] : new AggregateError(ERRORS, "Mutation observers failed.");
+          }
+        }
+      };
+    }
+  });
+
+  // src/unit-collection.js
+  var UnitCollection;
+  var init_unit_collection = __esm({
+    "src/unit-collection.js"() {
+      init_signal();
+      UnitCollection = class {
+        constructor(world, unitType, notifications) {
+          this.world = world;
+          this.unitType = unitType;
+          this.items = [];
+          this.byId = /* @__PURE__ */ new Map();
+          this.unitIdsByPlot = /* @__PURE__ */ new Map();
+          this.residentCountsBySpecies = /* @__PURE__ */ new Map();
+          this.residentIdsBySpecies = /* @__PURE__ */ new Map();
+          this.residentCountsByPlot = /* @__PURE__ */ new Map();
+          this.residentCount = 0;
+          this.subscriptions = /* @__PURE__ */ new Map();
+          this.reservations = /* @__PURE__ */ new Map();
+          this.retiredDuringStep = [];
+          this.onAdded = new Signal(notifications);
+          this.onRemoved = new Signal(notifications);
+          this.onReplaced = new Signal(notifications);
+          this.onPlacementChanged = new Signal(notifications);
+          this.onReset = new Signal(notifications);
+          this.onHealthChanged = new Signal(notifications, true);
+        }
+        has(unit) {
+          return this.items.includes(unit);
+        }
+        unitById(id) {
+          return this.byId.get(id) || null;
+        }
+        unitsInPlot(plotId, out = []) {
+          out.length = 0;
+          for (const ID of this.unitIdsByPlot.get(plotId) || []) {
+            const UNIT3 = this.byId.get(ID);
+            if (UNIT3) {
+              out.push(UNIT3);
+            }
+          }
+          return out;
+        }
+        residentsInPlot(plotId, out = []) {
+          this.unitsInPlot(plotId, out);
+          let write = 0;
+          for (const UNIT3 of out) {
+            if (UNIT3.faction === "player" && UNIT3.isBattleOnlySummon !== true && UNIT3.isFormationClone !== true && UNIT3.countsTowardPermanentRoster !== false) {
+              out[write++] = UNIT3;
+            }
+          }
+          out.length = write;
+          return out;
+        }
+        _rebuildIndexes() {
+          this.byId.clear();
+          this.unitIdsByPlot.clear();
+          this.residentCountsBySpecies.clear();
+          this.residentIdsBySpecies.clear();
+          this.residentCountsByPlot.clear();
+          this.residentCount = 0;
+          for (const UNIT3 of this.items) {
+            this._indexUnit(UNIT3);
+          }
+          this.world._syncOwnedSpeciesCounts?.();
+        }
+        refreshIndexes() {
+          this._rebuildIndexes();
+        }
+        _indexUnit(unit) {
+          this.byId.set(unit.id, unit);
+          if (typeof unit.plotId === "string" && unit.plotId) {
+            let ids = this.unitIdsByPlot.get(unit.plotId);
+            if (!ids) {
+              ids = /* @__PURE__ */ new Set();
+              this.unitIdsByPlot.set(unit.plotId, ids);
+            }
+            ids.add(unit.id);
+          }
+          if (this.isResident(unit)) {
+            this.residentCount++;
+            this.residentCountsBySpecies.set(unit.species, (this.residentCountsBySpecies.get(unit.species) || 0) + 1);
+            this.residentCountsByPlot.set(unit.plotId, (this.residentCountsByPlot.get(unit.plotId) || 0) + 1);
+            let ids = this.residentIdsBySpecies.get(unit.species);
+            if (!ids) {
+              ids = /* @__PURE__ */ new Set();
+              this.residentIdsBySpecies.set(unit.species, ids);
+            }
+            ids.add(unit.id);
+          }
+        }
+        _unindexUnit(unit) {
+          this.byId.delete(unit.id);
+          const IDS = this.unitIdsByPlot.get(unit.plotId);
+          IDS?.delete(unit.id);
+          if (IDS?.size === 0) {
+            this.unitIdsByPlot.delete(unit.plotId);
+          }
+          if (this.isResident(unit)) {
+            this.residentCount = Math.max(0, this.residentCount - 1);
+            const COUNT = (this.residentCountsBySpecies.get(unit.species) || 0) - 1;
+            if (COUNT > 0) {
+              this.residentCountsBySpecies.set(unit.species, COUNT);
+            } else {
+              this.residentCountsBySpecies.delete(unit.species);
+            }
+            const PLOT_COUNT = (this.residentCountsByPlot.get(unit.plotId) || 0) - 1;
+            if (PLOT_COUNT > 0) {
+              this.residentCountsByPlot.set(unit.plotId, PLOT_COUNT);
+            } else {
+              this.residentCountsByPlot.delete(unit.plotId);
+            }
+            const IDS2 = this.residentIdsBySpecies.get(unit.species);
+            IDS2?.delete(unit.id);
+            if (IDS2?.size === 0) {
+              this.residentIdsBySpecies.delete(unit.species);
+            }
+          }
+          this.world._syncOwnedSpeciesCounts?.();
+        }
+        moveUnitsToPlots(assignments) {
+          if (!Array.isArray(assignments) || !assignments.length) {
+            return false;
+          }
+          const SEEN = /* @__PURE__ */ new Set();
+          const MOVES = assignments.map(({ unitId, plotId }) => {
+            const UNIT3 = this.byId.get(unitId);
+            if (!UNIT3 || !this.isResident(UNIT3) || typeof plotId !== "string" || !plotId || SEEN.has(unitId) || this.reservationOwner(unitId)) {
+              return null;
+            }
+            SEEN.add(unitId);
+            return { unit: UNIT3, plotId };
+          });
+          if (MOVES.some((move) => !move)) {
+            return false;
+          }
+          const CHANGED = MOVES.filter((move) => move.unit.plotId !== move.plotId);
+          if (!CHANGED.length) {
+            return true;
+          }
+          for (const MOVE of CHANGED) {
+            MOVE.unit.plotId = MOVE.plotId;
+          }
+          this._rebuildIndexes();
+          this.world._unitSpatialDirty = true;
+          this.publishChange(
+            this.onPlacementChanged,
+            { unitIds: CHANGED.map((move) => move.unit.id), plotIds: CHANGED.map((move) => move.plotId) },
+            true
+          );
+          return true;
+        }
+        reorderWithinPlot(plotId, orderedIds) {
+          const CURRENT = this.unitIdsByPlot.get(plotId);
+          if (!(CURRENT instanceof Set) || !Array.isArray(orderedIds) || orderedIds.length !== CURRENT.size || new Set(orderedIds).size !== orderedIds.length || orderedIds.some((id) => !CURRENT.has(id))) {
+            return false;
+          }
+          const ORDERED = orderedIds.map((id) => this.byId.get(id));
+          let index = 0;
+          this.items = this.items.map((unit) => unit.plotId === plotId ? ORDERED[index++] : unit);
+          this._rebuildIndexes();
+          this.world._unitSpatialDirty = true;
+          this.publishChange(this.onPlacementChanged, { plotId, unitIds: orderedIds }, true);
+          return true;
+        }
+        isResident(unit) {
+          return !!(unit && unit.faction === "player" && unit.isBattleOnlySummon !== true && unit.isFormationClone !== true && unit.countsTowardPermanentRoster !== false);
+        }
+        reservationOwner(unitOrId) {
+          return this.reservations.get(typeof unitOrId === "object" ? unitOrId?.id : unitOrId) || null;
+        }
+        reserve(owner, units, { replaceOwners = [] } = {}) {
+          if (typeof owner !== "string" || !owner || !Array.isArray(units) || units.length < 2 || !Array.isArray(replaceOwners)) {
+            return false;
+          }
+          const IDS = /* @__PURE__ */ new Set(), ALLOWED_OWNERS = new Set(replaceOwners), REPLACED_OWNERS = /* @__PURE__ */ new Set();
+          if (units.some((unit) => {
+            if (!this.has(unit) || IDS.has(unit.id)) {
+              return true;
+            }
+            const CURRENT_OWNER = this.reservationOwner(unit.id);
+            if (CURRENT_OWNER && CURRENT_OWNER !== owner) {
+              if (!ALLOWED_OWNERS.has(CURRENT_OWNER)) {
+                return true;
+              }
+              REPLACED_OWNERS.add(CURRENT_OWNER);
+            }
+            IDS.add(unit.id);
+            return false;
+          })) {
+            return false;
+          }
+          for (const REPLACED_OWNER of REPLACED_OWNERS) {
+            this.releaseReservations(REPLACED_OWNER);
+          }
+          for (const ID of IDS) {
+            this.reservations.set(ID, owner);
+          }
+          return true;
+        }
+        releaseReservations(owner) {
+          let released = 0;
+          for (const [ID, CURRENT_OWNER] of this.reservations) {
+            if (CURRENT_OWNER === owner) {
+              this.reservations.delete(ID);
+              released++;
+            }
+          }
+          return released;
+        }
+        releaseUnitReservation(unitOrId) {
+          return this.reservations.delete(typeof unitOrId === "object" ? unitOrId?.id : unitOrId);
+        }
+        attach(unit) {
+          Object.defineProperty(unit, "_world", {
+            value: this.world,
+            writable: true,
+            configurable: true
+          });
+          for (const SIGNAL of [unit.onDied, unit.onRevived, unit.onHealthChanged]) {
+            SIGNAL.scope = this.world.mutationNotifications;
+            SIGNAL.immediate = true;
+          }
+          const OFF_DIED = unit.onDied.on(() => {
+            if (this.has(unit)) {
+              this.world.processUnitDeath(unit);
+            }
+          }), OFF_REVIVED = unit.onRevived.on(() => {
+            if (this.has(unit)) {
+              this.world.processUnitRevival(unit);
+            }
+          });
+          const OFF_HEALTH = unit.onHealthChanged.on((event) => {
+            if (this.has(unit)) {
+              this.world._syncUnitAliveCount(unit);
+              this.onHealthChanged.emit(event);
+            }
+          });
+          this.subscriptions.set(unit, [OFF_DIED, OFF_REVIVED, OFF_HEALTH]);
+        }
+        retire(unit, options, preserveMergeTask = null) {
+          this.world.releaseMate(unit);
+          for (const TASK of [...this.world.mergeTasks]) {
+            if (TASK !== preserveMergeTask && (TASK.materialIds?.includes(unit.id) || TASK.resultId === unit.id)) {
+              this.world.cancelMergeTask(TASK);
+            }
+          }
+          this.releaseUnitReservation(unit.id);
+          for (const OFF of this.subscriptions.get(unit) || []) {
+            OFF();
+          }
+          this.subscriptions.delete(unit);
+          this.world._trackUnitRemoved(unit, options);
+          unit.dispose();
+          if (this.world._spatialStepActive) {
+            this.retiredDuringStep.push(unit);
+          } else {
+            this.releaseReferences(unit);
+            this.clearBorrowedReferences();
+          }
+        }
+        releaseReferences(unit) {
+          this.world.unitSpatial.remove(unit);
+          this.world._unitStepOrder.delete(unit);
+          this.world._unitAliveState.delete(unit);
+        }
+        clearBorrowedReferences() {
+          for (const GROUP of this.world._mergeEligibleGroups) {
+            GROUP.length = 0;
+          }
+          for (const KEY2 of [
+            "_stepUnits",
+            "_unitCandidates",
+            "_contactQuery",
+            "_bossGridUnits",
+            "_bossGroundUnits",
+            "_bossQueryCandidates",
+            "_bossHitCandidates",
+            "_mergeNearestScratch",
+            "_mergeMaterialsScratch"
+          ]) {
+            if (this.world._spatialStepActive) {
+              this.world[KEY2].length = 0;
+            } else {
+              this.world[KEY2] = [];
+            }
+          }
+        }
+        releaseStepReferences() {
+          if (!this.retiredDuringStep.length) {
+            return;
+          }
+          for (const UNIT3 of this.retiredDuringStep) {
+            this.releaseReferences(UNIT3);
+          }
+          this.retiredDuringStep.length = 0;
+          this.clearBorrowedReferences();
+        }
+        add(unit, { markProgress = true } = {}) {
+          if (!(unit instanceof this.unitType) || this.items.some((owned) => owned === unit || owned.id === unit.id)) {
+            return false;
+          }
+          this.world._beginSpatialQueryBatch();
+          try {
+            unit.spawnedAtSimulationTick = this.world.simulationTick;
+            this.items.push(unit);
+            this._indexUnit(unit);
+            this.attach(unit);
+            this.world._trackUnitAdded(unit);
+          } finally {
+            this.world._endSpatialQueryBatch();
+          }
+          this.world._markMergeAvailabilityChanged();
+          this.publishChange(this.onAdded, { unitId: unit.id }, markProgress && !unit.isBattleOnlySummon);
+          return true;
+        }
+        remove(unit, { markProgress = true, ...options } = {}) {
+          if (!this.has(unit)) {
+            return false;
+          }
+          const REMAINING = this.items.filter((owned) => owned !== unit);
+          this.world._beginSpatialQueryBatch();
+          try {
+            this.retire(unit, options);
+            this._unindexUnit(unit);
+            this.items = REMAINING;
+          } finally {
+            this.world._endSpatialQueryBatch();
+          }
+          this.world._markMergeAvailabilityChanged();
+          this.publishChange(this.onRemoved, { unitId: unit.id }, markProgress && !unit.isBattleOnlySummon);
+          return true;
+        }
+        replace(materials, result, complete, preserveMergeTask = null) {
+          const CONSUMED = new Set(materials);
+          if (CONSUMED.size < 2 || CONSUMED.size !== materials.length || !materials.every((unit) => this.has(unit)) || !(result instanceof this.unitType) || this.items.some((unit) => unit === result || unit.id === result.id)) {
+            return false;
+          }
+          const REMAINING = this.items.filter((unit) => !CONSUMED.has(unit));
+          REMAINING.push(result);
+          this.world._beginSpatialQueryBatch();
+          try {
+            for (const UNIT3 of CONSUMED) {
+              this.retire(UNIT3, void 0, preserveMergeTask);
+            }
+            this.items = REMAINING;
+            this._rebuildIndexes();
+            this.attach(result);
+            this.world._trackUnitAdded(result);
+            complete?.();
+          } finally {
+            this.world._endSpatialQueryBatch();
+          }
+          this.world._markMergeAvailabilityChanged();
+          this.publishChange(
+            this.onReplaced,
+            { materialIds: materials.map((unit) => unit.id), resultId: result.id },
+            true
+          );
+          return true;
+        }
+        publishChange(signal, event, markProgress) {
+          return this.world.mutationNotifications.run(this._publishChange, this, signal, event, markProgress);
+        }
+        _publishChange(signal, event, markProgress) {
+          const ERRORS = [];
+          if (markProgress) {
+            try {
+              this.world.markProgressChanged();
+            } catch (error) {
+              ERRORS.push(error);
+            }
+          }
+          try {
+            signal.emit(event);
+          } catch (error) {
+            ERRORS.push(error);
+          }
+          if (ERRORS.length) {
+            throw ERRORS.length === 1 ? ERRORS[0] : new AggregateError(ERRORS, "Unit collection observers failed.");
+          }
+        }
+        reset(units = []) {
+          const NEXT = [...units], IDS = /* @__PURE__ */ new Set();
+          for (const UNIT3 of NEXT) {
+            if (!(UNIT3 instanceof this.unitType) || IDS.has(UNIT3.id)) {
+              throw new TypeError("A roster requires distinct owned Unit instances.");
+            }
+            IDS.add(UNIT3.id);
+          }
+          const RETAINED = new Set(NEXT);
+          this.world._beginSpatialQueryBatch();
+          try {
+            for (const UNIT3 of this.items) {
+              if (!RETAINED.has(UNIT3)) {
+                this.retire(UNIT3);
+              }
+            }
+            this.items = NEXT;
+            this._rebuildIndexes();
+            this.reservations.clear();
+            for (const UNIT3 of NEXT) {
+              if (!this.subscriptions.has(UNIT3)) {
+                this.attach(UNIT3);
+              }
+            }
+            this.world._rebuildUnitSpatialIndex();
+          } finally {
+            this.world._endSpatialQueryBatch();
+          }
+          this.world._markMergeAvailabilityChanged();
+          this.onReset.emit({ unitIds: NEXT.map((unit) => unit.id) });
+        }
+        removeWhere(predicate, options) {
+          let index = 0;
+          while (index < this.items.length) {
+            const UNIT3 = this.items[index];
+            if (predicate(UNIT3)) {
+              this.remove(UNIT3, options);
+            } else {
+              index++;
+            }
+          }
+        }
+        dispose() {
+          try {
+            this.reset();
+          } finally {
+            this.onAdded.clear();
+            this.onRemoved.clear();
+            this.onReplaced.clear();
+            this.onPlacementChanged.clear();
+            this.onReset.clear();
+            this.onHealthChanged.clear();
+          }
+        }
+      };
+    }
+  });
+
+  // src/farm-roster.js
+  function isResident(unit) {
+    return !!unit && unit.faction === "player" && unit.isBattleOnlySummon !== true && unit.isFormationClone !== true && unit.countsTowardPermanentRoster !== false;
+  }
+  function compareSpeciesId(a, b) {
+    return typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b));
+  }
+  function largestRemainder(weights, total) {
+    const ENTRIES = [...weights].map(([speciesId, weight]) => ({ speciesId, weight: BigInt(weight) }));
+    if (!ENTRIES.length || !Number.isSafeInteger(total) || total < 0) {
+      return /* @__PURE__ */ new Map();
+    }
+    const DENOMINATOR = ENTRIES.reduce((sum, entry) => sum + entry.weight, 0n);
+    if (DENOMINATOR <= 0n) {
+      return /* @__PURE__ */ new Map();
+    }
+    let assigned = 0;
+    for (const ENTRY of ENTRIES) {
+      const NUMERATOR = BigInt(total) * ENTRY.weight;
+      ENTRY.value = Number(NUMERATOR / DENOMINATOR);
+      ENTRY.remainder = NUMERATOR % DENOMINATOR;
+      assigned += ENTRY.value;
+    }
+    ENTRIES.sort(
+      (a, b) => a.remainder === b.remainder ? compareSpeciesId(a.speciesId, b.speciesId) : a.remainder > b.remainder ? -1 : 1
+    );
+    for (let i = 0; i < total - assigned; i++) {
+      ENTRIES[i % ENTRIES.length].value++;
+    }
+    return new Map(ENTRIES.map((entry) => [entry.speciesId, entry.value]));
+  }
+  var BASIS_POINT_TOTAL, FarmingRoster;
+  var init_farm_roster = __esm({
+    "src/farm-roster.js"() {
+      init_farm_plot();
+      BASIS_POINT_TOTAL = 1e4;
+      FarmingRoster = class {
+        constructor(unitCollection) {
+          if (!unitCollection || !Array.isArray(unitCollection.items)) {
+            throw new TypeError("FarmingRoster requires a UnitCollection.");
+          }
+          this.collection = unitCollection;
+        }
+        residents() {
+          return this.collection.items.filter(isResident);
+        }
+        residentsOfSpecies(speciesId) {
+          return [...this.collection.residentIdsBySpecies.get(speciesId) || []].map((id) => this.collection.unitById(id)).filter(isResident);
+        }
+        residentById(id) {
+          return this.collection.items.find((unit) => isResident(unit) && unit.id === id) || null;
+        }
+        ownedPopulation() {
+          return this.collection.residentCount;
+        }
+        placedPopulation(plotId) {
+          return this.collection.residentCountsByPlot.get(plotId) || 0;
+        }
+        residentIds(plotId = void 0) {
+          const UNITS = plotId === void 0 ? this.collection.items : this.collection.unitsInPlot(plotId);
+          return UNITS.filter(isResident).map((unit) => unit.id);
+        }
+        countsBySpecies({ includeReservations = [] } = {}) {
+          const COUNTS = new Map(this.collection.residentCountsBySpecies);
+          for (const RESERVATION of includeReservations) {
+            if (Number.isSafeInteger(RESERVATION?.species)) {
+              COUNTS.set(RESERVATION.species, (COUNTS.get(RESERVATION.species) || 0) + 1);
+            }
+          }
+          return COUNTS;
+        }
+        canSpeciesAdvance(speciesId, targetBasisPoints, { includeReservations = [], excludeReservation = null } = {}) {
+          if (!Number.isSafeInteger(targetBasisPoints) || targetBasisPoints <= 0 || targetBasisPoints > BASIS_POINT_TOTAL) {
+            return false;
+          }
+          const RESERVATIONS = excludeReservation === null ? includeReservations : includeReservations.filter((reservation) => reservation !== excludeReservation);
+          const COUNTS = this.countsBySpecies({ includeReservations: RESERVATIONS });
+          let total = 0;
+          for (const COUNT of COUNTS.values()) {
+            total += COUNT;
+          }
+          const OWN = COUNTS.get(speciesId) || 0;
+          return BigInt(targetBasisPoints) * BigInt(total) >= BigInt(OWN) * BigInt(BASIS_POINT_TOTAL);
+        }
+        static normalizeTargetBasisPoints(current, speciesIds, selectedSpeciesId, selectedValue) {
+          const ORDERED = [...new Set(speciesIds)].sort(compareSpeciesId);
+          if (!ORDERED.length || !ORDERED.includes(selectedSpeciesId) || !Number.isSafeInteger(selectedValue)) {
+            return null;
+          }
+          if (ORDERED.length === 1) {
+            return /* @__PURE__ */ new Map([[ORDERED[0], BASIS_POINT_TOTAL]]);
+          }
+          const FIXED = Math.max(0, Math.min(BASIS_POINT_TOTAL, selectedValue));
+          const OTHER_IDS = ORDERED.filter((id) => id !== selectedSpeciesId);
+          let weights = new Map(
+            OTHER_IDS.map((id) => [id, Math.max(0, Number.isSafeInteger(current?.get?.(id)) ? current.get(id) : 0)])
+          );
+          if ([...weights.values()].every((weight) => weight === 0)) {
+            weights = new Map(OTHER_IDS.map((id) => [id, 1]));
+          }
+          const RESULT = largestRemainder(weights, BASIS_POINT_TOTAL - FIXED);
+          RESULT.set(selectedSpeciesId, FIXED);
+          return new Map(ORDERED.map((id) => [id, RESULT.get(id) || 0]));
+        }
+        static allocateTargetCounts(targetBasisPoints, slotCount, speciesIds) {
+          const IDS = [...new Set(speciesIds)].sort(compareSpeciesId);
+          const WEIGHTS = IDS.map((id) => [
+            id,
+            Math.max(0, Number.isSafeInteger(targetBasisPoints?.get?.(id)) ? targetBasisPoints.get(id) : 0)
+          ]);
+          return largestRemainder(WEIGHTS, slotCount);
+        }
+      };
+    }
+  });
+
   // src/features/abilities/pea-recovery-boost.js
   var PEA_RECOVERY_BOOST_FEATURE;
   var init_pea_recovery_boost = __esm({
@@ -1100,7 +3535,7 @@
 
   // src/features/abilities/chestnut-thorns/definition.js
   var CHESTNUT_THORNS_FEATURE;
-  var init_definition10 = __esm({
+  var init_definition11 = __esm({
     "src/features/abilities/chestnut-thorns/definition.js"() {
       CHESTNUT_THORNS_FEATURE = Object.freeze({
         definition: Object.freeze({
@@ -1128,7 +3563,7 @@
 
   // src/features/abilities/peanut-death-split/definition.js
   var PEANUT_DEATH_SPLIT_FEATURE;
-  var init_definition11 = __esm({
+  var init_definition12 = __esm({
     "src/features/abilities/peanut-death-split/definition.js"() {
       PEANUT_DEATH_SPLIT_FEATURE = Object.freeze({
         definition: Object.freeze({
@@ -1147,7 +3582,7 @@
 
   // src/features/abilities/walnut-raw-guard/definition.js
   var WALNUT_RAW_GUARD_FEATURE;
-  var init_definition12 = __esm({
+  var init_definition13 = __esm({
     "src/features/abilities/walnut-raw-guard/definition.js"() {
       WALNUT_RAW_GUARD_FEATURE = Object.freeze({
         definition: Object.freeze({
@@ -1169,7 +3604,7 @@
 
   // src/features/abilities/corn-attachment/definition.js
   var CORN_ATTACHMENT_FEATURE;
-  var init_definition13 = __esm({
+  var init_definition14 = __esm({
     "src/features/abilities/corn-attachment/definition.js"() {
       CORN_ATTACHMENT_FEATURE = Object.freeze({
         definition: Object.freeze({
@@ -1259,10 +3694,10 @@
     "src/ability-definitions.js"() {
       init_pea_recovery_boost();
       init_kidney_continuous_leap();
-      init_definition10();
       init_definition11();
       init_definition12();
       init_definition13();
+      init_definition14();
       init_rice_low_health_harvest();
       init_wheat_command_crit();
       init_barley_armor_break();
@@ -2350,2443 +4785,6 @@
     }
   });
 
-  // src/farm-offline.js
-  function applyOffline(world, config, rawSeconds) {
-    const OFFLINE = config.farm.offline, WORK = config.farm.work, BREEDING = config.farm.breeding;
-    if (world.scene !== "farm" || world.running || world.farmBossEvent?.phase !== "idle") {
-      return null;
-    }
-    const AWAY = Math.min(rawSeconds, OFFLINE.capSeconds);
-    if (!(AWAY >= OFFLINE.minSeconds)) {
-      return null;
-    }
-    const SECONDS = AWAY * OFFLINE.efficiency;
-    world.refreshWorkers();
-    const SUMMARY = { seconds: AWAY, food: 0, wood: 0, stone: 0, births: 0, sites: [], built: [], explored: 0 };
-    let foodRate = 0, gatherRate = 0, exploreRate = 0;
-    const BUILD_RATES = /* @__PURE__ */ new Map();
-    for (const [ID, KIND] of world._workerKinds) {
-      const RATE = world._workerRates.get(ID) || 0;
-      if (KIND === "food") {
-        foodRate += RATE;
-      } else if (KIND === "explore") {
-        exploreRate += RATE;
-      } else if (KIND === "resource") {
-        gatherRate += RATE;
-      } else {
-        const PLOT_ID = world._workerPlots.get(ID);
-        BUILD_RATES.set(PLOT_ID, (BUILD_RATES.get(PLOT_ID) || 0) + RATE);
-      }
-    }
-    for (const PLOT_ID of [...world._pilesByPlot.keys()]) {
-      const RATE = BUILD_RATES.get(PLOT_ID) || 0, SITES = sitesOf(world, PLOT_ID);
-      if (SITES.length === 0) {
-        gatherRate += RATE;
-        continue;
-      }
-      if (!(RATE > 0)) {
-        continue;
-      }
-      const HITS_PER_SECOND = RATE * STACKS_PER_FOOD2, HITS = HITS_PER_SECOND * SECONDS;
-      let left = HITS;
-      const OPEN = [...SITES];
-      while (OPEN.length > 0 && left > 0) {
-        const SHARE = left / OPEN.length, DONE = OPEN.filter((site) => SHARE >= site.need - site.done);
-        if (DONE.length === 0) {
-          for (const SITE of OPEN) {
-            SITE.done += Math.floor(SHARE);
-          }
-          left = 0;
-          break;
-        }
-        for (const SITE of DONE) {
-          left -= SITE.need - SITE.done;
-          SUMMARY.built.push(world.siteName(SITE));
-          const LIST = pilesOf(world, PLOT_ID);
-          LIST.splice(LIST.indexOf(SITE), 1);
-          world.completeFacility(SITE);
-          OPEN.splice(OPEN.indexOf(SITE), 1);
-        }
-      }
-      for (const SITE of OPEN) {
-        SUMMARY.sites.push({ name: world.siteName(SITE), percent: Math.floor(SITE.done / SITE.need * 100) });
-      }
-      gatherRate += left / (STACKS_PER_FOOD2 * SECONDS);
-    }
-    SUMMARY.explored = advanceExploration(world.worldMap, exploreRate * SECONDS).length;
-    const MATERIALS = Math.floor(gatherRate * SECONDS), WOOD = Math.ceil(MATERIALS / 2);
-    world.materials.wood += WOOD;
-    world.materials.stone += MATERIALS - WOOD;
-    SUMMARY.wood = WOOD;
-    SUMMARY.stone = MATERIALS - WOOD;
-    let pool = Math.floor(foodRate * SECONDS);
-    SUMMARY.food = pool;
-    const RESIDENTS = world.roster.residents().filter((unit) => unit.plotId !== RESERVE_PLOT_ID);
-    for (const UNIT3 of RESIDENTS) {
-      UNIT3.cooldown = 0;
-      if (UNIT3.down > 0) {
-        UNIT3.down = Math.min(UNIT3.down, 0.05);
-      }
-      if (!UNIT3.mature && pool >= BREEDING.matureMeals) {
-        pool -= BREEDING.matureMeals;
-        UNIT3.growthElapsed = UNIT3.growthDuration;
-      }
-    }
-    const COST = 2 + BREEDING.matureMeals, ROUND_SECONDS = BREEDING.cooldownSeconds + BREEDING.growthSeconds, ROUNDS = Math.floor(AWAY / ROUND_SECONDS), CAPACITY = world.totalFarmCapacity, SPECIES_COUNT2 = world.farmTargets.length, COUNTS = new Array(SPECIES_COUNT2).fill(0), ADULTS = new Array(SPECIES_COUNT2).fill(0);
-    for (const UNIT3 of world.roster.residents()) {
-      if (UNIT3.plotId === RESERVE_PLOT_ID || UNIT3.isBattleOnlySummon) {
-        continue;
-      }
-      COUNTS[UNIT3.species]++;
-      if (UNIT3.mature && UNIT3.hp > 0 && !world._workerIds.has(UNIT3.id)) {
-        ADULTS[UNIT3.species]++;
-      }
-    }
-    for (let round = 0; round < ROUNDS && pool >= COST; round++) {
-      let progressed = false;
-      for (let species = 0; species < SPECIES_COUNT2; species++) {
-        const TARGET = Math.floor(world.farmTargets[species] / 1e4 * CAPACITY), ROOM = CAPACITY - world.ownedPopulation - world.birthReservations;
-        let births = Math.min(
-          Math.floor(ADULTS[species] / 2),
-          TARGET - COUNTS[species],
-          ROOM,
-          Math.floor(pool / COST)
-        );
-        while (births-- > 0) {
-          const CHILD = world.spawn(species, 1, (world.random() - 0.5) * 10, (world.random() - 0.5) * 6);
-          if (!CHILD) {
-            break;
-          }
-          CHILD.growthElapsed = CHILD.growthDuration;
-          pool -= COST;
-          COUNTS[species]++;
-          ADULTS[species]++;
-          SUMMARY.births++;
-          progressed = true;
-        }
-      }
-      if (!progressed) {
-        break;
-      }
-    }
-    world.warehouseFood = Math.min(WORK.warehouseLimit, world.warehouseFood + pool);
-    world.metrics.births += SUMMARY.births;
-    world._nextWorkerRefreshTick = 0;
-    world.refreshWorkers();
-    world.markProgressChanged();
-    return SUMMARY;
-  }
-  var STACKS_PER_FOOD2;
-  var init_farm_offline = __esm({
-    "src/farm-offline.js"() {
-      init_farm_work();
-      init_farm_plot();
-      init_world_map();
-      STACKS_PER_FOOD2 = 5;
-    }
-  });
-
-  // src/unit-grades.js
-  function mergeMaterialCostForTier(resultTier) {
-    if (!Number.isInteger(resultTier) || resultTier < 2 || resultTier > MAX_UNIT_TIER) {
-      return 0;
-    }
-    return UNIT_GRADES[resultTier - 1].materialCost;
-  }
-  function isValidUnitTier(tier) {
-    return Number.isInteger(tier) && tier >= 1 && tier <= MAX_UNIT_TIER;
-  }
-  var UNIT_GRADES, MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT;
-  var init_unit_grades = __esm({
-    "src/unit-grades.js"() {
-      UNIT_GRADES = Object.freeze([
-        Object.freeze({
-          tier: 1,
-          name: "Common",
-          materialCost: 0,
-          outlineColor: "#d8d4bd"
-        }),
-        Object.freeze({
-          tier: 2,
-          name: "Uncommon",
-          materialCost: 2,
-          outlineColor: "#83ce76"
-        }),
-        Object.freeze({
-          tier: 3,
-          name: "Rare",
-          materialCost: 2,
-          outlineColor: "#78b9ff"
-        }),
-        Object.freeze({
-          tier: 4,
-          name: "Epic",
-          materialCost: 3,
-          outlineColor: "#bd8cff"
-        }),
-        Object.freeze({
-          tier: 5,
-          name: "Legendary",
-          materialCost: 4,
-          outlineColor: "#ffb354"
-        }),
-        Object.freeze({
-          tier: 6,
-          name: "Mythic",
-          materialCost: 5,
-          outlineColor: "#ff7086"
-        })
-      ]);
-      MAX_UNIT_TIER = UNIT_GRADES.length;
-      MAX_GRADE_MATERIAL_COUNT = Math.max(...UNIT_GRADES.map((grade) => grade.materialCost));
-    }
-  });
-
-  // src/unit-stats.js
-  function createBaseStats(tier, speciesProfile) {
-    let maxHp = TIER_HP;
-    let attackPower = TIER_ATTACK;
-    for (let resultTier = 2; resultTier <= tier; resultTier++) {
-      const TRANSITION_MULTIPLIER = UNIT_GRADES[resultTier - 1].materialCost / 2;
-      maxHp *= TIER_HP_SCALE * TRANSITION_MULTIPLIER;
-      attackPower *= TIER_ATTACK_SCALE * TRANSITION_MULTIPLIER;
-    }
-    return Object.freeze({
-      maxHp,
-      attackPower,
-      ...COMMON_UNIT_STAT_DEFAULTS,
-      ...speciesProfile
-    });
-  }
-  function baseUnitStatsFor(tier, species) {
-    tier = Math.max(1, Math.min(MAX_UNIT_TIER, Number.isInteger(tier) ? tier : 1));
-    const PROFILE = COMMON_UNIT_STAT_PROFILES[species] || COMMON_UNIT_STAT_DEFAULTS;
-    return BASE_STATS_BY_PROFILE.get(PROFILE)?.[tier - 1] || createBaseStats(tier, PROFILE);
-  }
-  function resolveUnitStats(unit, overrides) {
-    const BASE = baseUnitStatsFor(unit?.tier, unit?.species), MULTIPLIER = Number.isFinite(unit?.permanentStatMultiplier) ? Math.max(0, unit.permanentStatMultiplier) : 1;
-    return {
-      ...BASE,
-      maxHp: BASE.maxHp * MULTIPLIER,
-      attackPower: BASE.attackPower * MULTIPLIER,
-      ...unit?.isFormationClone ? { maxHp: 1 } : {},
-      ...overrides
-    };
-  }
-  function combatStats(unit, overrides) {
-    return overrides === void 0 && !unit?.isFormationClone ? baseUnitStatsFor(unit?.tier, unit?.species) : resolveUnitStats(unit, overrides);
-  }
-  function resolveDamage(rawDamage, armor = 0, armorPenetration = 0, critical = false, critMultiplier = COMMON_UNIT_STAT_DEFAULTS.critMultiplier) {
-    const RAW = Number.isFinite(rawDamage) ? Math.max(0, rawDamage) : 0;
-    const PENETRATION = clamp(Number.isFinite(armorPenetration) ? armorPenetration : 0, 0, 1);
-    const EFFECTIVE_ARMOR = Math.max(0, Number.isFinite(armor) ? armor : 0) * (1 - PENETRATION);
-    const CRIT = critical ? Math.max(1, Number.isFinite(critMultiplier) ? critMultiplier : 1) : 1;
-    const MITIGATED = RAW * CRIT * ARMOR_SCALE / (ARMOR_SCALE + EFFECTIVE_ARMOR);
-    return {
-      rawDamage: RAW,
-      effectiveArmor: EFFECTIVE_ARMOR,
-      critical,
-      damage: MITIGATED
-    };
-  }
-  function resolveCritical(stats, roll = 1) {
-    const CHANCE = clamp(Number.isFinite(stats?.critChance) ? stats.critChance : 0, 0, 1);
-    return CHANCE > 0 && roll < CHANCE;
-  }
-  function scaleMoveSpeed(baseSpeed, unit, overrides) {
-    return Math.max(0, Number.isFinite(baseSpeed) ? baseSpeed : 0) * Math.max(0, combatStats(unit, overrides).moveSpeed);
-  }
-  function scaleAttackRecovery(baseRecovery, unit, overrides) {
-    return Math.max(0, Number.isFinite(baseRecovery) ? baseRecovery : 0) / Math.max(0.05, combatStats(unit, overrides).attackSpeed);
-  }
-  function scaleAttackArea(baseArea, unit, overrides) {
-    return Math.max(0, Number.isFinite(baseArea) ? baseArea : 0) * Math.max(0, combatStats(unit, overrides).attackArea);
-  }
-  function applyDamage(target, rawDamage, {
-    armor = 0,
-    armorPenetration = 0,
-    critical = false,
-    critMultiplier = COMMON_UNIT_STAT_DEFAULTS.critMultiplier
-  } = {}) {
-    if (!target || !Number.isFinite(target.hp)) {
-      return {
-        actualLoss: 0,
-        ...resolveDamage(rawDamage, armor, armorPenetration, critical, critMultiplier)
-      };
-    }
-    const RESOLVED = resolveDamage(rawDamage, armor, armorPenetration, critical, critMultiplier);
-    const ACTUAL_LOSS = Math.min(Math.max(0, target.hp), RESOLVED.damage);
-    setHealth(target, Math.max(0, target.hp - ACTUAL_LOSS));
-    return {
-      ...RESOLVED,
-      actualLoss: ACTUAL_LOSS
-    };
-  }
-  function applyHealing(target, amount, receiverStats = combatStats(target)) {
-    if (!target || !Number.isFinite(target.hp) || target.hp <= 0) {
-      return 0;
-    }
-    const MAX_HP = target.isFormationClone ? 1 : Number.isFinite(receiverStats?.maxHp) ? receiverStats.maxHp : 0;
-    const RECEIVED = Number.isFinite(receiverStats?.healingReceivedMultiplier) ? Math.max(0, receiverStats.healingReceivedMultiplier) : 1;
-    const REQUESTED = Number.isFinite(amount) ? Math.max(0, amount) * RECEIVED : 0;
-    const HEALED = Math.min(Math.max(0, MAX_HP - target.hp), REQUESTED);
-    setHealth(target, target.hp + HEALED);
-    return HEALED;
-  }
-  function applyDamageToTargets(source, targets, {
-    rawDamage,
-    area = false,
-    sourceKind = "direct",
-    sourceStatOverrides,
-    armorForTarget = (target) => combatStats(target).armor,
-    roll = () => 1
-  } = {}) {
-    const SOURCE_STATS = source ? combatStats(source, sourceStatOverrides) : null;
-    const CRITICAL = !!SOURCE_STATS && SOURCE_STATS.critChance > 0 && resolveCritical(SOURCE_STATS, roll());
-    const HITS = [];
-    let totalActualLoss = 0;
-    for (const TARGET of targets || []) {
-      const RESULT = applyDamage(TARGET, rawDamage, {
-        armor: armorForTarget(TARGET),
-        armorPenetration: SOURCE_STATS?.armorPenetration || 0,
-        critical: CRITICAL,
-        critMultiplier: SOURCE_STATS?.critMultiplier ?? COMMON_UNIT_STAT_DEFAULTS.critMultiplier
-      });
-      HITS.push(RESULT);
-      totalActualLoss += RESULT.actualLoss;
-    }
-    const BASE_RATE = sourceKind === "direct" ? SOURCE_STATS?.lifesteal || 0 : 0;
-    const HEAL_RATE = area ? BASE_RATE / 3 : BASE_RATE;
-    const HEALED = source && HEAL_RATE > 0 ? applyHealing(source, totalActualLoss * HEAL_RATE, SOURCE_STATS) : 0;
-    return {
-      hits: HITS,
-      totalActualLoss,
-      healed: HEALED,
-      critical: CRITICAL
-    };
-  }
-  function resolveStatusDuration(baseDuration, source, target, { sourceStatOverrides, targetStatOverrides } = {}) {
-    const SOURCE_STATS = source ? combatStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
-    const TARGET_STATS = target ? combatStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
-    const DURATION_SCALE = Number.isFinite(SOURCE_STATS.statusDuration) ? Math.max(0, SOURCE_STATS.statusDuration) : 1;
-    const RESISTANCE = clamp(Number.isFinite(TARGET_STATS.statusResistance) ? TARGET_STATS.statusResistance : 0, 0, 1);
-    return Math.max(0, Number.isFinite(baseDuration) ? baseDuration : 0) * DURATION_SCALE * (1 - RESISTANCE);
-  }
-  function resolveKnockback(basePower, source, target, { sourceStatOverrides, targetStatOverrides } = {}) {
-    const SOURCE_STATS = source ? combatStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
-    const TARGET_STATS = target ? combatStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
-    const POWER = Number.isFinite(SOURCE_STATS.knockbackPower) ? Math.max(0, SOURCE_STATS.knockbackPower) : 1;
-    const RESISTANCE = clamp(
-      Number.isFinite(TARGET_STATS.knockbackResistance) ? TARGET_STATS.knockbackResistance : 0,
-      0,
-      1
-    );
-    return Math.max(0, Number.isFinite(basePower) ? basePower : 0) * POWER * (1 - RESISTANCE);
-  }
-  function clamp(value, min, max) {
-    return Math.max(min, Math.min(max, value));
-  }
-  function setHealth(target, value) {
-    if (typeof target.setHealth === "function") {
-      target.setHealth(value);
-    } else {
-      target.hp = value;
-    }
-  }
-  var TIER_HP, TIER_HP_SCALE, TIER_ATTACK, TIER_ATTACK_SCALE, ARMOR_SCALE, COMMON_UNIT_STAT_DEFAULTS, COMMON_UNIT_STAT_PROFILES, BASE_STATS_BY_PROFILE;
-  var init_unit_stats = __esm({
-    "src/unit-stats.js"() {
-      init_unit_grades();
-      init_species_catalog();
-      TIER_HP = 40;
-      TIER_HP_SCALE = 1.5;
-      TIER_ATTACK = 4;
-      TIER_ATTACK_SCALE = 1.2;
-      ARMOR_SCALE = 100;
-      COMMON_UNIT_STAT_DEFAULTS = Object.freeze({
-        armor: 0,
-        moveSpeed: 1,
-        attackSpeed: 1,
-        critChance: 0,
-        critMultiplier: 2,
-        armorPenetration: 0,
-        attackArea: 1,
-        lifesteal: 0,
-        regen: 0,
-        healingReceivedMultiplier: 1,
-        knockbackPower: 1,
-        knockbackResistance: 0,
-        statusDuration: 1,
-        statusResistance: 0
-      });
-      COMMON_UNIT_STAT_PROFILES = Object.freeze(
-        Array.from(
-          {
-            length: SPECIES_COUNT
-          },
-          () => Object.freeze({
-            ...COMMON_UNIT_STAT_DEFAULTS
-          })
-        )
-      );
-      BASE_STATS_BY_PROFILE = new Map(
-        [COMMON_UNIT_STAT_DEFAULTS, ...COMMON_UNIT_STAT_PROFILES].map((profile) => [
-          profile,
-          Array.from(
-            {
-              length: MAX_UNIT_TIER
-            },
-            (_, index) => createBaseStats(index + 1, profile)
-          )
-        ])
-      );
-    }
-  });
-
-  // src/spatial-grid.js
-  var CELL_SIZE, WORLD_MIN, WORLD_SIZE, CELL_COUNT, WORLD_MAX, CELL_TOTAL, FixedSpatialGrid;
-  var init_spatial_grid = __esm({
-    "src/spatial-grid.js"() {
-      CELL_SIZE = 1.5;
-      WORLD_MIN = -64;
-      WORLD_SIZE = 128;
-      CELL_COUNT = Math.ceil(WORLD_SIZE / CELL_SIZE);
-      WORLD_MAX = WORLD_MIN + CELL_COUNT * CELL_SIZE;
-      CELL_TOTAL = CELL_COUNT * CELL_COUNT;
-      FixedSpatialGrid = class {
-        constructor() {
-          this.cellSize = CELL_SIZE;
-          this.cellCount = CELL_COUNT;
-          this.cells = new Array(CELL_TOTAL);
-          this.usedCells = [];
-          this.touched = new Uint8Array(CELL_TOTAL);
-          this.itemCells = /* @__PURE__ */ new Map();
-          this.overflowItems = [];
-        }
-        clear() {
-          for (const KEY2 of this.usedCells) {
-            this.cells[KEY2].length = 0;
-            this.touched[KEY2] = 0;
-          }
-          this.usedCells.length = 0;
-          this.itemCells.clear();
-          this.overflowItems.length = 0;
-        }
-        cellX(x) {
-          return Math.floor((x - WORLD_MIN) / CELL_SIZE);
-        }
-        cellY(y) {
-          return Math.floor((y - WORLD_MIN) / CELL_SIZE);
-        }
-        _cellKey(x, y) {
-          if (!Number.isFinite(x) || !Number.isFinite(y)) {
-            return -1;
-          }
-          const CX = this.cellX(x), CY = this.cellY(y);
-          return CX < 0 || CY < 0 || CX >= CELL_COUNT || CY >= CELL_COUNT ? -1 : CY * CELL_COUNT + CX;
-        }
-        insert(item, x = item?.x, y = item?.y) {
-          if (!item) {
-            return false;
-          }
-          const PREVIOUS = this.itemCells.get(item);
-          if (PREVIOUS !== void 0) {
-            if (PREVIOUS >= 0) {
-              this._removeFromCell(item, PREVIOUS);
-            } else {
-              this._removeOverflow(item);
-            }
-          }
-          const KEY2 = this._cellKey(x, y);
-          this.itemCells.set(item, KEY2);
-          if (KEY2 < 0) {
-            this.overflowItems.push(item);
-            return false;
-          }
-          let bucket = this.cells[KEY2];
-          if (!bucket) {
-            bucket = this.cells[KEY2] = [];
-          }
-          if (!this.touched[KEY2]) {
-            this.touched[KEY2] = 1;
-            this.usedCells.push(KEY2);
-          }
-          bucket.push(item);
-          return true;
-        }
-        update(item, x = item?.x, y = item?.y) {
-          if (!item) {
-            return false;
-          }
-          const PREVIOUS = this.itemCells.get(item);
-          const NEXT = this._cellKey(x, y);
-          if (PREVIOUS === NEXT) {
-            return NEXT >= 0;
-          }
-          if (PREVIOUS !== void 0) {
-            if (PREVIOUS >= 0) {
-              this._removeFromCell(item, PREVIOUS);
-            } else {
-              this._removeOverflow(item);
-            }
-          }
-          this.itemCells.set(item, NEXT);
-          if (NEXT < 0) {
-            this.overflowItems.push(item);
-            return false;
-          }
-          let bucket = this.cells[NEXT];
-          if (!bucket) {
-            bucket = this.cells[NEXT] = [];
-          }
-          if (!this.touched[NEXT]) {
-            this.touched[NEXT] = 1;
-            this.usedCells.push(NEXT);
-          }
-          bucket.push(item);
-          return true;
-        }
-        remove(item) {
-          const KEY2 = this.itemCells.get(item);
-          if (KEY2 === void 0) {
-            return false;
-          }
-          if (KEY2 >= 0) {
-            this._removeFromCell(item, KEY2);
-          } else {
-            this._removeOverflow(item);
-          }
-          this.itemCells.delete(item);
-          return true;
-        }
-        _removeOverflow(item) {
-          const INDEX = this.overflowItems.indexOf(item);
-          if (INDEX < 0) {
-            return;
-          }
-          const LAST = this.overflowItems.pop();
-          if (INDEX < this.overflowItems.length) {
-            this.overflowItems[INDEX] = LAST;
-          }
-        }
-        _removeFromCell(item, key) {
-          const BUCKET = this.cells[key];
-          if (!BUCKET) {
-            return;
-          }
-          const INDEX = BUCKET.indexOf(item);
-          if (INDEX < 0) {
-            return;
-          }
-          const LAST = BUCKET.pop();
-          if (INDEX < BUCKET.length) {
-            BUCKET[INDEX] = LAST;
-          }
-        }
-        queryAABB(minX, minY, maxX, maxY, out) {
-          out.length = 0;
-          if (![minX, minY, maxX, maxY].every(Number.isFinite)) {
-            return out;
-          }
-          if (maxX >= WORLD_MIN && maxY >= WORLD_MIN && minX < WORLD_MAX && minY < WORLD_MAX) {
-            const X0 = Math.max(0, this.cellX(minX)), Y0 = Math.max(0, this.cellY(minY));
-            const X1 = Math.min(CELL_COUNT - 1, this.cellX(maxX)), Y1 = Math.min(CELL_COUNT - 1, this.cellY(maxY));
-            for (let y = Y0; y <= Y1; y++) {
-              const ROW = y * CELL_COUNT;
-              for (let x = X0; x <= X1; x++) {
-                const BUCKET = this.cells[ROW + x];
-                if (BUCKET) {
-                  for (let i = 0; i < BUCKET.length; i++) {
-                    out.push(BUCKET[i]);
-                  }
-                }
-              }
-            }
-          }
-          for (const ITEM of this.overflowItems) {
-            if (ITEM.x >= minX && ITEM.x <= maxX && ITEM.y >= minY && ITEM.y <= maxY) {
-              out.push(ITEM);
-            }
-          }
-          return out;
-        }
-        queryCellRing(centerX, centerY, radius, out) {
-          out.length = 0;
-          const X0 = centerX - radius, X1 = centerX + radius;
-          const Y0 = centerY - radius, Y1 = centerY + radius;
-          if (radius === 0) {
-            this._appendCell(centerX, centerY, out);
-            return out;
-          }
-          for (let x = X0; x <= X1; x++) {
-            this._appendCell(x, Y0, out);
-            this._appendCell(x, Y1, out);
-          }
-          for (let y = Y0 + 1; y < Y1; y++) {
-            this._appendCell(X0, y, out);
-            this._appendCell(X1, y, out);
-          }
-          return out;
-        }
-        _appendCell(x, y, out) {
-          if (x < 0 || y < 0 || x >= CELL_COUNT || y >= CELL_COUNT) {
-            return;
-          }
-          const BUCKET = this.cells[y * CELL_COUNT + x];
-          if (BUCKET) {
-            for (let i = 0; i < BUCKET.length; i++) {
-              out.push(BUCKET[i]);
-            }
-          }
-        }
-        distanceToOutsideRing(x, y, centerX, centerY, radius) {
-          const LEFT = Math.max(0, centerX - radius), RIGHT = Math.min(CELL_COUNT - 1, centerX + radius);
-          const BOTTOM = Math.max(0, centerY - radius), TOP = Math.min(CELL_COUNT - 1, centerY + radius);
-          let nearest = Infinity;
-          if (LEFT > 0) {
-            nearest = Math.min(nearest, x - (WORLD_MIN + LEFT * CELL_SIZE));
-          }
-          if (RIGHT < CELL_COUNT - 1) {
-            nearest = Math.min(nearest, WORLD_MIN + (RIGHT + 1) * CELL_SIZE - x);
-          }
-          if (BOTTOM > 0) {
-            nearest = Math.min(nearest, y - (WORLD_MIN + BOTTOM * CELL_SIZE));
-          }
-          if (TOP < CELL_COUNT - 1) {
-            nearest = Math.min(nearest, WORLD_MIN + (TOP + 1) * CELL_SIZE - y);
-          }
-          return Math.max(0, nearest);
-        }
-      };
-    }
-  });
-
-  // src/vector-sockets.cjs
-  var require_vector_sockets = __commonJS({
-    "src/vector-sockets.cjs"(exports, module) {
-      "use strict";
-      function readVectorSockets3({ metadata, viewBox, sourcePath }, label = sourcePath || metadata?.id || "unknown asset") {
-        const FAIL4 = (message) => {
-          throw new Error(`Vector socket contract (${label}): ${message}`);
-        };
-        if (!Array.isArray(viewBox) || viewBox.length !== 4 || !viewBox.every(Number.isFinite) || viewBox[2] <= 0 || viewBox[3] <= 0) {
-          FAIL4("a finite SVG viewBox is required");
-        }
-        const PARTS = new Map((metadata?.parts || []).map((part) => [part.id, part]));
-        const ANCHORS = {};
-        for (const NAME of ["mouth", "ground"]) {
-          const SOCKET = metadata?.sockets?.[NAME];
-          if (!SOCKET || !PARTS.has(SOCKET.part)) {
-            FAIL4(`${NAME} must name an authored part`);
-          }
-          if (!Array.isArray(SOCKET.point) || SOCKET.point.length !== 2 || !SOCKET.point.every(Number.isFinite)) {
-            FAIL4(`${NAME} must contain two finite canvas coordinates`);
-          }
-          const [X, Y] = SOCKET.point;
-          if (X < viewBox[0] || X > viewBox[0] + viewBox[2] || Y < viewBox[1] || Y > viewBox[1] + viewBox[3]) {
-            FAIL4(`${NAME} lies outside the SVG canvas`);
-          }
-          ANCHORS[NAME] = Object.freeze({
-            part: SOCKET.part,
-            x: X,
-            y: Y
-          });
-        }
-        if (ANCHORS.ground.part !== "body") {
-          FAIL4("ground must belong to body");
-        }
-        if (ANCHORS.mouth.y >= ANCHORS.ground.y) {
-          FAIL4("mouth must be above the authored ground baseline");
-        }
-        return Object.freeze(ANCHORS);
-      }
-      var BOSS_VECTOR_DIAMETER = 220;
-      var BOSS_VECTOR_RADIUS_SCALE = 1.16;
-      var WORLD_HEIGHT_PROJECTION4 = 0.785;
-      var WORLD_DEPTH_PROJECTION3 = 0.62;
-      function bossVectorScale3(radius) {
-        return 2 * radius * BOSS_VECTOR_RADIUS_SCALE / BOSS_VECTOR_DIAMETER;
-      }
-      function socketWorldPoint2(boss, socket, ground) {
-        const SCALE = bossVectorScale3(boss.radius);
-        return {
-          x: boss.x + (socket.x - ground.x) * SCALE,
-          y: boss.y,
-          z: (boss.z || 0) + (ground.y - socket.y) * SCALE / WORLD_HEIGHT_PROJECTION4
-        };
-      }
-      module.exports = {
-        readVectorSockets: readVectorSockets3,
-        bossVectorScale: bossVectorScale3,
-        socketWorldPoint: socketWorldPoint2,
-        WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION4,
-        WORLD_DEPTH_PROJECTION: WORLD_DEPTH_PROJECTION3
-      };
-    }
-  });
-
-  // src/features/unit-body/definition.cjs
-  var require_definition = __commonJS({
-    "src/features/unit-body/definition.cjs"(exports, module) {
-      "use strict";
-      var { WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION4 } = require_vector_sockets();
-      var AUTHORED_BODIES = [
-        {
-          species: 0,
-          asset: "assets/troops/pea.svg",
-          shapeId: "body-outline",
-          sourceSha256: "4d4d6311b69aafb79bf271deea9c0898a2de81c46137503df23041ea843b0365",
-          viewBox: [0, 0, 320, 350],
-          bounds: {
-            left: 57.00453577435779,
-            top: 103.16243270259355,
-            right: 278.93153243769814,
-            bottom: 312.75
-          },
-          ground: {
-            x: 160,
-            y: 350
-          },
-          mouth: {
-            x: 176,
-            y: 211.76175
-          }
-        },
-        {
-          species: 1,
-          asset: "assets/troops/corn-kernel.svg",
-          shapeId: "corn-body-outline",
-          sourceSha256: "ffa82f15e14bef8e9d450a5f105bb66d66cbe18022c948c8a27740eaaf065790",
-          viewBox: [0, 0, 285, 295],
-          bounds: {
-            left: 23.038415422304524,
-            top: 7.394271983516546,
-            right: 258.5,
-            bottom: 243.25
-          },
-          ground: {
-            x: 142.5,
-            y: 295
-          },
-          mouth: {
-            x: 140,
-            y: 113.6965
-          }
-        },
-        {
-          species: 2,
-          asset: "assets/troops/kidney-bean.svg",
-          shapeId: "bean-body-outline",
-          sourceSha256: "201e77f6097da10d06b5aea94437b146a213e59a50cf3b81ddc57fe3157f713e",
-          viewBox: [0, 0, 260, 320],
-          bounds: {
-            left: 35.860000000000014,
-            top: 12.298798725449615,
-            right: 223.18548295320454,
-            bottom: 279.2683248982993
-          },
-          ground: {
-            x: 130,
-            y: 320
-          },
-          mouth: {
-            x: 119,
-            y: 110.4355
-          }
-        },
-        {
-          species: 3,
-          asset: "assets/troops/chestnut.svg",
-          shapeId: "chestnut-shell",
-          sourceSha256: "a35483cf970c33886b311346d2032df16275cb7382d80f91581b35bb36248ee1",
-          viewBox: [0, 0, 320, 300],
-          bounds: {
-            left: 38.666666666666664,
-            top: 19,
-            right: 281.3333333333333,
-            bottom: 233
-          },
-          ground: {
-            x: 160,
-            y: 261
-          },
-          mouth: {
-            x: 160,
-            y: 140
-          }
-        },
-        {
-          species: 4,
-          asset: "assets/troops/peanut.svg",
-          shapeId: "peanut-pod-outline",
-          sourceSha256: "79c2dc3bdb2f576662fd620b8b1be8795a33399fdfe42e527e8e8eeaae782c84",
-          viewBox: [0, 0, 320, 300],
-          bounds: {
-            left: 101.3125,
-            top: 63.5,
-            right: 215.25,
-            bottom: 252.4375
-          },
-          ground: {
-            x: 160,
-            y: 269
-          },
-          mouth: {
-            x: 160,
-            y: 139.42
-          }
-        },
-        {
-          species: 5,
-          asset: "assets/troops/walnut.svg",
-          shapeId: "walnut-body-outline",
-          sourceSha256: "6f3f16d7548daa981439764dd2646817349dfd644f6d8e8f4beb1defe9342c57",
-          viewBox: [0, 0, 320, 300],
-          bounds: {
-            left: 83.5,
-            top: 71,
-            right: 247.75,
-            bottom: 252.75
-          },
-          ground: {
-            x: 160,
-            y: 273
-          },
-          mouth: {
-            x: 160,
-            y: 161
-          }
-        },
-        {
-          species: 6,
-          asset: "assets/troops/rice.svg",
-          shapeId: "rice-body-outline",
-          sourceSha256: "5aef9bd138b053edc1f87908dffb623139d981c401aa21e6b59e401edd484de2",
-          viewBox: [0, 0, 320, 350],
-          bounds: {
-            left: 70.60885389809643,
-            top: 80.465,
-            right: 244.56002549222026,
-            bottom: 308.5244145408352
-          },
-          ground: {
-            x: 160,
-            y: 320
-          },
-          mouth: {
-            x: 159,
-            y: 181
-          }
-        },
-        {
-          species: 7,
-          asset: "assets/troops/wheat.svg",
-          shapeId: "wheat-grain-outline",
-          sourceSha256: "4bcb07c0d461f030e9fb54d0709cc162d3ef33514f21b5c691574fecf6628697",
-          viewBox: [0, 0, 320, 350],
-          bounds: {
-            left: 85.19999999999996,
-            top: 41.26666666666667,
-            right: 221.6,
-            bottom: 303.6
-          },
-          ground: {
-            x: 160,
-            y: 320
-          },
-          mouth: {
-            x: 153,
-            y: 173
-          }
-        },
-        {
-          species: 8,
-          asset: "assets/troops/barley.svg",
-          shapeId: "barley-seed-outline",
-          sourceSha256: "b91f433fd962b33dca843436712f12658565a0818161442f9674ffdc8ea3fb8d",
-          viewBox: [0, 0, 320, 350],
-          bounds: {
-            left: 69.30899999999998,
-            top: 101.629,
-            right: 252.47099999999998,
-            bottom: 297.4735
-          },
-          ground: {
-            x: 160,
-            y: 320
-          },
-          mouth: {
-            x: 160,
-            y: 171.85
-          }
-        }
-      ];
-      var UNIT_BODIES = Object.freeze(
-        AUTHORED_BODIES.map(
-          (body) => Object.freeze({
-            ...body,
-            viewBox: Object.freeze(body.viewBox),
-            bounds: Object.freeze(body.bounds),
-            ground: Object.freeze(body.ground),
-            mouth: Object.freeze(body.mouth)
-          })
-        )
-      );
-      var UNIT_BODY_CONFIG = Object.freeze({
-        baseSize: 0.55,
-        sizePerTier: 0.1,
-        birthScale: 0.5,
-        vectorRadiusScale: 0.78
-      });
-      function unitBodyDefinition3(species) {
-        const BODY2 = UNIT_BODIES[species];
-        if (!BODY2) {
-          throw new RangeError("Missing authored unit body for species " + species);
-        }
-        return BODY2;
-      }
-      function unitVisualSize2(unit) {
-        const MATURE = unit.growthElapsed >= unit.growthDuration - 1e-9, GROWTH = MATURE || !(unit.growthDuration > 0) ? 1 : Math.max(0, Math.min(1, unit.growthElapsed / unit.growthDuration));
-        return (UNIT_BODY_CONFIG.baseSize + UNIT_BODY_CONFIG.sizePerTier * unit.tier) * (UNIT_BODY_CONFIG.birthScale + (1 - UNIT_BODY_CONFIG.birthScale) * GROWTH);
-      }
-      function unitVectorScale2(unit) {
-        const BODY2 = unitBodyDefinition3(unit.species);
-        return unitVisualSize2(unit) * 2 * UNIT_BODY_CONFIG.vectorRadiusScale / Math.max(BODY2.viewBox[2], BODY2.viewBox[3]);
-      }
-      function bodyRadiusAtScale(body, scale) {
-        return Math.max(body.ground.x - body.bounds.left, body.bounds.right - body.ground.x) * scale;
-      }
-      function unitBodyRadius3(unit) {
-        return bodyRadiusAtScale(unitBodyDefinition3(unit.species), unitVectorScale2(unit));
-      }
-      function unitBodyHeight2(unit) {
-        const BODY2 = unitBodyDefinition3(unit.species);
-        return (BODY2.ground.y - BODY2.bounds.top) * unitVectorScale2(unit) / WORLD_HEIGHT_PROJECTION4;
-      }
-      function unitTorsoHeight2(unit) {
-        const BODY2 = unitBodyDefinition3(unit.species);
-        return (BODY2.bounds.bottom - BODY2.bounds.top) * unitVectorScale2(unit) / WORLD_HEIGHT_PROJECTION4;
-      }
-      function maximumUnitRadius2(tier) {
-        return Math.max(
-          ...UNIT_BODIES.map(
-            (body) => unitBodyRadius3({
-              species: body.species,
-              tier,
-              growthElapsed: 1,
-              growthDuration: 1
-            })
-          )
-        );
-      }
-      function unitDisplayScale3(body, vectorScale, pixelsPerWorldUnit, minimumRadiusPixels) {
-        return Math.max(
-          vectorScale * pixelsPerWorldUnit,
-          2 * minimumRadiusPixels / Math.max(body.viewBox[2], body.viewBox[3])
-        );
-      }
-      function validateUnitBodySource(species, source) {
-        const BODY2 = unitBodyDefinition3(species);
-        if (source.sha256 !== BODY2.sourceSha256 || source.file !== BODY2.asset) {
-          throw new Error("Authored unit body must be remeasured after SVG changes: " + BODY2.asset);
-        }
-      }
-      module.exports = {
-        UNIT_BODIES,
-        UNIT_BODY_CONFIG,
-        unitBodyDefinition: unitBodyDefinition3,
-        unitVisualSize: unitVisualSize2,
-        unitVectorScale: unitVectorScale2,
-        unitBodyRadius: unitBodyRadius3,
-        unitBodyHeight: unitBodyHeight2,
-        unitTorsoHeight: unitTorsoHeight2,
-        maximumUnitRadius: maximumUnitRadius2,
-        unitDisplayScale: unitDisplayScale3,
-        validateUnitBodySource
-      };
-    }
-  });
-
-  // src/features/formation-skills/model-base.js
-  function targetBodyDimensions(target) {
-    const BODY_HEIGHT = Number.isFinite(target?.height) ? Math.max(0, target.height) : T1_DIAMETER * 1.7, BODY_RADIUS = Number.isFinite(target?.radius) ? Math.max(0, target.radius) : T1_DIAMETER * 0.5, BASE_Z = Number.isFinite(target?.z) ? target.z : 0;
-    return {
-      z: BASE_Z,
-      bodyHeight: BODY_HEIGHT,
-      bodyRadius: BODY_RADIUS,
-      topZ: BASE_Z + BODY_HEIGHT
-    };
-  }
-  function targetTop(_owner, target) {
-    const BODY2 = targetBodyDimensions(target), MARGIN = Math.max(T1_DIAMETER * 0.12, BODY2.bodyHeight * 0.06);
-    return BODY2.topZ + MARGIN;
-  }
-  var import_definition14, T1_DIAMETER, FormationSkill, MeteorSkill, FlyingSkill;
-  var init_model_base = __esm({
-    "src/features/formation-skills/model-base.js"() {
-      import_definition14 = __toESM(require_definition(), 1);
-      T1_DIAMETER = (0, import_definition14.unitBodyRadius)({ species: 0, tier: 1, growthElapsed: 1, growthDuration: 1 }) * 2;
-      FormationSkill = class {
-        constructor(definition) {
-          this.definition = definition;
-        }
-        power(level, base) {
-          return base * (this.definition.upgradeFactor ?? 1.5) ** (level - 1);
-        }
-        cast(_owner, _slot) {
-          return false;
-        }
-        update(_owner, effect, dt) {
-          effect.age += dt;
-          return effect.age <= effect.duration;
-        }
-      };
-      MeteorSkill = class extends FormationSkill {
-        launch(owner, slot, index = 0) {
-          const TARGET = owner.enemy();
-          if (!TARGET) {
-            return false;
-          }
-          const ANGLE = owner.world.random() * Math.PI * 2, DISTANCE = Math.sqrt(owner.world.random()) * (TARGET.radius + T1_DIAMETER * 3);
-          owner.addEffect(this.definition.id, {
-            x: TARGET.x + Math.cos(ANGLE) * DISTANCE,
-            y: TARGET.y + Math.sin(ANGLE) * DISTANCE,
-            z: 12,
-            delay: index * 0.25,
-            duration: index * 0.25 + 1.25,
-            radius: T1_DIAMETER * 3,
-            damage: this.power(slot.level, this.definition.upgradeBase),
-            impacted: false
-          });
-          return true;
-        }
-        cast(owner, slot) {
-          return this.launch(owner, slot);
-        }
-        update(owner, effect, dt) {
-          effect.age += dt;
-          if (!effect.impacted && effect.age + 1e-9 >= effect.delay + 0.75) {
-            effect.impacted = true;
-            owner.areaDamage(effect.x, effect.y, effect.radius, effect.damage, this.knockback === true);
-          }
-          return effect.age < effect.duration;
-        }
-      };
-      FlyingSkill = class extends FormationSkill {
-        cast(owner, slot) {
-          const TARGET = owner.enemy();
-          if (!TARGET) {
-            return false;
-          }
-          const ANGLE = owner.world.random() * Math.PI * 2, STATE = this.effectState(owner, TARGET, slot, ANGLE);
-          owner.addEffect(this.definition.id, STATE);
-          return true;
-        }
-        effectState(owner, target, slot, angle) {
-          const BODY2 = targetBodyDimensions(target), TARGET_Z = targetTop(owner, target);
-          return {
-            x: target.x + Math.cos(angle) * 0.6,
-            y: target.y + Math.sin(angle) * 0.6,
-            z: TARGET_Z + 2,
-            bodyHeight: BODY2.bodyHeight,
-            bodyRadius: BODY2.bodyRadius,
-            targetId: owner.targetId(target),
-            duration: this.definition.upgradeBase + this.definition.upgradeStep * (slot.level - 1),
-            pulse: 0,
-            lastPulse: -10,
-            targetX: target.x,
-            targetY: target.y,
-            targetZ: TARGET_Z
-          };
-        }
-        onPulse(_owner, _effect, _target) {
-        }
-        strike(_owner, _effect, _target) {
-        }
-        update(owner, effect, dt) {
-          effect.age += dt;
-          const TARGET = owner.target(effect.targetId) || owner.enemy(effect);
-          if (TARGET) {
-            const BODY2 = targetBodyDimensions(TARGET);
-            effect.targetId = owner.targetId(TARGET);
-            const DX = TARGET.x - effect.x, DY = TARGET.y - effect.y, TARGET_Z = targetTop(owner, TARGET), RATE = 1 - Math.exp(-dt * 6);
-            effect.x += DX * RATE;
-            effect.y += DY * RATE;
-            effect.z += (TARGET_Z + 2 - effect.z) * RATE;
-            effect.targetX = TARGET.x;
-            effect.targetY = TARGET.y;
-            effect.targetZ = TARGET_Z;
-            effect.bodyHeight = BODY2.bodyHeight;
-            effect.bodyRadius = BODY2.bodyRadius;
-          }
-          owner.separateAir(effect, dt);
-          const ACTIVE_AGE = effect.age - 0.5;
-          const INTERVAL = this.definition.pulseInterval;
-          if (ACTIVE_AGE >= 0 && effect.pulse < Math.floor((effect.duration + 1e-9) / INTERVAL)) {
-            const DUE = Math.min(
-              Math.floor((Math.min(ACTIVE_AGE, effect.duration) + 1e-9) / INTERVAL),
-              Math.floor((effect.duration + 1e-9) / INTERVAL)
-            );
-            while (effect.pulse < DUE) {
-              effect.pulse++;
-              effect.lastPulse = effect.age;
-              this.onPulse(owner, effect, TARGET);
-              if (TARGET && Math.hypot(TARGET.x - effect.x, TARGET.y - effect.y) <= 18) {
-                this.strike(owner, effect, TARGET);
-              }
-            }
-          }
-          return effect.age < effect.duration + 1;
-        }
-      };
-    }
-  });
-
-  // src/features/formation-skills/giant/model.js
-  var GiantSkill;
-  var init_model = __esm({
-    "src/features/formation-skills/giant/model.js"() {
-      init_definition();
-      init_model_base();
-      init_formation_skill_state();
-      GiantSkill = class extends FormationSkill {
-        constructor() {
-          super(DEFINITION);
-        }
-        cast(owner, slot) {
-          const CANDIDATES = owner.allies().filter((unit) => unit.giantUntil <= owner.world.time);
-          if (!CANDIDATES.length) {
-            return false;
-          }
-          const TARGET_COUNT = Math.min(CANDIDATES.length, formationUpgradeValue(this.definition, slot.level));
-          for (let i = 0; i < TARGET_COUNT; i++) {
-            const J = i + Math.floor(owner.world.random() * (CANDIDATES.length - i)), UNIT3 = CANDIDATES[J];
-            CANDIDATES[J] = CANDIDATES[i];
-            CANDIDATES[i] = UNIT3;
-            UNIT3.giantUntil = owner.world.time + this.definition.durationSeconds;
-            owner.addEffect(DEFINITION.id, {
-              x: UNIT3.x,
-              y: UNIT3.y,
-              radius: UNIT3.radius,
-              unitId: UNIT3.id,
-              duration: this.definition.durationSeconds
-            });
-          }
-          return true;
-        }
-        update(owner, effect, dt) {
-          effect.age += dt;
-          const UNIT3 = owner.world._unitForId(effect.unitId);
-          if (!UNIT3 || UNIT3.hp <= 0) {
-            return false;
-          }
-          effect.x = UNIT3.x;
-          effect.y = UNIT3.y;
-          effect.radius = UNIT3.radius;
-          if (effect.age >= effect.duration) {
-            UNIT3.giantUntil = 0;
-            UNIT3.giantEndedAt = owner.world.time;
-            return false;
-          }
-          return true;
-        }
-      };
-    }
-  });
-
-  // src/features/formation-skills/lightning/model.js
-  var LightningSkill;
-  var init_model2 = __esm({
-    "src/features/formation-skills/lightning/model.js"() {
-      init_definition2();
-      init_model_base();
-      LightningSkill = class extends FormationSkill {
-        constructor() {
-          super(DEFINITION2);
-        }
-        cast(owner, slot) {
-          const TARGET = owner.enemy();
-          if (!TARGET) {
-            return false;
-          }
-          const BODY2 = targetBodyDimensions(TARGET);
-          owner.addEffect(DEFINITION2.id, {
-            x: TARGET.x,
-            y: TARGET.y,
-            z: BODY2.z,
-            bodyHeight: BODY2.bodyHeight,
-            bodyRadius: BODY2.bodyRadius,
-            duration: 0.65
-          });
-          owner.damage(TARGET, this.power(slot.level, this.definition.upgradeBase));
-          return true;
-        }
-      };
-    }
-  });
-
-  // src/features/formation-skills/meteor/model.js
-  var LargeMeteorSkill;
-  var init_model3 = __esm({
-    "src/features/formation-skills/meteor/model.js"() {
-      init_definition3();
-      init_model_base();
-      LargeMeteorSkill = class extends MeteorSkill {
-        constructor() {
-          super(DEFINITION3);
-          this.knockback = true;
-        }
-      };
-    }
-  });
-
-  // src/features/formation-skills/meteor-shower/model.js
-  var MeteorShowerSkill;
-  var init_model4 = __esm({
-    "src/features/formation-skills/meteor-shower/model.js"() {
-      init_definition4();
-      init_model_base();
-      MeteorShowerSkill = class extends MeteorSkill {
-        constructor() {
-          super(DEFINITION4);
-        }
-        cast(owner, slot) {
-          if (!owner.enemy()) {
-            return false;
-          }
-          for (let i = 0; i < this.definition.upgradeBase + slot.level - 1; i++) {
-            this.launch(owner, slot, i);
-            const EFFECT = owner.effects[owner.effects.length - 1];
-            EFFECT.radius = T1_DIAMETER;
-            EFFECT.damage = 25;
-          }
-          return true;
-        }
-      };
-    }
-  });
-
-  // src/features/formation-skills/copy/model.js
-  var CopySkill;
-  var init_model5 = __esm({
-    "src/features/formation-skills/copy/model.js"() {
-      init_definition5();
-      init_model_base();
-      CopySkill = class extends FormationSkill {
-        constructor() {
-          super(DEFINITION5);
-        }
-        cast(owner, slot) {
-          const ORIGINALS = owner.allies().filter((unit) => !unit.isBattleOnlySummon), RADIUS2 = this.power(slot.level, T1_DIAMETER * this.definition.upgradeBase);
-          let center = null;
-          let targets = [];
-          for (const UNIT3 of ORIGINALS) {
-            const NEAR = owner.nearby(UNIT3.x, UNIT3.y, RADIUS2).filter(
-              (candidate) => candidate.faction === "player" && !candidate.isBattleOnlySummon && candidate.hp > 0 && Math.hypot(candidate.x - UNIT3.x, candidate.y - UNIT3.y) <= RADIUS2
-            );
-            if (NEAR.length > targets.length) {
-              center = UNIT3;
-              targets = NEAR;
-            }
-          }
-          if (!center || !targets.length || !owner.canClone(targets.length)) {
-            return false;
-          }
-          owner.addEffect(DEFINITION5.id, { x: center.x, y: center.y, radius: RADIUS2, duration: 0.7 });
-          for (const UNIT3 of targets) {
-            owner.world.createFormationClone(UNIT3);
-          }
-          return true;
-        }
-      };
-    }
-  });
-
-  // src/features/formation-skills/healing-rain/model.js
-  var HealingRainSkill;
-  var init_model6 = __esm({
-    "src/features/formation-skills/healing-rain/model.js"() {
-      init_definition6();
-      init_model_base();
-      init_unit_stats();
-      HealingRainSkill = class extends FormationSkill {
-        constructor() {
-          super(DEFINITION6);
-          this.injuredScratch = [];
-        }
-        cast(owner, slot) {
-          if (owner.injuredAllies().length === 0) {
-            return false;
-          }
-          owner.addEffect(DEFINITION6.id, {
-            x: 0,
-            y: 0,
-            duration: 3,
-            total: this.power(slot.level, this.definition.upgradeBase)
-          });
-          return true;
-        }
-        update(owner, effect, dt) {
-          const SPAN = Math.min(dt, Math.max(0, effect.duration - effect.age));
-          effect.age += dt;
-          let amount = effect.total * SPAN / effect.duration;
-          const INJURED = owner.injuredAllies(this.injuredScratch);
-          let injuredCount = INJURED.length;
-          while (amount > 1e-9 && injuredCount) {
-            const SHARE = amount / injuredCount;
-            let spent = 0;
-            for (let i = 0; i < injuredCount; i++) {
-              const UNIT3 = INJURED[i];
-              spent += applyHealing(UNIT3, SHARE, { ...resolveUnitStats(UNIT3), healingReceivedMultiplier: 1 });
-            }
-            amount -= spent;
-            let remaining = 0;
-            for (let i = 0; i < injuredCount; i++) {
-              const UNIT3 = INJURED[i];
-              if (UNIT3.hp < resolveUnitStats(UNIT3).maxHp - 1e-9) {
-                INJURED[remaining++] = UNIT3;
-              }
-            }
-            injuredCount = remaining;
-            if (spent < 1e-9) {
-              break;
-            }
-          }
-          return effect.age < effect.duration;
-        }
-      };
-    }
-  });
-
-  // src/features/formation-skills/hammer/model.js
-  var HammerSkill;
-  var init_model7 = __esm({
-    "src/features/formation-skills/hammer/model.js"() {
-      init_definition7();
-      init_model_base();
-      HammerSkill = class extends FormationSkill {
-        constructor() {
-          super(DEFINITION7);
-        }
-        cast(owner, slot) {
-          const TARGET = owner.enemy();
-          if (!TARGET) {
-            return false;
-          }
-          const BODY2 = targetBodyDimensions(TARGET);
-          owner.addEffect(DEFINITION7.id, {
-            x: TARGET.x,
-            y: TARGET.y,
-            z: BODY2.z,
-            bodyHeight: BODY2.bodyHeight,
-            bodyRadius: BODY2.bodyRadius,
-            duration: 0.7
-          });
-          owner.damage(TARGET, this.power(slot.level, this.definition.upgradeBase));
-          TARGET.stun = Math.max(TARGET.stun || 0, 1);
-          return true;
-        }
-      };
-    }
-  });
-
-  // src/features/formation-skills/ufo/model.js
-  var UfoSkill;
-  var init_model8 = __esm({
-    "src/features/formation-skills/ufo/model.js"() {
-      init_definition8();
-      init_model_base();
-      UfoSkill = class extends FlyingSkill {
-        constructor() {
-          super(DEFINITION8);
-        }
-        onPulse(owner, effect) {
-          const TARGET = owner.verticalTarget(effect.x, effect.y);
-          if (TARGET) {
-            owner.damage(TARGET, this.definition.pulseDamage);
-          }
-          effect.beamTargetZ = TARGET ? targetBodyDimensions(TARGET).topZ : 0;
-        }
-        update(owner, effect, dt) {
-          const ALIVE = super.update(owner, effect, dt), TARGET = owner.verticalTarget(effect.x, effect.y);
-          effect.beamTarget = !!TARGET;
-          effect.beamTargetZ = TARGET ? targetBodyDimensions(TARGET).topZ : 0;
-          return ALIVE;
-        }
-      };
-    }
-  });
-
-  // src/features/formation-skills/storm-cloud/model.js
-  var StormCloudSkill;
-  var init_model9 = __esm({
-    "src/features/formation-skills/storm-cloud/model.js"() {
-      init_definition9();
-      init_model_base();
-      StormCloudSkill = class extends FlyingSkill {
-        constructor() {
-          super(DEFINITION9);
-        }
-        strike(owner, _effect, target) {
-          owner.damage(target, this.definition.pulseDamage);
-        }
-      };
-    }
-  });
-
-  // src/formation-skills.js
-  var MODELS, FormationSkills;
-  var init_formation_skills = __esm({
-    "src/formation-skills.js"() {
-      init_formation_skill_state();
-      init_unit_stats();
-      init_spatial_grid();
-      init_model();
-      init_model2();
-      init_model3();
-      init_model4();
-      init_model5();
-      init_model6();
-      init_model7();
-      init_model8();
-      init_model9();
-      MODELS = new Map(
-        [
-          new GiantSkill(),
-          new LightningSkill(),
-          new LargeMeteorSkill(),
-          new MeteorShowerSkill(),
-          new CopySkill(),
-          new HealingRainSkill(),
-          new HammerSkill(),
-          new UfoSkill(),
-          new StormCloudSkill()
-        ].map((model) => [model.definition.id, model])
-      );
-      FormationSkills = class {
-        constructor(world) {
-          this.world = world;
-          this.members = new Set(world.units);
-          this.injured = /* @__PURE__ */ new Set();
-          this.rebuildInjured();
-          this.scratch = [];
-          this.air = new FixedSpatialGrid();
-          this.airScratch = [];
-          this.subscriptions = [
-            world.unitCollection.onAdded.on(({ unitId }) => {
-              const UNIT3 = world._unitForId(unitId);
-              if (UNIT3) {
-                this.members.add(UNIT3);
-                this.trackHealth(UNIT3);
-              }
-            }),
-            world.unitCollection.onRemoved.on(({ unitId }) => {
-              for (const UNIT3 of this.members) {
-                if (UNIT3.id === unitId) {
-                  this.members.delete(UNIT3);
-                  this.injured.delete(UNIT3);
-                }
-              }
-            }),
-            world.unitCollection.onReset.on(() => {
-              this.members = new Set(world.units);
-              this.rebuildInjured();
-            }),
-            world.unitCollection.onReplaced.on(() => {
-              this.members = new Set(world.units);
-              this.rebuildInjured();
-            }),
-            world.unitCollection.onHealthChanged.on(({ unitId }) => {
-              const UNIT3 = world._unitForId(unitId);
-              if (UNIT3) {
-                this.trackHealth(UNIT3);
-              }
-            }),
-            world.onCombatResolved.on((event) => this.contribute(event))
-          ];
-        }
-        trackHealth(unit) {
-          const MAX_HP = unit.isFormationClone ? 1 : baseUnitStatsFor(unit.tier, unit.species).maxHp;
-          if (unit.faction === "player" && unit.hp > 0 && unit.hp < MAX_HP) {
-            this.injured.add(unit);
-          } else {
-            this.injured.delete(unit);
-          }
-        }
-        rebuildInjured() {
-          this.injured.clear();
-          for (const UNIT3 of this.members) {
-            this.trackHealth(UNIT3);
-          }
-        }
-        injuredAllies(out = []) {
-          out.length = 0;
-          for (const UNIT3 of this.injured) {
-            out.push(UNIT3);
-          }
-          return out;
-        }
-        includeBuild(ownerId, state) {
-          if (!this.runtime.active || this.slots.some((slot) => slot.ownerId === ownerId)) {
-            return;
-          }
-          for (const ID of state.equipped) {
-            if (ID) {
-              this.slots.push({ id: ID, ownerId, level: state.levels[ID], charge: 0, cooldown: 0 });
-            }
-          }
-        }
-        get runtime() {
-          return this.world.formationRuntime;
-        }
-        get slots() {
-          return this.runtime.slots;
-        }
-        get effects() {
-          return this.runtime.effects;
-        }
-        get active() {
-          return this.world.scene === "raid" ? this.world.running : this.world.farmBossEvent?.phase === "fighting";
-        }
-        editable() {
-          return this.world.scene === "farm" && !this.world.running && this.world.farmBossEvent?.phase === "idle";
-        }
-        purchase(id) {
-          return this.world.mutationNotifications.run(() => {
-            const PLAYER = this.world.playerProgression, STATE = PLAYER.formationSkills;
-            if (!this.editable() || !isValidFormationSkillState(STATE) || typeof id !== "string" || !Object.hasOwn(STATE.levels, id) || STATE.levels[id] >= FORMATION_MAX_LEVEL || PLAYER.availablePoints < 1) {
-              return false;
-            }
-            STATE.levels[id]++;
-            PLAYER.availablePoints--;
-            this.world.markProgressChanged();
-            return true;
-          });
-        }
-        buySlot() {
-          return this.world.mutationNotifications.run(() => {
-            const PLAYER = this.world.playerProgression;
-            if (!this.editable() || PLAYER.formationSkills.slots >= 3 || PLAYER.availablePoints < 1) {
-              return false;
-            }
-            PLAYER.formationSkills.slots++;
-            PLAYER.availablePoints--;
-            this.world.markProgressChanged();
-            return true;
-          });
-        }
-        equip(slot, id) {
-          return this.world.mutationNotifications.run(() => {
-            const STATE = this.world.playerProgression.formationSkills;
-            if (!this.editable() || !Number.isInteger(slot) || slot < 0 || slot >= STATE.slots || id !== null && (typeof id !== "string" || !Object.hasOwn(STATE.levels, id) || !STATE.levels[id] || STATE.equipped.includes(id))) {
-              return false;
-            }
-            while (STATE.equipped.length <= slot) {
-              STATE.equipped.push(null);
-            }
-            STATE.equipped[slot] = id;
-            this.world.markProgressChanged();
-            return true;
-          });
-        }
-        synchronize() {
-          if (this.active && !this.runtime.active) {
-            const SERIAL = this.runtime.serial;
-            this.world.formationRuntime = createFormationRuntime();
-            this.runtime.serial = SERIAL;
-            this.rebuildInjured();
-            this.runtime.active = true;
-            const BUILDS = this.world.scene === "raid" && this.world.raidRosters.length ? this.world.raidRosters.map((roster) => ({
-              ownerId: roster.ownerId,
-              state: roster.abilitySnapshot.formationSkills || createFormationSkillState()
-            })) : [{ ownerId: "", state: this.world.playerProgression.formationSkills }];
-            for (const BUILD of BUILDS) {
-              for (const ID of BUILD.state.equipped) {
-                if (ID) {
-                  this.slots.push({
-                    id: ID,
-                    ownerId: BUILD.ownerId,
-                    level: BUILD.state.levels[ID],
-                    charge: 0,
-                    cooldown: 0
-                  });
-                }
-              }
-            }
-          } else if (!this.active && this.runtime.active) {
-            this.end();
-          }
-        }
-        end() {
-          for (const UNIT3 of this.members) {
-            UNIT3.giantUntil = 0;
-            UNIT3.giantEndedAt = -10;
-          }
-          this.world.unitCollection.removeWhere((unit) => unit.isFormationClone, { markProgress: false });
-          const SERIAL = this.runtime.serial;
-          this.world.formationRuntime = createFormationRuntime();
-          this.runtime.serial = SERIAL;
-          this.air.clear();
-        }
-        contribute(event) {
-          this.synchronize();
-          if (!this.runtime.active || event.excluded) {
-            return;
-          }
-          for (const SLOT of this.slots) {
-            const DEFINITION13 = MODELS.get(SLOT.id).definition;
-            SLOT.charge = Math.min(DEFINITION13.required, SLOT.charge + Math.max(0, event[DEFINITION13.condition] || 0));
-          }
-        }
-        update(dt) {
-          this.synchronize();
-          if (!this.runtime.active) {
-            return;
-          }
-          this.contribute({ time: dt });
-          this.air.clear();
-          for (const EFFECT of this.effects) {
-            if (EFFECT.kind === "ufo" || EFFECT.kind === "storm-cloud") {
-              this.air.insert(EFFECT);
-            }
-          }
-          let write = 0;
-          const COUNT = this.effects.length;
-          for (let i = 0; i < COUNT; i++) {
-            const EFFECT = this.effects[i];
-            if (MODELS.get(EFFECT.kind).update(this, EFFECT, dt)) {
-              this.effects[write++] = EFFECT;
-            }
-          }
-          this.effects.length = write;
-          for (const SLOT of this.slots) {
-            SLOT.cooldown = Math.max(0, SLOT.cooldown - dt);
-            const MODEL = MODELS.get(SLOT.id);
-            if (SLOT.cooldown < 1e-9 && SLOT.charge >= MODEL.definition.required && MODEL.cast(this, SLOT)) {
-              SLOT.charge = 0;
-              SLOT.cooldown = FORMATION_COOLDOWN_SECONDS;
-              this.world.combat("formation-cast", { skillId: SLOT.id, x: 0, y: 0, z: 0 });
-            }
-          }
-        }
-        addEffect(kind, data) {
-          const EFFECT = { id: ++this.runtime.serial, kind, age: 0, x: 0, y: 0, z: 0, ...data };
-          this.effects.push(EFFECT);
-          return EFFECT;
-        }
-        allies() {
-          return [...this.members].filter((unit) => unit.faction === "player" && unit.hp > 0);
-        }
-        targetId(target) {
-          return target === this.world.boss ? "boss" : target.id;
-        }
-        target(id) {
-          const TARGET = id === "boss" ? this.world.boss : this.world._unitForId(id);
-          return TARGET?.hp > 0 && TARGET.faction === "enemy" ? TARGET : null;
-        }
-        enemy(origin = null) {
-          const BOSS2 = this.world.boss;
-          if (BOSS2.active && BOSS2.hp > 0 && (!origin || Math.hypot(origin.x - BOSS2.x, origin.y - BOSS2.y) <= 18)) {
-            return BOSS2;
-          }
-          for (const UNIT3 of this.members) {
-            if (UNIT3.faction === "enemy" && UNIT3.hp > 0 && (!origin || Math.hypot(origin.x - UNIT3.x, origin.y - UNIT3.y) <= 18)) {
-              return UNIT3;
-            }
-          }
-          return null;
-        }
-        nearby(x, y, radius) {
-          this.world._beginSpatialQueryBatch();
-          try {
-            return this.world.unitSpatial.queryAABB(x - radius, y - radius, x + radius, y + radius, this.scratch);
-          } finally {
-            this.world._endSpatialQueryBatch();
-          }
-        }
-        damage(target, amount) {
-          if (!target || target.hp <= 0) {
-            return;
-          }
-          applyDamage(target, amount, { armor: this.world.combatTargetDefense(target).armor });
-          target.flash = 0.15;
-          if (target !== this.world.boss) {
-            this.world._syncUnitAliveCount(target);
-            if (target.hp <= 0) {
-              this.world.handleUnitDeath(target);
-            }
-          }
-        }
-        verticalTarget(x, y) {
-          const BOSS2 = this.world.boss;
-          if (BOSS2.active && BOSS2.hp > 0 && BOSS2.z <= 0.5 && Math.hypot(BOSS2.x - x, BOSS2.y - y) <= BOSS2.radius + 0.12) {
-            return BOSS2;
-          }
-          return this.nearby(x, y, 6).find(
-            (unit) => unit.faction === "enemy" && unit.hp > 0 && unit.z <= 0.5 && Math.hypot(unit.x - x, unit.y - y) <= unit.radius + 0.12
-          ) || null;
-        }
-        areaDamage(x, y, radius, amount, knock = false, vertical = false) {
-          const TARGETS = [...this.nearby(x, y, radius + 6)];
-          if (this.world.boss.active) {
-            TARGETS.push(this.world.boss);
-          }
-          for (const TARGET of TARGETS) {
-            if (TARGET.faction !== "enemy" || TARGET.hp <= 0 || Math.hypot(TARGET.x - x, TARGET.y - y) > radius + TARGET.radius || vertical && TARGET.z > 0.5) {
-              continue;
-            }
-            this.damage(TARGET, amount);
-            if (knock) {
-              const DX = TARGET.x - x, DY = TARGET.y - y, N = Math.hypot(DX, DY) || 1;
-              if (TARGET.knock) {
-                TARGET.knock(DX / N, DY / N, 5, 2);
-              } else {
-                const POWER = resolveKnockback(5, null, TARGET);
-                TARGET.knockVx += DX / N * POWER;
-                TARGET.knockVy += DY / N * POWER;
-              }
-            }
-          }
-        }
-        canClone(count) {
-          return this.world.units.length + count <= this.world.battleCapacity;
-        }
-        separateAir(effect, dt) {
-          for (const OTHER of this.air.queryAABB(
-            effect.x - 1.4,
-            effect.y - 1.4,
-            effect.x + 1.4,
-            effect.y + 1.4,
-            this.airScratch
-          )) {
-            if (OTHER === effect) {
-              continue;
-            }
-            const DX = effect.x - OTHER.x, DY = effect.y - OTHER.y, DISTANCE = Math.hypot(DX, DY), ANGLE = effect.id * 2.39996, FORCE = Math.max(0, 1.4 - DISTANCE) * Math.min(dt * 3, 0.25);
-            effect.x += (DISTANCE ? DX / DISTANCE : Math.cos(ANGLE)) * FORCE;
-            effect.y += (DISTANCE ? DY / DISTANCE : Math.sin(ANGLE)) * FORCE;
-          }
-          this.air.update(effect);
-        }
-        dispose() {
-          for (const OFF of this.subscriptions) {
-            OFF();
-          }
-          this.air.clear();
-          this.members.clear();
-          this.injured.clear();
-        }
-      };
-    }
-  });
-
-  // src/signal.js
-  var Signal;
-  var init_signal = __esm({
-    "src/signal.js"() {
-      Signal = class {
-        constructor(scope = null, immediate = false) {
-          this.listeners = /* @__PURE__ */ new Set();
-          this.scope = scope;
-          this.immediate = immediate;
-        }
-        on(listener) {
-          if (typeof listener !== "function") {
-            throw new TypeError("A signal listener must be a function.");
-          }
-          this.listeners.add(listener);
-          return () => this.off(listener);
-        }
-        off(listener) {
-          return this.listeners.delete(listener);
-        }
-        emit(event) {
-          if (this.scope) {
-            this.scope.publish(this, event, this.immediate);
-          } else {
-            this.raise(this.deliver(event));
-          }
-        }
-        deliver(event) {
-          const ERRORS = [];
-          for (const LISTENER of [...this.listeners]) {
-            try {
-              LISTENER(event);
-            } catch (error) {
-              ERRORS.push(error);
-            }
-          }
-          return ERRORS;
-        }
-        raise(errors) {
-          if (errors.length) {
-            throw errors.length === 1 ? errors[0] : new AggregateError(errors, "Signal subscribers failed.");
-          }
-        }
-        clear() {
-          this.listeners.clear();
-        }
-      };
-    }
-  });
-
-  // src/features/projectiles/seed/definition.js
-  function seedEllipseRadii(projectile) {
-    const Y = projectile.height * import_vector_sockets.WORLD_HEIGHT_PROJECTION * 0.5 / VERTICAL_EXTENT;
-    return { x: Y * FEATURE.widthToHeight, y: Y };
-  }
-  function seedProjectileDimensions(unit) {
-    const HEIGHT = unit.bodyHeight * FEATURE.bodyHeightFraction, RADII = seedEllipseRadii({ height: HEIGHT });
-    return { radius: RADII.y * HORIZONTAL_EXTENT, height: HEIGHT };
-  }
-  var import_vector_sockets, FEATURE, VERTICAL_EXTENT, HORIZONTAL_EXTENT;
-  var init_definition14 = __esm({
-    "src/features/projectiles/seed/definition.js"() {
-      import_vector_sockets = __toESM(require_vector_sockets(), 1);
-      FEATURE = Object.freeze({
-        id: "seed",
-        landingEffect: "shell-land",
-        bodyHeightFraction: 0.2,
-        widthToHeight: 0.7,
-        rotation: 0.3
-      });
-      VERTICAL_EXTENT = Math.hypot(FEATURE.widthToHeight * Math.sin(FEATURE.rotation), Math.cos(FEATURE.rotation));
-      HORIZONTAL_EXTENT = Math.hypot(FEATURE.widthToHeight * Math.cos(FEATURE.rotation), Math.sin(FEATURE.rotation));
-    }
-  });
-
-  // src/mutation-notifications.js
-  var MutationNotifications;
-  var init_mutation_notifications = __esm({
-    "src/mutation-notifications.js"() {
-      MutationNotifications = class {
-        constructor() {
-          this.depth = 0;
-          this.flushing = false;
-          this.pending = [];
-          this.errors = [];
-        }
-        begin() {
-          this.depth++;
-        }
-        end(failure = null) {
-          this.depth--;
-          if (failure && (this.depth > 0 || this.flushing)) {
-            throw failure;
-          }
-          if (failure) {
-            this.errors.push(failure);
-          }
-          if (this.depth === 0 && !this.flushing) {
-            this.flush();
-          }
-        }
-        run(action, owner = null, a, b, c, d, e) {
-          this.begin();
-          let result;
-          let failure = null;
-          try {
-            result = action.call(owner, a, b, c, d, e);
-          } catch (error) {
-            failure = error;
-          }
-          this.end(failure);
-          return result;
-        }
-        publish(signal, event, immediate) {
-          if (!immediate) {
-            this.pending.push({ signal, event });
-            if (this.depth === 0 && !this.flushing) {
-              this.flush();
-            }
-            return;
-          }
-          const ERRORS = signal.deliver(event);
-          if (this.depth > 0 || this.flushing) {
-            this.errors.push(...ERRORS);
-          } else {
-            signal.raise(ERRORS);
-          }
-        }
-        flush() {
-          if (!this.pending.length && !this.errors.length) {
-            return;
-          }
-          this.flushing = true;
-          try {
-            for (let index = 0; index < this.pending.length; index++) {
-              const { signal: SIGNAL, event: EVENT } = this.pending[index];
-              this.errors.push(...SIGNAL.deliver(EVENT));
-            }
-          } finally {
-            this.pending.length = 0;
-            this.flushing = false;
-          }
-          if (this.errors.length) {
-            const ERRORS = this.errors;
-            this.errors = [];
-            throw ERRORS.length === 1 ? ERRORS[0] : new AggregateError(ERRORS, "Mutation observers failed.");
-          }
-        }
-      };
-    }
-  });
-
-  // src/unit-collection.js
-  var UnitCollection;
-  var init_unit_collection = __esm({
-    "src/unit-collection.js"() {
-      init_signal();
-      UnitCollection = class {
-        constructor(world, unitType, notifications) {
-          this.world = world;
-          this.unitType = unitType;
-          this.items = [];
-          this.byId = /* @__PURE__ */ new Map();
-          this.unitIdsByPlot = /* @__PURE__ */ new Map();
-          this.residentCountsBySpecies = /* @__PURE__ */ new Map();
-          this.residentIdsBySpecies = /* @__PURE__ */ new Map();
-          this.residentCountsByPlot = /* @__PURE__ */ new Map();
-          this.residentCount = 0;
-          this.subscriptions = /* @__PURE__ */ new Map();
-          this.reservations = /* @__PURE__ */ new Map();
-          this.retiredDuringStep = [];
-          this.onAdded = new Signal(notifications);
-          this.onRemoved = new Signal(notifications);
-          this.onReplaced = new Signal(notifications);
-          this.onPlacementChanged = new Signal(notifications);
-          this.onReset = new Signal(notifications);
-          this.onHealthChanged = new Signal(notifications, true);
-        }
-        has(unit) {
-          return this.items.includes(unit);
-        }
-        unitById(id) {
-          return this.byId.get(id) || null;
-        }
-        unitsInPlot(plotId, out = []) {
-          out.length = 0;
-          for (const ID of this.unitIdsByPlot.get(plotId) || []) {
-            const UNIT3 = this.byId.get(ID);
-            if (UNIT3) {
-              out.push(UNIT3);
-            }
-          }
-          return out;
-        }
-        residentsInPlot(plotId, out = []) {
-          this.unitsInPlot(plotId, out);
-          let write = 0;
-          for (const UNIT3 of out) {
-            if (UNIT3.faction === "player" && UNIT3.isBattleOnlySummon !== true && UNIT3.isFormationClone !== true && UNIT3.countsTowardPermanentRoster !== false) {
-              out[write++] = UNIT3;
-            }
-          }
-          out.length = write;
-          return out;
-        }
-        _rebuildIndexes() {
-          this.byId.clear();
-          this.unitIdsByPlot.clear();
-          this.residentCountsBySpecies.clear();
-          this.residentIdsBySpecies.clear();
-          this.residentCountsByPlot.clear();
-          this.residentCount = 0;
-          for (const UNIT3 of this.items) {
-            this._indexUnit(UNIT3);
-          }
-          this.world._syncOwnedSpeciesCounts?.();
-        }
-        refreshIndexes() {
-          this._rebuildIndexes();
-        }
-        _indexUnit(unit) {
-          this.byId.set(unit.id, unit);
-          if (typeof unit.plotId === "string" && unit.plotId) {
-            let ids = this.unitIdsByPlot.get(unit.plotId);
-            if (!ids) {
-              ids = /* @__PURE__ */ new Set();
-              this.unitIdsByPlot.set(unit.plotId, ids);
-            }
-            ids.add(unit.id);
-          }
-          if (this.isResident(unit)) {
-            this.residentCount++;
-            this.residentCountsBySpecies.set(unit.species, (this.residentCountsBySpecies.get(unit.species) || 0) + 1);
-            this.residentCountsByPlot.set(unit.plotId, (this.residentCountsByPlot.get(unit.plotId) || 0) + 1);
-            let ids = this.residentIdsBySpecies.get(unit.species);
-            if (!ids) {
-              ids = /* @__PURE__ */ new Set();
-              this.residentIdsBySpecies.set(unit.species, ids);
-            }
-            ids.add(unit.id);
-          }
-        }
-        _unindexUnit(unit) {
-          this.byId.delete(unit.id);
-          const IDS = this.unitIdsByPlot.get(unit.plotId);
-          IDS?.delete(unit.id);
-          if (IDS?.size === 0) {
-            this.unitIdsByPlot.delete(unit.plotId);
-          }
-          if (this.isResident(unit)) {
-            this.residentCount = Math.max(0, this.residentCount - 1);
-            const COUNT = (this.residentCountsBySpecies.get(unit.species) || 0) - 1;
-            if (COUNT > 0) {
-              this.residentCountsBySpecies.set(unit.species, COUNT);
-            } else {
-              this.residentCountsBySpecies.delete(unit.species);
-            }
-            const PLOT_COUNT = (this.residentCountsByPlot.get(unit.plotId) || 0) - 1;
-            if (PLOT_COUNT > 0) {
-              this.residentCountsByPlot.set(unit.plotId, PLOT_COUNT);
-            } else {
-              this.residentCountsByPlot.delete(unit.plotId);
-            }
-            const IDS2 = this.residentIdsBySpecies.get(unit.species);
-            IDS2?.delete(unit.id);
-            if (IDS2?.size === 0) {
-              this.residentIdsBySpecies.delete(unit.species);
-            }
-          }
-          this.world._syncOwnedSpeciesCounts?.();
-        }
-        moveUnitsToPlots(assignments) {
-          if (!Array.isArray(assignments) || !assignments.length) {
-            return false;
-          }
-          const SEEN = /* @__PURE__ */ new Set();
-          const MOVES = assignments.map(({ unitId, plotId }) => {
-            const UNIT3 = this.byId.get(unitId);
-            if (!UNIT3 || !this.isResident(UNIT3) || typeof plotId !== "string" || !plotId || SEEN.has(unitId) || this.reservationOwner(unitId)) {
-              return null;
-            }
-            SEEN.add(unitId);
-            return { unit: UNIT3, plotId };
-          });
-          if (MOVES.some((move) => !move)) {
-            return false;
-          }
-          const CHANGED = MOVES.filter((move) => move.unit.plotId !== move.plotId);
-          if (!CHANGED.length) {
-            return true;
-          }
-          for (const MOVE of CHANGED) {
-            MOVE.unit.plotId = MOVE.plotId;
-          }
-          this._rebuildIndexes();
-          this.world._unitSpatialDirty = true;
-          this.publishChange(
-            this.onPlacementChanged,
-            { unitIds: CHANGED.map((move) => move.unit.id), plotIds: CHANGED.map((move) => move.plotId) },
-            true
-          );
-          return true;
-        }
-        reorderWithinPlot(plotId, orderedIds) {
-          const CURRENT = this.unitIdsByPlot.get(plotId);
-          if (!(CURRENT instanceof Set) || !Array.isArray(orderedIds) || orderedIds.length !== CURRENT.size || new Set(orderedIds).size !== orderedIds.length || orderedIds.some((id) => !CURRENT.has(id))) {
-            return false;
-          }
-          const ORDERED = orderedIds.map((id) => this.byId.get(id));
-          let index = 0;
-          this.items = this.items.map((unit) => unit.plotId === plotId ? ORDERED[index++] : unit);
-          this._rebuildIndexes();
-          this.world._unitSpatialDirty = true;
-          this.publishChange(this.onPlacementChanged, { plotId, unitIds: orderedIds }, true);
-          return true;
-        }
-        isResident(unit) {
-          return !!(unit && unit.faction === "player" && unit.isBattleOnlySummon !== true && unit.isFormationClone !== true && unit.countsTowardPermanentRoster !== false);
-        }
-        reservationOwner(unitOrId) {
-          return this.reservations.get(typeof unitOrId === "object" ? unitOrId?.id : unitOrId) || null;
-        }
-        reserve(owner, units, { replaceOwners = [] } = {}) {
-          if (typeof owner !== "string" || !owner || !Array.isArray(units) || units.length < 2 || !Array.isArray(replaceOwners)) {
-            return false;
-          }
-          const IDS = /* @__PURE__ */ new Set(), ALLOWED_OWNERS = new Set(replaceOwners), REPLACED_OWNERS = /* @__PURE__ */ new Set();
-          if (units.some((unit) => {
-            if (!this.has(unit) || IDS.has(unit.id)) {
-              return true;
-            }
-            const CURRENT_OWNER = this.reservationOwner(unit.id);
-            if (CURRENT_OWNER && CURRENT_OWNER !== owner) {
-              if (!ALLOWED_OWNERS.has(CURRENT_OWNER)) {
-                return true;
-              }
-              REPLACED_OWNERS.add(CURRENT_OWNER);
-            }
-            IDS.add(unit.id);
-            return false;
-          })) {
-            return false;
-          }
-          for (const REPLACED_OWNER of REPLACED_OWNERS) {
-            this.releaseReservations(REPLACED_OWNER);
-          }
-          for (const ID of IDS) {
-            this.reservations.set(ID, owner);
-          }
-          return true;
-        }
-        releaseReservations(owner) {
-          let released = 0;
-          for (const [ID, CURRENT_OWNER] of this.reservations) {
-            if (CURRENT_OWNER === owner) {
-              this.reservations.delete(ID);
-              released++;
-            }
-          }
-          return released;
-        }
-        releaseUnitReservation(unitOrId) {
-          return this.reservations.delete(typeof unitOrId === "object" ? unitOrId?.id : unitOrId);
-        }
-        attach(unit) {
-          Object.defineProperty(unit, "_world", {
-            value: this.world,
-            writable: true,
-            configurable: true
-          });
-          for (const SIGNAL of [unit.onDied, unit.onRevived, unit.onHealthChanged]) {
-            SIGNAL.scope = this.world.mutationNotifications;
-            SIGNAL.immediate = true;
-          }
-          const OFF_DIED = unit.onDied.on(() => {
-            if (this.has(unit)) {
-              this.world.processUnitDeath(unit);
-            }
-          }), OFF_REVIVED = unit.onRevived.on(() => {
-            if (this.has(unit)) {
-              this.world.processUnitRevival(unit);
-            }
-          });
-          const OFF_HEALTH = unit.onHealthChanged.on((event) => {
-            if (this.has(unit)) {
-              this.world._syncUnitAliveCount(unit);
-              this.onHealthChanged.emit(event);
-            }
-          });
-          this.subscriptions.set(unit, [OFF_DIED, OFF_REVIVED, OFF_HEALTH]);
-        }
-        retire(unit, options, preserveMergeTask = null) {
-          this.world.releaseMate(unit);
-          for (const TASK of [...this.world.mergeTasks]) {
-            if (TASK !== preserveMergeTask && (TASK.materialIds?.includes(unit.id) || TASK.resultId === unit.id)) {
-              this.world.cancelMergeTask(TASK);
-            }
-          }
-          this.releaseUnitReservation(unit.id);
-          for (const OFF of this.subscriptions.get(unit) || []) {
-            OFF();
-          }
-          this.subscriptions.delete(unit);
-          this.world._trackUnitRemoved(unit, options);
-          unit.dispose();
-          if (this.world._spatialStepActive) {
-            this.retiredDuringStep.push(unit);
-          } else {
-            this.releaseReferences(unit);
-            this.clearBorrowedReferences();
-          }
-        }
-        releaseReferences(unit) {
-          this.world.unitSpatial.remove(unit);
-          this.world._unitStepOrder.delete(unit);
-          this.world._unitAliveState.delete(unit);
-        }
-        clearBorrowedReferences() {
-          for (const GROUP of this.world._mergeEligibleGroups) {
-            GROUP.length = 0;
-          }
-          for (const KEY2 of [
-            "_stepUnits",
-            "_unitCandidates",
-            "_contactQuery",
-            "_bossGridUnits",
-            "_bossGroundUnits",
-            "_bossQueryCandidates",
-            "_bossHitCandidates",
-            "_mergeNearestScratch",
-            "_mergeMaterialsScratch"
-          ]) {
-            if (this.world._spatialStepActive) {
-              this.world[KEY2].length = 0;
-            } else {
-              this.world[KEY2] = [];
-            }
-          }
-        }
-        releaseStepReferences() {
-          if (!this.retiredDuringStep.length) {
-            return;
-          }
-          for (const UNIT3 of this.retiredDuringStep) {
-            this.releaseReferences(UNIT3);
-          }
-          this.retiredDuringStep.length = 0;
-          this.clearBorrowedReferences();
-        }
-        add(unit, { markProgress = true } = {}) {
-          if (!(unit instanceof this.unitType) || this.items.some((owned) => owned === unit || owned.id === unit.id)) {
-            return false;
-          }
-          this.world._beginSpatialQueryBatch();
-          try {
-            unit.spawnedAtSimulationTick = this.world.simulationTick;
-            this.items.push(unit);
-            this._indexUnit(unit);
-            this.attach(unit);
-            this.world._trackUnitAdded(unit);
-          } finally {
-            this.world._endSpatialQueryBatch();
-          }
-          this.world._markMergeAvailabilityChanged();
-          this.publishChange(this.onAdded, { unitId: unit.id }, markProgress && !unit.isBattleOnlySummon);
-          return true;
-        }
-        remove(unit, { markProgress = true, ...options } = {}) {
-          if (!this.has(unit)) {
-            return false;
-          }
-          const REMAINING = this.items.filter((owned) => owned !== unit);
-          this.world._beginSpatialQueryBatch();
-          try {
-            this.retire(unit, options);
-            this._unindexUnit(unit);
-            this.items = REMAINING;
-          } finally {
-            this.world._endSpatialQueryBatch();
-          }
-          this.world._markMergeAvailabilityChanged();
-          this.publishChange(this.onRemoved, { unitId: unit.id }, markProgress && !unit.isBattleOnlySummon);
-          return true;
-        }
-        replace(materials, result, complete, preserveMergeTask = null) {
-          const CONSUMED = new Set(materials);
-          if (CONSUMED.size < 2 || CONSUMED.size !== materials.length || !materials.every((unit) => this.has(unit)) || !(result instanceof this.unitType) || this.items.some((unit) => unit === result || unit.id === result.id)) {
-            return false;
-          }
-          const REMAINING = this.items.filter((unit) => !CONSUMED.has(unit));
-          REMAINING.push(result);
-          this.world._beginSpatialQueryBatch();
-          try {
-            for (const UNIT3 of CONSUMED) {
-              this.retire(UNIT3, void 0, preserveMergeTask);
-            }
-            this.items = REMAINING;
-            this._rebuildIndexes();
-            this.attach(result);
-            this.world._trackUnitAdded(result);
-            complete?.();
-          } finally {
-            this.world._endSpatialQueryBatch();
-          }
-          this.world._markMergeAvailabilityChanged();
-          this.publishChange(
-            this.onReplaced,
-            { materialIds: materials.map((unit) => unit.id), resultId: result.id },
-            true
-          );
-          return true;
-        }
-        publishChange(signal, event, markProgress) {
-          return this.world.mutationNotifications.run(this._publishChange, this, signal, event, markProgress);
-        }
-        _publishChange(signal, event, markProgress) {
-          const ERRORS = [];
-          if (markProgress) {
-            try {
-              this.world.markProgressChanged();
-            } catch (error) {
-              ERRORS.push(error);
-            }
-          }
-          try {
-            signal.emit(event);
-          } catch (error) {
-            ERRORS.push(error);
-          }
-          if (ERRORS.length) {
-            throw ERRORS.length === 1 ? ERRORS[0] : new AggregateError(ERRORS, "Unit collection observers failed.");
-          }
-        }
-        reset(units = []) {
-          const NEXT = [...units], IDS = /* @__PURE__ */ new Set();
-          for (const UNIT3 of NEXT) {
-            if (!(UNIT3 instanceof this.unitType) || IDS.has(UNIT3.id)) {
-              throw new TypeError("A roster requires distinct owned Unit instances.");
-            }
-            IDS.add(UNIT3.id);
-          }
-          const RETAINED = new Set(NEXT);
-          this.world._beginSpatialQueryBatch();
-          try {
-            for (const UNIT3 of this.items) {
-              if (!RETAINED.has(UNIT3)) {
-                this.retire(UNIT3);
-              }
-            }
-            this.items = NEXT;
-            this._rebuildIndexes();
-            this.reservations.clear();
-            for (const UNIT3 of NEXT) {
-              if (!this.subscriptions.has(UNIT3)) {
-                this.attach(UNIT3);
-              }
-            }
-            this.world._rebuildUnitSpatialIndex();
-          } finally {
-            this.world._endSpatialQueryBatch();
-          }
-          this.world._markMergeAvailabilityChanged();
-          this.onReset.emit({ unitIds: NEXT.map((unit) => unit.id) });
-        }
-        removeWhere(predicate, options) {
-          let index = 0;
-          while (index < this.items.length) {
-            const UNIT3 = this.items[index];
-            if (predicate(UNIT3)) {
-              this.remove(UNIT3, options);
-            } else {
-              index++;
-            }
-          }
-        }
-        dispose() {
-          try {
-            this.reset();
-          } finally {
-            this.onAdded.clear();
-            this.onRemoved.clear();
-            this.onReplaced.clear();
-            this.onPlacementChanged.clear();
-            this.onReset.clear();
-            this.onHealthChanged.clear();
-          }
-        }
-      };
-    }
-  });
-
-  // src/farm-roster.js
-  function isResident(unit) {
-    return !!unit && unit.faction === "player" && unit.isBattleOnlySummon !== true && unit.isFormationClone !== true && unit.countsTowardPermanentRoster !== false;
-  }
-  function compareSpeciesId(a, b) {
-    return typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b));
-  }
-  function largestRemainder(weights, total) {
-    const ENTRIES = [...weights].map(([speciesId, weight]) => ({ speciesId, weight: BigInt(weight) }));
-    if (!ENTRIES.length || !Number.isSafeInteger(total) || total < 0) {
-      return /* @__PURE__ */ new Map();
-    }
-    const DENOMINATOR = ENTRIES.reduce((sum, entry) => sum + entry.weight, 0n);
-    if (DENOMINATOR <= 0n) {
-      return /* @__PURE__ */ new Map();
-    }
-    let assigned = 0;
-    for (const ENTRY of ENTRIES) {
-      const NUMERATOR = BigInt(total) * ENTRY.weight;
-      ENTRY.value = Number(NUMERATOR / DENOMINATOR);
-      ENTRY.remainder = NUMERATOR % DENOMINATOR;
-      assigned += ENTRY.value;
-    }
-    ENTRIES.sort(
-      (a, b) => a.remainder === b.remainder ? compareSpeciesId(a.speciesId, b.speciesId) : a.remainder > b.remainder ? -1 : 1
-    );
-    for (let i = 0; i < total - assigned; i++) {
-      ENTRIES[i % ENTRIES.length].value++;
-    }
-    return new Map(ENTRIES.map((entry) => [entry.speciesId, entry.value]));
-  }
-  var BASIS_POINT_TOTAL, FarmingRoster;
-  var init_farm_roster = __esm({
-    "src/farm-roster.js"() {
-      init_farm_plot();
-      BASIS_POINT_TOTAL = 1e4;
-      FarmingRoster = class {
-        constructor(unitCollection) {
-          if (!unitCollection || !Array.isArray(unitCollection.items)) {
-            throw new TypeError("FarmingRoster requires a UnitCollection.");
-          }
-          this.collection = unitCollection;
-        }
-        residents() {
-          return this.collection.items.filter(isResident);
-        }
-        residentsOfSpecies(speciesId) {
-          return [...this.collection.residentIdsBySpecies.get(speciesId) || []].map((id) => this.collection.unitById(id)).filter(isResident);
-        }
-        residentById(id) {
-          return this.collection.items.find((unit) => isResident(unit) && unit.id === id) || null;
-        }
-        ownedPopulation() {
-          return this.collection.residentCount;
-        }
-        placedPopulation(plotId) {
-          return this.collection.residentCountsByPlot.get(plotId) || 0;
-        }
-        residentIds(plotId = void 0) {
-          const UNITS = plotId === void 0 ? this.collection.items : this.collection.unitsInPlot(plotId);
-          return UNITS.filter(isResident).map((unit) => unit.id);
-        }
-        countsBySpecies({ includeReservations = [] } = {}) {
-          const COUNTS = new Map(this.collection.residentCountsBySpecies);
-          for (const RESERVATION of includeReservations) {
-            if (Number.isSafeInteger(RESERVATION?.species)) {
-              COUNTS.set(RESERVATION.species, (COUNTS.get(RESERVATION.species) || 0) + 1);
-            }
-          }
-          return COUNTS;
-        }
-        canSpeciesAdvance(speciesId, targetBasisPoints, { includeReservations = [], excludeReservation = null } = {}) {
-          if (!Number.isSafeInteger(targetBasisPoints) || targetBasisPoints <= 0 || targetBasisPoints > BASIS_POINT_TOTAL) {
-            return false;
-          }
-          const RESERVATIONS = excludeReservation === null ? includeReservations : includeReservations.filter((reservation) => reservation !== excludeReservation);
-          const COUNTS = this.countsBySpecies({ includeReservations: RESERVATIONS });
-          let total = 0;
-          for (const COUNT of COUNTS.values()) {
-            total += COUNT;
-          }
-          const OWN = COUNTS.get(speciesId) || 0;
-          return BigInt(targetBasisPoints) * BigInt(total) >= BigInt(OWN) * BigInt(BASIS_POINT_TOTAL);
-        }
-        static normalizeTargetBasisPoints(current, speciesIds, selectedSpeciesId, selectedValue) {
-          const ORDERED = [...new Set(speciesIds)].sort(compareSpeciesId);
-          if (!ORDERED.length || !ORDERED.includes(selectedSpeciesId) || !Number.isSafeInteger(selectedValue)) {
-            return null;
-          }
-          if (ORDERED.length === 1) {
-            return /* @__PURE__ */ new Map([[ORDERED[0], BASIS_POINT_TOTAL]]);
-          }
-          const FIXED = Math.max(0, Math.min(BASIS_POINT_TOTAL, selectedValue));
-          const OTHER_IDS = ORDERED.filter((id) => id !== selectedSpeciesId);
-          let weights = new Map(
-            OTHER_IDS.map((id) => [id, Math.max(0, Number.isSafeInteger(current?.get?.(id)) ? current.get(id) : 0)])
-          );
-          if ([...weights.values()].every((weight) => weight === 0)) {
-            weights = new Map(OTHER_IDS.map((id) => [id, 1]));
-          }
-          const RESULT = largestRemainder(weights, BASIS_POINT_TOTAL - FIXED);
-          RESULT.set(selectedSpeciesId, FIXED);
-          return new Map(ORDERED.map((id) => [id, RESULT.get(id) || 0]));
-        }
-        static allocateTargetCounts(targetBasisPoints, slotCount, speciesIds) {
-          const IDS = [...new Set(speciesIds)].sort(compareSpeciesId);
-          const WEIGHTS = IDS.map((id) => [
-            id,
-            Math.max(0, Number.isSafeInteger(targetBasisPoints?.get?.(id)) ? targetBasisPoints.get(id) : 0)
-          ]);
-          return largestRemainder(WEIGHTS, slotCount);
-        }
-      };
-    }
-  });
-
   // src/features/scenes/model-base.js
   var SimulationScene;
   var init_model_base2 = __esm({
@@ -5764,7 +5762,7 @@
   var init_model14 = __esm({
     "src/features/abilities/chestnut-thorns/model.js"() {
       init_ability_progression();
-      init_definition10();
+      init_definition11();
       ABILITY_ID3 = CHESTNUT_THORNS_FEATURE.definition.id;
       ChestnutThornsModel = class {
         static config(progression, tier) {
@@ -5795,7 +5793,7 @@
   var init_model15 = __esm({
     "src/features/abilities/peanut-death-split/model.js"() {
       init_ability_progression();
-      init_definition11();
+      init_definition12();
       ABILITY_ID4 = PEANUT_DEATH_SPLIT_FEATURE.definition.id;
       PeanutDeathSplitModel = class {
         static config(progression, tier) {
@@ -5846,7 +5844,7 @@
   var init_model16 = __esm({
     "src/features/abilities/walnut-raw-guard/model.js"() {
       init_ability_progression();
-      init_definition12();
+      init_definition13();
       DEFINITION10 = WALNUT_RAW_GUARD_FEATURE.definition;
       WalnutRawGuardModel = class {
         static config(progression, tier) {
@@ -5915,7 +5913,7 @@
   var init_model17 = __esm({
     "src/features/abilities/corn-attachment/model.js"() {
       init_ability_progression();
-      init_definition13();
+      init_definition14();
       DEFINITION11 = CORN_ATTACHMENT_FEATURE.definition;
       CornAttachmentModel = class {
         static projectileEffect(progression, tier) {
@@ -6166,7 +6164,7 @@
       init_definition17();
       init_definition18();
       init_kidney_continuous_leap();
-      init_definition10();
+      init_definition11();
       ATTACK_DEFAULTS = Object.freeze({
         timing: Object.freeze({
           windup: 0.28,
@@ -6765,13 +6763,13 @@
       init_model12();
       init_kidney_continuous_leap();
       init_model13();
-      init_definition10();
-      init_model14();
       init_definition11();
-      init_model15();
+      init_model14();
       init_definition12();
-      init_model16();
+      init_model15();
       init_definition13();
+      init_model16();
+      init_definition14();
       init_model17();
       init_rice_low_health_harvest();
       init_model18();
@@ -6870,7 +6868,7 @@
   var init_model21 = __esm({
     "src/features/projectiles/seed/model.js"() {
       init_damage_model();
-      init_definition14();
+      init_definition10();
       SeedProjectile = class extends DamageProjectile {
         constructor(dependencies) {
           super(FEATURE, dependencies);
@@ -6910,7 +6908,7 @@
   }
   var init_definition20 = __esm({
     "src/features/projectiles/definition.js"() {
-      init_definition14();
+      init_definition10();
       init_definition19();
     }
   });
@@ -8594,7 +8592,7 @@
       init_raid_deployment_cards();
       init_signal();
       import_definition51 = __toESM(require_definition(), 1);
-      init_definition14();
+      init_definition10();
       init_mutation_notifications();
       init_unit_collection();
       init_farm_roster();
@@ -11116,12 +11114,10 @@
           return this._workCount;
         }
         // Explorers keep working while the map screen is open and the farm itself is paused, so this is its own step.
-        // Only explorers who have reached the tile add to the gauge, so the walk out is part of the time it takes.
-        // Farms that are not on screen are not walked, so their explorers count at once. With the farm paused behind the
-        // map screen nobody can walk, so every explorer counts then.
-        tickExploration(seconds, everyoneCounts = false) {
-          const RATE = everyoneCounts ? this.exploreRate : this.exploreWorkRate;
-          if (this.scene === "farm" && advanceExploration(this.worldMap, RATE * seconds).length > 0) {
+        // Exploring is done on foot: only explorers of the farm on screen who have reached the tile add to the gauge,
+        // so the walk out is part of the time it takes. Nothing is calculated for farms off screen or while away.
+        tickExploration(seconds) {
+          if (this.scene === "farm" && advanceExploration(this.worldMap, this.exploreWorkRate * seconds).length > 0) {
             this.markProgressChanged();
           }
         }
@@ -11174,11 +11170,11 @@
         // Is this explorer standing where the exploring is done?
         exploreOnSite(id) {
           if (this._workerPlots.get(id) !== this.activePlotId) {
-            return true;
+            return false;
           }
           const UNIT3 = this._unitById.get(id), GOAL = this._exploreGoal;
           if (!UNIT3 || !GOAL) {
-            return true;
+            return false;
           }
           const ARENA = CONFIG.farm.arena;
           if (GOAL.near) {
@@ -11203,16 +11199,6 @@
             count += KIND === "explore" && this.exploreOnSite(ID) ? 1 : 0;
           }
           return count;
-        }
-        // Exploration points per second from the explorers of every farm; the whole map is worked on at once.
-        get exploreRate() {
-          let rate = 0;
-          for (const [ID, KIND] of this._workerKinds) {
-            if (KIND === "explore") {
-              rate += this._workerRates.get(ID) || 0;
-            }
-          }
-          return rate;
         }
         // Food per minute produced by workers right now.
         get workFoodPerMinute() {
@@ -15134,7 +15120,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.13.14";
+      PRODUCT_VERSION = "0.13.15";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -17073,7 +17059,7 @@
   }
 
   // src/features/projectiles/seed/presentation.js
-  init_definition14();
+  init_definition10();
   var import_definition56 = __toESM(require_definition(), 1);
   var import_vector_sockets3 = __toESM(require_vector_sockets(), 1);
   function seedDisplayMultiplier(renderer, projectile) {
@@ -20863,7 +20849,7 @@
 
   // src/farm-snapshot-validation.js
   init_world_map();
-  init_definition13();
+  init_definition14();
   var INTEGER2 = (v, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(v) && v >= min && v <= max;
   var VALID_BATTLE_UNIT_ID = (id, bossSummonSerial) => INTEGER2(id, 1, CONFIG.farm.maxUnitId) || INTEGER2(id, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + bossSummonSerial);
   function assertSnapshot(ok) {
@@ -23464,7 +23450,7 @@
       selected: bossMapTile,
       progress: Math.min(1, MAP.gauge / currentExploreCost(MAP)),
       explorers: personalGarden.workerKindCounts.explore,
-      rate: personalGarden.exploreRate
+      rate: personalGarden.exploreWorkRate
     };
   }
   function startWorldMapView() {
@@ -23588,7 +23574,7 @@
       renderWorldMap();
       startWorldMapView();
       bossMapTicker = setInterval(() => {
-        personalGarden?.tickExploration(0.25, true);
+        personalGarden?.tickExploration(0.25);
         renderWorldMap();
       }, 250);
     } else {
@@ -23716,9 +23702,6 @@
     }
     if (summary.wood || summary.stone) {
       PARTS.push(`목재 ${summary.wood} · 돌 ${summary.stone}`);
-    }
-    if (summary.explored) {
-      PARTS.push(`지도 ${summary.explored}칸 탐사`);
     }
     if (summary.built.length) {
       PARTS.push(`${summary.built.join(", ")} 완성`);

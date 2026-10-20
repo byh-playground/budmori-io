@@ -853,7 +853,7 @@ function worldMapFrame() {
         selected: bossMapTile,
         progress: Math.min(1, MAP.gauge / currentExploreCost(MAP)),
         explorers: personalGarden.workerKindCounts.explore,
-        rate: personalGarden.exploreRate,
+        rate: personalGarden.exploreWorkRate,
     };
 }
 function startWorldMapView() {
@@ -1002,7 +1002,7 @@ function setBossView(mapMode) {
         renderWorldMap();
         startWorldMapView();
         bossMapTicker = setInterval(() => {
-            personalGarden?.tickExploration(0.25, true);
+            personalGarden?.tickExploration(0.25);
             renderWorldMap();
         }, 250);
     } else {
@@ -1135,9 +1135,6 @@ function offlineText(summary) {
     }
     if (summary.wood || summary.stone) {
         PARTS.push(`목재 ${summary.wood} · 돌 ${summary.stone}`);
-    }
-    if (summary.explored) {
-        PARTS.push(`지도 ${summary.explored}칸 탐사`);
     }
     if (summary.built.length) {
         PARTS.push(`${summary.built.join(', ')} 완성`);

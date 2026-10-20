@@ -2,7 +2,6 @@
 // Workers keep producing, a construction site keeps getting built, and breeders keep breeding as long as food lasts.
 import { pilesOf, sitesOf } from './farm-work.js';
 import { RESERVE_PLOT_ID } from './farm-plot.js';
-import { advanceExploration } from './world-map.js';
 
 const STACKS_PER_FOOD = 5;
 
@@ -20,17 +19,17 @@ export function applyOffline(world, config, rawSeconds) {
     // Away time is what is shown; production runs for the efficiency share of it.
     const SECONDS = AWAY * OFFLINE.efficiency;
     world.refreshWorkers();
-    const SUMMARY = { seconds: AWAY, food: 0, wood: 0, stone: 0, births: 0, sites: [], built: [], explored: 0 };
+    const SUMMARY = { seconds: AWAY, food: 0, wood: 0, stone: 0, births: 0, sites: [], built: [] };
     let foodRate = 0,
-        gatherRate = 0,
-        exploreRate = 0;
+        gatherRate = 0;
     const BUILD_RATES = new Map();
     for (const [ID, KIND] of world._workerKinds) {
         const RATE = world._workerRates.get(ID) || 0;
         if (KIND === 'food') {
             foodRate += RATE;
         } else if (KIND === 'explore') {
-            exploreRate += RATE;
+            // Exploring is done on foot, in front of the player: nothing is explored while away.
+            continue;
         } else if (KIND === 'resource') {
             gatherRate += RATE;
         } else {
@@ -78,7 +77,6 @@ export function applyOffline(world, config, rawSeconds) {
         }
         gatherRate += left / (STACKS_PER_FOOD * SECONDS);
     }
-    SUMMARY.explored = advanceExploration(world.worldMap, exploreRate * SECONDS).length;
     const MATERIALS = Math.floor(gatherRate * SECONDS),
         WOOD = Math.ceil(MATERIALS / 2);
     world.materials.wood += WOOD;
