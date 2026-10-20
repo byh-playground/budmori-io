@@ -288,6 +288,14 @@ export function createWorldMapView(canvas, { interactive = false, onSelect = () 
         CONTEXT.fill();
         CONTEXT.fillRect(x + s * 0.44, y + s * 0.56, s * 0.12, s * 0.22);
     }
+    function drawMine(x, y, s) {
+        CONTEXT.fillStyle = '#5b4630';
+        CONTEXT.fillRect(x + s * 0.3, y + s * 0.5, s * 0.4, s * 0.36);
+        CONTEXT.fillStyle = '#1b130c';
+        CONTEXT.fillRect(x + s * 0.4, y + s * 0.6, s * 0.2, s * 0.26);
+        CONTEXT.fillStyle = '#c9a15a';
+        CONTEXT.fillRect(x + s * 0.28, y + s * 0.44, s * 0.44, s * 0.08);
+    }
     function drawNest(x, y, s, danger, open, now) {
         CONTEXT.fillStyle = COLORS.nest;
         CONTEXT.beginPath();
@@ -456,6 +464,9 @@ export function createWorldMapView(canvas, { interactive = false, onSelect = () 
                     PY = screenY(y - 0.5);
                 if (!LIT.has(INDEX)) {
                     continue;
+                }
+                if (map.mines.includes(INDEX)) {
+                    drawMine(PX, PY, S);
                 }
                 if (FARMS.has(INDEX)) {
                     drawFarm(PX, PY, S);

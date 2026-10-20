@@ -1,3 +1,4 @@
+import { APTITUDE_ORDER, APTITUDE_SPEED, pickForRole } from './work-aptitude.js';
 import { applyOffline } from './farm-offline.js';
 import {
     HITS_PER_WORK,
@@ -37,6 +38,8 @@ import {
     fogPieceCost,
     liftFogPiece,
     nearestFogPiece,
+    buildMine,
+    canBuildMine,
     nearestResourceTile,
     takeFromTile,
     tileRemaining,
@@ -52,6 +55,7 @@ import {
     exploreTargetFor,
     farmReachOf,
     setReachProvider,
+    tileIndex,
     tileX,
     tileY,
 } from './world-map.js';
@@ -170,6 +174,8 @@ const CONFIG = Object.freeze({
             levelHitsStep: 0.6,
             projects: Object.freeze({
                 expand: Object.freeze({ name: '농장 확장', hits: 150, cost: Object.freeze({ wood: 20, stone: 10 }) }),
+                // A mine on a forest or rock tile: that tile never runs dry, at half the yield.
+                mine: Object.freeze({ name: '채굴장', hits: 80, cost: Object.freeze({ wood: 30, stone: 30 }) }),
                 plot: Object.freeze({
                     name: '새 농장',
                     hits: 300,
@@ -1406,6 +1412,8 @@ const GARDEN = class Garden {
         this.warehouseFood = CONFIG.farm.work.starterFood;
         this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
         this.resourceBasisPoints = CONFIG.farm.work.defaultResourceBasisPoints;
+        // Of the gatherers, how many go for wood (the rest go for stone), out of 10000.
+        this.woodBasisPoints = 5000;
         this.materials = { wood: 0, stone: 0 };
         this.buildBasisPoints = CONFIG.farm.work.defaultBuildBasisPoints;
         this.exploreBasisPoints = CONFIG.farm.work.defaultExploreBasisPoints;
@@ -1426,6 +1434,7 @@ const GARDEN = class Garden {
         this.worldMap = createWorldMap(this.seed >>> 0, INITIAL_FARM_PLOT_ID);
         this.buildRush = false;
         this._workerKinds = new Map();
+        this._workerResource = new Map();
         this._exploreGoals = new Map();
         this._idleLead = new Map();
         this._pieceWork = new Map();
@@ -2756,6 +2765,8 @@ const GARDEN = class Garden {
             level = this.activeFarmPlot.capacityLevel + 1;
         } else if (kind === 'plot') {
             level = this.playerProgression.farmPlots.plots.length;
+        } else if (kind === 'mine') {
+            level = 1;
         } else {
             return null;
         }
@@ -2782,6 +2793,18 @@ const GARDEN = class Garden {
         const SPEC = CONFIG.farm.work.facilities[site.facility] || CONFIG.farm.work.projects[site.facility];
         return CONFIG.farm.work.facilities[site.facility] ? `${SPEC.name} Lv.${site.level}` : SPEC.name;
     }
+    // Of the gatherers, the share that goes for wood (the rest go for stone), in basis points.
+    setWoodShare(basisPoints) {
+        if (!Number.isSafeInteger(basisPoints) || basisPoints < 0 || basisPoints > 10000) {
+            return false;
+        }
+        if (basisPoints !== this.woodBasisPoints) {
+            this.woodBasisPoints = basisPoints;
+            this._nextWorkerRefreshTick = 0;
+            this.refreshWorkers();
+        }
+        return true;
+    }
     // Starts a construction. The materials are paid up front; the work itself is done by the units.
     startBuild(kind, { tile = -1 } = {}) {
         const INFO = this.projectInfo(kind);
@@ -2790,6 +2813,7 @@ const GARDEN = class Garden {
             !INFO ||
             this.siteOf(kind) ||
             (kind === 'plot' && (this.worldMap.buildTile >= 0 || !canBuildFarm(this.worldMap, tile))) ||
+            (kind === 'mine' && !canBuildMine(this.worldMap, tile, this.activePlotId)) ||
             this.running ||
             this.farmBossEvent?.phase !== 'idle' ||
             this.materials.wood < INFO.cost.wood ||
@@ -2803,7 +2827,7 @@ const GARDEN = class Garden {
             beginFarmBuild(this.worldMap, tile);
         }
         let at = null;
-        if (kind === 'plot') {
+        if (kind === 'plot' || kind === 'mine') {
             const HERE = this.worldMap.farms.find((farm) => farm.plotId === this.activePlotId);
             at = {
                 x: (tileX(tile) - tileX(HERE.tile)) * FARM_CELL.width,
@@ -2822,6 +2846,18 @@ const GARDEN = class Garden {
             this.restoreReservePopulation();
         } else if (site.facility === 'plot') {
             finishFarmBuild(this.worldMap, this._addFarmPlot());
+        } else if (site.facility === 'mine') {
+            // The site stands on the tile it was built for; its offset from the farm says which one.
+            const HERE = this.worldMap.farms.find((farm) => farm.plotId === site.plotId);
+            if (HERE) {
+                buildMine(
+                    this.worldMap,
+                    tileIndex(
+                        tileX(HERE.tile) + Math.round(site.x / FARM_CELL.width),
+                        tileY(HERE.tile) - Math.round(site.y / FARM_CELL.height),
+                    ),
+                );
+            }
         } else {
             this.farmPlots.get(site.plotId)?.setFacilityLevel(site.facility, site.level);
         }
@@ -2945,6 +2981,7 @@ const GARDEN = class Garden {
         // then the builders. Stable while the roster is. A plot's facilities speed up its own workers.
         this._workerKinds = new Map();
         this._workerPlots = new Map();
+        this._workerResource = new Map();
         let total = 0;
         for (const [PLOT_ID, IDS] of PLOT_WORKERS) {
             const SORTED_WORKERS = IDS.sort((a, b) => a - b),
@@ -2973,21 +3010,32 @@ const GARDEN = class Garden {
                     food: 1 + WORK.levelEffectStep * PLOT.facilityLevel('windmill'),
                     resource: 1 + WORK.levelEffectStep * PLOT.facilityLevel('rack'),
                 };
-            SORTED_WORKERS.forEach((id, index) => {
-                const KIND =
-                    index >= PLOT_TOTAL - EXPLORERS
-                        ? 'explore'
-                        : index >= PLOT_TOTAL - EXPLORERS - BUILDERS
-                          ? 'build'
-                          : index >= PLOT_TOTAL - EXPLORERS - BUILDERS - GATHERERS
-                            ? 'resource'
-                            : 'food';
-                this._workerKinds.set(id, KIND);
-                this._workerPlots.set(id, PLOT_ID);
-                const BOOSTED = this._workerRates.get(id) * (MULTIPLIER[KIND] || 1);
-                this._workerRates.set(id, BOOSTED);
-                total += BOOSTED;
-            });
+            // Roles are filled one after another, each taking the workers best suited to it.
+            const COUNTS = {
+                    build: BUILDERS,
+                    food: PLOT_TOTAL - BUILDERS - EXPLORERS - GATHERERS,
+                    wood: Math.round((GATHERERS * this.woodBasisPoints) / 10000),
+                    explore: EXPLORERS,
+                },
+                POOL = SORTED_WORKERS.map((id) => this._unitById.get(id)).filter(Boolean);
+            COUNTS.stone = GATHERERS - COUNTS.wood;
+            for (const ROLE of APTITUDE_ORDER) {
+                const PICKED = pickForRole(POOL, ROLE, COUNTS[ROLE]);
+                for (const PICK of PICKED) {
+                    const UNIT = PICK.unit,
+                        LEVEL = PICK.level;
+                    POOL.splice(POOL.indexOf(UNIT), 1);
+                    const KIND = ROLE === 'wood' || ROLE === 'stone' ? 'resource' : ROLE;
+                    this._workerKinds.set(UNIT.id, KIND);
+                    this._workerPlots.set(UNIT.id, PLOT_ID);
+                    if (KIND === 'resource') {
+                        this._workerResource.set(UNIT.id, ROLE);
+                    }
+                    const BOOSTED = this._workerRates.get(UNIT.id) * (MULTIPLIER[KIND] || 1) * APTITUDE_SPEED[LEVEL];
+                    this._workerRates.set(UNIT.id, BOOSTED);
+                    total += BOOSTED;
+                }
+            }
         }
         this._workCount = NEXT.size;
         this._workRate = total;
@@ -3122,7 +3170,9 @@ const GARDEN = class Garden {
     haulSpot(unit) {
         const STATE = this.haulState(unit);
         if (STATE.phase !== 'back' && (STATE.tile < 0 || !(tileRemaining(this.worldMap, STATE.tile) > 0))) {
-            const WANTED = this.materials.wood <= this.materials.stone ? 'wood' : 'stone',
+            const WANTED =
+                    this._workerResource.get(unit.id) ??
+                    (this.materials.wood <= this.materials.stone ? 'wood' : 'stone'),
                 TILE = nearestResourceTile(this.worldMap, unit.plotId, WANTED);
             STATE.tile = TILE >= 0 ? TILE : nearestResourceTile(this.worldMap, unit.plotId);
             STATE.kind = STATE.tile >= 0 ? tileResource(this.worldMap, STATE.tile) : null;

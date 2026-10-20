@@ -277,6 +277,27 @@ export function nearestResourceTile(map, plotId, wanted = null) {
     }
     return best;
 }
+// A mine goes on a lit forest or rock tile in the sight of the farm that builds it; once built the tile never
+// runs dry (workers get less out of it than out of a fresh tile).
+export function canBuildMine(map, index, plotId) {
+    return (
+        Number.isSafeInteger(index) &&
+        index >= 0 &&
+        index < WORLD_MAP_TILE_COUNT &&
+        isRevealed(map, index) &&
+        tileResource(map, index) !== null &&
+        !map.mines.includes(index) &&
+        inReach(map, index, plotId)
+    );
+}
+export function buildMine(map, index) {
+    if (!isRevealed(map, index) || tileResource(map, index) === null || map.mines.includes(index)) {
+        return false;
+    }
+    map.mines.push(index);
+    map.mines.sort((a, b) => a - b);
+    return true;
+}
 // What it takes to lift the fog from one particular tile: the base cost times its ground.
 export function tileCost(map, index) {
     return Math.round(exploreCost(map) * WORLD_MAP_SETTINGS.terrainCost[tileTerrain(map, index)]);

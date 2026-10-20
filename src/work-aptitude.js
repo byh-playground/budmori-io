@@ -23,3 +23,17 @@ export function aptitudeOf(species, kind) {
 export function aptitudeSpeed(species, kind) {
     return APTITUDE_SPEED[aptitudeOf(species, kind)];
 }
+// Picks `count` workers for a role from the pool: the best at the work first (ties go to the lowest id, so the
+// choice is stable). Someone who cannot do the work (level 0) is only picked when nobody else is left, and then
+// works at the lowest speed rather than not at all.
+export const FALLBACK_LEVEL = 1;
+export function pickForRole(pool, role, count) {
+    const KIND = role === 'wood' || role === 'stone' || role === 'food' || role === 'build' ? role : 'explore',
+        RANKED = pool
+            .map((unit) => ({ unit, level: aptitudeOf(unit.species, KIND) }))
+            .sort((a, b) => b.level - a.level || a.unit.id - b.unit.id);
+    return RANKED.slice(0, Math.max(0, count)).map((entry) => ({
+        unit: entry.unit,
+        level: entry.level > 0 ? entry.level : FALLBACK_LEVEL,
+    }));
+}
