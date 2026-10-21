@@ -209,7 +209,29 @@ export class FormationSkills {
             return;
         }
         applyDamage(target, amount, { armor: this.world.combatTargetDefense(target).armor });
-        target.flash = 0.15;
+        target.flash = 0.3;
+        // A skill hit reads like any other hit: a burst on the body, a recoil, a shake. Bigger hits are stronger.
+        const IS_BOSS = target === this.world.boss,
+            MAX = Math.max(1, target.maxHp || target.hp || 1),
+            STRENGTH = Math.min(3, 1 + (amount / MAX) * 8);
+        this.world.combat(IS_BOSS ? 'boss-hit' : 'unit-hit', {
+            unit: IS_BOSS ? 0 : target.id,
+            ownerId: 0,
+            species: 0,
+            sourceUnit: 0,
+            attackId: 0,
+            strikeIndex: 0,
+            attackKind: 'skill',
+            buffed: false,
+            critical: false,
+            damage: amount,
+            x: target.x,
+            y: target.y,
+            z: Math.max(0.2, (target.z || 0) + (target.height || 0.6) * 0.6),
+            nx: 0,
+            ny: 1,
+            strength: STRENGTH,
+        });
         if (target !== this.world.boss) {
             this.world._syncUnitAliveCount(target);
             if (target.hp <= 0) {
