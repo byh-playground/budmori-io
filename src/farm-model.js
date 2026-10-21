@@ -109,7 +109,6 @@ const CONFIG = Object.freeze({
             defaultBasisPoints: 4000,
             starterFood: 0,
             maxFood: 50,
-            maxAttackers: 3,
             pileKind: Object.freeze({ count: 2, amount: 12 }),
             pileGap: 6,
             pileRadiusX: 8,
@@ -2019,10 +2018,8 @@ const GARDEN = class Garden {
     // Food per minute produced by workers right now.
     get workFoodPerMinute() {
         let rate = 0;
-        for (const [ID, ASSIGN] of this._workAssign) {
-            if (ASSIGN.attacking) {
-                rate += this._workerRates.get(ID) || 0;
-            }
+        for (const [ID] of this._workAssign) {
+            rate += this._workerRates.get(ID) || 0;
         }
         return rate * 60;
     }

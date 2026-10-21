@@ -7,7 +7,6 @@ export const SWING_WINDUP = 0.28,
 const FOOD_DROP_MIN = 1.5,
     FOOD_DROP_MAX = 3.5,
     NEAR_PILE = 4.4,
-    WAIT_DISTANCE = 6.5,
     CHARGE_SPEED = 18,
     CHARGE_TIMEOUT = 1.6,
     RECOIL_SPEED = 5.5;
@@ -62,57 +61,73 @@ export function resetWork(world) {
     world._swings = new Map();
 }
 // Assignments are sticky: a worker keeps its pile until the pile is gone or the worker stops working,
-// so re-running this never reshuffles who attacks what.
-export function assignWorkers(world, config) {
+// so re-running this never reshuffles who attacks what. Everyone attacks; newcomers go to the pile with the fewest workers.
+export function assignWorkers(world, _config) {
     const WORKERS = world.units.filter((u) => world.isWorker(u) && u.hp > 0 && u.down <= 0 && u.mature),
-        BY_ID = new Map(WORKERS.map((u) => [u.id, u])),
         PREVIOUS = world._workAssign,
         ASSIGN = new Map(),
-        TAKEN_IDS = new Set(),
-        LIMIT = config.farm.work.maxAttackers;
-    for (const PILE of world.piles) {
-        const MEMBERS = [];
-        for (const [ID, OLD] of PREVIOUS) {
-            if (OLD.pile === PILE && OLD.attacking && BY_ID.has(ID) && MEMBERS.length < LIMIT) {
-                MEMBERS.push(ID);
-                TAKEN_IDS.add(ID);
-            }
-        }
-        const FREE = WORKERS.filter((u) => !TAKEN_IDS.has(u.id)).sort(
-            (a, b) => Math.hypot(a.x - PILE.x, a.y - PILE.y) - Math.hypot(b.x - PILE.x, b.y - PILE.y),
-        );
-        for (const UNIT of FREE) {
-            if (MEMBERS.length >= LIMIT) {
-                break;
-            }
-            MEMBERS.push(UNIT.id);
-            TAKEN_IDS.add(UNIT.id);
-        }
-        for (const ID of MEMBERS) {
-            ASSIGN.set(ID, { pile: PILE, attacking: true });
+        COUNTS = new Map(world.piles.map((pile) => [pile, 0]));
+    if (!world.piles.length) {
+        world._workAssign = ASSIGN;
+        world._swings.clear();
+        return;
+    }
+    const FREE = [];
+    for (const UNIT of WORKERS) {
+        const OLD = PREVIOUS.get(UNIT.id);
+        if (OLD && COUNTS.has(OLD.pile)) {
+            ASSIGN.set(UNIT.id, { pile: OLD.pile });
+            COUNTS.set(OLD.pile, COUNTS.get(OLD.pile) + 1);
+        } else {
+            FREE.push(UNIT);
         }
     }
-    // Workers beyond the attacker limit wait near the closest pile until a slot opens.
-    for (const UNIT of WORKERS) {
-        if (TAKEN_IDS.has(UNIT.id)) {
-            continue;
-        }
-        let nearest = null,
-            nearestDistance = Infinity;
+    for (const UNIT of FREE) {
+        let best = null,
+            bestCount = Infinity,
+            bestDistance = Infinity;
         for (const PILE of world.piles) {
-            const D = Math.hypot(UNIT.x - PILE.x, UNIT.y - PILE.y);
-            if (D < nearestDistance) {
-                nearestDistance = D;
-                nearest = PILE;
+            const COUNT = COUNTS.get(PILE),
+                D = Math.hypot(UNIT.x - PILE.x, UNIT.y - PILE.y);
+            if (COUNT < bestCount || (COUNT === bestCount && D < bestDistance)) {
+                best = PILE;
+                bestCount = COUNT;
+                bestDistance = D;
             }
         }
-        if (nearest) {
-            ASSIGN.set(UNIT.id, { pile: nearest, attacking: false });
+        ASSIGN.set(UNIT.id, { pile: best });
+        COUNTS.set(best, bestCount + 1);
+    }
+    // A pile that just appeared (or one that emptied out) evens out: move the nearest worker from the fullest pile to the emptiest.
+    for (let guard = WORKERS.length; guard > 0; guard--) {
+        let most = null,
+            least = null;
+        for (const PILE of world.piles) {
+            most = !most || COUNTS.get(PILE) > COUNTS.get(most) ? PILE : most;
+            least = !least || COUNTS.get(PILE) < COUNTS.get(least) ? PILE : least;
         }
+        if (COUNTS.get(most) - COUNTS.get(least) <= 1) {
+            break;
+        }
+        let mover = null,
+            moverDistance = Infinity;
+        for (const UNIT of WORKERS) {
+            if (ASSIGN.get(UNIT.id).pile !== most) {
+                continue;
+            }
+            const D = Math.hypot(UNIT.x - least.x, UNIT.y - least.y);
+            if (D < moverDistance) {
+                mover = UNIT;
+                moverDistance = D;
+            }
+        }
+        ASSIGN.set(mover.id, { pile: least });
+        COUNTS.set(most, COUNTS.get(most) - 1);
+        COUNTS.set(least, COUNTS.get(least) + 1);
     }
     world._workAssign = ASSIGN;
     for (const ID of [...world._swings.keys()]) {
-        if (!ASSIGN.get(ID)?.attacking) {
+        if (!ASSIGN.has(ID)) {
             world._swings.delete(ID);
         }
     }
@@ -152,11 +167,6 @@ export function workOrder(world, unit) {
         SWING = world._swings.get(unit.id),
         DISTANCE = Math.hypot(unit.x - PILE.x, unit.y - PILE.y),
         ORDER = { x: PILE.x, y: PILE.y, fx: PILE.x, fy: PILE.y, speed: 9, hold: false, face: false };
-    if (!ASSIGN.attacking) {
-        // Over the attacker limit: wait a little way off until a spot opens up.
-        ORDER.hold = DISTANCE <= WAIT_DISTANCE;
-        return ORDER;
-    }
     if (!SWING || SWING.phase === 'idle') {
         // Anywhere near its own pile a worker just turns to it; only a far one walks over.
         ORDER.hold = DISTANCE <= NEAR_PILE;
@@ -208,7 +218,7 @@ export function stepWork(world, config, dt) {
     }
     const FOOD_FULL = world.food.length >= WORK.maxFood;
     for (const [ID, ASSIGN] of world._workAssign) {
-        if (!ASSIGN.attacking || !world.piles.includes(ASSIGN.pile)) {
+        if (!world.piles.includes(ASSIGN.pile)) {
             continue;
         }
         const UNIT = world._unitById.get(ID);

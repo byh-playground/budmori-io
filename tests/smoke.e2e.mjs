@@ -124,6 +124,24 @@ await check('food workers hit grain piles and food is produced', async () => {
     }));
     expect(GOT.workers > 0 && GOT.piles > 0, `no workers or piles ${JSON.stringify(GOT)}`);
     expect(GOT.produced > 0, `no food produced ${JSON.stringify(GOT)}`);
+    const SPREAD = await WORLD(() => {
+        const W = BUDMORI.sim,
+            COUNTS = new Map(W.piles.map((p) => [p, 0]));
+        for (const A of W._workAssign.values()) {
+            COUNTS.set(A.pile, (COUNTS.get(A.pile) || 0) + 1);
+        }
+        const VALUES = [...COUNTS.values()];
+        return {
+            workers: W.workerCount,
+            assigned: W._workAssign.size,
+            min: Math.min(...VALUES),
+            max: Math.max(...VALUES),
+        };
+    });
+    expect(
+        SPREAD.assigned === SPREAD.workers && SPREAD.max - SPREAD.min <= 1,
+        `workers uneven ${JSON.stringify(SPREAD)}`,
+    );
     const NEAR = await WORLD(() => {
         const W = BUDMORI.sim;
         const FOODS = W.food.filter((f) => f.phase === 'flight' || f.phase === 'grounded');
