@@ -455,7 +455,8 @@ body > header {
     font-size: var(--ui-fs-3);
     white-space: nowrap;
 }
-#merge {
+#merge,
+#bossChallenge {
     flex: 1 1 0;
 }
 #mergeNotice {

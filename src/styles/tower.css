@@ -199,9 +199,17 @@
 
 .start-floor {
     display: grid;
-    flex: 1 1 0;
-    gap: 2px;
-    min-width: 0;
-    font-size: var(--ui-fs-1);
-    font-weight: var(--ui-fw-m);
+    gap: 0;
+    width: 100%;
+    padding: 0 calc(var(--ui-s3) + 2px);
+    box-sizing: border-box;
+    font-size: var(--ui-fs-2);
+    font-weight: var(--ui-fw-b);
+    text-shadow:
+        0 0 2px var(--ui-panel),
+        0 0 4px var(--ui-panel),
+        0 0 8px var(--ui-panel);
+}
+.start-floor[hidden] {
+    display: none;
 }
