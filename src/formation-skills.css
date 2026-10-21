@@ -12,7 +12,6 @@
 .formation-dock[hidden] {
     display: none;
 }
-
 .formation-slots {
     display: flex;
     gap: 9px;
@@ -86,129 +85,6 @@
     border-color: var(--ui-primary);
     border-width: var(--ui-bw);
 }
-.formation-content {
-    padding: 0 24px 24px;
-}
-.formation-intro {
-    font-size: 12px;
-    line-height: 1.7;
-    color: #718065;
-}
-.formation-wallet {
-    display: flex;
-    gap: 7px;
-    align-items: center;
-    font-size: 13px;
-}
-.formation-wallet strong {
-    font-size: 25px;
-    color: #548373;
-}
-.formation-wallet > span {
-    margin-left: auto;
-    font-size: 11px;
-    color: #778369;
-}
-.formation-equipment {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-}
-.formation-equipped {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border: 1px solid #cfd9c3;
-    padding: 8px;
-    border-radius: 10px;
-    font-size: 12px;
-}
-.formation-equipped b {
-    color: #8ba079;
-}
-.formation-equipped button {
-    margin-left: auto;
-}
-#formationPanel button {
-    font-family: inherit;
-}
-#formationPanel button:disabled {
-    opacity: 0.42;
-    cursor: default;
-}
-.formation-equipped button,
-.formation-card button,
-.formation-add-slot {
-    border: 1px solid #b7c6a7;
-    border-radius: 7px;
-    padding: 7px 10px;
-    background: #f4f4e6;
-    color: #42583e;
-    cursor: pointer;
-    font-size: 11px;
-}
-.formation-add-slot {
-    margin: 10px 0 16px;
-}
-.formation-catalog {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-}
-.formation-card {
-    background: #fffdf6;
-    border: 1px solid #d7dfcb;
-    border-radius: 12px;
-    padding: 13px;
-}
-.formation-card-heading {
-    display: flex;
-    gap: 7px;
-    align-items: center;
-}
-.formation-card-heading h3 {
-    margin: 0;
-    font-size: 14px;
-}
-.formation-card-heading small {
-    margin-left: auto;
-    font-size: 10px;
-    color: #7c8b6d;
-    white-space: nowrap;
-}
-.formation-card-icon {
-    font-size: 24px;
-    color: #639584;
-}
-.formation-card p {
-    font-size: 11px;
-    line-height: 1.7;
-    min-height: 55px;
-    color: #718065;
-}
-.formation-rule {
-    font-size: 11px;
-    font-weight: 650;
-}
-.formation-rule span {
-    float: right;
-    font-weight: 400;
-    color: #7d876e;
-}
-.formation-axis {
-    display: block;
-    color: #7b886e;
-    font-size: 10px;
-    margin: 8px 0 13px;
-}
-.formation-card-actions {
-    display: flex;
-    gap: 6px;
-}
-.formation-card-actions button:first-child {
-    flex: 1;
-    background: #e3ecda;
-}
 @media (max-width: 620px) {
     .formation-dock {
         gap: 4px;
@@ -230,48 +106,7 @@
     .formation-slots {
         gap: 4px;
     }
-    .formation-content {
-        padding: 0 14px 16px;
-    }
-
-    .formation-catalog {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .formation-equipment {
-        grid-template-columns: 1fr;
-    }
-    .formation-card {
-        padding: 10px;
-    }
-    .formation-card-actions {
-        flex-wrap: wrap;
-    }
-    .formation-wallet > span {
-        max-width: 135px;
-        text-align: right;
-    }
 }
-
-#formationPanel {
-    color: #2d3e31;
-}
-#formationPanel > h2 {
-    margin-top: 0;
-}
-#formationPanel .formation-content {
-    padding: 0;
-}
-
-@media (max-width: 450px) {
-    .formation-card-actions {
-        flex-direction: column;
-    }
-    .formation-card-actions button {
-        width: 100%;
-        white-space: nowrap;
-    }
-}
-
 /* One footer reserves real rows for skills, gameplay controls and utility actions. */
 #gameplayDock {
     position: fixed;
@@ -346,72 +181,6 @@
         padding-bottom: max(8px, env(safe-area-inset-bottom));
     }
 }
-
-.deployment-card-panel {
-    color: #2d3e31;
-}
-.deployment-card-panel > h2 {
-    margin-top: 0;
-}
-.deployment-card-content {
-    padding: 0 24px 24px;
-}
-.deployment-card-intro {
-    color: #718065;
-    font-size: 12px;
-    line-height: 1.7;
-}
-.deployment-card-wallet {
-    color: #6b7860;
-    font-size: 13px;
-}
-.deployment-card-wallet strong {
-    margin-right: 6px;
-    color: #548373;
-    font-size: 24px;
-}
-.deployment-editor-slots {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-}
-.deployment-editor-slot {
-    display: grid;
-    gap: 6px;
-    padding: 9px;
-    border: 1px solid #d1dcc6;
-    border-radius: 10px;
-    background: #fffdf6;
-    font-size: 12px;
-}
-.deployment-editor-slot select,
-.deployment-card-buy {
-    min-width: 0;
-    min-height: 38px;
-    border: 1px solid #b7c6a7;
-    border-radius: 7px;
-    padding: 6px 8px;
-    background: #f4f4e6;
-    color: #42583e;
-    font: inherit;
-    font-size: 12px;
-}
-.deployment-card-buy {
-    cursor: pointer;
-}
-.deployment-card-buy:disabled,
-.deployment-editor-slot select:disabled {
-    opacity: 0.5;
-}
-@media (max-width: 620px) {
-    .deployment-card-content {
-        padding: 0 14px 16px;
-    }
-    .deployment-editor-slots {
-        grid-template-columns: 1fr;
-    }
-}
-
 #gameplayDock .bottom {
     width: 100%;
 }
@@ -432,7 +201,6 @@
         white-space: nowrap;
     }
 }
-
 /* 최소 UI: 아직 장착하지 않은 빈 칸은 전투 화면에 두지 않고, 장착한 스킬도 판 없이 보여 준다. */
 .formation-slot[data-empty='true'] {
     display: none;

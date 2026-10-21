@@ -1,9 +1,4 @@
 import { createAbilityProgressionState, isValidAbilityProgressionState } from './ability-state.js';
-import {
-    createFormationSkillState,
-    isValidFormationSkillState,
-    formationInvestedPoints,
-} from './formation-skill-state.js';
 
 // Level thresholds and boss-kill rewards use separate confirmed base values.
 export const PLAYER_PROGRESS_BASE_XP = 100;
@@ -15,7 +10,6 @@ export const FARM_BOSS_EVENT_MAX_STAGE = 61;
 export function createPlayerProgressionState() {
     return {
         ...createAbilityProgressionState(),
-        formationSkills: createFormationSkillState(),
         level: 1,
         experience: 0,
         towerBest: 0,
@@ -115,7 +109,6 @@ export function formatXpForDisplay(experience) {
 export function isValidPlayerProgressionState(state) {
     if (
         !isValidAbilityProgressionState(state) ||
-        (state.formationSkills !== undefined && !isValidFormationSkillState(state.formationSkills)) ||
         !Number.isSafeInteger(state.level) ||
         state.level < 1 ||
         !Number.isSafeInteger(state.towerBest) ||
@@ -137,5 +130,5 @@ export function isValidPlayerProgressionState(state) {
             Object.values(investment.branchLevels || {}).reduce((branchTotal, level) => branchTotal + level, 0),
         0,
     );
-    return INVESTED_POINTS + formationInvestedPoints(state.formationSkills) + state.availablePoints === state.level - 1;
+    return INVESTED_POINTS + state.availablePoints === state.level - 1;
 }

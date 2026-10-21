@@ -1,9 +1,4 @@
-import {
-    createFormationRuntime,
-    isValidFormationSkillState,
-    FORMATION_MAX_LEVEL,
-    FORMATION_COOLDOWN_SECONDS,
-} from './formation-skill-state.js';
+import { createFormationRuntime, FORMATION_COOLDOWN_SECONDS } from './formation-skill-state.js';
 import { applyDamage, resolveKnockback, baseUnitStatsFor } from './unit-stats.js';
 import { FixedSpatialGrid } from './spatial-grid.js';
 import { GiantSkill } from './features/formation-skills/giant/model.js';
@@ -91,16 +86,6 @@ export class FormationSkills {
         }
         return out;
     }
-    includeBuild(ownerId, state) {
-        if (!this.runtime.active || this.slots.some((slot) => slot.ownerId === ownerId)) {
-            return;
-        }
-        for (const ID of state.equipped) {
-            if (ID) {
-                this.slots.push({ id: ID, ownerId, level: state.levels[ID], charge: 0, cooldown: 0 });
-            }
-        }
-    }
     get runtime() {
         return this.world.formationRuntime;
     }
@@ -113,65 +98,6 @@ export class FormationSkills {
     get active() {
         return this.world.farmBossEvent?.phase === 'fighting';
     }
-    editable() {
-        return this.world.scene === 'farm' && this.world.farmBossEvent?.phase === 'idle';
-    }
-    purchase(id) {
-        return this.world.mutationNotifications.run(() => {
-            const PLAYER = this.world.playerProgression,
-                STATE = PLAYER.formationSkills;
-            if (
-                !this.editable() ||
-                !isValidFormationSkillState(STATE) ||
-                typeof id !== 'string' ||
-                !Object.hasOwn(STATE.levels, id) ||
-                STATE.levels[id] >= FORMATION_MAX_LEVEL ||
-                PLAYER.availablePoints < 1
-            ) {
-                return false;
-            }
-            STATE.levels[id]++;
-            PLAYER.availablePoints--;
-            this.world.markProgressChanged();
-            return true;
-        });
-    }
-    buySlot() {
-        return this.world.mutationNotifications.run(() => {
-            const PLAYER = this.world.playerProgression;
-            if (!this.editable() || PLAYER.formationSkills.slots >= 3 || PLAYER.availablePoints < 1) {
-                return false;
-            }
-            PLAYER.formationSkills.slots++;
-            PLAYER.availablePoints--;
-            this.world.markProgressChanged();
-            return true;
-        });
-    }
-    equip(slot, id) {
-        return this.world.mutationNotifications.run(() => {
-            const STATE = this.world.playerProgression.formationSkills;
-            if (
-                !this.editable() ||
-                !Number.isInteger(slot) ||
-                slot < 0 ||
-                slot >= STATE.slots ||
-                (id !== null &&
-                    (typeof id !== 'string' ||
-                        !Object.hasOwn(STATE.levels, id) ||
-                        !STATE.levels[id] ||
-                        STATE.equipped.includes(id)))
-            ) {
-                return false;
-            }
-            while (STATE.equipped.length <= slot) {
-                STATE.equipped.push(null);
-            }
-            STATE.equipped[slot] = id;
-            this.world.markProgressChanged();
-            return true;
-        });
-    }
     synchronize() {
         if (this.active && !this.runtime.active) {
             const SERIAL = this.runtime.serial;
@@ -179,19 +105,9 @@ export class FormationSkills {
             this.runtime.serial = SERIAL;
             this.rebuildInjured();
             this.runtime.active = true;
-            const BUILDS = [{ ownerId: '', state: this.world.playerProgression.formationSkills }];
-            for (const BUILD of BUILDS) {
-                for (const ID of BUILD.state.equipped) {
-                    if (ID) {
-                        this.slots.push({
-                            id: ID,
-                            ownerId: BUILD.ownerId,
-                            level: BUILD.state.levels[ID],
-                            charge: 0,
-                            cooldown: 0,
-                        });
-                    }
-                }
+            // The relics won on this climb are the skills of every fight in it.
+            for (const [ID, LEVEL] of this.world.tower.active ? this.world.tower.relics : []) {
+                this.slots.push({ id: ID, ownerId: '', level: LEVEL, charge: 0, cooldown: 0 });
             }
         } else if (!this.active && this.runtime.active) {
             this.end();

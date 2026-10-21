@@ -63,6 +63,14 @@
 .tower__floor.is-gone {
     opacity: 0.45;
 }
+.tower__relics {
+    display: block;
+    margin-top: var(--ui-s2);
+    padding: 0 var(--ui-s2);
+    color: var(--ui-ink);
+    font-weight: var(--ui-fw-m);
+    text-shadow: 0 1px 0 var(--ui-panel);
+}
 .floor-banner {
     position: fixed;
     inset: 0;

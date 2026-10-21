@@ -27,38 +27,6 @@ export function formationUpgradeValue(definition, level) {
     }
     return definition.upgradeBase * definition.upgradeFactor ** (LEVEL - 1) + definition.upgradeStep * (LEVEL - 1);
 }
-export function createFormationSkillState() {
-    return { slots: 1, levels: Object.fromEntries(FORMATION_SKILL_DEFINITIONS.map(({ id }) => [id, 0])), equipped: [] };
-}
-export function isValidFormationSkillState(state) {
-    if (
-        !state ||
-        !Number.isInteger(state.slots) ||
-        state.slots < 1 ||
-        state.slots > 3 ||
-        !state.levels ||
-        typeof state.levels !== 'object' ||
-        !Array.isArray(state.equipped) ||
-        Object.keys(state).length !== 3 ||
-        Object.keys(state.levels).length !== FORMATION_SKILL_DEFINITIONS.length ||
-        state.equipped.length > state.slots
-    ) {
-        return false;
-    }
-    if (
-        !FORMATION_SKILL_DEFINITIONS.every(
-            ({ id }) =>
-                Number.isInteger(state.levels[id]) && state.levels[id] >= 0 && state.levels[id] <= FORMATION_MAX_LEVEL,
-        )
-    ) {
-        return false;
-    }
-    const IDS = state.equipped.filter((id) => id !== null);
-    return IDS.length === new Set(IDS).size && IDS.every((id) => typeof id === 'string' && state.levels[id] > 0);
-}
-export function formationInvestedPoints(state) {
-    return state ? state.slots - 1 + Object.values(state.levels).reduce((sum, level) => sum + level, 0) : 0;
-}
 export function isValidFormationRuntime(runtime) {
     if (
         !runtime ||
