@@ -295,7 +295,6 @@ body > header {
     pointer-events: auto;
 }
 .hand {
-    --cd: 0;
     display: grid;
     gap: var(--ui-s2);
     width: min(520px, 100%);
@@ -316,7 +315,6 @@ body > header {
     flex-wrap: wrap;
     justify-content: center;
     gap: var(--ui-s2);
-    opacity: calc(1 - var(--cd) * 0.5);
 }
 .hand__card {
     display: grid;
@@ -328,10 +326,6 @@ body > header {
     border: var(--ui-bw) solid var(--ui-line);
     background: transparent;
     color: inherit;
-}
-.hand__card[aria-pressed='true'] {
-    border-color: currentColor;
-    background: rgba(255, 255, 255, 0.18);
 }
 .work-hud[hidden] {
     display: none;

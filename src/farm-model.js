@@ -1276,6 +1276,9 @@ const GARDEN = class Garden {
         this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
         // null: every species gives the same worker share. Otherwise the breeders are split between species by weight.
         this.breedWeights = null;
+        // Who drops first in a fight: the front of this list goes in first. Tapping a species puts it in front.
+        this.deployOrder = Array.from({ length: CONFIG.unit.speciesCount }, (_, species) => species);
+        this._deployCount = 0;
         this._workerIds = new Set();
         resetWork(this);
         this._workerRates = new Map();
@@ -2304,6 +2307,7 @@ const GARDEN = class Garden {
         this._benched = new Set(this.unitCollection.items.filter((u) => !u.isBattleOnlySummon));
         this._benchRevision++;
         this._deployReadyTime = this.time;
+        this._deployCount = 0;
         this._unitSpatialDirty = true;
         this.markProgressChanged();
         return true;
@@ -2339,7 +2343,35 @@ const GARDEN = class Garden {
     get deployCooldownLeft() {
         return Math.max(0, this._deployReadyTime - this.time);
     }
-    // Drops one waiting unit of the species (the strongest first) onto the spot the player tapped.
+    setDeployFirst(species) {
+        if (!Number.isSafeInteger(species) || species < 0 || species >= CONFIG.unit.speciesCount) {
+            return false;
+        }
+        this.deployOrder = [species, ...this.deployOrder.filter((other) => other !== species)];
+        return true;
+    }
+    // A fight sends everyone in by itself: one unit every 0.1 s from all around the hall's edge, the species at the
+    // front of the order first, until nobody is left waiting.
+    _autoDeploy() {
+        if (
+            this.scene !== 'farm' ||
+            !['dropping', 'fighting'].includes(this.farmBossEvent.phase) ||
+            this._benched.size === 0
+        ) {
+            return;
+        }
+        const ARENA = CONFIG.farm.arena,
+            ANGLE = this._deployCount * 2.399963229728653,
+            X = Math.cos(ANGLE) * (ARENA.radiusX - 1),
+            Y = Math.sin(ANGLE) * (ARENA.radiusY - 1);
+        for (const SPECIES of this.deployOrder) {
+            if (this.deployUnit(SPECIES, X, Y)) {
+                this._deployCount++;
+                return;
+            }
+        }
+    }
+    // Drops one waiting unit of the species (the strongest first) onto the spot.
     deployUnit(species, x, y) {
         const DEPLOY = CONFIG.farm.deploy;
         if (
@@ -3303,6 +3335,7 @@ const GARDEN = class Garden {
         this.formationSkills.update(dt);
         const SCENE = SIMULATION_SCENES[this.scene];
         SCENE.advanceClock(this, dt);
+        this._autoDeploy();
         const MERGE_TASK_START = this.profiler?.start();
         this.advanceMergeTask(dt);
         this.profiler?.end('mergeTask', MERGE_TASK_START);

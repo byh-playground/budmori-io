@@ -62,7 +62,7 @@ export const HELP_SCENES = Object.freeze([
     Object.freeze({
         id: 'tower',
         title: '보스와 탑',
-        rule: '탑 오르기를 누르면 보스가 떨어져요. 병력을 투입하면 수십 마리가 자동으로 싸우고, 이기면 문을 골라요. 이긴 보스 종의 숙련이 쌓여 능력 포인트가 돼요.',
+        rule: '탑 오르기를 누르면 보스가 떨어져요. 병력이 사방에서 자동으로 투입돼 싸우고, 이기면 문을 골라요. 이긴 보스 종의 숙련이 쌓여 능력 포인트가 돼요.',
         seed: 4104,
         rate: 4,
         durationMs: 60000,
@@ -80,28 +80,9 @@ export const HELP_SCENES = Object.freeze([
             }
         },
         timeline: [{ atMs: 100, cmd: 'tower-start', args: { floor: 1 } }],
-        // The army is dropped in one by one as the hand allows; once the real win opens the doors, the demo
-        // picks the strengthening door after a beat, then ends.
+        // The army drops in by itself; once the real win opens the doors, the demo picks the strengthening door
+        // after a beat, then ends.
         auto(world, timeMs, memo) {
-            const PHASE = world.farmBossEvent.phase;
-            if (
-                (PHASE === 'dropping' || PHASE === 'fighting') &&
-                timeMs >= (memo.nextDeployAt ?? 0) &&
-                (memo.attempts ?? 0) < 120
-            ) {
-                memo.attempts = (memo.attempts ?? 0) + 1;
-                memo.nextDeployAt = timeMs + 100;
-                const ANGLE = memo.attempts * 2.399963229728653,
-                    RADIUS = 60 + (memo.attempts % 3) * 25;
-                return {
-                    cmd: 'deploy',
-                    args: {
-                        species: memo.attempts % 6,
-                        x: world.boss.x + Math.cos(ANGLE) * RADIUS,
-                        y: world.boss.y + Math.sin(ANGLE) * RADIUS * 0.7,
-                    },
-                };
-            }
             if (world.tower.floor > 1) {
                 memo.doneAt ??= timeMs;
                 return { complete: timeMs - memo.doneAt > 1200 };
@@ -140,7 +121,7 @@ export const HELP_SCENES = Object.freeze([
         steps: {
             start: '탑 오르기를 누르면 병력이 탑으로 향해요',
             march: '병력이 탑으로 올라가요',
-            drop: '보스가 떨어져요. 병력을 투입해요',
+            drop: '보스가 떨어져요. 병력이 사방에서 들어와요',
             fight: '수십 마리가 자동으로 보스와 싸워요',
             win: '보스를 쓰러뜨렸어요',
             doors: '이겼어요. 다음 문을 골라요',

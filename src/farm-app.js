@@ -34,8 +34,6 @@ let menuWasPaused = true;
 let menuPauseChanged = false;
 let menuAutoPaused = false;
 let panPointer = null;
-let foodHold = null;
-let deploySpecies = -1;
 let handKey = '';
 let farmSortTransition = null;
 let farmPanelRevision = -1;
@@ -627,6 +625,7 @@ function install(world) {
     });
     world.setWorkBasisPoints(loadWorkSetting(world.workBasisPoints));
     loadBreedWeights(world);
+    loadDeployOrder(world);
     return active;
 }
 install(new Garden());
@@ -1563,21 +1562,48 @@ function syncData(id, key, value) {
 function fightActive() {
     return ['dropping', 'fighting'].includes(active?.world.farmBossEvent?.phase);
 }
-// The hand: one card per species still waiting. A tapped card stays chosen, so tapping the field keeps deploying it.
+// The deploy order: one card per species, front first. A fight sends everyone in by itself in this order; tapping a
+// card (before or during the fight) puts that species in front.
+const DEPLOY_ORDER_KEY = 'budmori.deploy.order';
+function loadDeployOrder(world) {
+    try {
+        const SAVED = JSON.parse(localStorage.getItem(DEPLOY_ORDER_KEY) || '[]');
+        for (const SPECIES of [...SAVED].reverse()) {
+            world.setDeployFirst(SPECIES);
+        }
+    } catch {
+        /* The default order stands. */
+    }
+}
+function saveDeployOrder(world) {
+    try {
+        localStorage.setItem(DEPLOY_ORDER_KEY, JSON.stringify(world.deployOrder));
+    } catch {
+        /* Applies for this run. */
+    }
+}
 function syncHand(garden, visible) {
     syncFlag('hand', 'hidden', !visible);
     if (!visible) {
-        deploySpecies = -1;
         handKey = '';
         return;
     }
-    const COUNTS = garden.handCounts,
-        IDS = [...COUNTS.keys()].sort((a, b) => a - b),
-        KEY = IDS.join(',');
-    if (!COUNTS.has(deploySpecies)) {
-        deploySpecies = IDS[0] ?? -1;
+    const COUNTS = fightActive() ? garden.handCounts : new Map();
+    if (!fightActive()) {
+        for (const UNIT of garden.units) {
+            if (UNIT.faction === 'player' && !UNIT.isBattleOnlySummon && UNIT.hp > 0) {
+                COUNTS.set(UNIT.species, (COUNTS.get(UNIT.species) || 0) + 1);
+            }
+        }
     }
-    if (KEY !== handKey) {
+    const IDS = garden.deployOrder.filter((id) => COUNTS.has(id)),
+        KEY = garden.deployOrder.join(',');
+    // One species has no order to set.
+    syncFlag('hand', 'hidden', IDS.length < 2);
+    if (KEY !== handKey || DOLLAR('handCards').children.length !== IDS.length) {
+        if (handKey) {
+            saveDeployOrder(garden);
+        }
         handKey = KEY;
         DOLLAR('handCards').innerHTML = IDS.map((id) => {
             const SPECIES = speciesById(id);
@@ -1585,30 +1611,23 @@ function syncHand(garden, visible) {
         }).join('');
     }
     for (const BUTTON of DOLLAR('handCards').children) {
-        const ID = Number(BUTTON.dataset.deploy);
-        const LABEL = BUTTON.querySelector('b'),
-            TEXT = `×${COUNTS.get(ID) || 0}`;
+        const TEXT = `×${COUNTS.get(Number(BUTTON.dataset.deploy)) || 0}`,
+            LABEL = BUTTON.querySelector('b');
         if (LABEL.textContent !== TEXT) {
             LABEL.textContent = TEXT;
         }
-        BUTTON.setAttribute('aria-pressed', String(ID === deploySpecies));
     }
-    const LEFT = garden.deployCooldownLeft;
-    DOLLAR('hand').style.setProperty(
-        '--cd',
-        String(LEFT > 0 ? Math.min(1, LEFT / CONFIG.farm.deploy.cooldownSeconds) : 0),
-    );
     syncText(
         'handNote',
-        IDS.length
-            ? `카드를 고르고 땅을 눌러 투입해요 · 필드 ${garden.fieldFighterCount}/${CONFIG.farm.deploy.fieldCap}${garden.tower.sleepUntil.size ? ` · 잠든 병력 ${garden.tower.sleepUntil.size}` : ''}`
-            : '대기 중인 병력이 없어요',
+        fightActive()
+            ? `투입 순서 · 누른 병종이 맨 앞 · 필드 ${garden.fieldFighterCount}/${CONFIG.farm.deploy.fieldCap}${garden.tower.sleepUntil.size ? ` · 잠든 병력 ${garden.tower.sleepUntil.size}` : ''}`
+            : '투입 순서 · 누른 병종이 맨 앞에서 싸워요',
     );
 }
 DOLLAR('handCards').addEventListener('click', (e) => {
     const BUTTON = e.target.closest('[data-deploy]');
     if (BUTTON) {
-        deploySpecies = Number(BUTTON.dataset.deploy);
+        active.queue('deploy-first', { species: Number(BUTTON.dataset.deploy) });
     }
 });
 function canUseWorldInput() {
@@ -1666,16 +1685,6 @@ function stopPan(e) {
         CANVAS.releasePointerCapture(ID);
     }
 }
-function stopFoodHold(e) {
-    if (e && foodHold && e.pointerId !== foodHold.pointerId) {
-        return;
-    }
-    if (foodHold) {
-        clearTimeout(foodHold.initialTimer);
-        clearInterval(foodHold.repeatTimer);
-        foodHold = null;
-    }
-}
 function stopWorldInput(e) {
     if (e) {
         PINCH_POINTERS.delete(e.pointerId);
@@ -1683,7 +1692,6 @@ function stopWorldInput(e) {
         PINCH_POINTERS.clear();
     }
     pinchDistance = 0;
-    stopFoodHold(e);
     stopPan(e);
 }
 const PINCH_POINTERS = new Map();
@@ -1714,7 +1722,6 @@ CANVAS.addEventListener('pointerdown', (e) => {
     ) {
         PINCH_POINTERS.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (PINCH_POINTERS.size === 2) {
-            stopFoodHold();
             if (panPointer) {
                 panPointer.mode = 'pinch';
             }
@@ -1729,34 +1736,13 @@ CANVAS.addEventListener('pointerdown', (e) => {
     }
     panPointer = {
         id: e.pointerId,
-        // Fighting: press to deploy. Inside the tower otherwise nothing moves. On the farm the land can be dragged.
-        mode: fightActive() ? 'deploy' : active.world.insideTower ? 'still' : 'pan',
+        // Inside the tower nothing moves. On the farm the land can be dragged.
+        mode: active.world.insideTower ? 'still' : 'pan',
         startX: e.clientX,
         startY: e.clientY,
         x: e.clientX,
         y: e.clientY,
     };
-    if (panPointer.mode === 'deploy') {
-        // Press to drop a unit, keep pressing (and dragging) to keep dropping one every 0.1 s where the finger is.
-        const SEND = () => {
-            if (deploySpecies >= 0 && foodHold) {
-                const SPOT = RENDERER.screenToWorld(foodHold.clientX, foodHold.clientY);
-                active.queue('deploy', { species: deploySpecies, x: SPOT.x, y: SPOT.y });
-            }
-        };
-        foodHold = {
-            pointerId: e.pointerId,
-            clientX: e.clientX,
-            clientY: e.clientY,
-            initialTimer: null,
-            repeatTimer: setInterval(() => {
-                if (foodHold?.pointerId === e.pointerId && canUseWorldInput() && panPointer?.mode === 'deploy') {
-                    SEND();
-                }
-            }, 50),
-        };
-        SEND();
-    }
     CANVAS.setPointerCapture?.(e.pointerId);
     e.preventDefault();
 });
@@ -1777,10 +1763,6 @@ CANVAS.addEventListener('pointermove', (e) => {
     if (!canUseWorldInput()) {
         stopWorldInput(e);
         return;
-    }
-    if (panPointer.mode === 'deploy' && foodHold) {
-        foodHold.clientX = e.clientX;
-        foodHold.clientY = e.clientY;
     }
     if (panPointer.mode === 'pan') {
         RENDERER.panByScreen(e.clientX - panPointer.x, e.clientY - panPointer.y);
@@ -1924,7 +1906,7 @@ function sync(display, now, notices) {
     syncFlag('workHud', 'hidden', FARM_EVENT_ACTIVE || home || W.tower.active);
     syncTower(W, home, FARM_EVENT);
     syncFlag('bossbar', 'hidden', !FARM_EVENT_ACTIVE || home || FARM_EVENT.phase === 'marching');
-    syncHand(W, !home && ['dropping', 'fighting'].includes(FARM_EVENT?.phase));
+    syncHand(W, !home);
     syncText('count', displayedCount);
     syncText('capacity', personalGarden?.capacity ?? CONFIG.farm.capacity.max);
     syncText(

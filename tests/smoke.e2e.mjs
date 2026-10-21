@@ -207,6 +207,11 @@ await check('units eat, breed and the farm stays under its capacity', async () =
 });
 
 await check('challenge button starts a boss fight and retreat ends it', async () => {
+    // A second species, so there is an order to set.
+    await WORLD(() => {
+        BUDMORI.sim.spawn(1, 1, 3, 3);
+        BUDMORI.sim.spawn(1, 1, -3, 3);
+    });
     await PAGE.locator('#bossChallenge').click();
     // The troops walk to the tower door first, then the floor begins inside.
     const MARCH = await WORLD(() => ({ phase: BUDMORI.sim.farmBossEvent.phase, inside: BUDMORI.sim.insideTower }));
@@ -221,22 +226,31 @@ await check('challenge button starts a boss fight and retreat ends it', async ()
         cards: document.querySelectorAll('#hand [data-deploy]').length,
         hidden: document.getElementById('hand').hidden,
         waiting: BUDMORI.sim.handCounts.size,
-        onField: BUDMORI.sim.fieldFighterCount,
+        field: BUDMORI.sim.fieldFighterCount,
     }));
-    expect(!HAND.hidden && HAND.cards > 0 && HAND.waiting === HAND.cards, `hand not shown (${JSON.stringify(HAND)})`);
-    expect(HAND.onField === 0, `units should start benched (${HAND.onField} on field)`);
-    const BOX = await PAGE.locator('#world').boundingBox();
-    await PAGE.mouse.click(BOX.x + BOX.width / 2, BOX.y + BOX.height * 0.55);
-    await PAGE.waitForTimeout(1500);
-    const DEPLOYED = await WORLD(() => BUDMORI.sim.fieldFighterCount);
-    expect(DEPLOYED >= 1, `tap did not deploy a unit (${DEPLOYED})`);
-    const CAP = await WORLD(() => {
-        for (let i = 0; i < 3; i++) {
-            BUDMORI.sim.deployUnit([...BUDMORI.sim.handCounts.keys()][0], 0, 0);
-        }
-        return BUDMORI.sim.fieldFighterCount;
+    expect(!HAND.hidden && HAND.cards > 0, `deploy order not shown (${JSON.stringify(HAND)})`);
+    // Nobody is placed by hand: the whole army walks in on its own, one unit per 0.1 s, from all around the hall.
+    await PAGE.waitForTimeout(2500);
+    const AUTO = await WORLD(() => {
+        const W = BUDMORI.sim,
+            FIELD = W.units.filter((u) => u.faction === 'player' && !u.isBattleOnlySummon);
+        return {
+            field: W.fieldFighterCount,
+            waiting: [...W.handCounts.values()].reduce((a, b) => a + b, 0),
+            sides: new Set(FIELD.map((u) => Math.sign(Math.round(u.x)) + ':' + Math.sign(Math.round(u.y)))).size,
+        };
     });
-    expect(CAP <= DEPLOYED + 1, `cooldown ignored (${DEPLOYED} -> ${CAP})`);
+    expect(AUTO.field >= 3, `army was not sent in by itself ${JSON.stringify(AUTO)}`);
+    // Tapping a species card puts that species at the front of the order.
+    const FIRST = await WORLD(() => {
+        const BUTTONS = [...document.querySelectorAll('#hand [data-deploy]')],
+            LAST = BUTTONS[BUTTONS.length - 1];
+        LAST.click();
+        return Number(LAST.dataset.deploy);
+    });
+    await PAGE.waitForTimeout(400);
+    const ORDER = await WORLD(() => BUDMORI.sim.deployOrder[0]);
+    expect(ORDER === FIRST, `tapped card did not move to the front (${ORDER} vs ${FIRST})`);
     const RAGE = await WORLD(() => {
         const W = BUDMORI.sim,
             FULL = W.boss.maxHp;
