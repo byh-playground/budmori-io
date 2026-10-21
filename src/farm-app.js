@@ -2092,6 +2092,8 @@ if (location.hash && location.hash !== '#/') {
 const HELP = {
     scene: helpSceneById(new URLSearchParams(location.search).get('help')),
     scenario: null,
+    memo: {},
+    complete: false,
     scaled: 0,
     last: null,
     clock(now) {
@@ -2126,7 +2128,16 @@ if (HELP.scene) {
             timeline: SCENE.timeline,
         },
         createRun: () => ({
-            step: (frame) => frame.events.forEach((event) => HELP.run(event)),
+            step: (frame) => {
+                frame.events.forEach((event) => HELP.run(event));
+                // A scene may also react to the run itself, e.g. choose a door once the real win has opened them.
+                const REACTION = SCENE.auto?.(active.world, frame.timeMs, HELP.memo);
+                if (REACTION?.door) {
+                    HELP.run(REACTION);
+                }
+                HELP.complete ||= REACTION?.complete === true;
+            },
+            isComplete: () => HELP.complete,
             dispose() {},
         }),
         onEnd: () => {

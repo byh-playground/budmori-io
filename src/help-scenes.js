@@ -63,12 +63,12 @@ export const HELP_SCENES = Object.freeze([
         rule: '탑 오르기를 누르면 보스가 떨어져요. 병력을 한 마리씩 투입하면 자동으로 싸우고, 이기면 문을 골라요. 이긴 보스 종의 숙련이 쌓여 능력 포인트가 돼요.',
         seed: 4104,
         rate: 4,
-        durationMs: 15500,
+        durationMs: 90000,
         setup(world) {
             world.setWorkBasisPoints(0);
-            // A few higher-tier peas, so the demo fight is short and the tiers pay off.
-            for (let index = 0; index < 4; index++) {
-                world.spawn(0, 5, -40 + index * 20, -30 + index * 15);
+            // Strong peas, so a real fight is short; each one is dropped next to the boss.
+            for (let index = 0; index < 6; index++) {
+                world.spawn(0, 6, -40 + index * 12, -30 + index * 10);
             }
         },
         timeline: [
@@ -76,9 +76,25 @@ export const HELP_SCENES = Object.freeze([
             { atMs: 6300, cmd: 'deploy', args: { species: 0, x: -45, y: 20 } },
             { atMs: 6500, cmd: 'deploy', args: { species: 0, x: -50, y: -10 } },
             { atMs: 6700, cmd: 'deploy', args: { species: 0, x: -40, y: -30 } },
-            { atMs: 9300, finish: 'victory' },
-            { atMs: 14000, door: 'boost' },
+            { atMs: 6900, cmd: 'deploy', args: { species: 0, x: -55, y: 5 } },
+            { atMs: 7100, cmd: 'deploy', args: { species: 0, x: -35, y: 15 } },
+            { atMs: 7300, cmd: 'deploy', args: { species: 0, x: -48, y: -20 } },
         ],
+        // Once the real win opens the doors, the demo picks the strengthening door after a beat, then ends.
+        auto(world, timeMs, memo) {
+            if (world.tower.boost.hp > 1 || world.tower.boost.attack > 1) {
+                memo.doneAt ??= timeMs;
+                return { complete: timeMs - memo.doneAt > 1200 };
+            }
+            if (world.tower.doors?.length && world.tower.floor === 1) {
+                memo.doorsAt ??= timeMs;
+                if (timeMs - memo.doorsAt > 1200 && !memo.picked) {
+                    memo.picked = true;
+                    return { door: 'boost' };
+                }
+            }
+            return null;
+        },
         step(world) {
             if (world.tower.boost.hp > 1 || world.tower.boost.attack > 1) {
                 return 'boost';
