@@ -453,12 +453,10 @@
     pile.food--;
     world.foodTaps.revision++;
     world.foodTaps.produced++;
-    world.spawnFood(
-      (world.random() - 0.5) * config.farm.arena.radiusX * 1.6,
-      (world.random() - 0.5) * config.farm.arena.radiusY * 1.5,
-      1,
-      { from: { x: pile.x, y: pile.y, z: 0.9 } }
-    );
+    const ANGLE = world.random() * Math.PI * 2, REACH = FOOD_DROP_MIN + world.random() * (FOOD_DROP_MAX - FOOD_DROP_MIN);
+    world.spawnFood(pile.x + Math.cos(ANGLE) * REACH, pile.y + Math.sin(ANGLE) * REACH * 0.8, 1, {
+      from: { x: pile.x, y: pile.y, z: 0.9 }
+    });
     world.markProgressChanged();
     if (pile.food <= 0) {
       world.piles.splice(world.piles.indexOf(pile), 1);
@@ -572,11 +570,13 @@
       }
     }
   }
-  var SWING_WINDUP, SWING_RECOVER, NEAR_PILE, WAIT_DISTANCE, CHARGE_SPEED, CHARGE_TIMEOUT, RECOIL_SPEED, STACKS_PER_FOOD;
+  var SWING_WINDUP, SWING_RECOVER, FOOD_DROP_MIN, FOOD_DROP_MAX, NEAR_PILE, WAIT_DISTANCE, CHARGE_SPEED, CHARGE_TIMEOUT, RECOIL_SPEED, STACKS_PER_FOOD;
   var init_farm_work = __esm({
     "src/farm-work.js"() {
       SWING_WINDUP = 0.28;
       SWING_RECOVER = 0.36;
+      FOOD_DROP_MIN = 1.5;
+      FOOD_DROP_MAX = 3.5;
       NEAR_PILE = 4.4;
       WAIT_DISTANCE = 6.5;
       CHARGE_SPEED = 18;
@@ -5136,7 +5136,7 @@
             this.wander(world, u, dt);
             return;
           }
-          world.steer(u, target.x, target.y, dt, scaleMoveSpeed(2.2, u));
+          world.steer(u, target.x, target.y, dt, scaleMoveSpeed(3.6, u));
         }
         resolveContacts(world, units) {
           world.resolveFarmContactPairs(units, true);
@@ -10614,7 +10614,7 @@
             moveY = AWAY_Y;
             moveLength = 1;
           }
-          this.steer(u, u.x + moveX / moveLength, u.y + moveY / moveLength, dt, scaleMoveSpeed(1.3, u));
+          this.steer(u, u.x + moveX / moveLength, u.y + moveY / moveLength, dt, scaleMoveSpeed(2, u));
           return true;
         }
         findNearestGroundFood(x, y) {
@@ -12347,7 +12347,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.27.0";
+      PRODUCT_VERSION = "0.27.1";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });

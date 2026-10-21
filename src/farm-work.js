@@ -3,7 +3,10 @@
 // Piles and swings are transient presentation-adjacent state; they are rebuilt after a load.
 export const SWING_WINDUP = 0.28,
     SWING_RECOVER = 0.36;
-const NEAR_PILE = 4.4,
+// Draft numbers: food falls 1.5–3.5 from its pile.
+const FOOD_DROP_MIN = 1.5,
+    FOOD_DROP_MAX = 3.5,
+    NEAR_PILE = 4.4,
     WAIT_DISTANCE = 6.5,
     CHARGE_SPEED = 18,
     CHARGE_TIMEOUT = 1.6,
@@ -126,12 +129,12 @@ function impact(world, config, pile) {
     pile.food--;
     world.foodTaps.revision++;
     world.foodTaps.produced++;
-    world.spawnFood(
-        (world.random() - 0.5) * config.farm.arena.radiusX * 1.6,
-        (world.random() - 0.5) * config.farm.arena.radiusY * 1.5,
-        1,
-        { from: { x: pile.x, y: pile.y, z: 0.9 } },
-    );
+    // The food lands in a ring around the pile it came from, not anywhere on the field.
+    const ANGLE = world.random() * Math.PI * 2,
+        REACH = FOOD_DROP_MIN + world.random() * (FOOD_DROP_MAX - FOOD_DROP_MIN);
+    world.spawnFood(pile.x + Math.cos(ANGLE) * REACH, pile.y + Math.sin(ANGLE) * REACH * 0.8, 1, {
+        from: { x: pile.x, y: pile.y, z: 0.9 },
+    });
     world.markProgressChanged();
     if (pile.food <= 0) {
         world.piles.splice(world.piles.indexOf(pile), 1);
