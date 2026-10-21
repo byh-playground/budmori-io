@@ -5,6 +5,8 @@ import { HELP_SCENES } from './help-scenes.js';
 const LOAD_TIMEOUT_MS = 15000;
 // The card never takes more than this share of the window height, so the caption and buttons stay on screen.
 const MAX_HEIGHT_SHARE = 0.5;
+// A finished card rests this long on its last frame, then plays again by itself.
+const LOOP_PAUSE_MS = 1500;
 
 function readSnapshot(frame) {
     try {
@@ -21,13 +23,13 @@ export function createHelpPanel(dollar) {
         RULE = dollar('helpRule'),
         DOTS = dollar('helpDots'),
         PREV = dollar('helpPrev'),
-        NEXT = dollar('helpNext'),
-        REPLAY = dollar('helpReplay');
+        NEXT = dollar('helpNext');
     let index = 0,
         frame = null,
         watch = 0,
         visible = false,
-        startedAt = 0;
+        startedAt = 0,
+        endedAt = 0;
     function unmount() {
         cancelAnimationFrame(watch);
         watch = 0;
@@ -41,9 +43,16 @@ export function createHelpPanel(dollar) {
         const SNAPSHOT = readSnapshot(frame);
         if (SNAPSHOT) {
             CAPTION.textContent = HELP_SCENES[index].steps[SNAPSHOT.step] ?? '';
-            REPLAY.dataset.ended = String(SNAPSHOT.state === 'ended');
+            if (SNAPSHOT.state !== 'ended') {
+                endedAt = 0;
+            } else if (endedAt === 0) {
+                endedAt = performance.now();
+            } else if (performance.now() - endedAt > LOOP_PAUSE_MS) {
+                mount();
+                return;
+            }
         } else if (performance.now() - startedAt > LOAD_TIMEOUT_MS) {
-            CAPTION.textContent = '데모를 불러오지 못했어요. 다시 보기를 눌러 주세요';
+            CAPTION.textContent = '데모를 불러오지 못했어요. 잠시 뒤 다시 시도해 주세요';
             return;
         }
         watch = requestAnimationFrame(observe);
@@ -71,7 +80,7 @@ export function createHelpPanel(dollar) {
         }
         const SCENE = HELP_SCENES[index];
         CAPTION.textContent = '불러오는 중이에요';
-        REPLAY.dataset.ended = 'false';
+        endedAt = 0;
         startedAt = performance.now();
         frame = document.createElement('iframe');
         frame.title = `${SCENE.title} 데모`;
@@ -108,7 +117,6 @@ export function createHelpPanel(dollar) {
     );
     PREV.onclick = () => show(index - 1);
     NEXT.onclick = () => show(index + 1);
-    REPLAY.onclick = () => show(index);
     window.addEventListener('resize', () => visible && fit());
     paintCard();
     return {

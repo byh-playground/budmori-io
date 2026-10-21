@@ -12511,7 +12511,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.9";
+      PRODUCT_VERSION = "0.30.10";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -19076,6 +19076,7 @@
   // src/help-panel.js
   var LOAD_TIMEOUT_MS = 15e3;
   var MAX_HEIGHT_SHARE = 0.5;
+  var LOOP_PAUSE_MS = 1500;
   function readSnapshot(frame2) {
     try {
       return frame2.contentWindow?.__budmoriHelp?.snapshot() ?? null;
@@ -19084,8 +19085,8 @@
     }
   }
   function createHelpPanel(dollar) {
-    const DEMO = dollar("helpDemo"), CAPTION = dollar("helpCaption"), TITLE = dollar("helpTitle"), RULE = dollar("helpRule"), DOTS = dollar("helpDots"), PREV = dollar("helpPrev"), NEXT = dollar("helpNext"), REPLAY = dollar("helpReplay");
-    let index = 0, frame2 = null, watch = 0, visible = false, startedAt = 0;
+    const DEMO = dollar("helpDemo"), CAPTION = dollar("helpCaption"), TITLE = dollar("helpTitle"), RULE = dollar("helpRule"), DOTS = dollar("helpDots"), PREV = dollar("helpPrev"), NEXT = dollar("helpNext");
+    let index = 0, frame2 = null, watch = 0, visible = false, startedAt = 0, endedAt = 0;
     function unmount() {
       cancelAnimationFrame(watch);
       watch = 0;
@@ -19099,9 +19100,16 @@
       const SNAPSHOT = readSnapshot(frame2);
       if (SNAPSHOT) {
         CAPTION.textContent = HELP_SCENES[index].steps[SNAPSHOT.step] ?? "";
-        REPLAY.dataset.ended = String(SNAPSHOT.state === "ended");
+        if (SNAPSHOT.state !== "ended") {
+          endedAt = 0;
+        } else if (endedAt === 0) {
+          endedAt = performance.now();
+        } else if (performance.now() - endedAt > LOOP_PAUSE_MS) {
+          mount();
+          return;
+        }
       } else if (performance.now() - startedAt > LOAD_TIMEOUT_MS) {
-        CAPTION.textContent = "데모를 불러오지 못했어요. 다시 보기를 눌러 주세요";
+        CAPTION.textContent = "데모를 불러오지 못했어요. 잠시 뒤 다시 시도해 주세요";
         return;
       }
       watch = requestAnimationFrame(observe);
@@ -19123,7 +19131,7 @@
       }
       const SCENE = HELP_SCENES[index];
       CAPTION.textContent = "불러오는 중이에요";
-      REPLAY.dataset.ended = "false";
+      endedAt = 0;
       startedAt = performance.now();
       frame2 = document.createElement("iframe");
       frame2.title = `${SCENE.title} 데모`;
@@ -19160,7 +19168,6 @@
     );
     PREV.onclick = () => show(index - 1);
     NEXT.onclick = () => show(index + 1);
-    REPLAY.onclick = () => show(index);
     window.addEventListener("resize", () => visible && fit());
     paintCard();
     return {
