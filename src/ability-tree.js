@@ -1,11 +1,12 @@
 import { SPECIES_ABILITY_DEFINITIONS, abilityPresentationFor } from './ability-catalog.js';
 import { SPECIES_CATALOG, speciesById } from './species-catalog.js';
-import { isValidAbilityProgressionState } from './ability-state.js';
+import { isValidAbilityProgressionState, masteryXpForNextLevel } from './ability-state.js';
 import { abilityProfile } from './unit-abilities.js';
-import { experienceForNextLevel, formatXpForDisplay } from './player-progression.js';
+import { formatXpForDisplay } from './player-progression.js';
 import {
     canResetAbilityProgression,
     getAbilityNodeStatus,
+    getAbilityPointsLeft,
     getInvestedAbilityPointCount,
     purchaseAbilityNode,
     resetAbilityProgression,
@@ -22,7 +23,7 @@ const DEFAULT_ABILITY_PRESENTATION = {
 const INVESTMENT_REASON_LABELS = new Map([
     ['already-invested', '이미 투자한 노드예요.'],
     ['prerequisite-required', '이전 단계에 먼저 투자해야 해요.'],
-    ['insufficient-points', '공용 포인트가 필요해요.'],
+    ['insufficient-points', '이 종의 숙련 포인트가 필요해요. 이 종 보스를 잡으면 쌓여요.'],
     ['combat-lock', '전투 중에는 투자할 수 없어요.'],
     ['farm-only', '농장에서만 투자할 수 있어요.'],
     ['max-level', '최대 강화 단계예요.'],
@@ -65,13 +66,22 @@ export function renderAbilityTreeMarkup(
     const CARDS =
         VISIBLE_DEFINITIONS.map((definition) => renderAbilityCard(state, definition, CONTEXT)).join('') ||
         `<p class="ability-tree__note" role="status">이 병종은 기본 공격으로 전투에 참여해요. 전용 특수 능력 트리는 아직 추가되지 않았어요.</p>`;
-    const LEVEL_MARKUP = renderPlayerProgressMarkup(state),
+    const FOCUS = Number.isInteger(selectedSpecies)
+            ? SPECIES_ABILITY_DEFINITIONS.find((definition) => definition.species === selectedSpecies)
+            : null,
+        POINTS = FOCUS
+            ? getAbilityPointsLeft(state, FOCUS.id)
+            : SPECIES_ABILITY_DEFINITIONS.reduce(
+                  (total, definition) => total + getAbilityPointsLeft(state, definition.id),
+                  0,
+              ),
+        LEVEL_MARKUP = FOCUS ? renderMasteryMarkup(state.abilities[FOCUS.id], speciesById(FOCUS.species).name) : '',
         DEFAULTS_NOTE =
-            '모든 일반 병종의 대표 능력은 Common(T1)부터 무료로 적용돼요. 공용 포인트로 능력 효과를 강화할 수 있어요.';
+            '모든 일반 병종의 대표 능력은 Common(T1)부터 무료로 적용돼요. 이 종의 보스를 잡을수록 숙련이 올라 능력을 강화할 포인트가 생겨요.';
     return `<section class="ability-tree" aria-labelledby="ability-tree-title">
     <header class="ability-tree__header">
       <div><p class="ability-tree__eyebrow">농장 성장</p><h2 id="ability-tree-title">병종 특성</h2></div>
-      <p class="ability-tree__wallet" aria-live="polite"><strong>${state.availablePoints}</strong><span>공용 포인트</span></p>
+      <p class="ability-tree__wallet" aria-live="polite"><strong>${POINTS}</strong><span>숙련 포인트</span></p>
     </header>
     <p class="ability-tree__note">${DEFAULTS_NOTE}</p>
     ${LEVEL_MARKUP}
@@ -83,23 +93,12 @@ export function renderAbilityTreeMarkup(
     <div class="ability-tree__cards">${CARDS}</div>
   </section>`;
 }
-function renderPlayerProgressMarkup(state) {
-    if (
-        !Number.isSafeInteger(state.level) ||
-        state.level < 1 ||
-        !Number.isFinite(state.experience) ||
-        state.experience < 0
-    ) {
-        return '';
-    }
-    const NEXT_LEVEL_XP = experienceForNextLevel(state.level);
-    if (!Number.isFinite(NEXT_LEVEL_XP) || state.experience >= NEXT_LEVEL_XP) {
-        return '';
-    }
-    const LABEL = `플레이어 레벨 ${state.level} 경험치`;
+function renderMasteryMarkup(mastery, speciesName) {
+    const NEXT_LEVEL_XP = masteryXpForNextLevel(mastery.masteryLevel),
+        LABEL = `${speciesName} 숙련 ${mastery.masteryLevel} 경험치`;
     return `<div class="ability-tree__progress" aria-live="polite">
-    <div><strong>플레이어 Lv. ${state.level}</strong><span>${formatXpForDisplay(state.experience)} / ${formatXpForDisplay(NEXT_LEVEL_XP)} XP</span></div>
-    <progress max="${NEXT_LEVEL_XP}" value="${state.experience}" aria-label="${LABEL}"></progress>
+    <div><strong>${speciesName} 숙련 Lv. ${mastery.masteryLevel}</strong><span>${formatXpForDisplay(mastery.masteryXp)} / ${formatXpForDisplay(NEXT_LEVEL_XP)} XP</span></div>
+    <progress max="${NEXT_LEVEL_XP}" value="${mastery.masteryXp}" aria-label="${LABEL}"></progress>
   </div>`;
 }
 export function mountAbilityTreePanel(host, { getState, getContext = () => ({}), onStateChange = () => {} } = {}) {

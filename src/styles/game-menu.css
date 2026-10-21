@@ -425,3 +425,7 @@
     font-size: 13px;
     color: var(--ui-ink-3, inherit);
 }
+
+.game-menu__version {
+    color: var(--ui-ink-2);
+}

@@ -376,11 +376,143 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
     expect(!LEFT.active && LEFT.units > 0, `leave ${JSON.stringify(LEFT)}`);
 });
 
+await check('a species the farm lacks joins as a pair on its first win, even below the best floor', async () => {
+    const R = await WORLD(async () => {
+        const W = BUDMORI.sim;
+        for (const U of [...W.units]) {
+            W.removeUnit(U);
+        }
+        for (let i = 0; i < 6; i++) {
+            W.spawn(0, 1, i * 0.4, 0);
+        }
+        W.randomBossSpecies = () => 3;
+        W.playerProgression.towerBest = 50;
+        W.startTower(1);
+        const TICK = () => {
+            W.step(1 / 30);
+            W.advanceWork(1 / 30);
+        };
+        for (let i = 0; i < 40; i++) {
+            TICK();
+        }
+        W.finishMarch();
+        for (let i = 0; i < 10; i++) {
+            TICK();
+        }
+        W.boss.hp = 0;
+        for (let i = 0; i < 400; i++) {
+            TICK();
+        }
+        const RECEIPT = W.bossRewardReceipts.at(-1);
+        return {
+            record: W.tower.record,
+            first: RECEIPT?.firstClear,
+            status: RECEIPT?.status,
+            species3: W.unitCollection.items.filter((u) => !u.isBattleOnlySummon && u.species === 3).length,
+            xp: RECEIPT?.xpAmount,
+        };
+    });
+    expect(R.record === false && R.first === true && R.species3 === 2 && R.xp > 0, `first win ${JSON.stringify(R)}`);
+});
+await check(
+    'a boss win feeds only its species mastery; points stay with that species and a reset keeps them',
+    async () => {
+        const R = await WORLD(() => {
+            const W = BUDMORI.sim;
+            const SNAP = () =>
+                JSON.stringify(
+                    Object.entries(W.playerProgression.abilities).map(([id, a]) => [id, a.masteryLevel, a.masteryXp]),
+                );
+            for (const U of [...W.units]) {
+                W.removeUnit(U);
+            }
+            for (let i = 0; i < 6; i++) {
+                W.spawn(0, 1, i * 0.4, 0);
+            }
+            W.randomBossSpecies = () => 3;
+            W.playerProgression.towerBest = 50;
+            const BEFORE = JSON.parse(SNAP());
+            W.startTower(1);
+            const TICK = () => {
+                W.step(1 / 30);
+                W.advanceWork(1 / 30);
+            };
+            for (let i = 0; i < 40; i++) {
+                TICK();
+            }
+            W.finishMarch();
+            for (let i = 0; i < 10; i++) {
+                TICK();
+            }
+            W.boss.hp = 0;
+            for (let i = 0; i < 200; i++) {
+                TICK();
+            }
+            const AFTER = JSON.parse(SNAP());
+            const CHANGED = AFTER.filter((row, i) => row[1] !== BEFORE[i][1] || row[2] !== BEFORE[i][2]);
+            const ID = CHANGED[0]?.[0];
+            const OTHER = AFTER.find((row) => row[0] !== ID)[0];
+            W.leaveTower();
+            W.playerProgression.abilities[ID].masteryLevel = 3;
+            const OWN = W.investAbilityNode(ID, 'power-1').ok;
+            const OTHERS = W.investAbilityNode(OTHER, 'power-1');
+            const RESET = W.resetProgression({ type: 'abilities' });
+            const KEPT = W.playerProgression.abilities[ID];
+            return {
+                changed: CHANGED.length,
+                gained: CHANGED[0] ? CHANGED[0][2] - BEFORE.find((row) => row[0] === ID)[2] : 0,
+                own: OWN,
+                other: OTHERS.reason,
+                reset: RESET.ok,
+                keptLevel: KEPT.masteryLevel,
+                power: KEPT.powerLevel,
+            };
+        });
+        expect(
+            R.changed === 1 && R.gained === 20 && R.own === true && R.other === 'insufficient-points',
+            `mastery ${JSON.stringify(R)}`,
+        );
+        expect(R.reset === true && R.keptLevel === 3 && R.power === 0, `mastery reset ${JSON.stringify(R)}`);
+    },
+);
+await check('a strengthening door multiplies every unit for the run and clears when it ends', async () => {
+    const R = await WORLD(() => {
+        const W = BUDMORI.sim;
+        for (let i = 0; i < 120 && W.farmBossEvent.phase !== 'idle'; i++) {
+            W.step(1 / 30);
+        }
+        const T = W.tower;
+        T.active = true;
+        T.floor = 1;
+        T.kind = 'battle';
+        T.doors = ['boost', 'battle'];
+        T.boostOffer = 'attack';
+        const FIRST = W.chooseDoor(0);
+        T.doors = ['boost'];
+        T.boostOffer = 'hp';
+        const SECOND = W.chooseDoor(0);
+        const DURING = { ...T.boost };
+        W.leaveTower();
+        return { first: FIRST, second: SECOND, during: DURING, after: { ...W.tower.boost } };
+    });
+    expect(
+        R.first &&
+            R.second &&
+            Math.abs(R.during.attack - 1.1) < 1e-9 &&
+            Math.abs(R.during.hp - 1.2) < 1e-9 &&
+            R.after.attack === 1 &&
+            R.after.hp === 1,
+        `boost ${JSON.stringify(R)}`,
+    );
+});
 await check('upgrade menu opens on the species abilities without the old stat tab', async () => {
     // The reward dialog can open late and cover the menu button, so close it by script first.
     await PAGE.waitForTimeout(1500);
     for (let attempt = 0; attempt < 4; attempt++) {
-        await WORLD(() => document.getElementById('bossRewardClose')?.click());
+        await WORLD(() => {
+            document.getElementById('bossRewardOpenAll')?.click();
+            document.getElementById('bossRewardClose')?.click();
+        });
         await PAGE.waitForTimeout(400);
     }
     await WORLD(() => document.getElementById('upgradeMenu').click());

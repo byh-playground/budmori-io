@@ -1,4 +1,4 @@
-import { awardBossKillXp, FARM_BOSS_EVENT_MAX_STAGE } from './player-progression.js';
+import { awardMasteryXp, FARM_BOSS_EVENT_MAX_STAGE } from './player-progression.js';
 import { BOSS_SPECIES_WEIGHTS } from './species-catalog.js';
 
 const FORMAT_PERCENT = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 });
@@ -56,12 +56,12 @@ export function createBossRewardStreams(seed) {
 
 export const BOSS_REWARD_SETTINGS = Object.freeze({
     acquisitionChance: 0.05,
-    firstClearAcquisitionChance: 0.15,
+    firstClearAcquisitionChance: 1,
     farmEventAcquisitionMultiplier: 2,
     stageHpBase: 200,
-    stageHpMultiplier: 1.5,
+    stageHpMultiplier: 1.2,
     stageAttackBase: 4,
-    stageAttackMultiplier: 1.2,
+    stageAttackMultiplier: 1.1,
     stageXpBase: 20,
     stageXpMultiplier: 1.5,
     stageRollMultiplier: 1.5,
@@ -147,11 +147,20 @@ export function bossAcquisitionChance({ farmEvent = false, firstClear = false, a
     if (!Number.isFinite(acquisitionMultiplier) || acquisitionMultiplier < 0 || acquisitionMultiplier > 2) {
         throw new RangeError('Boss acquisition multiplier must be in [0, 2]');
     }
-    if (farmEvent) {
-        return BOSS_REWARD_SETTINGS.acquisitionChance * BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier;
-    }
     const BASE = firstClear ? BOSS_REWARD_SETTINGS.firstClearAcquisitionChance : BOSS_REWARD_SETTINGS.acquisitionChance;
+    if (farmEvent) {
+        return Math.min(1, BASE * BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier);
+    }
     return Math.min(1, BASE * acquisitionMultiplier);
+}
+
+// A species counts as owned while the farm has one of it or one waits in the reward queue.
+export function bossSpeciesOwned(world, species) {
+    return (
+        (world.unitCollection?.items ?? world.units).some(
+            (unit) => unit.species === species && !unit.isBattleOnlySummon,
+        ) || (world.bossRewardInventory || []).some((entry) => entry.species === species && entry.count > 0)
+    );
 }
 
 function ensureWorldRewardState(world) {
@@ -229,7 +238,9 @@ function grantPendingBossAcquisitionsCommitted(world) {
         }
         const COUNT = Math.min(capacity, GROUP.count),
             // A species the farm does not have yet comes as a pair, so it can breed right away.
-            NEW_SPECIES = !world.units.some((unit) => unit.species === GROUP.species && !unit.isBattleOnlySummon);
+            NEW_SPECIES = !(world.unitCollection?.items ?? world.units).some(
+                (unit) => unit.species === GROUP.species && !unit.isBattleOnlySummon,
+            );
         let placed = 0;
         while (placed < COUNT) {
             const INDEX = world.units.length,
@@ -309,7 +320,9 @@ function resolveBossAcquisitionCommitted(world, options = {}) {
     if (ENCOUNTER_ID <= (world.bossRewardWatermarks[SOURCE] || 0)) {
         throw new RangeError('A settled or stale boss encounter cannot be rolled again');
     }
-    const TOTAL = options.rollBudget ?? options.rollCount ?? 1;
+    // The first time a species is beaten it always joins: one sure box, and the farm adds its partner.
+    const FIRST_CLEAR = options.firstClear === true,
+        TOTAL = FIRST_CLEAR ? 1 : (options.rollBudget ?? options.rollCount ?? 1);
     if (!Number.isSafeInteger(TOTAL) || TOTAL < 1 || TOTAL > BOSS_REWARD_SETTINGS.maxRollCount) {
         throw new RangeError('Boss reward quantity is outside the safe integer range');
     }
@@ -317,8 +330,7 @@ function resolveBossAcquisitionCommitted(world, options = {}) {
     if (!Number.isSafeInteger(SPECIES) || SPECIES < 0 || SPECIES >= BOSS_REWARD_SETTINGS.speciesWeights.length) {
         throw new RangeError('Boss reward species is invalid');
     }
-    const FIRST_CLEAR = false,
-        STREAM_KIND = streamFor(SOURCE),
+    const STREAM_KIND = streamFor(SOURCE, FIRST_CLEAR),
         STREAM = world.bossRewardStreams[STREAM_KIND],
         CHANCE = bossAcquisitionChance({
             farmEvent: SOURCE === 'farm',
@@ -573,7 +585,12 @@ function settleBossKillCommitted(world, options = {}) {
             pointsAwarded: RECEIPT.pointsAwarded ?? 0,
         };
     }
-    const RESULT = awardBossKillXp(WALLET, RECEIPT_KEY, options.xpAmount === undefined ? undefined : options.xpAmount);
+    const RESULT = awardMasteryXp(
+        WALLET,
+        RECEIPT_KEY,
+        RECEIPT.species,
+        options.xpAmount === undefined ? undefined : options.xpAmount,
+    );
     if (RESULT.awarded) {
         PROGRESSION_OWNER.playerProgression = RESULT.state;
     }

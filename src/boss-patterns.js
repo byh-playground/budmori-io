@@ -11,9 +11,12 @@ export const BOSS_PATTERN_IDS = Object.freeze([
 
 // Numeric balance values are implementation defaults derived from the source
 // combat scale (T1 attack 4, boss radius 4.4). The boss HP 2,000 is 50x T1 HP.
+// maxTargets caps how many units one attack can damage, so a boss hit never
+// scales with how tightly the army is packed.
 export const BOSS_PATTERN_CONFIG = Object.freeze({
     'attack.sweep-360': Object.freeze({
         kind: 'sweep-360',
+        maxTargets: 5,
         unlockHp: 0.4,
         windup: 1.05,
         active: 1.05,
@@ -28,6 +31,7 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
     }),
     'attack.front-slam': Object.freeze({
         kind: 'front-slam',
+        maxTargets: 3,
         unlockHp: 1,
         windup: 0.75,
         active: 0,
@@ -42,6 +46,7 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
     }),
     'attack.charge': Object.freeze({
         kind: 'charge',
+        maxTargets: 3,
         unlockHp: 1,
         windup: 0.5,
         active: 6.6 / 5.3,
@@ -56,6 +61,7 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
     }),
     'attack.leap-slam': Object.freeze({
         kind: 'leap-slam',
+        maxTargets: 4,
         unlockHp: 0.6,
         windup: 0.5,
         active: 1.013,
@@ -70,6 +76,7 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
     }),
     'attack.fan-sweep': Object.freeze({
         kind: 'fan-sweep',
+        maxTargets: 4,
         unlockHp: 0.75,
         windup: 1,
         active: 0.8,

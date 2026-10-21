@@ -1,89 +1,67 @@
-import { createAbilityProgressionState, isValidAbilityProgressionState } from './ability-state.js';
+import {
+    createAbilityProgressionState,
+    isValidAbilityProgressionState,
+    masteryXpForNextLevel,
+} from './ability-state.js';
+import { SPECIES_ABILITY_DEFINITIONS } from './ability-definitions.js';
 
-// Level thresholds and boss-kill rewards use separate confirmed base values.
-export const PLAYER_PROGRESS_BASE_XP = 100;
+// Beating a boss feeds the mastery of its own species; the XP a kill pays grows with the floor.
 export const BOSS_KILL_XP = 20;
-export const FIRST_LEVEL_XP = PLAYER_PROGRESS_BASE_XP;
-export const LEVEL_XP_MULTIPLIER = 1.2;
-export const SHARED_POINTS_PER_LEVEL = 1;
 export const FARM_BOSS_EVENT_MAX_STAGE = 61;
+const RECEIPT_MEMORY = 500;
 export function createPlayerProgressionState() {
     return {
         ...createAbilityProgressionState(),
-        level: 1,
-        experience: 0,
         towerBest: 0,
         processedBossKillReceipts: [],
     };
 }
 
-// XP is the remainder toward the next level, so it naturally carries over
-// across level-ups. receiptKey makes this helper idempotent if a caller retries
-// the same persisted boss-kill receipt.
-export function awardBossKillXp(state, receiptKey, xpAmount = BOSS_KILL_XP) {
+// receiptKey makes this helper idempotent if a caller retries the same persisted boss-kill receipt.
+export function awardMasteryXp(state, receiptKey, species, xpAmount = BOSS_KILL_XP) {
+    const REJECT = (reason) => ({
+        state,
+        awarded: false,
+        reason,
+        xpAwarded: 0,
+        levelsGained: 0,
+        pointsAwarded: 0,
+    });
     if (!isValidPlayerProgressionState(state)) {
-        return {
-            state,
-            awarded: false,
-            reason: 'invalid-state',
-            xpAwarded: 0,
-            levelsGained: 0,
-            pointsAwarded: 0,
-        };
+        return REJECT('invalid-state');
     }
     if (typeof receiptKey !== 'string' || receiptKey.trim().length === 0) {
-        return {
-            state,
-            awarded: false,
-            reason: 'invalid-receipt',
-            xpAwarded: 0,
-            levelsGained: 0,
-            pointsAwarded: 0,
-        };
+        return REJECT('invalid-receipt');
     }
     if (!Number.isFinite(xpAmount) || xpAmount < 0 || xpAmount >= 1e13) {
-        return {
-            state,
-            awarded: false,
-            reason: 'invalid-xp',
-            xpAwarded: 0,
-            levelsGained: 0,
-            pointsAwarded: 0,
-        };
+        return REJECT('invalid-xp');
+    }
+    const DEFINITION = SPECIES_ABILITY_DEFINITIONS.find((definition) => definition.species === species);
+    if (!DEFINITION) {
+        return REJECT('unknown-species');
     }
     if (state.processedBossKillReceipts.includes(receiptKey)) {
-        return {
-            state,
-            awarded: false,
-            reason: 'duplicate-receipt',
-            xpAwarded: 0,
-            levelsGained: 0,
-            pointsAwarded: 0,
-        };
+        return REJECT('duplicate-receipt');
     }
-    let level = state.level;
-    let experience = state.experience + xpAmount;
+    const MASTERY = state.abilities[DEFINITION.id];
+    let level = MASTERY.masteryLevel;
+    let experience = MASTERY.masteryXp + xpAmount;
     let levelsGained = 0;
-    while (experience >= experienceForNextLevel(level)) {
-        experience -= experienceForNextLevel(level);
+    while (experience >= masteryXpForNextLevel(level)) {
+        experience -= masteryXpForNextLevel(level);
         level += 1;
         levelsGained += 1;
     }
-    const POINTS_AWARDED = levelsGained * SHARED_POINTS_PER_LEVEL;
     const NEXT_STATE = {
         ...state,
-        level,
-        experience,
-        availablePoints: state.availablePoints + POINTS_AWARDED,
         abilities: Object.fromEntries(
             Object.entries(state.abilities).map(([id, value]) => [
                 id,
-                {
-                    ...value,
-                },
+                id === DEFINITION.id ? { ...value, masteryLevel: level, masteryXp: experience } : { ...value },
             ]),
         ),
-        processedBossKillReceipts: [...state.processedBossKillReceipts, receiptKey],
+        // Only a retry of a recent kill needs the duplicate guard, so the list stays short.
+        processedBossKillReceipts: [...state.processedBossKillReceipts, receiptKey].slice(-RECEIPT_MEMORY),
     };
     return {
         state: NEXT_STATE,
@@ -91,14 +69,8 @@ export function awardBossKillXp(state, receiptKey, xpAmount = BOSS_KILL_XP) {
         reason: null,
         xpAwarded: xpAmount,
         levelsGained,
-        pointsAwarded: POINTS_AWARDED,
+        pointsAwarded: levelsGained,
     };
-}
-export function experienceForNextLevel(level) {
-    if (!Number.isSafeInteger(level) || level < 1) {
-        throw new RangeError('level must be a positive integer');
-    }
-    return FIRST_LEVEL_XP * LEVEL_XP_MULTIPLIER ** (level - 1);
 }
 export function formatXpForDisplay(experience) {
     const VALUE = Number.isFinite(experience) ? Math.max(0, experience) : 0;
@@ -107,28 +79,13 @@ export function formatXpForDisplay(experience) {
     }).format(VALUE);
 }
 export function isValidPlayerProgressionState(state) {
-    if (
-        !isValidAbilityProgressionState(state) ||
-        !Number.isSafeInteger(state.level) ||
-        state.level < 1 ||
-        !Number.isSafeInteger(state.towerBest) ||
-        state.towerBest < 0 ||
-        state.towerBest > FARM_BOSS_EVENT_MAX_STAGE ||
-        !Number.isFinite(state.experience) ||
-        state.experience < 0 ||
-        state.experience >= experienceForNextLevel(state.level) ||
-        !Array.isArray(state.processedBossKillReceipts) ||
-        !state.processedBossKillReceipts.every((key) => typeof key === 'string' && key.length > 0) ||
-        new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length
-    ) {
-        return false;
-    }
-    const INVESTED_POINTS = Object.entries(state.abilities).reduce(
-        (total, [, investment]) =>
-            total +
-            investment.powerLevel +
-            Object.values(investment.branchLevels || {}).reduce((branchTotal, level) => branchTotal + level, 0),
-        0,
+    return (
+        isValidAbilityProgressionState(state) &&
+        Number.isSafeInteger(state.towerBest) &&
+        state.towerBest >= 0 &&
+        state.towerBest <= FARM_BOSS_EVENT_MAX_STAGE &&
+        Array.isArray(state.processedBossKillReceipts) &&
+        state.processedBossKillReceipts.every((key) => typeof key === 'string' && key.length > 0) &&
+        new Set(state.processedBossKillReceipts).size === state.processedBossKillReceipts.length
     );
-    return INVESTED_POINTS + state.availablePoints === state.level - 1;
 }

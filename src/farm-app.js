@@ -11,8 +11,9 @@ import { PRODUCT_VERSION } from './version.js';
 import { FoodFeel } from './food-feel.js';
 import { CombatFeel } from './combat-feel.js';
 import { renderAbilityTreeMarkup, renderAbilitySpeciesTabsMarkup } from './ability-tree.js';
-import { canResetPlayerProgression } from './ability-progression.js';
-import { advanceBossRewardReveal, openAllBossRewardBoxes } from './boss-rewards.js';
+import { canResetPlayerProgression, getAbilityPointsLeft } from './ability-progression.js';
+import { SPECIES_ABILITY_DEFINITIONS } from './ability-catalog.js';
+import { advanceBossRewardReveal, openAllBossRewardBoxes, bossSpeciesOwned } from './boss-rewards.js';
 import { workersBySpecies } from './farm-work.js';
 import { speciesById, giantSpeciesName, speciesRewardName } from './species-catalog.js';
 const DOLLAR = (id) => document.getElementById(id),
@@ -132,18 +133,20 @@ function renderBossRewardBoxes(receipt) {
     DOLLAR('bossRewardSummary').textContent =
         receipt.status === 'calculating'
             ? '상자 ' + COUNT + '개의 보상을 준비하고 있어요.'
-            : HAS_PRESENTATION
-              ? COUNT +
-                '회 추첨 · 상자당 ' +
-                MIN +
-                (MIN === MAX ? '' : '–' + MAX) +
-                '마리 · ' +
-                (FIRST_CLEAR ? '첫 클리어 ' : '재도전 ') +
-                Math.round(NOMINAL_CHANCE * 100) +
-                '% (편성 반영 ' +
-                Math.round(receipt.chance * 100) +
-                '%)'
-              : '이미 확정된 보상 합계';
+            : FIRST_CLEAR
+              ? '처음 만난 종이에요 · 동료로 합류해요'
+              : HAS_PRESENTATION
+                ? COUNT +
+                  '회 추첨 · 상자당 ' +
+                  MIN +
+                  (MIN === MAX ? '' : '–' + MAX) +
+                  '마리 · ' +
+                  '재도전 ' +
+                  Math.round(NOMINAL_CHANCE * 100) +
+                  '% (편성 반영 ' +
+                  Math.round(receipt.chance * 100) +
+                  '%)'
+                : '이미 확정된 보상 합계';
     DOLLAR('bossRewardTotals').textContent =
         receipt.status === 'calculating'
             ? '추첨 계산 ' + PROCESSED + '/' + COUNT
@@ -1087,7 +1090,12 @@ function drawAbilityTree() {
     const W = personalGarden || active.world,
         IN_COMBAT = W.farmBossEvent?.phase !== 'idle';
     const SELECTED_SPECIES = Number(DOLLAR('abilityPanel').dataset.selectedSpecies || 0);
-    DOLLAR('abilityPoints').textContent = String(W.playerProgression.availablePoints);
+    const MASTERY_DEFINITION = SPECIES_ABILITY_DEFINITIONS.find(
+        (definition) => definition.species === SELECTED_SPECIES,
+    );
+    DOLLAR('abilityPoints').textContent = String(
+        MASTERY_DEFINITION ? getAbilityPointsLeft(W.playerProgression, MASTERY_DEFINITION.id) : 0,
+    );
     for (const BUTTON of DOLLAR('abilitySpeciesTabs').querySelectorAll('[data-ability-species]')) {
         BUTTON.setAttribute('aria-pressed', String(Number(BUTTON.dataset.abilitySpecies) === SELECTED_SPECIES));
     }
@@ -1384,14 +1392,25 @@ DOLLAR('gameMenuPanel').onkeydown = (e) => {
     }
 };
 const CANVAS = DOLLAR('world');
+// Holding a finger down opens the browser's context menu on touch screens; the game owns long presses.
+document.addEventListener('contextmenu', (event) => {
+    if (!event.target.closest?.('input, textarea')) {
+        event.preventDefault();
+    }
+});
 // Compare with the actual DOM so event handlers and route changes remain authoritative.
-const FLOOR_KIND = { battle: '전투', elite: '정예', mid: '중간 보스', rest: '쉼터', relic: '유물' };
+const FLOOR_KIND = { battle: '전투', elite: '정예', mid: '중간 보스', rest: '쉼터', relic: '유물', boost: '강화' };
 const DOOR_TEXT = {
     battle: '보스 한 마리',
     elite: '더 세지만 보상 ×2',
     mid: '피할 수 없어요 · 보상 ×3',
     rest: '잠든 병력을 모두 깨워요',
 };
+function boostDoorCard(tower, index) {
+    const ATTACK = tower.boostOffer === 'attack',
+        VALUE = CONFIG.farm.tower.boost[tower.boostOffer];
+    return `<button type="button" class="door door--boost" data-door="${index}"><b>${ATTACK ? '⚔ 공격 강화' : '♥ 체력 강화'}</b><small>이번 도전 동안 모든 유닛 ${ATTACK ? '공격' : '체력'} ×${VALUE}</small></button>`;
+}
 function relicDoorCard(tower, index) {
     const ID = tower.offer,
         DEFINITION = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === ID),
@@ -1425,7 +1444,7 @@ function syncTower(garden, home, event) {
     // A banner announces each new floor as the boss drops in, and the rest stop.
     const NEXT_BANNER = !CLIMBING
         ? ''
-        : (T.kind === 'rest' || T.kind === 'relic') && T.doors.length
+        : (T.kind === 'rest' || T.kind === 'relic' || T.kind === 'boost') && T.doors.length
           ? `r${T.floor}`
           : event?.phase === 'dropping'
             ? `e${event.encounterId}`
@@ -1446,14 +1465,16 @@ function syncTower(garden, home, event) {
     const DOORS = CLIMBING && event?.phase === 'idle' && T.doors.length > 0;
     syncFlag('towerDoors', 'hidden', !DOORS);
     if (DOORS) {
-        const KEY = `${T.doors.join()}|${T.floor}|${SLEEPERS}|${T.offer}|${T.relics.size}`;
+        const KEY = `${T.doors.join()}|${T.floor}|${SLEEPERS}|${T.offer}|${T.relics.size}|${T.boostOffer}|${T.boost.attack}|${T.boost.hp}`;
         if (KEY !== doorKey) {
             doorKey = KEY;
             DOLLAR('doorCards').innerHTML = T.doors
                 .map((d, i) =>
                     d === 'relic'
                         ? relicDoorCard(T, i)
-                        : `<button type="button" class="door door--${d}" data-door="${i}"><b>${FLOOR_KIND[d]}</b><small>${DOOR_TEXT[d]}</small></button>`,
+                        : d === 'boost'
+                          ? boostDoorCard(T, i)
+                          : `<button type="button" class="door door--${d}" data-door="${i}"><b>${FLOOR_KIND[d]}</b><small>${DOOR_TEXT[d]}</small></button>`,
                 )
                 .join('');
         }
@@ -1463,9 +1484,15 @@ function syncTower(garden, home, event) {
                 ? `${T.floor}층 쉼터 · 잠든 병력이 모두 깼어요`
                 : T.kind === 'relic'
                   ? `${T.floor}층 유물을 얻었어요`
-                  : `${T.floor}층 돌파!`,
+                  : T.kind === 'boost'
+                    ? `${T.floor}층 강화를 받았어요`
+                    : `${T.floor}층 돌파!`,
         );
-        syncText('doorsNote', `다음은 ${T.floor + 1}층 · 잠든 병력 ${SLEEPERS}마리`);
+        const BOOSTED = T.boost.attack > 1 || T.boost.hp > 1;
+        syncText(
+            'doorsNote',
+            `다음은 ${T.floor + 1}층 · 잠든 병력 ${SLEEPERS}마리${BOOSTED ? ` · 강화 공격 ×${T.boost.attack.toFixed(2)} 체력 ×${T.boost.hp.toFixed(2)}` : ''}`,
+        );
     } else {
         doorKey = '';
     }
@@ -1908,12 +1935,13 @@ function sync(display, now, notices) {
                   )
                 : null,
         REWARD_NAME = speciesRewardName(BOSS.species),
-        ENCOUNTER_NAME = giantSpeciesName(BOSS.species);
+        ENCOUNTER_NAME = giantSpeciesName(BOSS.species),
+        FIRST_MEETING = FARM_EVENT_ACTIVE && !bossSpeciesOwned(W, BOSS.species) ? ' · 첫 조우' : '';
     syncText(
         'bossName',
-        BOSS.stage
+        (BOSS.stage
             ? `${BOSS.stage}층 · ${W.tower.kind === 'battle' ? '' : FLOOR_KIND[W.tower.kind] + ' '}${ENCOUNTER_NAME}`
-            : ENCOUNTER_NAME,
+            : ENCOUNTER_NAME) + FIRST_MEETING,
     );
     syncAttribute('bossHealth', 'aria-label', `${ENCOUNTER_NAME} 체력`);
     syncText('bossHealthText', Math.ceil(BOSS.hp) + '/' + BOSS.maxHp);
@@ -2037,6 +2065,7 @@ function frame(now) {
 }
 DOLLAR('productVersion').textContent = PRODUCT_VERSION;
 DOLLAR('startVersion').textContent = PRODUCT_VERSION;
+DOLLAR('settingsVersion').textContent = `v${PRODUCT_VERSION}`;
 setHome(true, false);
 if (location.hash && location.hash !== '#/') {
     route();

@@ -767,8 +767,8 @@
 
   // src/unit-stats.js
   function createBaseStats(tier, speciesProfile) {
-    let maxHp = TIER_HP;
-    let attackPower = TIER_ATTACK;
+    let maxHp = TIER_HP * RUN_BOOST.hp;
+    let attackPower = TIER_ATTACK * RUN_BOOST.attack;
     for (let resultTier = 2; resultTier <= tier; resultTier++) {
       const TRANSITION_MULTIPLIER = UNIT_GRADES[resultTier - 1].materialCost / 2;
       maxHp *= TIER_HP_SCALE * TRANSITION_MULTIPLIER;
@@ -780,6 +780,25 @@
       ...COMMON_UNIT_STAT_DEFAULTS,
       ...speciesProfile
     });
+  }
+  function fillBaseStats() {
+    BASE_STATS_BY_PROFILE.clear();
+    for (const PROFILE of [COMMON_UNIT_STAT_DEFAULTS, ...COMMON_UNIT_STAT_PROFILES]) {
+      BASE_STATS_BY_PROFILE.set(
+        PROFILE,
+        Array.from(
+          {
+            length: MAX_UNIT_TIER
+          },
+          (_, index) => createBaseStats(index + 1, PROFILE)
+        )
+      );
+    }
+  }
+  function setRunStatBoost(attack = 1, hp = 1) {
+    RUN_BOOST.attack = attack;
+    RUN_BOOST.hp = hp;
+    fillBaseStats();
   }
   function baseUnitStatsFor(tier, species) {
     tier = Math.max(1, Math.min(MAX_UNIT_TIER, Number.isInteger(tier) ? tier : 1));
@@ -916,7 +935,7 @@
       target.hp = value;
     }
   }
-  var TIER_HP, TIER_HP_SCALE, TIER_ATTACK, TIER_ATTACK_SCALE, ARMOR_SCALE, COMMON_UNIT_STAT_DEFAULTS, COMMON_UNIT_STAT_PROFILES, BASE_STATS_BY_PROFILE;
+  var TIER_HP, TIER_HP_SCALE, TIER_ATTACK, TIER_ATTACK_SCALE, ARMOR_SCALE, COMMON_UNIT_STAT_DEFAULTS, COMMON_UNIT_STAT_PROFILES, RUN_BOOST, BASE_STATS_BY_PROFILE;
   var init_unit_stats = __esm({
     "src/unit-stats.js"() {
       init_unit_grades();
@@ -952,17 +971,9 @@
           })
         )
       );
-      BASE_STATS_BY_PROFILE = new Map(
-        [COMMON_UNIT_STAT_DEFAULTS, ...COMMON_UNIT_STAT_PROFILES].map((profile) => [
-          profile,
-          Array.from(
-            {
-              length: MAX_UNIT_TIER
-            },
-            (_, index) => createBaseStats(index + 1, profile)
-          )
-        ])
-      );
+      RUN_BOOST = { attack: 1, hp: 1 };
+      BASE_STATS_BY_PROFILE = /* @__PURE__ */ new Map();
+      fillBaseStats();
     }
   });
 
@@ -3283,13 +3294,21 @@
   });
 
   // src/ability-state.js
-  function createAbilityProgressionState({ availablePoints = 0 } = {}) {
-    if (!isNonNegativeInteger(availablePoints)) {
-      throw new TypeError("availablePoints must be a non-negative integer");
+  function masteryXpForNextLevel(level) {
+    if (!Number.isSafeInteger(level) || level < 1) {
+      throw new RangeError("mastery level must be a positive integer");
     }
+    return MASTERY_FIRST_LEVEL_XP * MASTERY_LEVEL_XP_MULTIPLIER ** (level - 1);
+  }
+  function investedPointsOf(investment) {
+    return investment.powerLevel + Object.values(investment.branchLevels || {}).reduce((total, level) => total + level, 0);
+  }
+  function masteryPointsLeft(investment) {
+    return investment.masteryLevel - 1 - investedPointsOf(investment);
+  }
+  function createAbilityProgressionState() {
     return {
       schemaVersion: ABILITY_TREE_SCHEMA_VERSION,
-      availablePoints,
       abilities: Object.fromEntries(
         SPECIES_ABILITY_DEFINITIONS.map((definition) => [
           definition.id,
@@ -3299,7 +3318,9 @@
               branchLevels: Object.fromEntries(
                 Object.keys(definition.branches).map((branchId) => [branchId, 0])
               )
-            } : {}
+            } : {},
+            masteryLevel: 1,
+            masteryXp: 0
           }
         ])
       )
@@ -3309,7 +3330,7 @@
     if (!state || typeof state !== "object" || state.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION) {
       return false;
     }
-    if (!isNonNegativeInteger(state.availablePoints) || !state.abilities || typeof state.abilities !== "object") {
+    if (!state.abilities || typeof state.abilities !== "object") {
       return false;
     }
     if (Object.keys(state.abilities).length !== SPECIES_ABILITY_DEFINITIONS.length) {
@@ -3323,6 +3344,9 @@
       if (INVESTMENT.powerLevel > DEFINITION13.powerValues.length - 1) {
         return false;
       }
+      if (!Number.isSafeInteger(INVESTMENT.masteryLevel) || INVESTMENT.masteryLevel < 1 || !Number.isFinite(INVESTMENT.masteryXp) || INVESTMENT.masteryXp < 0 || INVESTMENT.masteryXp >= masteryXpForNextLevel(INVESTMENT.masteryLevel)) {
+        return false;
+      }
       const BRANCHES = DEFINITION13.branches || {}, BRANCH_LEVELS = INVESTMENT.branchLevels || {};
       if (Object.keys(BRANCHES).length === 0 && Object.hasOwn(INVESTMENT, "branchLevels") || Object.hasOwn(INVESTMENT, "branchLevels") && (Object.keys(BRANCH_LEVELS).length !== Object.keys(BRANCHES).length || Object.keys(BRANCH_LEVELS).some((branchId) => !Object.hasOwn(BRANCHES, branchId)))) {
         return false;
@@ -3334,6 +3358,9 @@
         }
       }
     }
+    if (SPECIES_ABILITY_DEFINITIONS.some((definition) => masteryPointsLeft(state.abilities[definition.id]) < 0)) {
+      return false;
+    }
     return Object.keys(state.abilities).every(
       (abilityId) => SPECIES_ABILITY_DEFINITIONS.some((definition) => definition.id === abilityId)
     );
@@ -3341,11 +3368,13 @@
   function isNonNegativeInteger(value) {
     return Number.isSafeInteger(value) && value >= 0;
   }
-  var ABILITY_TREE_SCHEMA_VERSION;
+  var ABILITY_TREE_SCHEMA_VERSION, MASTERY_FIRST_LEVEL_XP, MASTERY_LEVEL_XP_MULTIPLIER;
   var init_ability_state = __esm({
     "src/ability-state.js"() {
       init_ability_definitions();
-      ABILITY_TREE_SCHEMA_VERSION = 2;
+      ABILITY_TREE_SCHEMA_VERSION = 3;
+      MASTERY_FIRST_LEVEL_XP = 100;
+      MASTERY_LEVEL_XP_MULTIPLIER = 1.2;
     }
   });
 
@@ -3353,76 +3382,54 @@
   function createPlayerProgressionState() {
     return {
       ...createAbilityProgressionState(),
-      level: 1,
-      experience: 0,
       towerBest: 0,
       processedBossKillReceipts: []
     };
   }
-  function awardBossKillXp(state, receiptKey, xpAmount = BOSS_KILL_XP) {
+  function awardMasteryXp(state, receiptKey, species, xpAmount = BOSS_KILL_XP) {
+    const REJECT = (reason) => ({
+      state,
+      awarded: false,
+      reason,
+      xpAwarded: 0,
+      levelsGained: 0,
+      pointsAwarded: 0
+    });
     if (!isValidPlayerProgressionState(state)) {
-      return {
-        state,
-        awarded: false,
-        reason: "invalid-state",
-        xpAwarded: 0,
-        levelsGained: 0,
-        pointsAwarded: 0
-      };
+      return REJECT("invalid-state");
     }
     if (typeof receiptKey !== "string" || receiptKey.trim().length === 0) {
-      return {
-        state,
-        awarded: false,
-        reason: "invalid-receipt",
-        xpAwarded: 0,
-        levelsGained: 0,
-        pointsAwarded: 0
-      };
+      return REJECT("invalid-receipt");
     }
     if (!Number.isFinite(xpAmount) || xpAmount < 0 || xpAmount >= 1e13) {
-      return {
-        state,
-        awarded: false,
-        reason: "invalid-xp",
-        xpAwarded: 0,
-        levelsGained: 0,
-        pointsAwarded: 0
-      };
+      return REJECT("invalid-xp");
+    }
+    const DEFINITION13 = SPECIES_ABILITY_DEFINITIONS.find((definition) => definition.species === species);
+    if (!DEFINITION13) {
+      return REJECT("unknown-species");
     }
     if (state.processedBossKillReceipts.includes(receiptKey)) {
-      return {
-        state,
-        awarded: false,
-        reason: "duplicate-receipt",
-        xpAwarded: 0,
-        levelsGained: 0,
-        pointsAwarded: 0
-      };
+      return REJECT("duplicate-receipt");
     }
-    let level = state.level;
-    let experience = state.experience + xpAmount;
+    const MASTERY = state.abilities[DEFINITION13.id];
+    let level = MASTERY.masteryLevel;
+    let experience = MASTERY.masteryXp + xpAmount;
     let levelsGained = 0;
-    while (experience >= experienceForNextLevel(level)) {
-      experience -= experienceForNextLevel(level);
+    while (experience >= masteryXpForNextLevel(level)) {
+      experience -= masteryXpForNextLevel(level);
       level += 1;
       levelsGained += 1;
     }
-    const POINTS_AWARDED = levelsGained * SHARED_POINTS_PER_LEVEL;
     const NEXT_STATE = {
       ...state,
-      level,
-      experience,
-      availablePoints: state.availablePoints + POINTS_AWARDED,
       abilities: Object.fromEntries(
         Object.entries(state.abilities).map(([id, value]) => [
           id,
-          {
-            ...value
-          }
+          id === DEFINITION13.id ? { ...value, masteryLevel: level, masteryXp: experience } : { ...value }
         ])
       ),
-      processedBossKillReceipts: [...state.processedBossKillReceipts, receiptKey]
+      // Only a retry of a recent kill needs the duplicate guard, so the list stays short.
+      processedBossKillReceipts: [...state.processedBossKillReceipts, receiptKey].slice(-RECEIPT_MEMORY)
     };
     return {
       state: NEXT_STATE,
@@ -3430,14 +3437,8 @@
       reason: null,
       xpAwarded: xpAmount,
       levelsGained,
-      pointsAwarded: POINTS_AWARDED
+      pointsAwarded: levelsGained
     };
-  }
-  function experienceForNextLevel(level) {
-    if (!Number.isSafeInteger(level) || level < 1) {
-      throw new RangeError("level must be a positive integer");
-    }
-    return FIRST_LEVEL_XP * LEVEL_XP_MULTIPLIER ** (level - 1);
   }
   function formatXpForDisplay(experience) {
     const VALUE = Number.isFinite(experience) ? Math.max(0, experience) : 0;
@@ -3446,25 +3447,16 @@
     }).format(VALUE);
   }
   function isValidPlayerProgressionState(state) {
-    if (!isValidAbilityProgressionState(state) || !Number.isSafeInteger(state.level) || state.level < 1 || !Number.isSafeInteger(state.towerBest) || state.towerBest < 0 || state.towerBest > FARM_BOSS_EVENT_MAX_STAGE || !Number.isFinite(state.experience) || state.experience < 0 || state.experience >= experienceForNextLevel(state.level) || !Array.isArray(state.processedBossKillReceipts) || !state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) || new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length) {
-      return false;
-    }
-    const INVESTED_POINTS = Object.entries(state.abilities).reduce(
-      (total, [, investment]) => total + investment.powerLevel + Object.values(investment.branchLevels || {}).reduce((branchTotal, level) => branchTotal + level, 0),
-      0
-    );
-    return INVESTED_POINTS + state.availablePoints === state.level - 1;
+    return isValidAbilityProgressionState(state) && Number.isSafeInteger(state.towerBest) && state.towerBest >= 0 && state.towerBest <= FARM_BOSS_EVENT_MAX_STAGE && Array.isArray(state.processedBossKillReceipts) && state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) && new Set(state.processedBossKillReceipts).size === state.processedBossKillReceipts.length;
   }
-  var PLAYER_PROGRESS_BASE_XP, BOSS_KILL_XP, FIRST_LEVEL_XP, LEVEL_XP_MULTIPLIER, SHARED_POINTS_PER_LEVEL, FARM_BOSS_EVENT_MAX_STAGE;
+  var BOSS_KILL_XP, FARM_BOSS_EVENT_MAX_STAGE, RECEIPT_MEMORY;
   var init_player_progression = __esm({
     "src/player-progression.js"() {
       init_ability_state();
-      PLAYER_PROGRESS_BASE_XP = 100;
+      init_ability_definitions();
       BOSS_KILL_XP = 20;
-      FIRST_LEVEL_XP = PLAYER_PROGRESS_BASE_XP;
-      LEVEL_XP_MULTIPLIER = 1.2;
-      SHARED_POINTS_PER_LEVEL = 1;
       FARM_BOSS_EVENT_MAX_STAGE = 61;
+      RECEIPT_MEMORY = 500;
     }
   });
 
@@ -3511,6 +3503,10 @@
         ])
       )
     };
+  }
+  function getAbilityPointsLeft(state, abilityId) {
+    const INVESTMENT = abilityStateFor(state, abilityId);
+    return INVESTMENT ? masteryPointsLeft(INVESTMENT) : 0;
   }
   function getInvestedPointCount(state) {
     return getInvestedAbilityPointCount(state);
@@ -3579,7 +3575,7 @@
         reason: "max-level"
       };
     }
-    if (state.availablePoints < SHARED_ABILITY_POINT_COST) {
+    if (masteryPointsLeft(INVESTMENT) < ABILITY_POINT_COST) {
       return {
         allowed: false,
         reason: "insufficient-points"
@@ -3601,7 +3597,6 @@
     }
     const NODE = parseNodeId(nodeId);
     const NEXT = cloneState(state);
-    NEXT.availablePoints -= SHARED_ABILITY_POINT_COST;
     if (NODE.kind === "power") {
       NEXT.abilities[abilityId].powerLevel = NODE.level;
     } else {
@@ -3668,13 +3663,10 @@
       return { ok: false, reason: CHECK.reason, refunded: CHECK.refunded, state };
     }
     const NEXT = cloneState(state), TYPE = NORMALIZED_SCOPE.type;
-    NEXT.availablePoints += CHECK.refunded;
     if (TYPE === "all" || TYPE === "abilities") {
       for (const DEFINITION13 of SPECIES_ABILITY_DEFINITIONS) {
         if (TYPE === "all" || NORMALIZED_SCOPE.speciesId === void 0 || DEFINITION13.species === NORMALIZED_SCOPE.speciesId) {
-          NEXT.abilities[DEFINITION13.id] = {
-            ...emptyAbilityInvestment(DEFINITION13)
-          };
+          NEXT.abilities[DEFINITION13.id] = emptyAbilityInvestment(DEFINITION13, NEXT.abilities[DEFINITION13.id]);
         }
       }
     }
@@ -3769,8 +3761,10 @@
       )
     };
   }
-  function emptyAbilityInvestment(definition) {
+  function emptyAbilityInvestment(definition, previous) {
     return {
+      masteryLevel: previous.masteryLevel,
+      masteryXp: previous.masteryXp,
       powerLevel: 0,
       ...definition.branches ? {
         branchLevels: Object.fromEntries(Object.keys(definition.branches).map((branchId) => [branchId, 0]))
@@ -3783,13 +3777,13 @@
     }
     return null;
   }
-  var SHARED_ABILITY_POINT_COST, DEFINITION_BY_ID;
+  var ABILITY_POINT_COST, DEFINITION_BY_ID;
   var init_ability_progression = __esm({
     "src/ability-progression.js"() {
       init_ability_definitions();
       init_ability_state();
       init_player_progression();
-      SHARED_ABILITY_POINT_COST = 1;
+      ABILITY_POINT_COST = 1;
       DEFINITION_BY_ID = new Map(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, definition]));
     }
   });
@@ -5399,6 +5393,7 @@
       BOSS_PATTERN_CONFIG = Object.freeze({
         "attack.sweep-360": Object.freeze({
           kind: "sweep-360",
+          maxTargets: 5,
           unlockHp: 0.4,
           windup: 1.05,
           active: 1.05,
@@ -5413,6 +5408,7 @@
         }),
         "attack.front-slam": Object.freeze({
           kind: "front-slam",
+          maxTargets: 3,
           unlockHp: 1,
           windup: 0.75,
           active: 0,
@@ -5427,6 +5423,7 @@
         }),
         "attack.charge": Object.freeze({
           kind: "charge",
+          maxTargets: 3,
           unlockHp: 1,
           windup: 0.5,
           active: 6.6 / 5.3,
@@ -5441,6 +5438,7 @@
         }),
         "attack.leap-slam": Object.freeze({
           kind: "leap-slam",
+          maxTargets: 4,
           unlockHp: 0.6,
           windup: 0.5,
           active: 1.013,
@@ -5455,6 +5453,7 @@
         }),
         "attack.fan-sweep": Object.freeze({
           kind: "fan-sweep",
+          maxTargets: 4,
           unlockHp: 0.75,
           windup: 1,
           active: 0.8,
@@ -6212,11 +6211,16 @@
     if (!Number.isFinite(acquisitionMultiplier) || acquisitionMultiplier < 0 || acquisitionMultiplier > 2) {
       throw new RangeError("Boss acquisition multiplier must be in [0, 2]");
     }
-    if (farmEvent) {
-      return BOSS_REWARD_SETTINGS.acquisitionChance * BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier;
-    }
     const BASE = firstClear ? BOSS_REWARD_SETTINGS.firstClearAcquisitionChance : BOSS_REWARD_SETTINGS.acquisitionChance;
+    if (farmEvent) {
+      return Math.min(1, BASE * BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier);
+    }
     return Math.min(1, BASE * acquisitionMultiplier);
+  }
+  function bossSpeciesOwned(world, species) {
+    return (world.unitCollection?.items ?? world.units).some(
+      (unit) => unit.species === species && !unit.isBattleOnlySummon
+    ) || (world.bossRewardInventory || []).some((entry) => entry.species === species && entry.count > 0);
   }
   function ensureWorldRewardState(world) {
     world.bossRewardReceipts ||= [];
@@ -6267,7 +6271,9 @@
       if (capacity <= 0) {
         break;
       }
-      const COUNT = Math.min(capacity, GROUP.count), NEW_SPECIES = !world.units.some((unit) => unit.species === GROUP.species && !unit.isBattleOnlySummon);
+      const COUNT = Math.min(capacity, GROUP.count), NEW_SPECIES = !(world.unitCollection?.items ?? world.units).some(
+        (unit) => unit.species === GROUP.species && !unit.isBattleOnlySummon
+      );
       let placed = 0;
       while (placed < COUNT) {
         const INDEX = world.units.length, ANGLE = INDEX * 2.399963229728653 + (world.seed >>> 0) % 6283 / 1e3, RADIUS = Math.sqrt(INDEX + 0.5) * 0.35, UNIT3 = world.spawn(GROUP.species, GROUP.tier, Math.cos(ANGLE) * RADIUS, Math.sin(ANGLE) * RADIUS);
@@ -6321,7 +6327,7 @@
     if (ENCOUNTER_ID <= (world.bossRewardWatermarks[SOURCE] || 0)) {
       throw new RangeError("A settled or stale boss encounter cannot be rolled again");
     }
-    const TOTAL = options.rollBudget ?? options.rollCount ?? 1;
+    const FIRST_CLEAR = options.firstClear === true, TOTAL = FIRST_CLEAR ? 1 : options.rollBudget ?? options.rollCount ?? 1;
     if (!Number.isSafeInteger(TOTAL) || TOTAL < 1 || TOTAL > BOSS_REWARD_SETTINGS.maxRollCount) {
       throw new RangeError("Boss reward quantity is outside the safe integer range");
     }
@@ -6329,7 +6335,7 @@
     if (!Number.isSafeInteger(SPECIES) || SPECIES < 0 || SPECIES >= BOSS_REWARD_SETTINGS.speciesWeights.length) {
       throw new RangeError("Boss reward species is invalid");
     }
-    const FIRST_CLEAR = false, STREAM_KIND = streamFor(SOURCE), STREAM = world.bossRewardStreams[STREAM_KIND], CHANCE = bossAcquisitionChance({
+    const STREAM_KIND = streamFor(SOURCE, FIRST_CLEAR), STREAM = world.bossRewardStreams[STREAM_KIND], CHANCE = bossAcquisitionChance({
       farmEvent: SOURCE === "farm",
       firstClear: FIRST_CLEAR,
       acquisitionMultiplier: options.acquisitionMultiplier ?? 1
@@ -6544,7 +6550,12 @@
         pointsAwarded: RECEIPT.pointsAwarded ?? 0
       };
     }
-    const RESULT = awardBossKillXp(WALLET, RECEIPT_KEY, options.xpAmount === void 0 ? void 0 : options.xpAmount);
+    const RESULT = awardMasteryXp(
+      WALLET,
+      RECEIPT_KEY,
+      RECEIPT.species,
+      options.xpAmount === void 0 ? void 0 : options.xpAmount
+    );
     if (RESULT.awarded) {
       PROGRESSION_OWNER.playerProgression = RESULT.state;
     }
@@ -6584,12 +6595,12 @@
       STREAM_SOURCE = Object.freeze({ farm: "event" });
       BOSS_REWARD_SETTINGS = Object.freeze({
         acquisitionChance: 0.05,
-        firstClearAcquisitionChance: 0.15,
+        firstClearAcquisitionChance: 1,
         farmEventAcquisitionMultiplier: 2,
         stageHpBase: 200,
-        stageHpMultiplier: 1.5,
+        stageHpMultiplier: 1.2,
         stageAttackBase: 4,
-        stageAttackMultiplier: 1.2,
+        stageAttackMultiplier: 1.1,
         stageXpBase: 20,
         stageXpMultiplier: 1.5,
         stageRollMultiplier: 1.5,
@@ -7334,6 +7345,9 @@
             topFloor: 61,
             relicSlots: 3,
             relicMaxLevel: 5,
+            // A strengthening door gives one run-long multiplier to every unit. It grows with the same steps as the boss
+            // (hp 1.2, attack 1.1); attackShare is how often the offer is the attack card.
+            boost: Object.freeze({ attack: 1.1, hp: 1.2, attackShare: 0.5 }),
             // The troops walk to the tower door at the back of the farm and go in; the door is where the fence opens.
             marchSeconds: 4.5,
             marchSpeed: 7,
@@ -8316,6 +8330,8 @@
             doors: [],
             offer: "",
             relics: /* @__PURE__ */ new Map(),
+            boost: { attack: 1, hp: 1 },
+            boostOffer: "attack",
             sleepUntil: /* @__PURE__ */ new Map(),
             record: false
           };
@@ -9084,6 +9100,8 @@
             doors: [],
             offer: "",
             relics: /* @__PURE__ */ new Map(),
+            boost: { attack: 1, hp: 1 },
+            boostOffer: "attack",
             sleepUntil: SLEEP,
             record: false
           };
@@ -9149,10 +9167,12 @@
           if (OFFERS.length) {
             POOL.push("relic");
           }
+          POOL.push("boost");
           while (POOL.length > 2) {
             POOL.splice(Math.floor(this.random() * POOL.length), 1);
           }
           this.tower.offer = POOL.includes("relic") ? OFFERS[Math.floor(this.random() * OFFERS.length)] : "";
+          this.tower.boostOffer = this.random() < CONFIG.farm.tower.boost.attackShare ? "attack" : "hp";
           return POOL;
         }
         // Between floors everybody waits in the hand; the fallen start sleeping for tier (max 3) floors.
@@ -9206,7 +9226,31 @@
             this.markProgressChanged();
             return true;
           }
+          if (DOOR === "boost") {
+            const BOOST = CONFIG.farm.tower.boost;
+            T.boost[T.boostOffer] *= BOOST[T.boostOffer];
+            this._applyRunBoost();
+            T.kind = "boost";
+            T.doors = this._rollDoors();
+            this.combat("tower-boost", { floor: T.floor });
+            this.markProgressChanged();
+            return true;
+          }
           return this._beginFloor(DOOR);
+        }
+        _clearRunBoost() {
+          this.tower.boost = { attack: 1, hp: 1 };
+          this._applyRunBoost();
+        }
+        // The run's strengthening cards change every unit's stats; hit points never stay above the new top.
+        _applyRunBoost() {
+          const BOOST = this.tower.boost;
+          setRunStatBoost(BOOST.attack, BOOST.hp);
+          for (const UNIT_LOCAL of this.unitCollection.items) {
+            if (UNIT_LOCAL.hp > 0 && !UNIT_LOCAL.isFormationClone) {
+              UNIT_LOCAL.hp = Math.min(UNIT_LOCAL.hp, STATS(UNIT_LOCAL.tier, UNIT_LOCAL.species).maxHp);
+            }
+          }
         }
         // Stopping after a cleared floor keeps everything that was won.
         leaveTower() {
@@ -9217,6 +9261,7 @@
           return true;
         }
         _endTower() {
+          this._clearRunBoost();
           this.tower.active = false;
           this.tower.doors = [];
           this._benched.clear();
@@ -11252,6 +11297,7 @@
           this.cleanupBattleSummons();
           const CLIMBING = outcome === "victory" && this.tower.active && this.tower.floor < CONFIG.farm.tower.topFloor;
           if (!CLIMBING) {
+            this._clearRunBoost();
             this.tower.active = false;
             this.tower.doors = [];
             this._benched.clear();
@@ -11287,7 +11333,7 @@
             if (EVENT_STAGE > BEST) {
               this.playerProgression.towerBest = EVENT_STAGE;
             }
-            const SETTLEMENT = !this.tower.record ? null : settleBossKill(this, {
+            const FIRST_CLEAR = !bossSpeciesOwned(this, this.boss.species), SETTLEMENT = !this.tower.record && !FIRST_CLEAR ? null : settleBossKill(this, {
               encounterId: ENCOUNTER_ID,
               source: "farm",
               stage: EVENT_STAGE,
@@ -11295,17 +11341,28 @@
               tier: 1,
               x: this.boss.x,
               y: this.boss.y,
+              firstClear: FIRST_CLEAR,
               rollBudget: STAGE_STATS.rollBudget * KIND.reward,
               xpAmount: STAGE_STATS.xp * KIND.reward
             });
+            const MASTERY = SETTLEMENT ?? awardMasteryXp(
+              this.playerProgression,
+              `farm:${ENCOUNTER_ID}`,
+              this.boss.species,
+              STAGE_STATS.xp * KIND.reward
+            );
+            if (!SETTLEMENT && MASTERY.awarded) {
+              this.playerProgression = MASTERY.state;
+            }
+            this.combat("farm-boss-xp", {
+              encounterId: ENCOUNTER_ID,
+              species: this.boss.species,
+              xp: MASTERY.xpAwarded,
+              levelsGained: MASTERY.levelsGained,
+              pointsAwarded: MASTERY.pointsAwarded
+            });
             if (SETTLEMENT) {
               const REWARD2 = SETTLEMENT.receipt;
-              this.combat("farm-boss-xp", {
-                encounterId: ENCOUNTER_ID,
-                xp: SETTLEMENT.xpAwarded,
-                levelsGained: SETTLEMENT.levelsGained,
-                pointsAwarded: SETTLEMENT.pointsAwarded
-              });
               this.combat("farm-boss-reward", {
                 acquired: REWARD2.grantedCount > 0,
                 pending: REWARD2.status === "pending",
@@ -11578,7 +11635,7 @@
         }
         _hitBossPatternUnit(unit, patternId, point2, normal = null) {
           const B_LOCAL = this.boss, ACTION = B_LOCAL.patternRuntime.active, CONFIG_LOCAL = BOSS_PATTERN_CONFIG[patternId];
-          if (!ACTION || !CONFIG_LOCAL || !hasFaction(unit, FACTION_CONFIG.PLAYER) || !areOpposingFactions(B_LOCAL, unit) || unit.hp <= 0 || !unit.dropLanded || ACTION.hitIds.has(unit.id)) {
+          if (!ACTION || !CONFIG_LOCAL || !hasFaction(unit, FACTION_CONFIG.PLAYER) || !areOpposingFactions(B_LOCAL, unit) || unit.hp <= 0 || !unit.dropLanded || ACTION.hitIds.has(unit.id) || ACTION.hitIds.size >= CONFIG_LOCAL.maxTargets) {
             return false;
           }
           if (CONFIG_LOCAL.groundOnly && unit.z > 0.1) {
@@ -11623,17 +11680,25 @@
           });
           return true;
         }
+        _nearestBossFirst(candidates) {
+          const B_LOCAL = this.boss;
+          return candidates.sort(
+            (a, b) => Math.hypot(a.x - B_LOCAL.x, a.y - B_LOCAL.y) - Math.hypot(b.x - B_LOCAL.x, b.y - B_LOCAL.y)
+          );
+        }
         resolveBossSector(action, patternId, range, sector) {
           const B_LOCAL = this.boss, AIM = action.aim, HALF = sector / 2;
           let hits = 0;
           const EXTENT = range + CONFIG.unit.maxRadius;
-          for (const UNIT_LOCAL of this._collectBossTargets(
-            B_LOCAL.x - EXTENT,
-            B_LOCAL.y - EXTENT,
-            B_LOCAL.x + EXTENT,
-            B_LOCAL.y + EXTENT,
-            this._bossHitCandidates,
-            true
+          for (const UNIT_LOCAL of this._nearestBossFirst(
+            this._collectBossTargets(
+              B_LOCAL.x - EXTENT,
+              B_LOCAL.y - EXTENT,
+              B_LOCAL.x + EXTENT,
+              B_LOCAL.y + EXTENT,
+              this._bossHitCandidates,
+              true
+            )
           )) {
             if (action.hitIds.has(UNIT_LOCAL.id) || UNIT_LOCAL.z > 0.1) {
               continue;
@@ -11669,13 +11734,15 @@
           const B_LOCAL = this.boss;
           let hits = 0;
           const EXTENT = range + CONFIG.unit.maxRadius;
-          for (const UNIT_LOCAL of this._collectBossTargets(
-            B_LOCAL.x - EXTENT,
-            B_LOCAL.y - EXTENT,
-            B_LOCAL.x + EXTENT,
-            B_LOCAL.y + EXTENT,
-            this._bossHitCandidates,
-            true
+          for (const UNIT_LOCAL of this._nearestBossFirst(
+            this._collectBossTargets(
+              B_LOCAL.x - EXTENT,
+              B_LOCAL.y - EXTENT,
+              B_LOCAL.x + EXTENT,
+              B_LOCAL.y + EXTENT,
+              this._bossHitCandidates,
+              true
+            )
           )) {
             if (action.hitIds.has(UNIT_LOCAL.id)) {
               continue;
@@ -12017,10 +12084,7 @@
   function copyPlayer(player) {
     return {
       schemaVersion: player.schemaVersion,
-      level: player.level,
-      experience: player.experience,
       towerBest: player.towerBest,
-      availablePoints: player.availablePoints,
       abilities: Object.fromEntries(
         Object.entries(player.abilities).map(([id, build]) => [
           id,
@@ -12145,13 +12209,13 @@
     keys(PLAYER.abilities, Object.keys(DEFAULTS.abilities));
     for (const [ABILITY_ID8, BUILD] of Object.entries(PLAYER.abilities)) {
       const BRANCH_KEYS = Object.keys(DEFAULTS.abilities[ABILITY_ID8].branchLevels || {});
-      keys(BUILD, ["powerLevel"], BRANCH_KEYS.length ? ["branchLevels"] : []);
+      keys(BUILD, ["powerLevel", "masteryLevel", "masteryXp"], BRANCH_KEYS.length ? ["branchLevels"] : []);
       if (Object.hasOwn(BUILD, "branchLevels")) {
         keys(BUILD.branchLevels, BRANCH_KEYS);
       }
     }
     ASSERT(
-      isValidPlayerProgressionState(PLAYER) && INTEGER(PLAYER.level, 1) && NUMBER3(PLAYER.experience) && Array.isArray(PLAYER.processedBossKillReceipts) && PLAYER.processedBossKillReceipts.length <= 1e5 && PLAYER.processedBossKillReceipts.every(STRING)
+      isValidPlayerProgressionState(PLAYER) && Array.isArray(PLAYER.processedBossKillReceipts) && PLAYER.processedBossKillReceipts.length <= 1e5 && PLAYER.processedBossKillReceipts.every(STRING)
     );
     ASSERT(Array.isArray(data.roster));
     const COHORTS = /* @__PURE__ */ new Set(), RESIDENT_IDS = /* @__PURE__ */ new Set();
@@ -12252,7 +12316,7 @@
       const BASE_KEYS = ["encounterId", "source", "receiptKey", "species", "tier", "chance", "firstClear"];
       keys(REWARD2, BASE_KEYS, [...REWARD_EXTRAS, "rolls"]);
       ASSERT(
-        REWARD2.source === "farm" && INTEGER(REWARD2.encounterId, 1, BOSS2.settledThrough[REWARD2.source]) && STRING(REWARD2.receiptKey) && !RECEIPTS.has(REWARD2.receiptKey) && INTEGER(REWARD2.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER(REWARD2.tier, 1, CONFIG.unit.maxTier) && NUMBER3(REWARD2.chance, 0, 1) && typeof REWARD2.firstClear === "boolean" && !REWARD2.firstClear
+        REWARD2.source === "farm" && INTEGER(REWARD2.encounterId, 1, BOSS2.settledThrough[REWARD2.source]) && STRING(REWARD2.receiptKey) && !RECEIPTS.has(REWARD2.receiptKey) && INTEGER(REWARD2.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER(REWARD2.tier, 1, CONFIG.unit.maxTier) && NUMBER3(REWARD2.chance, 0, 1) && typeof REWARD2.firstClear === "boolean"
       );
       RECEIPTS.add(REWARD2.receiptKey);
       const ENCOUNTER = `${REWARD2.source}:${REWARD2.encounterId}`;
@@ -12447,7 +12511,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.29.10";
+      PRODUCT_VERSION = "0.30.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -16312,6 +16376,7 @@
         }
       }
       this.drawDanger(sim2);
+      feel?.drawGround(this, this.displayTimeMs);
       const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2);
       if (BOSS_VISIBLE) {
         this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, "#38472c33");
@@ -17477,11 +17542,8 @@
     },
     formationRuntime: createFormationRuntime(),
     playerProgression: {
-      schemaVersion: 2,
-      availablePoints: 0,
+      schemaVersion: 3,
       abilities: ABILITY_INVESTMENTS(),
-      level: 1,
-      experience: 0,
       towerBest: 0,
       processedBossKillReceipts: []
     },
@@ -17912,7 +17974,7 @@
     const REWARD_IDS = /* @__PURE__ */ new Set(), QUEUED_BY_GROUP = /* @__PURE__ */ new Map();
     for (const REWARD2 of raw.bossRewardReceipts) {
       ASSERT2(
-        REWARD2 && INTEGER2(REWARD2.encounterId, 1, 1e12) && REWARD2.source === "farm" && REWARD2.encounterId <= raw.bossRewardWatermarks[REWARD2.source] && INTEGER2(REWARD2.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER2(REWARD2.tier, 1, CONFIG.unit.maxTier) && Number.isFinite(REWARD2.x) && Number.isFinite(REWARD2.y) && Number.isFinite(REWARD2.chance) && REWARD2.chance >= 0 && REWARD2.chance <= 1 && typeof REWARD2.firstClear === "boolean" && !REWARD2.firstClear
+        REWARD2 && INTEGER2(REWARD2.encounterId, 1, 1e12) && REWARD2.source === "farm" && REWARD2.encounterId <= raw.bossRewardWatermarks[REWARD2.source] && INTEGER2(REWARD2.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER2(REWARD2.tier, 1, CONFIG.unit.maxTier) && Number.isFinite(REWARD2.x) && Number.isFinite(REWARD2.y) && Number.isFinite(REWARD2.chance) && REWARD2.chance >= 0 && REWARD2.chance <= 1 && typeof REWARD2.firstClear === "boolean"
       );
       const KEY2 = REWARD2.receiptKey || REWARD2.source + ":" + REWARD2.encounterId;
       ASSERT2(!REWARD_IDS.has(KEY2));
@@ -18396,13 +18458,25 @@
     e.heard = false;
   }
   var BurstPresentation = class {
+    // The ring lies on the floor, so it is drawn under every actor; on top of a tall body it read as a stray circle.
+    drawGround(renderer, event, progress) {
+      const T = Math.min(1, progress / this.durationFraction), ALPHA = 1 - T;
+      if (ALPHA > 0) {
+        renderer.ring(
+          event.x,
+          event.y,
+          0.15 + T * this.size(event),
+          `rgba(${this.color},${ALPHA * 0.8})`,
+          this.ringWidth
+        );
+      }
+    }
     draw(renderer, event, progress) {
       const T = Math.min(1, progress / this.durationFraction), ALPHA = 1 - T;
       if (ALPHA <= 0) {
         return;
       }
       const SIZE = this.size(event), COLOR = this.color;
-      renderer.ring(event.x, event.y, 0.15 + T * SIZE, `rgba(${COLOR},${ALPHA * 0.8})`, this.ringWidth);
       const CENTER = renderer.project(event.x, event.y, event.z || 0.1), N = this.particleCount;
       for (let i = 0; i < N; i++) {
         const ANGLE = i * Math.PI * 2 / N + event.sequence % 11 * 0.19, DISTANCE = (0.12 + T * SIZE) * this.distanceMultiplier, POINT2 = renderer.project(
@@ -18648,6 +18722,14 @@
     sound(event) {
       COMBAT_EFFECT_PRESENTATIONS.get(event.kind)?.sound?.(this.audio, event);
     }
+    drawGround(r, displayTimeMs) {
+      for (const E of this.effects) {
+        const AGE = displayTimeMs - E.at;
+        if (AGE >= 0 && AGE <= 430) {
+          COMBAT_EFFECT_PRESENTATIONS.get(E.kind)?.drawGround?.(r, E, AGE / 430);
+        }
+      }
+    }
     draw(r, displayTimeMs) {
       for (const E of this.effects) {
         const AGE = displayTimeMs - E.at;
@@ -18682,7 +18764,7 @@
   var INVESTMENT_REASON_LABELS = /* @__PURE__ */ new Map([
     ["already-invested", "이미 투자한 노드예요."],
     ["prerequisite-required", "이전 단계에 먼저 투자해야 해요."],
-    ["insufficient-points", "공용 포인트가 필요해요."],
+    ["insufficient-points", "이 종의 숙련 포인트가 필요해요. 이 종 보스를 잡으면 쌓여요."],
     ["combat-lock", "전투 중에는 투자할 수 없어요."],
     ["farm-only", "농장에서만 투자할 수 있어요."],
     ["max-level", "최대 강화 단계예요."],
@@ -18717,11 +18799,14 @@
     );
     const VISIBLE_DEFINITIONS = Number.isInteger(selectedSpecies) ? SPECIES_ABILITY_DEFINITIONS.filter((definition) => definition.species === selectedSpecies) : SPECIES_ABILITY_DEFINITIONS;
     const CARDS = VISIBLE_DEFINITIONS.map((definition) => renderAbilityCard(state, definition, CONTEXT)).join("") || `<p class="ability-tree__note" role="status">이 병종은 기본 공격으로 전투에 참여해요. 전용 특수 능력 트리는 아직 추가되지 않았어요.</p>`;
-    const LEVEL_MARKUP = renderPlayerProgressMarkup(state), DEFAULTS_NOTE = "모든 일반 병종의 대표 능력은 Common(T1)부터 무료로 적용돼요. 공용 포인트로 능력 효과를 강화할 수 있어요.";
+    const FOCUS = Number.isInteger(selectedSpecies) ? SPECIES_ABILITY_DEFINITIONS.find((definition) => definition.species === selectedSpecies) : null, POINTS = FOCUS ? getAbilityPointsLeft(state, FOCUS.id) : SPECIES_ABILITY_DEFINITIONS.reduce(
+      (total, definition) => total + getAbilityPointsLeft(state, definition.id),
+      0
+    ), LEVEL_MARKUP = FOCUS ? renderMasteryMarkup(state.abilities[FOCUS.id], speciesById(FOCUS.species).name) : "", DEFAULTS_NOTE = "모든 일반 병종의 대표 능력은 Common(T1)부터 무료로 적용돼요. 이 종의 보스를 잡을수록 숙련이 올라 능력을 강화할 포인트가 생겨요.";
     return `<section class="ability-tree" aria-labelledby="ability-tree-title">
     <header class="ability-tree__header">
       <div><p class="ability-tree__eyebrow">농장 성장</p><h2 id="ability-tree-title">병종 특성</h2></div>
-      <p class="ability-tree__wallet" aria-live="polite"><strong>${state.availablePoints}</strong><span>공용 포인트</span></p>
+      <p class="ability-tree__wallet" aria-live="polite"><strong>${POINTS}</strong><span>숙련 포인트</span></p>
     </header>
     <p class="ability-tree__note">${DEFAULTS_NOTE}</p>
     ${LEVEL_MARKUP}
@@ -18733,18 +18818,11 @@
     <div class="ability-tree__cards">${CARDS}</div>
   </section>`;
   }
-  function renderPlayerProgressMarkup(state) {
-    if (!Number.isSafeInteger(state.level) || state.level < 1 || !Number.isFinite(state.experience) || state.experience < 0) {
-      return "";
-    }
-    const NEXT_LEVEL_XP = experienceForNextLevel(state.level);
-    if (!Number.isFinite(NEXT_LEVEL_XP) || state.experience >= NEXT_LEVEL_XP) {
-      return "";
-    }
-    const LABEL = `플레이어 레벨 ${state.level} 경험치`;
+  function renderMasteryMarkup(mastery, speciesName) {
+    const NEXT_LEVEL_XP = masteryXpForNextLevel(mastery.masteryLevel), LABEL = `${speciesName} 숙련 ${mastery.masteryLevel} 경험치`;
     return `<div class="ability-tree__progress" aria-live="polite">
-    <div><strong>플레이어 Lv. ${state.level}</strong><span>${formatXpForDisplay(state.experience)} / ${formatXpForDisplay(NEXT_LEVEL_XP)} XP</span></div>
-    <progress max="${NEXT_LEVEL_XP}" value="${state.experience}" aria-label="${LABEL}"></progress>
+    <div><strong>${speciesName} 숙련 Lv. ${mastery.masteryLevel}</strong><span>${formatXpForDisplay(mastery.masteryXp)} / ${formatXpForDisplay(NEXT_LEVEL_XP)} XP</span></div>
+    <progress max="${NEXT_LEVEL_XP}" value="${mastery.masteryXp}" aria-label="${LABEL}"></progress>
   </div>`;
   }
   function renderAbilityCard(state, definition, context) {
@@ -18847,6 +18925,7 @@
 
   // src/farm-app.js
   init_ability_progression();
+  init_ability_catalog();
   init_boss_rewards();
   init_farm_work();
   init_species_catalog();
@@ -18942,7 +19021,7 @@
     DOLLAR2("bossRewardStage").textContent = receipt.stage ? `보스 격파 · ${receipt.stage}층` : "보스 격파";
     DOLLAR2("bossRewardRibbon").hidden = !FIRST_CLEAR;
     DOLLAR2("bossRewardTitle").textContent = receipt.status === "calculating" ? "보상 준비 중" : "승리 보상";
-    DOLLAR2("bossRewardSummary").textContent = receipt.status === "calculating" ? "상자 " + COUNT + "개의 보상을 준비하고 있어요." : HAS_PRESENTATION ? COUNT + "회 추첨 · 상자당 " + MIN + (MIN === MAX ? "" : "–" + MAX) + "마리 · " + (FIRST_CLEAR ? "첫 클리어 " : "재도전 ") + Math.round(NOMINAL_CHANCE * 100) + "% (편성 반영 " + Math.round(receipt.chance * 100) + "%)" : "이미 확정된 보상 합계";
+    DOLLAR2("bossRewardSummary").textContent = receipt.status === "calculating" ? "상자 " + COUNT + "개의 보상을 준비하고 있어요." : FIRST_CLEAR ? "처음 만난 종이에요 · 동료로 합류해요" : HAS_PRESENTATION ? COUNT + "회 추첨 · 상자당 " + MIN + (MIN === MAX ? "" : "–" + MAX) + "마리 · 재도전 " + Math.round(NOMINAL_CHANCE * 100) + "% (편성 반영 " + Math.round(receipt.chance * 100) + "%)" : "이미 확정된 보상 합계";
     DOLLAR2("bossRewardTotals").textContent = receipt.status === "calculating" ? "추첨 계산 " + PROCESSED + "/" + COUNT : "현재 합계 " + CUMULATIVE + "마리 · " + bossRewardSummary(receipt);
     DOLLAR2("bossRewardRevealCount").textContent = receipt.status === "calculating" ? "추첨 " + PROCESSED + "/" + COUNT : REVEALED + "/" + COUNT + " 상자 공개";
     const SCENE = DOLLAR2("bossRewardChestScene");
@@ -19788,7 +19867,12 @@
   function drawAbilityTree() {
     const W = personalGarden || active.world, IN_COMBAT = W.farmBossEvent?.phase !== "idle";
     const SELECTED_SPECIES = Number(DOLLAR2("abilityPanel").dataset.selectedSpecies || 0);
-    DOLLAR2("abilityPoints").textContent = String(W.playerProgression.availablePoints);
+    const MASTERY_DEFINITION = SPECIES_ABILITY_DEFINITIONS.find(
+      (definition) => definition.species === SELECTED_SPECIES
+    );
+    DOLLAR2("abilityPoints").textContent = String(
+      MASTERY_DEFINITION ? getAbilityPointsLeft(W.playerProgression, MASTERY_DEFINITION.id) : 0
+    );
     for (const BUTTON of DOLLAR2("abilitySpeciesTabs").querySelectorAll("[data-ability-species]")) {
       BUTTON.setAttribute("aria-pressed", String(Number(BUTTON.dataset.abilitySpecies) === SELECTED_SPECIES));
     }
@@ -20073,13 +20157,22 @@
     }
   };
   var CANVAS = DOLLAR2("world");
-  var FLOOR_KIND = { battle: "전투", elite: "정예", mid: "중간 보스", rest: "쉼터", relic: "유물" };
+  document.addEventListener("contextmenu", (event) => {
+    if (!event.target.closest?.("input, textarea")) {
+      event.preventDefault();
+    }
+  });
+  var FLOOR_KIND = { battle: "전투", elite: "정예", mid: "중간 보스", rest: "쉼터", relic: "유물", boost: "강화" };
   var DOOR_TEXT = {
     battle: "보스 한 마리",
     elite: "더 세지만 보상 ×2",
     mid: "피할 수 없어요 · 보상 ×3",
     rest: "잠든 병력을 모두 깨워요"
   };
+  function boostDoorCard(tower, index) {
+    const ATTACK2 = tower.boostOffer === "attack", VALUE = CONFIG.farm.tower.boost[tower.boostOffer];
+    return `<button type="button" class="door door--boost" data-door="${index}"><b>${ATTACK2 ? "⚔ 공격 강화" : "♥ 체력 강화"}</b><small>이번 도전 동안 모든 유닛 ${ATTACK2 ? "공격" : "체력"} ×${VALUE}</small></button>`;
+  }
   function relicDoorCard(tower, index) {
     const ID = tower.offer, DEFINITION13 = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === ID), LEVEL = tower.relics.get(ID) || 0, VALUE = Math.round(formationUpgradeValue(DEFINITION13, LEVEL + 1) * 10) / 10, GAIN = LEVEL ? `Lv.${LEVEL} → ${LEVEL + 1}` : "새 유물";
     return `<button type="button" class="door door--relic" data-door="${index}"><b>${RELIC_ICONS[ID]} ${DEFINITION13.name}</b><small>${GAIN} · ${DEFINITION13.description || ""}${LEVEL ? ` (→ ${VALUE}${DEFINITION13.upgradeUnit})` : ""}</small></button>`;
@@ -20103,7 +20196,7 @@
     if (CLIMBING) {
       syncText("floorNow", `${T.floor}층 · ${FLOOR_KIND[T.kind]}`);
     }
-    const NEXT_BANNER = !CLIMBING ? "" : (T.kind === "rest" || T.kind === "relic") && T.doors.length ? `r${T.floor}` : event?.phase === "dropping" ? `e${event.encounterId}` : "";
+    const NEXT_BANNER = !CLIMBING ? "" : (T.kind === "rest" || T.kind === "relic" || T.kind === "boost") && T.doors.length ? `r${T.floor}` : event?.phase === "dropping" ? `e${event.encounterId}` : "";
     if (NEXT_BANNER && NEXT_BANNER !== bannerKey) {
       DOLLAR2("floorBannerNum").textContent = `${T.floor}층`;
       DOLLAR2("floorBannerKind").textContent = FLOOR_KIND[T.kind];
@@ -20120,18 +20213,22 @@
     const DOORS = CLIMBING && event?.phase === "idle" && T.doors.length > 0;
     syncFlag("towerDoors", "hidden", !DOORS);
     if (DOORS) {
-      const KEY2 = `${T.doors.join()}|${T.floor}|${SLEEPERS}|${T.offer}|${T.relics.size}`;
+      const KEY2 = `${T.doors.join()}|${T.floor}|${SLEEPERS}|${T.offer}|${T.relics.size}|${T.boostOffer}|${T.boost.attack}|${T.boost.hp}`;
       if (KEY2 !== doorKey) {
         doorKey = KEY2;
         DOLLAR2("doorCards").innerHTML = T.doors.map(
-          (d, i) => d === "relic" ? relicDoorCard(T, i) : `<button type="button" class="door door--${d}" data-door="${i}"><b>${FLOOR_KIND[d]}</b><small>${DOOR_TEXT[d]}</small></button>`
+          (d, i) => d === "relic" ? relicDoorCard(T, i) : d === "boost" ? boostDoorCard(T, i) : `<button type="button" class="door door--${d}" data-door="${i}"><b>${FLOOR_KIND[d]}</b><small>${DOOR_TEXT[d]}</small></button>`
         ).join("");
       }
       syncText(
         "doorsTitle",
-        T.kind === "rest" ? `${T.floor}층 쉼터 · 잠든 병력이 모두 깼어요` : T.kind === "relic" ? `${T.floor}층 유물을 얻었어요` : `${T.floor}층 돌파!`
+        T.kind === "rest" ? `${T.floor}층 쉼터 · 잠든 병력이 모두 깼어요` : T.kind === "relic" ? `${T.floor}층 유물을 얻었어요` : T.kind === "boost" ? `${T.floor}층 강화를 받았어요` : `${T.floor}층 돌파!`
       );
-      syncText("doorsNote", `다음은 ${T.floor + 1}층 · 잠든 병력 ${SLEEPERS}마리`);
+      const BOOSTED = T.boost.attack > 1 || T.boost.hp > 1;
+      syncText(
+        "doorsNote",
+        `다음은 ${T.floor + 1}층 · 잠든 병력 ${SLEEPERS}마리${BOOSTED ? ` · 강화 공격 ×${T.boost.attack.toFixed(2)} 체력 ×${T.boost.hp.toFixed(2)}` : ""}`
+      );
     } else {
       doorKey = "";
     }
@@ -20539,10 +20636,10 @@
     );
     const BOSS2 = display.boss, FARM_REWARD = FARM_EVENT?.outcome === "victory" ? W.bossRewardReceipts.find(
       (reward) => reward.source === "farm" && reward.encounterId === FARM_EVENT.encounterId
-    ) : null, REWARD_NAME = speciesRewardName(BOSS2.species), ENCOUNTER_NAME = giantSpeciesName(BOSS2.species);
+    ) : null, REWARD_NAME = speciesRewardName(BOSS2.species), ENCOUNTER_NAME = giantSpeciesName(BOSS2.species), FIRST_MEETING = FARM_EVENT_ACTIVE && !bossSpeciesOwned(W, BOSS2.species) ? " · 첫 조우" : "";
     syncText(
       "bossName",
-      BOSS2.stage ? `${BOSS2.stage}층 · ${W.tower.kind === "battle" ? "" : FLOOR_KIND[W.tower.kind] + " "}${ENCOUNTER_NAME}` : ENCOUNTER_NAME
+      (BOSS2.stage ? `${BOSS2.stage}층 · ${W.tower.kind === "battle" ? "" : FLOOR_KIND[W.tower.kind] + " "}${ENCOUNTER_NAME}` : ENCOUNTER_NAME) + FIRST_MEETING
     );
     syncAttribute("bossHealth", "aria-label", `${ENCOUNTER_NAME} 체력`);
     syncText("bossHealthText", Math.ceil(BOSS2.hp) + "/" + BOSS2.maxHp);
@@ -20641,6 +20738,7 @@
   }
   DOLLAR2("productVersion").textContent = PRODUCT_VERSION;
   DOLLAR2("startVersion").textContent = PRODUCT_VERSION;
+  DOLLAR2("settingsVersion").textContent = `v${PRODUCT_VERSION}`;
   setHome(true, false);
   if (location.hash && location.hash !== "#/") {
     route();

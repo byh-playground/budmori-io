@@ -350,8 +350,7 @@ export function validateSnapshot(raw) {
                 Number.isFinite(REWARD.chance) &&
                 REWARD.chance >= 0 &&
                 REWARD.chance <= 1 &&
-                typeof REWARD.firstClear === 'boolean' &&
-                !REWARD.firstClear,
+                typeof REWARD.firstClear === 'boolean',
         );
         const KEY = REWARD.receiptKey || REWARD.source + ':' + REWARD.encounterId;
         ASSERT(!REWARD_IDS.has(KEY));
