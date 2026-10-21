@@ -12511,7 +12511,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.3";
+      PRODUCT_VERSION = "0.30.4";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -18984,58 +18984,12 @@
       }
     }),
     Object.freeze({
-      id: "boss",
-      title: "보스 도전",
-      rule: "탑 오르기를 누르면 보스가 떨어져요. 카드를 골라 땅을 눌러 병력을 한 마리씩 투입하면 자동으로 싸워요.",
-      seed: 4103,
-      rate: 1.5,
-      durationMs: 42e3,
-      setup(world) {
-        world.setWorkBasisPoints(0);
-        for (let index = 0; index < 4; index++) {
-          world.spawn(0, 5, -40 + index * 20, -30 + index * 15);
-        }
-      },
-      timeline: [
-        { atMs: 3e3, cmd: "tower-start", args: { floor: 1 } },
-        { atMs: 8600, cmd: "deploy", args: { species: 0, x: -120, y: 60 } },
-        { atMs: 9400, cmd: "deploy", args: { species: 0, x: -150, y: -10 } },
-        { atMs: 10200, cmd: "deploy", args: { species: 0, x: -110, y: -70 } },
-        { atMs: 11e3, cmd: "deploy", args: { species: 0, x: -170, y: 30 } },
-        { atMs: 12e3, cmd: "deploy", args: { species: 0, x: -90, y: 10 } },
-        { atMs: 12800, cmd: "deploy", args: { species: 0, x: -130, y: -40 } }
-      ],
-      step(world) {
-        const PHASE = world.farmBossEvent.phase;
-        if (PHASE === "marching") {
-          return "march";
-        }
-        if (PHASE === "dropping") {
-          return "drop";
-        }
-        if (PHASE === "idle") {
-          return world.tower.floor > 0 ? "win" : "start";
-        }
-        if (PHASE === "fighting") {
-          return world.fieldFighterCount > 0 ? "fight" : "drop";
-        }
-        return "win";
-      },
-      steps: {
-        start: "탑 오르기를 누르면 병력이 탑으로 향해요",
-        march: "병력이 탑으로 올라가요",
-        drop: "보스가 떨어져요. 병력을 한 마리씩 투입해요",
-        fight: "투입된 병력이 자동으로 싸워요",
-        win: "보스를 쓰러뜨렸어요"
-      }
-    }),
-    Object.freeze({
       id: "tower",
-      title: "탑과 성장",
-      rule: "보스를 이기면 문을 골라요. 전투·정예·쉼터·유물·강화 중 하나고, 이긴 보스 종의 숙련이 쌓여 능력 포인트가 돼요.",
+      title: "보스와 탑",
+      rule: "탑 오르기를 누르면 보스가 떨어져요. 병력을 한 마리씩 투입하면 자동으로 싸우고, 이기면 문을 골라요. 이긴 보스 종의 숙련이 쌓여 능력 포인트가 돼요.",
       seed: 4104,
       rate: 1.5,
-      durationMs: 3e4,
+      durationMs: 38e3,
       setup(world) {
         world.setWorkBasisPoints(0);
         for (let index = 0; index < 4; index++) {
@@ -19045,27 +18999,43 @@
       timeline: [
         { atMs: 1e3, cmd: "tower-start", args: { floor: 1 } },
         { atMs: 6200, cmd: "deploy", args: { species: 0, x: -120, y: 60 } },
-        { atMs: 6700, cmd: "deploy", args: { species: 0, x: -150, y: -10 } },
-        { atMs: 7e3, set: "bossHp", fraction: 0.02 },
-        { atMs: 24e3, cmd: "tower-door", args: { index: 1 } }
+        { atMs: 6900, cmd: "deploy", args: { species: 0, x: -150, y: -10 } },
+        { atMs: 7600, cmd: "deploy", args: { species: 0, x: -110, y: -70 } },
+        { atMs: 8300, cmd: "deploy", args: { species: 0, x: -170, y: 30 } },
+        { atMs: 11e3, set: "bossHp", fraction: 0.05 },
+        { atMs: 3e4, door: "boost" }
       ],
       step(world) {
-        if (world.tower.boost.hp > 1) {
+        if (world.tower.boost.hp > 1 || world.tower.boost.attack > 1) {
           return "boost";
         }
-        if (world.tower.floor === 0) {
-          return "start";
+        if (world.tower.floor > 1) {
+          return "next";
+        }
+        const PHASE = world.farmBossEvent.phase;
+        if (PHASE === "marching") {
+          return "march";
+        }
+        if (PHASE === "dropping") {
+          return "drop";
         }
         if (world.tower.doors?.length) {
           return "doors";
         }
-        return "fight";
+        if (PHASE === "fighting") {
+          return world.fieldFighterCount > 0 ? "fight" : "drop";
+        }
+        return PHASE === "idle" && world.tower.floor === 0 ? "start" : "win";
       },
       steps: {
-        start: "탑에 오르면 보스가 기다려요",
-        fight: "보스를 쓰러뜨려요",
+        start: "탑 오르기를 누르면 병력이 탑으로 향해요",
+        march: "병력이 탑으로 올라가요",
+        drop: "보스가 떨어져요. 병력을 한 마리씩 투입해요",
+        fight: "투입된 병력이 자동으로 싸워요",
+        win: "보스를 쓰러뜨렸어요",
         doors: "이겼어요. 다음 문을 골라요",
-        boost: "체력 강화를 골랐어요. 이번 도전 동안 모든 유닛이 튼튼해져요"
+        boost: "강화를 골랐어요. 이번 도전 동안 모든 유닛이 강해져요",
+        next: "고른 문의 다음 층으로 올라가요"
       }
     })
   ]);
@@ -19075,6 +19045,7 @@
 
   // src/help-panel.js
   var LOAD_TIMEOUT_MS = 15e3;
+  var MAX_HEIGHT_SHARE = 0.5;
   function readSnapshot(frame2) {
     try {
       return frame2.contentWindow?.__budmoriHelp?.snapshot() ?? null;
@@ -19105,6 +19076,16 @@
       }
       watch = requestAnimationFrame(observe);
     }
+    function fit() {
+      const PANEL = dollar("helpPanel"), WIDTH = window.innerWidth, HEIGHT = window.innerHeight, AVAILABLE_WIDTH = Math.max(120, PANEL.clientWidth - 2 * parseFloat(getComputedStyle(PANEL).paddingLeft)), SCALE = Math.min(1, AVAILABLE_WIDTH / WIDTH, HEIGHT * MAX_HEIGHT_SHARE / HEIGHT);
+      DEMO.style.width = `${Math.round(WIDTH * SCALE)}px`;
+      DEMO.style.height = `${Math.round(HEIGHT * SCALE)}px`;
+      if (frame2) {
+        frame2.style.width = `${WIDTH}px`;
+        frame2.style.height = `${HEIGHT}px`;
+        frame2.style.transform = `scale(${SCALE})`;
+      }
+    }
     function mount() {
       unmount();
       if (!visible) {
@@ -19119,6 +19100,7 @@
       frame2.tabIndex = -1;
       frame2.src = new URL(`?help=${SCENE.id}`, location.href).href;
       DEMO.replaceChildren(frame2);
+      fit();
       watch = requestAnimationFrame(observe);
     }
     function paintCard() {
@@ -19149,6 +19131,7 @@
     PREV.onclick = () => show(index - 1);
     NEXT.onclick = () => show(index + 1);
     REPLAY.onclick = () => show(index);
+    window.addEventListener("resize", () => visible && fit());
     paintCard();
     return {
       setVisible(value) {
@@ -21005,6 +20988,8 @@
     run(event) {
       if (event.cmd) {
         active.queue(event.cmd, event.args);
+      } else if (event.door) {
+        active.queue("tower-door", { index: Math.max(0, active.world.tower.doors.indexOf(event.door)) });
       } else if (event.set === "bossHp" && active.world.boss) {
         active.world.boss.hp = Math.max(1, Math.round(active.world.boss.maxHp * event.fraction));
       }

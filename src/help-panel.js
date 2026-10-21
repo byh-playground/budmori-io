@@ -3,6 +3,8 @@ import { HELP_SCENES } from './help-scenes.js';
 // The help tab: one card per scene. A card is the real game in a frame (?help=<card>), so it is mounted only
 // while the tab is visible and thrown away when it is not. The caption follows the frame's authoritative state.
 const LOAD_TIMEOUT_MS = 15000;
+// The card never takes more than this share of the window height, so the caption and buttons stay on screen.
+const MAX_HEIGHT_SHARE = 0.5;
 
 function readSnapshot(frame) {
     try {
@@ -46,6 +48,22 @@ export function createHelpPanel(dollar) {
         }
         watch = requestAnimationFrame(observe);
     }
+    // The frame is the real game at the real window size, scaled down to fit the card: every proportion
+    // (UI against the field, text against the boss) is what the player sees in play.
+    function fit() {
+        const PANEL = dollar('helpPanel'),
+            WIDTH = window.innerWidth,
+            HEIGHT = window.innerHeight,
+            AVAILABLE_WIDTH = Math.max(120, PANEL.clientWidth - 2 * parseFloat(getComputedStyle(PANEL).paddingLeft)),
+            SCALE = Math.min(1, AVAILABLE_WIDTH / WIDTH, (HEIGHT * MAX_HEIGHT_SHARE) / HEIGHT);
+        DEMO.style.width = `${Math.round(WIDTH * SCALE)}px`;
+        DEMO.style.height = `${Math.round(HEIGHT * SCALE)}px`;
+        if (frame) {
+            frame.style.width = `${WIDTH}px`;
+            frame.style.height = `${HEIGHT}px`;
+            frame.style.transform = `scale(${SCALE})`;
+        }
+    }
     function mount() {
         unmount();
         if (!visible) {
@@ -60,6 +78,7 @@ export function createHelpPanel(dollar) {
         frame.tabIndex = -1;
         frame.src = new URL(`?help=${SCENE.id}`, location.href).href;
         DEMO.replaceChildren(frame);
+        fit();
         watch = requestAnimationFrame(observe);
     }
     function paintCard() {
@@ -90,6 +109,7 @@ export function createHelpPanel(dollar) {
     PREV.onclick = () => show(index - 1);
     NEXT.onclick = () => show(index + 1);
     REPLAY.onclick = () => show(index);
+    window.addEventListener('resize', () => visible && fit());
     paintCard();
     return {
         setVisible(value) {

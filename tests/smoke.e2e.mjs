@@ -552,7 +552,7 @@ await check('help cards play the real game in an isolated frame and leave the sa
         const SNAP = document.querySelector('#helpDemo iframe').contentWindow.__budmoriHelp.snapshot();
         return { step: SNAP.step, dots: document.querySelectorAll('#helpDots button').length };
     });
-    expect(FRAME.step === 'done' && FRAME.dots === 4, `help card state ${JSON.stringify(FRAME)}`);
+    expect(FRAME.step === 'done' && FRAME.dots === 3, `help card state ${JSON.stringify(FRAME)}`);
     await PAGE.locator('#gameMenuClose').click();
     expect((await PAGE.locator('#helpDemo iframe').count()) === 0, 'the help frame stays mounted after the tab closes');
     const AFTER = await WORLD(() => JSON.stringify(Object.entries(localStorage).sort()));
