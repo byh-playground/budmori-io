@@ -22,8 +22,8 @@ function visualOffset(effect, index, salt) {
 
 export class StormCloudPresentation extends FormationPresentation {
     draw(renderer, effect) {
-        const BODY_RADIUS = Math.max(0.2, Math.min(2.4, (effect.bodyRadius || 0.3) * 0.55)),
-            BODY_SCALE = Math.min(3.5, Math.max(1, BODY_RADIUS / 0.3)),
+        const BODY_RADIUS = Math.max(0.2, (effect.bodyRadius || 0.3) * 0.55),
+            BODY_SCALE = Math.max(1, BODY_RADIUS / 0.3),
             CLOUD_SIZE = BODY_RADIUS * 2.6,
             ENTER = Math.min(1, effect.age / 0.5),
             EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5,

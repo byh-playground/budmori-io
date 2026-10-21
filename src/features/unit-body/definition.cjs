@@ -1,6 +1,6 @@
 'use strict';
 
-const { WORLD_HEIGHT_PROJECTION } = require('../../vector-sockets.cjs');
+const { WORLD_HEIGHT_PROJECTION, bossVectorScale: BOSS_VECTOR_SCALE } = require('../../vector-sockets.cjs');
 
 // Neutral, named torso contours measured in the original SVG canvas, including
 // their authored round stroke. Hats, leaves, weapons, limbs and grade outlines
@@ -248,9 +248,28 @@ function unitBodyHeight(unit) {
     const BODY = unitBodyDefinition(unit.species);
     return ((BODY.ground.y - BODY.bounds.top) * unitVectorScale(unit)) / WORLD_HEIGHT_PROJECTION;
 }
+// A boss is drawn from the same authored troop art as a unit, only larger, so its drawn body is measured the same way:
+// the torso bounds times the boss vector scale. `radius`/`height` on the boss stay the gameplay hit volume.
+function bossBodyHeight(boss) {
+    const BODY = unitBodyDefinition(boss.species);
+    return ((BODY.ground.y - BODY.bounds.top) * BOSS_VECTOR_SCALE(boss.radius)) / WORLD_HEIGHT_PROJECTION;
+}
+function bossBodyRadius(boss) {
+    return bodyRadiusAtScale(unitBodyDefinition(boss.species), BOSS_VECTOR_SCALE(boss.radius));
+}
 function unitTorsoHeight(unit) {
     const BODY = unitBodyDefinition(unit.species);
     return ((BODY.bounds.bottom - BODY.bounds.top) * unitVectorScale(unit)) / WORLD_HEIGHT_PROJECTION;
+}
+// Where the authored torso lands on screen for a vector drawn with `scale` and its ground root at (x, y) pixels.
+// Status marks anchor to this, so they follow what is actually drawn for a pea and for a boss alike.
+function bodyScreenBox(species, scale, x, y) {
+    const BODY = unitBodyDefinition(species);
+    return {
+        x: x + ((BODY.bounds.left + BODY.bounds.right) / 2 - BODY.ground.x) * scale,
+        top: y - (BODY.ground.y - BODY.bounds.top) * scale,
+        width: (BODY.bounds.right - BODY.bounds.left) * scale,
+    };
 }
 function maximumUnitRadius(tier) {
     return Math.max(
@@ -285,7 +304,10 @@ module.exports = {
     unitVectorScale,
     unitBodyRadius,
     unitBodyHeight,
+    bossBodyHeight,
+    bossBodyRadius,
     unitTorsoHeight,
+    bodyScreenBox,
     maximumUnitRadius,
     unitDisplayScale,
     validateUnitBodySource,

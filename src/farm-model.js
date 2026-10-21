@@ -2437,6 +2437,7 @@ const GARDEN = class Garden {
             faction: FACTION_CONFIG.ENEMY,
             z: 0,
             generation: ++this.entityGenerationSerial,
+            isBoss: true,
             radius: CONFIG.boss.radius,
             height: CONFIG.boss.height,
             hp: HP,

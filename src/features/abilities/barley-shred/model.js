@@ -70,6 +70,14 @@ export class BarleyArmorShredModel {
         }
         return total;
     }
+    // Share of the shred lifetime the newest stack still has, 0 when nothing is shredded.
+    static remaining(target, tick) {
+        let latest = 0;
+        for (const BUCKET of target?.barleyArmorShredBuckets || []) {
+            latest = Math.max(latest, BUCKET.expiresAtTick - tick);
+        }
+        return Math.max(0, Math.min(1, latest / BARLEY_ARMOR_SHRED_BUCKETS));
+    }
     static effectiveArmor(target, baseArmor, armorBonus, tick) {
         const BASE_ARMOR = Number.isFinite(baseArmor) ? baseArmor : 0,
             ARMOR_BONUS = Number.isFinite(armorBonus) ? armorBonus : 0;

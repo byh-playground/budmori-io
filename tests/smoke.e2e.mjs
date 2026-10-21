@@ -649,6 +649,20 @@ await check('a full farm keeps queued rewards and the panel names their species'
     expect(GOT.CHIPS.join() === '3,5', `queue chips ${JSON.stringify(GOT)}`);
 });
 
+await check('effects and marks size against the drawn body, boss included', async () => {
+    const { createRequire: CREATE_REQUIRE } = await import('node:module'),
+        REQUIRE = CREATE_REQUIRE(import.meta.url),
+        BODY = REQUIRE('./../src/features/unit-body/definition.cjs'),
+        GOT = await WORLD(() => ({ radius: BUDMORI.CONFIG.boss.radius, height: BUDMORI.CONFIG.boss.height }));
+    for (let species = 0; species < 9; species++) {
+        const BOSS = { species, radius: GOT.radius },
+            HEIGHT = BODY.bossBodyHeight(BOSS),
+            BOX = BODY.bodyScreenBox(species, 1, 0, 100);
+        expect(HEIGHT > GOT.height * 1.5, `species ${species}: drawn boss ${HEIGHT} vs hit volume ${GOT.height}`);
+        expect(BODY.bossBodyRadius(BOSS) > 0 && BOX.top < 100 && BOX.width > 0, `species ${species} box ${BOX.top}`);
+    }
+});
+
 await check('no page errors', async () => {
     expect(ERRORS.length === 0, ERRORS.slice(0, 3).join(' | '));
 });
