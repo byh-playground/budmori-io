@@ -14,7 +14,7 @@ export class FarmScenePresentation {
         return aspect > 1.2 ? [Math.max(12, 9 * aspect), 9] : [11.7, 11.7 / aspect];
     }
     bossVisible(world) {
-        return world.farmBossEvent?.phase !== 'idle';
+        return world.farmBossEvent?.phase !== 'idle' && world.farmBossEvent?.phase !== 'marching';
     }
     dangerVisible(world) {
         return world.farmBossEvent?.phase === 'fighting';

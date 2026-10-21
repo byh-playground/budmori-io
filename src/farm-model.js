@@ -140,6 +140,10 @@ const CONFIG = Object.freeze({
             topFloor: 61,
             relicSlots: 3,
             relicMaxLevel: 5,
+            // The troops walk to the tower door at the back of the farm and go in; the door is where the fence opens.
+            marchSeconds: 4.5,
+            marchSpeed: 7,
+            gateRadius: 1.8,
             battle: Object.freeze({ hp: 1, attack: 1, edge: 0, reward: 1 }),
             elite: Object.freeze({ hp: 1.6, attack: 1.25, edge: 0.25, reward: 2 }),
             mid: Object.freeze({ hp: 2.2, attack: 1.4, edge: 0.5, reward: 3 }),
@@ -1233,6 +1237,8 @@ const GARDEN = class Garden {
         this._fieldCache = { revision: -1, bench: -1, list: [] };
         this._deployReadyTime = 0;
         this._foodFull = false;
+        // True while the troops are inside the tower: the battlefield is its hall, not the farm.
+        this.insideTower = false;
         this.tower = {
             active: false,
             floor: 0,
@@ -2050,6 +2056,7 @@ const GARDEN = class Garden {
         // Whoever is already down sleeps through the first floor.
         const SLEEP = new Map(this.units.filter((u) => !u.isBattleOnlySummon && u.hp <= 0).map((u) => [u.id, FLOOR]));
         this.tower = {
+            pendingKind: KIND,
             active: true,
             floor: FLOOR,
             kind: KIND,
@@ -2059,7 +2066,52 @@ const GARDEN = class Garden {
             sleepUntil: SLEEP,
             record: false,
         };
-        return this._beginFloor(KIND);
+        // Everyone on the farm walks to the door first; the floor begins when they are inside.
+        this.farmBossEvent = { ...this.farmBossEvent, phase: 'marching', elapsed: 0, outcome: 'fighting' };
+        this.markProgressChanged();
+        return true;
+    }
+    // One unit's walk to the tower door while the march lasts.
+    _marchUnit(unit) {
+        if (unit.hp <= 0 || unit.isBattleOnlySummon) {
+            return;
+        }
+        const GATE = this.towerGate,
+            SPREAD = ((unit.id * 7) % 11) - 5;
+        this.steer(unit, GATE.x + SPREAD * 0.25, GATE.y, 0, CONFIG.farm.tower.marchSpeed);
+    }
+    // Where the tower door is: the middle of the back edge of the farm.
+    get towerGate() {
+        return { x: 0, y: CONFIG.farm.arena.radiusY };
+    }
+    benchUnit(unit) {
+        this._benched.add(unit);
+        this._benchRevision++;
+        this._unitSpatialDirty = true;
+    }
+    // The march is over: whoever got to the door is inside, and the first floor starts.
+    finishMarch() {
+        this.insideTower = true;
+        return this._beginFloor(this.tower.pendingKind);
+    }
+    // Back out on the farm: the troops step out of the door and spread over the ground in front of it.
+    _leaveTowerView() {
+        this.insideTower = false;
+        const GATE = this.towerGate;
+        for (const UNIT_LOCAL of this.unitCollection.items) {
+            if (UNIT_LOCAL.isBattleOnlySummon) {
+                continue;
+            }
+            Object.assign(UNIT_LOCAL, {
+                x: GATE.x + (this.random() - 0.5) * 7,
+                y: GATE.y - 1.5 - this.random() * 3.5,
+                z: 0,
+                vx: 0,
+                vy: 0,
+                vz: 0,
+            });
+        }
+        this._unitSpatialDirty = true;
     }
     // The next floor's doors: a mid-boss floor has only its boss; otherwise two of battle / elite / rest (rest only if someone sleeps).
     _rollDoors() {
@@ -2091,6 +2143,9 @@ const GARDEN = class Garden {
     afterFloor() {
         const T = this.tower;
         if (!T.active) {
+            if (this.insideTower) {
+                this._leaveTowerView();
+            }
             return;
         }
         for (const U of this.unitCollection.items) {
@@ -2151,7 +2206,7 @@ const GARDEN = class Garden {
         this.tower.doors = [];
         this._benched.clear();
         this._benchRevision++;
-        this._unitSpatialDirty = true;
+        this._leaveTowerView();
         this.markProgressChanged();
     }
     _beginFloor(kind) {
@@ -3426,6 +3481,10 @@ const GARDEN = class Garden {
         this.profiler?.end('collision', COLLISION_START);
     }
     updateUnitIntent(unit, dt, enemy, scene) {
+        if (this.farmBossEvent.phase === 'marching') {
+            this._marchUnit(unit);
+            return;
+        }
         if (this.isMergeTaskMaterial(unit)) {
             return;
         }

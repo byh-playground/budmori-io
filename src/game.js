@@ -1179,7 +1179,7 @@
       }
       var BOSS_VECTOR_DIAMETER = 220;
       var BOSS_VECTOR_RADIUS_SCALE = 1.16;
-      var WORLD_HEIGHT_PROJECTION4 = 0.785;
+      var WORLD_HEIGHT_PROJECTION5 = 0.785;
       var WORLD_DEPTH_PROJECTION3 = 0.62;
       function bossVectorScale3(radius) {
         return 2 * radius * BOSS_VECTOR_RADIUS_SCALE / BOSS_VECTOR_DIAMETER;
@@ -1189,14 +1189,14 @@
         return {
           x: boss.x + (socket.x - ground.x) * SCALE,
           y: boss.y,
-          z: (boss.z || 0) + (ground.y - socket.y) * SCALE / WORLD_HEIGHT_PROJECTION4
+          z: (boss.z || 0) + (ground.y - socket.y) * SCALE / WORLD_HEIGHT_PROJECTION5
         };
       }
       module.exports = {
         readVectorSockets: readVectorSockets3,
         bossVectorScale: bossVectorScale3,
         socketWorldPoint: socketWorldPoint2,
-        WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION4,
+        WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION5,
         WORLD_DEPTH_PROJECTION: WORLD_DEPTH_PROJECTION3
       };
     }
@@ -1206,7 +1206,7 @@
   var require_definition = __commonJS({
     "src/features/unit-body/definition.cjs"(exports, module) {
       "use strict";
-      var { WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION4 } = require_vector_sockets();
+      var { WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION5 } = require_vector_sockets();
       var AUTHORED_BODIES = [
         {
           species: 0,
@@ -1438,11 +1438,11 @@
       }
       function unitBodyHeight2(unit) {
         const BODY2 = unitBodyDefinition3(unit.species);
-        return (BODY2.ground.y - BODY2.bounds.top) * unitVectorScale2(unit) / WORLD_HEIGHT_PROJECTION4;
+        return (BODY2.ground.y - BODY2.bounds.top) * unitVectorScale2(unit) / WORLD_HEIGHT_PROJECTION5;
       }
       function unitTorsoHeight2(unit) {
         const BODY2 = unitBodyDefinition3(unit.species);
-        return (BODY2.bounds.bottom - BODY2.bounds.top) * unitVectorScale2(unit) / WORLD_HEIGHT_PROJECTION4;
+        return (BODY2.bounds.bottom - BODY2.bounds.top) * unitVectorScale2(unit) / WORLD_HEIGHT_PROJECTION5;
       }
       function maximumUnitRadius2(tier) {
         return Math.max(
@@ -4957,6 +4957,27 @@
         return false;
       }
     }
+    class MarchingFarmBossEventPhase extends FarmBossEventPhase {
+      update(world, dt) {
+        const TOWER = config.farm.tower, GATE = world.towerGate;
+        world.farmBossEvent.elapsed += dt;
+        let outside = 0;
+        for (const UNIT3 of [...world.units]) {
+          if (UNIT3.isBattleOnlySummon || UNIT3.hp <= 0) {
+            continue;
+          }
+          if (Math.hypot(UNIT3.x - GATE.x, UNIT3.y - GATE.y) <= TOWER.gateRadius) {
+            world.benchUnit(UNIT3);
+          } else {
+            outside++;
+          }
+        }
+        if (outside === 0 || world.farmBossEvent.elapsed >= TOWER.marchSeconds) {
+          world.finishMarch();
+        }
+        return true;
+      }
+    }
     class DroppingFarmBossEventPhase extends FarmBossEventPhase {
       update(world, dt) {
         world.farmBossEvent.elapsed += dt;
@@ -5024,6 +5045,7 @@
     }
     return Object.freeze({
       idle: Object.freeze(new FarmBossEventPhase()),
+      marching: Object.freeze(new MarchingFarmBossEventPhase()),
       dropping: Object.freeze(new DroppingFarmBossEventPhase()),
       fighting: Object.freeze(new FightingFarmBossEventPhase()),
       celebrating: Object.freeze(new CelebratingFarmBossEventPhase()),
@@ -5500,14 +5522,14 @@
           area.kind = "charge";
           area.width = boss.radius + pad;
           const SX = action.start?.x ?? boss.x, SY = action.start?.y ?? boss.y, DX = Math.cos(area.angle), DY = Math.sin(area.angle);
-          const RX = CONFIG2[scene].arena.radiusX - boss.radius - 0.25, RY = CONFIG2[scene].arena.radiusY - boss.radius - 0.25;
-          const A_LOCAL = DX * DX / (RX * RX) + DY * DY / (RY * RY), B_LOCAL = 2 * (SX * DX / (RX * RX) + SY * DY / (RY * RY)), C_LOCAL = SX * SX / (RX * RX) + SY * SY / (RY * RY) - 1;
+          const RX2 = CONFIG2[scene].arena.radiusX - boss.radius - 0.25, RY2 = CONFIG2[scene].arena.radiusY - boss.radius - 0.25;
+          const A_LOCAL = DX * DX / (RX2 * RX2) + DY * DY / (RY2 * RY2), B_LOCAL = 2 * (SX * DX / (RX2 * RX2) + SY * DY / (RY2 * RY2)), C_LOCAL = SX * SX / (RX2 * RX2) + SY * SY / (RY2 * RY2) - 1;
           const EXIT = Math.max(
             0,
             (-B_LOCAL + Math.sqrt(Math.max(0, B_LOCAL * B_LOCAL - 4 * A_LOCAL * C_LOCAL))) / (2 * A_LOCAL)
           );
           const DISTANCE = Math.min(this.config.reach, EXIT);
-          const EX = SX + DX * DISTANCE, EY = SY + DY * DISTANCE, K = Math.max(1, Math.hypot(EX / RX, EY / RY));
+          const EX = SX + DX * DISTANCE, EY = SY + DY * DISTANCE, K = Math.max(1, Math.hypot(EX / RX2, EY / RY2));
           area.endX = action.phase === "recover" ? boss.x : EX / K;
           area.endY = action.phase === "recover" ? boss.y : EY / K;
           area.x = SX;
@@ -5594,7 +5616,7 @@
               x = boss.x + DX / D_LOCAL * this.config.reach;
               y = boss.y + DY / D_LOCAL * this.config.reach;
             }
-            const RX = CONFIG2[scene].arena.radiusX - boss.radius - 0.25, RY = CONFIG2[scene].arena.radiusY - boss.radius - 0.25, K = Math.max(1, Math.hypot(x / RX, y / RY));
+            const RX2 = CONFIG2[scene].arena.radiusX - boss.radius - 0.25, RY2 = CONFIG2[scene].arena.radiusY - boss.radius - 0.25, K = Math.max(1, Math.hypot(x / RX2, y / RY2));
             x /= K;
             y /= K;
           }
@@ -7219,6 +7241,10 @@
             topFloor: 61,
             relicSlots: 3,
             relicMaxLevel: 5,
+            // The troops walk to the tower door at the back of the farm and go in; the door is where the fence opens.
+            marchSeconds: 4.5,
+            marchSpeed: 7,
+            gateRadius: 1.8,
             battle: Object.freeze({ hp: 1, attack: 1, edge: 0, reward: 1 }),
             elite: Object.freeze({ hp: 1.6, attack: 1.25, edge: 0.25, reward: 2 }),
             mid: Object.freeze({ hp: 2.2, attack: 1.4, edge: 0.5, reward: 3 })
@@ -8190,6 +8216,7 @@
           this._fieldCache = { revision: -1, bench: -1, list: [] };
           this._deployReadyTime = 0;
           this._foodFull = false;
+          this.insideTower = false;
           this.tower = {
             active: false,
             floor: 0,
@@ -8376,11 +8403,11 @@
           return SIMULATION_SCENES[this.scene].progressionFor(this, unit);
         }
         highestSpeciesTiers() {
-          const TIERS = Array(CONFIG.unit.speciesCount).fill(0);
+          const TIERS2 = Array(CONFIG.unit.speciesCount).fill(0);
           for (const UNIT_LOCAL of this.roster.residents()) {
-            TIERS[UNIT_LOCAL.species] = Math.max(TIERS[UNIT_LOCAL.species], UNIT_LOCAL.tier);
+            TIERS2[UNIT_LOCAL.species] = Math.max(TIERS2[UNIT_LOCAL.species], UNIT_LOCAL.tier);
           }
-          return TIERS;
+          return TIERS2;
         }
         investAbilityNode(abilityId, nodeId) {
           const IN_COMBAT = this.farmBossEvent?.phase !== "idle";
@@ -8949,6 +8976,7 @@
           const FLOOR = Math.min(Math.max(1, Math.floor(startFloor) || 1), Math.max(1, this.playerProgression.towerBest)), KIND = FLOOR % CONFIG.farm.tower.midBossEvery === 0 ? "mid" : "battle";
           const SLEEP = new Map(this.units.filter((u) => !u.isBattleOnlySummon && u.hp <= 0).map((u) => [u.id, FLOOR]));
           this.tower = {
+            pendingKind: KIND,
             active: true,
             floor: FLOOR,
             kind: KIND,
@@ -8958,7 +8986,50 @@
             sleepUntil: SLEEP,
             record: false
           };
-          return this._beginFloor(KIND);
+          this.farmBossEvent = { ...this.farmBossEvent, phase: "marching", elapsed: 0, outcome: "fighting" };
+          this.markProgressChanged();
+          return true;
+        }
+        // One unit's walk to the tower door while the march lasts.
+        _marchUnit(unit) {
+          if (unit.hp <= 0 || unit.isBattleOnlySummon) {
+            return;
+          }
+          const GATE = this.towerGate, SPREAD = unit.id * 7 % 11 - 5;
+          this.steer(unit, GATE.x + SPREAD * 0.25, GATE.y, 0, CONFIG.farm.tower.marchSpeed);
+        }
+        // Where the tower door is: the middle of the back edge of the farm.
+        get towerGate() {
+          return { x: 0, y: CONFIG.farm.arena.radiusY };
+        }
+        benchUnit(unit) {
+          this._benched.add(unit);
+          this._benchRevision++;
+          this._unitSpatialDirty = true;
+        }
+        // The march is over: whoever got to the door is inside, and the first floor starts.
+        finishMarch() {
+          this.insideTower = true;
+          return this._beginFloor(this.tower.pendingKind);
+        }
+        // Back out on the farm: the troops step out of the door and spread over the ground in front of it.
+        _leaveTowerView() {
+          this.insideTower = false;
+          const GATE = this.towerGate;
+          for (const UNIT_LOCAL of this.unitCollection.items) {
+            if (UNIT_LOCAL.isBattleOnlySummon) {
+              continue;
+            }
+            Object.assign(UNIT_LOCAL, {
+              x: GATE.x + (this.random() - 0.5) * 7,
+              y: GATE.y - 1.5 - this.random() * 3.5,
+              z: 0,
+              vx: 0,
+              vy: 0,
+              vz: 0
+            });
+          }
+          this._unitSpatialDirty = true;
         }
         // The next floor's doors: a mid-boss floor has only its boss; otherwise two of battle / elite / rest (rest only if someone sleeps).
         _rollDoors() {
@@ -8987,6 +9058,9 @@
         afterFloor() {
           const T = this.tower;
           if (!T.active) {
+            if (this.insideTower) {
+              this._leaveTowerView();
+            }
             return;
           }
           for (const U of this.unitCollection.items) {
@@ -9046,7 +9120,7 @@
           this.tower.doors = [];
           this._benched.clear();
           this._benchRevision++;
-          this._unitSpatialDirty = true;
+          this._leaveTowerView();
           this.markProgressChanged();
         }
         _beginFloor(kind) {
@@ -10115,6 +10189,10 @@
           this.profiler?.end("collision", COLLISION_START);
         }
         updateUnitIntent(unit, dt, enemy, scene) {
+          if (this.farmBossEvent.phase === "marching") {
+            this._marchUnit(unit);
+            return;
+          }
           if (this.isMergeTaskMaterial(unit)) {
             return;
           }
@@ -10766,16 +10844,16 @@
           return !ARENA_GEOMETRY.inside({ x, y }, "farm");
         }
         boundBody(body, scene, margin) {
-          const ARENA = CONFIG[scene].arena, RX = ARENA.radiusX - margin, RY = ARENA.radiusY - margin;
+          const ARENA = CONFIG[scene].arena, RX2 = ARENA.radiusX - margin, RY2 = ARENA.radiusY - margin;
           if (body.workOut) {
-            if (Math.abs(body.x) <= RX && Math.abs(body.y) <= RY) {
+            if (Math.abs(body.x) <= RX2 && Math.abs(body.y) <= RY2) {
               body.workOut = false;
             } else {
               return;
             }
           }
           if (ARENA.shape === "rect") {
-            const X = CLAMP2(body.x, -RX, RX), Y = CLAMP2(body.y, -RY, RY);
+            const X = CLAMP2(body.x, -RX2, RX2), Y = CLAMP2(body.y, -RY2, RY2);
             if (X !== body.x && (body.vx || 0) * body.x > 0) {
               body.vx = 0;
             }
@@ -10786,13 +10864,13 @@
             body.y = Y;
             return;
           }
-          const K = Math.max(1, Math.hypot(body.x / RX, body.y / RY));
+          const K = Math.max(1, Math.hypot(body.x / RX2, body.y / RY2));
           if (K === 1) {
             return;
           }
           body.x /= K;
           body.y /= K;
-          const NX = body.x / (RX * RX), NY = body.y / (RY * RY), LENGTH = Math.hypot(NX, NY) || 1, OUTWARD = ((body.vx || 0) * NX + (body.vy || 0) * NY) / LENGTH;
+          const NX = body.x / (RX2 * RX2), NY = body.y / (RY2 * RY2), LENGTH = Math.hypot(NX, NY) || 1, OUTWARD = ((body.vx || 0) * NX + (body.vy || 0) * NY) / LENGTH;
           if (OUTWARD > 0) {
             body.vx -= NX / LENGTH * OUTWARD * 1.3;
             body.vy -= NY / LENGTH * OUTWARD * 1.3;
@@ -11767,7 +11845,7 @@
           }
           BOSS2.x += BOSS2.knockVx * dt;
           BOSS2.y += BOSS2.knockVy * dt;
-          const RX = CONFIG.battle.arena.radiusX - BOSS2.radius, RY = CONFIG.battle.arena.radiusY - BOSS2.radius, EDGE = Math.hypot(BOSS2.x / RX, BOSS2.y / RY);
+          const RX2 = CONFIG.battle.arena.radiusX - BOSS2.radius, RY2 = CONFIG.battle.arena.radiusY - BOSS2.radius, EDGE = Math.hypot(BOSS2.x / RX2, BOSS2.y / RY2);
           if (EDGE > 1) {
             BOSS2.x /= EDGE;
             BOSS2.y /= EDGE;
@@ -12268,7 +12346,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.29.2";
+      PRODUCT_VERSION = "0.29.3";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -13837,7 +13915,7 @@
       return aspect > 1.2 ? [Math.max(12, 9 * aspect), 9] : [11.7, 11.7 / aspect];
     }
     bossVisible(world) {
-      return world.farmBossEvent?.phase !== "idle";
+      return world.farmBossEvent?.phase !== "idle" && world.farmBossEvent?.phase !== "marching";
     }
     dangerVisible(world) {
       return world.farmBossEvent?.phase === "fighting";
@@ -14340,7 +14418,7 @@
   // src/farm-renderer.js
   init_unit_grades();
   init_presentation6();
-  var import_vector_sockets5 = __toESM(require_vector_sockets(), 1);
+  var import_vector_sockets6 = __toESM(require_vector_sockets(), 1);
   init_boss_vector_sockets();
 
   // src/farm-render-boss.js
@@ -14893,6 +14971,573 @@
     return 0;
   }
 
+  // src/farm-scenery.js
+  var import_vector_sockets5 = __toESM(require_vector_sockets(), 1);
+  init_farm_model();
+  var { radiusX: RX, radiusY: RY } = CONFIG.farm.arena;
+  var TAU5 = Math.PI * 2;
+  var TIERS = [
+    { r: 6.6, h: 7.5 },
+    { r: 5.5, h: 7 },
+    { r: 4.5, h: 6.5 },
+    { r: 3.6, h: 6 },
+    { r: 2.7, h: 4.5 }
+  ];
+  var TOWER_Y = RY + TIERS[0].r - 0.4;
+  var HALL_WALL_HEIGHT = 9;
+  function seeded(seed) {
+    let state = seed >>> 0;
+    return () => {
+      state = state + 1831565813 >>> 0;
+      let t = state;
+      t = Math.imul(t ^ t >>> 15, t | 1);
+      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function mix(a, b, t) {
+    return a.map((v, i) => Math.round(v + (b[i] - v) * t));
+  }
+  function rgb(c, alpha = 1) {
+    return alpha === 1 ? `rgb(${c[0]},${c[1]},${c[2]})` : `rgba(${c[0]},${c[1]},${c[2]},${alpha})`;
+  }
+  var RANDOM = seeded(20241);
+  var PATCHES = Array.from({ length: 34 }, (_, i) => ({
+    x: (RANDOM() * 2 - 1) * RX,
+    y: (RANDOM() * 2 - 1) * RY,
+    rx: 2.5 + RANDOM() * 5,
+    ry: 1.5 + RANDOM() * 3,
+    color: i % 3 === 0 ? "rgba(160,184,112,0.35)" : i % 3 === 1 ? "rgba(226,235,172,0.38)" : "rgba(132,166,104,0.22)"
+  }));
+  var TUFTS = Array.from({ length: 190 }, () => ({
+    x: (RANDOM() * 2 - 1) * (RX - 0.6),
+    y: (RANDOM() * 2 - 1) * (RY - 0.6),
+    s: 0.7 + RANDOM() * 0.6
+  }));
+  var FLOWER_COLORS = ["#f6f1ec", "#f4d35e", "#ee8fa6", "#b9a2e6"];
+  var FLOWERS = Array.from({ length: 70 }, () => ({
+    x: (RANDOM() * 2 - 1) * (RX - 1),
+    y: (RANDOM() * 2 - 1) * (RY - 1),
+    color: FLOWER_COLORS[Math.floor(RANDOM() * FLOWER_COLORS.length)]
+  }));
+  var STONES = Array.from({ length: 16 }, () => ({
+    x: (RANDOM() * 2 - 1) * (RX - 1),
+    y: (RANDOM() * 2 - 1) * (RY - 1),
+    s: 0.25 + RANDOM() * 0.3
+  }));
+  var TREES = [];
+  for (let tries = 0; tries < 900 && TREES.length < 64; tries++) {
+    const X = (RANDOM() * 2 - 1) * (RX + 11), Y = (RANDOM() * 2 - 1) * (RY + 10) + 2;
+    const INSIDE = Math.abs(X) < RX + 2 && Math.abs(Y) < RY + 2, DOOR = Math.abs(X) < 11 && Y > RY - 2, CROWDED = TREES.some((t) => Math.hypot(t.x - X, t.y - Y) < 3.2);
+    if (!INSIDE && !DOOR && !CROWDED) {
+      TREES.push({ x: X, y: Y, s: 0.85 + RANDOM() * 0.55, shade: RANDOM() });
+    }
+  }
+  TREES.sort((a, b) => b.y - a.y);
+  var BUSHES = Array.from({ length: 26 }, () => ({
+    x: (RANDOM() * 2 - 1) * (RX + 3),
+    y: (RANDOM() * 2 - 1) * (RY + 3),
+    s: 0.6 + RANDOM() * 0.5
+  }));
+  var SKY_STOPS = [
+    { at: 0, top: [118, 190, 232], bottom: [190, 226, 242] },
+    { at: 0.45, top: [226, 134, 110], bottom: [250, 200, 138] },
+    { at: 1, top: [16, 22, 58], bottom: [52, 52, 108] }
+  ];
+  function skyAt(floor) {
+    const T = Math.min(1, Math.max(0, (floor - 1) / 50));
+    const B = T <= SKY_STOPS[1].at ? 1 : 2, A = B - 1, K = (T - SKY_STOPS[A].at) / (SKY_STOPS[B].at - SKY_STOPS[A].at);
+    return {
+      top: mix(SKY_STOPS[A].top, SKY_STOPS[B].top, K),
+      bottom: mix(SKY_STOPS[A].bottom, SKY_STOPS[B].bottom, K),
+      night: T
+    };
+  }
+  var HALL_TINTS = {
+    battle: { floor: [96, 92, 112], wall: [52, 48, 70], accent: [255, 176, 96] },
+    elite: { floor: [116, 82, 92], wall: [70, 46, 56], accent: [255, 122, 96] },
+    mid: { floor: [90, 76, 124], wall: [54, 44, 84], accent: [190, 150, 255] },
+    rest: { floor: [112, 104, 88], wall: [66, 58, 46], accent: [255, 214, 130] },
+    relic: { floor: [112, 104, 88], wall: [66, 58, 46], accent: [150, 230, 200] }
+  };
+  var Painter = class {
+    constructor(renderer) {
+      this.r = renderer;
+      this.c = renderer.ctx;
+      this.s = renderer.scale;
+    }
+    p(x, y, z = 0) {
+      return this.r.project(x, y, z);
+    }
+    poly(points, fill, stroke2 = null, width = 1) {
+      const C = this.c;
+      C.beginPath();
+      points.forEach((q, i) => i ? C.lineTo(q.x, q.y) : C.moveTo(q.x, q.y));
+      C.closePath();
+      if (fill) {
+        C.fillStyle = fill;
+        C.fill();
+      }
+      if (stroke2) {
+        C.strokeStyle = stroke2;
+        C.lineWidth = width;
+        C.stroke();
+      }
+    }
+    // A band around a standing cylinder: from the bottom ring up to the top ring, between two positions on its front.
+    band(cx, cy, r, z0, z1, t0, t1, fill, taper = 0.96) {
+      const N = 14, PTS = [];
+      for (let i = 0; i <= N; i++) {
+        const T = t0 + (t1 - t0) * i / N;
+        PTS.push(this.p(cx + T * r, cy - r * Math.sqrt(Math.max(0, 1 - T * T)), z0));
+      }
+      for (let i = N; i >= 0; i--) {
+        const T = t0 + (t1 - t0) * i / N, R2 = r * taper;
+        PTS.push(this.p(cx + T * R2, cy - R2 * Math.sqrt(Math.max(0, 1 - T * T)), z1));
+      }
+      this.poly(PTS, fill);
+    }
+    groundRect(x0, y0, x1, y1, fill) {
+      const A = this.p(x0, y1), B = this.p(x1, y0), C = this.c;
+      C.fillStyle = fill;
+      C.fillRect(Math.floor(A.x), Math.floor(A.y), Math.ceil(B.x - A.x) + 1, Math.ceil(B.y - A.y) + 1);
+    }
+    visible(point2, margin = 80) {
+      const R2 = this.r.canvas;
+      return point2.x > -margin && point2.x < R2.width + margin && point2.y > -margin * 6 && point2.y < R2.height + margin;
+    }
+  };
+  function drawTree(paint, tree) {
+    const B = paint.p(tree.x, tree.y);
+    if (!paint.visible(B, 140)) {
+      return;
+    }
+    const S = paint.s * tree.s, C = paint.c;
+    paint.r.ellipse(B.x + 0.2 * S, B.y + 0.05 * S, 1.5 * S, 0.5 * S, "rgba(48,66,40,0.28)");
+    C.strokeStyle = "#7d5c3d";
+    C.lineWidth = 0.42 * S;
+    C.lineCap = "round";
+    C.beginPath();
+    C.moveTo(B.x, B.y);
+    C.lineTo(B.x, B.y - 1.9 * S * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * 1.3);
+    C.stroke();
+    const TOP = B.y - 2.9 * S * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * 1.3, DARK = tree.shade > 0.5 ? "#5f8c58" : "#67955c", LIGHT = tree.shade > 0.5 ? "#86b36d" : "#8dbb72";
+    paint.r.ellipse(B.x, TOP + 0.35 * S, 1.65 * S, 1.25 * S, DARK);
+    paint.r.ellipse(B.x - 0.55 * S, TOP + 0.05 * S, 1.15 * S, 0.95 * S, DARK);
+    paint.r.ellipse(B.x + 0.6 * S, TOP + 0.1 * S, 1.1 * S, 0.9 * S, DARK);
+    paint.r.ellipse(B.x - 0.25 * S, TOP - 0.25 * S, 1.05 * S, 0.8 * S, LIGHT);
+  }
+  function drawBush(paint, bush) {
+    const B = paint.p(bush.x, bush.y);
+    if (!paint.visible(B, 60)) {
+      return;
+    }
+    const S = paint.s * bush.s;
+    paint.r.ellipse(B.x, B.y - 0.15 * S, 1.1 * S, 0.7 * S, "#6c9a5a");
+    paint.r.ellipse(B.x - 0.4 * S, B.y - 0.3 * S, 0.7 * S, 0.5 * S, "#86b06a");
+  }
+  function drawTower(paint, glow) {
+    const C = paint.c, S = paint.s;
+    let z = 0;
+    for (let i = 0; i < TIERS.length; i++) {
+      const TIER_R = TIERS[i].r, TIER_H = TIERS[i].h, TOP_Z = z + TIER_H;
+      paint.band(0, TOWER_Y, TIER_R, z, TOP_Z, -1, 1, "#c9c2b0");
+      paint.band(0, TOWER_Y, TIER_R, z, TOP_Z, 0.25, 1, "#a49d8d");
+      paint.band(0, TOWER_Y, TIER_R, z, TOP_Z, 0.72, 1, "#8c8575");
+      C.strokeStyle = "rgba(88,80,70,0.22)";
+      C.lineWidth = Math.max(1, 0.05 * S);
+      C.beginPath();
+      for (let zz = z + 1.1; zz < TOP_Z - 0.3; zz += 1.1) {
+        for (let k = 0; k <= 12; k++) {
+          const T = -1 + 2 * k / 12, Q = paint.p(T * TIER_R, TOWER_Y - TIER_R * Math.sqrt(Math.max(0, 1 - T * T)), zz);
+          if (k) {
+            C.lineTo(Q.x, Q.y);
+          } else {
+            C.moveTo(Q.x, Q.y);
+          }
+        }
+      }
+      C.stroke();
+      const TC = paint.p(0, TOWER_Y, TOP_Z), LEDGE = TIER_R + 0.45;
+      paint.r.ellipse(TC.x, TC.y, LEDGE * S, LEDGE * S * 0.62, "#b8b19f");
+      paint.r.ellipse(TC.x, TC.y - 0.05 * S, (TIER_R - 0.1) * S, (TIER_R - 0.1) * S * 0.62, "#d8d2bf");
+      for (let k = 0; k < 15; k++) {
+        const A = Math.PI + Math.PI * (k + 0.5) / 15;
+        const M = paint.p(Math.cos(A) * LEDGE * 0.97, TOWER_Y + Math.sin(A) * LEDGE * 0.97 * -1, TOP_Z);
+        paint.r.ellipse(M.x, M.y - 0.15 * S, 0.2 * S, 0.17 * S, "#9d9684");
+      }
+      if (i > 0) {
+        for (const T of [-0.55, 0, 0.55]) {
+          const WX = T * TIER_R * 0.98, WY = TOWER_Y - TIER_R * Math.sqrt(1 - T * T) * 0.98, BASE = paint.p(WX, WY, z + TIER_H * 0.32), WW = 0.42 * S * Math.sqrt(1 - T * T) + 1, WH = TIER_H * 0.4 * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S;
+          C.fillStyle = "#4b4358";
+          C.fillRect(BASE.x - WW - 1, BASE.y - WH - WW, WW * 2 + 2, WH + WW);
+          C.fillStyle = glow > 0 ? "#ffe3a1" : "#f3cf86";
+          C.fillRect(BASE.x - WW, BASE.y - WH - WW + 1, WW * 2, WH + WW - 1);
+          paint.r.ellipse(BASE.x, BASE.y - WH - WW + 1, WW, WW * 0.8, glow > 0 ? "#ffe3a1" : "#f3cf86");
+        }
+      }
+      z = TOP_Z;
+    }
+    const SPIRE_BASE = paint.p(0, TOWER_Y, z), SPIRE_TOP = paint.p(0, TOWER_Y, z + 6), R2 = TIERS[TIERS.length - 1].r;
+    paint.poly(
+      [
+        { x: SPIRE_BASE.x - R2 * S * 0.95, y: SPIRE_BASE.y },
+        { x: SPIRE_TOP.x, y: SPIRE_TOP.y },
+        { x: SPIRE_BASE.x + R2 * S * 0.95, y: SPIRE_BASE.y }
+      ],
+      "#6f7f9d"
+    );
+    paint.poly(
+      [
+        { x: SPIRE_BASE.x + R2 * S * 0.2, y: SPIRE_BASE.y },
+        { x: SPIRE_TOP.x, y: SPIRE_TOP.y },
+        { x: SPIRE_BASE.x + R2 * S * 0.95, y: SPIRE_BASE.y }
+      ],
+      "#5b6a88"
+    );
+    C.strokeStyle = "#5a4a3a";
+    C.lineWidth = 0.1 * S;
+    C.beginPath();
+    C.moveTo(SPIRE_TOP.x, SPIRE_TOP.y);
+    C.lineTo(SPIRE_TOP.x, SPIRE_TOP.y - 2 * S);
+    C.stroke();
+    paint.poly(
+      [
+        { x: SPIRE_TOP.x, y: SPIRE_TOP.y - 2 * S },
+        { x: SPIRE_TOP.x + 1.5 * S, y: SPIRE_TOP.y - 1.6 * S },
+        { x: SPIRE_TOP.x, y: SPIRE_TOP.y - 1.2 * S }
+      ],
+      "#d5584b"
+    );
+    drawDoor(paint, glow);
+  }
+  function drawDoor(paint, glow) {
+    const S = paint.s, C = paint.c, BASE = paint.p(0, RY + 0.05, 0), W = 1.7 * S, H = 3.6 * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S;
+    paint.r.ellipse(BASE.x, BASE.y + 0.1 * S, 2.6 * S, 0.9 * S, "#b3ab97");
+    paint.r.ellipse(BASE.x, BASE.y, 2.1 * S, 0.7 * S, "#c4bda9");
+    C.fillStyle = "#5a4f6c";
+    C.fillRect(BASE.x - W - 0.25 * S, BASE.y - H - W - 0.25 * S, (W + 0.25 * S) * 2, H + W + 0.25 * S);
+    paint.r.ellipse(BASE.x, BASE.y - H - W + 0.1 * S, W + 0.25 * S, W * 0.95, "#5a4f6c");
+    C.fillStyle = "#2b2236";
+    C.fillRect(BASE.x - W, BASE.y - H - W, W * 2, H + W);
+    paint.r.ellipse(BASE.x, BASE.y - H - W + 0.1 * S, W, W * 0.9, "#2b2236");
+    const LIGHT = 0.35 + glow * 0.45;
+    C.fillStyle = `rgba(255,186,98,${LIGHT})`;
+    C.fillRect(BASE.x - W * 0.7, BASE.y - H * 0.8, W * 1.4, H * 0.8);
+    paint.r.ellipse(BASE.x, BASE.y - H * 0.8, W * 0.7, W * 0.6, `rgba(255,186,98,${LIGHT})`);
+    if (glow > 0) {
+      paint.r.ellipse(BASE.x, BASE.y - H * 0.4, 5 * S, 2.2 * S, `rgba(255,200,120,${0.12 * glow})`);
+    }
+    for (const SIDE of [-1, 1]) {
+      const X = BASE.x + SIDE * (W + 0.9 * S);
+      C.strokeStyle = "#4a3b30";
+      C.lineWidth = 0.14 * S;
+      C.beginPath();
+      C.moveTo(X, BASE.y);
+      C.lineTo(X, BASE.y - H * 0.7);
+      C.stroke();
+      paint.r.ellipse(X, BASE.y - H * 0.75, 0.32 * S, 0.4 * S, "#ffd88a");
+      paint.r.ellipse(X, BASE.y - H * 0.75, 0.9 * S, 1 * S, "rgba(255,214,130,0.18)");
+    }
+  }
+  function drawFence(paint) {
+    const S = paint.s, C = paint.c;
+    const POST_Z = 1.15, GAP = CONFIG.farm.tower.gateRadius + 0.6;
+    const SIDES = [
+      // [x0, y0, x1, y1] walking the border, the back edge broken at the door
+      [-RX, RY, -GAP, RY],
+      [GAP, RY, RX, RY],
+      [RX, RY, RX, -RY],
+      [RX, -RY, -RX, -RY],
+      [-RX, -RY, -RX, RY]
+    ];
+    const POSTS = [];
+    for (const [X0, Y0, X1, Y1] of SIDES) {
+      const LEN = Math.hypot(X1 - X0, Y1 - Y0), COUNT = Math.max(1, Math.round(LEN / 2.4));
+      const RUN = [];
+      for (let k = 0; k <= COUNT; k++) {
+        RUN.push(paint.p(X0 + (X1 - X0) * k / COUNT, Y0 + (Y1 - Y0) * k / COUNT));
+      }
+      POSTS.push(RUN);
+    }
+    C.lineCap = "round";
+    for (const [PASS, COLOR, WIDTH] of [
+      [0, "#8a6a46", 0.1],
+      [1, "#b08a5c", 0.1]
+    ]) {
+      C.strokeStyle = COLOR;
+      C.lineWidth = Math.max(1.2, WIDTH * S);
+      C.beginPath();
+      for (const RUN of POSTS) {
+        for (let k = 0; k < RUN.length - 1; k++) {
+          const A = RUN[k], B = RUN[k + 1];
+          if (!paint.visible(A, 200) && !paint.visible(B, 200)) {
+            continue;
+          }
+          for (const RZ of [0.45, 0.9]) {
+            const DZ = RZ * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S - PASS * 0.05 * S;
+            C.moveTo(A.x, A.y - DZ);
+            C.lineTo(B.x, B.y - DZ);
+          }
+        }
+      }
+      C.stroke();
+    }
+    for (const [PASS, COLOR] of [
+      [0, "#7a5a38"],
+      [1, "#a67f52"]
+    ]) {
+      C.strokeStyle = COLOR;
+      C.lineWidth = Math.max(2, 0.22 * S - PASS * 0.08 * S);
+      C.beginPath();
+      for (const RUN of POSTS) {
+        for (const A of RUN) {
+          if (!paint.visible(A, 100)) {
+            continue;
+          }
+          C.moveTo(A.x + PASS * -0.03 * S, A.y);
+          C.lineTo(A.x + PASS * -0.03 * S, A.y - POST_Z * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S);
+        }
+      }
+      C.stroke();
+    }
+    for (const SIDE of [-1, 1]) {
+      const A = paint.p(SIDE * GAP, RY);
+      C.strokeStyle = "#6e4f31";
+      C.lineWidth = 0.38 * S;
+      C.beginPath();
+      C.moveTo(A.x, A.y);
+      C.lineTo(A.x, A.y - 1.8 * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S);
+      C.stroke();
+      paint.r.ellipse(A.x, A.y - 1.8 * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S, 0.3 * S, 0.22 * S, "#8f6c45");
+    }
+  }
+  function drawFarmGrounds(renderer, world) {
+    const P = new Painter(renderer), S = P.s, C = P.c, W = renderer.canvas.width, H = renderer.canvas.height, GLOW = world.farmBossEvent?.phase === "marching" ? 1 : 0;
+    const HORIZON = P.p(0, RY + 11).y;
+    C.fillStyle = "#a8bd84";
+    C.fillRect(0, 0, W, H);
+    if (HORIZON > 0) {
+      const BANDS = ["#cfe4ea", "#dbeaea", "#e6f0e4"];
+      BANDS.forEach((color, i) => {
+        C.fillStyle = color;
+        C.fillRect(0, HORIZON * i / BANDS.length, W, HORIZON / BANDS.length + 1);
+      });
+      for (const [X, RXH, RYH, COLOR] of [
+        [-14, 15, 4.2, "#b5cba4"],
+        [11, 17, 3.4, "#a6bf93"],
+        [-2, 22, 2.4, "#9fb88d"]
+      ]) {
+        renderer.ellipse(P.p(X, RY + 11).x, HORIZON, RXH * S, RYH * S, COLOR);
+      }
+      C.fillStyle = "#a8bd84";
+      C.fillRect(0, HORIZON, W, H - HORIZON + 1);
+    }
+    for (const TREE of TREES) {
+      if (TREE.y > RY + 3) {
+        drawTree(P, TREE);
+      }
+    }
+    drawTower(P, GLOW);
+    P.groundRect(-RX - 0.6, -RY - 0.6, RX + 0.6, RY + 0.4, "#b8c88c");
+    P.groundRect(-RX, -RY, RX, RY, "#c9d79f");
+    for (const PATCH of PATCHES) {
+      renderer.groundEllipse(PATCH.x, PATCH.y, PATCH.rx, PATCH.ry, PATCH.color);
+    }
+    for (let y = RY - 0.5, i = 0; y > 3; y -= 1.3, i++) {
+      const X = Math.sin(i * 1.7) * 0.7;
+      renderer.groundEllipse(X, y, 2 + 0.1 * (i % 3), 1.1, "#d9c796");
+      renderer.groundEllipse(X, y, 1.4, 0.8, "#e3d3a6");
+    }
+    C.strokeStyle = "#8fa96a";
+    C.lineWidth = Math.max(1, 0.06 * S);
+    C.lineCap = "round";
+    C.beginPath();
+    for (const T of TUFTS) {
+      const B = P.p(T.x, T.y);
+      if (!P.visible(B, 20)) {
+        continue;
+      }
+      const U = 0.34 * S * T.s;
+      C.moveTo(B.x, B.y);
+      C.lineTo(B.x - U * 0.5, B.y - U);
+      C.moveTo(B.x, B.y);
+      C.lineTo(B.x + U * 0.1, B.y - U * 1.25);
+      C.moveTo(B.x, B.y);
+      C.lineTo(B.x + U * 0.55, B.y - U * 0.9);
+    }
+    C.stroke();
+    for (const F of FLOWERS) {
+      const B = P.p(F.x, F.y);
+      if (P.visible(B, 20)) {
+        const D = Math.max(2, 0.13 * S);
+        C.fillStyle = F.color;
+        C.fillRect(B.x - D / 2, B.y - D, D, D);
+      }
+    }
+    for (const STONE of STONES) {
+      renderer.groundEllipse(STONE.x, STONE.y, STONE.s * 1.2, STONE.s * 0.9, "#aeb2a0");
+      renderer.groundEllipse(STONE.x - 0.05, STONE.y + 0.05, STONE.s * 0.8, STONE.s * 0.55, "#c6c9b8");
+    }
+    drawFence(P);
+    for (const BUSH of BUSHES) {
+      if (Math.abs(BUSH.x) > RX + 0.8 || Math.abs(BUSH.y) > RY + 0.8) {
+        drawBush(P, BUSH);
+      }
+    }
+    for (const TREE of TREES) {
+      if (TREE.y <= RY + 3) {
+        drawTree(P, TREE);
+      }
+    }
+  }
+  function drawHallWall(paint, tint, sky, now) {
+    const S = paint.s, C = paint.c, Z = HALL_WALL_HEIGHT, X0 = -RX - 2, X1 = RX + 2;
+    const A = paint.p(X0, RY, 0), B = paint.p(X1, RY, 0), TOP = Z * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S;
+    C.fillStyle = rgb(tint.wall);
+    C.fillRect(A.x, A.y - TOP, B.x - A.x, TOP);
+    C.strokeStyle = "rgba(0,0,0,0.16)";
+    C.lineWidth = Math.max(1, 0.04 * S);
+    C.beginPath();
+    for (let z = 1; z < Z; z++) {
+      const Y = A.y - z * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S;
+      C.moveTo(A.x, Y);
+      C.lineTo(B.x, Y);
+    }
+    C.stroke();
+    const ACCENT = rgb(tint.accent);
+    for (let x = -RX; x <= RX; x += 8) {
+      const BASE = paint.p(x, RY, 0), FLICKER = 0.85 + 0.15 * Math.sin(now * 0.011 + x * 1.3);
+      if (!paint.visible(BASE, 160)) {
+        continue;
+      }
+      const WW = 1.5 * S, WB = BASE.y - 2.6 * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S, WT = BASE.y - 7 * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S;
+      C.fillStyle = rgb(tint.floor, 0.9);
+      C.fillRect(BASE.x - WW - 0.25 * S, WT - WW, WW * 2 + 0.5 * S, WB - WT + WW);
+      paint.r.ellipse(BASE.x, WT, WW + 0.25 * S, WW + 0.2 * S, rgb(tint.floor, 0.9));
+      C.fillStyle = rgb(sky.top);
+      C.fillRect(BASE.x - WW, WT - WW, WW * 2, (WB - WT + WW) * 0.55);
+      C.fillStyle = rgb(sky.bottom);
+      C.fillRect(BASE.x - WW, WT - WW + (WB - WT + WW) * 0.55, WW * 2, (WB - WT + WW) * 0.45);
+      paint.r.ellipse(BASE.x, WT, WW, WW, rgb(sky.top));
+      if (sky.night > 0.7) {
+        for (let k = 0; k < 6; k++) {
+          C.fillStyle = "rgba(255,255,240,0.85)";
+          C.fillRect(
+            BASE.x - WW + k * 37 % 100 * 0.0285 * WW * 0.97,
+            WT - WW * 0.8 + k * 53 % 100 * 0.01 * (WB - WT + WW) * 0.9,
+            2,
+            2
+          );
+        }
+      } else {
+        paint.r.ellipse(
+          BASE.x - WW * 0.3 + (now * 2e-5 * S + x) % 1 * 0,
+          WT + WW * 0.9,
+          WW * 0.55,
+          WW * 0.22,
+          "rgba(255,255,255,0.55)"
+        );
+      }
+      for (const SIDE of [-1, 1]) {
+        const TX = BASE.x + SIDE * 4 * S;
+        C.fillStyle = rgb(mix(tint.wall, [0, 0, 0], 0.25));
+        C.fillRect(
+          TX - 0.35 * S,
+          BASE.y - 6 * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S,
+          0.7 * S,
+          6 * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S
+        );
+        const TY = BASE.y - 3.6 * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S;
+        paint.r.ellipse(
+          TX,
+          TY,
+          1.7 * S * FLICKER,
+          1.9 * S * FLICKER,
+          `rgba(${tint.accent[0]},${tint.accent[1]},${tint.accent[2]},0.09)`
+        );
+        paint.r.ellipse(TX, TY, 0.28 * S, 0.5 * S * FLICKER, ACCENT);
+        paint.r.ellipse(TX, TY + 0.1 * S, 0.14 * S, 0.28 * S, "#fff1c4");
+      }
+    }
+    C.fillStyle = rgb(mix(tint.wall, [255, 255, 255], 0.14));
+    C.fillRect(A.x, A.y - TOP - 0.35 * S, B.x - A.x, 0.35 * S);
+    C.fillStyle = "rgba(0,0,0,0.3)";
+    C.fillRect(A.x, A.y - 0.2 * S, B.x - A.x, 0.2 * S);
+  }
+  function drawTowerHall(renderer, world, now) {
+    const P = new Painter(renderer), S = P.s, C = P.c, W = renderer.canvas.width, H = renderer.canvas.height, KIND = world.tower?.kind || "battle", TINT = HALL_TINTS[KIND] || HALL_TINTS.battle, SKY = skyAt(world.tower?.floor || 1);
+    C.fillStyle = "#15111d";
+    C.fillRect(0, 0, W, H);
+    drawHallWall(P, TINT, SKY, now);
+    P.groundRect(-RX, -RY, RX, RY, rgb(TINT.floor));
+    const ROW = 3, SLAB = 5;
+    const RAND = seeded(7 + (world.tower?.floor || 1));
+    for (let y = -RY, row = 0; y < RY; y += ROW, row++) {
+      for (let x = -RX - (row % 2 ? SLAB / 2 : 0); x < RX; x += SLAB) {
+        const X0 = Math.max(-RX, x), X1 = Math.min(RX, x + SLAB), Y1 = Math.min(RY, y + ROW), T = RAND();
+        if (X1 > X0) {
+          P.groundRect(
+            X0,
+            y,
+            X1,
+            Y1,
+            T < 0.33 ? "rgba(255,255,255,0.05)" : T < 0.66 ? "rgba(0,0,0,0.07)" : "rgba(0,0,0,0)"
+          );
+        }
+      }
+    }
+    C.strokeStyle = "rgba(0,0,0,0.3)";
+    C.lineWidth = Math.max(1, 0.05 * S);
+    C.beginPath();
+    for (let y = -RY, row = 0; y <= RY; y += ROW, row++) {
+      const A = P.p(-RX, y), B = P.p(RX, y);
+      C.moveTo(A.x, A.y);
+      C.lineTo(B.x, B.y);
+      if (y < RY) {
+        for (let x = -RX - (row % 2 ? SLAB / 2 : 0); x < RX; x += SLAB) {
+          if (x > -RX) {
+            const V0 = P.p(x, y), V1 = P.p(x, Math.min(RY, y + ROW));
+            C.moveTo(V0.x, V0.y);
+            C.lineTo(V1.x, V1.y);
+          }
+        }
+      }
+    }
+    C.stroke();
+    for (const [R3, ALPHA, WIDTH] of [
+      [8, 0.3, 0.14],
+      [7.2, 0.18, 0.06],
+      [3.2, 0.22, 0.08]
+    ]) {
+      renderer.strokeGroundEllipse(
+        0,
+        0,
+        R3,
+        R3,
+        `rgba(${TINT.accent[0]},${TINT.accent[1]},${TINT.accent[2]},${ALPHA})`,
+        WIDTH
+      );
+    }
+    for (let k = 0; k < 8; k++) {
+      const A = k * TAU5 / 8, P0 = P.p(Math.cos(A) * 3.6, Math.sin(A) * 3.6), P1 = P.p(Math.cos(A) * 7, Math.sin(A) * 7);
+      C.strokeStyle = `rgba(${TINT.accent[0]},${TINT.accent[1]},${TINT.accent[2]},0.15)`;
+      C.lineWidth = Math.max(1, 0.06 * S);
+      C.beginPath();
+      C.moveTo(P0.x, P0.y);
+      C.lineTo(P1.x, P1.y);
+      C.stroke();
+    }
+    const EDGE = rgb(mix(TINT.wall, [255, 255, 255], 0.1));
+    const L = P.p(-RX, -RY), R2 = P.p(RX, -RY);
+    C.fillStyle = EDGE;
+    C.fillRect(L.x, L.y, R2.x - L.x, 0.5 * S);
+    for (const SIDE of [-1, 1]) {
+      const T = P.p(SIDE * RX, RY), B = P.p(SIDE * RX, -RY);
+      C.fillRect(Math.min(T.x, T.x + SIDE * 0.9 * S), T.y, 0.9 * S, B.y - T.y);
+    }
+  }
+
   // src/farm-renderer.js
   var { bosses: BOSS_VECTOR_ASSETS, troops: TROOP_VECTOR_ASSETS } = globalThis.BudmoriVectorResources;
   var {
@@ -14975,7 +15620,7 @@
         this.vectorAssets.set(Number(SPECIES), {
           compiled: COMPILED,
           asset: CREATE_VECTOR_ASSET(this.meshes, COMPILED),
-          anchors: (0, import_vector_sockets5.readVectorSockets)(COMPILED, `species ${SPECIES}, ${COMPILED.sourcePath}`),
+          anchors: (0, import_vector_sockets6.readVectorSockets)(COMPILED, `species ${SPECIES}, ${COMPILED.sourcePath}`),
           parts: new Set(COMPILED.metadata.parts.map((part) => part.id))
         });
       }
@@ -15047,14 +15692,14 @@
     project(x, y, z = 0) {
       return {
         x: (x + this.offset[0] + this.view[0]) * this.scale,
-        y: (this.view[1] - (import_vector_sockets5.WORLD_DEPTH_PROJECTION * y + import_vector_sockets5.WORLD_HEIGHT_PROJECTION * z + this.offset[1])) * this.scale
+        y: (this.view[1] - (import_vector_sockets6.WORLD_DEPTH_PROJECTION * y + import_vector_sockets6.WORLD_HEIGHT_PROJECTION * z + this.offset[1])) * this.scale
       };
     }
     screenToWorld(clientX, clientY) {
       const R2 = this.canvas.getBoundingClientRect(), PX = (clientX - R2.left) * this.pixelRatio, PY = (clientY - R2.top) * this.pixelRatio;
       return {
         x: PX / this.scale - this.offset[0] - this.view[0],
-        y: (this.view[1] - PY / this.scale - this.offset[1]) / import_vector_sockets5.WORLD_DEPTH_PROJECTION
+        y: (this.view[1] - PY / this.scale - this.offset[1]) / import_vector_sockets6.WORLD_DEPTH_PROJECTION
       };
     }
     // The smallest a unit is drawn, in pixels. Zoomed out it shrinks with the view instead of staying full size.
@@ -15071,24 +15716,24 @@
           x: 0,
           y: 0
         };
-        this.zoom = 1;
+        this.zoom = this.homeZoom();
       }
       this.scene = scene;
       this.scenePresentation = scenePresentation(scene);
       const A = this.aspect;
-      this.zoom ??= 1;
+      this.zoom ??= this.homeZoom();
       this.baseView = this.scenePresentation.cameraView(A);
       const ZOOM = scene === "farm" ? this.zoom : 1;
       this.view = [this.baseView[0] / ZOOM, this.baseView[1] / ZOOM];
       this.scale = this.canvas.width / (2 * this.view[0]);
-      const { radiusX: RX, radiusY: RY } = CONFIG[scene].arena;
+      const { radiusX: RX2, radiusY: RY2 } = CONFIG[scene].arena;
       const BOUNDS = {
-        left: -RX - 1.3,
-        right: RX + 1.3,
-        bottom: -(RY + 1.3) * import_vector_sockets5.WORLD_DEPTH_PROJECTION,
-        top: (RY + 1.3) * import_vector_sockets5.WORLD_DEPTH_PROJECTION
+        left: -RX2 - 1.3,
+        right: RX2 + 1.3,
+        bottom: -(RY2 + 1.3) * import_vector_sockets6.WORLD_DEPTH_PROJECTION,
+        top: (RY2 + 1.3) * import_vector_sockets6.WORLD_DEPTH_PROJECTION
       };
-      const BOSS_SCALE = (0, import_vector_sockets5.bossVectorScale)(CONFIG.boss.radius), BOSS_X = RX - CONFIG.boss.radius, BOSS_Y = (RY - CONFIG.boss.radius) * import_vector_sockets5.WORLD_DEPTH_PROJECTION;
+      const BOSS_SCALE = (0, import_vector_sockets6.bossVectorScale)(CONFIG.boss.radius), BOSS_X = RX2 - CONFIG.boss.radius, BOSS_Y = (RY2 - CONFIG.boss.radius) * import_vector_sockets6.WORLD_DEPTH_PROJECTION;
       const INCLUDE_BOSS = (record) => {
         const [X, Y, W, H] = record.compiled.viewBox, G = record.anchors.ground;
         BOUNDS.left = Math.min(BOUNDS.left, -BOSS_X - (G.x - X) * BOSS_SCALE);
@@ -15096,13 +15741,13 @@
         BOUNDS.bottom = Math.min(BOUNDS.bottom, -BOSS_Y - (Y + H - G.y) * BOSS_SCALE);
         BOUNDS.top = Math.max(
           BOUNDS.top,
-          BOSS_Y + (G.y - Y) * BOSS_SCALE + CONFIG.battle.dropHeight * import_vector_sockets5.WORLD_HEIGHT_PROJECTION
+          BOSS_Y + (G.y - Y) * BOSS_SCALE + CONFIG.battle.dropHeight * import_vector_sockets6.WORLD_HEIGHT_PROJECTION
         );
       };
       for (const RECORD of this.bossAssets.values()) {
         INCLUDE_BOSS(RECORD);
       }
-      const BASE_Y = A < 0.8 ? 1.1 : -0.3, TOP = this.view[1] - BASE_Y, BOTTOM = TOP - this.canvas.height / this.scale;
+      const BASE_Y = this.baseY(), TOP = this.view[1] - BASE_Y, BOTTOM = TOP - this.canvas.height / this.scale;
       this.panLimits = {
         minX: Math.min(0, this.view[0] - BOUNDS.right),
         maxX: Math.max(0, -this.view[0] - BOUNDS.left),
@@ -15118,27 +15763,6 @@
       this.pan.x = CLAMP2(this.pan.x, this.panLimits.minX, this.panLimits.maxX);
       this.pan.y = CLAMP2(this.pan.y, this.panLimits.minY, this.panLimits.maxY);
       this.offset = [this.pan.x, BASE_Y + this.pan.y];
-      this.terrainDots = Array.from(
-        {
-          length: 92
-        },
-        (_, i) => {
-          const ANGLE = i * 2.39996, RAD = Math.sqrt((i + 0.5) / 92);
-          return this.project(Math.cos(ANGLE) * (RX + 0.3) * RAD, Math.sin(ANGLE) * (RY + 0.3) * RAD);
-        }
-      );
-      this.terrainLeaves = Array.from(
-        {
-          length: 24
-        },
-        (_, i) => {
-          const ANGLE = i * 2.39996;
-          return {
-            ...this.project(Math.cos(ANGLE) * (RX + 0.55), Math.sin(ANGLE) * (RY + 0.55)),
-            angle: ANGLE
-          };
-        }
-      );
     }
     get cameraPan() {
       return {
@@ -15157,13 +15781,7 @@
       this.pan.x = NEXT_X;
       this.pan.y = NEXT_Y;
       this.offset[0] = NEXT_X;
-      this.offset[1] = (this.aspect < 0.8 ? 1.1 : -0.3) + NEXT_Y;
-      for (const POINTS of [this.terrainDots, this.terrainLeaves]) {
-        for (const POINT2 of POINTS) {
-          POINT2.x += DX * this.scale;
-          POINT2.y -= DY * this.scale;
-        }
-      }
+      this.offset[1] = this.baseY() + NEXT_Y;
       return true;
     }
     panByScreen(dx, dy) {
@@ -15191,8 +15809,15 @@
       this.setPan(PX / this.scale - this.view[0] - WX, this.view[1] - PY / this.scale - WY - BASE_Y);
       return true;
     }
+    // A wide screen sits a little further back and higher up, so the tower behind the farm shows.
+    homeZoom() {
+      return this.aspect > 1.2 ? 0.72 : 1;
+    }
+    baseY() {
+      return this.aspect < 0.8 ? 1.1 : this.aspect > 1.2 ? -3.3 : -0.3;
+    }
     resetZoom() {
-      this.zoom = 1;
+      this.zoom = this.homeZoom();
       this.configure(this.scene, true);
       return this.resetPan();
     }
@@ -15226,7 +15851,7 @@
       const S = this.scale, OX = this.offset[0] + this.view[0], OY = this.view[1] - this.offset[1], ALPHA = C.globalAlpha;
       C.beginPath();
       for (let i = 0; i < COUNT; i++) {
-        const X = (POINTS[i * 2] + OX) * S, Y = (OY - import_vector_sockets5.WORLD_DEPTH_PROJECTION * POINTS[i * 2 + 1]) * S;
+        const X = (POINTS[i * 2] + OX) * S, Y = (OY - import_vector_sockets6.WORLD_DEPTH_PROJECTION * POINTS[i * 2 + 1]) * S;
         if (i === 0) {
           C.moveTo(X, Y);
         } else {
@@ -15273,31 +15898,59 @@
       C.lineTo(b.x, b.y);
       C.stroke();
     }
-    groundCell(x, y, color2, inset = 0) {
-      const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena, A = this.project(x - RX + inset, y + RY - inset), B = this.project(x + RX - inset, y - RY + inset), C = this.ctx;
-      C.fillStyle = color2;
-      C.fillRect(Math.floor(A.x), Math.floor(A.y), Math.ceil(B.x - A.x) + 1, Math.ceil(B.y - A.y) + 1);
+    terrain(sim2, now) {
+      if (sim2.insideTower) {
+        drawTowerHall(this, sim2, now);
+        return;
+      }
+      drawFarmGrounds(this, sim2);
+      this.scenePresentation.drawBoundary(this);
+      this.drawWorkShadows(sim2);
     }
-    terrain(sim2) {
-      const S = this.scale, PRESENTATION = this.scenePresentation, { radiusX: RX, radiusY: RY } = CONFIG[sim2.scene].arena;
-      if (sim2.scene === "farm") {
-        this.groundCell(0, 0, PRESENTATION.groundColor);
-        this.groundCell(0, 0, PRESENTATION.surfaceColor, 0.7);
-      } else {
-        this.groundEllipse(0, -0.2, RX + 1.3, RY + 1.1, "#bcc7a6");
-        this.groundEllipse(0, 0, RX + 1.2, RY + 1.1, PRESENTATION.groundColor);
-        this.groundEllipse(0, 0.15, RX + 0.3, RY + 0.3, PRESENTATION.surfaceColor);
-        for (const P of this.terrainDots) {
-          this.ellipse(P.x, P.y, S * 0.026, S * 0.02, "#a7b58b80");
-        }
-        for (const P of this.terrainLeaves) {
-          this.ellipse(P.x, P.y, 0.25 * S, 0.11 * S, "#94a577", P.angle);
-          this.ellipse(P.x + 0.1 * S, P.y - 0.09 * S, 0.19 * S, 0.075 * S, "#a8b78a", P.angle + 0.7);
+    // The camera follows the climb: on the march it pulls back to show the tower and its door, and
+    // it stays there a moment when the troops come back out; inside, it rests on the hall.
+    directCamera(sim2, now) {
+      const INSIDE = !!sim2.insideTower, KEY2 = INSIDE ? `in${sim2.tower?.floor}` : "out", MARCHING = sim2.farmBossEvent?.phase === "marching";
+      if (this.sceneKey === void 0) {
+        this.sceneKey = KEY2;
+        this.sceneChangedAt = -1e9;
+        this.towerShotUntil = 0;
+      } else if (KEY2 !== this.sceneKey) {
+        const WAS_INSIDE = this.sceneKey !== "out";
+        this.sceneKey = KEY2;
+        this.sceneChangedAt = now;
+        if (INSIDE && !WAS_INSIDE) {
+          this.resetZoom();
+        } else if (!INSIDE) {
+          this.towerShotUntil = now + 2600;
         }
       }
-      PRESENTATION.drawBoundary(this);
-      if (sim2.scene === "farm") {
-        this.drawWorkShadows(sim2);
+      if (MARCHING || now < this.towerShotUntil) {
+        const ZOOM_TARGET = this.aspect > 1.2 ? 0.55 : 0.8;
+        this.zoom += (ZOOM_TARGET - this.zoom) * 0.07;
+        this.configure(this.scene, true);
+        const BASE_Y = this.baseY(), TARGET_Y = -0.2 * this.view[1] - import_vector_sockets6.WORLD_DEPTH_PROJECTION * CONFIG.farm.arena.radiusY - BASE_Y;
+        this.setPan(this.pan.x * 0.9, this.pan.y + (TARGET_Y - this.pan.y) * 0.07);
+        this.cameraReturning = true;
+      } else if (this.cameraReturning && !INSIDE) {
+        this.zoom += (this.homeZoom() - this.zoom) * 0.1;
+        this.configure(this.scene, true);
+        this.setPan(this.pan.x * 0.9, this.pan.y * 0.9);
+        if (Math.abs(this.zoom - this.homeZoom()) < 0.01 && Math.abs(this.pan.y) < 0.05) {
+          this.resetZoom();
+          this.cameraReturning = false;
+        }
+      } else if (INSIDE) {
+        this.cameraReturning = false;
+      }
+    }
+    // Going through the door fades out and each new place fades in, so the climb reads as a cut, not a pop.
+    drawSceneFade(sim2, now) {
+      const EVENT = sim2.farmBossEvent, MARCH = EVENT?.phase === "marching" ? EVENT.elapsed / CONFIG.farm.tower.marchSeconds : 0, OUT = MARCH > 0.82 ? (MARCH - 0.82) / 0.18 : 0, IN_MS = sim2.insideTower ? 700 : 500, IN = CLAMP2(1 - (now - this.sceneChangedAt) / IN_MS, 0, 1), DARK = Math.max(CLAMP2(OUT, 0, 1), IN);
+      if (DARK > 0.01) {
+        const C = this.ctx;
+        C.fillStyle = `rgba(14,10,22,${DARK})`;
+        C.fillRect(0, 0, this.canvas.width, this.canvas.height);
       }
     }
     drawDanger(sim2) {
@@ -15384,6 +16037,7 @@
       this.feel = feel;
       this.displayTimeMs = now;
       this.configure(sim2.scene);
+      this.directCamera(sim2, now);
       const C = this.ctx, PRESENTATION = this.scenePresentation;
       PRESENTATION.collectJoy(sim2, this.joyEffects);
       C.beginFrame({
@@ -15391,7 +16045,7 @@
         height: this.canvas.height,
         clearColor: [0.9, 0.92, 0.87, 1]
       });
-      this.terrain(sim2);
+      this.terrain(sim2, now);
       for (const U of sim2.units) {
         const A = CLAMP2(0.22 / (1 + U.z * 0.3), 0.045, 0.22), SHADOW = U.size * 0.66 / (1 + U.z * 0.65);
         this.groundEllipse(U.x, U.y, SHADOW, SHADOW * 0.62, `rgba(42,61,35,${A})`);
@@ -15422,7 +16076,7 @@
         this.addActor(this.bossPresentation, sim2.boss, 0.785 * sim2.boss.y - 0.62 * (sim2.boss.z || 0), 0, true);
       }
       PRESENTATION.collectFood(this, sim2);
-      if (sim2.scene === "farm") {
+      if (sim2.scene === "farm" && !sim2.insideTower) {
         this.addWorkActors(sim2);
       }
       if (BOSS_VISIBLE) {
@@ -15488,6 +16142,7 @@
         }
       }
       drawFormationEffects(this, sim2);
+      this.drawSceneFade(sim2, now);
       this.stats = C.endFrame();
     }
     dispose() {
@@ -19405,7 +20060,7 @@
     syncFlag("farmControls", "hidden", FARM_EVENT_ACTIVE || home || W.tower.active);
     syncFlag("workHud", "hidden", FARM_EVENT_ACTIVE || home || W.tower.active);
     syncTower(W, home, FARM_EVENT);
-    syncFlag("bossbar", "hidden", !FARM_EVENT_ACTIVE || home);
+    syncFlag("bossbar", "hidden", !FARM_EVENT_ACTIVE || home || FARM_EVENT.phase === "marching");
     syncHand(W, !home && ["dropping", "fighting"].includes(FARM_EVENT?.phase));
     syncText("count", displayedCount);
     syncText("capacity", personalGarden?.capacity ?? CONFIG.farm.capacity.max);
