@@ -53,6 +53,58 @@ function spawnPile(world, config) {
 export function pileRadius(pile) {
     return 0.85 * (0.95 + 0.5 * (pile.food / pile.maxFood));
 }
+// How many of each species work. The slider fixes the farm-wide worker share. Without breeding weights every species
+// gives the same share; with them, the breeders are split between species by weight and everyone else works.
+// lengths: species -> adults. Returns species -> workers.
+export function workersBySpecies(lengths, ratio, weights) {
+    const WORKERS = new Map();
+    if (!weights) {
+        for (const [SPECIES, LENGTH] of lengths) {
+            WORKERS.set(SPECIES, Math.floor(ratio * LENGTH + 1e-9));
+        }
+        return WORKERS;
+    }
+    let total = 0;
+    for (const LENGTH of lengths.values()) {
+        total += LENGTH;
+    }
+    const ALLOC = new Map([...lengths.keys()].map((species) => [species, 0]));
+    let remaining = total - Math.floor(ratio * total + 1e-9),
+        active = [...lengths.keys()].filter((species) => (weights[species] || 0) > 0 && lengths.get(species) > 0);
+    while (remaining > 0 && active.length) {
+        const WEIGHT = active.reduce((sum, species) => sum + weights[species], 0),
+            FULL = active.filter(
+                (species) =>
+                    (remaining * weights[species]) / WEIGHT >= lengths.get(species) - ALLOC.get(species) - 1e-9,
+            );
+        if (FULL.length) {
+            for (const FULL_SPECIES of FULL) {
+                const ROOM = lengths.get(FULL_SPECIES) - ALLOC.get(FULL_SPECIES);
+                ALLOC.set(FULL_SPECIES, lengths.get(FULL_SPECIES));
+                remaining -= ROOM;
+            }
+            active = active.filter((species) => !FULL.includes(species));
+            continue;
+        }
+        const SHARES = active.map((species) => ({ species, exact: (remaining * weights[species]) / WEIGHT }));
+        let given = 0;
+        for (const SHARE of SHARES) {
+            const BASE = Math.floor(SHARE.exact + 1e-9);
+            ALLOC.set(SHARE.species, ALLOC.get(SHARE.species) + BASE);
+            given += BASE;
+            SHARE.rest = SHARE.exact - BASE;
+        }
+        SHARES.sort((a, b) => b.rest - a.rest || a.species - b.species);
+        for (let i = 0; given < remaining && i < SHARES.length; i++, given++) {
+            ALLOC.set(SHARES[i].species, ALLOC.get(SHARES[i].species) + 1);
+        }
+        remaining = 0;
+    }
+    for (const [SPECIES, LENGTH] of lengths) {
+        WORKERS.set(SPECIES, LENGTH - ALLOC.get(SPECIES));
+    }
+    return WORKERS;
+}
 export function resetWork(world) {
     world._piles = [];
     world._pileId = 0;

@@ -559,8 +559,8 @@ class FarmSession {
         switch (c.type) {
             case 'farm-work':
                 return W.scene === 'farm' && W.setWorkBasisPoints(c.basisPoints);
-            case 'farm-species-work':
-                return W.scene === 'farm' && W.setSpeciesWorkBasisPoints(c.species, c.basisPoints);
+            case 'farm-breed-weights':
+                return W.scene === 'farm' && W.setBreedWeights(c.weights);
             case 'deploy':
                 return W.scene === 'farm' && W.deployUnit(c.species, c.x, c.y);
             case 'tower-start':
