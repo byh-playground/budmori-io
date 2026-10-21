@@ -141,11 +141,8 @@ export const FARM_SNAPSHOT_SHAPE = {
     },
     formationRuntime: createFormationRuntime(),
     playerProgression: {
-        schemaVersion: 2,
-        availablePoints: 0,
+        schemaVersion: 3,
         abilities: ABILITY_INVESTMENTS(),
-        level: 1,
-        experience: 0,
         towerBest: 0,
         processedBossKillReceipts: [],
     },

@@ -50,7 +50,7 @@ import {
     createBossRewardStreams,
 } from './boss-rewards.js';
 import { SPECIES_COUNT } from './species-catalog.js';
-import { createPlayerProgressionState } from './player-progression.js';
+import { createPlayerProgressionState, awardMasteryXp } from './player-progression.js';
 import { purchaseAbilityNode, resetPlayerProgression } from './ability-progression.js';
 import { composeUnitAttackCycles } from './unit-attack-capabilities.js';
 import { MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT, mergeMaterialCostForTier } from './unit-grades.js';
@@ -4757,18 +4757,29 @@ const GARDEN = class Garden {
                               y: this.boss.y,
                               firstClear: FIRST_CLEAR,
                               rollBudget: STAGE_STATS.rollBudget * KIND.reward,
-                              xpAmount: this.tower.record ? STAGE_STATS.xp * KIND.reward : 0,
+                              xpAmount: STAGE_STATS.xp * KIND.reward,
                           });
+            // Every win feeds the beaten species' mastery, and the XP grows with the floor.
+            const MASTERY =
+                SETTLEMENT ??
+                awardMasteryXp(
+                    this.playerProgression,
+                    `farm:${ENCOUNTER_ID}`,
+                    this.boss.species,
+                    STAGE_STATS.xp * KIND.reward,
+                );
+            if (!SETTLEMENT && MASTERY.awarded) {
+                this.playerProgression = MASTERY.state;
+            }
+            this.combat('farm-boss-xp', {
+                encounterId: ENCOUNTER_ID,
+                species: this.boss.species,
+                xp: MASTERY.xpAwarded,
+                levelsGained: MASTERY.levelsGained,
+                pointsAwarded: MASTERY.pointsAwarded,
+            });
             if (SETTLEMENT) {
                 const REWARD = SETTLEMENT.receipt;
-                if (this.tower.record) {
-                    this.combat('farm-boss-xp', {
-                        encounterId: ENCOUNTER_ID,
-                        xp: SETTLEMENT.xpAwarded,
-                        levelsGained: SETTLEMENT.levelsGained,
-                        pointsAwarded: SETTLEMENT.pointsAwarded,
-                    });
-                }
                 this.combat('farm-boss-reward', {
                     acquired: REWARD.grantedCount > 0,
                     pending: REWARD.status === 'pending',

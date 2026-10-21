@@ -11,7 +11,8 @@ import { PRODUCT_VERSION } from './version.js';
 import { FoodFeel } from './food-feel.js';
 import { CombatFeel } from './combat-feel.js';
 import { renderAbilityTreeMarkup, renderAbilitySpeciesTabsMarkup } from './ability-tree.js';
-import { canResetPlayerProgression } from './ability-progression.js';
+import { canResetPlayerProgression, getAbilityPointsLeft } from './ability-progression.js';
+import { SPECIES_ABILITY_DEFINITIONS } from './ability-catalog.js';
 import { advanceBossRewardReveal, openAllBossRewardBoxes, bossSpeciesOwned } from './boss-rewards.js';
 import { workersBySpecies } from './farm-work.js';
 import { speciesById, giantSpeciesName, speciesRewardName } from './species-catalog.js';
@@ -1089,7 +1090,12 @@ function drawAbilityTree() {
     const W = personalGarden || active.world,
         IN_COMBAT = W.farmBossEvent?.phase !== 'idle';
     const SELECTED_SPECIES = Number(DOLLAR('abilityPanel').dataset.selectedSpecies || 0);
-    DOLLAR('abilityPoints').textContent = String(W.playerProgression.availablePoints);
+    const MASTERY_DEFINITION = SPECIES_ABILITY_DEFINITIONS.find(
+        (definition) => definition.species === SELECTED_SPECIES,
+    );
+    DOLLAR('abilityPoints').textContent = String(
+        MASTERY_DEFINITION ? getAbilityPointsLeft(W.playerProgression, MASTERY_DEFINITION.id) : 0,
+    );
     for (const BUTTON of DOLLAR('abilitySpeciesTabs').querySelectorAll('[data-ability-species]')) {
         BUTTON.setAttribute('aria-pressed', String(Number(BUTTON.dataset.abilitySpecies) === SELECTED_SPECIES));
     }

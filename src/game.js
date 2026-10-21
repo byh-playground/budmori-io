@@ -3294,13 +3294,21 @@
   });
 
   // src/ability-state.js
-  function createAbilityProgressionState({ availablePoints = 0 } = {}) {
-    if (!isNonNegativeInteger(availablePoints)) {
-      throw new TypeError("availablePoints must be a non-negative integer");
+  function masteryXpForNextLevel(level) {
+    if (!Number.isSafeInteger(level) || level < 1) {
+      throw new RangeError("mastery level must be a positive integer");
     }
+    return MASTERY_FIRST_LEVEL_XP * MASTERY_LEVEL_XP_MULTIPLIER ** (level - 1);
+  }
+  function investedPointsOf(investment) {
+    return investment.powerLevel + Object.values(investment.branchLevels || {}).reduce((total, level) => total + level, 0);
+  }
+  function masteryPointsLeft(investment) {
+    return investment.masteryLevel - 1 - investedPointsOf(investment);
+  }
+  function createAbilityProgressionState() {
     return {
       schemaVersion: ABILITY_TREE_SCHEMA_VERSION,
-      availablePoints,
       abilities: Object.fromEntries(
         SPECIES_ABILITY_DEFINITIONS.map((definition) => [
           definition.id,
@@ -3310,7 +3318,9 @@
               branchLevels: Object.fromEntries(
                 Object.keys(definition.branches).map((branchId) => [branchId, 0])
               )
-            } : {}
+            } : {},
+            masteryLevel: 1,
+            masteryXp: 0
           }
         ])
       )
@@ -3320,7 +3330,7 @@
     if (!state || typeof state !== "object" || state.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION) {
       return false;
     }
-    if (!isNonNegativeInteger(state.availablePoints) || !state.abilities || typeof state.abilities !== "object") {
+    if (!state.abilities || typeof state.abilities !== "object") {
       return false;
     }
     if (Object.keys(state.abilities).length !== SPECIES_ABILITY_DEFINITIONS.length) {
@@ -3334,6 +3344,9 @@
       if (INVESTMENT.powerLevel > DEFINITION13.powerValues.length - 1) {
         return false;
       }
+      if (!Number.isSafeInteger(INVESTMENT.masteryLevel) || INVESTMENT.masteryLevel < 1 || !Number.isFinite(INVESTMENT.masteryXp) || INVESTMENT.masteryXp < 0 || INVESTMENT.masteryXp >= masteryXpForNextLevel(INVESTMENT.masteryLevel)) {
+        return false;
+      }
       const BRANCHES = DEFINITION13.branches || {}, BRANCH_LEVELS = INVESTMENT.branchLevels || {};
       if (Object.keys(BRANCHES).length === 0 && Object.hasOwn(INVESTMENT, "branchLevels") || Object.hasOwn(INVESTMENT, "branchLevels") && (Object.keys(BRANCH_LEVELS).length !== Object.keys(BRANCHES).length || Object.keys(BRANCH_LEVELS).some((branchId) => !Object.hasOwn(BRANCHES, branchId)))) {
         return false;
@@ -3345,6 +3358,9 @@
         }
       }
     }
+    if (SPECIES_ABILITY_DEFINITIONS.some((definition) => masteryPointsLeft(state.abilities[definition.id]) < 0)) {
+      return false;
+    }
     return Object.keys(state.abilities).every(
       (abilityId) => SPECIES_ABILITY_DEFINITIONS.some((definition) => definition.id === abilityId)
     );
@@ -3352,11 +3368,13 @@
   function isNonNegativeInteger(value) {
     return Number.isSafeInteger(value) && value >= 0;
   }
-  var ABILITY_TREE_SCHEMA_VERSION;
+  var ABILITY_TREE_SCHEMA_VERSION, MASTERY_FIRST_LEVEL_XP, MASTERY_LEVEL_XP_MULTIPLIER;
   var init_ability_state = __esm({
     "src/ability-state.js"() {
       init_ability_definitions();
-      ABILITY_TREE_SCHEMA_VERSION = 2;
+      ABILITY_TREE_SCHEMA_VERSION = 3;
+      MASTERY_FIRST_LEVEL_XP = 100;
+      MASTERY_LEVEL_XP_MULTIPLIER = 1.2;
     }
   });
 
@@ -3364,76 +3382,54 @@
   function createPlayerProgressionState() {
     return {
       ...createAbilityProgressionState(),
-      level: 1,
-      experience: 0,
       towerBest: 0,
       processedBossKillReceipts: []
     };
   }
-  function awardBossKillXp(state, receiptKey, xpAmount = BOSS_KILL_XP) {
+  function awardMasteryXp(state, receiptKey, species, xpAmount = BOSS_KILL_XP) {
+    const REJECT = (reason) => ({
+      state,
+      awarded: false,
+      reason,
+      xpAwarded: 0,
+      levelsGained: 0,
+      pointsAwarded: 0
+    });
     if (!isValidPlayerProgressionState(state)) {
-      return {
-        state,
-        awarded: false,
-        reason: "invalid-state",
-        xpAwarded: 0,
-        levelsGained: 0,
-        pointsAwarded: 0
-      };
+      return REJECT("invalid-state");
     }
     if (typeof receiptKey !== "string" || receiptKey.trim().length === 0) {
-      return {
-        state,
-        awarded: false,
-        reason: "invalid-receipt",
-        xpAwarded: 0,
-        levelsGained: 0,
-        pointsAwarded: 0
-      };
+      return REJECT("invalid-receipt");
     }
     if (!Number.isFinite(xpAmount) || xpAmount < 0 || xpAmount >= 1e13) {
-      return {
-        state,
-        awarded: false,
-        reason: "invalid-xp",
-        xpAwarded: 0,
-        levelsGained: 0,
-        pointsAwarded: 0
-      };
+      return REJECT("invalid-xp");
+    }
+    const DEFINITION13 = SPECIES_ABILITY_DEFINITIONS.find((definition) => definition.species === species);
+    if (!DEFINITION13) {
+      return REJECT("unknown-species");
     }
     if (state.processedBossKillReceipts.includes(receiptKey)) {
-      return {
-        state,
-        awarded: false,
-        reason: "duplicate-receipt",
-        xpAwarded: 0,
-        levelsGained: 0,
-        pointsAwarded: 0
-      };
+      return REJECT("duplicate-receipt");
     }
-    let level = state.level;
-    let experience = state.experience + xpAmount;
+    const MASTERY = state.abilities[DEFINITION13.id];
+    let level = MASTERY.masteryLevel;
+    let experience = MASTERY.masteryXp + xpAmount;
     let levelsGained = 0;
-    while (experience >= experienceForNextLevel(level)) {
-      experience -= experienceForNextLevel(level);
+    while (experience >= masteryXpForNextLevel(level)) {
+      experience -= masteryXpForNextLevel(level);
       level += 1;
       levelsGained += 1;
     }
-    const POINTS_AWARDED = levelsGained * SHARED_POINTS_PER_LEVEL;
     const NEXT_STATE = {
       ...state,
-      level,
-      experience,
-      availablePoints: state.availablePoints + POINTS_AWARDED,
       abilities: Object.fromEntries(
         Object.entries(state.abilities).map(([id, value]) => [
           id,
-          {
-            ...value
-          }
+          id === DEFINITION13.id ? { ...value, masteryLevel: level, masteryXp: experience } : { ...value }
         ])
       ),
-      processedBossKillReceipts: [...state.processedBossKillReceipts, receiptKey]
+      // Only a retry of a recent kill needs the duplicate guard, so the list stays short.
+      processedBossKillReceipts: [...state.processedBossKillReceipts, receiptKey].slice(-RECEIPT_MEMORY)
     };
     return {
       state: NEXT_STATE,
@@ -3441,14 +3437,8 @@
       reason: null,
       xpAwarded: xpAmount,
       levelsGained,
-      pointsAwarded: POINTS_AWARDED
+      pointsAwarded: levelsGained
     };
-  }
-  function experienceForNextLevel(level) {
-    if (!Number.isSafeInteger(level) || level < 1) {
-      throw new RangeError("level must be a positive integer");
-    }
-    return FIRST_LEVEL_XP * LEVEL_XP_MULTIPLIER ** (level - 1);
   }
   function formatXpForDisplay(experience) {
     const VALUE = Number.isFinite(experience) ? Math.max(0, experience) : 0;
@@ -3457,25 +3447,16 @@
     }).format(VALUE);
   }
   function isValidPlayerProgressionState(state) {
-    if (!isValidAbilityProgressionState(state) || !Number.isSafeInteger(state.level) || state.level < 1 || !Number.isSafeInteger(state.towerBest) || state.towerBest < 0 || state.towerBest > FARM_BOSS_EVENT_MAX_STAGE || !Number.isFinite(state.experience) || state.experience < 0 || state.experience >= experienceForNextLevel(state.level) || !Array.isArray(state.processedBossKillReceipts) || !state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) || new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length) {
-      return false;
-    }
-    const INVESTED_POINTS = Object.entries(state.abilities).reduce(
-      (total, [, investment]) => total + investment.powerLevel + Object.values(investment.branchLevels || {}).reduce((branchTotal, level) => branchTotal + level, 0),
-      0
-    );
-    return INVESTED_POINTS + state.availablePoints === state.level - 1;
+    return isValidAbilityProgressionState(state) && Number.isSafeInteger(state.towerBest) && state.towerBest >= 0 && state.towerBest <= FARM_BOSS_EVENT_MAX_STAGE && Array.isArray(state.processedBossKillReceipts) && state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) && new Set(state.processedBossKillReceipts).size === state.processedBossKillReceipts.length;
   }
-  var PLAYER_PROGRESS_BASE_XP, BOSS_KILL_XP, FIRST_LEVEL_XP, LEVEL_XP_MULTIPLIER, SHARED_POINTS_PER_LEVEL, FARM_BOSS_EVENT_MAX_STAGE;
+  var BOSS_KILL_XP, FARM_BOSS_EVENT_MAX_STAGE, RECEIPT_MEMORY;
   var init_player_progression = __esm({
     "src/player-progression.js"() {
       init_ability_state();
-      PLAYER_PROGRESS_BASE_XP = 100;
+      init_ability_definitions();
       BOSS_KILL_XP = 20;
-      FIRST_LEVEL_XP = PLAYER_PROGRESS_BASE_XP;
-      LEVEL_XP_MULTIPLIER = 1.2;
-      SHARED_POINTS_PER_LEVEL = 1;
       FARM_BOSS_EVENT_MAX_STAGE = 61;
+      RECEIPT_MEMORY = 500;
     }
   });
 
@@ -3522,6 +3503,10 @@
         ])
       )
     };
+  }
+  function getAbilityPointsLeft(state, abilityId) {
+    const INVESTMENT = abilityStateFor(state, abilityId);
+    return INVESTMENT ? masteryPointsLeft(INVESTMENT) : 0;
   }
   function getInvestedPointCount(state) {
     return getInvestedAbilityPointCount(state);
@@ -3590,7 +3575,7 @@
         reason: "max-level"
       };
     }
-    if (state.availablePoints < SHARED_ABILITY_POINT_COST) {
+    if (masteryPointsLeft(INVESTMENT) < ABILITY_POINT_COST) {
       return {
         allowed: false,
         reason: "insufficient-points"
@@ -3612,7 +3597,6 @@
     }
     const NODE = parseNodeId(nodeId);
     const NEXT = cloneState(state);
-    NEXT.availablePoints -= SHARED_ABILITY_POINT_COST;
     if (NODE.kind === "power") {
       NEXT.abilities[abilityId].powerLevel = NODE.level;
     } else {
@@ -3679,13 +3663,10 @@
       return { ok: false, reason: CHECK.reason, refunded: CHECK.refunded, state };
     }
     const NEXT = cloneState(state), TYPE = NORMALIZED_SCOPE.type;
-    NEXT.availablePoints += CHECK.refunded;
     if (TYPE === "all" || TYPE === "abilities") {
       for (const DEFINITION13 of SPECIES_ABILITY_DEFINITIONS) {
         if (TYPE === "all" || NORMALIZED_SCOPE.speciesId === void 0 || DEFINITION13.species === NORMALIZED_SCOPE.speciesId) {
-          NEXT.abilities[DEFINITION13.id] = {
-            ...emptyAbilityInvestment(DEFINITION13)
-          };
+          NEXT.abilities[DEFINITION13.id] = emptyAbilityInvestment(DEFINITION13, NEXT.abilities[DEFINITION13.id]);
         }
       }
     }
@@ -3780,8 +3761,10 @@
       )
     };
   }
-  function emptyAbilityInvestment(definition) {
+  function emptyAbilityInvestment(definition, previous) {
     return {
+      masteryLevel: previous.masteryLevel,
+      masteryXp: previous.masteryXp,
       powerLevel: 0,
       ...definition.branches ? {
         branchLevels: Object.fromEntries(Object.keys(definition.branches).map((branchId) => [branchId, 0]))
@@ -3794,13 +3777,13 @@
     }
     return null;
   }
-  var SHARED_ABILITY_POINT_COST, DEFINITION_BY_ID;
+  var ABILITY_POINT_COST, DEFINITION_BY_ID;
   var init_ability_progression = __esm({
     "src/ability-progression.js"() {
       init_ability_definitions();
       init_ability_state();
       init_player_progression();
-      SHARED_ABILITY_POINT_COST = 1;
+      ABILITY_POINT_COST = 1;
       DEFINITION_BY_ID = new Map(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, definition]));
     }
   });
@@ -6567,7 +6550,12 @@
         pointsAwarded: RECEIPT.pointsAwarded ?? 0
       };
     }
-    const RESULT = awardBossKillXp(WALLET, RECEIPT_KEY, options.xpAmount === void 0 ? void 0 : options.xpAmount);
+    const RESULT = awardMasteryXp(
+      WALLET,
+      RECEIPT_KEY,
+      RECEIPT.species,
+      options.xpAmount === void 0 ? void 0 : options.xpAmount
+    );
     if (RESULT.awarded) {
       PROGRESSION_OWNER.playerProgression = RESULT.state;
     }
@@ -11355,18 +11343,26 @@
               y: this.boss.y,
               firstClear: FIRST_CLEAR,
               rollBudget: STAGE_STATS.rollBudget * KIND.reward,
-              xpAmount: this.tower.record ? STAGE_STATS.xp * KIND.reward : 0
+              xpAmount: STAGE_STATS.xp * KIND.reward
+            });
+            const MASTERY = SETTLEMENT ?? awardMasteryXp(
+              this.playerProgression,
+              `farm:${ENCOUNTER_ID}`,
+              this.boss.species,
+              STAGE_STATS.xp * KIND.reward
+            );
+            if (!SETTLEMENT && MASTERY.awarded) {
+              this.playerProgression = MASTERY.state;
+            }
+            this.combat("farm-boss-xp", {
+              encounterId: ENCOUNTER_ID,
+              species: this.boss.species,
+              xp: MASTERY.xpAwarded,
+              levelsGained: MASTERY.levelsGained,
+              pointsAwarded: MASTERY.pointsAwarded
             });
             if (SETTLEMENT) {
               const REWARD2 = SETTLEMENT.receipt;
-              if (this.tower.record) {
-                this.combat("farm-boss-xp", {
-                  encounterId: ENCOUNTER_ID,
-                  xp: SETTLEMENT.xpAwarded,
-                  levelsGained: SETTLEMENT.levelsGained,
-                  pointsAwarded: SETTLEMENT.pointsAwarded
-                });
-              }
               this.combat("farm-boss-reward", {
                 acquired: REWARD2.grantedCount > 0,
                 pending: REWARD2.status === "pending",
@@ -12088,10 +12084,7 @@
   function copyPlayer(player) {
     return {
       schemaVersion: player.schemaVersion,
-      level: player.level,
-      experience: player.experience,
       towerBest: player.towerBest,
-      availablePoints: player.availablePoints,
       abilities: Object.fromEntries(
         Object.entries(player.abilities).map(([id, build]) => [
           id,
@@ -12216,13 +12209,13 @@
     keys(PLAYER.abilities, Object.keys(DEFAULTS.abilities));
     for (const [ABILITY_ID8, BUILD] of Object.entries(PLAYER.abilities)) {
       const BRANCH_KEYS = Object.keys(DEFAULTS.abilities[ABILITY_ID8].branchLevels || {});
-      keys(BUILD, ["powerLevel"], BRANCH_KEYS.length ? ["branchLevels"] : []);
+      keys(BUILD, ["powerLevel", "masteryLevel", "masteryXp"], BRANCH_KEYS.length ? ["branchLevels"] : []);
       if (Object.hasOwn(BUILD, "branchLevels")) {
         keys(BUILD.branchLevels, BRANCH_KEYS);
       }
     }
     ASSERT(
-      isValidPlayerProgressionState(PLAYER) && INTEGER(PLAYER.level, 1) && NUMBER3(PLAYER.experience) && Array.isArray(PLAYER.processedBossKillReceipts) && PLAYER.processedBossKillReceipts.length <= 1e5 && PLAYER.processedBossKillReceipts.every(STRING)
+      isValidPlayerProgressionState(PLAYER) && Array.isArray(PLAYER.processedBossKillReceipts) && PLAYER.processedBossKillReceipts.length <= 1e5 && PLAYER.processedBossKillReceipts.every(STRING)
     );
     ASSERT(Array.isArray(data.roster));
     const COHORTS = /* @__PURE__ */ new Set(), RESIDENT_IDS = /* @__PURE__ */ new Set();
@@ -12518,7 +12511,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.29.10";
+      PRODUCT_VERSION = "0.30.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -17549,11 +17542,8 @@
     },
     formationRuntime: createFormationRuntime(),
     playerProgression: {
-      schemaVersion: 2,
-      availablePoints: 0,
+      schemaVersion: 3,
       abilities: ABILITY_INVESTMENTS(),
-      level: 1,
-      experience: 0,
       towerBest: 0,
       processedBossKillReceipts: []
     },
@@ -18774,7 +18764,7 @@
   var INVESTMENT_REASON_LABELS = /* @__PURE__ */ new Map([
     ["already-invested", "이미 투자한 노드예요."],
     ["prerequisite-required", "이전 단계에 먼저 투자해야 해요."],
-    ["insufficient-points", "공용 포인트가 필요해요."],
+    ["insufficient-points", "이 종의 숙련 포인트가 필요해요. 이 종 보스를 잡으면 쌓여요."],
     ["combat-lock", "전투 중에는 투자할 수 없어요."],
     ["farm-only", "농장에서만 투자할 수 있어요."],
     ["max-level", "최대 강화 단계예요."],
@@ -18809,11 +18799,14 @@
     );
     const VISIBLE_DEFINITIONS = Number.isInteger(selectedSpecies) ? SPECIES_ABILITY_DEFINITIONS.filter((definition) => definition.species === selectedSpecies) : SPECIES_ABILITY_DEFINITIONS;
     const CARDS = VISIBLE_DEFINITIONS.map((definition) => renderAbilityCard(state, definition, CONTEXT)).join("") || `<p class="ability-tree__note" role="status">이 병종은 기본 공격으로 전투에 참여해요. 전용 특수 능력 트리는 아직 추가되지 않았어요.</p>`;
-    const LEVEL_MARKUP = renderPlayerProgressMarkup(state), DEFAULTS_NOTE = "모든 일반 병종의 대표 능력은 Common(T1)부터 무료로 적용돼요. 공용 포인트로 능력 효과를 강화할 수 있어요.";
+    const FOCUS = Number.isInteger(selectedSpecies) ? SPECIES_ABILITY_DEFINITIONS.find((definition) => definition.species === selectedSpecies) : null, POINTS = FOCUS ? getAbilityPointsLeft(state, FOCUS.id) : SPECIES_ABILITY_DEFINITIONS.reduce(
+      (total, definition) => total + getAbilityPointsLeft(state, definition.id),
+      0
+    ), LEVEL_MARKUP = FOCUS ? renderMasteryMarkup(state.abilities[FOCUS.id], speciesById(FOCUS.species).name) : "", DEFAULTS_NOTE = "모든 일반 병종의 대표 능력은 Common(T1)부터 무료로 적용돼요. 이 종의 보스를 잡을수록 숙련이 올라 능력을 강화할 포인트가 생겨요.";
     return `<section class="ability-tree" aria-labelledby="ability-tree-title">
     <header class="ability-tree__header">
       <div><p class="ability-tree__eyebrow">농장 성장</p><h2 id="ability-tree-title">병종 특성</h2></div>
-      <p class="ability-tree__wallet" aria-live="polite"><strong>${state.availablePoints}</strong><span>공용 포인트</span></p>
+      <p class="ability-tree__wallet" aria-live="polite"><strong>${POINTS}</strong><span>숙련 포인트</span></p>
     </header>
     <p class="ability-tree__note">${DEFAULTS_NOTE}</p>
     ${LEVEL_MARKUP}
@@ -18825,18 +18818,11 @@
     <div class="ability-tree__cards">${CARDS}</div>
   </section>`;
   }
-  function renderPlayerProgressMarkup(state) {
-    if (!Number.isSafeInteger(state.level) || state.level < 1 || !Number.isFinite(state.experience) || state.experience < 0) {
-      return "";
-    }
-    const NEXT_LEVEL_XP = experienceForNextLevel(state.level);
-    if (!Number.isFinite(NEXT_LEVEL_XP) || state.experience >= NEXT_LEVEL_XP) {
-      return "";
-    }
-    const LABEL = `플레이어 레벨 ${state.level} 경험치`;
+  function renderMasteryMarkup(mastery, speciesName) {
+    const NEXT_LEVEL_XP = masteryXpForNextLevel(mastery.masteryLevel), LABEL = `${speciesName} 숙련 ${mastery.masteryLevel} 경험치`;
     return `<div class="ability-tree__progress" aria-live="polite">
-    <div><strong>플레이어 Lv. ${state.level}</strong><span>${formatXpForDisplay(state.experience)} / ${formatXpForDisplay(NEXT_LEVEL_XP)} XP</span></div>
-    <progress max="${NEXT_LEVEL_XP}" value="${state.experience}" aria-label="${LABEL}"></progress>
+    <div><strong>${speciesName} 숙련 Lv. ${mastery.masteryLevel}</strong><span>${formatXpForDisplay(mastery.masteryXp)} / ${formatXpForDisplay(NEXT_LEVEL_XP)} XP</span></div>
+    <progress max="${NEXT_LEVEL_XP}" value="${mastery.masteryXp}" aria-label="${LABEL}"></progress>
   </div>`;
   }
   function renderAbilityCard(state, definition, context) {
@@ -18939,6 +18925,7 @@
 
   // src/farm-app.js
   init_ability_progression();
+  init_ability_catalog();
   init_boss_rewards();
   init_farm_work();
   init_species_catalog();
@@ -19880,7 +19867,12 @@
   function drawAbilityTree() {
     const W = personalGarden || active.world, IN_COMBAT = W.farmBossEvent?.phase !== "idle";
     const SELECTED_SPECIES = Number(DOLLAR2("abilityPanel").dataset.selectedSpecies || 0);
-    DOLLAR2("abilityPoints").textContent = String(W.playerProgression.availablePoints);
+    const MASTERY_DEFINITION = SPECIES_ABILITY_DEFINITIONS.find(
+      (definition) => definition.species === SELECTED_SPECIES
+    );
+    DOLLAR2("abilityPoints").textContent = String(
+      MASTERY_DEFINITION ? getAbilityPointsLeft(W.playerProgression, MASTERY_DEFINITION.id) : 0
+    );
     for (const BUTTON of DOLLAR2("abilitySpeciesTabs").querySelectorAll("[data-ability-species]")) {
       BUTTON.setAttribute("aria-pressed", String(Number(BUTTON.dataset.abilitySpecies) === SELECTED_SPECIES));
     }

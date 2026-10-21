@@ -1,10 +1,10 @@
 import { SPECIES_ABILITY_DEFINITIONS } from './ability-definitions.js';
-import { isValidAbilityProgressionState } from './ability-state.js';
+import { isValidAbilityProgressionState, masteryPointsLeft } from './ability-state.js';
 import { isValidPlayerProgressionState } from './player-progression.js';
 
 // Progression rules are shared by simulation commands and UI queries.
 // This module never imports presentation code or reads the DOM.
-export const SHARED_ABILITY_POINT_COST = 1;
+export const ABILITY_POINT_COST = 1;
 const DEFINITION_BY_ID = new Map(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, definition]));
 export function abilityStateFor(state, abilityId) {
     if (!DEFINITION_BY_ID.has(abilityId) || !state?.abilities?.[abilityId]) {
@@ -52,6 +52,10 @@ export function getAbilityEffects(state, abilityId, unitTier) {
             ]),
         ),
     };
+}
+export function getAbilityPointsLeft(state, abilityId) {
+    const INVESTMENT = abilityStateFor(state, abilityId);
+    return INVESTMENT ? masteryPointsLeft(INVESTMENT) : 0;
 }
 export function getInvestedPointCount(state) {
     return getInvestedAbilityPointCount(state);
@@ -131,7 +135,7 @@ export function canPurchaseAbilityNode(state, abilityId, nodeId, context = {}) {
             reason: 'max-level',
         };
     }
-    if (state.availablePoints < SHARED_ABILITY_POINT_COST) {
+    if (masteryPointsLeft(INVESTMENT) < ABILITY_POINT_COST) {
         return {
             allowed: false,
             reason: 'insufficient-points',
@@ -153,7 +157,6 @@ export function purchaseAbilityNode(state, abilityId, nodeId, context = {}) {
     }
     const NODE = parseNodeId(nodeId);
     const NEXT = cloneState(state);
-    NEXT.availablePoints -= SHARED_ABILITY_POINT_COST;
     if (NODE.kind === 'power') {
         NEXT.abilities[abilityId].powerLevel = NODE.level;
     } else {
@@ -207,12 +210,9 @@ export function resetAbilityProgression(state, context = {}, speciesId = null) {
     }
     const REFUNDED = getInvestedAbilityPointCount(state, speciesId);
     const NEXT = cloneState(state);
-    NEXT.availablePoints += REFUNDED;
     for (const DEFINITION of SPECIES_ABILITY_DEFINITIONS) {
         if (speciesId === null || DEFINITION.species === speciesId) {
-            NEXT.abilities[DEFINITION.id] = {
-                ...emptyAbilityInvestment(DEFINITION),
-            };
+            NEXT.abilities[DEFINITION.id] = emptyAbilityInvestment(DEFINITION, NEXT.abilities[DEFINITION.id]);
         }
     }
     return {
@@ -248,7 +248,6 @@ export function resetPlayerProgression(state, scope = { type: 'all' }, context =
     }
     const NEXT = cloneState(state),
         TYPE = NORMALIZED_SCOPE.type;
-    NEXT.availablePoints += CHECK.refunded;
     if (TYPE === 'all' || TYPE === 'abilities') {
         for (const DEFINITION of SPECIES_ABILITY_DEFINITIONS) {
             if (
@@ -256,9 +255,7 @@ export function resetPlayerProgression(state, scope = { type: 'all' }, context =
                 NORMALIZED_SCOPE.speciesId === undefined ||
                 DEFINITION.species === NORMALIZED_SCOPE.speciesId
             ) {
-                NEXT.abilities[DEFINITION.id] = {
-                    ...emptyAbilityInvestment(DEFINITION),
-                };
+                NEXT.abilities[DEFINITION.id] = emptyAbilityInvestment(DEFINITION, NEXT.abilities[DEFINITION.id]);
             }
         }
     }
@@ -359,8 +356,11 @@ function cloneState(state) {
         ),
     };
 }
-function emptyAbilityInvestment(definition) {
+// A reset empties the points put in; the species keeps the mastery it earned.
+function emptyAbilityInvestment(definition, previous) {
     return {
+        masteryLevel: previous.masteryLevel,
+        masteryXp: previous.masteryXp,
         powerLevel: 0,
         ...(definition.branches
             ? {

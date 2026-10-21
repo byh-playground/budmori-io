@@ -1,4 +1,4 @@
-import { awardBossKillXp, FARM_BOSS_EVENT_MAX_STAGE } from './player-progression.js';
+import { awardMasteryXp, FARM_BOSS_EVENT_MAX_STAGE } from './player-progression.js';
 import { BOSS_SPECIES_WEIGHTS } from './species-catalog.js';
 
 const FORMAT_PERCENT = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 });
@@ -585,7 +585,12 @@ function settleBossKillCommitted(world, options = {}) {
             pointsAwarded: RECEIPT.pointsAwarded ?? 0,
         };
     }
-    const RESULT = awardBossKillXp(WALLET, RECEIPT_KEY, options.xpAmount === undefined ? undefined : options.xpAmount);
+    const RESULT = awardMasteryXp(
+        WALLET,
+        RECEIPT_KEY,
+        RECEIPT.species,
+        options.xpAmount === undefined ? undefined : options.xpAmount,
+    );
     if (RESULT.awarded) {
         PROGRESSION_OWNER.playerProgression = RESULT.state;
     }

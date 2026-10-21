@@ -22,10 +22,7 @@ function keys(value, required, optional = []) {
 function copyPlayer(player) {
     return {
         schemaVersion: player.schemaVersion,
-        level: player.level,
-        experience: player.experience,
         towerBest: player.towerBest,
-        availablePoints: player.availablePoints,
         abilities: Object.fromEntries(
             Object.entries(player.abilities).map(([id, build]) => [
                 id,
@@ -190,15 +187,13 @@ export function validateFarmProgress(data) {
     keys(PLAYER.abilities, Object.keys(DEFAULTS.abilities));
     for (const [ABILITY_ID, BUILD] of Object.entries(PLAYER.abilities)) {
         const BRANCH_KEYS = Object.keys(DEFAULTS.abilities[ABILITY_ID].branchLevels || {});
-        keys(BUILD, ['powerLevel'], BRANCH_KEYS.length ? ['branchLevels'] : []);
+        keys(BUILD, ['powerLevel', 'masteryLevel', 'masteryXp'], BRANCH_KEYS.length ? ['branchLevels'] : []);
         if (Object.hasOwn(BUILD, 'branchLevels')) {
             keys(BUILD.branchLevels, BRANCH_KEYS);
         }
     }
     ASSERT(
         isValidPlayerProgressionState(PLAYER) &&
-            INTEGER(PLAYER.level, 1) &&
-            NUMBER(PLAYER.experience) &&
             Array.isArray(PLAYER.processedBossKillReceipts) &&
             PLAYER.processedBossKillReceipts.length <= 100000 &&
             PLAYER.processedBossKillReceipts.every(STRING),
