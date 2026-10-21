@@ -22,6 +22,17 @@ body {
 [hidden] {
     display: none !important;
 }
+/* A long press is a game gesture (merge, deploy, drag), never text selection or a callout menu. */
+body {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+input,
+textarea {
+    -webkit-user-select: text;
+    user-select: text;
+}
 button {
     font: inherit;
     font-weight: var(--ui-fw-b);

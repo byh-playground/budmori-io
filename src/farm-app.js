@@ -1384,6 +1384,12 @@ DOLLAR('gameMenuPanel').onkeydown = (e) => {
     }
 };
 const CANVAS = DOLLAR('world');
+// Holding a finger down opens the browser's context menu on touch screens; the game owns long presses.
+document.addEventListener('contextmenu', (event) => {
+    if (!event.target.closest?.('input, textarea')) {
+        event.preventDefault();
+    }
+});
 // Compare with the actual DOM so event handlers and route changes remain authoritative.
 const FLOOR_KIND = { battle: '전투', elite: '정예', mid: '중간 보스', rest: '쉼터', relic: '유물', boost: '강화' };
 const DOOR_TEXT = {

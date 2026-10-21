@@ -20155,6 +20155,11 @@
     }
   };
   var CANVAS = DOLLAR2("world");
+  document.addEventListener("contextmenu", (event) => {
+    if (!event.target.closest?.("input, textarea")) {
+      event.preventDefault();
+    }
+  });
   var FLOOR_KIND = { battle: "전투", elite: "정예", mid: "중간 보스", rest: "쉼터", relic: "유물", boost: "강화" };
   var DOOR_TEXT = {
     battle: "보스 한 마리",
