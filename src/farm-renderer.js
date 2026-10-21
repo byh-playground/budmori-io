@@ -673,7 +673,9 @@ const DIORAMA = class Diorama {
         if (BOSS_VISIBLE) {
             this.addActor(this.bossPresentation, sim2.boss, 0.785 * sim2.boss.y - 0.62 * (sim2.boss.z || 0), 0, true);
         }
-        PRESENTATION.collectFood(this, sim2);
+        if (!sim2.insideTower) {
+            PRESENTATION.collectFood(this, sim2);
+        }
         if (sim2.scene === 'farm' && !sim2.insideTower) {
             this.addWorkActors(sim2);
         }
