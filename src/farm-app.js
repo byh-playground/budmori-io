@@ -2106,9 +2106,9 @@ const HELP = {
         } else if (event.door) {
             // The doors are drawn from the seeded run: take the asked kind if it is offered, else the first.
             active.queue('tower-door', { index: Math.max(0, active.world.tower.doors.indexOf(event.door)) });
-        } else if (event.set === 'bossHp' && active.world.boss) {
-            // Shortens the demo fight only; the win that follows is the game's own.
-            active.world.boss.hp = Math.max(1, Math.round(active.world.boss.maxHp * event.fraction));
+        } else if (event.finish) {
+            // Cuts the demo fight short; the win that follows is the game's own path.
+            active.world.finishFarmBossEvent(event.finish);
         }
     },
 };

@@ -12511,7 +12511,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.5";
+      PRODUCT_VERSION = "0.30.6";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -18938,8 +18938,8 @@
       title: "먹이와 번식",
       rule: "일꾼이 곡식 더미를 쳐서 낟알을 만들고, 성체 두 마리가 하나씩 먹으면 새끼가 태어나요. 슬라이더로 번식과 먹이 일꾼의 비율을 정해요.",
       seed: 731,
-      rate: 1.5,
-      durationMs: 12e3,
+      rate: 2,
+      durationMs: 6e3,
       setup(world) {
         world.setWorkBasisPoints(0);
         const UNITS = world.units;
@@ -18952,19 +18952,15 @@
             }
           }
         }
-        world.spawnFood(pair.a.x, pair.a.y + 12, 1);
-        world.spawnFood(pair.b.x, pair.b.y + 12, 1);
+        pair.a.meals = 1;
+        pair.b.meals = 1;
       },
       timeline: [],
       step(world) {
-        if (world.units.length > 6) {
-          return "born";
-        }
-        return world.food.length > 0 ? "food" : "work";
+        return world.units.length > 6 ? "born" : "fed";
       },
       steps: {
-        work: "일꾼이 곡식 더미를 쳐요",
-        food: "낟알이 떨어졌어요. 부모가 하나씩 먹어요",
+        fed: "먹이를 먹은 성체 두 마리가 만나요",
         born: "새끼가 태어났어요. 5초 동안 자라요"
       }
     }),
@@ -18973,14 +18969,15 @@
       title: "합성",
       rule: "합성 버튼을 누를 때마다 가장 낮은 등급의 같은 병종부터 한 번 합쳐요. 재료는 T2 = T1 2마리, T3 = T2 2마리, T4 = T3 3마리, T5 = T4 4마리, T6 = T5 5마리예요.",
       seed: 4102,
-      durationMs: 12e3,
+      rate: 1,
+      durationMs: 5e3,
       setup(world) {
         world.setWorkBasisPoints(0);
       },
       timeline: [
-        { atMs: 3e3, cmd: "merge" },
-        { atMs: 3500, cmd: "merge" },
-        { atMs: 4e3, cmd: "merge" }
+        { atMs: 500, cmd: "merge" },
+        { atMs: 1e3, cmd: "merge" },
+        { atMs: 1500, cmd: "merge" }
       ],
       step(world) {
         if (world.units.some((unit) => unit.tier >= 2)) {
@@ -18999,8 +18996,8 @@
       title: "보스와 탑",
       rule: "탑 오르기를 누르면 보스가 떨어져요. 병력을 한 마리씩 투입하면 자동으로 싸우고, 이기면 문을 골라요. 이긴 보스 종의 숙련이 쌓여 능력 포인트가 돼요.",
       seed: 4104,
-      rate: 1.5,
-      durationMs: 38e3,
+      rate: 4,
+      durationMs: 15500,
       setup(world) {
         world.setWorkBasisPoints(0);
         for (let index = 0; index < 4; index++) {
@@ -19008,13 +19005,12 @@
         }
       },
       timeline: [
-        { atMs: 1e3, cmd: "tower-start", args: { floor: 1 } },
-        { atMs: 6200, cmd: "deploy", args: { species: 0, x: -120, y: 60 } },
-        { atMs: 6900, cmd: "deploy", args: { species: 0, x: -150, y: -10 } },
-        { atMs: 7600, cmd: "deploy", args: { species: 0, x: -110, y: -70 } },
-        { atMs: 8300, cmd: "deploy", args: { species: 0, x: -170, y: 30 } },
-        { atMs: 11e3, set: "bossHp", fraction: 0.05 },
-        { atMs: 3e4, door: "boost" }
+        { atMs: 100, cmd: "tower-start", args: { floor: 1 } },
+        { atMs: 6300, cmd: "deploy", args: { species: 0, x: -45, y: 20 } },
+        { atMs: 6500, cmd: "deploy", args: { species: 0, x: -50, y: -10 } },
+        { atMs: 6700, cmd: "deploy", args: { species: 0, x: -40, y: -30 } },
+        { atMs: 9300, finish: "victory" },
+        { atMs: 14e3, door: "boost" }
       ],
       step(world) {
         if (world.tower.boost.hp > 1 || world.tower.boost.attack > 1) {
@@ -21001,8 +20997,8 @@
         active.queue(event.cmd, event.args);
       } else if (event.door) {
         active.queue("tower-door", { index: Math.max(0, active.world.tower.doors.indexOf(event.door)) });
-      } else if (event.set === "bossHp" && active.world.boss) {
-        active.world.boss.hp = Math.max(1, Math.round(active.world.boss.maxHp * event.fraction));
+      } else if (event.finish) {
+        active.world.finishFarmBossEvent(event.finish);
       }
     }
   };

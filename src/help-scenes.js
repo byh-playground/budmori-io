@@ -9,10 +9,10 @@ export const HELP_SCENES = Object.freeze([
         title: '먹이와 번식',
         rule: '일꾼이 곡식 더미를 쳐서 낟알을 만들고, 성체 두 마리가 하나씩 먹으면 새끼가 태어나요. 슬라이더로 번식과 먹이 일꾼의 비율을 정해요.',
         seed: 731,
-        rate: 1.5,
-        durationMs: 12000,
+        rate: 2,
+        durationMs: 6000,
         setup(world) {
-            // Seed grain lands right beside the closest pair, so the first birth does not wait for a long walk.
+            // The closest pair has already eaten, so the core of the rule shows at once instead of after a walk.
             world.setWorkBasisPoints(0);
             const UNITS = world.units;
             let pair = null;
@@ -24,19 +24,15 @@ export const HELP_SCENES = Object.freeze([
                     }
                 }
             }
-            world.spawnFood(pair.a.x, pair.a.y + 12, 1);
-            world.spawnFood(pair.b.x, pair.b.y + 12, 1);
+            pair.a.meals = 1;
+            pair.b.meals = 1;
         },
         timeline: [],
         step(world) {
-            if (world.units.length > 6) {
-                return 'born';
-            }
-            return world.food.length > 0 ? 'food' : 'work';
+            return world.units.length > 6 ? 'born' : 'fed';
         },
         steps: {
-            work: '일꾼이 곡식 더미를 쳐요',
-            food: '낟알이 떨어졌어요. 부모가 하나씩 먹어요',
+            fed: '먹이를 먹은 성체 두 마리가 만나요',
             born: '새끼가 태어났어요. 5초 동안 자라요',
         },
     }),
@@ -45,15 +41,16 @@ export const HELP_SCENES = Object.freeze([
         title: '합성',
         rule: '합성 버튼을 누를 때마다 가장 낮은 등급의 같은 병종부터 한 번 합쳐요. 재료는 T2 = T1 2마리, T3 = T2 2마리, T4 = T3 3마리, T5 = T4 4마리, T6 = T5 5마리예요.',
         seed: 4102,
-        durationMs: 12000,
+        rate: 1,
+        durationMs: 5000,
         setup(world) {
             // Nobody works or breeds here, so the only change on screen is the merge.
             world.setWorkBasisPoints(0);
         },
         timeline: [
-            { atMs: 3000, cmd: 'merge' },
-            { atMs: 3500, cmd: 'merge' },
-            { atMs: 4000, cmd: 'merge' },
+            { atMs: 500, cmd: 'merge' },
+            { atMs: 1000, cmd: 'merge' },
+            { atMs: 1500, cmd: 'merge' },
         ],
         step(world) {
             if (world.units.some((unit) => unit.tier >= 2)) {
@@ -72,8 +69,8 @@ export const HELP_SCENES = Object.freeze([
         title: '보스와 탑',
         rule: '탑 오르기를 누르면 보스가 떨어져요. 병력을 한 마리씩 투입하면 자동으로 싸우고, 이기면 문을 골라요. 이긴 보스 종의 숙련이 쌓여 능력 포인트가 돼요.',
         seed: 4104,
-        rate: 1.5,
-        durationMs: 38000,
+        rate: 4,
+        durationMs: 15500,
         setup(world) {
             world.setWorkBasisPoints(0);
             // A few higher-tier peas, so the demo fight is short and the tiers pay off.
@@ -82,13 +79,12 @@ export const HELP_SCENES = Object.freeze([
             }
         },
         timeline: [
-            { atMs: 1000, cmd: 'tower-start', args: { floor: 1 } },
-            { atMs: 6200, cmd: 'deploy', args: { species: 0, x: -120, y: 60 } },
-            { atMs: 6900, cmd: 'deploy', args: { species: 0, x: -150, y: -10 } },
-            { atMs: 7600, cmd: 'deploy', args: { species: 0, x: -110, y: -70 } },
-            { atMs: 8300, cmd: 'deploy', args: { species: 0, x: -170, y: 30 } },
-            { atMs: 11000, set: 'bossHp', fraction: 0.05 },
-            { atMs: 30000, door: 'boost' },
+            { atMs: 100, cmd: 'tower-start', args: { floor: 1 } },
+            { atMs: 6300, cmd: 'deploy', args: { species: 0, x: -45, y: 20 } },
+            { atMs: 6500, cmd: 'deploy', args: { species: 0, x: -50, y: -10 } },
+            { atMs: 6700, cmd: 'deploy', args: { species: 0, x: -40, y: -30 } },
+            { atMs: 9300, finish: 'victory' },
+            { atMs: 14000, door: 'boost' },
         ],
         step(world) {
             if (world.tower.boost.hp > 1 || world.tower.boost.attack > 1) {
