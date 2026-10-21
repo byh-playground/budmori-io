@@ -185,7 +185,7 @@ const DIORAMA = class Diorama {
     }
     project(x, y, z = 0) {
         return {
-            x: (x + this.offset[0] + this.view[0]) * this.scale,
+            x: (x + this.offset[0] + this.view[0] + (this.shakeX || 0)) * this.scale,
             y:
                 (this.view[1] - (WORLD_DEPTH_PROJECTION * y + WORLD_HEIGHT_PROJECTION * z + this.offset[1])) *
                 this.scale,
@@ -622,6 +622,7 @@ const DIORAMA = class Diorama {
     render(sim2, feel = null, now = performance.now()) {
         this.feel = feel;
         this.displayTimeMs = now;
+        this.shakeX = this.feel?.shake(now) || 0;
         this.configure(sim2.scene);
         this.directCamera(sim2, now);
         const C = this.ctx,

@@ -2143,7 +2143,26 @@
             return;
           }
           applyDamage(target, amount, { armor: this.world.combatTargetDefense(target).armor });
-          target.flash = 0.15;
+          target.flash = 0.3;
+          const IS_BOSS = target === this.world.boss, MAX = Math.max(1, target.maxHp || target.hp || 1), STRENGTH = Math.min(3, 1 + amount / MAX * 8);
+          this.world.combat(IS_BOSS ? "boss-hit" : "unit-hit", {
+            unit: IS_BOSS ? 0 : target.id,
+            ownerId: 0,
+            species: 0,
+            sourceUnit: 0,
+            attackId: 0,
+            strikeIndex: 0,
+            attackKind: "skill",
+            buffed: false,
+            critical: false,
+            damage: amount,
+            x: target.x,
+            y: target.y,
+            z: Math.max(0.2, (target.z || 0) + (target.height || 0.6) * 0.6),
+            nx: 0,
+            ny: 1,
+            strength: STRENGTH
+          });
           if (target !== this.world.boss) {
             this.world._syncUnitAliveCount(target);
             if (target.hp <= 0) {
@@ -12361,7 +12380,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.29.5";
+      PRODUCT_VERSION = "0.29.6";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15823,7 +15842,7 @@
     }
     project(x, y, z = 0) {
       return {
-        x: (x + this.offset[0] + this.view[0]) * this.scale,
+        x: (x + this.offset[0] + this.view[0] + (this.shakeX || 0)) * this.scale,
         y: (this.view[1] - (import_vector_sockets6.WORLD_DEPTH_PROJECTION * y + import_vector_sockets6.WORLD_HEIGHT_PROJECTION * z + this.offset[1])) * this.scale
       };
     }
@@ -16205,6 +16224,7 @@
     render(sim2, feel = null, now = performance.now()) {
       this.feel = feel;
       this.displayTimeMs = now;
+      this.shakeX = this.feel?.shake(now) || 0;
       this.configure(sim2.scene);
       this.directCamera(sim2, now);
       const C = this.ctx, PRESENTATION = this.scenePresentation;
@@ -18338,7 +18358,8 @@
       }
     }
     size(event) {
-      return event.attackKind === "sweep" ? 1.15 : 0.6;
+      const BASE = event.attackKind === "sweep" ? 1.15 : 0.6;
+      return BASE * (0.75 + 0.3 * Math.min(3, event.strength || 1));
     }
     elevation(progress) {
       return Math.sin(progress * Math.PI) * 0.5;
@@ -18364,9 +18385,10 @@
   };
   var BossHitPresentation = class extends HitPresentation {
     color = "245,199,102";
-    observe(feel, _event, displayEvent) {
+    observe(feel, event, displayEvent) {
       feel.counts.hits++;
       feel.bossHit = displayEvent;
+      feel.kick(event.strength, displayEvent.at);
     }
     sound(audio, event) {
       audio.sound("strike", event.species || 0);
@@ -18454,6 +18476,8 @@
       this.landingPool = new OBJECT_POOL(CREATE_LANDING_EFFECT, resetLandingEffect, 48);
       this.poses = /* @__PURE__ */ new Map();
       this.bossHit = null;
+      this.shakeAt = -1e9;
+      this.shakePower = 0;
       this.reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
       this.counts = {
         hits: 0,
@@ -18533,12 +18557,24 @@
           squash: 0
         };
       }
-      const Q = Math.max(0, Math.min(1, (displayTimeMs - E.at) / 160)), K = Math.sin(Q * Math.PI) * (1 - Q);
+      const POWER = Math.min(3, E.strength || 1), Q = Math.max(0, Math.min(1, (displayTimeMs - E.at) / 240)), K = Math.sin(Math.min(1, Q * 2) * Math.PI * 0.5) * (1 - Q) ** 2, JITTER = Math.sin(Q * 38) * (1 - Q) * 0.05 * POWER;
       return {
-        x: -E.nx * K * 0.1,
-        y: -E.ny * K * 0.1,
-        squash: K * 0.035 * (E.critical ? 1.4 : 1)
+        x: -E.nx * K * (0.12 + 0.2 * POWER) + JITTER,
+        y: -E.ny * K * (0.12 + 0.2 * POWER),
+        squash: K * (0.035 + 0.04 * POWER) * (E.critical ? 1.4 : 1)
       };
+    }
+    kick(strength, at) {
+      this.shakeAt = at;
+      this.shakePower = Math.max(0, Math.min(3, strength || 1) - 0.8);
+    }
+    // World-unit camera offset: a short rattle after strong hits.
+    shake(displayTimeMs) {
+      const Q = (displayTimeMs - (this.shakeAt || -1e9)) / 220;
+      if (this.reduced || Q < 0 || Q >= 1) {
+        return 0;
+      }
+      return Math.sin(Q * 52) * (1 - Q) * 0.09 * (this.shakePower || 0);
     }
     sound(event) {
       COMBAT_EFFECT_PRESENTATIONS.get(event.kind)?.sound?.(this.audio, event);
