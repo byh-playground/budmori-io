@@ -615,6 +615,40 @@ await check('help cards play the real game in an isolated frame and leave the sa
     expect(KEYS(BEFORE).join() === KEYS(AFTER).join(), 'a help frame changed the stored keys');
 });
 
+await check('a full farm keeps queued rewards and the panel names their species', async () => {
+    await WORLD(() => document.getElementById('upgradeMenu').click());
+    await PAGE.locator('#menuTabFarms').click();
+    await WORLD(() => {
+        const W = BUDMORI.sim;
+        window.__fillers = [];
+        while (W.freeRoom() > 0) {
+            window.__fillers.push(W.spawn(0, 1, 0, 0));
+        }
+        W.bossRewardInventory = [
+            { species: 0, tier: 1, count: 3 },
+            { species: 2, tier: 1, count: 5 },
+        ];
+        W.markProgressChanged();
+    });
+    await PAGE.waitForFunction(() => document.querySelectorAll('#farmQueue .farm-queue__chip').length === 2, null, {
+        timeout: 5000,
+    });
+    const GOT = await WORLD(() => {
+        const W = BUDMORI.sim,
+            CHIPS = [...document.querySelectorAll('#farmQueue .farm-queue__chip b')].map((b) => b.textContent),
+            FULL = { free: W.freeRoom(), owned: W.ownedPopulation, capacity: W.capacity };
+        W.bossRewardInventory = [];
+        for (const UNIT of window.__fillers) {
+            W.removeUnit(UNIT);
+        }
+        W.markProgressChanged();
+        return { ...FULL, CHIPS };
+    });
+    await PAGE.locator('#gameMenuClose').click();
+    expect(GOT.free === 0, `room ${JSON.stringify(GOT)}`);
+    expect(GOT.CHIPS.join() === '3,5', `queue chips ${JSON.stringify(GOT)}`);
+});
+
 await check('no page errors', async () => {
     expect(ERRORS.length === 0, ERRORS.slice(0, 3).join(' | '));
 });

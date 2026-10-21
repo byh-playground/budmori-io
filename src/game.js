@@ -4784,7 +4784,7 @@
               x: CENTER.x + Math.cos(ANGLE) * renderer.scale * (0.22 + T * 0.18),
               y: CENTER.y + Math.sin(ANGLE) * renderer.scale * (0.22 + T * 0.18)
             };
-            renderer.line(FROM, TO, renderer.scale * 0.055, `rgba(229,242,229,${ALPHA})`);
+            renderer.line(FROM, TO, 0.055, `rgba(229,242,229,${ALPHA})`);
           }
         }
         drawStatus(renderer, target, amount) {
@@ -6247,6 +6247,13 @@
     }
     return { payouts, rngState: RNG.state };
   }
+  function bossRewardQueueBySpecies(world) {
+    const COUNTS = /* @__PURE__ */ new Map();
+    for (const ENTRY of world.bossRewardInventory || []) {
+      COUNTS.set(ENTRY.species, (COUNTS.get(ENTRY.species) || 0) + ENTRY.count);
+    }
+    return [...COUNTS].filter(([, count]) => count > 0);
+  }
   function allocatePlacedRewards(world, species, tier, quantity) {
     let remaining = quantity;
     for (const RECEIPT of world.bossRewardReceipts) {
@@ -6272,10 +6279,7 @@
       return [];
     }
     const GRANTED = [];
-    let capacity = Math.max(
-      0,
-      world.capacity - (Number.isSafeInteger(world.ownedPopulation) ? world.ownedPopulation : world.units.length)
-    );
+    let capacity = Math.max(0, world.freeRoom());
     for (const GROUP of world.bossRewardInventory) {
       if (capacity <= 0) {
         break;
@@ -8464,6 +8468,12 @@
         get ownedPopulation() {
           return this.roster.ownedPopulation();
         }
+        // The one answer to "may another unit join the farm?": a placed unit and a reserved birth each take one slot.
+        // A birth that already holds a reservation passes its own slot back by naming itself as `reservationOwner`.
+        freeRoom(reservationOwner = null) {
+          const OWN = reservationOwner && this._activeBreedReservations?.has(reservationOwner) ? 1 : 0;
+          return this.capacity - this.ownedPopulation - this.birthReservations + OWN;
+        }
         get birthReservations() {
           return this._activeBreedReservations?.size || 0;
         }
@@ -8868,8 +8878,7 @@
         }
         spawn(species, tier, x, y, { birthReservationOwner = null } = {}) {
           if (this.scene === "farm") {
-            const HAS_BIRTH_RESERVATION = birthReservationOwner && this._activeBreedReservations?.has(birthReservationOwner);
-            if (this.ownedPopulation + this.birthReservations - Number(!!HAS_BIRTH_RESERVATION) >= this.capacity) {
+            if (this.freeRoom(birthReservationOwner) <= 0) {
               return null;
             }
           } else if (this.units.length >= SIMULATION_SCENES[this.scene].capacity(this)) {
@@ -9492,7 +9501,7 @@
           }
           try {
             const OWNER = this.breedingReservationOwner(a, b), BIRTH_RESERVATION = this._activeBreedReservations?.get(OWNER) || null, RESERVATIONS_AVAILABLE = this.unitCollection.reservationOwner(a) === null || this.unitCollection.reservationOwner(a) === OWNER;
-            return this.scene === "farm" && a !== b && !a.isBattleOnlySummon && !b.isBattleOnlySummon && this.canBreedNow(a) && this.canBreedNow(b) && a.hp > 0 && b.hp > 0 && a.species === b.species && a.mature && b.mature && a.fed && b.fed && a.cooldown <= 0 && b.cooldown <= 0 && this.ownedPopulation + this.birthReservations - Number(!!BIRTH_RESERVATION) < this.capacity && this._unitIsActive(a) && this._unitIsActive(b) && RESERVATIONS_AVAILABLE && (this.unitCollection.reservationOwner(b) === null || this.unitCollection.reservationOwner(b) === OWNER) && (!requireContact || Math.hypot(a.x - b.x, a.y - b.y) <= a.radius + b.radius + 0.2);
+            return this.scene === "farm" && a !== b && !a.isBattleOnlySummon && !b.isBattleOnlySummon && this.canBreedNow(a) && this.canBreedNow(b) && a.hp > 0 && b.hp > 0 && a.species === b.species && a.mature && b.mature && a.fed && b.fed && a.cooldown <= 0 && b.cooldown <= 0 && this.freeRoom(BIRTH_RESERVATION ? OWNER : null) > 0 && this._unitIsActive(a) && this._unitIsActive(b) && RESERVATIONS_AVAILABLE && (this.unitCollection.reservationOwner(b) === null || this.unitCollection.reservationOwner(b) === OWNER) && (!requireContact || Math.hypot(a.x - b.x, a.y - b.y) <= a.radius + b.radius + 0.2);
           } finally {
             if (BATCH) {
               this._endSpatialQueryBatch();
@@ -9620,7 +9629,7 @@
               this.releaseMate(unit);
               return null;
             }
-            if (this.ownedPopulation + this.birthReservations >= this.capacity) {
+            if (this.freeRoom() <= 0) {
               this.releaseMate(unit);
               return null;
             }
@@ -12548,7 +12557,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.14";
+      PRODUCT_VERSION = "0.30.15";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -20481,6 +20490,15 @@
     active.queue("farm-breed-weights", { weights: null });
     drawSpeciesRoles(WORLD);
   });
+  function drawRewardQueue(world) {
+    const QUEUE = bossRewardQueueBySpecies(world), BOX = DOLLAR2("farmQueue"), HTML = QUEUE.map(
+      ([species, count]) => `<span class="farm-queue__chip"><img src="./assets/troops/${speciesById(species).asset}" alt="${speciesById(species).name}" width="20" height="20"><b>${count}</b></span>`
+    ).join("");
+    BOX.hidden = QUEUE.length === 0;
+    if (BOX.innerHTML !== HTML) {
+      BOX.innerHTML = HTML;
+    }
+  }
   function drawFarmPanel() {
     const W = personalGarden || active?.world;
     if (!W || farmPanelRevision === W.progressRevision) {
@@ -20491,6 +20509,7 @@
     DOLLAR2("farmStatPlaced").textContent = String(W.ownedPopulation);
     DOLLAR2("farmStatCapacity").textContent = `/ ${W.capacity}`;
     DOLLAR2("farmStatPending").textContent = String(W.pendingRewardPopulation);
+    drawRewardQueue(W);
     syncFlag("farmLockNote", "hidden", !LOCKED || !!farmSortTransition);
     drawSpeciesRoles(W);
     for (const BUTTON of DOLLAR2("farmPlotActions").querySelectorAll("[data-farm-sort]")) {
