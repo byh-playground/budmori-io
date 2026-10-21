@@ -1633,7 +1633,9 @@ function sync(display, now, notices) {
         FARM_EVENT_ACTIVE && FARM_EVENT.phase === 'dropping'
             ? '보스가 있는 칸으로 가는 중이에요'
             : FARM_EVENT_ACTIVE && FARM_EVENT.phase === 'fighting'
-              ? `남은 시간 ${Math.max(0, Math.ceil(W.battleTimeLimit() - FARM_EVENT.elapsed))}초`
+              ? W.bossEnraged
+                  ? '격노! 피해 2배, 공격이 빨라져요'
+                  : `${W.bossPhase}페이즈 · 격노까지 ${Math.max(0, Math.ceil(W.battleTimeLimit() - FARM_EVENT.elapsed))}초`
               : FARM_EVENT_ACTIVE
                 ? ''
                 : '쓰러진 병력 포함 최대 체력',
@@ -1653,7 +1655,7 @@ function sync(display, now, notices) {
                   ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요`
                   : `${ENCOUNTER_NAME} 격파`
             : BATTLE_OUTCOME === 'defeat'
-              ? `${ENCOUNTER_NAME}에게 졌어요${FARM_EVENT.elapsed >= W.battleTimeLimit() ? '(시간 초과)' : ''} · 병력이 회복하는 동안 잠자요`
+              ? `${ENCOUNTER_NAME}에게 졌어요 · 병력이 회복하는 동안 잠자요`
               : '',
     );
     syncFlag(

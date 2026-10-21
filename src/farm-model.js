@@ -59,7 +59,14 @@ import {
 } from './farm-upgrades.js';
 import { composeUnitAttackCycles } from './unit-attack-capabilities.js';
 import { MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT, mergeMaterialCostForTier } from './unit-grades.js';
-import { BOSS_PATTERN_IDS, BOSS_PATTERN_CONFIG, createBossPatternRuntime, chooseBossPattern } from './boss-patterns.js';
+import {
+    BOSS_PATTERN_IDS,
+    BOSS_PATTERN_CONFIG,
+    createBossPatternRuntime,
+    chooseBossPattern,
+    BOSS_ENRAGE,
+    BOSS_PHASE_THRESHOLDS,
+} from './boss-patterns.js';
 import { FACTION_CONFIG, hasFaction, areOpposingFactions } from './factions.js';
 import { FixedSpatialGrid } from './spatial-grid.js';
 const PRESENTATION_CLOCKS = new WeakMap();
@@ -2236,6 +2243,15 @@ const GARDEN = class Garden {
                 z: 0,
             },
         };
+    }
+    // Past the time limit the boss enrages instead of ending the fight; only a wipe or a retreat loses.
+    get bossEnraged() {
+        return this.farmBossEvent?.phase === 'fighting' && this.farmBossEvent.elapsed >= this.battleTimeLimit();
+    }
+    // 1-based boss phase from remaining HP: each unlockHp threshold crossed opens a phase.
+    get bossPhase() {
+        const RATIO = this.boss.maxHp ? this.boss.hp / this.boss.maxHp : 1;
+        return 1 + BOSS_PHASE_THRESHOLDS.filter((t) => RATIO <= t).length;
     }
     // A boss fight lasts 90 seconds at stage 1 and 10 seconds longer for every stage after it.
     battleTimeLimit() {
@@ -4882,7 +4898,7 @@ const GARDEN = class Garden {
             ALIVE_ADDS = this.units.reduce((n, u) => n + (hasFaction(u, FACTION_CONFIG.ENEMY) && u.hp > 0 ? 1 : 0), 0),
             ELIGIBLE = [];
         for (const ID of BOSS_PATTERN_IDS) {
-            if (RUNTIME.cooldowns[ID] > 1e-9) {
+            if (RUNTIME.cooldowns[ID] > 1e-9 || this.boss.hp > this.boss.maxHp * BOSS_PATTERN_CONFIG[ID].unlockHp) {
                 continue;
             }
             if (BOSS_BEHAVIORS.forId(ID).eligible(this, targets, ALIVE_ADDS)) {
@@ -4978,7 +4994,11 @@ const GARDEN = class Garden {
         }
         const RECEIVED = applyDamageToTargets(null, [unit], {
             armorForTarget: () => this.combatTargetDefense(unit).armor,
-            rawDamage: B_LOCAL.attackPower * CONFIG_LOCAL.damageMultiplier * (GUARD?.receivedDamageMultiplier ?? 1),
+            rawDamage:
+                B_LOCAL.attackPower *
+                CONFIG_LOCAL.damageMultiplier *
+                (this.bossEnraged ? BOSS_ENRAGE.damageMultiplier : 1) *
+                (GUARD?.receivedDamageMultiplier ?? 1),
             sourceKind: 'enemy',
         });
         this.onCombatResolved.emit({ damageTaken: RECEIVED.totalActualLoss, excluded: unit.isFormationClone });
@@ -5313,7 +5333,7 @@ const GARDEN = class Garden {
         action.phaseElapsed = 0;
         B_LOCAL.attackId = ++this.attackSerial;
         action.hitIds.clear();
-        RUNTIME.cooldowns[action.id] = CONFIG_LOCAL.cooldown;
+        RUNTIME.cooldowns[action.id] = CONFIG_LOCAL.cooldown * (this.bossEnraged ? BOSS_ENRAGE.cooldownMultiplier : 1);
         this.combat('boss-pattern-launch', {
             patternId: action.id,
             attackKind: action.id,

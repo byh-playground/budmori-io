@@ -5217,10 +5217,6 @@
           world.finishFarmBossEvent("defeat");
           return true;
         }
-        if (world.farmBossEvent.elapsed >= world.battleTimeLimit()) {
-          world.finishFarmBossEvent("defeat");
-          return true;
-        }
         return false;
       }
     }
@@ -5522,7 +5518,7 @@
     }
     return chosen;
   }
-  var BOSS_PATTERN_IDS, BOSS_PATTERN_CONFIG, BOSS_PATTERN_WEIGHT_DEFAULTS, BOSS_AIM_TURN_RATE;
+  var BOSS_PATTERN_IDS, BOSS_PATTERN_CONFIG, BOSS_PATTERN_WEIGHT_DEFAULTS, BOSS_ENRAGE, BOSS_PHASE_THRESHOLDS, BOSS_AIM_TURN_RATE;
   var init_boss_patterns = __esm({
     "src/boss-patterns.js"() {
       BOSS_PATTERN_IDS = Object.freeze([
@@ -5536,6 +5532,7 @@
       BOSS_PATTERN_CONFIG = Object.freeze({
         "attack.sweep-360": Object.freeze({
           kind: "sweep-360",
+          unlockHp: 0.4,
           windup: 1.05,
           active: 1.05,
           recover: 1.05,
@@ -5549,6 +5546,7 @@
         }),
         "attack.front-slam": Object.freeze({
           kind: "front-slam",
+          unlockHp: 1,
           windup: 0.75,
           active: 0,
           recover: 0.75,
@@ -5562,6 +5560,7 @@
         }),
         "attack.charge": Object.freeze({
           kind: "charge",
+          unlockHp: 1,
           windup: 0.5,
           active: 6.6 / 5.3,
           recover: 0.75,
@@ -5575,6 +5574,7 @@
         }),
         "attack.leap-slam": Object.freeze({
           kind: "leap-slam",
+          unlockHp: 0.6,
           windup: 0.5,
           active: 1.013,
           recover: 0.75,
@@ -5588,6 +5588,7 @@
         }),
         "attack.fan-sweep": Object.freeze({
           kind: "fan-sweep",
+          unlockHp: 0.75,
           windup: 1,
           active: 0.8,
           recover: 1,
@@ -5602,6 +5603,7 @@
         }),
         "summon.mouth-t1": Object.freeze({
           kind: "mouth-t1",
+          unlockHp: 0.5,
           windup: 0.5,
           active: 0.75,
           recover: 0.5,
@@ -5620,6 +5622,12 @@
         eligibleBonus: 0.5,
         cap: 3
       });
+      BOSS_ENRAGE = Object.freeze({ damageMultiplier: 2, cooldownMultiplier: 0.5 });
+      BOSS_PHASE_THRESHOLDS = Object.freeze(
+        [...new Set(BOSS_PATTERN_IDS.map((id) => BOSS_PATTERN_CONFIG[id].unlockHp).filter((t) => t < 1))].sort(
+          (a, b) => b - a
+        )
+      );
       BOSS_AIM_TURN_RATE = 5.5;
     }
   });
@@ -9355,6 +9363,15 @@
             }
           };
         }
+        // Past the time limit the boss enrages instead of ending the fight; only a wipe or a retreat loses.
+        get bossEnraged() {
+          return this.farmBossEvent?.phase === "fighting" && this.farmBossEvent.elapsed >= this.battleTimeLimit();
+        }
+        // 1-based boss phase from remaining HP: each unlockHp threshold crossed opens a phase.
+        get bossPhase() {
+          const RATIO = this.boss.maxHp ? this.boss.hp / this.boss.maxHp : 1;
+          return 1 + BOSS_PHASE_THRESHOLDS.filter((t) => RATIO <= t).length;
+        }
         // A boss fight lasts 90 seconds at stage 1 and 10 seconds longer for every stage after it.
         battleTimeLimit() {
           return 90 + 10 * Math.max(0, (this.boss.stage ?? 1) - 1);
@@ -11507,7 +11524,7 @@
         eligibleBossPatterns(living, targets = this.bossPatternTargets(living)) {
           const RUNTIME = this.boss.patternRuntime, ALIVE_ADDS = this.units.reduce((n, u) => n + (hasFaction(u, FACTION_CONFIG.ENEMY) && u.hp > 0 ? 1 : 0), 0), ELIGIBLE = [];
           for (const ID of BOSS_PATTERN_IDS) {
-            if (RUNTIME.cooldowns[ID] > 1e-9) {
+            if (RUNTIME.cooldowns[ID] > 1e-9 || this.boss.hp > this.boss.maxHp * BOSS_PATTERN_CONFIG[ID].unlockHp) {
               continue;
             }
             if (BOSS_BEHAVIORS.forId(ID).eligible(this, targets, ALIVE_ADDS)) {
@@ -11585,7 +11602,7 @@
           }
           const RECEIVED = applyDamageToTargets(null, [unit], {
             armorForTarget: () => this.combatTargetDefense(unit).armor,
-            rawDamage: B_LOCAL.attackPower * CONFIG_LOCAL.damageMultiplier * (GUARD?.receivedDamageMultiplier ?? 1),
+            rawDamage: B_LOCAL.attackPower * CONFIG_LOCAL.damageMultiplier * (this.bossEnraged ? BOSS_ENRAGE.damageMultiplier : 1) * (GUARD?.receivedDamageMultiplier ?? 1),
             sourceKind: "enemy"
           });
           this.onCombatResolved.emit({ damageTaken: RECEIVED.totalActualLoss, excluded: unit.isFormationClone });
@@ -11871,7 +11888,7 @@
           action.phaseElapsed = 0;
           B_LOCAL.attackId = ++this.attackSerial;
           action.hitIds.clear();
-          RUNTIME.cooldowns[action.id] = CONFIG_LOCAL.cooldown;
+          RUNTIME.cooldowns[action.id] = CONFIG_LOCAL.cooldown * (this.bossEnraged ? BOSS_ENRAGE.cooldownMultiplier : 1);
           this.combat("boss-pattern-launch", {
             patternId: action.id,
             attackKind: action.id,
@@ -12448,7 +12465,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.23.0";
+      PRODUCT_VERSION = "0.24.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -19671,7 +19688,7 @@
     syncText("bossHealthText", Math.ceil(BOSS2.hp) + "/" + BOSS2.maxHp);
     syncText(
       "bossHealthNote",
-      FARM_EVENT_ACTIVE && FARM_EVENT.phase === "dropping" ? "보스가 있는 칸으로 가는 중이에요" : FARM_EVENT_ACTIVE && FARM_EVENT.phase === "fighting" ? `남은 시간 ${Math.max(0, Math.ceil(W.battleTimeLimit() - FARM_EVENT.elapsed))}초` : FARM_EVENT_ACTIVE ? "" : "쓰러진 병력 포함 최대 체력"
+      FARM_EVENT_ACTIVE && FARM_EVENT.phase === "dropping" ? "보스가 있는 칸으로 가는 중이에요" : FARM_EVENT_ACTIVE && FARM_EVENT.phase === "fighting" ? W.bossEnraged ? "격노! 피해 2배, 공격이 빨라져요" : `${W.bossPhase}페이즈 · 격노까지 ${Math.max(0, Math.ceil(W.battleTimeLimit() - FARM_EVENT.elapsed))}초` : FARM_EVENT_ACTIVE ? "" : "쓰러진 병력 포함 최대 체력"
     );
     syncFlag("fightRetreat", "hidden", !(FARM_EVENT_ACTIVE && ["dropping", "fighting"].includes(FARM_EVENT.phase)));
     syncAttribute("allyHealth", "aria-valuenow", armyCurrent);
@@ -19681,7 +19698,7 @@
     syncWidth("bossHealth", BOSS2.maxHp ? BOSS2.hp / BOSS2.maxHp * 100 + "%" : "0%");
     syncText(
       "battleOutcome",
-      BATTLE_OUTCOME === "victory" ? FARM_EVENT.rewardStatus === "granted" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 농장에 합류했어요` : FARM_EVENT.rewardStatus === "pending" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요` : `${ENCOUNTER_NAME} 격파` : BATTLE_OUTCOME === "defeat" ? `${ENCOUNTER_NAME}에게 졌어요${FARM_EVENT.elapsed >= W.battleTimeLimit() ? "(시간 초과)" : ""} · 병력이 회복하는 동안 잠자요` : ""
+      BATTLE_OUTCOME === "victory" ? FARM_EVENT.rewardStatus === "granted" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 농장에 합류했어요` : FARM_EVENT.rewardStatus === "pending" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요` : `${ENCOUNTER_NAME} 격파` : BATTLE_OUTCOME === "defeat" ? `${ENCOUNTER_NAME}에게 졌어요 · 병력이 회복하는 동안 잠자요` : ""
     );
     syncFlag(
       "battleOutcome",

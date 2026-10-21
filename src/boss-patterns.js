@@ -14,6 +14,7 @@ export const BOSS_PATTERN_IDS = Object.freeze([
 export const BOSS_PATTERN_CONFIG = Object.freeze({
     'attack.sweep-360': Object.freeze({
         kind: 'sweep-360',
+        unlockHp: 0.4,
         windup: 1.05,
         active: 1.05,
         recover: 1.05,
@@ -27,6 +28,7 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
     }),
     'attack.front-slam': Object.freeze({
         kind: 'front-slam',
+        unlockHp: 1,
         windup: 0.75,
         active: 0,
         recover: 0.75,
@@ -40,6 +42,7 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
     }),
     'attack.charge': Object.freeze({
         kind: 'charge',
+        unlockHp: 1,
         windup: 0.5,
         active: 6.6 / 5.3,
         recover: 0.75,
@@ -53,6 +56,7 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
     }),
     'attack.leap-slam': Object.freeze({
         kind: 'leap-slam',
+        unlockHp: 0.6,
         windup: 0.5,
         active: 1.013,
         recover: 0.75,
@@ -66,6 +70,7 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
     }),
     'attack.fan-sweep': Object.freeze({
         kind: 'fan-sweep',
+        unlockHp: 0.75,
         windup: 1,
         active: 0.8,
         recover: 1,
@@ -80,6 +85,7 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
     }),
     'summon.mouth-t1': Object.freeze({
         kind: 'mouth-t1',
+        unlockHp: 0.5,
         windup: 0.5,
         active: 0.75,
         recover: 0.5,
@@ -98,6 +104,13 @@ export const BOSS_PATTERN_WEIGHT_DEFAULTS = Object.freeze({
     eligibleBonus: 0.5,
     cap: 3,
 });
+// Boss phases: a pattern joins the rotation once boss HP falls to its unlockHp fraction.
+export const BOSS_ENRAGE = Object.freeze({ damageMultiplier: 2, cooldownMultiplier: 0.5 });
+export const BOSS_PHASE_THRESHOLDS = Object.freeze(
+    [...new Set(BOSS_PATTERN_IDS.map((id) => BOSS_PATTERN_CONFIG[id].unlockHp).filter((t) => t < 1))].sort(
+        (a, b) => b - a,
+    ),
+);
 export const BOSS_AIM_TURN_RATE = 5.5;
 export function createBossPatternRuntime() {
     return {
