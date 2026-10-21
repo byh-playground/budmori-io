@@ -124,6 +124,15 @@ await check('food workers hit grain piles and food is produced', async () => {
     }));
     expect(GOT.workers > 0 && GOT.piles > 0, `no workers or piles ${JSON.stringify(GOT)}`);
     expect(GOT.produced > 0, `no food produced ${JSON.stringify(GOT)}`);
+    const NEAR = await WORLD(() => {
+        const W = BUDMORI.sim;
+        const FOODS = W.food.filter((f) => f.phase === 'flight' || f.phase === 'grounded');
+        return FOODS.length === 0 || W.piles.length === 0
+            ? null
+            : Math.max(...FOODS.map((f) => Math.min(...W.piles.map((p) => Math.hypot(f.tx - p.x, f.ty - p.y)))));
+    });
+    // Each food lands within 3.5 (x) / 2.8 (y) of its own pile; another pile may be nearer, so the nearest-pile distance is at most that.
+    expect(NEAR === null || NEAR <= 4.5, `food landed ${NEAR} from the nearest pile`);
 });
 
 await check('units eat, breed and the farm stays under its capacity', async () => {

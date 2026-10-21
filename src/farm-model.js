@@ -4074,7 +4074,7 @@ const GARDEN = class Garden {
             moveY = AWAY_Y;
             moveLength = 1;
         }
-        this.steer(u, u.x + moveX / moveLength, u.y + moveY / moveLength, dt, scaleMoveSpeed(1.3, u));
+        this.steer(u, u.x + moveX / moveLength, u.y + moveY / moveLength, dt, scaleMoveSpeed(2, u));
         return true;
     }
     findNearestGroundFood(x, y) {

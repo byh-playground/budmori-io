@@ -29,7 +29,7 @@ export class BreedFarmMode extends FarmMode {
             this.wander(world, u, dt);
             return;
         }
-        world.steer(u, target.x, target.y, dt, scaleMoveSpeed(2.2, u));
+        world.steer(u, target.x, target.y, dt, scaleMoveSpeed(3.6, u));
     }
     resolveContacts(world, units) {
         world.resolveFarmContactPairs(units, true);
