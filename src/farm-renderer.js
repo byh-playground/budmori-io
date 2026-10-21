@@ -446,7 +446,7 @@ const DIORAMA = class Diorama {
             this.sceneKey = KEY;
             this.sceneChangedAt = now;
             if (INSIDE && !WAS_INSIDE) {
-                this.resetZoom();
+                this.fitHall();
             } else if (!INSIDE) {
                 this.towerShotUntil = now + 2600;
             }
@@ -469,7 +469,19 @@ const DIORAMA = class Diorama {
             }
         } else if (INSIDE) {
             this.cameraReturning = false;
+            this.fitHall();
         }
+    }
+    // Inside the tower the whole hall is always in view: no panning or zooming, so tapping anywhere deploys.
+    fitHall() {
+        const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena,
+            BASE = this.scenePresentation.cameraView(this.aspect),
+            FIT = Math.min(BASE[0] / (RX + 1), BASE[1] / (RY * WORLD_DEPTH_PROJECTION + 3.5));
+        if (Math.abs(this.zoom - FIT) > 1e-6) {
+            this.zoom = FIT;
+            this.configure(this.scene, true);
+        }
+        this.setPan(0, 0);
     }
     // Going through the door fades out and each new place fades in, so the climb reads as a cut, not a pop.
     drawSceneFade(sim2, now) {

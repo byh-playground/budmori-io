@@ -1,5 +1,6 @@
 import { DEFINITION } from './definition.js';
 import { FormationSkill, targetBodyDimensions } from '../model-base.js';
+export const HAMMER_IMPACT_TIME = 0.55;
 export class HammerSkill extends FormationSkill {
     constructor() {
         super(DEFINITION);
@@ -16,10 +17,31 @@ export class HammerSkill extends FormationSkill {
             z: BODY.z,
             bodyHeight: BODY.bodyHeight,
             bodyRadius: BODY.bodyRadius,
-            duration: 0.7,
+            targetId: owner.targetId(TARGET),
+            damage: this.power(slot.level, this.definition.upgradeBase),
+            impacted: false,
+            duration: 1.2,
         });
-        owner.damage(TARGET, this.power(slot.level, this.definition.upgradeBase));
-        TARGET.stun = Math.max(TARGET.stun || 0, 1);
         return true;
+    }
+    update(owner, effect, dt) {
+        effect.age += dt;
+        const TARGET = owner.target(effect.targetId);
+        if (TARGET && !effect.impacted) {
+            const BODY = targetBodyDimensions(TARGET);
+            effect.x = TARGET.x;
+            effect.y = TARGET.y;
+            effect.z = BODY.z;
+            effect.bodyHeight = BODY.bodyHeight;
+            effect.bodyRadius = BODY.bodyRadius;
+        }
+        if (!effect.impacted && effect.age + 1e-9 >= HAMMER_IMPACT_TIME) {
+            effect.impacted = true;
+            if (TARGET) {
+                owner.damage(TARGET, effect.damage);
+                TARGET.stun = Math.max(TARGET.stun || 0, 1);
+            }
+        }
+        return effect.age < effect.duration;
     }
 }

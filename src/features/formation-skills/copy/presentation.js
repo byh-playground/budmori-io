@@ -2,8 +2,8 @@ import { FormationPresentation, stroke } from '../presentation-base.js';
 export class CopyPresentation extends FormationPresentation {
     draw(renderer, effect) {
         const Q = Math.min(1, effect.age / effect.duration);
-        renderer.ring(effect.x, effect.y, effect.radius, '#84c6e8aa', 0.04);
-        renderer.groundEllipse(effect.x, effect.y, effect.radius, effect.radius, `rgba(120,196,235,${(1 - Q) * 0.15})`);
+        renderer.ring(effect.x, effect.y, effect.radius, '#84c6e8dd', 0.12);
+        renderer.groundEllipse(effect.x, effect.y, effect.radius, effect.radius, `rgba(120,196,235,${(1 - Q) * 0.3})`);
     }
 }
 export class CopyDissolvePresentation {

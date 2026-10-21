@@ -153,6 +153,20 @@ await check('food workers hit grain piles and food is produced', async () => {
     expect(NEAR === null || NEAR <= 4.5, `food landed ${NEAR} from the nearest pile`);
 });
 
+await check('a full field keeps the worker share', async () => {
+    const GOT = await WORLD(() => {
+        const W = BUDMORI.sim;
+        W.setWorkBasisPoints(5000);
+        const BEFORE = W.workerCount;
+        W.spawnFood(0, 0, 80);
+        W._nextWorkerRefreshTick = 0;
+        W.refreshWorkers();
+        return { before: BEFORE, full: W.warehouseFull, after: W.workerCount };
+    });
+    expect(GOT.full && GOT.before === GOT.after, `a full field changed the workers ${JSON.stringify(GOT)}`);
+    await WORLD(() => BUDMORI.sim.setWorkBasisPoints(0));
+});
+
 await check('units eat, breed and the farm stays under its capacity', async () => {
     await WORLD(() => {
         const W = BUDMORI.sim;
