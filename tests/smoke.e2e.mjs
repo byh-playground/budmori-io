@@ -95,14 +95,14 @@ await check('new game boots with a minimal HUD', async () => {
             'plotBar',
             'bossEncounterScreen',
         ].filter((id) => document.getElementById(id)),
-        roles: [...document.querySelectorAll('.work-hud__bar span')].map((span) => span.id),
+        roles: [...document.querySelectorAll('.work-hud__labels span')].map((span) => span.id),
         handles: document.querySelectorAll('.work-hud__cut').length,
         challenge: document.getElementById('bossChallenge')?.textContent.trim(),
     }));
     expect(STATE.units > 0 && STATE.scene === 'farm', 'farm did not start');
     expect(STATE.removed.length === 0, `removed controls are back: ${STATE.removed}`);
     expect(STATE.handles === 1, `the role bar needs exactly one handle, has ${STATE.handles}`);
-    expect(STATE.roles.length === 2, `the role bar should have two parts, has ${STATE.roles.length}`);
+    expect(STATE.roles.length === 2, `the role labels should have two parts, has ${STATE.roles.length}`);
     expect(STATE.challenge === '탑 오르기', `challenge button reads "${STATE.challenge}"`);
 });
 
