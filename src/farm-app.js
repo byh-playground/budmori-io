@@ -132,7 +132,7 @@ function renderBossRewardBoxes(receipt) {
         NOMINAL_CHANCE = receipt.baselineChance ?? 0.1,
         CUMULATIVE = BOXES.slice(0, REVEALED).reduce((sum, box) => sum + (box.hit ? box.payout : 0), 0),
         PROCESSED = receipt.calculation?.jobState?.processedTrials ?? 0;
-    DOLLAR('bossRewardStage').textContent = receipt.stage ? `보스 격파 · ${receipt.stage}단계` : '보스 격파';
+    DOLLAR('bossRewardStage').textContent = receipt.stage ? `보스 격파 · ${receipt.stage}층` : '보스 격파';
     DOLLAR('bossRewardRibbon').hidden = !FIRST_CLEAR;
     DOLLAR('bossRewardTitle').textContent = receipt.status === 'calculating' ? '보상 준비 중' : '승리 보상';
     DOLLAR('bossRewardSummary').textContent =
@@ -700,14 +700,14 @@ function start(world, push = true, settle = false) {
         markSeen();
     }
 }
-// The boss drops onto the farm and the farm's units fight it where they stand.
+// The climb starts at floor 1: a boss drops in and the hand waits for the player to deploy it.
 function beginChallenge() {
     const REASON = raidStartBlockReason();
     if (REASON !== '') {
         say(REASON);
         return;
     }
-    if (personalGarden.startBossFight()) {
+    if (personalGarden.startTower()) {
         active.paused = false;
         active.loop.resetTiming();
     }
@@ -721,6 +721,15 @@ DOLLAR('fightRetreat').onclick = () => {
     personalGarden?.retreatFromFight();
 };
 DOLLAR('bossChallenge').onclick = beginChallenge;
+DOLLAR('doorCards').addEventListener('click', (e) => {
+    const BUTTON = e.target.closest('[data-door]');
+    if (BUTTON) {
+        personalGarden?.chooseDoor(Number(BUTTON.dataset.door));
+    }
+});
+DOLLAR('towerLeave').onclick = () => {
+    personalGarden?.leaveTower();
+};
 DOLLAR('newGame').onclick = () => {
     // Overwriting an existing save is a separate, explicit user action.
     if (STORAGE.raw && !DOLLAR('newConfirm').hidden) {
@@ -1161,6 +1170,104 @@ DOLLAR('gameMenuPanel').onkeydown = (e) => {
 };
 const CANVAS = DOLLAR('world');
 // Compare with the actual DOM so event handlers and route changes remain authoritative.
+const FLOOR_KIND = { battle: '전투', elite: '정예', mid: '중간 보스', rest: '쉼터' };
+const DOOR_TEXT = {
+    battle: '보스 한 마리',
+    elite: '더 세지만 보상 ×2',
+    mid: '피할 수 없어요 · 보상 ×3',
+    rest: '잠든 병력을 모두 깨워요',
+};
+let railKey = '';
+let railTimer = 0;
+let bannerKey = '';
+let bannerTimer = 0;
+let doorKey = '';
+let tintFloor = -1;
+// The tower: a rail of floors that steps up, a banner for every new floor, and doors between floors.
+function syncTower(garden, home, event) {
+    const T = garden.tower,
+        CLIMBING = T.active && !home,
+        BEST = garden.playerProgression.towerBest;
+    syncFlag('tower', 'hidden', !CLIMBING);
+    const TINT = DOLLAR('towerTint');
+    if (TINT.dataset.on !== String(CLIMBING)) {
+        TINT.dataset.on = String(CLIMBING);
+    }
+    if (CLIMBING && tintFloor !== T.floor) {
+        tintFloor = T.floor;
+        TINT.style.setProperty('--floor', String(T.floor));
+    }
+    const SLEEPERS = T.sleepUntil.size;
+    if (CLIMBING) {
+        const KEY = `${T.floor}|${T.kind}|${BEST}`;
+        if (KEY !== railKey) {
+            const STEPPED = railKey !== '' && railKey.split('|')[0] !== String(T.floor);
+            railKey = KEY;
+            const FLOORS = [];
+            for (let f = T.floor + 2; f >= Math.max(1, T.floor - 1); f--) {
+                FLOORS.push(f);
+            }
+            const RAIL = DOLLAR('towerRail');
+            RAIL.innerHTML = FLOORS.map((f) => {
+                const MID = f % CONFIG.farm.tower.midBossEvery === 0,
+                    NOTE = f === T.floor ? FLOOR_KIND[T.kind] : MID ? '♛ 중간' : f === BEST ? '★ 최고' : '';
+                return `<li class="tower__floor${f === T.floor ? ' is-now' : ''}${MID ? ' is-mid' : ''}${f < T.floor ? ' is-gone' : ''}">${f}<small>${NOTE}</small></li>`;
+            }).join('');
+            if (STEPPED) {
+                RAIL.classList.add('is-climbing');
+                clearTimeout(railTimer);
+                railTimer = setTimeout(() => RAIL.classList.remove('is-climbing'), 750);
+            }
+        }
+    } else {
+        railKey = '';
+    }
+    // A banner announces each new floor as the boss drops in, and the rest stop.
+    const NEXT_BANNER = !CLIMBING
+        ? ''
+        : T.kind === 'rest' && T.doors.length
+          ? `r${T.floor}`
+          : event?.phase === 'dropping'
+            ? `e${event.encounterId}`
+            : '';
+    if (NEXT_BANNER && NEXT_BANNER !== bannerKey) {
+        DOLLAR('floorBannerNum').textContent = `${T.floor}층`;
+        DOLLAR('floorBannerKind').textContent = FLOOR_KIND[T.kind];
+        const BANNER = DOLLAR('floorBanner');
+        BANNER.hidden = false;
+        clearTimeout(bannerTimer);
+        bannerTimer = setTimeout(() => {
+            BANNER.hidden = true;
+        }, 1500);
+    }
+    if (NEXT_BANNER !== '' || !CLIMBING) {
+        bannerKey = NEXT_BANNER;
+    }
+    const DOORS = CLIMBING && event?.phase === 'idle' && T.doors.length > 0;
+    syncFlag('towerDoors', 'hidden', !DOORS);
+    if (DOORS) {
+        const KEY = `${T.doors.join()}|${T.floor}|${SLEEPERS}`;
+        if (KEY !== doorKey) {
+            doorKey = KEY;
+            DOLLAR('doorCards').innerHTML = T.doors
+                .map(
+                    (d, i) =>
+                        `<button type="button" class="door door--${d}" data-door="${i}"><b>${FLOOR_KIND[d]}</b><small>${DOOR_TEXT[d]}</small></button>`,
+                )
+                .join('');
+        }
+        syncText(
+            'doorsTitle',
+            T.kind === 'rest' ? `${T.floor}층 쉼터 · 잠든 병력이 모두 깼어요` : `${T.floor}층 돌파!`,
+        );
+        syncText('doorsNote', `다음은 ${T.floor + 1}층 · 잠든 병력 ${SLEEPERS}마리`);
+    } else {
+        doorKey = '';
+    }
+    const RESULT = !T.active && T.floor > 0 && !home && event?.phase === 'idle';
+    syncFlag('towerResult', 'hidden', !RESULT);
+    syncText('towerResult', `지난 도전 ${T.floor}층${T.record ? ' · 새 기록!' : ''} · 최고 ${BEST}층`);
+}
 function syncText(id, value) {
     const NODE = DOLLAR(id),
         TEXT = String(value);
@@ -1247,7 +1354,7 @@ function syncHand(garden, visible) {
     syncText(
         'handNote',
         IDS.length
-            ? `카드를 고르고 땅을 눌러 투입해요 · 필드 ${garden.fieldFighterCount}/${CONFIG.farm.deploy.fieldCap}`
+            ? `카드를 고르고 땅을 눌러 투입해요 · 필드 ${garden.fieldFighterCount}/${CONFIG.farm.deploy.fieldCap}${garden.tower.sleepUntil.size ? ` · 잠든 병력 ${garden.tower.sleepUntil.size}` : ''}`
             : '대기 중인 병력이 없어요',
     );
 }
@@ -1376,7 +1483,9 @@ CANVAS.addEventListener('pointerdown', (e) => {
             ? 'pan'
             : fightActive()
               ? 'deploy'
-              : 'pending',
+              : active.world.tower.active
+                ? 'pan'
+                : 'pending',
         startX: e.clientX,
         startY: e.clientY,
         x: e.clientX,
@@ -1595,8 +1704,9 @@ function sync(display, now, notices) {
             worldCount++;
         }
     }
-    syncFlag('farmControls', 'hidden', FARM_EVENT_ACTIVE || home);
-    syncFlag('workHud', 'hidden', FARM_EVENT_ACTIVE || home);
+    syncFlag('farmControls', 'hidden', FARM_EVENT_ACTIVE || home || W.tower.active);
+    syncFlag('workHud', 'hidden', FARM_EVENT_ACTIVE || home || W.tower.active);
+    syncTower(W, home, FARM_EVENT);
     syncFlag('bossbar', 'hidden', !FARM_EVENT_ACTIVE || home);
     syncHand(W, !home && ['dropping', 'fighting'].includes(FARM_EVENT?.phase));
     syncText('count', displayedCount);
@@ -1625,7 +1735,12 @@ function sync(display, now, notices) {
                 : null,
         REWARD_NAME = speciesRewardName(BOSS.species),
         ENCOUNTER_NAME = giantSpeciesName(BOSS.species);
-    syncText('bossName', BOSS.stage ? `${ENCOUNTER_NAME} ${BOSS.stage}단계` : ENCOUNTER_NAME);
+    syncText(
+        'bossName',
+        BOSS.stage
+            ? `${BOSS.stage}층 · ${W.tower.kind === 'battle' ? '' : FLOOR_KIND[W.tower.kind] + ' '}${ENCOUNTER_NAME}`
+            : ENCOUNTER_NAME,
+    );
     syncAttribute('bossHealth', 'aria-label', `${ENCOUNTER_NAME} 체력`);
     syncText('bossHealthText', Math.ceil(BOSS.hp) + '/' + BOSS.maxHp);
     syncText(
@@ -1650,12 +1765,14 @@ function sync(display, now, notices) {
         'battleOutcome',
         BATTLE_OUTCOME === 'victory'
             ? FARM_EVENT.rewardStatus === 'granted'
-                ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 농장에 합류했어요`
+                ? `${BOSS.stage}층 돌파 · 새 기록! ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 농장에 합류했어요`
                 : FARM_EVENT.rewardStatus === 'pending'
-                  ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요`
-                  : `${ENCOUNTER_NAME} 격파`
+                  ? `${BOSS.stage}층 돌파 · 새 기록! ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요`
+                  : W.tower.record
+                    ? `${BOSS.stage}층 돌파 · 새 기록!`
+                    : `${BOSS.stage}층 돌파 · 이미 오른 층이라 보상은 없어요`
             : BATTLE_OUTCOME === 'defeat'
-              ? `${ENCOUNTER_NAME}에게 졌어요 · 병력이 회복하는 동안 잠자요`
+              ? `${BOSS.stage}층에서 쓰러졌어요 · 최고 ${W.playerProgression.towerBest}층 · 쓰러진 병력은 농장에서 쉬어요`
               : '',
     );
     syncFlag(
@@ -1663,7 +1780,10 @@ function sync(display, now, notices) {
         'hidden',
         home || !FARM_EVENT_ACTIVE || BATTLE_OUTCOME === 'fighting' || BATTLE_OUTCOME === 'idle',
     );
-    syncText('bossChallenge', `도전 ${(personalGarden || W).playerProgression.farmBossEventStage}단계`);
+    syncText(
+        'bossChallenge',
+        W.playerProgression.towerBest ? `탑 오르기 · 최고 ${W.playerProgression.towerBest}층` : '탑 오르기',
+    );
     syncFlag('bossChallenge', 'hidden', FARM_EVENT_ACTIVE || home);
     syncAttribute('bossChallenge', 'aria-disabled', String(raidStartBlockReason() !== ''));
     syncFlag('menuTabFarms', 'disabled', FARM_EVENT_ACTIVE);

@@ -153,7 +153,7 @@ export const FARM_SNAPSHOT_SHAPE = {
         abilities: ABILITY_INVESTMENTS(),
         level: 1,
         experience: 0,
-        farmBossEventStage: 1,
+        towerBest: 0,
         processedBossKillReceipts: [],
     },
     starter: 0,

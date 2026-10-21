@@ -19,7 +19,7 @@ export function createPlayerProgressionState() {
         formationSkills: createFormationSkillState(),
         level: 1,
         experience: 0,
-        farmBossEventStage: 1,
+        towerBest: 0,
         processedBossKillReceipts: [],
     };
 }
@@ -119,9 +119,9 @@ export function isValidPlayerProgressionState(state) {
         (state.formationSkills !== undefined && !isValidFormationSkillState(state.formationSkills)) ||
         !Number.isSafeInteger(state.level) ||
         state.level < 1 ||
-        !Number.isSafeInteger(state.farmBossEventStage) ||
-        state.farmBossEventStage < 1 ||
-        state.farmBossEventStage > FARM_BOSS_EVENT_MAX_STAGE ||
+        !Number.isSafeInteger(state.towerBest) ||
+        state.towerBest < 0 ||
+        state.towerBest > FARM_BOSS_EVENT_MAX_STAGE ||
         !Number.isFinite(state.experience) ||
         state.experience < 0 ||
         state.experience >= experienceForNextLevel(state.level) ||

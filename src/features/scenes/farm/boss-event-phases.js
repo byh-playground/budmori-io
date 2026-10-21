@@ -72,6 +72,7 @@ export function createFarmBossEventPhases(config) {
                 };
                 world.boss = world.createBoss();
                 world.markProgressChanged();
+                world.afterFloor();
             }
             return true;
         }

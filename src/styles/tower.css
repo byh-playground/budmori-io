@@ -1,0 +1,190 @@
+/* 탑: 층 레일, 층 배너, 문 선택, 높이에 따른 하늘색 */
+.tower-tint {
+    --floor: 0;
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0;
+    background: linear-gradient(to top, transparent 35%, hsl(calc(205 + var(--floor) * 3) 55% 28% / 0.38));
+    transition:
+        opacity 1.2s ease,
+        background 1.2s ease;
+}
+.tower-tint[data-on='true'] {
+    opacity: 1;
+}
+.tower {
+    position: fixed;
+    z-index: var(--ui-z-hud);
+    left: max(var(--ui-s3), env(safe-area-inset-left));
+    top: 50%;
+    transform: translateY(-62%);
+    pointer-events: none;
+}
+.tower__rail {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ui-s2);
+    margin: 0;
+    padding: var(--ui-s2);
+    list-style: none;
+    border-radius: var(--ui-r-l);
+    background: var(--ui-panel);
+    border: var(--ui-bw) solid var(--ui-line);
+}
+.tower__rail.is-climbing .tower__floor {
+    animation: tower-step 0.7s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.tower__floor {
+    display: grid;
+    justify-items: center;
+    min-width: 44px;
+    padding: 4px var(--ui-s2);
+    border-radius: var(--ui-r-s);
+    color: var(--ui-ink-3);
+    font-weight: var(--ui-fw-m);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.15;
+}
+.tower__floor small {
+    min-height: 1.1em;
+    font-size: 10px;
+}
+.tower__floor.is-mid {
+    color: var(--ui-ink);
+}
+.tower__floor.is-now {
+    background: var(--ui-primary);
+    color: var(--ui-primary-ink);
+    box-shadow: 0 2px 0 var(--ui-line);
+    transform: scale(1.12);
+}
+.tower__floor.is-gone {
+    opacity: 0.45;
+}
+.floor-banner {
+    position: fixed;
+    inset: 0;
+    z-index: calc(var(--ui-z-dock) + 2);
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: var(--ui-s2);
+    pointer-events: none;
+    overflow: hidden;
+    color: #fffbee;
+    text-shadow: 0 2px 12px #0008;
+}
+.floor-banner::before {
+    content: '';
+    position: absolute;
+    inset: -20% 0;
+    background: linear-gradient(to top, transparent, #10202f99 35%, #10202fcc 50%, #10202f99 65%, transparent);
+    transform: translateY(100%);
+    animation: floor-sweep 1.5s cubic-bezier(0.5, 0, 0.2, 1) forwards;
+}
+.floor-banner b {
+    position: relative;
+    font-size: clamp(56px, 18vw, 120px);
+    line-height: 1;
+    animation: floor-pop 1.5s ease forwards;
+}
+.floor-banner small {
+    position: relative;
+    font-size: 20px;
+    font-weight: var(--ui-fw-m);
+    letter-spacing: 0.08em;
+    animation: floor-pop 1.5s ease forwards;
+}
+.doors {
+    display: grid;
+    gap: var(--ui-s2);
+    width: min(520px, 100%);
+    padding: var(--ui-s3);
+    border-radius: var(--ui-r-l);
+    background: var(--ui-panel);
+    border: var(--ui-bw) solid var(--ui-line);
+    pointer-events: auto;
+    text-align: center;
+    animation: doors-rise 0.45s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.doors h2 {
+    margin: 0;
+    font-size: var(--ui-fs-3);
+}
+.doors__cards {
+    display: flex;
+    gap: var(--ui-s2);
+}
+.door {
+    flex: 1;
+    display: grid;
+    gap: 2px;
+    padding: var(--ui-s3) var(--ui-s2);
+    border-radius: var(--ui-r-m);
+    border: var(--ui-bw) solid var(--ui-line);
+    background: var(--ui-card);
+    color: inherit;
+    font: inherit;
+}
+.door b {
+    font-size: var(--ui-fs-3);
+}
+.door small {
+    color: var(--ui-ink-2);
+}
+.door--elite {
+    border-color: var(--ui-gauge-enemy);
+}
+.door--rest {
+    border-color: var(--ui-gauge-ally);
+}
+.door--mid {
+    border-color: var(--ui-focus);
+}
+.tower-result {
+    color: var(--ui-ink-2);
+    text-align: center;
+}
+@keyframes tower-step {
+    from {
+        transform: translateY(-120%);
+        opacity: 0;
+    }
+}
+@keyframes floor-sweep {
+    to {
+        transform: translateY(-100%);
+    }
+}
+@keyframes floor-pop {
+    0% {
+        opacity: 0;
+        transform: translateY(24px) scale(0.9);
+    }
+    30%,
+    70% {
+        opacity: 1;
+        transform: none;
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-24px);
+    }
+}
+@keyframes doors-rise {
+    from {
+        opacity: 0;
+        transform: translateY(24px);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .tower__rail.is-climbing .tower__floor,
+    .doors,
+    .floor-banner::before,
+    .floor-banner b,
+    .floor-banner small {
+        animation-duration: 0.01s;
+    }
+}
