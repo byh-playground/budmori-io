@@ -394,49 +394,63 @@
     world._workAssign = /* @__PURE__ */ new Map();
     world._swings = /* @__PURE__ */ new Map();
   }
-  function assignWorkers(world, config) {
-    const WORKERS = world.units.filter((u) => world.isWorker(u) && u.hp > 0 && u.down <= 0 && u.mature), BY_ID = new Map(WORKERS.map((u) => [u.id, u])), PREVIOUS = world._workAssign, ASSIGN = /* @__PURE__ */ new Map(), TAKEN_IDS = /* @__PURE__ */ new Set(), LIMIT = config.farm.work.maxAttackers;
-    for (const PILE of world.piles) {
-      const MEMBERS = [];
-      for (const [ID, OLD] of PREVIOUS) {
-        if (OLD.pile === PILE && OLD.attacking && BY_ID.has(ID) && MEMBERS.length < LIMIT) {
-          MEMBERS.push(ID);
-          TAKEN_IDS.add(ID);
-        }
-      }
-      const FREE = WORKERS.filter((u) => !TAKEN_IDS.has(u.id)).sort(
-        (a, b) => Math.hypot(a.x - PILE.x, a.y - PILE.y) - Math.hypot(b.x - PILE.x, b.y - PILE.y)
-      );
-      for (const UNIT3 of FREE) {
-        if (MEMBERS.length >= LIMIT) {
-          break;
-        }
-        MEMBERS.push(UNIT3.id);
-        TAKEN_IDS.add(UNIT3.id);
-      }
-      for (const ID of MEMBERS) {
-        ASSIGN.set(ID, { pile: PILE, attacking: true });
+  function assignWorkers(world, _config) {
+    const WORKERS = world.units.filter((u) => world.isWorker(u) && u.hp > 0 && u.down <= 0 && u.mature), PREVIOUS = world._workAssign, ASSIGN = /* @__PURE__ */ new Map(), COUNTS = new Map(world.piles.map((pile) => [pile, 0]));
+    if (!world.piles.length) {
+      world._workAssign = ASSIGN;
+      world._swings.clear();
+      return;
+    }
+    const FREE = [];
+    for (const UNIT3 of WORKERS) {
+      const OLD = PREVIOUS.get(UNIT3.id);
+      if (OLD && COUNTS.has(OLD.pile)) {
+        ASSIGN.set(UNIT3.id, { pile: OLD.pile });
+        COUNTS.set(OLD.pile, COUNTS.get(OLD.pile) + 1);
+      } else {
+        FREE.push(UNIT3);
       }
     }
-    for (const UNIT3 of WORKERS) {
-      if (TAKEN_IDS.has(UNIT3.id)) {
-        continue;
-      }
-      let nearest = null, nearestDistance = Infinity;
+    for (const UNIT3 of FREE) {
+      let best = null, bestCount = Infinity, bestDistance = Infinity;
       for (const PILE of world.piles) {
-        const D = Math.hypot(UNIT3.x - PILE.x, UNIT3.y - PILE.y);
-        if (D < nearestDistance) {
-          nearestDistance = D;
-          nearest = PILE;
+        const COUNT = COUNTS.get(PILE), D = Math.hypot(UNIT3.x - PILE.x, UNIT3.y - PILE.y);
+        if (COUNT < bestCount || COUNT === bestCount && D < bestDistance) {
+          best = PILE;
+          bestCount = COUNT;
+          bestDistance = D;
         }
       }
-      if (nearest) {
-        ASSIGN.set(UNIT3.id, { pile: nearest, attacking: false });
+      ASSIGN.set(UNIT3.id, { pile: best });
+      COUNTS.set(best, bestCount + 1);
+    }
+    for (let guard = WORKERS.length; guard > 0; guard--) {
+      let most = null, least = null;
+      for (const PILE of world.piles) {
+        most = !most || COUNTS.get(PILE) > COUNTS.get(most) ? PILE : most;
+        least = !least || COUNTS.get(PILE) < COUNTS.get(least) ? PILE : least;
       }
+      if (COUNTS.get(most) - COUNTS.get(least) <= 1) {
+        break;
+      }
+      let mover = null, moverDistance = Infinity;
+      for (const UNIT3 of WORKERS) {
+        if (ASSIGN.get(UNIT3.id).pile !== most) {
+          continue;
+        }
+        const D = Math.hypot(UNIT3.x - least.x, UNIT3.y - least.y);
+        if (D < moverDistance) {
+          mover = UNIT3;
+          moverDistance = D;
+        }
+      }
+      ASSIGN.set(mover.id, { pile: least });
+      COUNTS.set(most, COUNTS.get(most) - 1);
+      COUNTS.set(least, COUNTS.get(least) + 1);
     }
     world._workAssign = ASSIGN;
     for (const ID of [...world._swings.keys()]) {
-      if (!ASSIGN.get(ID)?.attacking) {
+      if (!ASSIGN.has(ID)) {
         world._swings.delete(ID);
       }
     }
@@ -470,10 +484,6 @@
       return null;
     }
     const PILE = ASSIGN.pile, SWING = world._swings.get(unit.id), DISTANCE = Math.hypot(unit.x - PILE.x, unit.y - PILE.y), ORDER = { x: PILE.x, y: PILE.y, fx: PILE.x, fy: PILE.y, speed: 9, hold: false, face: false };
-    if (!ASSIGN.attacking) {
-      ORDER.hold = DISTANCE <= WAIT_DISTANCE;
-      return ORDER;
-    }
     if (!SWING || SWING.phase === "idle") {
       ORDER.hold = DISTANCE <= NEAR_PILE;
       ORDER.face = ORDER.hold;
@@ -519,7 +529,7 @@
     }
     const FOOD_FULL = world.food.length >= WORK.maxFood;
     for (const [ID, ASSIGN] of world._workAssign) {
-      if (!ASSIGN.attacking || !world.piles.includes(ASSIGN.pile)) {
+      if (!world.piles.includes(ASSIGN.pile)) {
         continue;
       }
       const UNIT3 = world._unitById.get(ID);
@@ -570,7 +580,7 @@
       }
     }
   }
-  var SWING_WINDUP, SWING_RECOVER, FOOD_DROP_MIN, FOOD_DROP_MAX, NEAR_PILE, WAIT_DISTANCE, CHARGE_SPEED, CHARGE_TIMEOUT, RECOIL_SPEED, STACKS_PER_FOOD;
+  var SWING_WINDUP, SWING_RECOVER, FOOD_DROP_MIN, FOOD_DROP_MAX, NEAR_PILE, CHARGE_SPEED, CHARGE_TIMEOUT, RECOIL_SPEED, STACKS_PER_FOOD;
   var init_farm_work = __esm({
     "src/farm-work.js"() {
       SWING_WINDUP = 0.28;
@@ -578,7 +588,6 @@
       FOOD_DROP_MIN = 1.5;
       FOOD_DROP_MAX = 3.5;
       NEAR_PILE = 4.4;
-      WAIT_DISTANCE = 6.5;
       CHARGE_SPEED = 18;
       CHARGE_TIMEOUT = 1.6;
       RECOIL_SPEED = 5.5;
@@ -7185,7 +7194,6 @@
             defaultBasisPoints: 4e3,
             starterFood: 0,
             maxFood: 50,
-            maxAttackers: 3,
             pileKind: Object.freeze({ count: 2, amount: 12 }),
             pileGap: 6,
             pileRadiusX: 8,
@@ -8922,10 +8930,8 @@
         // Food per minute produced by workers right now.
         get workFoodPerMinute() {
           let rate = 0;
-          for (const [ID, ASSIGN] of this._workAssign) {
-            if (ASSIGN.attacking) {
-              rate += this._workerRates.get(ID) || 0;
-            }
+          for (const [ID] of this._workAssign) {
+            rate += this._workerRates.get(ID) || 0;
           }
           return rate * 60;
         }
@@ -12347,7 +12353,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.27.1";
+      PRODUCT_VERSION = "0.27.2";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
