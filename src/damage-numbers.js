@@ -199,6 +199,26 @@ const STYLES = Object.freeze({
 const OUTLINE_WIDTH = 0.3;
 const FILL_WIDTH = 0.14;
 
+// Draws `text` centred on `x` with its baseline at `y`, `height` pixels tall; shared by every number-like mark.
+export function drawGlyphText(renderer, text, x, y, height, fill, outline) {
+    let cursor = x - (textWidth(text) * height) / 2;
+    for (const CHAR of text) {
+        for (const STROKE of GLYPHS[CHAR]) {
+            const POINTS = STROKE.map(([gx, gy]) => ({ x: cursor + gx * height, y: y - gy * height }));
+            for (const [WIDTH, COLOR] of [
+                [OUTLINE_WIDTH, outline],
+                [FILL_WIDTH, fill],
+            ]) {
+                for (let index = 1; index < POINTS.length; index++) {
+                    renderer.pixelLine(POINTS[index - 1], POINTS[index], height * WIDTH, COLOR);
+                }
+            }
+        }
+        cursor += (ADVANCE[CHAR] ?? ADVANCE_DEFAULT) * height;
+    }
+}
+export { textWidth };
+
 export class DamageNumberPresentation {
     lifeMs = DAMAGE_NUMBER.lifeMs;
     // `reduced` keeps the number but drops the pop and the rise: the information stays, the motion goes.
@@ -220,20 +240,6 @@ export class DamageNumberPresentation {
         }
         const OUTLINE = `rgba(${STYLE.outline},${ALPHA * 0.9})`,
             FILL = `rgba(${STYLE.fill},${ALPHA})`;
-        let cursor = POINT.x - (textWidth(TEXT) * HEIGHT) / 2;
-        for (const CHAR of TEXT) {
-            for (const STROKE of GLYPHS[CHAR]) {
-                const POINTS = STROKE.map(([x, y]) => ({ x: cursor + x * HEIGHT, y: POINT.y - y * HEIGHT }));
-                for (const [WIDTH, COLOR] of [
-                    [OUTLINE_WIDTH, OUTLINE],
-                    [FILL_WIDTH, FILL],
-                ]) {
-                    for (let index = 1; index < POINTS.length; index++) {
-                        renderer.pixelLine(POINTS[index - 1], POINTS[index], HEIGHT * WIDTH, COLOR);
-                    }
-                }
-            }
-            cursor += (ADVANCE[CHAR] ?? ADVANCE_DEFAULT) * HEIGHT;
-        }
+        drawGlyphText(renderer, TEXT, POINT.x, POINT.y, HEIGHT, FILL, OUTLINE);
     }
 }

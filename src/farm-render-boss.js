@@ -1,5 +1,6 @@
 import { bossVectorScale } from './vector-sockets.cjs';
 import { CONFIG, clamp } from './farm-model.js';
+import { bodyScreenBox } from './features/unit-body/definition.cjs';
 import { BossAttackPose, BossAttackPresentation } from './features/boss-patterns/presentation-base.js';
 import { FrontSlamPresentation } from './features/boss-patterns/front-slam/presentation.js';
 import { CircleSweepPresentation } from './features/boss-patterns/sweep-360/presentation.js';
@@ -192,6 +193,6 @@ export class BossPresentation {
         });
         PRESENTATION.drawRelease(this.renderer, B, POSE, MOUTH_SCREEN);
         PRESENTATION.drawWeapon(this.renderer, B, PLAYER, MATRIX, POSE, RECORD);
-        BARLEY_SHRED_PRESENTATION.drawStatus(this.renderer, B, B.barleyArmorShredTotal || 0);
+        BARLEY_SHRED_PRESENTATION.drawStatus(this.renderer, B, bodyScreenBox(SPECIES, S_LOCAL, P.x, P.y));
     }
 }

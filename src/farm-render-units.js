@@ -1,4 +1,4 @@
-import { unitBodyDefinition, unitDisplayScale } from './features/unit-body/definition.cjs';
+import { bodyScreenBox, unitBodyDefinition, unitDisplayScale } from './features/unit-body/definition.cjs';
 import { BarleyArmorShredPresentation } from './features/abilities/barley-shred/presentation.js';
 import { UnitAttackPresentation } from './features/unit-attacks/presentation-base.js';
 import { LobPresentation } from './features/unit-attacks/lob/presentation.js';
@@ -304,6 +304,11 @@ export class UnitPresentation {
         const POSE = this.drawUnit(u, sim, REST);
         this.drawUnitRingLayer(u, EFFECTS, 'front');
         this.drawSleepIndicator(REST, POSE);
-        BARLEY_SHRED_PRESENTATION.drawStatus(this.renderer, u, u.barleyArmorShredTotal || 0);
+        const BODY = unitBodyDefinition(u.species);
+        BARLEY_SHRED_PRESENTATION.drawStatus(
+            this.renderer,
+            u,
+            bodyScreenBox(u.species, (2 * POSE.r) / Math.max(BODY.viewBox[2], BODY.viewBox[3]), POSE.p.x, POSE.p.y),
+        );
     }
 }

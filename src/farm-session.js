@@ -61,6 +61,7 @@ class UnitRender extends RENDER_OBJECT {
         cloneParentId: R.STEP,
         cloneBornAt: R.STEP,
         barleyArmorShredTotal: R.STEP,
+        barleyArmorShredLeft: R.STEP,
     });
     constructor() {
         super();
@@ -108,6 +109,7 @@ class UnitRender extends RENDER_OBJECT {
         this.cloneParentId = u.battleSummonParentId;
         this.cloneBornAt = u.cloneBornAt;
         this.barleyArmorShredTotal = BarleyArmorShredModel.total(u, world.simulationTick);
+        this.barleyArmorShredLeft = BarleyArmorShredModel.remaining(u, world.simulationTick);
     }
 }
 class BossRender extends RENDER_OBJECT {
@@ -146,6 +148,7 @@ class BossRender extends RENDER_OBJECT {
         summonMouthY: R.STEP,
         summonMouthZ: R.STEP,
         barleyArmorShredTotal: R.STEP,
+        barleyArmorShredLeft: R.STEP,
     });
     update(b, world) {
         const ACTION = b.patternRuntime.active,
@@ -188,6 +191,7 @@ class BossRender extends RENDER_OBJECT {
         this.summonMouthY = MOUTH.y ?? b.y;
         this.summonMouthZ = MOUTH.z ?? b.z;
         this.barleyArmorShredTotal = BarleyArmorShredModel.total(b, world.simulationTick);
+        this.barleyArmorShredLeft = BarleyArmorShredModel.remaining(b, world.simulationTick);
     }
 }
 class FoodRender extends RENDER_OBJECT {

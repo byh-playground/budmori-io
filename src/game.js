@@ -1263,7 +1263,7 @@
   var require_definition = __commonJS({
     "src/features/unit-body/definition.cjs"(exports, module) {
       "use strict";
-      var { WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION5 } = require_vector_sockets();
+      var { WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION5, bossVectorScale: BOSS_VECTOR_SCALE } = require_vector_sockets();
       var AUTHORED_BODIES = [
         {
           species: 0,
@@ -1497,9 +1497,24 @@
         const BODY2 = unitBodyDefinition3(unit.species);
         return (BODY2.ground.y - BODY2.bounds.top) * unitVectorScale2(unit) / WORLD_HEIGHT_PROJECTION5;
       }
+      function bossBodyHeight2(boss) {
+        const BODY2 = unitBodyDefinition3(boss.species);
+        return (BODY2.ground.y - BODY2.bounds.top) * BOSS_VECTOR_SCALE(boss.radius) / WORLD_HEIGHT_PROJECTION5;
+      }
+      function bossBodyRadius2(boss) {
+        return bodyRadiusAtScale(unitBodyDefinition3(boss.species), BOSS_VECTOR_SCALE(boss.radius));
+      }
       function unitTorsoHeight2(unit) {
         const BODY2 = unitBodyDefinition3(unit.species);
         return (BODY2.bounds.bottom - BODY2.bounds.top) * unitVectorScale2(unit) / WORLD_HEIGHT_PROJECTION5;
+      }
+      function bodyScreenBox3(species, scale, x, y) {
+        const BODY2 = unitBodyDefinition3(species);
+        return {
+          x: x + ((BODY2.bounds.left + BODY2.bounds.right) / 2 - BODY2.ground.x) * scale,
+          top: y - (BODY2.ground.y - BODY2.bounds.top) * scale,
+          width: (BODY2.bounds.right - BODY2.bounds.left) * scale
+        };
       }
       function maximumUnitRadius2(tier) {
         return Math.max(
@@ -1533,7 +1548,10 @@
         unitVectorScale: unitVectorScale2,
         unitBodyRadius: unitBodyRadius3,
         unitBodyHeight: unitBodyHeight2,
+        bossBodyHeight: bossBodyHeight2,
+        bossBodyRadius: bossBodyRadius2,
         unitTorsoHeight: unitTorsoHeight2,
+        bodyScreenBox: bodyScreenBox3,
         maximumUnitRadius: maximumUnitRadius2,
         unitDisplayScale: unitDisplayScale3,
         validateUnitBodySource
@@ -1543,7 +1561,7 @@
 
   // src/features/formation-skills/model-base.js
   function targetBodyDimensions(target) {
-    const BODY_HEIGHT = Number.isFinite(target?.height) ? Math.max(0, target.height) : T1_DIAMETER * 1.7, BODY_RADIUS = Number.isFinite(target?.radius) ? Math.max(0, target.radius) : T1_DIAMETER * 0.5, BASE_Z = Number.isFinite(target?.z) ? target.z : 0;
+    const BOSS2 = target?.isBoss === true, BODY_HEIGHT = BOSS2 ? (0, import_definition10.bossBodyHeight)(target) : Number.isFinite(target?.height) ? Math.max(0, target.height) : T1_DIAMETER * 1.7, BODY_RADIUS = BOSS2 ? (0, import_definition10.bossBodyRadius)(target) : Number.isFinite(target?.radius) ? Math.max(0, target.radius) : T1_DIAMETER * 0.5, BASE_Z = Number.isFinite(target?.z) ? target.z : 0;
     return {
       z: BASE_Z,
       bodyHeight: BODY_HEIGHT,
@@ -4531,6 +4549,14 @@
           }
           return total;
         }
+        // Share of the shred lifetime the newest stack still has, 0 when nothing is shredded.
+        static remaining(target, tick) {
+          let latest = 0;
+          for (const BUCKET of target?.barleyArmorShredBuckets || []) {
+            latest = Math.max(latest, BUCKET.expiresAtTick - tick);
+          }
+          return Math.max(0, Math.min(1, latest / BARLEY_ARMOR_SHRED_BUCKETS));
+        }
         static effectiveArmor(target, baseArmor, armorBonus, tick) {
           const BASE_ARMOR = Number.isFinite(baseArmor) ? baseArmor : 0, ARMOR_BONUS = Number.isFinite(armorBonus) ? armorBonus : 0;
           return Math.max(0, BASE_ARMOR + ARMOR_BONUS - this.total(target, tick));
@@ -4759,10 +4785,256 @@
     }
   });
 
+  // src/damage-numbers.js
+  function formatDamage(amount) {
+    const VALUE = Math.max(1, Math.round(amount));
+    if (VALUE >= 1e6) {
+      return `${(VALUE / 1e6).toFixed(VALUE < 1e7 ? 1 : 0)}M`;
+    }
+    if (VALUE >= 1e4) {
+      return `${(VALUE / 1e3).toFixed(VALUE < 1e5 ? 1 : 0)}K`;
+    }
+    return String(VALUE);
+  }
+  function textWidth(text) {
+    let width = 0;
+    for (const CHAR of text) {
+      width += ADVANCE[CHAR] ?? ADVANCE_DEFAULT;
+    }
+    return width - 0.2;
+  }
+  function drawGlyphText(renderer, text, x, y, height, fill, outline) {
+    let cursor = x - textWidth(text) * height / 2;
+    for (const CHAR of text) {
+      for (const STROKE of GLYPHS[CHAR]) {
+        const POINTS = STROKE.map(([gx, gy]) => ({ x: cursor + gx * height, y: y - gy * height }));
+        for (const [WIDTH, COLOR] of [
+          [OUTLINE_WIDTH, outline],
+          [FILL_WIDTH, fill]
+        ]) {
+          for (let index = 1; index < POINTS.length; index++) {
+            renderer.pixelLine(POINTS[index - 1], POINTS[index], height * WIDTH, COLOR);
+          }
+        }
+      }
+      cursor += (ADVANCE[CHAR] ?? ADVANCE_DEFAULT) * height;
+    }
+  }
+  var DAMAGE_NUMBER, GLYPH_WIDTH, FLIP, SIX, GLYPHS, ADVANCE, ADVANCE_DEFAULT, STYLES, OUTLINE_WIDTH, FILL_WIDTH, DamageNumberPresentation;
+  var init_damage_numbers = __esm({
+    "src/damage-numbers.js"() {
+      DAMAGE_NUMBER = Object.freeze({
+        lifeMs: 800,
+        // World units: the digit height of a normal hit and the factor a critical hit adds.
+        height: 0.7,
+        criticalScale: 1.7,
+        rise: 1.1,
+        // How far apart simultaneous numbers drift, so a volley stays readable.
+        spread: 0.09,
+        popFraction: 0.14,
+        fadeFraction: 0.35
+      });
+      GLYPH_WIDTH = 0.6;
+      FLIP = (strokes) => strokes.map((stroke2) => stroke2.map(([x, y]) => [GLYPH_WIDTH - x, 1 - y]));
+      SIX = [
+        [
+          [0.5, 1],
+          [0.15, 0.85],
+          [0, 0.5],
+          [0, 0.2],
+          [0.2, 0],
+          [0.45, 0],
+          [0.6, 0.2],
+          [0.6, 0.4],
+          [0.4, 0.55],
+          [0.15, 0.5],
+          [0, 0.35]
+        ]
+      ];
+      GLYPHS = Object.freeze({
+        0: [
+          [
+            [0, 0.2],
+            [0.1, 0.05],
+            [0.3, 0],
+            [0.5, 0.05],
+            [0.6, 0.2],
+            [0.6, 0.8],
+            [0.5, 0.95],
+            [0.3, 1],
+            [0.1, 0.95],
+            [0, 0.8],
+            [0, 0.2]
+          ]
+        ],
+        1: [
+          [
+            [0.1, 0.8],
+            [0.32, 1],
+            [0.32, 0]
+          ]
+        ],
+        2: [
+          [
+            [0, 0.8],
+            [0.1, 0.95],
+            [0.3, 1],
+            [0.5, 0.95],
+            [0.6, 0.8],
+            [0.55, 0.6],
+            [0, 0],
+            [0.6, 0]
+          ]
+        ],
+        3: [
+          [
+            [0, 0.9],
+            [0.3, 1],
+            [0.55, 0.9],
+            [0.55, 0.62],
+            [0.25, 0.5],
+            [0.55, 0.38],
+            [0.55, 0.1],
+            [0.3, 0],
+            [0, 0.1]
+          ]
+        ],
+        4: [
+          [
+            [0.45, 0],
+            [0.45, 1],
+            [0, 0.3],
+            [0.6, 0.3]
+          ]
+        ],
+        5: [
+          [
+            [0.55, 1],
+            [0.05, 1],
+            [0, 0.55],
+            [0.3, 0.62],
+            [0.55, 0.5],
+            [0.6, 0.2],
+            [0.4, 0],
+            [0.05, 0.05]
+          ]
+        ],
+        6: SIX,
+        7: [
+          [
+            [0, 1],
+            [0.6, 1],
+            [0.2, 0]
+          ]
+        ],
+        8: [
+          [
+            [0.3, 0.5],
+            [0.05, 0.65],
+            [0.05, 0.9],
+            [0.3, 1],
+            [0.55, 0.9],
+            [0.55, 0.65],
+            [0.3, 0.5],
+            [0, 0.35],
+            [0, 0.1],
+            [0.3, 0],
+            [0.6, 0.1],
+            [0.6, 0.35],
+            [0.3, 0.5]
+          ]
+        ],
+        9: FLIP(SIX),
+        "-": [
+          [
+            [0, 0.5],
+            [0.4, 0.5]
+          ]
+        ],
+        "!": [
+          [
+            [0.1, 1],
+            [0.1, 0.3]
+          ],
+          [
+            [0.1, 0],
+            [0.1, 0.02]
+          ]
+        ],
+        ".": [
+          [
+            [0.1, 0],
+            [0.1, 0.02]
+          ]
+        ],
+        K: [
+          [
+            [0, 0],
+            [0, 1]
+          ],
+          [
+            [0.6, 1],
+            [0, 0.45],
+            [0.6, 0]
+          ]
+        ],
+        M: [
+          [
+            [0, 0],
+            [0, 1],
+            [0.3, 0.45],
+            [0.6, 1],
+            [0.6, 0]
+          ]
+        ]
+      });
+      ADVANCE = Object.freeze({ "!": 0.35, ".": 0.35, "-": 0.55 });
+      ADVANCE_DEFAULT = 0.8;
+      STYLES = Object.freeze({
+        dealt: Object.freeze({ fill: [255, 244, 214], outline: [54, 38, 24], prefix: "", suffix: "" }),
+        critical: Object.freeze({ fill: [255, 207, 74], outline: [122, 59, 0], prefix: "", suffix: "!" }),
+        taken: Object.freeze({ fill: [255, 154, 120], outline: [84, 30, 20], prefix: "-", suffix: "" })
+      });
+      OUTLINE_WIDTH = 0.3;
+      FILL_WIDTH = 0.14;
+      DamageNumberPresentation = class {
+        lifeMs = DAMAGE_NUMBER.lifeMs;
+        // `reduced` keeps the number but drops the pop and the rise: the information stays, the motion goes.
+        draw(renderer, event, progress, feel) {
+          const STYLE = STYLES[event.critical ? "critical" : event.role], REDUCED = feel?.reduced === true, POP = Math.min(1, progress / DAMAGE_NUMBER.popFraction), ALPHA = Math.min(1, (1 - progress) / DAMAGE_NUMBER.fadeFraction), SCALE = (event.critical ? DAMAGE_NUMBER.criticalScale : 1) * (REDUCED ? 1 : 0.65 + 0.45 * Math.sin(POP * Math.PI * 0.5)), LIFT = REDUCED ? 0 : DAMAGE_NUMBER.rise * (1 - (1 - progress) ** 2), DRIFT = (event.sequence * 7919 % 11 - 5) * DAMAGE_NUMBER.spread, POINT2 = renderer.project(event.x + DRIFT, event.y, event.z + 0.5 + LIFT), TEXT = `${STYLE.prefix}${formatDamage(event.amount)}${STYLE.suffix}`, HEIGHT = DAMAGE_NUMBER.height * SCALE * renderer.scale;
+          if (ALPHA <= 0) {
+            return;
+          }
+          const OUTLINE = `rgba(${STYLE.outline},${ALPHA * 0.9})`, FILL = `rgba(${STYLE.fill},${ALPHA})`;
+          drawGlyphText(renderer, TEXT, POINT2.x, POINT2.y, HEIGHT, FILL, OUTLINE);
+        }
+      };
+    }
+  });
+
   // src/features/abilities/barley-shred/presentation.js
-  var BarleyArmorShredPresentation;
+  var STATUS, SHIELD_STROKES, BarleyArmorShredPresentation;
   var init_presentation9 = __esm({
     "src/features/abilities/barley-shred/presentation.js"() {
+      init_damage_numbers();
+      STATUS = Object.freeze({ minHeight: 11, maxHeight: 34, bodyShare: 0.16 });
+      SHIELD_STROKES = Object.freeze([
+        [
+          [-0.5, 0.78],
+          [0, 1],
+          [0.5, 0.78],
+          [0.5, 0.42],
+          [0, 0],
+          [-0.5, 0.42],
+          [-0.5, 0.78]
+        ],
+        [
+          [0, 1],
+          [-0.12, 0.7],
+          [0.14, 0.5],
+          [-0.04, 0.24]
+        ]
+      ]);
       BarleyArmorShredPresentation = class {
         label(_definition, value) {
           return `기본 공격 적중 후 방어도 ${value} 감소 · 감소마다 3초 · 방어도 최저 0`;
@@ -4787,21 +5059,38 @@
             renderer.line(FROM, TO, 0.055, `rgba(229,242,229,${ALPHA})`);
           }
         }
-        drawStatus(renderer, target, amount) {
-          if (target.hp <= 0 || amount <= 0) {
+        // A cracked shield and "-N" over the head of whatever is shredded. `box` is the drawn torso on screen
+        // ({x, top, width} in pixels), so the mark sits on the real head and scales with the real body, boss or pea.
+        drawStatus(renderer, target, box) {
+          const AMOUNT = target.barleyArmorShredTotal || 0;
+          if (target.hp <= 0 || AMOUNT <= 0) {
             return;
           }
-          const CENTER = renderer.project(target.x, target.y, (target.z || 0) + (target.height || 0) + 0.16), SIZE = renderer.scale * 0.11;
-          for (let index = -1; index <= 1; index++) {
-            const OFFSET = index * SIZE * 0.8, FROM = {
-              x: CENTER.x + OFFSET - SIZE * 0.28,
-              y: CENTER.y + SIZE * 0.42
-            }, TO = {
-              x: CENTER.x + OFFSET + SIZE * 0.28,
-              y: CENTER.y - SIZE * 0.42
-            };
-            renderer.pixelLine(FROM, TO, Math.max(1, renderer.pixelRatio * 1.4), "#d8e5d7");
+          const PIXEL = renderer.pixelRatio, HEIGHT = Math.max(
+            STATUS.minHeight * PIXEL,
+            Math.min(STATUS.maxHeight * PIXEL, box.width * STATUS.bodyShare)
+          ), TEXT = `-${formatDamage(AMOUNT)}`, TEXT_WIDTH = textWidth(TEXT) * HEIGHT, GAP = HEIGHT * 0.25, SHIELD_WIDTH = HEIGHT * 0.9, LEFT = box.x - (SHIELD_WIDTH + GAP + TEXT_WIDTH) / 2, BASE = box.top - HEIGHT * 0.5, CX = LEFT + SHIELD_WIDTH / 2, LEFT_FRACTION = target.barleyArmorShredLeft ?? 1, FILL = "#d8e5d7", OUTLINE = "rgba(46,58,48,0.9)";
+          const AT = ([x, y]) => ({ x: CX + x * SHIELD_WIDTH, y: BASE - y * HEIGHT });
+          for (const STROKE of SHIELD_STROKES) {
+            const POINTS = STROKE.map(AT);
+            for (const [WIDTH, COLOR] of [
+              [HEIGHT * 0.26, OUTLINE],
+              [HEIGHT * 0.12, FILL]
+            ]) {
+              for (let index = 1; index < POINTS.length; index++) {
+                renderer.pixelLine(POINTS[index - 1], POINTS[index], WIDTH, COLOR);
+              }
+            }
           }
+          const BAR_Y = BASE + HEIGHT * 0.16, BAR_HALF = SHIELD_WIDTH * 0.5;
+          renderer.pixelLine({ x: CX - BAR_HALF, y: BAR_Y }, { x: CX + BAR_HALF, y: BAR_Y }, HEIGHT * 0.2, OUTLINE);
+          renderer.pixelLine(
+            { x: CX - BAR_HALF, y: BAR_Y },
+            { x: CX - BAR_HALF + 2 * BAR_HALF * LEFT_FRACTION, y: BAR_Y },
+            HEIGHT * 0.1,
+            FILL
+          );
+          drawGlyphText(renderer, TEXT, LEFT + SHIELD_WIDTH + GAP + TEXT_WIDTH / 2, BASE, HEIGHT * 0.82, FILL, OUTLINE);
         }
       };
     }
@@ -9434,6 +9723,7 @@
             faction: FACTION_CONFIG.ENEMY,
             z: 0,
             generation: ++this.entityGenerationSerial,
+            isBoss: true,
             radius: CONFIG.boss.radius,
             height: CONFIG.boss.height,
             hp: HP,
@@ -12557,7 +12847,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.16";
+      PRODUCT_VERSION = "0.30.17";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -13515,9 +13805,10 @@
         POINTS[1][0] = effect.x;
         POINTS[1][1] = effect.y;
         POINTS[1][2] = effect.beamTargetZ;
-        stroke(renderer, POINTS, "#74f5db44", 0.33);
-        stroke(renderer, POINTS, "#afffe6cc", 0.11);
-        stroke(renderer, POINTS, "#f4fff3", 0.035);
+        const BEAM = Math.max(1, BODY_RADIUS / 0.5);
+        stroke(renderer, POINTS, "#74f5db44", 0.33 * BEAM);
+        stroke(renderer, POINTS, "#afffe6cc", 0.11 * BEAM);
+        stroke(renderer, POINTS, "#f4fff3", 0.035 * BEAM);
         if (PULSE_ACTIVE) {
           renderer.ring(effect.x, effect.y, 0.25 + PULSE_AGE * 2, "#bfffd7aa", 0.04);
         }
@@ -13547,7 +13838,7 @@
   }
   var StormCloudPresentation = class extends FormationPresentation {
     draw(renderer, effect) {
-      const BODY_RADIUS = Math.max(0.2, Math.min(2.4, (effect.bodyRadius || 0.3) * 0.55)), BODY_SCALE = Math.min(3.5, Math.max(1, BODY_RADIUS / 0.3)), CLOUD_SIZE = BODY_RADIUS * 2.6, ENTER = Math.min(1, effect.age / 0.5), EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5, Z = effect.z + Math.sin(effect.age * 3) * Math.min(0.1, BODY_RADIUS * 0.12), SPREAD = (1 - ENTER + EXIT) * BODY_RADIUS * 2.6;
+      const BODY_RADIUS = Math.max(0.2, (effect.bodyRadius || 0.3) * 0.55), BODY_SCALE = Math.max(1, BODY_RADIUS / 0.3), CLOUD_SIZE = BODY_RADIUS * 2.6, ENTER = Math.min(1, effect.age / 0.5), EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5, Z = effect.z + Math.sin(effect.age * 3) * Math.min(0.1, BODY_RADIUS * 0.12), SPREAD = (1 - ENTER + EXIT) * BODY_RADIUS * 2.6;
       for (let index = 0; index < 3; index++) {
         const ANGLE = index * Math.PI * 2 / 3;
         cloud(
@@ -14737,7 +15028,12 @@
       const POSE = this.drawUnit(u, sim, REST);
       this.drawUnitRingLayer(u, EFFECTS, "front");
       this.drawSleepIndicator(REST, POSE);
-      BARLEY_SHRED_PRESENTATION.drawStatus(this.renderer, u, u.barleyArmorShredTotal || 0);
+      const BODY2 = (0, import_definition59.unitBodyDefinition)(u.species);
+      BARLEY_SHRED_PRESENTATION.drawStatus(
+        this.renderer,
+        u,
+        (0, import_definition59.bodyScreenBox)(u.species, 2 * POSE.r / Math.max(BODY2.viewBox[2], BODY2.viewBox[3]), POSE.p.x, POSE.p.y)
+      );
     }
   };
 
@@ -14750,6 +15046,7 @@
   // src/farm-render-boss.js
   var import_vector_sockets4 = __toESM(require_vector_sockets(), 1);
   init_farm_model();
+  var import_definition66 = __toESM(require_definition(), 1);
 
   // src/features/boss-patterns/presentation-base.js
   init_farm_model();
@@ -15220,7 +15517,7 @@
       });
       PRESENTATION.drawRelease(this.renderer, B, POSE, MOUTH_SCREEN);
       PRESENTATION.drawWeapon(this.renderer, B, PLAYER, MATRIX, POSE, RECORD);
-      BARLEY_SHRED_PRESENTATION2.drawStatus(this.renderer, B, B.barleyArmorShredTotal || 0);
+      BARLEY_SHRED_PRESENTATION2.drawStatus(this.renderer, B, (0, import_definition66.bodyScreenBox)(SPECIES, S_LOCAL, P.x, P.y));
     }
   };
 
@@ -16629,7 +16926,8 @@
       giantEndedAt: R.STEP,
       cloneParentId: R.STEP,
       cloneBornAt: R.STEP,
-      barleyArmorShredTotal: R.STEP
+      barleyArmorShredTotal: R.STEP,
+      barleyArmorShredLeft: R.STEP
     });
     constructor() {
       super();
@@ -16677,6 +16975,7 @@
       this.cloneParentId = u.battleSummonParentId;
       this.cloneBornAt = u.cloneBornAt;
       this.barleyArmorShredTotal = BarleyArmorShredModel.total(u, world.simulationTick);
+      this.barleyArmorShredLeft = BarleyArmorShredModel.remaining(u, world.simulationTick);
     }
   };
   var BossRender = class extends RENDER_OBJECT {
@@ -16714,7 +17013,8 @@
       summonMouthX: R.STEP,
       summonMouthY: R.STEP,
       summonMouthZ: R.STEP,
-      barleyArmorShredTotal: R.STEP
+      barleyArmorShredTotal: R.STEP,
+      barleyArmorShredLeft: R.STEP
     });
     update(b, world) {
       const ACTION = b.patternRuntime.active, EVENT = world.farmBossEvent, TARGET = ACTION?.target || null, START = ACTION?.start || null, MOUTH = b.summonMouth || {};
@@ -16752,6 +17052,7 @@
       this.summonMouthY = MOUTH.y ?? b.y;
       this.summonMouthZ = MOUTH.z ?? b.z;
       this.barleyArmorShredTotal = BarleyArmorShredModel.total(b, world.simulationTick);
+      this.barleyArmorShredLeft = BarleyArmorShredModel.remaining(b, world.simulationTick);
     }
   };
   var FoodRender = class extends RENDER_OBJECT {
@@ -18499,227 +18800,7 @@
 
   // src/combat-feel.js
   init_farm_model();
-
-  // src/damage-numbers.js
-  var DAMAGE_NUMBER = Object.freeze({
-    lifeMs: 800,
-    // World units: the digit height of a normal hit and the factor a critical hit adds.
-    height: 0.7,
-    criticalScale: 1.7,
-    rise: 1.1,
-    // How far apart simultaneous numbers drift, so a volley stays readable.
-    spread: 0.09,
-    popFraction: 0.14,
-    fadeFraction: 0.35
-  });
-  var GLYPH_WIDTH = 0.6;
-  var FLIP = (strokes) => strokes.map((stroke2) => stroke2.map(([x, y]) => [GLYPH_WIDTH - x, 1 - y]));
-  var SIX = [
-    [
-      [0.5, 1],
-      [0.15, 0.85],
-      [0, 0.5],
-      [0, 0.2],
-      [0.2, 0],
-      [0.45, 0],
-      [0.6, 0.2],
-      [0.6, 0.4],
-      [0.4, 0.55],
-      [0.15, 0.5],
-      [0, 0.35]
-    ]
-  ];
-  var GLYPHS = Object.freeze({
-    0: [
-      [
-        [0, 0.2],
-        [0.1, 0.05],
-        [0.3, 0],
-        [0.5, 0.05],
-        [0.6, 0.2],
-        [0.6, 0.8],
-        [0.5, 0.95],
-        [0.3, 1],
-        [0.1, 0.95],
-        [0, 0.8],
-        [0, 0.2]
-      ]
-    ],
-    1: [
-      [
-        [0.1, 0.8],
-        [0.32, 1],
-        [0.32, 0]
-      ]
-    ],
-    2: [
-      [
-        [0, 0.8],
-        [0.1, 0.95],
-        [0.3, 1],
-        [0.5, 0.95],
-        [0.6, 0.8],
-        [0.55, 0.6],
-        [0, 0],
-        [0.6, 0]
-      ]
-    ],
-    3: [
-      [
-        [0, 0.9],
-        [0.3, 1],
-        [0.55, 0.9],
-        [0.55, 0.62],
-        [0.25, 0.5],
-        [0.55, 0.38],
-        [0.55, 0.1],
-        [0.3, 0],
-        [0, 0.1]
-      ]
-    ],
-    4: [
-      [
-        [0.45, 0],
-        [0.45, 1],
-        [0, 0.3],
-        [0.6, 0.3]
-      ]
-    ],
-    5: [
-      [
-        [0.55, 1],
-        [0.05, 1],
-        [0, 0.55],
-        [0.3, 0.62],
-        [0.55, 0.5],
-        [0.6, 0.2],
-        [0.4, 0],
-        [0.05, 0.05]
-      ]
-    ],
-    6: SIX,
-    7: [
-      [
-        [0, 1],
-        [0.6, 1],
-        [0.2, 0]
-      ]
-    ],
-    8: [
-      [
-        [0.3, 0.5],
-        [0.05, 0.65],
-        [0.05, 0.9],
-        [0.3, 1],
-        [0.55, 0.9],
-        [0.55, 0.65],
-        [0.3, 0.5],
-        [0, 0.35],
-        [0, 0.1],
-        [0.3, 0],
-        [0.6, 0.1],
-        [0.6, 0.35],
-        [0.3, 0.5]
-      ]
-    ],
-    9: FLIP(SIX),
-    "-": [
-      [
-        [0, 0.5],
-        [0.4, 0.5]
-      ]
-    ],
-    "!": [
-      [
-        [0.1, 1],
-        [0.1, 0.3]
-      ],
-      [
-        [0.1, 0],
-        [0.1, 0.02]
-      ]
-    ],
-    ".": [
-      [
-        [0.1, 0],
-        [0.1, 0.02]
-      ]
-    ],
-    K: [
-      [
-        [0, 0],
-        [0, 1]
-      ],
-      [
-        [0.6, 1],
-        [0, 0.45],
-        [0.6, 0]
-      ]
-    ],
-    M: [
-      [
-        [0, 0],
-        [0, 1],
-        [0.3, 0.45],
-        [0.6, 1],
-        [0.6, 0]
-      ]
-    ]
-  });
-  var ADVANCE = Object.freeze({ "!": 0.35, ".": 0.35, "-": 0.55 });
-  var ADVANCE_DEFAULT = 0.8;
-  function formatDamage(amount) {
-    const VALUE = Math.max(1, Math.round(amount));
-    if (VALUE >= 1e6) {
-      return `${(VALUE / 1e6).toFixed(VALUE < 1e7 ? 1 : 0)}M`;
-    }
-    if (VALUE >= 1e4) {
-      return `${(VALUE / 1e3).toFixed(VALUE < 1e5 ? 1 : 0)}K`;
-    }
-    return String(VALUE);
-  }
-  function textWidth(text) {
-    let width = 0;
-    for (const CHAR of text) {
-      width += ADVANCE[CHAR] ?? ADVANCE_DEFAULT;
-    }
-    return width - 0.2;
-  }
-  var STYLES = Object.freeze({
-    dealt: Object.freeze({ fill: [255, 244, 214], outline: [54, 38, 24], prefix: "", suffix: "" }),
-    critical: Object.freeze({ fill: [255, 207, 74], outline: [122, 59, 0], prefix: "", suffix: "!" }),
-    taken: Object.freeze({ fill: [255, 154, 120], outline: [84, 30, 20], prefix: "-", suffix: "" })
-  });
-  var OUTLINE_WIDTH = 0.3;
-  var FILL_WIDTH = 0.14;
-  var DamageNumberPresentation = class {
-    lifeMs = DAMAGE_NUMBER.lifeMs;
-    // `reduced` keeps the number but drops the pop and the rise: the information stays, the motion goes.
-    draw(renderer, event, progress, feel) {
-      const STYLE = STYLES[event.critical ? "critical" : event.role], REDUCED = feel?.reduced === true, POP = Math.min(1, progress / DAMAGE_NUMBER.popFraction), ALPHA = Math.min(1, (1 - progress) / DAMAGE_NUMBER.fadeFraction), SCALE = (event.critical ? DAMAGE_NUMBER.criticalScale : 1) * (REDUCED ? 1 : 0.65 + 0.45 * Math.sin(POP * Math.PI * 0.5)), LIFT = REDUCED ? 0 : DAMAGE_NUMBER.rise * (1 - (1 - progress) ** 2), DRIFT = (event.sequence * 7919 % 11 - 5) * DAMAGE_NUMBER.spread, POINT2 = renderer.project(event.x + DRIFT, event.y, event.z + 0.5 + LIFT), TEXT = `${STYLE.prefix}${formatDamage(event.amount)}${STYLE.suffix}`, HEIGHT = DAMAGE_NUMBER.height * SCALE * renderer.scale;
-      if (ALPHA <= 0) {
-        return;
-      }
-      const OUTLINE = `rgba(${STYLE.outline},${ALPHA * 0.9})`, FILL = `rgba(${STYLE.fill},${ALPHA})`;
-      let cursor = POINT2.x - textWidth(TEXT) * HEIGHT / 2;
-      for (const CHAR of TEXT) {
-        for (const STROKE of GLYPHS[CHAR]) {
-          const POINTS = STROKE.map(([x, y]) => ({ x: cursor + x * HEIGHT, y: POINT2.y - y * HEIGHT }));
-          for (const [WIDTH, COLOR] of [
-            [OUTLINE_WIDTH, OUTLINE],
-            [FILL_WIDTH, FILL]
-          ]) {
-            for (let index = 1; index < POINTS.length; index++) {
-              renderer.pixelLine(POINTS[index - 1], POINTS[index], HEIGHT * WIDTH, COLOR);
-            }
-          }
-        }
-        cursor += (ADVANCE[CHAR] ?? ADVANCE_DEFAULT) * HEIGHT;
-      }
-    }
-  };
-
-  // src/combat-feel.js
+  init_damage_numbers();
   init_presentation9();
   var { ObjectPool: OBJECT_POOL } = globalThis.BloomGamekitObjectPool;
   var EMPTY_NOTICES = Object.freeze([]);
@@ -19221,13 +19302,13 @@
   </article>`;
   }
   function renderNode(state, definition, nodeId, title, effect, context, knownStatus = null) {
-    const STATUS = knownStatus || getAbilityNodeStatus(state, definition, nodeId, context);
+    const STATUS2 = knownStatus || getAbilityNodeStatus(state, definition, nodeId, context);
     const HINT_ID = `ability-help-${definition.id}-${nodeId.replace(/[^a-z0-9-]/gi, "-")}`;
-    const STATUS_TEXT = STATUS.purchased ? "투자 완료" : nodeReasonLabel(STATUS.reason, definition, context);
+    const STATUS_TEXT = STATUS2.purchased ? "투자 완료" : nodeReasonLabel(STATUS2.reason, definition, context);
     const ATTR = `${definition.id}:${nodeId.replace(/-(\d+)$/, ":$1")}`;
-    return `<div class="ability-node ${STATUS.purchased ? "is-purchased" : ""} ${STATUS.ready ? "is-ready" : "is-locked"}">
-    <button type="button" class="ability-node__button" data-ability-node="${ATTR}" aria-describedby="${HINT_ID}" aria-disabled="${!STATUS.ready}">
-      <span class="ability-node__title">${title}</span><span class="ability-node__effect">${effect}</span><span class="ability-node__cost">${STATUS.purchased ? "완료" : "1 포인트"}</span>
+    return `<div class="ability-node ${STATUS2.purchased ? "is-purchased" : ""} ${STATUS2.ready ? "is-ready" : "is-locked"}">
+    <button type="button" class="ability-node__button" data-ability-node="${ATTR}" aria-describedby="${HINT_ID}" aria-disabled="${!STATUS2.ready}">
+      <span class="ability-node__title">${title}</span><span class="ability-node__effect">${effect}</span><span class="ability-node__cost">${STATUS2.purchased ? "완료" : "1 포인트"}</span>
     </button>
     <span class="ability-node__status" id="${HINT_ID}">${STATUS_TEXT}</span>
   </div>`;

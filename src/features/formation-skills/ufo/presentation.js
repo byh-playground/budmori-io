@@ -44,9 +44,10 @@ export class UfoPresentation extends FormationPresentation {
             POINTS[1][0] = effect.x;
             POINTS[1][1] = effect.y;
             POINTS[1][2] = effect.beamTargetZ;
-            stroke(renderer, POINTS, '#74f5db44', 0.33);
-            stroke(renderer, POINTS, '#afffe6cc', 0.11);
-            stroke(renderer, POINTS, '#f4fff3', 0.035);
+            const BEAM = Math.max(1, BODY_RADIUS / 0.5);
+            stroke(renderer, POINTS, '#74f5db44', 0.33 * BEAM);
+            stroke(renderer, POINTS, '#afffe6cc', 0.11 * BEAM);
+            stroke(renderer, POINTS, '#f4fff3', 0.035 * BEAM);
             if (PULSE_ACTIVE) {
                 renderer.ring(effect.x, effect.y, 0.25 + PULSE_AGE * 2, '#bfffd7aa', 0.04);
             }
