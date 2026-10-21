@@ -12447,7 +12447,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.29.9";
+      PRODUCT_VERSION = "0.29.10";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -12961,13 +12961,12 @@
         this.slotHost.innerHTML = RELICS.map(([id, level]) => {
           const DEFINITION13 = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === id);
           return `<div class="formation-slot" data-formation-slot="${ESCAPE(id)}" data-empty="false">
-                    <div class="formation-icon" title="${ESCAPE(DEFINITION13.name)}">
-                    <span>${RELIC_ICONS[id]}</span><i class="formation-clock"></i></div>
-                    <div class="formation-readout"><strong>${ESCAPE(DEFINITION13.name)} Lv.${level}</strong>
-                    <div class="formation-charge"><i></i></div><small><b></b><span></span></small></div></div>`;
+                    <div class="formation-icon" title="${ESCAPE(DEFINITION13.name)} Lv.${level}" aria-label="${ESCAPE(DEFINITION13.name)} Lv.${level}">
+                    <span>${RELIC_ICONS[id]}</span><i class="formation-clock"></i><em class="formation-lv">${level}</em></div>
+                    <div class="formation-charge"><i></i></div></div>`;
         }).join("");
       }
-      const SLOTS = display.formationSlots || world.formationSkills?.slots || [];
+      const RELICS_LEVEL = new Map(RELICS), SLOTS = display.formationSlots || world.formationSkills?.slots || [];
       for (const ELEMENT of this.slotHost.children) {
         const ID = ELEMENT.dataset.formationSlot, DEFINITION13 = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === ID), RUNTIME = SLOTS.find((item) => item.id === ID), REQUIRED = DEFINITION13.required || 1, CHARGE = Math.min(REQUIRED, RUNTIME?.charge || 0), COOLDOWN = Math.max(0, RUNTIME?.cooldown || 0);
         ELEMENT.querySelector(".formation-clock").style.setProperty(
@@ -12975,8 +12974,7 @@
           `${COOLDOWN / FORMATION_COOLDOWN_SECONDS * 360}deg`
         );
         ELEMENT.querySelector(".formation-charge i").style.width = `${CHARGE / REQUIRED * 100}%`;
-        ELEMENT.querySelector("small b").textContent = `${NUMBER2(CHARGE)}/${NUMBER2(REQUIRED)}`;
-        ELEMENT.querySelector("small span").textContent = CONDITION_LABELS[DEFINITION13.condition] || "";
+        ELEMENT.querySelector(".formation-icon").title = `${DEFINITION13.name} Lv.${RELICS_LEVEL.get(ID)} · ${CONDITION_LABELS[DEFINITION13.condition] || ""} ${NUMBER2(CHARGE)}/${NUMBER2(REQUIRED)}`;
         ELEMENT.dataset.ready = String(CHARGE >= REQUIRED && COOLDOWN === 0);
       }
     }
@@ -16338,7 +16336,9 @@
       if (BOSS_VISIBLE) {
         this.addActor(this.bossPresentation, sim2.boss, 0.785 * sim2.boss.y - 0.62 * (sim2.boss.z || 0), 0, true);
       }
-      PRESENTATION.collectFood(this, sim2);
+      if (!sim2.insideTower) {
+        PRESENTATION.collectFood(this, sim2);
+      }
       if (sim2.scene === "farm" && !sim2.insideTower) {
         this.addWorkActors(sim2);
       }
@@ -20090,8 +20090,6 @@
   var tintFloor = -1;
   function syncTower(garden, home2, event) {
     const T = garden.tower, CLIMBING = T.active && !home2, BEST = garden.playerProgression.towerBest;
-    syncFlag("tower", "hidden", !CLIMBING);
-    syncText("towerRelics", [...T.relics].map(([id, level]) => `${RELIC_ICONS[id]} Lv.${level}`).join(" · "));
     const TINT = DOLLAR2("towerTint");
     if (TINT.dataset.on !== String(CLIMBING)) {
       TINT.dataset.on = String(CLIMBING);

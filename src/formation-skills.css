@@ -209,3 +209,51 @@
     background: transparent;
     border-color: transparent;
 }
+/* 스킬 칸은 아이콘, 레벨, 충전 막대만. 많아지면 줄바꿈해서 화면 밖으로 나가지 않는다. */
+.formation-slots {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    max-width: min(100%, 520px);
+}
+.formation-slot {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 48px;
+    min-width: 0;
+    padding: 0;
+    gap: 4px;
+}
+.formation-icon {
+    width: 48px;
+    height: 48px;
+    font-size: 26px;
+}
+.formation-lv {
+    position: absolute;
+    right: 2px;
+    bottom: 1px;
+    font-style: normal;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+    color: #fff;
+    text-shadow: 0 1px 2px #000a;
+}
+.formation-charge {
+    grid-column: 1;
+    grid-row: 2;
+}
+.formation-slot[data-ready='true'] .formation-icon {
+    box-shadow: 0 0 0 3px #f2d36b;
+}
+@media (max-width: 620px) {
+    .formation-slot {
+        width: 40px;
+    }
+    .formation-icon {
+        width: 40px;
+        height: 40px;
+        font-size: 22px;
+    }
+}

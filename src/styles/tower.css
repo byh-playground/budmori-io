@@ -14,22 +14,6 @@
 .tower-tint[data-on='true'] {
     opacity: 1;
 }
-.tower {
-    position: fixed;
-    z-index: var(--ui-z-hud);
-    left: max(var(--ui-s3), env(safe-area-inset-left));
-    top: 50%;
-    transform: translateY(-62%);
-    pointer-events: none;
-}
-.tower__relics {
-    display: block;
-    margin-top: var(--ui-s2);
-    padding: 0 var(--ui-s2);
-    color: var(--ui-ink);
-    font-weight: var(--ui-fw-m);
-    text-shadow: 0 1px 0 var(--ui-panel);
-}
 .floor-banner {
     position: fixed;
     inset: 0;

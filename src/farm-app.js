@@ -1409,8 +1409,6 @@ function syncTower(garden, home, event) {
     const T = garden.tower,
         CLIMBING = T.active && !home,
         BEST = garden.playerProgression.towerBest;
-    syncFlag('tower', 'hidden', !CLIMBING);
-    syncText('towerRelics', [...T.relics].map(([id, level]) => `${RELIC_ICONS[id]} Lv.${level}`).join(' · '));
     const TINT = DOLLAR('towerTint');
     if (TINT.dataset.on !== String(CLIMBING)) {
         TINT.dataset.on = String(CLIMBING);

@@ -56,13 +56,13 @@ export class RelicDock {
             this.slotHost.innerHTML = RELICS.map(([id, level]) => {
                 const DEFINITION = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === id);
                 return `<div class="formation-slot" data-formation-slot="${ESCAPE(id)}" data-empty="false">
-                    <div class="formation-icon" title="${ESCAPE(DEFINITION.name)}">
-                    <span>${RELIC_ICONS[id]}</span><i class="formation-clock"></i></div>
-                    <div class="formation-readout"><strong>${ESCAPE(DEFINITION.name)} Lv.${level}</strong>
-                    <div class="formation-charge"><i></i></div><small><b></b><span></span></small></div></div>`;
+                    <div class="formation-icon" title="${ESCAPE(DEFINITION.name)} Lv.${level}" aria-label="${ESCAPE(DEFINITION.name)} Lv.${level}">
+                    <span>${RELIC_ICONS[id]}</span><i class="formation-clock"></i><em class="formation-lv">${level}</em></div>
+                    <div class="formation-charge"><i></i></div></div>`;
             }).join('');
         }
-        const SLOTS = display.formationSlots || world.formationSkills?.slots || [];
+        const RELICS_LEVEL = new Map(RELICS),
+            SLOTS = display.formationSlots || world.formationSkills?.slots || [];
         for (const ELEMENT of this.slotHost.children) {
             const ID = ELEMENT.dataset.formationSlot,
                 DEFINITION = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === ID),
@@ -75,8 +75,8 @@ export class RelicDock {
                 `${(COOLDOWN / FORMATION_COOLDOWN_SECONDS) * 360}deg`,
             );
             ELEMENT.querySelector('.formation-charge i').style.width = `${(CHARGE / REQUIRED) * 100}%`;
-            ELEMENT.querySelector('small b').textContent = `${NUMBER(CHARGE)}/${NUMBER(REQUIRED)}`;
-            ELEMENT.querySelector('small span').textContent = CONDITION_LABELS[DEFINITION.condition] || '';
+            ELEMENT.querySelector('.formation-icon').title =
+                `${DEFINITION.name} Lv.${RELICS_LEVEL.get(ID)} · ${CONDITION_LABELS[DEFINITION.condition] || ''} ${NUMBER(CHARGE)}/${NUMBER(REQUIRED)}`;
             ELEMENT.dataset.ready = String(CHARGE >= REQUIRED && COOLDOWN === 0);
         }
     }
