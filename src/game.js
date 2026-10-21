@@ -4800,7 +4800,7 @@
               x: CENTER.x + OFFSET + SIZE * 0.28,
               y: CENTER.y - SIZE * 0.42
             };
-            renderer.line(FROM, TO, Math.max(1, renderer.pixelRatio * 1.4), "#d8e5d7");
+            renderer.pixelLine(FROM, TO, Math.max(1, renderer.pixelRatio * 1.4), "#d8e5d7");
           }
         }
       };
@@ -12557,7 +12557,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.15";
+      PRODUCT_VERSION = "0.30.16";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
