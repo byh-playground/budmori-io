@@ -462,9 +462,7 @@ export function validateSnapshot(raw) {
         raw.corpseRecoveryVersion === 1 &&
             INTEGER(raw.nextId, 1, 1e9) &&
             INTEGER(raw.bossSummonSerial, 0, 1e12) &&
-            INTEGER(raw.foodTaps.remainder, 0, 4) &&
-            raw.foodTaps.autoClock >= 0 &&
-            raw.foodTaps.autoClock < 0.51,
+            INTEGER(raw.foodTaps.produced, 0, 1e12),
     );
     const IDS = new Set(),
         MATE_ID_LIMIT = CONFIG.farm.maxUnitId;

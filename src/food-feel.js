@@ -8,9 +8,6 @@ class FoodFeel {
         this.muted = false;
         this.peakVoices = 0;
         this.counts = {
-            manual: 0,
-            auto: 0,
-            complete: 0,
             land: 0,
             eat: 0,
         };
@@ -129,20 +126,6 @@ class FoodFeel {
         };
         O.start(NOW);
         O.stop(NOW + DURATION + 0.01);
-    }
-    // The field shows the food itself; a tap only makes its sound.
-    tap(source, complete, remainder) {
-        this.counts[source]++;
-        if (complete) {
-            this.counts.complete++;
-        }
-        if (source === 'manual') {
-            this.sound(complete ? 'complete' : 'tap', remainder);
-        }
-    }
-    manualScatter() {
-        this.counts.manual++;
-        this.sound('tap', 0);
     }
     event(kind) {
         if (kind === 'food-land' || kind === 'eat') {

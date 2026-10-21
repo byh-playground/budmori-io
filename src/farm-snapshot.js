@@ -151,8 +151,6 @@ export const FARM_SNAPSHOT_SHAPE = {
     },
     starter: 0,
     foodTaps: {
-        remainder: 0,
-        autoClock: 0,
         produced: 0,
         revision: 0,
     },

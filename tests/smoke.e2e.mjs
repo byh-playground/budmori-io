@@ -157,7 +157,7 @@ await check('units eat, breed and the farm stays under its capacity', async () =
     await WORLD(() => {
         const W = BUDMORI.sim;
         for (let round = 0; round < 40; round++) {
-            W.scatterFoodAtRandomLocation();
+            W.spawnFood((round % 8) - 4, Math.floor(round / 8) - 2, 1);
         }
     });
     await PAGE.waitForFunction(() => BUDMORI.sim.metrics.births > 0, null, { timeout: 60000 }).catch(() => {});
