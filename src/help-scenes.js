@@ -1,0 +1,149 @@
+// Help cards: each one is a short run of the real game, played in an isolated frame at half speed.
+// The scene owns its setup and scripted commands; the game owns every rule. A caption follows the
+// authoritative world state, so it never claims something the run has not shown yet.
+export const HELP_PLAYBACK_RATE = 0.5;
+
+export const HELP_SCENES = Object.freeze([
+    Object.freeze({
+        id: 'breed',
+        title: '먹이와 번식',
+        rule: '일꾼이 곡식 더미를 쳐서 낟알을 만들고, 성체 두 마리가 하나씩 먹으면 새끼가 태어나요. 슬라이더로 번식과 먹이 일꾼의 비율을 정해요.',
+        seed: 731,
+        rate: 1.5,
+        durationMs: 20000,
+        setup(world) {
+            // Seed grain is already on the ground, so the first birth does not wait for the first worker swing.
+            world.setWorkBasisPoints(0);
+            world.spawnFood(-60, 20, 6);
+        },
+        timeline: [],
+        step(world) {
+            if (world.units.length > 6) {
+                return 'born';
+            }
+            return world.food.length > 0 ? 'food' : 'work';
+        },
+        steps: {
+            work: '일꾼이 곡식 더미를 쳐요',
+            food: '낟알이 떨어졌어요. 부모가 하나씩 먹어요',
+            born: '새끼가 태어났어요. 5초 동안 자라요',
+        },
+    }),
+    Object.freeze({
+        id: 'merge',
+        title: '합성',
+        rule: '합성 버튼을 누를 때마다 가장 낮은 등급의 같은 병종부터 한 번 합쳐요. 재료는 T2 = T1 2마리, T3 = T2 2마리, T4 = T3 3마리, T5 = T4 4마리, T6 = T5 5마리예요.',
+        seed: 4102,
+        durationMs: 12000,
+        setup(world) {
+            // Nobody works or breeds here, so the only change on screen is the merge.
+            world.setWorkBasisPoints(0);
+        },
+        timeline: [
+            { atMs: 3000, cmd: 'merge' },
+            { atMs: 3500, cmd: 'merge' },
+            { atMs: 4000, cmd: 'merge' },
+        ],
+        step(world) {
+            if (world.units.some((unit) => unit.tier >= 2)) {
+                return 'done';
+            }
+            return world.mergeTask ? 'merging' : 'start';
+        },
+        steps: {
+            start: '같은 병종 성체가 여럿 있어요',
+            merging: '합성을 누르면 두 마리가 모여요',
+            done: '한 등급 위가 됐어요. 체력과 공격력이 커져요',
+        },
+    }),
+    Object.freeze({
+        id: 'boss',
+        title: '보스 도전',
+        rule: '탑 오르기를 누르면 보스가 떨어져요. 카드를 골라 땅을 눌러 병력을 한 마리씩 투입하면 자동으로 싸워요.',
+        seed: 4103,
+        rate: 1.5,
+        durationMs: 42000,
+        setup(world) {
+            world.setWorkBasisPoints(0);
+            // A few higher-tier peas, so the demo fight is short and the tiers pay off.
+            for (let index = 0; index < 4; index++) {
+                world.spawn(0, 5, -40 + index * 20, -30 + index * 15);
+            }
+        },
+        timeline: [
+            { atMs: 3000, cmd: 'tower-start', args: { floor: 1 } },
+            { atMs: 8600, cmd: 'deploy', args: { species: 0, x: -120, y: 60 } },
+            { atMs: 9400, cmd: 'deploy', args: { species: 0, x: -150, y: -10 } },
+            { atMs: 10200, cmd: 'deploy', args: { species: 0, x: -110, y: -70 } },
+            { atMs: 11000, cmd: 'deploy', args: { species: 0, x: -170, y: 30 } },
+            { atMs: 12000, cmd: 'deploy', args: { species: 0, x: -90, y: 10 } },
+            { atMs: 12800, cmd: 'deploy', args: { species: 0, x: -130, y: -40 } },
+        ],
+        step(world) {
+            const PHASE = world.farmBossEvent.phase;
+            if (PHASE === 'marching') {
+                return 'march';
+            }
+            if (PHASE === 'dropping') {
+                return 'drop';
+            }
+            if (PHASE === 'idle') {
+                return world.tower.floor > 0 ? 'win' : 'start';
+            }
+            if (PHASE === 'fighting') {
+                return world.fieldFighterCount > 0 ? 'fight' : 'drop';
+            }
+            return 'win';
+        },
+        steps: {
+            start: '탑 오르기를 누르면 병력이 탑으로 향해요',
+            march: '병력이 탑으로 올라가요',
+            drop: '보스가 떨어져요. 병력을 한 마리씩 투입해요',
+            fight: '투입된 병력이 자동으로 싸워요',
+            win: '보스를 쓰러뜨렸어요',
+        },
+    }),
+    Object.freeze({
+        id: 'tower',
+        title: '탑과 성장',
+        rule: '보스를 이기면 문을 골라요. 전투·정예·쉼터·유물·강화 중 하나고, 이긴 보스 종의 숙련이 쌓여 능력 포인트가 돼요.',
+        seed: 4104,
+        rate: 1.5,
+        durationMs: 30000,
+        setup(world) {
+            world.setWorkBasisPoints(0);
+            for (let index = 0; index < 4; index++) {
+                world.spawn(0, 5, -40 + index * 20, -30 + index * 15);
+            }
+        },
+        timeline: [
+            { atMs: 1000, cmd: 'tower-start', args: { floor: 1 } },
+            { atMs: 6200, cmd: 'deploy', args: { species: 0, x: -120, y: 60 } },
+            { atMs: 6700, cmd: 'deploy', args: { species: 0, x: -150, y: -10 } },
+            { atMs: 7000, set: 'bossHp', fraction: 0.02 },
+            { atMs: 24000, cmd: 'tower-door', args: { index: 1 } },
+        ],
+        step(world) {
+            if (world.tower.boost.hp > 1) {
+                return 'boost';
+            }
+            if (world.tower.floor === 0) {
+                return 'start';
+            }
+            if (world.tower.doors?.length) {
+                return 'doors';
+            }
+            return 'fight';
+        },
+        steps: {
+            start: '탑에 오르면 보스가 기다려요',
+            fight: '보스를 쓰러뜨려요',
+            doors: '이겼어요. 다음 문을 골라요',
+            boost: '체력 강화를 골랐어요. 이번 도전 동안 모든 유닛이 튼튼해져요',
+        },
+    }),
+]);
+
+export function helpSceneById(id) {
+    return HELP_SCENES.find((scene) => scene.id === id) ?? null;
+}

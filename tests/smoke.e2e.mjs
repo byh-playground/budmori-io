@@ -539,6 +539,27 @@ await check('progress survives a reload', async () => {
     expect(STAGE >= 4, `best floor after reload is ${STAGE}`);
 });
 
+await check('help cards play the real game in an isolated frame and leave the save alone', async () => {
+    const BEFORE = await WORLD(() => JSON.stringify(Object.entries(localStorage).sort()));
+    await PAGE.locator('#helpMenu').click();
+    await PAGE.locator('#helpNext').click();
+    await PAGE.waitForFunction(
+        () => document.getElementById('helpCaption').textContent.includes('한 등급 위가 됐어요'),
+        null,
+        { timeout: 60000 },
+    );
+    const FRAME = await WORLD(() => {
+        const SNAP = document.querySelector('#helpDemo iframe').contentWindow.__budmoriHelp.snapshot();
+        return { step: SNAP.step, dots: document.querySelectorAll('#helpDots button').length };
+    });
+    expect(FRAME.step === 'done' && FRAME.dots === 4, `help card state ${JSON.stringify(FRAME)}`);
+    await PAGE.locator('#gameMenuClose').click();
+    expect((await PAGE.locator('#helpDemo iframe').count()) === 0, 'the help frame stays mounted after the tab closes');
+    const AFTER = await WORLD(() => JSON.stringify(Object.entries(localStorage).sort()));
+    const KEYS = (text) => JSON.parse(text).map(([key]) => key);
+    expect(KEYS(BEFORE).join() === KEYS(AFTER).join(), 'a help frame changed the stored keys');
+});
+
 await check('no page errors', async () => {
     expect(ERRORS.length === 0, ERRORS.slice(0, 3).join(' | '));
 });

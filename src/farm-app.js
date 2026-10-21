@@ -3,7 +3,7 @@ import { RelicDock, RELIC_ICONS } from './relic-dock.js';
 import { FORMATION_SKILL_DEFINITIONS, formationUpgradeValue } from './formation-skill-state.js';
 import { Garden, CONFIG, ArenaGeometry, ATTACK_TYPES, Ballistics } from './farm-model.js';
 import { Diorama } from './farm-renderer.js';
-import { FarmSession } from './farm-session.js';
+import { FarmSession, LOCAL_PROFILE } from './farm-session.js';
 import { FarmStorage } from './farm-storage.js';
 import { FarmAutosave } from './farm-autosave.js';
 import { snapshot, restore } from './farm-state.js';
@@ -16,9 +16,12 @@ import { SPECIES_ABILITY_DEFINITIONS } from './ability-catalog.js';
 import { advanceBossRewardReveal, openAllBossRewardBoxes, bossSpeciesOwned } from './boss-rewards.js';
 import { workersBySpecies } from './farm-work.js';
 import { speciesById, giantSpeciesName, speciesRewardName } from './species-catalog.js';
+import { HELP_PLAYBACK_RATE, helpSceneById } from './help-scenes.js';
+import { createHelpPanel } from './help-panel.js';
 const DOLLAR = (id) => document.getElementById(id),
     STORAGE = new FarmStorage();
 STORAGE.initializeIncompatible(new Garden());
+const HELP_PANEL = createHelpPanel(DOLLAR);
 DOLLAR('abilitySpeciesTabs').innerHTML = renderAbilitySpeciesTabsMarkup();
 let imported = null;
 let active = null;
@@ -1170,6 +1173,7 @@ function applyMenuTab(tab) {
         BUTTON.setAttribute('aria-selected', String(SELECTED));
         BUTTON.tabIndex = SELECTED ? 0 : -1;
     }
+    HELP_PANEL.setVisible(menuOpen && tab === 'help');
     for (const [NAME, ID] of [
         ['play', 'menuPlayPanel'],
         ['farms', 'farmPanel'],
@@ -1242,6 +1246,7 @@ function closeMenu(push = true) {
         return;
     }
     menuOpen = false;
+    HELP_PANEL.setVisible(false);
     DOLLAR('gameMenuOverlay').hidden = true;
     for (const ID of ['gameMenu', 'upgradeMenu', 'helpMenu']) {
         DOLLAR(ID).setAttribute('aria-expanded', 'false');
@@ -2043,12 +2048,14 @@ function frame(now) {
         active.profiler = PERFORMANCE_DIAGNOSTICS;
         active.world.profiler = PERFORMANCE_DIAGNOSTICS;
         const SIMULATION_START = PERFORMANCE_DIAGNOSTICS.start();
+        const CLOCK = HELP.scene ? HELP.clock(now) : now;
         if (!home && !document.hidden) {
-            active.pulse(now);
+            active.pulse(CLOCK);
+            HELP.scenario?.pulse(CLOCK);
         }
         PERFORMANCE_DIAGNOSTICS.end('simulation', SIMULATION_START);
         const PRESENTATION_START = PERFORMANCE_DIAGNOSTICS.start();
-        const DISPLAY = active.presentation(now),
+        const DISPLAY = active.presentation(CLOCK),
             NOTICES = active.takePresentationNotices();
         COMBAT_FEEL.observe(active.world, DISPLAY.displayTimeMs, DISPLAY.presentationRevision, NOTICES);
         PERFORMANCE_DIAGNOSTICS.end('presentation', PRESENTATION_START);
@@ -2079,6 +2086,54 @@ DOLLAR('settingsVersion').textContent = `v${PRODUCT_VERSION}`;
 setHome(true, false);
 if (location.hash && location.hash !== '#/') {
     route();
+}
+
+// A help card is this same page, loaded as ?help=<card> inside a frame: a scripted garden that plays at half speed.
+const HELP = {
+    scene: helpSceneById(new URLSearchParams(location.search).get('help')),
+    scenario: null,
+    scaled: 0,
+    last: null,
+    clock(now) {
+        this.scaled =
+            this.last === null ? now : this.scaled + (now - this.last) * (this.scene.rate ?? HELP_PLAYBACK_RATE);
+        this.last = now;
+        return this.scaled;
+    },
+    run(event) {
+        if (event.cmd) {
+            active.queue(event.cmd, event.args);
+        } else if (event.set === 'bossHp' && active.world.boss) {
+            // Shortens the demo fight only; the win that follows is the game's own.
+            active.world.boss.hp = Math.max(1, Math.round(active.world.boss.maxHp * event.fraction));
+        }
+    },
+};
+if (HELP.scene) {
+    const SCENE = HELP.scene,
+        WORLD = new Garden(SCENE.seed);
+    SCENE.setup(WORLD);
+    start(WORLD, false);
+    active.paused = false;
+    HELP.scenario = globalThis.BloomGamekitScenario.createScenario({
+        definition: {
+            seed: SCENE.seed,
+            tickRate: LOCAL_PROFILE.tickRate,
+            endTick: Math.ceil((SCENE.durationMs * LOCAL_PROFILE.tickRate) / 1000),
+            timeline: SCENE.timeline,
+        },
+        createRun: () => ({
+            step: (frame) => frame.events.forEach((event) => HELP.run(event)),
+            dispose() {},
+        }),
+        onEnd: () => {
+            active.paused = true;
+        },
+    });
+    HELP.scenario.play({ automatic: false });
+    globalThis.__budmoriHelp = {
+        snapshot: () => ({ ...HELP.scenario.snapshot(), step: SCENE.step(active.world) }),
+    };
 }
 requestAnimationFrame(frame);
 // Read-only diagnostics for support and browser scenarios. Commands use the product session.

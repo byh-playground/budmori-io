@@ -855,4 +855,4 @@ class FarmSession {
         this.presentationAdapters = new WeakMap();
     }
 }
-export { FarmSession };
+export { FarmSession, LOCAL_PROFILE };
