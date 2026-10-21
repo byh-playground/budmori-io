@@ -193,6 +193,7 @@ path.cr-line {
     display: none !important;
 }
 #bossRewardTotals {
+    white-space: pre-line;
     color: #526e50;
     font-size: 14px;
     font-weight: 850;

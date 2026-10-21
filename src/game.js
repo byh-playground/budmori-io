@@ -12511,7 +12511,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.0";
+      PRODUCT_VERSION = "0.30.1";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -19015,6 +19015,13 @@
     }
     return BOSS_REWARD_CHEST_TIERS[(receipt.stage - 1) % BOSS_REWARD_CHEST_TIERS.length];
   }
+  function bossRewardMasteryLine(receipt) {
+    if (!receipt.xpAmount || !receipt.species) {
+      return "";
+    }
+    const LEVEL_UP = receipt.pointsAwarded > 0 ? " · 숙련 포인트 +" + receipt.pointsAwarded : "";
+    return speciesById(receipt.species).name + " 숙련 +" + receipt.xpAmount + " XP" + LEVEL_UP;
+  }
   function renderBossRewardBoxes(receipt) {
     DOLLAR2("bossRewardChest").dataset.tier = bossRewardChestTier(receipt);
     const COUNT = receipt.boxCount || 0, REVEALED = receipt.revealedCount || 0, BOXES = receipt.boxes || [], HAS_PRESENTATION = BOXES.length === COUNT, PAYOUTS = receipt.calculation?.payouts || BOXES.map((box) => box.payout), MIN = PAYOUTS.length ? Math.min(...PAYOUTS) : 0, MAX = PAYOUTS.length ? Math.max(...PAYOUTS) : 0, FIRST_CLEAR = receipt.firstClear === true, NOMINAL_CHANCE = receipt.baselineChance ?? 0.1, CUMULATIVE = BOXES.slice(0, REVEALED).reduce((sum, box) => sum + (box.hit ? box.payout : 0), 0), PROCESSED = receipt.calculation?.jobState?.processedTrials ?? 0;
@@ -19022,7 +19029,7 @@
     DOLLAR2("bossRewardRibbon").hidden = !FIRST_CLEAR;
     DOLLAR2("bossRewardTitle").textContent = receipt.status === "calculating" ? "보상 준비 중" : "승리 보상";
     DOLLAR2("bossRewardSummary").textContent = receipt.status === "calculating" ? "상자 " + COUNT + "개의 보상을 준비하고 있어요." : FIRST_CLEAR ? "처음 만난 종이에요 · 동료로 합류해요" : HAS_PRESENTATION ? COUNT + "회 추첨 · 상자당 " + MIN + (MIN === MAX ? "" : "–" + MAX) + "마리 · 재도전 " + Math.round(NOMINAL_CHANCE * 100) + "% (편성 반영 " + Math.round(receipt.chance * 100) + "%)" : "이미 확정된 보상 합계";
-    DOLLAR2("bossRewardTotals").textContent = receipt.status === "calculating" ? "추첨 계산 " + PROCESSED + "/" + COUNT : "현재 합계 " + CUMULATIVE + "마리 · " + bossRewardSummary(receipt);
+    DOLLAR2("bossRewardTotals").textContent = receipt.status === "calculating" ? "추첨 계산 " + PROCESSED + "/" + COUNT : [bossRewardMasteryLine(receipt), "현재 합계 " + CUMULATIVE + "마리 · " + bossRewardSummary(receipt)].filter(Boolean).join("\n");
     DOLLAR2("bossRewardRevealCount").textContent = receipt.status === "calculating" ? "추첨 " + PROCESSED + "/" + COUNT : REVEALED + "/" + COUNT + " 상자 공개";
     const SCENE = DOLLAR2("bossRewardChestScene");
     if (receipt.status === "ready" && receipt.acquiredCount > 0 && bossRewardPortraitReceiptKey !== receipt.receiptKey) {

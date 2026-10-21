@@ -114,6 +114,14 @@ function bossRewardChestTier(receipt) {
     return BOSS_REWARD_CHEST_TIERS[(receipt.stage - 1) % BOSS_REWARD_CHEST_TIERS.length];
 }
 
+function bossRewardMasteryLine(receipt) {
+    if (!receipt.xpAmount || !receipt.species) {
+        return '';
+    }
+    const LEVEL_UP = receipt.pointsAwarded > 0 ? ' · 숙련 포인트 +' + receipt.pointsAwarded : '';
+    return speciesById(receipt.species).name + ' 숙련 +' + receipt.xpAmount + ' XP' + LEVEL_UP;
+}
+
 function renderBossRewardBoxes(receipt) {
     DOLLAR('bossRewardChest').dataset.tier = bossRewardChestTier(receipt);
     const COUNT = receipt.boxCount || 0,
@@ -150,7 +158,9 @@ function renderBossRewardBoxes(receipt) {
     DOLLAR('bossRewardTotals').textContent =
         receipt.status === 'calculating'
             ? '추첨 계산 ' + PROCESSED + '/' + COUNT
-            : '현재 합계 ' + CUMULATIVE + '마리 · ' + bossRewardSummary(receipt);
+            : [bossRewardMasteryLine(receipt), '현재 합계 ' + CUMULATIVE + '마리 · ' + bossRewardSummary(receipt)]
+                  .filter(Boolean)
+                  .join('\n');
     DOLLAR('bossRewardRevealCount').textContent =
         receipt.status === 'calculating' ? '추첨 ' + PROCESSED + '/' + COUNT : REVEALED + '/' + COUNT + ' 상자 공개';
     const SCENE = DOLLAR('bossRewardChestScene');
