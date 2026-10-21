@@ -4,7 +4,6 @@ import {
     isValidFormationSkillState,
     formationInvestedPoints,
 } from './formation-skill-state.js';
-import { getFarmUpgradeInvestedCount } from './farm-upgrades.js';
 
 // Level thresholds and boss-kill rewards use separate confirmed base values.
 export const PLAYER_PROGRESS_BASE_XP = 100;
@@ -138,11 +137,5 @@ export function isValidPlayerProgressionState(state) {
             Object.values(investment.branchLevels || {}).reduce((branchTotal, level) => branchTotal + level, 0),
         0,
     );
-    return (
-        INVESTED_POINTS +
-            getFarmUpgradeInvestedCount(state.farmUpgrades) +
-            formationInvestedPoints(state.formationSkills) +
-            state.availablePoints ===
-        state.level - 1
-    );
+    return INVESTED_POINTS + formationInvestedPoints(state.formationSkills) + state.availablePoints === state.level - 1;
 }

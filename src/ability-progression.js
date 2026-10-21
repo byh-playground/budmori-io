@@ -2,12 +2,6 @@ import { SPECIES_ABILITY_DEFINITIONS } from './ability-definitions.js';
 import { isValidAbilityProgressionState } from './ability-state.js';
 import { isValidPlayerProgressionState } from './player-progression.js';
 import { createFormationSkillState, formationInvestedPoints } from './formation-skill-state.js';
-import {
-    createFarmUpgradeState,
-    FARM_UPGRADE_MAX_LEVELS,
-    FARM_UPGRADE_NODES,
-    getFarmUpgradeInvestedCount,
-} from './farm-upgrades.js';
 
 // Progression rules are shared by simulation commands and UI queries.
 // This module never imports presentation code or reads the DOM.
@@ -256,9 +250,6 @@ export function resetPlayerProgression(state, scope = { type: 'all' }, context =
     const NEXT = cloneState(state),
         TYPE = NORMALIZED_SCOPE.type;
     NEXT.availablePoints += CHECK.refunded;
-    if (TYPE === 'all' || TYPE === 'farm') {
-        NEXT.farmUpgrades = createFarmUpgradeState();
-    }
     if (TYPE === 'all' || TYPE === 'abilities') {
         for (const DEFINITION of SPECIES_ABILITY_DEFINITIONS) {
             if (
@@ -280,13 +271,7 @@ export function resetPlayerProgression(state, scope = { type: 'all' }, context =
 function progressionResetInvestment(state, scope) {
     switch (scope.type) {
         case 'all':
-            return (
-                getInvestedPointCount(state) +
-                getFarmUpgradeInvestedCount(state.farmUpgrades) +
-                formationInvestedPoints(state.formationSkills)
-            );
-        case 'farm':
-            return getFarmUpgradeInvestedCount(state.farmUpgrades);
+            return getInvestedPointCount(state) + formationInvestedPoints(state.formationSkills);
         case 'abilities':
             return getInvestedAbilityPointCount(state, scope.speciesId ?? null);
         case 'formation':
@@ -300,7 +285,7 @@ function normalizeResetScope(scope) {
     if (!NORMALIZED || typeof NORMALIZED !== 'object' || Array.isArray(NORMALIZED)) {
         return null;
     }
-    if (NORMALIZED.type === 'all' || NORMALIZED.type === 'farm' || NORMALIZED.type === 'formation') {
+    if (NORMALIZED.type === 'all' || NORMALIZED.type === 'formation') {
         return NORMALIZED;
     }
     if (NORMALIZED.type === 'abilities') {
@@ -314,62 +299,6 @@ function normalizeResetScope(scope) {
         }
     }
     return null;
-}
-export function canPurchaseFarmUpgrade(state, nodeId, context = {}) {
-    const NODE = FARM_UPGRADE_NODES.find((candidate) => candidate.id === nodeId);
-    if (!NODE) {
-        return {
-            allowed: false,
-            reason: 'unknown-node',
-        };
-    }
-    if (!isValidPlayerProgressionState(state)) {
-        return {
-            allowed: false,
-            reason: 'invalid-state',
-        };
-    }
-    const LOCK_REASON = progressionLockReason(context);
-    if (LOCK_REASON) {
-        return {
-            allowed: false,
-            reason: LOCK_REASON,
-        };
-    }
-    if (state.farmUpgrades[nodeId] >= FARM_UPGRADE_MAX_LEVELS[nodeId]) {
-        return {
-            allowed: false,
-            reason: 'max-level',
-        };
-    }
-    if (state.availablePoints < SHARED_ABILITY_POINT_COST) {
-        return {
-            allowed: false,
-            reason: 'insufficient-points',
-        };
-    }
-    return {
-        allowed: true,
-        reason: null,
-    };
-}
-export function purchaseFarmUpgrade(state, nodeId, context = {}) {
-    const CHECK = canPurchaseFarmUpgrade(state, nodeId, context);
-    if (!CHECK.allowed) {
-        return {
-            ok: false,
-            reason: CHECK.reason,
-            state,
-        };
-    }
-    const NEXT = cloneState(state);
-    NEXT.availablePoints -= SHARED_ABILITY_POINT_COST;
-    NEXT.farmUpgrades[nodeId] += 1;
-    return {
-        ok: true,
-        reason: null,
-        state: NEXT,
-    };
 }
 export function getAbilityNodeStatus(state, definition, nodeId, context = {}) {
     const NODE = parseNodeId(nodeId);
@@ -416,9 +345,6 @@ function parseNodeId(nodeId) {
 function cloneState(state) {
     return {
         ...state,
-        farmUpgrades: {
-            ...state.farmUpgrades,
-        },
         abilities: Object.fromEntries(
             Object.entries(state.abilities).map(([id, value]) => [
                 id,

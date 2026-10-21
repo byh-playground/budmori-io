@@ -49,13 +49,7 @@ import {
 } from './boss-rewards.js';
 import { SPECIES_COUNT } from './species-catalog.js';
 import { createPlayerProgressionState } from './player-progression.js';
-import { purchaseAbilityNode, purchaseFarmUpgrade, resetPlayerProgression } from './ability-progression.js';
-import {
-    FARM_UPGRADE_NODES,
-    farmUpgradeRate,
-    getBreedCooldownSeconds,
-    getMergeCooldownSeconds,
-} from './farm-upgrades.js';
+import { purchaseAbilityNode, resetPlayerProgression } from './ability-progression.js';
 import { composeUnitAttackCycles } from './unit-attack-capabilities.js';
 import { MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT, mergeMaterialCostForTier } from './unit-grades.js';
 import {
@@ -135,6 +129,7 @@ const CONFIG = Object.freeze({
             efficiency: 0.5,
         }),
         merge: Object.freeze({
+            cooldownSeconds: 4,
             animationSeconds: 0.85,
             celebrationSeconds: 1,
             centerHeight: 1.8,
@@ -1415,7 +1410,7 @@ const GARDEN = class Garden {
         return true;
     }
     breedCooldownDuration() {
-        return getBreedCooldownSeconds(this.playerProgression?.farmUpgrades, CONFIG.farm.breeding.cooldownSeconds);
+        return CONFIG.farm.breeding.cooldownSeconds;
     }
     breedGrowthDuration() {
         return this.breedCooldownDuration() / 2;
@@ -1446,18 +1441,6 @@ const GARDEN = class Garden {
         }
         return RESULT;
     }
-    investFarmUpgrade(nodeId) {
-        const IN_COMBAT = this.farmBossEvent?.phase !== 'idle';
-        const RESULT = purchaseFarmUpgrade(this.playerProgression, nodeId, {
-            location: this.scene,
-            inCombat: IN_COMBAT,
-        });
-        if (RESULT.ok) {
-            this.playerProgression = RESULT.state;
-            this.markProgressChanged();
-        }
-        return RESULT;
-    }
     resetProgression(scope) {
         const IN_COMBAT = this.farmBossEvent?.phase !== 'idle';
         const RESULT = resetPlayerProgression(this.playerProgression, scope, {
@@ -1465,15 +1448,6 @@ const GARDEN = class Garden {
             inCombat: IN_COMBAT,
         });
         if (RESULT.ok) {
-            const RESET_FARMS = scope?.type === 'farm' || scope?.type === 'all' || scope === 'farm' || scope === 'all';
-            if (RESET_FARMS) {
-                this.cancelMergeTasks();
-                for (const UNIT_LOCAL of this.unitCollection.items) {
-                    if (UNIT_LOCAL.mateId) {
-                        this.releaseMate(UNIT_LOCAL);
-                    }
-                }
-            }
             this.playerProgression = RESULT.state;
             this.markProgressChanged();
         }
@@ -1975,8 +1949,7 @@ const GARDEN = class Garden {
         const WORK = CONFIG.farm.work,
             RATIO = this.workBasisPoints / 10000,
             NEXT = new Set(),
-            RATES = new Map(),
-            UPGRADE_RATE = farmUpgradeRate(this.playerProgression?.farmUpgrades, 'food');
+            RATES = new Map();
         let total = 0;
         if (this.scene === 'farm') {
             const BY_SPECIES = new Map();
@@ -2004,7 +1977,7 @@ const GARDEN = class Garden {
                 );
                 for (let index = 0; index < COUNT; index++) {
                     const WORKER = LIST[index],
-                        RATE = ((1 + WORK.tierBonus * (WORKER.tier - 1)) / WORK.secondsPerFood) * UPGRADE_RATE;
+                        RATE = (1 + WORK.tierBonus * (WORKER.tier - 1)) / WORK.secondsPerFood;
                     NEXT.add(WORKER.id);
                     RATES.set(WORKER.id, RATE);
                     total += RATE;
@@ -3190,7 +3163,7 @@ const GARDEN = class Garden {
         RESULT.growthElapsed = RESULT.growthDuration;
         RESULT.z = Math.max(0, Z - RESULT.height * 0.85);
         RESULT.vz = -CONFIG.farm.merge.resultFallVelocity;
-        RESULT.cooldown = getMergeCooldownSeconds(this.playerProgression?.farmUpgrades);
+        RESULT.cooldown = CONFIG.farm.merge.cooldownSeconds;
         RESULT.cooldownDuration = RESULT.cooldown;
         const SEQUENCE_WINDOW = CONFIG.farm.merge.animationSeconds * 0.72,
             STEP = SEQUENCE_WINDOW / ORDERED.length;
@@ -5592,7 +5565,6 @@ export {
     UNIT as Unit,
     AttackCycle,
     CREATE_UNIT_ATTACK_CYCLE as createUnitAttackCycle,
-    FARM_UPGRADE_NODES,
     ATTACK_TYPES,
     ARENA_GEOMETRY as ArenaGeometry,
     BALLISTICS as Ballistics,

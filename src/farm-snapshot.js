@@ -144,12 +144,6 @@ export const FARM_SNAPSHOT_SHAPE = {
         formationSkills: createFormationSkillState(),
         schemaVersion: 2,
         availablePoints: 0,
-        farmUpgrades: {
-            food: 0,
-            growth: 0,
-            breed: 0,
-            merge: 0,
-        },
         abilities: ABILITY_INVESTMENTS(),
         level: 1,
         experience: 0,

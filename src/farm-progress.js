@@ -27,9 +27,6 @@ function copyPlayer(player) {
         experience: player.experience,
         towerBest: player.towerBest,
         availablePoints: player.availablePoints,
-        farmUpgrades: {
-            ...player.farmUpgrades,
-        },
         abilities: Object.fromEntries(
             Object.entries(player.abilities).map(([id, build]) => [
                 id,
@@ -194,7 +191,6 @@ export function validateFarmProgress(data) {
     const PLAYER = data.player,
         DEFAULTS = createPlayerProgressionState();
     keys(PLAYER, Object.keys(DEFAULTS));
-    keys(PLAYER.farmUpgrades, Object.keys(DEFAULTS.farmUpgrades));
     keys(PLAYER.abilities, Object.keys(DEFAULTS.abilities));
     for (const [ABILITY_ID, BUILD] of Object.entries(PLAYER.abilities)) {
         const BRANCH_KEYS = Object.keys(DEFAULTS.abilities[ABILITY_ID].branchLevels || {});
