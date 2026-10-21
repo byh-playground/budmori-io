@@ -295,28 +295,34 @@ body > header {
     pointer-events: auto;
 }
 .hand {
-    display: grid;
-    gap: var(--ui-s2);
     width: min(520px, 100%);
-    padding: var(--ui-s3);
-    border-radius: var(--ui-r-l);
-    background: var(--ui-panel);
-    border: var(--ui-bw) solid var(--ui-line);
     pointer-events: auto;
 }
 .hand[hidden] {
     display: none;
 }
-.hand small {
-    text-align: center;
+.hand .hand__cards {
+    flex-wrap: nowrap;
 }
-.hand__cards {
+/* In a fight the cards are small chips, so they leave the field in view. */
+.hand .deck-card {
+    min-width: 44px;
+    padding: 3px 6px;
+    background: var(--ui-panel);
+}
+.hand .deck-card img {
+    width: 24px;
+    height: 24px;
+}
+.hand__cards,
+.deck-cards {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
     gap: var(--ui-s2);
 }
-.hand__card {
+.deck-card {
+    position: relative;
     display: grid;
     justify-items: center;
     gap: 2px;
@@ -326,6 +332,56 @@ body > header {
     border: var(--ui-bw) solid var(--ui-line);
     background: transparent;
     color: inherit;
+}
+/* Slot number on a card: the order they go in. */
+.deck-card i {
+    position: absolute;
+    top: -6px;
+    left: -6px;
+    min-width: 20px;
+    border-radius: 999px;
+    background: var(--ui-primary);
+    color: var(--ui-primary-ink);
+    font-size: var(--ui-fs-1);
+    font-style: normal;
+    line-height: 20px;
+    text-align: center;
+}
+.deck-card[aria-pressed='true'] {
+    border-color: currentColor;
+    background: rgba(255, 255, 255, 0.18);
+    transform: translateY(-6px);
+}
+.deck-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: grid;
+    place-items: center;
+    padding: 12px;
+    background: var(--ui-dim);
+}
+.deck-dialog[hidden] {
+    display: none !important;
+}
+.deck-dialog__card {
+    display: grid;
+    gap: var(--ui-s3);
+    width: min(460px, 100%);
+    padding: 16px;
+    border: var(--ui-bw) solid var(--ui-line);
+    border-radius: var(--ui-r-l);
+    background: var(--ui-panel);
+    color: var(--ui-ink);
+}
+.deck-dialog__card header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.deck-dialog__card h2,
+.deck-dialog__card p {
+    margin: 0;
 }
 .work-hud[hidden] {
     display: none;

@@ -748,11 +748,60 @@ function beginChallenge() {
         say(REASON);
         return;
     }
+    if (ownedCounts(personalGarden).size < 2) {
+        climb();
+        return;
+    }
+    openDeck();
+}
+function climb() {
     if (personalGarden.startTower(startFloorValue(personalGarden))) {
         active.paused = false;
         active.loop.resetTiming();
     }
 }
+// The deck: the species that go in, in order. Tap one card, then another, to swap them.
+let deckOrder = [],
+    deckPicked = -1;
+function paintDeck() {
+    const COUNTS = ownedCounts(personalGarden),
+        OWNED = deckOrder.filter((id) => COUNTS.has(id));
+    DOLLAR('deckCards').innerHTML = OWNED.map((id, slot) => deckCardHtml(id, COUNTS.get(id), slot + 1)).join('');
+    for (const BUTTON of DOLLAR('deckCards').children) {
+        BUTTON.setAttribute('aria-pressed', String(Number(BUTTON.dataset.deploy) === deckPicked));
+    }
+}
+function openDeck() {
+    deckOrder = [...personalGarden.deployOrder];
+    deckPicked = -1;
+    paintDeck();
+    DOLLAR('deckDialog').hidden = false;
+}
+DOLLAR('deckClose').onclick = () => {
+    DOLLAR('deckDialog').hidden = true;
+};
+DOLLAR('deckGo').onclick = () => {
+    DOLLAR('deckDialog').hidden = true;
+    personalGarden.setDeployOrder(deckOrder);
+    saveDeployOrder(deckOrder);
+    climb();
+};
+DOLLAR('deckCards').addEventListener('click', (e) => {
+    const BUTTON = e.target.closest('[data-deploy]');
+    if (!BUTTON) {
+        return;
+    }
+    const ID = Number(BUTTON.dataset.deploy);
+    if (deckPicked < 0 || deckPicked === ID) {
+        deckPicked = deckPicked === ID ? -1 : ID;
+    } else {
+        const FROM = deckOrder.indexOf(deckPicked),
+            TO = deckOrder.indexOf(ID);
+        [deckOrder[FROM], deckOrder[TO]] = [deckOrder[TO], deckOrder[FROM]];
+        deckPicked = -1;
+    }
+    paintDeck();
+});
 DOLLAR('continueGame').onclick = () => {
     if (STORAGE.world) {
         start(restore(snapshot(STORAGE.world)), true, true);
@@ -1562,72 +1611,54 @@ function syncData(id, key, value) {
 function fightActive() {
     return ['dropping', 'fighting'].includes(active?.world.farmBossEvent?.phase);
 }
-// The deploy order: one card per species, front first. A fight sends everyone in by itself in this order; tapping a
-// card (before or during the fight) puts that species in front.
+// The deploy order. Before the climb the deck dialog sets it (tap two cards to swap them); a fight sends everyone
+// in by itself in this order, and tapping a card during the fight puts that species in front.
 const DEPLOY_ORDER_KEY = 'budmori.deploy.order';
 function loadDeployOrder(world) {
     try {
-        const SAVED = JSON.parse(localStorage.getItem(DEPLOY_ORDER_KEY) || '[]');
-        for (const SPECIES of [...SAVED].reverse()) {
-            world.setDeployFirst(SPECIES);
-        }
+        world.setDeployOrder(JSON.parse(localStorage.getItem(DEPLOY_ORDER_KEY) || 'null'));
     } catch {
         /* The default order stands. */
     }
 }
-function saveDeployOrder(world) {
+function saveDeployOrder(order) {
     try {
-        localStorage.setItem(DEPLOY_ORDER_KEY, JSON.stringify(world.deployOrder));
+        localStorage.setItem(DEPLOY_ORDER_KEY, JSON.stringify(order));
     } catch {
         /* Applies for this run. */
     }
 }
+function deckCardHtml(id, count, slot) {
+    const SPECIES = speciesById(id);
+    return `<button type="button" class="deck-card" data-deploy="${id}" aria-label="${slot}번 ${SPECIES.name}"><i>${slot}</i><img src="./assets/troops/${SPECIES.asset}" alt="" width="40" height="40" draggable="false"><b>×${count}</b></button>`;
+}
+function ownedCounts(garden) {
+    const COUNTS = new Map();
+    for (const UNIT of garden.units) {
+        if (UNIT.faction === 'player' && !UNIT.isBattleOnlySummon && UNIT.hp > 0) {
+            COUNTS.set(UNIT.species, (COUNTS.get(UNIT.species) || 0) + 1);
+        }
+    }
+    return COUNTS;
+}
+// In a fight: the species still waiting, front first.
 function syncHand(garden, visible) {
-    syncFlag('hand', 'hidden', !visible);
-    if (!visible) {
-        handKey = '';
-        return;
-    }
-    const COUNTS = fightActive() ? garden.handCounts : new Map();
-    if (!fightActive()) {
-        for (const UNIT of garden.units) {
-            if (UNIT.faction === 'player' && !UNIT.isBattleOnlySummon && UNIT.hp > 0) {
-                COUNTS.set(UNIT.species, (COUNTS.get(UNIT.species) || 0) + 1);
-            }
-        }
-    }
-    const IDS = garden.deployOrder.filter((id) => COUNTS.has(id)),
-        KEY = garden.deployOrder.join(',');
-    // One species has no order to set.
-    syncFlag('hand', 'hidden', IDS.length < 2);
-    if (KEY !== handKey || DOLLAR('handCards').children.length !== IDS.length) {
-        if (handKey) {
-            saveDeployOrder(garden);
-        }
+    const COUNTS = visible ? garden.handCounts : new Map(),
+        IDS = garden.deployOrder.filter((id) => COUNTS.has(id)),
+        KEY = IDS.map((id) => `${id}x${COUNTS.get(id)}`).join(',');
+    syncFlag('hand', 'hidden', !visible || IDS.length < 2);
+    if (KEY !== handKey) {
         handKey = KEY;
-        DOLLAR('handCards').innerHTML = IDS.map((id) => {
-            const SPECIES = speciesById(id);
-            return `<button type="button" class="hand__card" data-deploy="${id}" aria-label="${SPECIES.name}"><img src="./assets/troops/${SPECIES.asset}" alt="" width="40" height="40" draggable="false"><b></b></button>`;
-        }).join('');
+        DOLLAR('handCards').innerHTML = IDS.map((id, slot) => deckCardHtml(id, COUNTS.get(id), slot + 1)).join('');
     }
-    for (const BUTTON of DOLLAR('handCards').children) {
-        const TEXT = `×${COUNTS.get(Number(BUTTON.dataset.deploy)) || 0}`,
-            LABEL = BUTTON.querySelector('b');
-        if (LABEL.textContent !== TEXT) {
-            LABEL.textContent = TEXT;
-        }
-    }
-    syncText(
-        'handNote',
-        fightActive()
-            ? `투입 순서 · 누른 병종이 맨 앞 · 필드 ${garden.fieldFighterCount}/${CONFIG.farm.deploy.fieldCap}${garden.tower.sleepUntil.size ? ` · 잠든 병력 ${garden.tower.sleepUntil.size}` : ''}`
-            : '투입 순서 · 누른 병종이 맨 앞에서 싸워요',
-    );
 }
 DOLLAR('handCards').addEventListener('click', (e) => {
     const BUTTON = e.target.closest('[data-deploy]');
     if (BUTTON) {
-        active.queue('deploy-first', { species: Number(BUTTON.dataset.deploy) });
+        const FIRST = Number(BUTTON.dataset.deploy),
+            ORDER = [FIRST, ...personalGarden.deployOrder.filter((id) => id !== FIRST)];
+        saveDeployOrder(ORDER);
+        active.queue('deploy-order', { order: ORDER });
     }
 });
 function canUseWorldInput() {
@@ -1906,7 +1937,7 @@ function sync(display, now, notices) {
     syncFlag('workHud', 'hidden', FARM_EVENT_ACTIVE || home || W.tower.active);
     syncTower(W, home, FARM_EVENT);
     syncFlag('bossbar', 'hidden', !FARM_EVENT_ACTIVE || home || FARM_EVENT.phase === 'marching');
-    syncHand(W, !home);
+    syncHand(W, !home && fightActive());
     syncText('count', displayedCount);
     syncText('capacity', personalGarden?.capacity ?? CONFIG.farm.capacity.max);
     syncText(

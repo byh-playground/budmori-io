@@ -1276,7 +1276,7 @@ const GARDEN = class Garden {
         this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
         // null: every species gives the same worker share. Otherwise the breeders are split between species by weight.
         this.breedWeights = null;
-        // Who drops first in a fight: the front of this list goes in first. Tapping a species puts it in front.
+        // Who drops first in a fight: the front of this list goes in first.
         this.deployOrder = Array.from({ length: CONFIG.unit.speciesCount }, (_, species) => species);
         this._deployCount = 0;
         this._workerIds = new Set();
@@ -2343,11 +2343,18 @@ const GARDEN = class Garden {
     get deployCooldownLeft() {
         return Math.max(0, this._deployReadyTime - this.time);
     }
-    setDeployFirst(species) {
-        if (!Number.isSafeInteger(species) || species < 0 || species >= CONFIG.unit.speciesCount) {
+    // The whole order at once: it must list every species exactly once.
+    setDeployOrder(order) {
+        const COUNT = CONFIG.unit.speciesCount;
+        if (
+            !Array.isArray(order) ||
+            order.length !== COUNT ||
+            new Set(order).size !== COUNT ||
+            !order.every((species) => Number.isSafeInteger(species) && species >= 0 && species < COUNT)
+        ) {
             return false;
         }
-        this.deployOrder = [species, ...this.deployOrder.filter((other) => other !== species)];
+        this.deployOrder = [...order];
         return true;
     }
     // A fight sends everyone in by itself: one unit every 0.1 s from all around the hall's edge, the species at the

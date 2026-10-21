@@ -213,6 +213,28 @@ await check('challenge button starts a boss fight and retreat ends it', async ()
         BUDMORI.sim.spawn(1, 1, -3, 3);
     });
     await PAGE.locator('#bossChallenge').click();
+    // With more than one species the climb starts from the deck dialog: swap the first two cards, then go.
+    const DECK = await WORLD(() => ({
+        open: !document.getElementById('deckDialog').hidden,
+        cards: document.querySelectorAll('#deckCards [data-deploy]').length,
+    }));
+    expect(DECK.open && DECK.cards >= 2, `deck dialog not shown ${JSON.stringify(DECK)}`);
+    const SWAP = await WORLD(() => {
+        const CARDS = [...document.querySelectorAll('#deckCards [data-deploy]')],
+            FIRST = Number(CARDS[0].dataset.deploy),
+            SECOND = Number(CARDS[1].dataset.deploy);
+        CARDS[0].click();
+        document.querySelectorAll('#deckCards [data-deploy]')[1].click();
+        return {
+            FIRST,
+            SECOND,
+            now: [...document.querySelectorAll('#deckCards [data-deploy]')].map((c) => Number(c.dataset.deploy)),
+        };
+    });
+    expect(SWAP.now[0] === SWAP.SECOND && SWAP.now[1] === SWAP.FIRST, `swap failed ${JSON.stringify(SWAP)}`);
+    await PAGE.locator('#deckGo').click();
+    const SET = await WORLD(() => BUDMORI.sim.deployOrder[0]);
+    expect(SET === SWAP.SECOND, `deck order not applied (${SET})`);
     // The troops walk to the tower door first, then the floor begins inside.
     const MARCH = await WORLD(() => ({ phase: BUDMORI.sim.farmBossEvent.phase, inside: BUDMORI.sim.insideTower }));
     expect(MARCH.phase === 'marching' && !MARCH.inside, `no march at the start ${JSON.stringify(MARCH)}`);
@@ -293,6 +315,9 @@ await check('challenge button starts a boss fight and retreat ends it', async ()
 
 await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async () => {
     await PAGE.locator('#bossChallenge').click();
+    if (await PAGE.locator('#deckGo').isVisible()) {
+        await PAGE.locator('#deckGo').click();
+    }
     await PAGE.waitForFunction(() => BUDMORI.sim.insideTower && BUDMORI.sim.farmBossEvent.phase !== 'marching', null, {
         timeout: 15000,
     });

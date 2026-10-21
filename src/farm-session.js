@@ -561,8 +561,8 @@ class FarmSession {
                 return W.scene === 'farm' && W.setWorkBasisPoints(c.basisPoints);
             case 'farm-breed-weights':
                 return W.scene === 'farm' && W.setBreedWeights(c.weights);
-            case 'deploy-first':
-                return W.scene === 'farm' && W.setDeployFirst(c.species);
+            case 'deploy-order':
+                return W.scene === 'farm' && W.setDeployOrder(c.order);
             case 'tower-start':
                 return W.scene === 'farm' && W.startTower(c.floor);
             case 'tower-door':
