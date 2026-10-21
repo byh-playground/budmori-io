@@ -1836,11 +1836,12 @@
   });
 
   // src/features/formation-skills/hammer/model.js
-  var HammerSkill;
+  var HAMMER_IMPACT_TIME, HammerSkill;
   var init_model7 = __esm({
     "src/features/formation-skills/hammer/model.js"() {
       init_definition7();
       init_model_base();
+      HAMMER_IMPACT_TIME = 0.55;
       HammerSkill = class extends FormationSkill {
         constructor() {
           super(DEFINITION7);
@@ -1857,11 +1858,32 @@
             z: BODY2.z,
             bodyHeight: BODY2.bodyHeight,
             bodyRadius: BODY2.bodyRadius,
-            duration: 0.7
+            targetId: owner.targetId(TARGET),
+            damage: this.power(slot.level, this.definition.upgradeBase),
+            impacted: false,
+            duration: 1.2
           });
-          owner.damage(TARGET, this.power(slot.level, this.definition.upgradeBase));
-          TARGET.stun = Math.max(TARGET.stun || 0, 1);
           return true;
+        }
+        update(owner, effect, dt) {
+          effect.age += dt;
+          const TARGET = owner.target(effect.targetId);
+          if (TARGET && !effect.impacted) {
+            const BODY2 = targetBodyDimensions(TARGET);
+            effect.x = TARGET.x;
+            effect.y = TARGET.y;
+            effect.z = BODY2.z;
+            effect.bodyHeight = BODY2.bodyHeight;
+            effect.bodyRadius = BODY2.bodyRadius;
+          }
+          if (!effect.impacted && effect.age + 1e-9 >= HAMMER_IMPACT_TIME) {
+            effect.impacted = true;
+            if (TARGET) {
+              owner.damage(TARGET, effect.damage);
+              TARGET.stun = Math.max(TARGET.stun || 0, 1);
+            }
+          }
+          return effect.age < effect.duration;
         }
       };
     }
@@ -7202,7 +7224,6 @@
           work: Object.freeze({
             secondsPerFood: 8,
             tierBonus: 0.5,
-            resumeFoodShare: 0.5,
             refreshTicks: 20,
             defaultBasisPoints: 4e3,
             maxFood: 50,
@@ -7233,7 +7254,7 @@
             maxMaterials: MAX_GRADE_MATERIAL_COUNT
           }),
           // Draft numbers: one unit every 0.2 s, at most 200 (the whole farm) on the field at once.
-          deploy: Object.freeze({ cooldownSeconds: 0.2, fieldCap: 200 }),
+          deploy: Object.freeze({ cooldownSeconds: 0.1, fieldCap: 200 }),
           // Draft numbers for the tower: every 5th floor is a mid-boss; fallen units sleep tier (max 3) floors.
           tower: Object.freeze({
             midBossEvery: 5,
@@ -8215,7 +8236,6 @@
           this._benchRevision = 0;
           this._fieldCache = { revision: -1, bench: -1, list: [] };
           this._deployReadyTime = 0;
-          this._foodFull = false;
           this.insideTower = false;
           this.tower = {
             active: false,
@@ -8863,16 +8883,11 @@
           return true;
         }
         // The slider's share of each species' adults work; the rest breed. A worker does not eat or breed, and its
-        // output scales with its tier. When the field is full of food everyone breeds until it is half empty again.
+        // output scales with its tier. A full field only pauses the food they make; who works never depends on it.
         refreshWorkers() {
           const WORK = CONFIG.farm.work, RATIO = this.workBasisPoints / 1e4, NEXT = /* @__PURE__ */ new Set(), RATES = /* @__PURE__ */ new Map();
           let total = 0;
-          if (this.food.length >= WORK.maxFood) {
-            this._foodFull = true;
-          } else if (this.food.length <= WORK.maxFood * WORK.resumeFoodShare) {
-            this._foodFull = false;
-          }
-          if (this.scene === "farm" && !this._foodFull) {
+          if (this.scene === "farm") {
             const BY_SPECIES = /* @__PURE__ */ new Map();
             for (const UNIT_LOCAL of this.roster.residents()) {
               if (!UNIT_LOCAL.mature || UNIT_LOCAL.hp <= 0 || UNIT_LOCAL.down > 0 || UNIT_LOCAL.isBattleOnlySummon || UNIT_LOCAL.isFormationClone || !this._workerIds.has(UNIT_LOCAL.id) && this.unitCollection.reservationOwner(UNIT_LOCAL)) {
@@ -8910,7 +8925,7 @@
           assignWorkers(this, CONFIG);
         }
         get warehouseFull() {
-          return this._foodFull;
+          return this.food.length >= CONFIG.farm.work.maxFood;
         }
         get workerCount() {
           return this._workCount;
@@ -12346,7 +12361,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.29.3";
+      PRODUCT_VERSION = "0.29.4";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -12908,7 +12923,7 @@
     if (FADE <= 0) {
       return;
     }
-    const BODY_SCALE = Math.max(0.6, radius / 0.3);
+    const BODY_SCALE = Math.min(2.2, Math.max(0.6, radius / 0.3));
     const POINTS = [];
     for (let i = 0; i <= 9; i++) {
       POINTS.push([
@@ -12918,9 +12933,9 @@
       ]);
     }
     if (age < 0.12) {
-      stroke(renderer, POINTS, `rgba(51,121,255,${FADE * 0.2})`, 0.5 * BODY_SCALE);
-      stroke(renderer, POINTS, `rgba(99,181,255,${FADE * 0.65})`, 0.19 * BODY_SCALE);
-      stroke(renderer, POINTS, `rgba(236,251,255,${FADE})`, 0.11 * BODY_SCALE);
+      stroke(renderer, POINTS, `rgba(51,121,255,${FADE * 0.3})`, 0.9 * BODY_SCALE);
+      stroke(renderer, POINTS, `rgba(99,181,255,${FADE * 0.8})`, 0.34 * BODY_SCALE);
+      stroke(renderer, POINTS, `rgba(236,251,255,${FADE})`, 0.17 * BODY_SCALE);
     } else {
       for (let i = 0; i < POINTS.length - 1; i++) {
         const FRAGMENT = Math.max(0, 1 - (age - 0.12 - i % 3 * 0.035) / 0.35);
@@ -12938,6 +12953,32 @@
       renderer.ellipse(P.x, P.y, renderer.scale * radius * 2.17, renderer.scale * radius * 1.4, "#effcffdd");
     }
   }
+  function groundShadow(renderer, x, y, radius, alpha, fade = 1) {
+    const P = renderer.project(x, y, 0);
+    renderer.ellipse(
+      P.x,
+      P.y,
+      renderer.scale * radius,
+      renderer.scale * radius * 0.62,
+      `rgba(20,12,8,${alpha * fade})`
+    );
+  }
+  function burst(renderer, x, y, z, radius, age, seed = 0, rgb2 = "255,224,130") {
+    const FADE = Math.max(0, 1 - age / 0.55);
+    if (FADE <= 0) {
+      return;
+    }
+    for (let i = 0; i < 10; i++) {
+      const A = i * 2.399 + seed, SPEED = radius * (3 + i % 3), PX = x + Math.cos(A) * SPEED * age, PY = y + Math.sin(A) * SPEED * age * 0.6, PZ = z + (2.2 + i % 4 * 0.7) * radius * age - 6 * radius * age * age, P = renderer.project(PX, PY, PZ);
+      renderer.ellipse(
+        P.x,
+        P.y,
+        renderer.scale * radius * 0.16,
+        renderer.scale * radius * 0.16,
+        `rgba(${rgb2},${FADE})`
+      );
+    }
+  }
   function cloud(renderer, x, y, z, size, alpha = 1) {
     for (let i = 0; i < 5; i++) {
       const P = renderer.project(x + (i - 2) * 0.25 * size, y, z + Math.sin(i * 1.4) * 0.14 * size);
@@ -12946,7 +12987,17 @@
         P.y,
         renderer.scale * size * 0.34,
         renderer.scale * size * 0.26,
-        `rgba(98,128,157,${alpha})`
+        `rgba(98,128,157,${alpha * 0.85})`
+      );
+    }
+    for (let i = 0; i < 4; i++) {
+      const P = renderer.project(x + (i - 1.5) * 0.25 * size, y, z + size * 0.14 + Math.sin(i * 2.1) * 0.1 * size);
+      renderer.ellipse(
+        P.x,
+        P.y,
+        renderer.scale * size * 0.26,
+        renderer.scale * size * 0.18,
+        `rgba(168,190,212,${alpha * 0.8})`
       );
     }
   }
@@ -12959,15 +13010,15 @@
   var GiantPresentation = class extends FormationPresentation {
     draw(renderer, effect) {
       const PULSE = 0.85 + Math.sin(effect.age * 5) * 0.15, RADIUS = Math.max(0.3, effect.radius || 0.3);
-      renderer.ring(effect.x, effect.y, RADIUS * 1.15 * PULSE, "#b3d875aa", 0.07);
-      renderer.ring(effect.x, effect.y, RADIUS * 1.42 * PULSE, "#e6f3b344", 0.04);
+      renderer.ring(effect.x, effect.y, RADIUS * 1.15 * PULSE, "#b3d875cc", 0.14);
+      renderer.ring(effect.x, effect.y, RADIUS * 1.42 * PULSE, "#e6f3b366", 0.08);
       for (let i = 0; i < 5; i++) {
         const A = i * Math.PI * 2 / 5 + effect.age, P = renderer.project(
           effect.x + Math.cos(A) * RADIUS * 1.25,
           effect.y + Math.sin(A) * RADIUS * 1.25,
-          (effect.age * 1.3 + i * 0.4) % 2
+          (effect.age * 1.3 + i * 0.4) % 2 * Math.max(1, RADIUS)
         );
-        renderer.ellipse(P.x, P.y, renderer.scale * 0.025, renderer.scale * 0.055, "#e2f7a9aa");
+        renderer.ellipse(P.x, P.y, renderer.scale * 0.06, renderer.scale * 0.11, "#e2f7a9aa");
       }
     }
   };
@@ -12981,11 +13032,40 @@
         effect.x,
         effect.y,
         effect.z + BODY_HEIGHT,
-        BODY_HEIGHT * 2.4,
+        BODY_HEIGHT * 3.4,
         effect.age,
         effect.id,
         BODY_RADIUS
       );
+      if (effect.age < 0.5) {
+        burst(
+          renderer,
+          effect.x,
+          effect.y,
+          effect.z + BODY_HEIGHT,
+          BODY_RADIUS,
+          effect.age,
+          effect.id,
+          "190,225,255"
+        );
+      }
+      if (effect.age < 0.12) {
+        const SKY = renderer.project(effect.x, effect.y, effect.z + BODY_HEIGHT * 3.4), TOP = renderer.project(effect.x, effect.y, effect.z + BODY_HEIGHT);
+        renderer.ellipse(
+          TOP.x,
+          TOP.y,
+          renderer.scale * BODY_RADIUS * 2.6,
+          renderer.scale * BODY_RADIUS * 2,
+          `rgba(220,240,255,${0.55 * (1 - effect.age / 0.12)})`
+        );
+        renderer.ellipse(
+          SKY.x,
+          SKY.y,
+          renderer.scale * BODY_RADIUS * 1.4,
+          renderer.scale * BODY_RADIUS * 0.8,
+          `rgba(200,225,255,${0.5 * (1 - effect.age / 0.12)})`
+        );
+      }
     }
   };
 
@@ -12993,8 +13073,8 @@
   var MeteorPresentation = class extends FormationPresentation {
     constructor() {
       super();
-      this.bodySize = 0.8;
-      this.tailWidth = 1.2;
+      this.bodySize = 1.3;
+      this.tailWidth = 2;
     }
     draw(renderer, effect) {
       const AGE = effect.age - effect.delay;
@@ -13004,7 +13084,8 @@
       const S = renderer.scale, R2 = effect.radius;
       if (AGE < 0.75) {
         const Q = AGE / 0.75, Z = 12 * (1 - Q * Q), P = renderer.project(effect.x, effect.y, Z), T = renderer.project(effect.x - 0.9, effect.y, Z + 2.8);
-        renderer.ring(effect.x, effect.y, R2, "#dc905b88", 0.04);
+        renderer.ring(effect.x, effect.y, R2 * (1.1 - Q * 0.25), `rgba(255,150,80,${0.35 + Q * 0.5})`, 0.12);
+        renderer.groundEllipse(effect.x, effect.y, R2 * 0.8, R2 * 0.8, `rgba(255,120,60,${Q * 0.25})`);
         stroke(
           renderer,
           [
@@ -13026,14 +13107,19 @@
           R2 * (0.45 + Q * 0.55),
           `rgba(239,157,72,${(1 - Q) * 0.26})`
         );
-        renderer.ring(effect.x, effect.y, R2 * Q, `rgba(255,215,138,${1 - Q})`, 0.15 * (1 - Q) + 0.02);
+        renderer.ring(effect.x, effect.y, R2 * Q, `rgba(255,215,138,${1 - Q})`, 0.3 * (1 - Q) + 0.03);
+        renderer.ring(effect.x, effect.y, R2 * Q * 0.6, `rgba(255,255,255,${1 - Q})`, 0.15 * (1 - Q));
+        if (Q < 0.25) {
+          const F = renderer.project(effect.x, effect.y, 0.4);
+          renderer.ellipse(F.x, F.y, S * R2 * 0.9, S * R2 * 0.6, `rgba(255,236,190,${0.7 * (1 - Q / 0.25)})`);
+        }
         for (let i = 0; i < 9; i++) {
           const A = i * 2.39996, P = renderer.project(
             effect.x + Math.cos(A) * R2 * Q,
             effect.y + Math.sin(A) * R2 * Q,
-            Math.sin(Q * Math.PI) * 0.8
+            Math.sin(Q * Math.PI) * 1.8
           );
-          renderer.ellipse(P.x, P.y, S * 0.07 * (1 - Q), S * 0.05 * (1 - Q), `rgba(150,112,77,${1 - Q})`);
+          renderer.ellipse(P.x, P.y, S * 0.14 * (1 - Q), S * 0.1 * (1 - Q), `rgba(150,112,77,${1 - Q})`);
         }
       }
     }
@@ -13043,8 +13129,8 @@
   var MeteorShowerPresentation = class extends MeteorPresentation {
     constructor() {
       super();
-      this.bodySize = 0.25;
-      this.tailWidth = 0.35;
+      this.bodySize = 0.6;
+      this.tailWidth = 0.8;
     }
   };
 
@@ -13052,8 +13138,8 @@
   var CopyPresentation = class extends FormationPresentation {
     draw(renderer, effect) {
       const Q = Math.min(1, effect.age / effect.duration);
-      renderer.ring(effect.x, effect.y, effect.radius, "#84c6e8aa", 0.04);
-      renderer.groundEllipse(effect.x, effect.y, effect.radius, effect.radius, `rgba(120,196,235,${(1 - Q) * 0.15})`);
+      renderer.ring(effect.x, effect.y, effect.radius, "#84c6e8dd", 0.12);
+      renderer.groundEllipse(effect.x, effect.y, effect.radius, effect.radius, `rgba(120,196,235,${(1 - Q) * 0.3})`);
     }
   };
   var CopyDissolvePresentation = class {
@@ -13082,17 +13168,17 @@
         if (UNIT3.hp <= 0 || UNIT3.faction !== "player" || UNIT3.hp >= UNIT3.maxHp) {
           continue;
         }
-        cloud(renderer, UNIT3.x, UNIT3.y, UNIT3.height + 1.5, 0.7, FADE * 0.45);
+        cloud(renderer, UNIT3.x, UNIT3.y, UNIT3.height + 1.6, 1.3, FADE * 0.7);
         for (let i = 0; i < 4; i++) {
           const Z = ((i * 0.6 - effect.age * 2) % 1.8 + 1.8) % 1.8;
           stroke(
             renderer,
             [
-              [UNIT3.x + (i - 1.5) * 0.18, UNIT3.y, Z + 0.2],
+              [UNIT3.x + (i - 1.5) * 0.18, UNIT3.y, Z + 0.45],
               [UNIT3.x + (i - 1.5) * 0.18, UNIT3.y, Z]
             ],
             `rgba(136,216,188,${FADE * 0.8})`,
-            0.025
+            0.07
           );
         }
       }
@@ -13100,56 +13186,102 @@
   };
 
   // src/features/formation-skills/hammer/presentation.js
+  init_model7();
   var HammerPresentation = class extends FormationPresentation {
     draw(renderer, effect) {
-      const BODY_RADIUS = Math.max(0.2, effect.bodyRadius || 0.3), BODY_HEIGHT = Math.max(BODY_RADIUS * 2, effect.bodyHeight || BODY_RADIUS * 2), TELEGRAPH_END = 0.14, IMPACT_TIME = 0.42, DROP = Math.max(0, Math.min(1, (effect.age - TELEGRAPH_END) / (IMPACT_TIME - TELEGRAPH_END))), FALL = DROP ** 2.2, START_Z = effect.z + BODY_HEIGHT + BODY_RADIUS * 3.2, IMPACT_Z = effect.z + BODY_HEIGHT * 0.55, Z = START_Z + (IMPACT_Z - START_Z) * FALL, HEAD_WIDTH = BODY_RADIUS * 6, HEAD_HEIGHT = BODY_RADIUS * 1.8, P = renderer.project(effect.x, effect.y, Z), S = renderer.scale, C = renderer.ctx, FADE = Math.max(0, 1 - Math.max(0, effect.age - IMPACT_TIME) / 0.28);
-      if (effect.age < TELEGRAPH_END) {
-        const TELEGRAPH = 1 - effect.age / TELEGRAPH_END, AIM = renderer.project(effect.x, effect.y, IMPACT_Z);
-        renderer.ellipse(
-          AIM.x,
-          AIM.y,
-          S * BODY_RADIUS * (1.8 + (1 - TELEGRAPH) * 0.8),
-          S * BODY_RADIUS * 0.52,
-          `rgba(233,218,146,${0.32 + TELEGRAPH * 0.42})`
-        );
+      const R2 = Math.max(0.2, (effect.bodyRadius || 0.3) * 0.55), H = Math.max(R2 * 2, effect.bodyHeight || R2 * 2), AGE = effect.age, RISE_END = 0.2, TOP = effect.z + H, HIGH = TOP + R2 * 3.4, AIM_Z = TOP + R2 * 0.15, S = renderer.scale, C = renderer.ctx;
+      let headZ;
+      if (AGE < RISE_END) {
+        headZ = HIGH + R2 * 0.5 * (1 - AGE / RISE_END);
+      } else if (AGE < HAMMER_IMPACT_TIME) {
+        const T = (AGE - RISE_END) / (HAMMER_IMPACT_TIME - RISE_END);
+        headZ = HIGH + (AIM_Z - HIGH) * T ** 2.4;
+      } else {
+        headZ = AIM_Z + Math.min(0.5, (AGE - HAMMER_IMPACT_TIME) * 3) * 0;
+      }
+      const FADE = AGE < HAMMER_IMPACT_TIME + 0.25 ? 1 : Math.max(0, 1 - (AGE - HAMMER_IMPACT_TIME - 0.25) / 0.35);
+      if (FADE <= 0) {
+        return;
+      }
+      const WARN = Math.min(1, AGE / HAMMER_IMPACT_TIME);
+      groundShadow(renderer, effect.x, effect.y, R2 * (1.6 + WARN * 0.6), 0.18 + WARN * 0.3, FADE);
+      renderer.ring(effect.x, effect.y, R2 * (2.6 - WARN * 1.2), `rgba(255,214,120,${FADE * 0.7})`, R2 * 0.12);
+      if (AGE >= RISE_END && AGE < HAMMER_IMPACT_TIME) {
+        for (let i = -1; i <= 1; i++) {
+          stroke(
+            renderer,
+            [
+              [effect.x + i * R2 * 1.5, effect.y, headZ + R2 * 4],
+              [effect.x + i * R2 * 1.5, effect.y, headZ + R2 * 1.2]
+            ],
+            `rgba(255,255,255,0.35)`,
+            R2 * 0.16
+          );
+        }
       }
       stroke(
         renderer,
         [
-          [effect.x, effect.y, Z + HEAD_HEIGHT * 0.9],
-          [effect.x, effect.y, Z]
+          [effect.x, effect.y, headZ + R2 * 0.6],
+          [effect.x, effect.y, headZ + R2 * 5]
         ],
-        `rgba(130,90,65,${FADE})`,
-        BODY_RADIUS * 0.7
+        `rgba(76,48,30,${FADE})`,
+        R2 * 1.05
       );
-      C.fillStyle = `rgba(132,153,172,${FADE})`;
+      stroke(
+        renderer,
+        [
+          [effect.x, effect.y, headZ + R2 * 0.6],
+          [effect.x, effect.y, headZ + R2 * 5]
+        ],
+        `rgba(160,106,64,${FADE})`,
+        R2 * 0.7
+      );
+      const P = renderer.project(effect.x, effect.y, headZ + R2 * 0.9), W = S * R2 * 3.4, HH = S * R2 * 1.9;
       C.beginPath();
-      C.roundRect(
-        P.x - S * HEAD_WIDTH / 2,
-        P.y - S * HEAD_HEIGHT / 2,
-        S * HEAD_WIDTH,
-        S * HEAD_HEIGHT,
-        S * BODY_RADIUS * 0.3
-      );
+      C.roundRect(P.x - W / 2, P.y - HH / 2, W, HH, S * R2 * 0.35);
+      C.fillStyle = `rgba(58,70,86,${FADE})`;
       C.fill();
-      C.fillStyle = `rgba(216,229,234,${FADE})`;
       C.beginPath();
-      C.roundRect(
-        P.x - S * HEAD_WIDTH / 2.1,
-        P.y - S * HEAD_HEIGHT / 2,
-        S * HEAD_WIDTH / 1.05,
-        S * HEAD_HEIGHT * 0.16,
-        S * BODY_RADIUS * 0.1
-      );
+      C.roundRect(P.x - W / 2 + S * R2 * 0.18, P.y - HH / 2 + S * R2 * 0.14, W - S * R2 * 0.36, HH * 0.42, S * R2 * 0.25);
+      C.fillStyle = `rgba(178,196,214,${FADE})`;
       C.fill();
-      if (effect.age > IMPACT_TIME) {
+      C.beginPath();
+      C.roundRect(P.x - W / 2, P.y - HH / 2, W, HH, S * R2 * 0.35);
+      C.strokeStyle = `rgba(28,34,44,${FADE})`;
+      C.lineWidth = Math.max(1, S * R2 * 0.14);
+      C.stroke();
+      if (AGE >= HAMMER_IMPACT_TIME) {
+        const T = AGE - HAMMER_IMPACT_TIME;
+        burst(renderer, effect.x, effect.y, AIM_Z, R2, T, effect.id, "255,224,130");
         renderer.ring(
           effect.x,
           effect.y,
-          BODY_RADIUS * (1.1 + (effect.age - IMPACT_TIME) * 5),
-          `rgba(233,218,146,${FADE})`,
-          BODY_RADIUS * 0.3
+          R2 * (1 + T * 7),
+          `rgba(255,224,130,${Math.max(0, 1 - T / 0.5)})`,
+          R2 * 0.3
         );
+        renderer.ring(
+          effect.x,
+          effect.y,
+          R2 * (0.6 + T * 4.5),
+          `rgba(255,255,255,${Math.max(0, 1 - T / 0.35)})`,
+          R2 * 0.16
+        );
+        if (T < 0.1) {
+          const F = renderer.project(effect.x, effect.y, AIM_Z);
+          renderer.ellipse(F.x, F.y, S * R2 * 2, S * R2 * 1, `rgba(255,248,210,${0.6 * (1 - T / 0.1)})`);
+        }
+        if (T < 1) {
+          for (let i = 0; i < 3; i++) {
+            const A = T * 6 + i * Math.PI * 2 / 3, SP = renderer.project(
+              effect.x + Math.cos(A) * R2 * 1.3,
+              effect.y + Math.sin(A) * R2 * 0.5,
+              AIM_Z + R2 * 0.9
+            );
+            renderer.ellipse(SP.x, SP.y, S * R2 * 0.28, S * R2 * 0.28, `rgba(255,236,120,${FADE})`);
+          }
+        }
       }
     }
   };
@@ -13221,7 +13353,7 @@
   }
   var StormCloudPresentation = class extends FormationPresentation {
     draw(renderer, effect) {
-      const BODY_RADIUS = Math.max(0.2, effect.bodyRadius || 0.3), BODY_SCALE = Math.min(3.5, Math.max(1, BODY_RADIUS / 0.3)), CLOUD_SIZE = BODY_RADIUS * 4, ENTER = Math.min(1, effect.age / 0.5), EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5, Z = effect.z + Math.sin(effect.age * 3) * Math.min(0.1, BODY_RADIUS * 0.12), SPREAD = (1 - ENTER + EXIT) * BODY_RADIUS * 2.6;
+      const BODY_RADIUS = Math.max(0.2, Math.min(2.4, (effect.bodyRadius || 0.3) * 0.55)), BODY_SCALE = Math.min(3.5, Math.max(1, BODY_RADIUS / 0.3)), CLOUD_SIZE = BODY_RADIUS * 2.6, ENTER = Math.min(1, effect.age / 0.5), EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5, Z = effect.z + Math.sin(effect.age * 3) * Math.min(0.1, BODY_RADIUS * 0.12), SPREAD = (1 - ENTER + EXIT) * BODY_RADIUS * 2.6;
       for (let index = 0; index < 3; index++) {
         const ANGLE = index * Math.PI * 2 / 3;
         cloud(
@@ -15920,7 +16052,7 @@
         this.sceneKey = KEY2;
         this.sceneChangedAt = now;
         if (INSIDE && !WAS_INSIDE) {
-          this.resetZoom();
+          this.fitHall();
         } else if (!INSIDE) {
           this.towerShotUntil = now + 2600;
         }
@@ -15942,7 +16074,17 @@
         }
       } else if (INSIDE) {
         this.cameraReturning = false;
+        this.fitHall();
       }
+    }
+    // Inside the tower the whole hall is always in view: no panning or zooming, so tapping anywhere deploys.
+    fitHall() {
+      const { radiusX: RX2, radiusY: RY2 } = CONFIG.farm.arena, BASE = this.scenePresentation.cameraView(this.aspect), FIT = Math.min(BASE[0] / (RX2 + 1), BASE[1] / (RY2 * import_vector_sockets6.WORLD_DEPTH_PROJECTION + 3.5));
+      if (Math.abs(this.zoom - FIT) > 1e-6) {
+        this.zoom = FIT;
+        this.configure(this.scene, true);
+      }
+      this.setPan(0, 0);
     }
     // Going through the door fades out and each new place fades in, so the climb reads as a cut, not a pop.
     drawSceneFade(sim2, now) {
@@ -16483,7 +16625,9 @@
       lastPulse: R.STEP,
       pulse: R.STEP,
       beamTarget: R.STATE_KEY,
-      beamTargetZ: R.LINEAR
+      beamTargetZ: R.LINEAR,
+      bodyRadius: R.STEP,
+      bodyHeight: R.STEP
     });
     update(effect) {
       for (const KEY2 of Object.keys(_FormationEffectRender.renderSchema)) {
@@ -19034,6 +19178,21 @@
     } catch {
     }
   }
+  function plannedWorkers(world) {
+    const COUNTS = /* @__PURE__ */ new Map();
+    let total = 0;
+    for (const UNIT3 of world.units) {
+      if (!UNIT3.isBattleOnlySummon && !UNIT3.isFormationClone) {
+        COUNTS.set(UNIT3.species, (COUNTS.get(UNIT3.species) || 0) + 1);
+        total++;
+      }
+    }
+    let workers = 0;
+    for (const COUNT of COUNTS.values()) {
+      workers += Math.floor(world.workBasisPoints / 1e4 * COUNT + 1e-9);
+    }
+    return { total, workers };
+  }
   function workCut(world) {
     return Math.round((100 - world.workBasisPoints / 100) / 5) * 5;
   }
@@ -19284,7 +19443,34 @@
       DOLLAR2("saveNotice").textContent = e.message;
     }
   };
-  DOLLAR2("merge").onclick = () => active?.queue("merge");
+  var mergeHold = null;
+  function stopMergeHold() {
+    if (mergeHold) {
+      clearTimeout(mergeHold.delay);
+      clearInterval(mergeHold.repeat);
+      mergeHold = null;
+    }
+  }
+  DOLLAR2("merge").addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || DOLLAR2("merge").disabled) {
+      return;
+    }
+    stopMergeHold();
+    active?.queue("merge");
+    const HOLD = mergeHold = { delay: 0, repeat: 0 };
+    HOLD.delay = setTimeout(() => {
+      HOLD.repeat = setInterval(() => active?.queue("merge"), 100);
+    }, 350);
+  });
+  for (const EVENT of ["pointerup", "pointercancel", "pointerleave"]) {
+    DOLLAR2("merge").addEventListener(EVENT, stopMergeHold);
+  }
+  window.addEventListener("blur", stopMergeHold);
+  DOLLAR2("merge").onclick = (e) => {
+    if (e.detail === 0) {
+      active?.queue("merge");
+    }
+  };
   DOLLAR2("merge").addEventListener("keydown", (e) => {
     if (e.repeat && ["Enter", " "].includes(e.key)) {
       e.preventDefault();
@@ -19472,6 +19658,15 @@
   function paintRange(node) {
     const RANGE = Number(node.max) - Number(node.min) || 1;
     node.style.setProperty("--fill", `${(Number(node.value) - Number(node.min)) / RANGE * 100}%`);
+  }
+  var workSliderHeld = false;
+  DOLLAR2("workCutA").addEventListener("pointerdown", () => {
+    workSliderHeld = true;
+  });
+  for (const EVENT of ["pointerup", "pointercancel"]) {
+    window.addEventListener(EVENT, () => {
+      workSliderHeld = false;
+    });
   }
   DOLLAR2("workCutA").addEventListener("input", () => {
     paintRange(DOLLAR2("workCutA"));
@@ -19842,7 +20037,7 @@
   CANVAS.addEventListener(
     "wheel",
     (e) => {
-      if (!canUseWorldInput() || active?.world.scene !== "farm") {
+      if (!canUseWorldInput() || active?.world.scene !== "farm" || active.world.insideTower) {
         return;
       }
       const LINE = e.deltaMode === 1 ? 16 : 1;
@@ -19853,7 +20048,7 @@
   );
   CANVAS.addEventListener("pointerdown", (e) => {
     FOOD_FEEL.unlock();
-    if (e.pointerType === "touch" && canUseWorldInput() && active?.world.scene === "farm") {
+    if (e.pointerType === "touch" && canUseWorldInput() && active?.world.scene === "farm" && !active.world.insideTower) {
       PINCH_POINTERS.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (PINCH_POINTERS.size === 2) {
         stopFoodHold();
@@ -19869,33 +20064,34 @@
     if (e.button !== 0 || !canUseWorldInput() || panPointer) {
       return;
     }
-    const POINT2 = RENDERER.screenToWorld(e.clientX, e.clientY);
     panPointer = {
       id: e.pointerId,
-      // Food only goes on this farm's own ground; the land around it can be looked at and dragged.
-      mode: !(active.world.scene === "farm" && ARENA_GEOMETRY.inside(POINT2, "farm")) ? "pan" : fightActive() ? "deploy" : active.world.tower.active ? "pan" : "pending",
+      // Fighting: press to deploy. Inside the tower otherwise nothing moves. On the farm the land can be dragged.
+      mode: fightActive() ? "deploy" : active.world.insideTower ? "still" : "pan",
       startX: e.clientX,
       startY: e.clientY,
       x: e.clientX,
       y: e.clientY
     };
     if (panPointer.mode === "deploy") {
-      const SPOT = { x: POINT2.x, y: POINT2.y }, SEND = () => {
-        if (deploySpecies >= 0) {
+      const SEND = () => {
+        if (deploySpecies >= 0 && foodHold) {
+          const SPOT = RENDERER.screenToWorld(foodHold.clientX, foodHold.clientY);
           active.queue("deploy", { species: deploySpecies, x: SPOT.x, y: SPOT.y });
         }
       };
-      SEND();
       foodHold = {
         pointerId: e.pointerId,
-        point: SPOT,
+        clientX: e.clientX,
+        clientY: e.clientY,
         initialTimer: null,
         repeatTimer: setInterval(() => {
           if (foodHold?.pointerId === e.pointerId && canUseWorldInput() && panPointer?.mode === "deploy") {
             SEND();
           }
-        }, 150)
+        }, 50)
       };
+      SEND();
     }
     CANVAS.setPointerCapture?.(e.pointerId);
     e.preventDefault();
@@ -19918,13 +20114,9 @@
       stopWorldInput(e);
       return;
     }
-    const DISTANCE = Math.hypot(e.clientX - panPointer.startX, e.clientY - panPointer.startY);
-    if (panPointer.mode === "pending" && DISTANCE >= 8) {
-      stopFoodHold(e);
-      panPointer.mode = "pan";
-    } else if (panPointer.mode === "deploy" && DISTANCE >= 8) {
-      stopFoodHold(e);
-      panPointer.mode = "pan";
+    if (panPointer.mode === "deploy" && foodHold) {
+      foodHold.clientX = e.clientX;
+      foodHold.clientY = e.clientY;
     }
     if (panPointer.mode === "pan") {
       RENDERER.panByScreen(e.clientX - panPointer.x, e.clientY - panPointer.y);
@@ -20114,22 +20306,22 @@
     syncAttribute("bossChallenge", "aria-disabled", String(raidStartBlockReason() !== ""));
     syncFlag("menuTabFarms", "disabled", FARM_EVENT_ACTIVE);
     syncFlag("menuTabAbilities", "disabled", !personalGarden);
-    const WORK_WORLD = personalGarden || W, WORKERS = WORK_WORLD.workerCount, BREEDERS = Math.max(0, WORK_WORLD.units.length - WORKERS), CUT = workCut(WORK_WORLD);
+    const WORK_WORLD = personalGarden || W, WORKERS = WORK_WORLD.workerCount, CUT = workCut(WORK_WORLD), PLAN = plannedWorkers(WORK_WORLD), BREEDERS = PLAN.total - PLAN.workers;
     let note = `일꾼 ${WORKERS}마리 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분`, warn = false;
     if (WORK_WORLD.warehouseFull) {
-      note = "농장에 먹이가 가득해요 · 일꾼이 번식으로 돌아갔어요";
+      note = "농장에 먹이가 가득해요 · 일꾼은 쉬는 중이에요";
       warn = true;
     } else if (WORKERS === 0) {
       note = "일꾼이 없어서 먹이가 안 만들어져요";
       warn = true;
     }
     DOLLAR2("workCutA").disabled = !!farmSortTransition;
-    if (document.activeElement !== DOLLAR2("workCutA")) {
+    if (document.activeElement !== DOLLAR2("workCutA") && !workSliderHeld) {
       DOLLAR2("workCutA").value = String(CUT);
     }
     syncText("workHudNote", note);
     syncText("workHudBreed", `번식 ${BREEDERS}`);
-    syncText("workHudFood", `먹이 ${WORKERS}`);
+    syncText("workHudFood", `먹이 ${PLAN.workers}`);
     syncData("workHud", "warn", warn);
     paintRange(DOLLAR2("workCutA"));
     if (menuOpen && menuTab === "farms") {

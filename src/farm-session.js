@@ -312,6 +312,8 @@ class FormationEffectRender extends RENDER_OBJECT {
         pulse: R.STEP,
         beamTarget: R.STATE_KEY,
         beamTargetZ: R.LINEAR,
+        bodyRadius: R.STEP,
+        bodyHeight: R.STEP,
     });
     update(effect) {
         for (const KEY of Object.keys(FormationEffectRender.renderSchema)) {

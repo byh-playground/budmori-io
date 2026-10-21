@@ -101,7 +101,6 @@ const CONFIG = Object.freeze({
         work: Object.freeze({
             secondsPerFood: 8,
             tierBonus: 0.5,
-            resumeFoodShare: 0.5,
             refreshTicks: 20,
             defaultBasisPoints: 4000,
             maxFood: 50,
@@ -132,7 +131,7 @@ const CONFIG = Object.freeze({
             maxMaterials: MAX_GRADE_MATERIAL_COUNT,
         }),
         // Draft numbers: one unit every 0.2 s, at most 200 (the whole farm) on the field at once.
-        deploy: Object.freeze({ cooldownSeconds: 0.2, fieldCap: 200 }),
+        deploy: Object.freeze({ cooldownSeconds: 0.1, fieldCap: 200 }),
         // Draft numbers for the tower: every 5th floor is a mid-boss; fallen units sleep tier (max 3) floors.
         tower: Object.freeze({
             midBossEvery: 5,
@@ -1236,7 +1235,6 @@ const GARDEN = class Garden {
         this._benchRevision = 0;
         this._fieldCache = { revision: -1, bench: -1, list: [] };
         this._deployReadyTime = 0;
-        this._foodFull = false;
         // True while the troops are inside the tower: the battlefield is its hall, not the farm.
         this.insideTower = false;
         this.tower = {
@@ -1919,19 +1917,14 @@ const GARDEN = class Garden {
         return true;
     }
     // The slider's share of each species' adults work; the rest breed. A worker does not eat or breed, and its
-    // output scales with its tier. When the field is full of food everyone breeds until it is half empty again.
+    // output scales with its tier. A full field only pauses the food they make; who works never depends on it.
     refreshWorkers() {
         const WORK = CONFIG.farm.work,
             RATIO = this.workBasisPoints / 10000,
             NEXT = new Set(),
             RATES = new Map();
         let total = 0;
-        if (this.food.length >= WORK.maxFood) {
-            this._foodFull = true;
-        } else if (this.food.length <= WORK.maxFood * WORK.resumeFoodShare) {
-            this._foodFull = false;
-        }
-        if (this.scene === 'farm' && !this._foodFull) {
+        if (this.scene === 'farm') {
             const BY_SPECIES = new Map();
             for (const UNIT_LOCAL of this.roster.residents()) {
                 if (
@@ -1977,7 +1970,7 @@ const GARDEN = class Garden {
         assignWorkers(this, CONFIG);
     }
     get warehouseFull() {
-        return this._foodFull;
+        return this.food.length >= CONFIG.farm.work.maxFood;
     }
     get workerCount() {
         return this._workCount;

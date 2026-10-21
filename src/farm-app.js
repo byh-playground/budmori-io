@@ -563,6 +563,23 @@ function saveWorkSetting(value) {
     }
 }
 // The farm bar is [breed | food] with one cut: the share of the farm that breeds.
+// The split the slider asks for, counted over everyone (asleep or still growing too), so the numbers follow the
+// slider even while nobody can work right now.
+function plannedWorkers(world) {
+    const COUNTS = new Map();
+    let total = 0;
+    for (const UNIT of world.units) {
+        if (!UNIT.isBattleOnlySummon && !UNIT.isFormationClone) {
+            COUNTS.set(UNIT.species, (COUNTS.get(UNIT.species) || 0) + 1);
+            total++;
+        }
+    }
+    let workers = 0;
+    for (const COUNT of COUNTS.values()) {
+        workers += Math.floor((world.workBasisPoints / 10000) * COUNT + 1e-9);
+    }
+    return { total, workers };
+}
 function workCut(world) {
     return Math.round((100 - world.workBasisPoints / 100) / 5) * 5;
 }
@@ -822,7 +839,36 @@ DOLLAR('confirmImport').onclick = () => {
         DOLLAR('saveNotice').textContent = e.message;
     }
 };
-DOLLAR('merge').onclick = () => active?.queue('merge');
+// Holding the merge button merges once right away, then one more every 0.1 s while it stays down.
+let mergeHold = null;
+function stopMergeHold() {
+    if (mergeHold) {
+        clearTimeout(mergeHold.delay);
+        clearInterval(mergeHold.repeat);
+        mergeHold = null;
+    }
+}
+DOLLAR('merge').addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || DOLLAR('merge').disabled) {
+        return;
+    }
+    stopMergeHold();
+    active?.queue('merge');
+    const HOLD = (mergeHold = { delay: 0, repeat: 0 });
+    HOLD.delay = setTimeout(() => {
+        HOLD.repeat = setInterval(() => active?.queue('merge'), 100);
+    }, 350);
+});
+for (const EVENT of ['pointerup', 'pointercancel', 'pointerleave']) {
+    DOLLAR('merge').addEventListener(EVENT, stopMergeHold);
+}
+window.addEventListener('blur', stopMergeHold);
+// A pointer press already merged above; this is for the keyboard.
+DOLLAR('merge').onclick = (e) => {
+    if (e.detail === 0) {
+        active?.queue('merge');
+    }
+};
 DOLLAR('merge').addEventListener('keydown', (e) => {
     if (e.repeat && ['Enter', ' '].includes(e.key)) {
         e.preventDefault();
@@ -1020,6 +1066,15 @@ DOLLAR('farmPlotActions').addEventListener('click', (e) => {
 function paintRange(node) {
     const RANGE = Number(node.max) - Number(node.min) || 1;
     node.style.setProperty('--fill', `${((Number(node.value) - Number(node.min)) / RANGE) * 100}%`);
+}
+let workSliderHeld = false;
+DOLLAR('workCutA').addEventListener('pointerdown', () => {
+    workSliderHeld = true;
+});
+for (const EVENT of ['pointerup', 'pointercancel']) {
+    window.addEventListener(EVENT, () => {
+        workSliderHeld = false;
+    });
 }
 DOLLAR('workCutA').addEventListener('input', () => {
     paintRange(DOLLAR('workCutA'));
@@ -1427,7 +1482,7 @@ function pinchSpan() {
 CANVAS.addEventListener(
     'wheel',
     (e) => {
-        if (!canUseWorldInput() || active?.world.scene !== 'farm') {
+        if (!canUseWorldInput() || active?.world.scene !== 'farm' || active.world.insideTower) {
             return;
         }
         const LINE = e.deltaMode === 1 ? 16 : 1;
@@ -1438,7 +1493,12 @@ CANVAS.addEventListener(
 );
 CANVAS.addEventListener('pointerdown', (e) => {
     FOOD_FEEL.unlock();
-    if (e.pointerType === 'touch' && canUseWorldInput() && active?.world.scene === 'farm') {
+    if (
+        e.pointerType === 'touch' &&
+        canUseWorldInput() &&
+        active?.world.scene === 'farm' &&
+        !active.world.insideTower
+    ) {
         PINCH_POINTERS.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (PINCH_POINTERS.size === 2) {
             stopFoodHold();
@@ -1454,40 +1514,35 @@ CANVAS.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || !canUseWorldInput() || panPointer) {
         return;
     }
-    const POINT = RENDERER.screenToWorld(e.clientX, e.clientY);
     panPointer = {
         id: e.pointerId,
-        // Food only goes on this farm's own ground; the land around it can be looked at and dragged.
-        mode: !(active.world.scene === 'farm' && ArenaGeometry.inside(POINT, 'farm'))
-            ? 'pan'
-            : fightActive()
-              ? 'deploy'
-              : active.world.tower.active
-                ? 'pan'
-                : 'pending',
+        // Fighting: press to deploy. Inside the tower otherwise nothing moves. On the farm the land can be dragged.
+        mode: fightActive() ? 'deploy' : active.world.insideTower ? 'still' : 'pan',
         startX: e.clientX,
         startY: e.clientY,
         x: e.clientX,
         y: e.clientY,
     };
     if (panPointer.mode === 'deploy') {
-        const SPOT = { x: POINT.x, y: POINT.y },
-            SEND = () => {
-                if (deploySpecies >= 0) {
-                    active.queue('deploy', { species: deploySpecies, x: SPOT.x, y: SPOT.y });
-                }
-            };
-        SEND();
+        // Press to drop a unit, keep pressing (and dragging) to keep dropping one every 0.1 s where the finger is.
+        const SEND = () => {
+            if (deploySpecies >= 0 && foodHold) {
+                const SPOT = RENDERER.screenToWorld(foodHold.clientX, foodHold.clientY);
+                active.queue('deploy', { species: deploySpecies, x: SPOT.x, y: SPOT.y });
+            }
+        };
         foodHold = {
             pointerId: e.pointerId,
-            point: SPOT,
+            clientX: e.clientX,
+            clientY: e.clientY,
             initialTimer: null,
             repeatTimer: setInterval(() => {
                 if (foodHold?.pointerId === e.pointerId && canUseWorldInput() && panPointer?.mode === 'deploy') {
                     SEND();
                 }
-            }, 150),
+            }, 50),
         };
+        SEND();
     }
     CANVAS.setPointerCapture?.(e.pointerId);
     e.preventDefault();
@@ -1510,13 +1565,9 @@ CANVAS.addEventListener('pointermove', (e) => {
         stopWorldInput(e);
         return;
     }
-    const DISTANCE = Math.hypot(e.clientX - panPointer.startX, e.clientY - panPointer.startY);
-    if (panPointer.mode === 'pending' && DISTANCE >= 8) {
-        stopFoodHold(e);
-        panPointer.mode = 'pan';
-    } else if (panPointer.mode === 'deploy' && DISTANCE >= 8) {
-        stopFoodHold(e);
-        panPointer.mode = 'pan';
+    if (panPointer.mode === 'deploy' && foodHold) {
+        foodHold.clientX = e.clientX;
+        foodHold.clientY = e.clientY;
     }
     if (panPointer.mode === 'pan') {
         RENDERER.panByScreen(e.clientX - panPointer.x, e.clientY - panPointer.y);
@@ -1748,24 +1799,25 @@ function sync(display, now, notices) {
     syncFlag('menuTabAbilities', 'disabled', !personalGarden);
     const WORK_WORLD = personalGarden || W,
         WORKERS = WORK_WORLD.workerCount,
-        BREEDERS = Math.max(0, WORK_WORLD.units.length - WORKERS),
-        CUT = workCut(WORK_WORLD);
+        CUT = workCut(WORK_WORLD),
+        PLAN = plannedWorkers(WORK_WORLD),
+        BREEDERS = PLAN.total - PLAN.workers;
     let note = `일꾼 ${WORKERS}마리 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분`,
         warn = false;
     if (WORK_WORLD.warehouseFull) {
-        note = '농장에 먹이가 가득해요 · 일꾼이 번식으로 돌아갔어요';
+        note = '농장에 먹이가 가득해요 · 일꾼은 쉬는 중이에요';
         warn = true;
     } else if (WORKERS === 0) {
         note = '일꾼이 없어서 먹이가 안 만들어져요';
         warn = true;
     }
     DOLLAR('workCutA').disabled = !!farmSortTransition;
-    if (document.activeElement !== DOLLAR('workCutA')) {
+    if (document.activeElement !== DOLLAR('workCutA') && !workSliderHeld) {
         DOLLAR('workCutA').value = String(CUT);
     }
     syncText('workHudNote', note);
     syncText('workHudBreed', `번식 ${BREEDERS}`);
-    syncText('workHudFood', `먹이 ${WORKERS}`);
+    syncText('workHudFood', `먹이 ${PLAN.workers}`);
     syncData('workHud', 'warn', warn);
     paintRange(DOLLAR('workCutA'));
     if (menuOpen && menuTab === 'farms') {
