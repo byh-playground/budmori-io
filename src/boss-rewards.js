@@ -181,6 +181,15 @@ function shufflePayouts(payouts, seed) {
     return { payouts, rngState: RNG.state };
 }
 
+// Species waiting for room, in queue order, for the farm panel.
+export function bossRewardQueueBySpecies(world) {
+    const COUNTS = new Map();
+    for (const ENTRY of world.bossRewardInventory || []) {
+        COUNTS.set(ENTRY.species, (COUNTS.get(ENTRY.species) || 0) + ENTRY.count);
+    }
+    return [...COUNTS].filter(([, count]) => count > 0);
+}
+
 export function getBossRewardQueueCount(world, species, tier = 1) {
     return (world.bossRewardInventory || [])
         .filter((entry) => entry.species === species && entry.tier === tier)
@@ -228,10 +237,7 @@ function grantPendingBossAcquisitionsCommitted(world) {
         return [];
     }
     const GRANTED = [];
-    let capacity = Math.max(
-        0,
-        world.capacity - (Number.isSafeInteger(world.ownedPopulation) ? world.ownedPopulation : world.units.length),
-    );
+    let capacity = Math.max(0, world.freeRoom());
     for (const GROUP of world.bossRewardInventory) {
         if (capacity <= 0) {
             break;

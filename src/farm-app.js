@@ -13,7 +13,12 @@ import { CombatFeel } from './combat-feel.js';
 import { renderAbilityTreeMarkup, renderAbilitySpeciesTabsMarkup } from './ability-tree.js';
 import { canResetPlayerProgression, getAbilityPointsLeft } from './ability-progression.js';
 import { SPECIES_ABILITY_DEFINITIONS } from './ability-catalog.js';
-import { advanceBossRewardReveal, openAllBossRewardBoxes, bossSpeciesOwned } from './boss-rewards.js';
+import {
+    advanceBossRewardReveal,
+    openAllBossRewardBoxes,
+    bossRewardQueueBySpecies,
+    bossSpeciesOwned,
+} from './boss-rewards.js';
 import { workersBySpecies } from './farm-work.js';
 import { speciesById, giantSpeciesName, speciesRewardName } from './species-catalog.js';
 import { HELP_MAX_FRAME_MS, HELP_PLAYBACK_RATE, helpSceneById } from './help-scenes.js';
@@ -1131,6 +1136,19 @@ DOLLAR('speciesRingAuto').addEventListener('click', () => {
     active.queue('farm-breed-weights', { weights: null });
     drawSpeciesRoles(WORLD);
 });
+// Which species wait for room, so a long queue reads as "who is next" rather than one number.
+function drawRewardQueue(world) {
+    const QUEUE = bossRewardQueueBySpecies(world),
+        BOX = DOLLAR('farmQueue'),
+        HTML = QUEUE.map(
+            ([species, count]) =>
+                `<span class="farm-queue__chip"><img src="./assets/troops/${speciesById(species).asset}" alt="${speciesById(species).name}" width="20" height="20"><b>${count}</b></span>`,
+        ).join('');
+    BOX.hidden = QUEUE.length === 0;
+    if (BOX.innerHTML !== HTML) {
+        BOX.innerHTML = HTML;
+    }
+}
 function drawFarmPanel() {
     const W = personalGarden || active?.world;
     if (!W || farmPanelRevision === W.progressRevision) {
@@ -1141,6 +1159,7 @@ function drawFarmPanel() {
     DOLLAR('farmStatPlaced').textContent = String(W.ownedPopulation);
     DOLLAR('farmStatCapacity').textContent = `/ ${W.capacity}`;
     DOLLAR('farmStatPending').textContent = String(W.pendingRewardPopulation);
+    drawRewardQueue(W);
     syncFlag('farmLockNote', 'hidden', !LOCKED || !!farmSortTransition);
     drawSpeciesRoles(W);
     for (const BUTTON of DOLLAR('farmPlotActions').querySelectorAll('[data-farm-sort]')) {

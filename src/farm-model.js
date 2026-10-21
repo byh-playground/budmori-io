@@ -1378,6 +1378,12 @@ const GARDEN = class Garden {
     get ownedPopulation() {
         return this.roster.ownedPopulation();
     }
+    // The one answer to "may another unit join the farm?": a placed unit and a reserved birth each take one slot.
+    // A birth that already holds a reservation passes its own slot back by naming itself as `reservationOwner`.
+    freeRoom(reservationOwner = null) {
+        const OWN = reservationOwner && this._activeBreedReservations?.has(reservationOwner) ? 1 : 0;
+        return this.capacity - this.ownedPopulation - this.birthReservations + OWN;
+    }
     get birthReservations() {
         return this._activeBreedReservations?.size || 0;
     }
@@ -1813,9 +1819,7 @@ const GARDEN = class Garden {
     }
     spawn(species, tier, x, y, { birthReservationOwner = null } = {}) {
         if (this.scene === 'farm') {
-            const HAS_BIRTH_RESERVATION =
-                birthReservationOwner && this._activeBreedReservations?.has(birthReservationOwner);
-            if (this.ownedPopulation + this.birthReservations - Number(!!HAS_BIRTH_RESERVATION) >= this.capacity) {
+            if (this.freeRoom(birthReservationOwner) <= 0) {
                 return null;
             }
         } else if (this.units.length >= SIMULATION_SCENES[this.scene].capacity(this)) {
@@ -2520,7 +2524,7 @@ const GARDEN = class Garden {
                 b.fed &&
                 a.cooldown <= 0 &&
                 b.cooldown <= 0 &&
-                this.ownedPopulation + this.birthReservations - Number(!!BIRTH_RESERVATION) < this.capacity &&
+                this.freeRoom(BIRTH_RESERVATION ? OWNER : null) > 0 &&
                 this._unitIsActive(a) &&
                 this._unitIsActive(b) &&
                 RESERVATIONS_AVAILABLE &&
@@ -2691,7 +2695,7 @@ const GARDEN = class Garden {
                 this.releaseMate(unit);
                 return null;
             }
-            if (this.ownedPopulation + this.birthReservations >= this.capacity) {
+            if (this.freeRoom() <= 0) {
                 this.releaseMate(unit);
                 return null;
             }

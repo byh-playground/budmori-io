@@ -511,3 +511,18 @@ html.help-scene #hand {
 .help-dots button[aria-current='true'] {
     background: var(--ui-ink-2);
 }
+
+.farm-queue {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--ui-s1);
+    margin: 0 0 var(--ui-s3);
+}
+.farm-queue__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 1px var(--ui-s2) 1px 2px;
+    border: var(--ui-bw) solid var(--ui-line);
+    border-radius: var(--ui-r-s);
+}

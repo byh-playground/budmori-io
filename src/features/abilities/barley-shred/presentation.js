@@ -23,7 +23,7 @@ export class BarleyArmorShredPresentation {
                     x: CENTER.x + Math.cos(ANGLE) * renderer.scale * (0.22 + T * 0.18),
                     y: CENTER.y + Math.sin(ANGLE) * renderer.scale * (0.22 + T * 0.18),
                 };
-            renderer.line(FROM, TO, renderer.scale * 0.055, `rgba(229,242,229,${ALPHA})`);
+            renderer.line(FROM, TO, 0.055, `rgba(229,242,229,${ALPHA})`);
         }
     }
     drawStatus(renderer, target, amount) {
