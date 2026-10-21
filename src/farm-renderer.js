@@ -648,6 +648,7 @@ const DIORAMA = class Diorama {
             }
         }
         this.drawDanger(sim2);
+        feel?.drawGround(this, this.displayTimeMs);
         const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2);
         if (BOSS_VISIBLE) {
             this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, '#38472c33');

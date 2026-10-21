@@ -16327,6 +16327,7 @@
         }
       }
       this.drawDanger(sim2);
+      feel?.drawGround(this, this.displayTimeMs);
       const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2);
       if (BOSS_VISIBLE) {
         this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, "#38472c33");
@@ -18411,13 +18412,25 @@
     e.heard = false;
   }
   var BurstPresentation = class {
+    // The ring lies on the floor, so it is drawn under every actor; on top of a tall body it read as a stray circle.
+    drawGround(renderer, event, progress) {
+      const T = Math.min(1, progress / this.durationFraction), ALPHA = 1 - T;
+      if (ALPHA > 0) {
+        renderer.ring(
+          event.x,
+          event.y,
+          0.15 + T * this.size(event),
+          `rgba(${this.color},${ALPHA * 0.8})`,
+          this.ringWidth
+        );
+      }
+    }
     draw(renderer, event, progress) {
       const T = Math.min(1, progress / this.durationFraction), ALPHA = 1 - T;
       if (ALPHA <= 0) {
         return;
       }
       const SIZE = this.size(event), COLOR = this.color;
-      renderer.ring(event.x, event.y, 0.15 + T * SIZE, `rgba(${COLOR},${ALPHA * 0.8})`, this.ringWidth);
       const CENTER = renderer.project(event.x, event.y, event.z || 0.1), N = this.particleCount;
       for (let i = 0; i < N; i++) {
         const ANGLE = i * Math.PI * 2 / N + event.sequence % 11 * 0.19, DISTANCE = (0.12 + T * SIZE) * this.distanceMultiplier, POINT2 = renderer.project(
@@ -18662,6 +18675,14 @@
     }
     sound(event) {
       COMBAT_EFFECT_PRESENTATIONS.get(event.kind)?.sound?.(this.audio, event);
+    }
+    drawGround(r, displayTimeMs) {
+      for (const E of this.effects) {
+        const AGE = displayTimeMs - E.at;
+        if (AGE >= 0 && AGE <= 430) {
+          COMBAT_EFFECT_PRESENTATIONS.get(E.kind)?.drawGround?.(r, E, AGE / 430);
+        }
+      }
     }
     draw(r, displayTimeMs) {
       for (const E of this.effects) {
