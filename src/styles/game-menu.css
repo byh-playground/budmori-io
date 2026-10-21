@@ -447,9 +447,9 @@ html.help-scene #fightRetreat {
 }
 
 /* 도움말 카드: 실제 게임 데모 + 한 줄 캡션 + 규칙 한두 줄 */
+/* 크기는 스크립트가 정해요: 실제 화면 비율 그대로 줄여서 보여줘요. */
 .help-demo {
-    aspect-ratio: 3 / 2;
-    max-height: 46vh;
+    position: relative;
     margin: 0 auto var(--ui-s2);
     overflow: hidden;
     border: var(--ui-bw) solid var(--ui-line);
@@ -457,9 +457,10 @@ html.help-scene #fightRetreat {
     background: #1c2433;
 }
 .help-demo iframe {
-    display: block;
-    width: 100%;
-    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
     border: 0;
     pointer-events: none;
 }
