@@ -1385,13 +1385,18 @@ DOLLAR('gameMenuPanel').onkeydown = (e) => {
 };
 const CANVAS = DOLLAR('world');
 // Compare with the actual DOM so event handlers and route changes remain authoritative.
-const FLOOR_KIND = { battle: '전투', elite: '정예', mid: '중간 보스', rest: '쉼터', relic: '유물' };
+const FLOOR_KIND = { battle: '전투', elite: '정예', mid: '중간 보스', rest: '쉼터', relic: '유물', boost: '강화' };
 const DOOR_TEXT = {
     battle: '보스 한 마리',
     elite: '더 세지만 보상 ×2',
     mid: '피할 수 없어요 · 보상 ×3',
     rest: '잠든 병력을 모두 깨워요',
 };
+function boostDoorCard(tower, index) {
+    const ATTACK = tower.boostOffer === 'attack',
+        VALUE = CONFIG.farm.tower.boost[tower.boostOffer];
+    return `<button type="button" class="door door--boost" data-door="${index}"><b>${ATTACK ? '⚔ 공격 강화' : '♥ 체력 강화'}</b><small>이번 도전 동안 모든 유닛 ${ATTACK ? '공격' : '체력'} ×${VALUE}</small></button>`;
+}
 function relicDoorCard(tower, index) {
     const ID = tower.offer,
         DEFINITION = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === ID),
@@ -1425,7 +1430,7 @@ function syncTower(garden, home, event) {
     // A banner announces each new floor as the boss drops in, and the rest stop.
     const NEXT_BANNER = !CLIMBING
         ? ''
-        : (T.kind === 'rest' || T.kind === 'relic') && T.doors.length
+        : (T.kind === 'rest' || T.kind === 'relic' || T.kind === 'boost') && T.doors.length
           ? `r${T.floor}`
           : event?.phase === 'dropping'
             ? `e${event.encounterId}`
@@ -1446,14 +1451,16 @@ function syncTower(garden, home, event) {
     const DOORS = CLIMBING && event?.phase === 'idle' && T.doors.length > 0;
     syncFlag('towerDoors', 'hidden', !DOORS);
     if (DOORS) {
-        const KEY = `${T.doors.join()}|${T.floor}|${SLEEPERS}|${T.offer}|${T.relics.size}`;
+        const KEY = `${T.doors.join()}|${T.floor}|${SLEEPERS}|${T.offer}|${T.relics.size}|${T.boostOffer}|${T.boost.attack}|${T.boost.hp}`;
         if (KEY !== doorKey) {
             doorKey = KEY;
             DOLLAR('doorCards').innerHTML = T.doors
                 .map((d, i) =>
                     d === 'relic'
                         ? relicDoorCard(T, i)
-                        : `<button type="button" class="door door--${d}" data-door="${i}"><b>${FLOOR_KIND[d]}</b><small>${DOOR_TEXT[d]}</small></button>`,
+                        : d === 'boost'
+                          ? boostDoorCard(T, i)
+                          : `<button type="button" class="door door--${d}" data-door="${i}"><b>${FLOOR_KIND[d]}</b><small>${DOOR_TEXT[d]}</small></button>`,
                 )
                 .join('');
         }
@@ -1463,9 +1470,15 @@ function syncTower(garden, home, event) {
                 ? `${T.floor}층 쉼터 · 잠든 병력이 모두 깼어요`
                 : T.kind === 'relic'
                   ? `${T.floor}층 유물을 얻었어요`
-                  : `${T.floor}층 돌파!`,
+                  : T.kind === 'boost'
+                    ? `${T.floor}층 강화를 받았어요`
+                    : `${T.floor}층 돌파!`,
         );
-        syncText('doorsNote', `다음은 ${T.floor + 1}층 · 잠든 병력 ${SLEEPERS}마리`);
+        const BOOSTED = T.boost.attack > 1 || T.boost.hp > 1;
+        syncText(
+            'doorsNote',
+            `다음은 ${T.floor + 1}층 · 잠든 병력 ${SLEEPERS}마리${BOOSTED ? ` · 강화 공격 ×${T.boost.attack.toFixed(2)} 체력 ×${T.boost.hp.toFixed(2)}` : ''}`,
+        );
     } else {
         doorKey = '';
     }

@@ -767,8 +767,8 @@
 
   // src/unit-stats.js
   function createBaseStats(tier, speciesProfile) {
-    let maxHp = TIER_HP;
-    let attackPower = TIER_ATTACK;
+    let maxHp = TIER_HP * RUN_BOOST.hp;
+    let attackPower = TIER_ATTACK * RUN_BOOST.attack;
     for (let resultTier = 2; resultTier <= tier; resultTier++) {
       const TRANSITION_MULTIPLIER = UNIT_GRADES[resultTier - 1].materialCost / 2;
       maxHp *= TIER_HP_SCALE * TRANSITION_MULTIPLIER;
@@ -780,6 +780,25 @@
       ...COMMON_UNIT_STAT_DEFAULTS,
       ...speciesProfile
     });
+  }
+  function fillBaseStats() {
+    BASE_STATS_BY_PROFILE.clear();
+    for (const PROFILE of [COMMON_UNIT_STAT_DEFAULTS, ...COMMON_UNIT_STAT_PROFILES]) {
+      BASE_STATS_BY_PROFILE.set(
+        PROFILE,
+        Array.from(
+          {
+            length: MAX_UNIT_TIER
+          },
+          (_, index) => createBaseStats(index + 1, PROFILE)
+        )
+      );
+    }
+  }
+  function setRunStatBoost(attack = 1, hp = 1) {
+    RUN_BOOST.attack = attack;
+    RUN_BOOST.hp = hp;
+    fillBaseStats();
   }
   function baseUnitStatsFor(tier, species) {
     tier = Math.max(1, Math.min(MAX_UNIT_TIER, Number.isInteger(tier) ? tier : 1));
@@ -916,7 +935,7 @@
       target.hp = value;
     }
   }
-  var TIER_HP, TIER_HP_SCALE, TIER_ATTACK, TIER_ATTACK_SCALE, ARMOR_SCALE, COMMON_UNIT_STAT_DEFAULTS, COMMON_UNIT_STAT_PROFILES, BASE_STATS_BY_PROFILE;
+  var TIER_HP, TIER_HP_SCALE, TIER_ATTACK, TIER_ATTACK_SCALE, ARMOR_SCALE, COMMON_UNIT_STAT_DEFAULTS, COMMON_UNIT_STAT_PROFILES, RUN_BOOST, BASE_STATS_BY_PROFILE;
   var init_unit_stats = __esm({
     "src/unit-stats.js"() {
       init_unit_grades();
@@ -952,17 +971,9 @@
           })
         )
       );
-      BASE_STATS_BY_PROFILE = new Map(
-        [COMMON_UNIT_STAT_DEFAULTS, ...COMMON_UNIT_STAT_PROFILES].map((profile) => [
-          profile,
-          Array.from(
-            {
-              length: MAX_UNIT_TIER
-            },
-            (_, index) => createBaseStats(index + 1, profile)
-          )
-        ])
-      );
+      RUN_BOOST = { attack: 1, hp: 1 };
+      BASE_STATS_BY_PROFILE = /* @__PURE__ */ new Map();
+      fillBaseStats();
     }
   });
 
@@ -6592,9 +6603,9 @@
         firstClearAcquisitionChance: 0.15,
         farmEventAcquisitionMultiplier: 2,
         stageHpBase: 200,
-        stageHpMultiplier: 1.5,
+        stageHpMultiplier: 1.2,
         stageAttackBase: 4,
-        stageAttackMultiplier: 1.2,
+        stageAttackMultiplier: 1.1,
         stageXpBase: 20,
         stageXpMultiplier: 1.5,
         stageRollMultiplier: 1.5,
@@ -7339,6 +7350,9 @@
             topFloor: 61,
             relicSlots: 3,
             relicMaxLevel: 5,
+            // A strengthening door gives one run-long multiplier to every unit. It grows with the same steps as the boss
+            // (hp 1.2, attack 1.1); attackShare is how often the offer is the attack card.
+            boost: Object.freeze({ attack: 1.1, hp: 1.2, attackShare: 0.5 }),
             // The troops walk to the tower door at the back of the farm and go in; the door is where the fence opens.
             marchSeconds: 4.5,
             marchSpeed: 7,
@@ -8321,6 +8335,8 @@
             doors: [],
             offer: "",
             relics: /* @__PURE__ */ new Map(),
+            boost: { attack: 1, hp: 1 },
+            boostOffer: "attack",
             sleepUntil: /* @__PURE__ */ new Map(),
             record: false
           };
@@ -9089,6 +9105,8 @@
             doors: [],
             offer: "",
             relics: /* @__PURE__ */ new Map(),
+            boost: { attack: 1, hp: 1 },
+            boostOffer: "attack",
             sleepUntil: SLEEP,
             record: false
           };
@@ -9154,10 +9172,12 @@
           if (OFFERS.length) {
             POOL.push("relic");
           }
+          POOL.push("boost");
           while (POOL.length > 2) {
             POOL.splice(Math.floor(this.random() * POOL.length), 1);
           }
           this.tower.offer = POOL.includes("relic") ? OFFERS[Math.floor(this.random() * OFFERS.length)] : "";
+          this.tower.boostOffer = this.random() < CONFIG.farm.tower.boost.attackShare ? "attack" : "hp";
           return POOL;
         }
         // Between floors everybody waits in the hand; the fallen start sleeping for tier (max 3) floors.
@@ -9211,7 +9231,31 @@
             this.markProgressChanged();
             return true;
           }
+          if (DOOR === "boost") {
+            const BOOST = CONFIG.farm.tower.boost;
+            T.boost[T.boostOffer] *= BOOST[T.boostOffer];
+            this._applyRunBoost();
+            T.kind = "boost";
+            T.doors = this._rollDoors();
+            this.combat("tower-boost", { floor: T.floor });
+            this.markProgressChanged();
+            return true;
+          }
           return this._beginFloor(DOOR);
+        }
+        _clearRunBoost() {
+          this.tower.boost = { attack: 1, hp: 1 };
+          this._applyRunBoost();
+        }
+        // The run's strengthening cards change every unit's stats; hit points never stay above the new top.
+        _applyRunBoost() {
+          const BOOST = this.tower.boost;
+          setRunStatBoost(BOOST.attack, BOOST.hp);
+          for (const UNIT_LOCAL of this.unitCollection.items) {
+            if (UNIT_LOCAL.hp > 0 && !UNIT_LOCAL.isFormationClone) {
+              UNIT_LOCAL.hp = Math.min(UNIT_LOCAL.hp, STATS(UNIT_LOCAL.tier, UNIT_LOCAL.species).maxHp);
+            }
+          }
         }
         // Stopping after a cleared floor keeps everything that was won.
         leaveTower() {
@@ -9222,6 +9266,7 @@
           return true;
         }
         _endTower() {
+          this._clearRunBoost();
           this.tower.active = false;
           this.tower.doors = [];
           this._benched.clear();
@@ -11257,6 +11302,7 @@
           this.cleanupBattleSummons();
           const CLIMBING = outcome === "victory" && this.tower.active && this.tower.floor < CONFIG.farm.tower.topFloor;
           if (!CLIMBING) {
+            this._clearRunBoost();
             this.tower.active = false;
             this.tower.doors = [];
             this._benched.clear();
@@ -20109,13 +20155,17 @@
     }
   };
   var CANVAS = DOLLAR2("world");
-  var FLOOR_KIND = { battle: "전투", elite: "정예", mid: "중간 보스", rest: "쉼터", relic: "유물" };
+  var FLOOR_KIND = { battle: "전투", elite: "정예", mid: "중간 보스", rest: "쉼터", relic: "유물", boost: "강화" };
   var DOOR_TEXT = {
     battle: "보스 한 마리",
     elite: "더 세지만 보상 ×2",
     mid: "피할 수 없어요 · 보상 ×3",
     rest: "잠든 병력을 모두 깨워요"
   };
+  function boostDoorCard(tower, index) {
+    const ATTACK2 = tower.boostOffer === "attack", VALUE = CONFIG.farm.tower.boost[tower.boostOffer];
+    return `<button type="button" class="door door--boost" data-door="${index}"><b>${ATTACK2 ? "⚔ 공격 강화" : "♥ 체력 강화"}</b><small>이번 도전 동안 모든 유닛 ${ATTACK2 ? "공격" : "체력"} ×${VALUE}</small></button>`;
+  }
   function relicDoorCard(tower, index) {
     const ID = tower.offer, DEFINITION13 = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === ID), LEVEL = tower.relics.get(ID) || 0, VALUE = Math.round(formationUpgradeValue(DEFINITION13, LEVEL + 1) * 10) / 10, GAIN = LEVEL ? `Lv.${LEVEL} → ${LEVEL + 1}` : "새 유물";
     return `<button type="button" class="door door--relic" data-door="${index}"><b>${RELIC_ICONS[ID]} ${DEFINITION13.name}</b><small>${GAIN} · ${DEFINITION13.description || ""}${LEVEL ? ` (→ ${VALUE}${DEFINITION13.upgradeUnit})` : ""}</small></button>`;
@@ -20139,7 +20189,7 @@
     if (CLIMBING) {
       syncText("floorNow", `${T.floor}층 · ${FLOOR_KIND[T.kind]}`);
     }
-    const NEXT_BANNER = !CLIMBING ? "" : (T.kind === "rest" || T.kind === "relic") && T.doors.length ? `r${T.floor}` : event?.phase === "dropping" ? `e${event.encounterId}` : "";
+    const NEXT_BANNER = !CLIMBING ? "" : (T.kind === "rest" || T.kind === "relic" || T.kind === "boost") && T.doors.length ? `r${T.floor}` : event?.phase === "dropping" ? `e${event.encounterId}` : "";
     if (NEXT_BANNER && NEXT_BANNER !== bannerKey) {
       DOLLAR2("floorBannerNum").textContent = `${T.floor}층`;
       DOLLAR2("floorBannerKind").textContent = FLOOR_KIND[T.kind];
@@ -20156,18 +20206,22 @@
     const DOORS = CLIMBING && event?.phase === "idle" && T.doors.length > 0;
     syncFlag("towerDoors", "hidden", !DOORS);
     if (DOORS) {
-      const KEY2 = `${T.doors.join()}|${T.floor}|${SLEEPERS}|${T.offer}|${T.relics.size}`;
+      const KEY2 = `${T.doors.join()}|${T.floor}|${SLEEPERS}|${T.offer}|${T.relics.size}|${T.boostOffer}|${T.boost.attack}|${T.boost.hp}`;
       if (KEY2 !== doorKey) {
         doorKey = KEY2;
         DOLLAR2("doorCards").innerHTML = T.doors.map(
-          (d, i) => d === "relic" ? relicDoorCard(T, i) : `<button type="button" class="door door--${d}" data-door="${i}"><b>${FLOOR_KIND[d]}</b><small>${DOOR_TEXT[d]}</small></button>`
+          (d, i) => d === "relic" ? relicDoorCard(T, i) : d === "boost" ? boostDoorCard(T, i) : `<button type="button" class="door door--${d}" data-door="${i}"><b>${FLOOR_KIND[d]}</b><small>${DOOR_TEXT[d]}</small></button>`
         ).join("");
       }
       syncText(
         "doorsTitle",
-        T.kind === "rest" ? `${T.floor}층 쉼터 · 잠든 병력이 모두 깼어요` : T.kind === "relic" ? `${T.floor}층 유물을 얻었어요` : `${T.floor}층 돌파!`
+        T.kind === "rest" ? `${T.floor}층 쉼터 · 잠든 병력이 모두 깼어요` : T.kind === "relic" ? `${T.floor}층 유물을 얻었어요` : T.kind === "boost" ? `${T.floor}층 강화를 받았어요` : `${T.floor}층 돌파!`
       );
-      syncText("doorsNote", `다음은 ${T.floor + 1}층 · 잠든 병력 ${SLEEPERS}마리`);
+      const BOOSTED = T.boost.attack > 1 || T.boost.hp > 1;
+      syncText(
+        "doorsNote",
+        `다음은 ${T.floor + 1}층 · 잠든 병력 ${SLEEPERS}마리${BOOSTED ? ` · 강화 공격 ×${T.boost.attack.toFixed(2)} 체력 ×${T.boost.hp.toFixed(2)}` : ""}`
+      );
     } else {
       doorKey = "";
     }

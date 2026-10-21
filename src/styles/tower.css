@@ -91,6 +91,9 @@
 .door--rest {
     border-color: var(--ui-gauge-ally);
 }
+.door--boost {
+    border-color: var(--ui-focus);
+}
 .door--mid {
     border-color: var(--ui-focus);
 }

@@ -39,9 +39,11 @@ export const COMMON_UNIT_STAT_PROFILES = Object.freeze(
             }),
     ),
 );
+// One tower run's strengthening cards multiply every unit alike; the run sets them and the end of the run clears them.
+const RUN_BOOST = { attack: 1, hp: 1 };
 function createBaseStats(tier, speciesProfile) {
-    let maxHp = TIER_HP;
-    let attackPower = TIER_ATTACK;
+    let maxHp = TIER_HP * RUN_BOOST.hp;
+    let attackPower = TIER_ATTACK * RUN_BOOST.attack;
     for (let resultTier = 2; resultTier <= tier; resultTier++) {
         const TRANSITION_MULTIPLIER = UNIT_GRADES[resultTier - 1].materialCost / 2;
         maxHp *= TIER_HP_SCALE * TRANSITION_MULTIPLIER;
@@ -57,17 +59,27 @@ function createBaseStats(tier, speciesProfile) {
 
 // Only frozen definition inputs are cached. Unit state and caller overrides are
 // read anew, so tier/species changes, buffs, and restored objects cannot go stale.
-const BASE_STATS_BY_PROFILE = new Map(
-    [COMMON_UNIT_STAT_DEFAULTS, ...COMMON_UNIT_STAT_PROFILES].map((profile) => [
-        profile,
-        Array.from(
-            {
-                length: MAX_UNIT_TIER,
-            },
-            (_, index) => createBaseStats(index + 1, profile),
-        ),
-    ]),
-);
+const BASE_STATS_BY_PROFILE = new Map();
+function fillBaseStats() {
+    BASE_STATS_BY_PROFILE.clear();
+    for (const PROFILE of [COMMON_UNIT_STAT_DEFAULTS, ...COMMON_UNIT_STAT_PROFILES]) {
+        BASE_STATS_BY_PROFILE.set(
+            PROFILE,
+            Array.from(
+                {
+                    length: MAX_UNIT_TIER,
+                },
+                (_, index) => createBaseStats(index + 1, PROFILE),
+            ),
+        );
+    }
+}
+fillBaseStats();
+export function setRunStatBoost(attack = 1, hp = 1) {
+    RUN_BOOST.attack = attack;
+    RUN_BOOST.hp = hp;
+    fillBaseStats();
+}
 export function baseUnitStatsFor(tier, species) {
     tier = Math.max(1, Math.min(MAX_UNIT_TIER, Number.isInteger(tier) ? tier : 1));
     const PROFILE = COMMON_UNIT_STAT_PROFILES[species] || COMMON_UNIT_STAT_DEFAULTS;
