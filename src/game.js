@@ -303,12 +303,11 @@
       if (UNIT3.down > 0) {
         UNIT3.down = Math.min(UNIT3.down, 0.05);
       }
-      if (!UNIT3.mature && pool >= BREEDING.matureMeals) {
-        pool -= BREEDING.matureMeals;
+      if (!UNIT3.mature) {
         UNIT3.growthElapsed = UNIT3.growthDuration;
       }
     }
-    const COST = 2 + BREEDING.matureMeals, ROUND_SECONDS = BREEDING.cooldownSeconds + BREEDING.growthSeconds, ROUNDS = Math.floor(AWAY / ROUND_SECONDS), CAPACITY = world.capacity, SPECIES_COUNT2 = config.unit.speciesCount, ADULTS = new Array(SPECIES_COUNT2).fill(0);
+    const COST = 2, ROUND_SECONDS = BREEDING.cooldownSeconds + BREEDING.growthSeconds, ROUNDS = Math.floor(SECONDS / ROUND_SECONDS), CAPACITY = world.capacity, SPECIES_COUNT2 = config.unit.speciesCount, ADULTS = new Array(SPECIES_COUNT2).fill(0);
     for (const UNIT3 of world.roster.residents()) {
       if (UNIT3.isBattleOnlySummon) {
         continue;
@@ -329,7 +328,6 @@
           }
           CHILD.growthElapsed = CHILD.growthDuration;
           pool -= COST;
-          ADULTS[species]++;
           SUMMARY.births++;
           progressed = true;
         }
@@ -5148,13 +5146,10 @@
           world.steer(u, target.x, target.y, dt, scaleMoveSpeed(3.6, u));
         }
         resolveContacts(world, units) {
-          world.resolveFarmContactPairs(units, true);
-          if (!world.hasEligibleSameTierBreedPair()) {
-            world.resolveFarmContactPairs(units, false);
-          }
+          world.resolveFarmContactPairs(units);
           world.resolveMergeTaskAfterMovement();
         }
-        pair(world, a, b, priorityResolved) {
+        pair(world, a, b) {
           if (!a || !b || a === b || a.hp <= 0 || b.hp <= 0 || a.down > 0 || b.down > 0 || a.species !== b.species || !a.mature || !b.mature || a.cooldown > 0 || b.cooldown > 0 || !world.units.includes(a) || !world.units.includes(b) || Math.hypot(a.x - b.x, a.y - b.y) > a.radius + b.radius + 0.2 || world.senseEnemy(a) || world.senseEnemy(b)) {
             return false;
           }
@@ -5162,7 +5157,7 @@
             return false;
           }
           const OWNER = world.breedingReservationOwner(a, b);
-          if (!world.canBreedPair(a, b, true) || world.ownedPopulation >= world.capacity || a.mateId && a.mateId !== b.id || b.mateId && b.mateId !== a.id || !priorityResolved && a.tier !== b.tier && world.hasEligibleSameTierBreedPair() || !world.reserveActiveBreedPair(a, b)) {
+          if (!world.canBreedPair(a, b, true) || world.ownedPopulation >= world.capacity || a.mateId && a.mateId !== b.id || b.mateId && b.mateId !== a.id || !world.reserveActiveBreedPair(a, b)) {
             return false;
           }
           {
@@ -7179,17 +7174,15 @@
         farm: Object.freeze({
           arena: FARM_ARENA,
           capacity: Object.freeze({
-            base: 50,
             max: FARM_MAX_UNITS,
             battleUnits: FARM_MAX_UNITS * (1 + MAX_PEANUT_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS + 2e3
           }),
           maxUnitId: 999999999,
-          starterSeconds: 60,
           work: Object.freeze({
             secondsPerFood: 8,
             warehouseLimit: 200,
             tierBonus: 0.5,
-            minBreeders: 2,
+            resumeFoodShare: 0.5,
             refreshTicks: 20,
             defaultBasisPoints: 4e3,
             starterFood: 0,
@@ -7207,10 +7200,10 @@
             matureMeals: 3
           }),
           offline: Object.freeze({
-            capSeconds: 8 * 3600,
+            capSeconds: 3600,
             minSeconds: 60,
             // Idle output is a share of what the workers would make while you watch.
-            efficiency: 0.5
+            efficiency: 0.2
           }),
           merge: Object.freeze({
             cooldownSeconds: 4,
@@ -7220,8 +7213,8 @@
             resultFallVelocity: 0.2,
             maxMaterials: MAX_GRADE_MATERIAL_COUNT
           }),
-          // Draft numbers: one unit every 0.6 s, at most 30 on the field at once.
-          deploy: Object.freeze({ cooldownSeconds: 0.6, fieldCap: 30 }),
+          // Draft numbers: one unit every 0.2 s, at most 200 (the whole farm) on the field at once.
+          deploy: Object.freeze({ cooldownSeconds: 0.2, fieldCap: 200 }),
           // Draft numbers for the tower: every 5th floor is a mid-boss; fallen units sleep tier (max 3) floors.
           tower: Object.freeze({
             midBossEvery: 5,
@@ -8199,6 +8192,7 @@
           this._benchRevision = 0;
           this._fieldCache = { revision: -1, bench: -1, list: [] };
           this._deployReadyTime = 0;
+          this._foodFull = false;
           this.tower = {
             active: false,
             floor: 0,
@@ -8876,12 +8870,17 @@
           }
           return true;
         }
-        // Workers are chosen per species so every species keeps a breeding pair.
-        // A worker does not eat or breed. Its output scales with its tier and the food upgrade.
+        // The slider's share of each species' adults work; the rest breed. A worker does not eat or breed, and its
+        // output scales with its tier. When the field is full of food everyone breeds until it is half empty again.
         refreshWorkers() {
           const WORK = CONFIG.farm.work, RATIO = this.workBasisPoints / 1e4, NEXT = /* @__PURE__ */ new Set(), RATES = /* @__PURE__ */ new Map();
           let total = 0;
-          if (this.scene === "farm") {
+          if (this.food.length >= WORK.maxFood) {
+            this._foodFull = true;
+          } else if (this.food.length <= WORK.maxFood * WORK.resumeFoodShare) {
+            this._foodFull = false;
+          }
+          if (this.scene === "farm" && !this._foodFull) {
             const BY_SPECIES = /* @__PURE__ */ new Map();
             for (const UNIT_LOCAL of this.roster.residents()) {
               if (!UNIT_LOCAL.mature || UNIT_LOCAL.hp <= 0 || UNIT_LOCAL.down > 0 || UNIT_LOCAL.isBattleOnlySummon || UNIT_LOCAL.isFormationClone || !this._workerIds.has(UNIT_LOCAL.id) && this.unitCollection.reservationOwner(UNIT_LOCAL)) {
@@ -8894,10 +8893,7 @@
             }
             for (const LIST of BY_SPECIES.values()) {
               LIST.sort((a, b) => a.id - b.id);
-              const COUNT = Math.min(
-                Math.floor(RATIO * LIST.length + 1e-9),
-                Math.max(0, LIST.length - WORK.minBreeders)
-              );
+              const COUNT = Math.floor(RATIO * LIST.length + 1e-9);
               for (let index = 0; index < COUNT; index++) {
                 const WORKER = LIST[index], RATE = (1 + WORK.tierBonus * (WORKER.tier - 1)) / WORK.secondsPerFood;
                 NEXT.add(WORKER.id);
@@ -8922,7 +8918,7 @@
           assignWorkers(this, CONFIG);
         }
         get warehouseFull() {
-          return this.food.length >= CONFIG.farm.work.maxFood;
+          return this._foodFull;
         }
         get workerCount() {
           return this._workCount;
@@ -8980,23 +8976,24 @@
           }
           return spawned;
         }
-        // Start a climb: the farm's units go up the tower floor by floor, from floor 1.
-        startTower() {
+        // Start a climb: the farm's units go up the tower floor by floor, from any floor up to the best one so far.
+        startTower(startFloor = 1) {
           if (this.scene !== "farm" || this.boss.active || this.farmBossEvent.phase !== "idle" || this.tower.active || !this.units.some((u) => !u.isBattleOnlySummon && u.hp > 0)) {
             return false;
           }
-          const SLEEP = new Map(this.units.filter((u) => !u.isBattleOnlySummon && u.hp <= 0).map((u) => [u.id, 1]));
+          const FLOOR = Math.min(Math.max(1, Math.floor(startFloor) || 1), Math.max(1, this.playerProgression.towerBest)), KIND = FLOOR % CONFIG.farm.tower.midBossEvery === 0 ? "mid" : "battle";
+          const SLEEP = new Map(this.units.filter((u) => !u.isBattleOnlySummon && u.hp <= 0).map((u) => [u.id, FLOOR]));
           this.tower = {
             active: true,
-            floor: 1,
-            kind: "battle",
+            floor: FLOOR,
+            kind: KIND,
             doors: [],
             offer: "",
             relics: /* @__PURE__ */ new Map(),
             sleepUntil: SLEEP,
             record: false
           };
-          return this._beginFloor("battle");
+          return this._beginFloor(KIND);
         }
         // The next floor's doors: a mid-boss floor has only its boss; otherwise two of battle / elite / rest (rest only if someone sleeps).
         _rollDoors() {
@@ -9425,7 +9422,7 @@
               CANDIDATES.push(CANDIDATE);
             }
             CANDIDATES.sort(
-              (a, b) => Number(a.tier !== unit.tier) - Number(b.tier !== unit.tier) || Math.hypot(a.x - unit.x, a.y - unit.y) - Math.hypot(b.x - unit.x, b.y - unit.y) || a.id - b.id
+              (a, b) => Math.hypot(a.x - unit.x, a.y - unit.y) - Math.hypot(b.x - unit.x, b.y - unit.y) || a.id - b.id
             );
             for (const MATE of CANDIDATES) {
               if (!this.reserveActiveBreedPair(unit, MATE)) {
@@ -9444,40 +9441,6 @@
               this._endSpatialQueryBatch();
             }
           }
-        }
-        hasEligibleSameTierBreedPair() {
-          if (this.scene !== "farm" || this.ownedPopulation + this.birthReservations >= this.capacity) {
-            return false;
-          }
-          const BATCH = !this._spatialStepActive;
-          if (BATCH) {
-            this._beginSpatialQueryBatch();
-          }
-          try {
-            for (const GROUP of this._speciesTierGroups) {
-              let unreserved = 0;
-              for (const UNIT_LOCAL of GROUP) {
-                if (UNIT_LOCAL.isBattleOnlySummon || !this.canBreedNow(UNIT_LOCAL) || UNIT_LOCAL.hp <= 0 || !UNIT_LOCAL.mature || !UNIT_LOCAL.fed || UNIT_LOCAL.cooldown > 0 || !this._unitIsActive(UNIT_LOCAL)) {
-                  continue;
-                }
-                if (!UNIT_LOCAL.mateId && !this.unitCollection.reservationOwner(UNIT_LOCAL)) {
-                  if (++unreserved >= 2) {
-                    return true;
-                  }
-                  continue;
-                }
-                const MATE = this._unitById.get(UNIT_LOCAL.mateId);
-                if (MATE?.mateId === UNIT_LOCAL.id && this.unitCollection.reservationOwner(UNIT_LOCAL) === this.breedingReservationOwner(UNIT_LOCAL, MATE) && MATE.species === UNIT_LOCAL.species && MATE.tier === UNIT_LOCAL.tier && MATE.hp > 0 && MATE.mature && MATE.fed && MATE.cooldown <= 0 && this.canBreedNow(MATE) && !MATE.isBattleOnlySummon) {
-                  return true;
-                }
-              }
-            }
-          } finally {
-            if (BATCH) {
-              this._endSpatialQueryBatch();
-            }
-          }
-          return false;
         }
         canMergeGroup(materials, { requireContact = false, requireNoEnemy = false, reservationOwner = null } = {}) {
           const BATCH = !this._spatialStepActive;
@@ -9854,11 +9817,11 @@
           }
           return resolved;
         }
-        pair(a, b, priorityResolved = false) {
-          return this.mutateUnits(this._pair, a, b, priorityResolved);
+        pair(a, b) {
+          return this.mutateUnits(this._pair, a, b);
         }
-        _pair(a, b, priorityResolved = false) {
-          return FARM_MODES.breed.pair(this, a, b, priorityResolved);
+        _pair(a, b) {
+          return FARM_MODES.breed.pair(this, a, b);
         }
         mergeGroup(materials, options) {
           return this.mutateUnits(this._mergeGroup, materials, options);
@@ -10534,7 +10497,7 @@
           }
           this.solveContactSeparations(units, dt);
         }
-        resolveFarmContactPairs(units, sameTier) {
+        resolveFarmContactPairs(units) {
           for (let i = 0; i < units.length; i++) {
             const UNIT_LOCAL = units[i], PENDING = this._collectContactOrders(UNIT_LOCAL, i + 1, units.length - 1, this._contactPending);
             if (this.isMergeTaskMaterial(UNIT_LOCAL)) {
@@ -10545,10 +10508,7 @@
               if (this.isMergeTaskMaterial(OTHER)) {
                 continue;
               }
-              if (UNIT_LOCAL.tier === OTHER.tier !== sameTier) {
-                continue;
-              }
-              this.pair(UNIT_LOCAL, OTHER, true);
+              this.pair(UNIT_LOCAL, OTHER);
             }
           }
         }
@@ -12353,7 +12313,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.27.2";
+      PRODUCT_VERSION = "0.28.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -16149,7 +16109,7 @@
         case "deploy":
           return W.scene === "farm" && W.deployUnit(c.species, c.x, c.y);
         case "tower-start":
-          return W.scene === "farm" && W.startTower();
+          return W.scene === "farm" && W.startTower(c.floor);
         case "tower-door":
           return W.scene === "farm" && W.chooseDoor(c.index);
         case "tower-leave":
@@ -18617,7 +18577,7 @@
       say(REASON);
       return;
     }
-    if (personalGarden.startTower()) {
+    if (personalGarden.startTower(startFloorValue(personalGarden))) {
       active.paused = false;
       active.loop.resetTiming();
     }
@@ -18631,6 +18591,14 @@
     personalGarden?.retreatFromFight();
   };
   DOLLAR2("bossChallenge").onclick = beginChallenge;
+  var startFloorChoice = 0;
+  function startFloorValue(garden) {
+    const BEST = Math.max(1, garden.playerProgression.towerBest);
+    return startFloorChoice >= 1 && startFloorChoice <= BEST ? startFloorChoice : BEST;
+  }
+  DOLLAR2("startFloor").oninput = (e) => {
+    startFloorChoice = Number(e.target.value);
+  };
   DOLLAR2("doorCards").addEventListener("click", (e) => {
     const BUTTON = e.target.closest("[data-door]");
     if (BUTTON) {
@@ -19522,7 +19490,7 @@
     syncFlag("bossbar", "hidden", !FARM_EVENT_ACTIVE || home);
     syncHand(W, !home && ["dropping", "fighting"].includes(FARM_EVENT?.phase));
     syncText("count", displayedCount);
-    syncText("capacity", personalGarden?.capacity ?? CONFIG.farm.capacity.base);
+    syncText("capacity", personalGarden?.capacity ?? CONFIG.farm.capacity.max);
     syncText(
       "starter",
       PENDING_REWARD ? `${speciesRewardName(PENDING_REWARD.species)} 보상 대기 · 공간이 생기면 합류해요` : !HAS_READY_TROOPS ? "모두 잠자는 중 · 회복을 기다려요" : worldCount >= W.capacity ? "농장이 가득 찼어요" : "번식으로 식구를 늘려요"
@@ -19560,21 +19528,25 @@
       "hidden",
       home || !FARM_EVENT_ACTIVE || BATTLE_OUTCOME === "fighting" || BATTLE_OUTCOME === "idle"
     );
-    syncText(
-      "bossChallenge",
-      W.playerProgression.towerBest ? `탑 오르기 · 최고 ${W.playerProgression.towerBest}층` : "탑 오르기"
-    );
+    const BEST_FLOOR = W.playerProgression.towerBest, START_FLOOR = startFloorValue(W);
+    syncFlag("startFloorBox", "hidden", BEST_FLOOR < 2 || FARM_EVENT_ACTIVE || home);
+    syncAttribute("startFloor", "max", Math.max(1, BEST_FLOOR));
+    if (document.activeElement !== DOLLAR2("startFloor") && DOLLAR2("startFloor").value !== String(START_FLOOR)) {
+      DOLLAR2("startFloor").value = String(START_FLOOR);
+    }
+    syncText("startFloorValue", `시작 ${START_FLOOR}층 · 최고 ${BEST_FLOOR}층`);
+    syncText("bossChallenge", "탑 오르기");
     syncFlag("bossChallenge", "hidden", FARM_EVENT_ACTIVE || home);
     syncAttribute("bossChallenge", "aria-disabled", String(raidStartBlockReason() !== ""));
     syncFlag("menuTabFarms", "disabled", FARM_EVENT_ACTIVE);
     syncFlag("menuTabAbilities", "disabled", !personalGarden);
     const WORK_WORLD = personalGarden || W, WORKERS = WORK_WORLD.workerCount, BREEDERS = Math.max(0, WORK_WORLD.units.length - WORKERS), CUT = workCut(WORK_WORLD);
     let note = `일꾼 ${WORKERS}마리 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분`, warn = false;
-    if (WORKERS === 0) {
-      note = "일꾼이 없어서 먹이가 안 만들어져요";
+    if (WORK_WORLD.warehouseFull) {
+      note = "농장에 먹이가 가득해요 · 일꾼이 번식으로 돌아갔어요";
       warn = true;
-    } else if (WORK_WORLD.warehouseFull) {
-      note = "농장에 먹이가 가득해요 · 일꾼이 쉬어요";
+    } else if (WORKERS === 0) {
+      note = "일꾼이 없어서 먹이가 안 만들어져요";
       warn = true;
     }
     DOLLAR2("workCutA").disabled = !!farmSortTransition;

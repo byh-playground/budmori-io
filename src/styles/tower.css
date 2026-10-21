@@ -196,3 +196,15 @@
         animation-duration: 0.01s;
     }
 }
+
+.start-floor {
+    display: grid;
+    flex: 1 1 0;
+    gap: 2px;
+    min-width: 0;
+    font-size: var(--ui-fs-1);
+    font-weight: var(--ui-fw-m);
+}
+.start-floor input {
+    width: 100%;
+}

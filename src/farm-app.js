@@ -699,7 +699,7 @@ function beginChallenge() {
         say(REASON);
         return;
     }
-    if (personalGarden.startTower()) {
+    if (personalGarden.startTower(startFloorValue(personalGarden))) {
         active.paused = false;
         active.loop.resetTiming();
     }
@@ -713,6 +713,15 @@ DOLLAR('fightRetreat').onclick = () => {
     personalGarden?.retreatFromFight();
 };
 DOLLAR('bossChallenge').onclick = beginChallenge;
+// The climb starts at the best floor by default; the slider can start lower, never higher.
+let startFloorChoice = 0;
+function startFloorValue(garden) {
+    const BEST = Math.max(1, garden.playerProgression.towerBest);
+    return startFloorChoice >= 1 && startFloorChoice <= BEST ? startFloorChoice : BEST;
+}
+DOLLAR('startFloor').oninput = (e) => {
+    startFloorChoice = Number(e.target.value);
+};
 DOLLAR('doorCards').addEventListener('click', (e) => {
     const BUTTON = e.target.closest('[data-door]');
     if (BUTTON) {
@@ -1666,7 +1675,7 @@ function sync(display, now, notices) {
     syncFlag('bossbar', 'hidden', !FARM_EVENT_ACTIVE || home);
     syncHand(W, !home && ['dropping', 'fighting'].includes(FARM_EVENT?.phase));
     syncText('count', displayedCount);
-    syncText('capacity', personalGarden?.capacity ?? CONFIG.farm.capacity.base);
+    syncText('capacity', personalGarden?.capacity ?? CONFIG.farm.capacity.max);
     syncText(
         'starter',
         PENDING_REWARD
@@ -1736,10 +1745,15 @@ function sync(display, now, notices) {
         'hidden',
         home || !FARM_EVENT_ACTIVE || BATTLE_OUTCOME === 'fighting' || BATTLE_OUTCOME === 'idle',
     );
-    syncText(
-        'bossChallenge',
-        W.playerProgression.towerBest ? `탑 오르기 · 최고 ${W.playerProgression.towerBest}층` : '탑 오르기',
-    );
+    const BEST_FLOOR = W.playerProgression.towerBest,
+        START_FLOOR = startFloorValue(W);
+    syncFlag('startFloorBox', 'hidden', BEST_FLOOR < 2 || FARM_EVENT_ACTIVE || home);
+    syncAttribute('startFloor', 'max', Math.max(1, BEST_FLOOR));
+    if (document.activeElement !== DOLLAR('startFloor') && DOLLAR('startFloor').value !== String(START_FLOOR)) {
+        DOLLAR('startFloor').value = String(START_FLOOR);
+    }
+    syncText('startFloorValue', `시작 ${START_FLOOR}층 · 최고 ${BEST_FLOOR}층`);
+    syncText('bossChallenge', '탑 오르기');
     syncFlag('bossChallenge', 'hidden', FARM_EVENT_ACTIVE || home);
     syncAttribute('bossChallenge', 'aria-disabled', String(raidStartBlockReason() !== ''));
     syncFlag('menuTabFarms', 'disabled', FARM_EVENT_ACTIVE);
@@ -1750,11 +1764,11 @@ function sync(display, now, notices) {
         CUT = workCut(WORK_WORLD);
     let note = `일꾼 ${WORKERS}마리 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분`,
         warn = false;
-    if (WORKERS === 0) {
-        note = '일꾼이 없어서 먹이가 안 만들어져요';
+    if (WORK_WORLD.warehouseFull) {
+        note = '농장에 먹이가 가득해요 · 일꾼이 번식으로 돌아갔어요';
         warn = true;
-    } else if (WORK_WORLD.warehouseFull) {
-        note = '농장에 먹이가 가득해요 · 일꾼이 쉬어요';
+    } else if (WORKERS === 0) {
+        note = '일꾼이 없어서 먹이가 안 만들어져요';
         warn = true;
     }
     DOLLAR('workCutA').disabled = !!farmSortTransition;
