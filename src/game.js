@@ -775,7 +775,7 @@
       attackPower *= TIER_ATTACK_SCALE * TRANSITION_MULTIPLIER;
     }
     return Object.freeze({
-      maxHp,
+      maxHp: Math.round(maxHp),
       attackPower,
       ...COMMON_UNIT_STAT_DEFAULTS,
       ...speciesProfile
@@ -6197,7 +6197,7 @@
     const EXPONENT = stage - 1, TOTAL = Math.floor(BOSS_REWARD_SETTINGS.stageRollMultiplier ** EXPONENT), PAYOUTS = bossRewardBoxPayouts(TOTAL);
     return {
       stage,
-      hp: BOSS_REWARD_SETTINGS.stageHpBase * BOSS_REWARD_SETTINGS.stageHpMultiplier ** EXPONENT,
+      hp: Math.round(BOSS_REWARD_SETTINGS.stageHpBase * BOSS_REWARD_SETTINGS.stageHpMultiplier ** EXPONENT),
       attackPower: BOSS_REWARD_SETTINGS.stageAttackBase * BOSS_REWARD_SETTINGS.stageAttackMultiplier ** EXPONENT,
       xp: Math.round(BOSS_REWARD_SETTINGS.stageXpBase * BOSS_REWARD_SETTINGS.stageXpMultiplier ** EXPONENT),
       rollBudget: TOTAL,
@@ -9293,7 +9293,7 @@
           this.boss = this.createBoss(SPECIES);
           this.configureBossStage(T.floor, SPECIES);
           const KIND = CONFIG.farm.tower[kind];
-          this.boss.maxHp = this.boss.hp = this.boss.hp * KIND.hp;
+          this.boss.maxHp = this.boss.hp = Math.round(this.boss.hp * KIND.hp);
           this.boss.attackPower *= KIND.attack;
           Object.assign(this.boss, { x: 0, y: 0, z: CONFIG.battle.dropHeight, active: true });
           this.farmBossEvent = {
@@ -12511,7 +12511,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.1";
+      PRODUCT_VERSION = "0.30.2";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -20649,7 +20649,7 @@
       (BOSS2.stage ? `${BOSS2.stage}층 · ${W.tower.kind === "battle" ? "" : FLOOR_KIND[W.tower.kind] + " "}${ENCOUNTER_NAME}` : ENCOUNTER_NAME) + FIRST_MEETING
     );
     syncAttribute("bossHealth", "aria-label", `${ENCOUNTER_NAME} 체력`);
-    syncText("bossHealthText", Math.ceil(BOSS2.hp) + "/" + BOSS2.maxHp);
+    syncText("bossHealthText", Math.ceil(BOSS2.hp) + "/" + Math.round(BOSS2.maxHp));
     syncText(
       "bossHealthNote",
       FARM_EVENT_ACTIVE && FARM_EVENT.phase === "dropping" ? "보스가 있는 칸으로 가는 중이에요" : FARM_EVENT_ACTIVE && FARM_EVENT.phase === "fighting" ? W.bossEnraged ? "격노! 피해 2배, 공격이 빨라져요" : `${W.bossPhase}페이즈 · 격노까지 ${Math.max(0, Math.ceil(W.battleTimeLimit() - FARM_EVENT.elapsed))}초` : FARM_EVENT_ACTIVE ? "" : "쓰러진 병력 포함 최대 체력"
