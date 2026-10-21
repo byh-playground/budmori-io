@@ -1,4 +1,4 @@
-import { createFormationSkillState, createFormationRuntime } from './formation-skill-state.js';
+import { createFormationRuntime } from './formation-skill-state.js';
 import { createAbilityProgressionState } from './ability-state.js';
 // Internal current-schema checkpoint shapes. Disk writes use farm-progress.js;
 // runtime values are not exported as user saves.
@@ -141,7 +141,6 @@ export const FARM_SNAPSHOT_SHAPE = {
     },
     formationRuntime: createFormationRuntime(),
     playerProgression: {
-        formationSkills: createFormationSkillState(),
         schemaVersion: 2,
         availablePoints: 0,
         abilities: ABILITY_INVESTMENTS(),

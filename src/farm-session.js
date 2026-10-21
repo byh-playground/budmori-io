@@ -580,12 +580,6 @@ class FarmSession {
                     }
                 }
                 return false;
-            case 'formation-purchase':
-                return W.formationSkills.purchase(c.id);
-            case 'formation-slot':
-                return W.formationSkills.buySlot();
-            case 'formation-equip':
-                return W.formationSkills.equip(c.slot, c.id);
             case 'progression-reset':
                 return W.scene === 'farm' && W.resetProgression(c.scope).ok;
             case 'ability-reset':

@@ -247,6 +247,18 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
         REST.floor === 2 && REST.sleepers === 0 && REST.kind === 'rest' && REST.doors >= 1,
         `rest ${JSON.stringify(REST)}`,
     );
+    const RELIC = await WORLD(() => {
+        const W = BUDMORI.sim;
+        W.tower.doors = ['relic', 'battle'];
+        W.tower.offer = 'lightning';
+        W.chooseDoor(0);
+        const FIRST = W.tower.relics.get('lightning');
+        W.tower.doors = ['relic'];
+        W.tower.offer = 'lightning';
+        W.chooseDoor(0);
+        return { first: FIRST, second: W.tower.relics.get('lightning'), kind: W.tower.kind };
+    });
+    expect(RELIC.first === 1 && RELIC.second === 2 && RELIC.kind === 'relic', `relic ${JSON.stringify(RELIC)}`);
     const MID = await WORLD(() => {
         const W = BUDMORI.sim;
         W.tower.floor = 4;
@@ -260,6 +272,12 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
         W.chooseDoor(0);
     });
     await PAGE.waitForTimeout(3500);
+    const SLOT = await WORLD(() => {
+        const W = BUDMORI.sim;
+        W.formationSkills.update(0.05);
+        return W.formationSkills.slots.map((x) => `${x.id}:${x.level}`).join();
+    });
+    expect(SLOT === 'lightning:2', `relic skill in fight: ${SLOT}`);
     await CLEAR_FLOOR();
     await PAGE.waitForTimeout(3500);
     const THREE = await WORLD(() => ({
@@ -286,7 +304,7 @@ await check('upgrade menu opens on the species abilities without the old stat ta
         growthTab: !!document.getElementById('menuTabGrowth'),
         tabs: document.querySelectorAll('#gameMenuTabs [role="tab"]').length,
     }));
-    expect(MENU.abilities && !MENU.growthTab && MENU.tabs === 3, `menu ${JSON.stringify(MENU)}`);
+    expect(MENU.abilities && !MENU.growthTab && MENU.tabs === 2, `menu ${JSON.stringify(MENU)}`);
     await PAGE.locator('#gameMenuClose').click();
     await PAGE.waitForTimeout(300);
 });

@@ -228,24 +228,6 @@
     }
     return definition.upgradeBase * definition.upgradeFactor ** (LEVEL - 1) + definition.upgradeStep * (LEVEL - 1);
   }
-  function createFormationSkillState() {
-    return { slots: 1, levels: Object.fromEntries(FORMATION_SKILL_DEFINITIONS.map(({ id }) => [id, 0])), equipped: [] };
-  }
-  function isValidFormationSkillState(state) {
-    if (!state || !Number.isInteger(state.slots) || state.slots < 1 || state.slots > 3 || !state.levels || typeof state.levels !== "object" || !Array.isArray(state.equipped) || Object.keys(state).length !== 3 || Object.keys(state.levels).length !== FORMATION_SKILL_DEFINITIONS.length || state.equipped.length > state.slots) {
-      return false;
-    }
-    if (!FORMATION_SKILL_DEFINITIONS.every(
-      ({ id }) => Number.isInteger(state.levels[id]) && state.levels[id] >= 0 && state.levels[id] <= FORMATION_MAX_LEVEL
-    )) {
-      return false;
-    }
-    const IDS = state.equipped.filter((id) => id !== null);
-    return IDS.length === new Set(IDS).size && IDS.every((id) => typeof id === "string" && state.levels[id] > 0);
-  }
-  function formationInvestedPoints(state) {
-    return state ? state.slots - 1 + Object.values(state.levels).reduce((sum, level) => sum + level, 0) : 0;
-  }
   function isValidFormationRuntime(runtime) {
     if (!runtime || typeof runtime.active !== "boolean" || !Number.isSafeInteger(runtime.serial) || runtime.serial < 0 || !Array.isArray(runtime.slots) || runtime.slots.length > 12 || !Array.isArray(runtime.effects) || runtime.effects.length > 1024) {
       return false;
@@ -2015,16 +1997,6 @@
           }
           return out;
         }
-        includeBuild(ownerId, state) {
-          if (!this.runtime.active || this.slots.some((slot) => slot.ownerId === ownerId)) {
-            return;
-          }
-          for (const ID of state.equipped) {
-            if (ID) {
-              this.slots.push({ id: ID, ownerId, level: state.levels[ID], charge: 0, cooldown: 0 });
-            }
-          }
-        }
         get runtime() {
           return this.world.formationRuntime;
         }
@@ -2037,47 +2009,6 @@
         get active() {
           return this.world.farmBossEvent?.phase === "fighting";
         }
-        editable() {
-          return this.world.scene === "farm" && this.world.farmBossEvent?.phase === "idle";
-        }
-        purchase(id) {
-          return this.world.mutationNotifications.run(() => {
-            const PLAYER = this.world.playerProgression, STATE = PLAYER.formationSkills;
-            if (!this.editable() || !isValidFormationSkillState(STATE) || typeof id !== "string" || !Object.hasOwn(STATE.levels, id) || STATE.levels[id] >= FORMATION_MAX_LEVEL || PLAYER.availablePoints < 1) {
-              return false;
-            }
-            STATE.levels[id]++;
-            PLAYER.availablePoints--;
-            this.world.markProgressChanged();
-            return true;
-          });
-        }
-        buySlot() {
-          return this.world.mutationNotifications.run(() => {
-            const PLAYER = this.world.playerProgression;
-            if (!this.editable() || PLAYER.formationSkills.slots >= 3 || PLAYER.availablePoints < 1) {
-              return false;
-            }
-            PLAYER.formationSkills.slots++;
-            PLAYER.availablePoints--;
-            this.world.markProgressChanged();
-            return true;
-          });
-        }
-        equip(slot, id) {
-          return this.world.mutationNotifications.run(() => {
-            const STATE = this.world.playerProgression.formationSkills;
-            if (!this.editable() || !Number.isInteger(slot) || slot < 0 || slot >= STATE.slots || id !== null && (typeof id !== "string" || !Object.hasOwn(STATE.levels, id) || !STATE.levels[id] || STATE.equipped.includes(id))) {
-              return false;
-            }
-            while (STATE.equipped.length <= slot) {
-              STATE.equipped.push(null);
-            }
-            STATE.equipped[slot] = id;
-            this.world.markProgressChanged();
-            return true;
-          });
-        }
         synchronize() {
           if (this.active && !this.runtime.active) {
             const SERIAL = this.runtime.serial;
@@ -2085,19 +2016,8 @@
             this.runtime.serial = SERIAL;
             this.rebuildInjured();
             this.runtime.active = true;
-            const BUILDS = [{ ownerId: "", state: this.world.playerProgression.formationSkills }];
-            for (const BUILD of BUILDS) {
-              for (const ID of BUILD.state.equipped) {
-                if (ID) {
-                  this.slots.push({
-                    id: ID,
-                    ownerId: BUILD.ownerId,
-                    level: BUILD.state.levels[ID],
-                    charge: 0,
-                    cooldown: 0
-                  });
-                }
-              }
+            for (const [ID, LEVEL] of this.world.tower.active ? this.world.tower.relics : []) {
+              this.slots.push({ id: ID, ownerId: "", level: LEVEL, charge: 0, cooldown: 0 });
             }
           } else if (!this.active && this.runtime.active) {
             this.end();
@@ -3340,7 +3260,6 @@
   function createPlayerProgressionState() {
     return {
       ...createAbilityProgressionState(),
-      formationSkills: createFormationSkillState(),
       level: 1,
       experience: 0,
       towerBest: 0,
@@ -3434,20 +3353,19 @@
     }).format(VALUE);
   }
   function isValidPlayerProgressionState(state) {
-    if (!isValidAbilityProgressionState(state) || state.formationSkills !== void 0 && !isValidFormationSkillState(state.formationSkills) || !Number.isSafeInteger(state.level) || state.level < 1 || !Number.isSafeInteger(state.towerBest) || state.towerBest < 0 || state.towerBest > FARM_BOSS_EVENT_MAX_STAGE || !Number.isFinite(state.experience) || state.experience < 0 || state.experience >= experienceForNextLevel(state.level) || !Array.isArray(state.processedBossKillReceipts) || !state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) || new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length) {
+    if (!isValidAbilityProgressionState(state) || !Number.isSafeInteger(state.level) || state.level < 1 || !Number.isSafeInteger(state.towerBest) || state.towerBest < 0 || state.towerBest > FARM_BOSS_EVENT_MAX_STAGE || !Number.isFinite(state.experience) || state.experience < 0 || state.experience >= experienceForNextLevel(state.level) || !Array.isArray(state.processedBossKillReceipts) || !state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) || new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length) {
       return false;
     }
     const INVESTED_POINTS = Object.entries(state.abilities).reduce(
       (total, [, investment]) => total + investment.powerLevel + Object.values(investment.branchLevels || {}).reduce((branchTotal, level) => branchTotal + level, 0),
       0
     );
-    return INVESTED_POINTS + formationInvestedPoints(state.formationSkills) + state.availablePoints === state.level - 1;
+    return INVESTED_POINTS + state.availablePoints === state.level - 1;
   }
   var PLAYER_PROGRESS_BASE_XP, BOSS_KILL_XP, FIRST_LEVEL_XP, LEVEL_XP_MULTIPLIER, SHARED_POINTS_PER_LEVEL, FARM_BOSS_EVENT_MAX_STAGE;
   var init_player_progression = __esm({
     "src/player-progression.js"() {
       init_ability_state();
-      init_formation_skill_state();
       PLAYER_PROGRESS_BASE_XP = 100;
       BOSS_KILL_XP = 20;
       FIRST_LEVEL_XP = PLAYER_PROGRESS_BASE_XP;
@@ -3667,19 +3585,14 @@
         }
       }
     }
-    if (TYPE === "all" || TYPE === "formation") {
-      NEXT.formationSkills = createFormationSkillState();
-    }
     return { ok: true, reason: null, refunded: CHECK.refunded, state: NEXT };
   }
   function progressionResetInvestment(state, scope) {
     switch (scope.type) {
       case "all":
-        return getInvestedPointCount(state) + formationInvestedPoints(state.formationSkills);
+        return getInvestedPointCount(state);
       case "abilities":
         return getInvestedAbilityPointCount(state, scope.speciesId ?? null);
-      case "formation":
-        return formationInvestedPoints(state.formationSkills);
       default:
         return 0;
     }
@@ -3689,7 +3602,7 @@
     if (!NORMALIZED || typeof NORMALIZED !== "object" || Array.isArray(NORMALIZED)) {
       return null;
     }
-    if (NORMALIZED.type === "all" || NORMALIZED.type === "formation") {
+    if (NORMALIZED.type === "all") {
       return NORMALIZED;
     }
     if (NORMALIZED.type === "abilities") {
@@ -3760,14 +3673,7 @@
             } : {}
           }
         ])
-      ),
-      ...state.formationSkills ? {
-        formationSkills: {
-          ...state.formationSkills,
-          levels: { ...state.formationSkills.levels },
-          equipped: [...state.formationSkills.equipped]
-        }
-      } : {}
+      )
     };
   }
   function emptyAbilityInvestment(definition) {
@@ -3790,7 +3696,6 @@
       init_ability_definitions();
       init_ability_state();
       init_player_progression();
-      init_formation_skill_state();
       SHARED_ABILITY_POINT_COST = 1;
       DEFINITION_BY_ID = new Map(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, definition]));
     }
@@ -7314,6 +7219,8 @@
             midBossEvery: 5,
             sleepMax: 3,
             topFloor: 61,
+            relicSlots: 3,
+            relicMaxLevel: 5,
             battle: Object.freeze({ hp: 1, attack: 1, edge: 0, reward: 1 }),
             elite: Object.freeze({ hp: 1.6, attack: 1.25, edge: 0.25, reward: 2 }),
             mid: Object.freeze({ hp: 2.2, attack: 1.4, edge: 0.5, reward: 3 })
@@ -8284,7 +8191,16 @@
           this._benchRevision = 0;
           this._fieldCache = { revision: -1, bench: -1, list: [] };
           this._deployReadyTime = 0;
-          this.tower = { active: false, floor: 0, kind: "battle", doors: [], sleepUntil: /* @__PURE__ */ new Map(), record: false };
+          this.tower = {
+            active: false,
+            floor: 0,
+            kind: "battle",
+            doors: [],
+            offer: "",
+            relics: /* @__PURE__ */ new Map(),
+            sleepUntil: /* @__PURE__ */ new Map(),
+            record: false
+          };
           this._stepUnits.length = 0;
           this.corpseRecoveryVersion = 1;
           this.rng = new SEEDED_PRNG(this.seed);
@@ -9064,7 +8980,16 @@
             return false;
           }
           const SLEEP = new Map(this.units.filter((u) => !u.isBattleOnlySummon && u.hp <= 0).map((u) => [u.id, 1]));
-          this.tower = { active: true, floor: 1, kind: "battle", doors: [], sleepUntil: SLEEP, record: false };
+          this.tower = {
+            active: true,
+            floor: 1,
+            kind: "battle",
+            doors: [],
+            offer: "",
+            relics: /* @__PURE__ */ new Map(),
+            sleepUntil: SLEEP,
+            record: false
+          };
           return this._beginFloor("battle");
         }
         // The next floor's doors: a mid-boss floor has only its boss; otherwise two of battle / elite / rest (rest only if someone sleeps).
@@ -9077,9 +9002,17 @@
           if (this.tower.sleepUntil.size) {
             POOL.push("rest");
           }
+          const OFFERS = FORMATION_SKILL_DEFINITIONS.map(({ id }) => id).filter((id) => {
+            const LEVEL = this.tower.relics.get(id) || 0;
+            return LEVEL ? LEVEL < CONFIG.farm.tower.relicMaxLevel : this.tower.relics.size < CONFIG.farm.tower.relicSlots;
+          });
+          if (OFFERS.length) {
+            POOL.push("relic");
+          }
           while (POOL.length > 2) {
             POOL.splice(Math.floor(this.random() * POOL.length), 1);
           }
+          this.tower.offer = POOL.includes("relic") ? OFFERS[Math.floor(this.random() * OFFERS.length)] : "";
           return POOL;
         }
         // Between floors everybody waits in the hand; the fallen start sleeping for tier (max 3) floors.
@@ -9119,6 +9052,14 @@
             T.kind = "rest";
             T.doors = this._rollDoors();
             this.combat("tower-rest", { floor: T.floor });
+            this.markProgressChanged();
+            return true;
+          }
+          if (DOOR === "relic") {
+            T.relics.set(T.offer, (T.relics.get(T.offer) || 0) + 1);
+            T.kind = "relic";
+            T.doors = this._rollDoors();
+            this.combat("tower-relic", { floor: T.floor });
             this.markProgressChanged();
             return true;
           }
@@ -11966,7 +11907,6 @@
   function copyPlayer(player) {
     return {
       schemaVersion: player.schemaVersion,
-      formationSkills: structuredClone(player.formationSkills),
       level: player.level,
       experience: player.experience,
       towerBest: player.towerBest,
@@ -12407,7 +12347,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.26.0";
+      PRODUCT_VERSION = "0.27.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -12868,7 +12808,7 @@
     }
   };
 
-  // src/formation-skills-ui.js
+  // src/relic-dock.js
   init_formation_skill_state();
   var CONDITION_LABELS = Object.freeze({
     damageDealt: "준 피해",
@@ -12878,7 +12818,7 @@
     allyDeaths: "아군 쓰러짐",
     time: "전투 시간"
   });
-  var ICONS = Object.freeze({
+  var RELIC_ICONS = Object.freeze({
     giant: "🌱",
     lightning: "ϟ",
     meteor: "☄",
@@ -12900,112 +12840,50 @@
     })[character]
   );
   var NUMBER2 = (value) => new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 1 }).format(value || 0);
-  var FormationSkillsUI = class {
-    constructor(command) {
-      this.command = command;
-      this.fingerprint = "";
-      this.dockKey = "";
+  var RelicDock = class {
+    constructor() {
+      this.key = "";
       this.root = document.createElement("section");
       this.root.className = "formation-dock";
-      this.root.setAttribute("aria-label", "편성 스킬");
+      this.root.setAttribute("aria-label", "유물");
       this.root.innerHTML = '<div class="formation-slots"></div>';
       document.querySelector("#gameplayDock").prepend(this.root);
-      this.content = document.querySelector("#formationContent");
       this.slotHost = this.root.querySelector(".formation-slots");
-      this.content.onclick = (event) => this.click(event);
     }
-    click(event) {
-      const BUTTON = event.target.closest("button");
-      if (!BUTTON || BUTTON.disabled) {
-        return;
-      }
-      if (BUTTON.hasAttribute("data-formation-buy-slot")) {
-        this.command("formation-slot", {});
-      } else if (BUTTON.dataset.formationPurchase) {
-        this.command("formation-purchase", { id: BUTTON.dataset.formationPurchase });
-      } else if (BUTTON.dataset.formationEquip) {
-        this.command("formation-equip", {
-          slot: Number(BUTTON.dataset.slot),
-          id: BUTTON.dataset.formationEquip
-        });
-      } else if (BUTTON.dataset.formationUnequip !== void 0) {
-        this.command("formation-equip", { slot: Number(BUTTON.dataset.formationUnequip), id: null });
-      }
-    }
-    update(world, display, visible, ownerId = "") {
+    update(world, display, visible) {
       this.root.hidden = !visible;
-      const PLAYER = world.playerProgression, STATE = PLAYER?.formationSkills;
-      if (!STATE) {
+      if (!visible) {
         return;
       }
-      const LOCKED = world.scene !== "farm" || world.farmBossEvent?.phase !== "idle", POINTS = PLAYER.availablePoints, KEY2 = JSON.stringify([STATE, POINTS, LOCKED]);
-      if (KEY2 !== this.fingerprint) {
-        this.fingerprint = KEY2;
-        this.drawEditor(STATE, POINTS, LOCKED);
-      }
-      const DOCK_KEY = JSON.stringify([STATE.slots, STATE.equipped]);
-      if (DOCK_KEY !== this.dockKey) {
-        this.dockKey = DOCK_KEY;
-        this.slotHost.innerHTML = Array.from({ length: STATE.slots }, (_, slot) => {
-          const DEFINITION13 = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === STATE.equipped[slot]);
-          return `<div class="formation-slot" data-formation-slot="${slot}" data-empty="${DEFINITION13 ? "false" : "true"}">
-                    <div class="formation-icon" title="${ESCAPE(DEFINITION13?.name || "빈 슬롯")}">
-                    <span>${ICONS[DEFINITION13?.id] || "+"}</span><i class="formation-clock"></i></div>
-                    <div class="formation-readout"><strong>${ESCAPE(DEFINITION13?.name || "빈 슬롯")}</strong>
+      const RELICS = [...world.tower.relics], KEY2 = JSON.stringify(RELICS);
+      if (KEY2 !== this.key) {
+        this.key = KEY2;
+        this.slotHost.innerHTML = RELICS.map(([id, level]) => {
+          const DEFINITION13 = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === id);
+          return `<div class="formation-slot" data-formation-slot="${ESCAPE(id)}" data-empty="false">
+                    <div class="formation-icon" title="${ESCAPE(DEFINITION13.name)}">
+                    <span>${RELIC_ICONS[id]}</span><i class="formation-clock"></i></div>
+                    <div class="formation-readout"><strong>${ESCAPE(DEFINITION13.name)} Lv.${level}</strong>
                     <div class="formation-charge"><i></i></div><small><b></b><span></span></small></div></div>`;
         }).join("");
       }
       const SLOTS = display.formationSlots || world.formationSkills?.slots || [];
       for (const ELEMENT of this.slotHost.children) {
-        const INDEX = Number(ELEMENT.dataset.formationSlot), ID = STATE.equipped[INDEX], DEFINITION13 = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === ID), RUNTIME = SLOTS.find((item) => item.id === ID && (!item.ownerId || item.ownerId === ownerId)), REQUIRED = DEFINITION13?.required || 1, CHARGE = Math.min(REQUIRED, RUNTIME?.charge || 0), COOLDOWN = Math.max(0, RUNTIME?.cooldown || 0), READY = !!ID && CHARGE >= REQUIRED && COOLDOWN === 0;
+        const ID = ELEMENT.dataset.formationSlot, DEFINITION13 = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === ID), RUNTIME = SLOTS.find((item) => item.id === ID), REQUIRED = DEFINITION13.required || 1, CHARGE = Math.min(REQUIRED, RUNTIME?.charge || 0), COOLDOWN = Math.max(0, RUNTIME?.cooldown || 0);
         ELEMENT.querySelector(".formation-clock").style.setProperty(
           "--cooldown",
           `${COOLDOWN / FORMATION_COOLDOWN_SECONDS * 360}deg`
         );
         ELEMENT.querySelector(".formation-charge i").style.width = `${CHARGE / REQUIRED * 100}%`;
-        ELEMENT.querySelector("small b").textContent = DEFINITION13 ? `${NUMBER2(CHARGE)}/${NUMBER2(REQUIRED)}` : "";
-        ELEMENT.querySelector("small span").textContent = DEFINITION13 ? CONDITION_LABELS[DEFINITION13.condition] || "" : "장착 가능";
-        ELEMENT.dataset.ready = String(READY);
-        ELEMENT.querySelector(".formation-icon").setAttribute(
-          "aria-label",
-          `${DEFINITION13?.name || "빈 슬롯"}, 재사용 ${NUMBER2(COOLDOWN)}초`
-        );
+        ELEMENT.querySelector("small b").textContent = `${NUMBER2(CHARGE)}/${NUMBER2(REQUIRED)}`;
+        ELEMENT.querySelector("small span").textContent = CONDITION_LABELS[DEFINITION13.condition] || "";
+        ELEMENT.dataset.ready = String(CHARGE >= REQUIRED && COOLDOWN === 0);
       }
-    }
-    drawEditor(state, points, locked) {
-      const EMPTY = Array.from({ length: state.slots }, (_, index) => index).find((index) => !state.equipped[index]);
-      const SLOT_CARDS = Array.from({ length: state.slots }, (_, index) => {
-        const ID = state.equipped[index], NAME = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === ID)?.name || "빈 슬롯";
-        return `<div class="formation-equipped"><b>${index + 1}</b><span>${ESCAPE(NAME)}</span>
-                <button type="button" data-formation-unequip="${index}" ${locked || !ID ? "disabled" : ""}>
-                해제</button></div>`;
-      }).join("");
-      const CARDS = FORMATION_SKILL_DEFINITIONS.map((definition) => {
-        const LEVEL = state.levels[definition.id] || 0, EQUIPPED = state.equipped.includes(definition.id), BUY_DISABLED = locked || points < 1 || LEVEL >= FORMATION_MAX_LEVEL, EQUIP_DISABLED = locked || !LEVEL || EQUIPPED || EMPTY === void 0;
-        return `<article class="formation-card" data-skill="${definition.id}">
-                <div class="formation-card-heading"><span class="formation-card-icon">${ICONS[definition.id]}</span>
-                <h3>${ESCAPE(definition.name)}</h3><small>${LEVEL ? `Lv.${LEVEL}` : "미습득"}</small></div>
-                <p>${ESCAPE(definition.description || "")}</p>
-                <div class="formation-rule">${CONDITION_LABELS[definition.condition] || ""} ${definition.required}
-                <span>재사용 ${FORMATION_COOLDOWN_SECONDS}초</span></div>
-                <small class="formation-axis">강화: ${ESCAPE(definition.upgradeAxis || "")}<br>${NUMBER2(formationUpgradeValue(definition, LEVEL))}${ESCAPE(definition.upgradeUnit)}${LEVEL > 0 && LEVEL < FORMATION_MAX_LEVEL ? " → " + NUMBER2(formationUpgradeValue(definition, LEVEL + 1)) + ESCAPE(definition.upgradeUnit) : ""}</small>
-                <div class="formation-card-actions"><button type="button" data-formation-purchase="${definition.id}"
-                ${BUY_DISABLED ? "disabled" : ""}>${LEVEL ? "강화" : "습득"} · 1 포인트</button>
-                <button type="button" data-formation-equip="${definition.id}" data-slot="${EMPTY ?? 0}"
-                ${EQUIP_DISABLED ? "disabled" : ""}>${EQUIPPED ? "장착 중" : "장착"}</button></div></article>`;
-      }).join("");
-      this.content.innerHTML = `<p class="formation-intro">종별 패시브와 별도로, 조건과 재사용 시간이 준비되면 자동 발동해요.</p>
-            <p class="formation-wallet"><strong>${points}</strong> 공용 포인트
-            <span>${locked ? "전투 중 편성 고정" : "농장에서 무료 장착·해제"}</span></p>
-            <div class="formation-equipment">${SLOT_CARDS}</div>
-            <button class="formation-add-slot" type="button" data-formation-buy-slot
-            ${locked || state.slots >= 3 || points < 1 ? "disabled" : ""}>
-            ${state.slots >= 3 ? "슬롯 3칸 개방 완료" : "슬롯 추가 · 1 포인트"}</button>
-            <div class="formation-catalog">${CARDS}</div>`;
     }
   };
 
   // src/farm-app.js
+  init_formation_skill_state();
   init_farm_model();
 
   // src/features/formation-skills/presentation-base.js
@@ -16281,12 +16159,6 @@
             }
           }
           return false;
-        case "formation-purchase":
-          return W.formationSkills.purchase(c.id);
-        case "formation-slot":
-          return W.formationSkills.buySlot();
-        case "formation-equip":
-          return W.formationSkills.equip(c.slot, c.id);
         case "progression-reset":
           return W.scene === "farm" && W.resetProgression(c.scope).ok;
         case "ability-reset":
@@ -16766,7 +16638,6 @@
     },
     formationRuntime: createFormationRuntime(),
     playerProgression: {
-      formationSkills: createFormationSkillState(),
       schemaVersion: 2,
       availablePoints: 0,
       abilities: ABILITY_INVESTMENTS(),
@@ -18176,11 +18047,7 @@
     value: null
   };
   var RENDERER = new DIORAMA(DOLLAR2("world"));
-  var FORMATION_UI = new FormationSkillsUI((kind, payload) => {
-    const QUEUED = active?.queue(kind, payload) ?? false;
-    setTimeout(renderProgressionResetActions, 180);
-    return QUEUED;
-  });
+  var RELIC_DOCK = new RelicDock();
   var PERFORMANCE_DIAGNOSTICS = new PerformanceDiagnostics();
   STORAGE.profiler = PERFORMANCE_DIAGNOSTICS;
   function frameRate() {
@@ -18896,18 +18763,15 @@
     if (menuTab === "abilities") {
       return { type: "abilities", speciesId: Number(DOLLAR2("abilityPanel").dataset.selectedSpecies || 0) };
     }
-    if (menuTab === "formation") {
-      return { type: "formation" };
-    }
     return null;
   }
   function renderProgressionResetActions() {
     const HOST = DOLLAR2("progressionResetActions"), CURRENT = DOLLAR2("progressionResetCurrent"), ALL = DOLLAR2("progressionResetAll");
-    if (!active || !menuOpen || !["abilities", "formation"].includes(menuTab)) {
+    if (!active || !menuOpen || menuTab !== "abilities") {
       HOST.hidden = true;
       return;
     }
-    const W = personalGarden || active.world, IN_COMBAT = W.farmBossEvent?.phase !== "idle", CONTEXT = { location: active.world.scene, inCombat: IN_COMBAT }, SCOPE = currentProgressionResetScope(), CURRENT_CHECK = canResetPlayerProgression(W.playerProgression, SCOPE, CONTEXT), ALL_CHECK = canResetPlayerProgression(W.playerProgression, { type: "all" }, CONTEXT), LABEL = menuTab === "formation" ? "형성 능력 초기화" : "이 종 특성 초기화";
+    const W = personalGarden || active.world, IN_COMBAT = W.farmBossEvent?.phase !== "idle", CONTEXT = { location: active.world.scene, inCombat: IN_COMBAT }, SCOPE = currentProgressionResetScope(), CURRENT_CHECK = canResetPlayerProgression(W.playerProgression, SCOPE, CONTEXT), ALL_CHECK = canResetPlayerProgression(W.playerProgression, { type: "all" }, CONTEXT), LABEL = "이 종 특성 초기화";
     HOST.hidden = false;
     CURRENT.hidden = menuTab === "abilities";
     CURRENT.disabled = !CURRENT_CHECK.allowed;
@@ -18919,13 +18783,12 @@
     play: "#/menu",
     farms: "#/farms",
     abilities: "#/abilities",
-    help: "#/help",
-    formation: "#/formation"
+    help: "#/help"
   };
   var ROUTE_MENU_TAB = (route2) => Object.keys(MENU_ROUTES).find((tab) => MENU_ROUTES[tab] === route2) || "play";
   function applyMenuTab(tab) {
     menuTab = tab;
-    const UPGRADES = ["farms", "abilities", "formation"].includes(tab);
+    const UPGRADES = ["farms", "abilities"].includes(tab);
     DOLLAR2("gameMenuTabs").hidden = !UPGRADES;
     DOLLAR2("gameMenuTitle").textContent = UPGRADES ? "업그레이드" : tab === "help" ? "도움말" : "설정";
     DOLLAR2("gameMenuClose").setAttribute("aria-label", `${DOLLAR2("gameMenuTitle").textContent} 닫기`);
@@ -18945,8 +18808,7 @@
       ["play", "menuPlayPanel"],
       ["farms", "farmPanel"],
       ["abilities", "abilityPanel"],
-      ["help", "helpPanel"],
-      ["formation", "formationPanel"]
+      ["help", "helpPanel"]
     ]) {
       DOLLAR2(ID).hidden = NAME !== tab;
     }
@@ -19027,11 +18889,11 @@
       history.pushState(null, "", "#/farm");
     }
     DOLLAR2(
-      ["farms", "abilities", "formation"].includes(menuTab) ? "upgradeMenu" : menuTab === "help" ? "helpMenu" : "gameMenu"
+      ["farms", "abilities"].includes(menuTab) ? "upgradeMenu" : menuTab === "help" ? "helpMenu" : "gameMenu"
     ).focus();
   }
   DOLLAR2("gameMenu").onclick = () => menuOpen && menuTab === "play" ? closeMenu() : openMenu();
-  DOLLAR2("upgradeMenu").onclick = () => openMenu(personalGarden?.farmBossEvent?.phase !== "idle" ? "formation" : "abilities");
+  DOLLAR2("upgradeMenu").onclick = () => openMenu("abilities");
   DOLLAR2("helpMenu").onclick = () => openMenu("help");
   DOLLAR2("gameMenuClose").onclick = () => closeMenu();
   DOLLAR2("gameMenuTabs").onclick = (e) => {
@@ -19155,13 +19017,17 @@
     }
   };
   var CANVAS = DOLLAR2("world");
-  var FLOOR_KIND = { battle: "전투", elite: "정예", mid: "중간 보스", rest: "쉼터" };
+  var FLOOR_KIND = { battle: "전투", elite: "정예", mid: "중간 보스", rest: "쉼터", relic: "유물" };
   var DOOR_TEXT = {
     battle: "보스 한 마리",
     elite: "더 세지만 보상 ×2",
     mid: "피할 수 없어요 · 보상 ×3",
     rest: "잠든 병력을 모두 깨워요"
   };
+  function relicDoorCard(tower, index) {
+    const ID = tower.offer, DEFINITION13 = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === ID), LEVEL = tower.relics.get(ID) || 0, VALUE = Math.round(formationUpgradeValue(DEFINITION13, LEVEL + 1) * 10) / 10, GAIN = LEVEL ? `Lv.${LEVEL} → ${LEVEL + 1}` : "새 유물";
+    return `<button type="button" class="door door--relic" data-door="${index}"><b>${RELIC_ICONS[ID]} ${DEFINITION13.name}</b><small>${GAIN} · ${DEFINITION13.description || ""}${LEVEL ? ` (→ ${VALUE}${DEFINITION13.upgradeUnit})` : ""}</small></button>`;
+  }
   var railKey = "";
   var railTimer = 0;
   var bannerKey = "";
@@ -19171,6 +19037,7 @@
   function syncTower(garden, home2, event) {
     const T = garden.tower, CLIMBING = T.active && !home2, BEST = garden.playerProgression.towerBest;
     syncFlag("tower", "hidden", !CLIMBING);
+    syncText("towerRelics", [...T.relics].map(([id, level]) => `${RELIC_ICONS[id]} Lv.${level}`).join(" · "));
     const TINT = DOLLAR2("towerTint");
     if (TINT.dataset.on !== String(CLIMBING)) {
       TINT.dataset.on = String(CLIMBING);
@@ -19203,7 +19070,7 @@
     } else {
       railKey = "";
     }
-    const NEXT_BANNER = !CLIMBING ? "" : T.kind === "rest" && T.doors.length ? `r${T.floor}` : event?.phase === "dropping" ? `e${event.encounterId}` : "";
+    const NEXT_BANNER = !CLIMBING ? "" : (T.kind === "rest" || T.kind === "relic") && T.doors.length ? `r${T.floor}` : event?.phase === "dropping" ? `e${event.encounterId}` : "";
     if (NEXT_BANNER && NEXT_BANNER !== bannerKey) {
       DOLLAR2("floorBannerNum").textContent = `${T.floor}층`;
       DOLLAR2("floorBannerKind").textContent = FLOOR_KIND[T.kind];
@@ -19220,16 +19087,16 @@
     const DOORS = CLIMBING && event?.phase === "idle" && T.doors.length > 0;
     syncFlag("towerDoors", "hidden", !DOORS);
     if (DOORS) {
-      const KEY2 = `${T.doors.join()}|${T.floor}|${SLEEPERS}`;
+      const KEY2 = `${T.doors.join()}|${T.floor}|${SLEEPERS}|${T.offer}|${T.relics.size}`;
       if (KEY2 !== doorKey) {
         doorKey = KEY2;
         DOLLAR2("doorCards").innerHTML = T.doors.map(
-          (d, i) => `<button type="button" class="door door--${d}" data-door="${i}"><b>${FLOOR_KIND[d]}</b><small>${DOOR_TEXT[d]}</small></button>`
+          (d, i) => d === "relic" ? relicDoorCard(T, i) : `<button type="button" class="door door--${d}" data-door="${i}"><b>${FLOOR_KIND[d]}</b><small>${DOOR_TEXT[d]}</small></button>`
         ).join("");
       }
       syncText(
         "doorsTitle",
-        T.kind === "rest" ? `${T.floor}층 쉼터 · 잠든 병력이 모두 깼어요` : `${T.floor}층 돌파!`
+        T.kind === "rest" ? `${T.floor}층 쉼터 · 잠든 병력이 모두 깼어요` : T.kind === "relic" ? `${T.floor}층 유물을 얻었어요` : `${T.floor}층 돌파!`
       );
       syncText("doorsNote", `다음은 ${T.floor + 1}층 · 잠든 병력 ${SLEEPERS}마리`);
     } else {
@@ -19592,7 +19459,7 @@
         start(new GARDEN(), false);
       }
     }
-    if (R2 === "#/help" || R2 === "#/farms" || R2 === "#/abilities" || R2 === "#/formation" || R2 === "#/menu") {
+    if (R2 === "#/help" || R2 === "#/farms" || R2 === "#/abilities" || R2 === "#/menu") {
       const FARM_EVENT_ACTIVE = personalGarden?.farmBossEvent?.phase !== "idle";
       const RESTRICTED = R2 === "#/farms" && FARM_EVENT_ACTIVE || R2 === "#/abilities" && !personalGarden;
       if (RESTRICTED) {
@@ -19747,11 +19614,10 @@
       PERFORMANCE_DIAGNOSTICS.end("render", RENDER_START);
       const UI_START = PERFORMANCE_DIAGNOSTICS.start();
       sync(DISPLAY, now, NOTICES);
-      FORMATION_UI.update(
+      RELIC_DOCK.update(
         active.world,
         DISPLAY,
-        !home && active.world.farmBossEvent?.phase !== "idle",
-        active.localPlayerId
+        !home && active.world.tower.active && active.world.farmBossEvent?.phase !== "idle"
       );
       PERFORMANCE_DIAGNOSTICS.end("ui", UI_START);
       PERFORMANCE_DIAGNOSTICS.endFrame(RENDERER);

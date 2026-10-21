@@ -1,7 +1,7 @@
 import { applyOffline } from './farm-offline.js';
 import { assignWorkers, resetWork, stepWork, workOrder } from './farm-work.js';
 import { FormationSkills } from './formation-skills.js';
-import { createFormationRuntime } from './formation-skill-state.js';
+import { createFormationRuntime, FORMATION_SKILL_DEFINITIONS } from './formation-skill-state.js';
 import { Signal } from './signal.js';
 import {
     unitVisualSize,
@@ -143,6 +143,8 @@ const CONFIG = Object.freeze({
             midBossEvery: 5,
             sleepMax: 3,
             topFloor: 61,
+            relicSlots: 3,
+            relicMaxLevel: 5,
             battle: Object.freeze({ hp: 1, attack: 1, edge: 0, reward: 1 }),
             elite: Object.freeze({ hp: 1.6, attack: 1.25, edge: 0.25, reward: 2 }),
             mid: Object.freeze({ hp: 2.2, attack: 1.4, edge: 0.5, reward: 3 }),
@@ -1235,7 +1237,16 @@ const GARDEN = class Garden {
         this._benchRevision = 0;
         this._fieldCache = { revision: -1, bench: -1, list: [] };
         this._deployReadyTime = 0;
-        this.tower = { active: false, floor: 0, kind: 'battle', doors: [], sleepUntil: new Map(), record: false };
+        this.tower = {
+            active: false,
+            floor: 0,
+            kind: 'battle',
+            doors: [],
+            offer: '',
+            relics: new Map(),
+            sleepUntil: new Map(),
+            record: false,
+        };
         this._stepUnits.length = 0;
         this.corpseRecoveryVersion = 1;
         this.rng = new SEEDED_PRNG(this.seed);
@@ -2078,7 +2089,16 @@ const GARDEN = class Garden {
         }
         // Whoever is already down sleeps through the first floor.
         const SLEEP = new Map(this.units.filter((u) => !u.isBattleOnlySummon && u.hp <= 0).map((u) => [u.id, 1]));
-        this.tower = { active: true, floor: 1, kind: 'battle', doors: [], sleepUntil: SLEEP, record: false };
+        this.tower = {
+            active: true,
+            floor: 1,
+            kind: 'battle',
+            doors: [],
+            offer: '',
+            relics: new Map(),
+            sleepUntil: SLEEP,
+            record: false,
+        };
         return this._beginFloor('battle');
     }
     // The next floor's doors: a mid-boss floor has only its boss; otherwise two of battle / elite / rest (rest only if someone sleeps).
@@ -2091,9 +2111,20 @@ const GARDEN = class Garden {
         if (this.tower.sleepUntil.size) {
             POOL.push('rest');
         }
+        // A relic door is a free floor: a new relic, or one more level of a relic already held.
+        const OFFERS = FORMATION_SKILL_DEFINITIONS.map(({ id }) => id).filter((id) => {
+            const LEVEL = this.tower.relics.get(id) || 0;
+            return LEVEL
+                ? LEVEL < CONFIG.farm.tower.relicMaxLevel
+                : this.tower.relics.size < CONFIG.farm.tower.relicSlots;
+        });
+        if (OFFERS.length) {
+            POOL.push('relic');
+        }
         while (POOL.length > 2) {
             POOL.splice(Math.floor(this.random() * POOL.length), 1);
         }
+        this.tower.offer = POOL.includes('relic') ? OFFERS[Math.floor(this.random() * OFFERS.length)] : '';
         return POOL;
     }
     // Between floors everybody waits in the hand; the fallen start sleeping for tier (max 3) floors.
@@ -2134,6 +2165,14 @@ const GARDEN = class Garden {
             T.kind = 'rest';
             T.doors = this._rollDoors();
             this.combat('tower-rest', { floor: T.floor });
+            this.markProgressChanged();
+            return true;
+        }
+        if (DOOR === 'relic') {
+            T.relics.set(T.offer, (T.relics.get(T.offer) || 0) + 1);
+            T.kind = 'relic';
+            T.doors = this._rollDoors();
+            this.combat('tower-relic', { floor: T.floor });
             this.markProgressChanged();
             return true;
         }

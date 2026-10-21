@@ -22,7 +22,6 @@ function keys(value, required, optional = []) {
 function copyPlayer(player) {
     return {
         schemaVersion: player.schemaVersion,
-        formationSkills: structuredClone(player.formationSkills),
         level: player.level,
         experience: player.experience,
         towerBest: player.towerBest,

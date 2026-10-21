@@ -1,7 +1,6 @@
 import { SPECIES_ABILITY_DEFINITIONS } from './ability-definitions.js';
 import { isValidAbilityProgressionState } from './ability-state.js';
 import { isValidPlayerProgressionState } from './player-progression.js';
-import { createFormationSkillState, formationInvestedPoints } from './formation-skill-state.js';
 
 // Progression rules are shared by simulation commands and UI queries.
 // This module never imports presentation code or reads the DOM.
@@ -263,19 +262,14 @@ export function resetPlayerProgression(state, scope = { type: 'all' }, context =
             }
         }
     }
-    if (TYPE === 'all' || TYPE === 'formation') {
-        NEXT.formationSkills = createFormationSkillState();
-    }
     return { ok: true, reason: null, refunded: CHECK.refunded, state: NEXT };
 }
 function progressionResetInvestment(state, scope) {
     switch (scope.type) {
         case 'all':
-            return getInvestedPointCount(state) + formationInvestedPoints(state.formationSkills);
+            return getInvestedPointCount(state);
         case 'abilities':
             return getInvestedAbilityPointCount(state, scope.speciesId ?? null);
-        case 'formation':
-            return formationInvestedPoints(state.formationSkills);
         default:
             return 0;
     }
@@ -285,7 +279,7 @@ function normalizeResetScope(scope) {
     if (!NORMALIZED || typeof NORMALIZED !== 'object' || Array.isArray(NORMALIZED)) {
         return null;
     }
-    if (NORMALIZED.type === 'all' || NORMALIZED.type === 'formation') {
+    if (NORMALIZED.type === 'all') {
         return NORMALIZED;
     }
     if (NORMALIZED.type === 'abilities') {
@@ -363,15 +357,6 @@ function cloneState(state) {
                 },
             ]),
         ),
-        ...(state.formationSkills
-            ? {
-                  formationSkills: {
-                      ...state.formationSkills,
-                      levels: { ...state.formationSkills.levels },
-                      equipped: [...state.formationSkills.equipped],
-                  },
-              }
-            : {}),
     };
 }
 function emptyAbilityInvestment(definition) {

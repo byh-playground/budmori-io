@@ -1,5 +1,6 @@
 import { PerformanceDiagnostics } from './performance-diagnostics.js';
-import { FormationSkillsUI } from './formation-skills-ui.js';
+import { RelicDock, RELIC_ICONS } from './relic-dock.js';
+import { FORMATION_SKILL_DEFINITIONS, formationUpgradeValue } from './formation-skill-state.js';
 import { Garden, CONFIG, ArenaGeometry, ATTACK_TYPES, Ballistics } from './farm-model.js';
 import { Diorama } from './farm-renderer.js';
 import { FarmSession } from './farm-session.js';
@@ -47,11 +48,7 @@ let mergeStatusCache = {
     value: null,
 };
 const RENDERER = new Diorama(DOLLAR('world'));
-const FORMATION_UI = new FormationSkillsUI((kind, payload) => {
-    const QUEUED = active?.queue(kind, payload) ?? false;
-    setTimeout(renderProgressionResetActions, 180);
-    return QUEUED;
-});
+const RELIC_DOCK = new RelicDock();
 const PERFORMANCE_DIAGNOSTICS = new PerformanceDiagnostics();
 STORAGE.profiler = PERFORMANCE_DIAGNOSTICS;
 function frameRate() {
@@ -857,16 +854,13 @@ function currentProgressionResetScope() {
     if (menuTab === 'abilities') {
         return { type: 'abilities', speciesId: Number(DOLLAR('abilityPanel').dataset.selectedSpecies || 0) };
     }
-    if (menuTab === 'formation') {
-        return { type: 'formation' };
-    }
     return null;
 }
 function renderProgressionResetActions() {
     const HOST = DOLLAR('progressionResetActions'),
         CURRENT = DOLLAR('progressionResetCurrent'),
         ALL = DOLLAR('progressionResetAll');
-    if (!active || !menuOpen || !['abilities', 'formation'].includes(menuTab)) {
+    if (!active || !menuOpen || menuTab !== 'abilities') {
         HOST.hidden = true;
         return;
     }
@@ -876,7 +870,7 @@ function renderProgressionResetActions() {
         SCOPE = currentProgressionResetScope(),
         CURRENT_CHECK = canResetPlayerProgression(W.playerProgression, SCOPE, CONTEXT),
         ALL_CHECK = canResetPlayerProgression(W.playerProgression, { type: 'all' }, CONTEXT),
-        LABEL = menuTab === 'formation' ? '형성 능력 초기화' : '이 종 특성 초기화';
+        LABEL = '이 종 특성 초기화';
     HOST.hidden = false;
     CURRENT.hidden = menuTab === 'abilities';
     CURRENT.disabled = !CURRENT_CHECK.allowed;
@@ -889,12 +883,11 @@ const MENU_ROUTES = {
     farms: '#/farms',
     abilities: '#/abilities',
     help: '#/help',
-    formation: '#/formation',
 };
 const ROUTE_MENU_TAB = (route) => Object.keys(MENU_ROUTES).find((tab) => MENU_ROUTES[tab] === route) || 'play';
 function applyMenuTab(tab) {
     menuTab = tab;
-    const UPGRADES = ['farms', 'abilities', 'formation'].includes(tab);
+    const UPGRADES = ['farms', 'abilities'].includes(tab);
     DOLLAR('gameMenuTabs').hidden = !UPGRADES;
     DOLLAR('gameMenuTitle').textContent = UPGRADES ? '업그레이드' : tab === 'help' ? '도움말' : '설정';
     DOLLAR('gameMenuClose').setAttribute('aria-label', `${DOLLAR('gameMenuTitle').textContent} 닫기`);
@@ -915,7 +908,6 @@ function applyMenuTab(tab) {
         ['farms', 'farmPanel'],
         ['abilities', 'abilityPanel'],
         ['help', 'helpPanel'],
-        ['formation', 'formationPanel'],
     ]) {
         DOLLAR(ID).hidden = NAME !== tab;
     }
@@ -996,16 +988,11 @@ function closeMenu(push = true) {
         history.pushState(null, '', '#/farm');
     }
     DOLLAR(
-        ['farms', 'abilities', 'formation'].includes(menuTab)
-            ? 'upgradeMenu'
-            : menuTab === 'help'
-              ? 'helpMenu'
-              : 'gameMenu',
+        ['farms', 'abilities'].includes(menuTab) ? 'upgradeMenu' : menuTab === 'help' ? 'helpMenu' : 'gameMenu',
     ).focus();
 }
 DOLLAR('gameMenu').onclick = () => (menuOpen && menuTab === 'play' ? closeMenu() : openMenu());
-DOLLAR('upgradeMenu').onclick = () =>
-    openMenu(personalGarden?.farmBossEvent?.phase !== 'idle' ? 'formation' : 'abilities');
+DOLLAR('upgradeMenu').onclick = () => openMenu('abilities');
 DOLLAR('helpMenu').onclick = () => openMenu('help');
 DOLLAR('gameMenuClose').onclick = () => closeMenu();
 DOLLAR('gameMenuTabs').onclick = (e) => {
@@ -1133,13 +1120,21 @@ DOLLAR('gameMenuPanel').onkeydown = (e) => {
 };
 const CANVAS = DOLLAR('world');
 // Compare with the actual DOM so event handlers and route changes remain authoritative.
-const FLOOR_KIND = { battle: '전투', elite: '정예', mid: '중간 보스', rest: '쉼터' };
+const FLOOR_KIND = { battle: '전투', elite: '정예', mid: '중간 보스', rest: '쉼터', relic: '유물' };
 const DOOR_TEXT = {
     battle: '보스 한 마리',
     elite: '더 세지만 보상 ×2',
     mid: '피할 수 없어요 · 보상 ×3',
     rest: '잠든 병력을 모두 깨워요',
 };
+function relicDoorCard(tower, index) {
+    const ID = tower.offer,
+        DEFINITION = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === ID),
+        LEVEL = tower.relics.get(ID) || 0,
+        VALUE = Math.round(formationUpgradeValue(DEFINITION, LEVEL + 1) * 10) / 10,
+        GAIN = LEVEL ? `Lv.${LEVEL} → ${LEVEL + 1}` : '새 유물';
+    return `<button type="button" class="door door--relic" data-door="${index}"><b>${RELIC_ICONS[ID]} ${DEFINITION.name}</b><small>${GAIN} · ${DEFINITION.description || ''}${LEVEL ? ` (→ ${VALUE}${DEFINITION.upgradeUnit})` : ''}</small></button>`;
+}
 let railKey = '';
 let railTimer = 0;
 let bannerKey = '';
@@ -1152,6 +1147,7 @@ function syncTower(garden, home, event) {
         CLIMBING = T.active && !home,
         BEST = garden.playerProgression.towerBest;
     syncFlag('tower', 'hidden', !CLIMBING);
+    syncText('towerRelics', [...T.relics].map(([id, level]) => `${RELIC_ICONS[id]} Lv.${level}`).join(' · '));
     const TINT = DOLLAR('towerTint');
     if (TINT.dataset.on !== String(CLIMBING)) {
         TINT.dataset.on = String(CLIMBING);
@@ -1188,7 +1184,7 @@ function syncTower(garden, home, event) {
     // A banner announces each new floor as the boss drops in, and the rest stop.
     const NEXT_BANNER = !CLIMBING
         ? ''
-        : T.kind === 'rest' && T.doors.length
+        : (T.kind === 'rest' || T.kind === 'relic') && T.doors.length
           ? `r${T.floor}`
           : event?.phase === 'dropping'
             ? `e${event.encounterId}`
@@ -1209,19 +1205,24 @@ function syncTower(garden, home, event) {
     const DOORS = CLIMBING && event?.phase === 'idle' && T.doors.length > 0;
     syncFlag('towerDoors', 'hidden', !DOORS);
     if (DOORS) {
-        const KEY = `${T.doors.join()}|${T.floor}|${SLEEPERS}`;
+        const KEY = `${T.doors.join()}|${T.floor}|${SLEEPERS}|${T.offer}|${T.relics.size}`;
         if (KEY !== doorKey) {
             doorKey = KEY;
             DOLLAR('doorCards').innerHTML = T.doors
-                .map(
-                    (d, i) =>
-                        `<button type="button" class="door door--${d}" data-door="${i}"><b>${FLOOR_KIND[d]}</b><small>${DOOR_TEXT[d]}</small></button>`,
+                .map((d, i) =>
+                    d === 'relic'
+                        ? relicDoorCard(T, i)
+                        : `<button type="button" class="door door--${d}" data-door="${i}"><b>${FLOOR_KIND[d]}</b><small>${DOOR_TEXT[d]}</small></button>`,
                 )
                 .join('');
         }
         syncText(
             'doorsTitle',
-            T.kind === 'rest' ? `${T.floor}층 쉼터 · 잠든 병력이 모두 깼어요` : `${T.floor}층 돌파!`,
+            T.kind === 'rest'
+                ? `${T.floor}층 쉼터 · 잠든 병력이 모두 깼어요`
+                : T.kind === 'relic'
+                  ? `${T.floor}층 유물을 얻었어요`
+                  : `${T.floor}층 돌파!`,
         );
         syncText('doorsNote', `다음은 ${T.floor + 1}층 · 잠든 병력 ${SLEEPERS}마리`);
     } else {
@@ -1601,7 +1602,7 @@ function route() {
             start(new Garden(), false);
         }
     }
-    if (R === '#/help' || R === '#/farms' || R === '#/abilities' || R === '#/formation' || R === '#/menu') {
+    if (R === '#/help' || R === '#/farms' || R === '#/abilities' || R === '#/menu') {
         const FARM_EVENT_ACTIVE = personalGarden?.farmBossEvent?.phase !== 'idle';
         const RESTRICTED = (R === '#/farms' && FARM_EVENT_ACTIVE) || (R === '#/abilities' && !personalGarden);
         if (RESTRICTED) {
@@ -1800,11 +1801,10 @@ function frame(now) {
         PERFORMANCE_DIAGNOSTICS.end('render', RENDER_START);
         const UI_START = PERFORMANCE_DIAGNOSTICS.start();
         sync(DISPLAY, now, NOTICES);
-        FORMATION_UI.update(
+        RELIC_DOCK.update(
             active.world,
             DISPLAY,
-            !home && active.world.farmBossEvent?.phase !== 'idle',
-            active.localPlayerId,
+            !home && active.world.tower.active && active.world.farmBossEvent?.phase !== 'idle',
         );
         PERFORMANCE_DIAGNOSTICS.end('ui', UI_START);
         PERFORMANCE_DIAGNOSTICS.endFrame(RENDERER);
