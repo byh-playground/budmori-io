@@ -341,9 +341,10 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
 });
 
 await check('upgrade menu opens on the species abilities without the old stat tab', async () => {
-    await PAGE.locator('#bossRewardClose')
-        .click({ timeout: 2000 })
-        .catch(() => {});
+    // The reward dialog can open late and cover the menu button, so close it by script first.
+    await PAGE.waitForTimeout(1500);
+    await WORLD(() => document.getElementById('bossRewardClose')?.click());
+    await PAGE.waitForTimeout(500);
     await PAGE.locator('#upgradeMenu').click();
     await PAGE.waitForTimeout(800);
     const MENU = await WORLD(() => ({
