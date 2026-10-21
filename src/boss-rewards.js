@@ -227,7 +227,9 @@ function grantPendingBossAcquisitionsCommitted(world) {
         if (capacity <= 0) {
             break;
         }
-        const COUNT = Math.min(capacity, GROUP.count);
+        const COUNT = Math.min(capacity, GROUP.count),
+            // A species the farm does not have yet comes as a pair, so it can breed right away.
+            NEW_SPECIES = !world.units.some((unit) => unit.species === GROUP.species && !unit.isBattleOnlySummon);
         let placed = 0;
         while (placed < COUNT) {
             const INDEX = world.units.length,
@@ -241,6 +243,13 @@ function grantPendingBossAcquisitionsCommitted(world) {
             placed += 1;
         }
         if (placed > 0) {
+            if (NEW_SPECIES && placed === 1 && capacity - placed > 0) {
+                const PARTNER = world.spawn(GROUP.species, GROUP.tier, Math.cos(placed) * 0.6, Math.sin(placed) * 0.6);
+                if (PARTNER) {
+                    GRANTED.push(PARTNER);
+                    capacity -= 1;
+                }
+            }
             GROUP.count -= placed;
             capacity -= placed;
             allocatePlacedRewards(world, GROUP.species, GROUP.tier, placed);

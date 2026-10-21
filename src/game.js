@@ -6221,7 +6221,7 @@
       if (capacity <= 0) {
         break;
       }
-      const COUNT = Math.min(capacity, GROUP.count);
+      const COUNT = Math.min(capacity, GROUP.count), NEW_SPECIES = !world.units.some((unit) => unit.species === GROUP.species && !unit.isBattleOnlySummon);
       let placed = 0;
       while (placed < COUNT) {
         const INDEX = world.units.length, ANGLE = INDEX * 2.399963229728653 + (world.seed >>> 0) % 6283 / 1e3, RADIUS = Math.sqrt(INDEX + 0.5) * 0.35, UNIT3 = world.spawn(GROUP.species, GROUP.tier, Math.cos(ANGLE) * RADIUS, Math.sin(ANGLE) * RADIUS);
@@ -6232,6 +6232,13 @@
         placed += 1;
       }
       if (placed > 0) {
+        if (NEW_SPECIES && placed === 1 && capacity - placed > 0) {
+          const PARTNER = world.spawn(GROUP.species, GROUP.tier, Math.cos(placed) * 0.6, Math.sin(placed) * 0.6);
+          if (PARTNER) {
+            GRANTED.push(PARTNER);
+            capacity -= 1;
+          }
+        }
         GROUP.count -= placed;
         capacity -= placed;
         allocatePlacedRewards(world, GROUP.species, GROUP.tier, placed);
@@ -12380,7 +12387,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.29.6";
+      PRODUCT_VERSION = "0.29.7";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
