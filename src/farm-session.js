@@ -520,7 +520,7 @@ class FarmSession {
                 Number.isFinite(LOOP_START) ? LOOP_START : (this.pulseTimestamp ?? globalThis.performance.now()),
             ),
             PRESENTATION_START_MS = Math.max(0, START_CLOCK - (this.presentationOriginWallMs ?? START_CLOCK));
-        bindPresentationClock(W, (time) => (PRESENTATION_START_MS + (time - START_TIME) * 1000) / 1000);
+        bindPresentationClock(W, (time) => PRESENTATION_START_MS + (time - START_TIME) * 1000);
         if (W.scene === 'farm') {
             const AUTO_TAPS_START = this.profiler?.start();
             try {

@@ -4671,9 +4671,11 @@
   });
 
   // src/features/abilities/corn-attachment/presentation.js
-  var CornAttachmentPresentation;
+  var DEFAULT_BODY, POP_RING, CornAttachmentPresentation;
   var init_presentation6 = __esm({
     "src/features/abilities/corn-attachment/presentation.js"() {
+      DEFAULT_BODY = Object.freeze({ radius: 0.3, height: 1, scale: 1, shiftX: 0, shiftY: 0 });
+      POP_RING = 0.5;
       CornAttachmentPresentation = class {
         label(_definition, value) {
           return `부착 1초 후 연쇄 폭발 · 알갱이마다 공격력 ${Math.round(value * 100)}%`;
@@ -4681,14 +4683,38 @@
         title(value) {
           return `알갱이 ${Math.round(value * 100)}%`;
         }
-        drawAttachment(renderer, attachment, group) {
-          const P = renderer.project(
-            group.targetX + attachment.offsetX,
-            group.targetY + attachment.offsetY,
-            group.targetZ + 0.5
-          ), SIZE = renderer.scale * 0.055, ALPHA = attachment.status === "fading" ? attachment.fadeTicks / 6 : 1;
-          renderer.ellipse(P.x, P.y, SIZE, SIZE * 1.2, `rgba(238,192,75,${ALPHA})`, attachment.angle);
-          renderer.ellipse(P.x - SIZE * 0.2, P.y - SIZE * 0.35, SIZE * 0.2, SIZE * 0.25, `rgba(255,238,147,${ALPHA})`);
+        // Spreads the model's small offsets over the visible front of the target's body, so the kernels sit on it
+        // (a boss is far bigger than the 0.18 the offsets were made for) and follow its hit recoil.
+        anchor(attachment, group, body) {
+          const SPREAD = body.radius / 0.18, FACE = body.radius * 0.55;
+          return {
+            x: group.targetX + attachment.offsetX * SPREAD + body.shiftX,
+            y: group.targetY - FACE + body.shiftY,
+            z: group.targetZ + body.height * (0.5 + attachment.offsetY / 0.12 * 0.3)
+          };
+        }
+        // A waiting kernel breathes faster as its fuse runs out and turns hot at the end; a popping one flares and shrinks.
+        drawAttachment(renderer, attachment, group, { tick, body = DEFAULT_BODY }) {
+          const AT = this.anchor(attachment, group, body), P = renderer.project(AT.x, AT.y, AT.z), FUSE = Math.min(
+            1,
+            Math.max(0, (tick - group.firstAttachTick) / Math.max(1, group.closeAtTick - group.firstAttachTick))
+          ), BASE = renderer.scale * 0.055 * body.scale;
+          if (attachment.status === "fading") {
+            const POP = 1 - attachment.fadeTicks / 6;
+            renderer.ring(AT.x, AT.y, POP_RING * body.scale * POP, `rgba(255,214,102,${1 - POP})`, 0.06);
+            renderer.ellipse(P.x, P.y, BASE * (1.8 - POP), BASE * (1.8 - POP), `rgba(255,246,200,${1 - POP})`);
+            return;
+          }
+          const RATE = 4 + 14 * FUSE * FUSE, BREATH = 1 + 0.18 * Math.sin(renderer.displayTimeMs / 1e3 * RATE * Math.PI), HOT = FUSE > 0.7 ? (FUSE - 0.7) / 0.3 : 0, SIZE = BASE * BREATH;
+          renderer.ellipse(
+            P.x,
+            P.y,
+            SIZE,
+            SIZE * 1.2,
+            `rgba(${238 + 17 * HOT},${192 - 70 * HOT},${75 - 30 * HOT},1)`,
+            attachment.angle
+          );
+          renderer.ellipse(P.x - SIZE * 0.2, P.y - SIZE * 0.35, SIZE * 0.2, SIZE * 0.25, "rgba(255,238,147,1)");
         }
       };
     }
@@ -4705,23 +4731,6 @@
         }
         title(value) {
           return `치명타 최대 +${Math.round(value * 100)}%p`;
-        }
-        drawCriticalHit(renderer, event, progress) {
-          const T = Math.min(1, progress / 0.58), ALPHA = 1 - T, CENTER = renderer.project(event.x, event.y, (event.z || 0) + 0.22);
-          if (ALPHA <= 0) {
-            return;
-          }
-          renderer.ring(event.x, event.y, 0.3 + T * 0.62, `rgba(255,211,92,${ALPHA * 0.95})`, 0.11);
-          for (let index = 0; index < 3; index++) {
-            const ANGLE = -Math.PI / 2 + (index - 1) * 0.42 + event.sequence % 7 * 0.08, DISTANCE = renderer.scale * (0.19 + T * 0.22), FROM = {
-              x: CENTER.x - Math.cos(ANGLE) * DISTANCE,
-              y: CENTER.y - Math.sin(ANGLE) * DISTANCE
-            }, TO = {
-              x: CENTER.x + Math.cos(ANGLE) * DISTANCE,
-              y: CENTER.y + Math.sin(ANGLE) * DISTANCE
-            };
-            renderer.line(FROM, TO, renderer.scale * 0.07, `rgba(255,242,184,${ALPHA})`);
-          }
         }
       };
     }
@@ -11197,6 +11206,7 @@
             attackKind: kind,
             buffed,
             critical: damage.critical,
+            damage: damage.totalActualLoss,
             x: this.boss.x + DX / D_LOCAL * this.boss.radius,
             y: this.boss.y + DY / D_LOCAL * this.boss.radius,
             z: CLAMP2(point2.z + 0.2, 0.2, this.boss.height),
@@ -11221,7 +11231,7 @@
             strikeIndex,
             unit: target.id,
             sourceUnit: u.id,
-            damage: damage?.damage || 0,
+            damage: damage.totalActualLoss,
             critical: !!damage?.critical,
             x: point2.x,
             y: point2.y,
@@ -12538,7 +12548,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.13";
+      PRODUCT_VERSION = "0.30.14";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -16485,9 +16495,13 @@
       }
       feel?.draw(this, this.displayTimeMs);
       for (const GROUP of sim2.cornAttachments?.groups || []) {
+        const BODY2 = this.attachmentBody(sim2, GROUP, feel);
         for (const ATTACHMENT of GROUP.attachments) {
           if (ATTACHMENT.status === "attached" || ATTACHMENT.status === "fading") {
-            CORN_ATTACHMENT_PRESENTATION.drawAttachment(this, ATTACHMENT, GROUP);
+            CORN_ATTACHMENT_PRESENTATION.drawAttachment(this, ATTACHMENT, GROUP, {
+              tick: sim2.simulationTick,
+              body: BODY2
+            });
           }
         }
       }
@@ -16499,6 +16513,20 @@
       drawFormationEffects(this, sim2);
       this.drawSceneFade(sim2, now);
       this.stats = C.endFrame();
+    }
+    // The body a stuck kernel sits on: the boss is big and recoils when hit, a unit is small.
+    attachmentBody(sim2, group, feel) {
+      if (group.targetId !== "boss") {
+        return void 0;
+      }
+      const RECOIL = feel?.boss(this.displayTimeMs);
+      return {
+        radius: sim2.boss.radius,
+        height: sim2.boss.height,
+        scale: 3.4,
+        shiftX: RECOIL?.x || 0,
+        shiftY: RECOIL?.y || 0
+      };
     }
     dispose() {
       disposeEffectPresentations(this);
@@ -17031,7 +17059,7 @@
       const W = this.world, START_TIME = W.time, LOOP_START = this.loop?.simulationTimeMs, START_CLOCK = this.adjustedWallTime(
         Number.isFinite(LOOP_START) ? LOOP_START : this.pulseTimestamp ?? globalThis.performance.now()
       ), PRESENTATION_START_MS = Math.max(0, START_CLOCK - (this.presentationOriginWallMs ?? START_CLOCK));
-      bindPresentationClock(W, (time) => (PRESENTATION_START_MS + (time - START_TIME) * 1e3) / 1e3);
+      bindPresentationClock(W, (time) => PRESENTATION_START_MS + (time - START_TIME) * 1e3);
       if (W.scene === "farm") {
         const AUTO_TAPS_START = this.profiler?.start();
         try {
@@ -18422,6 +18450,7 @@
         land: [240, 150, 0.065, 0.1],
         eat: [740, 990, 0.09, 0.09],
         strike: [180, 80, 0.075, 0.16],
+        crit: [620, 240, 0.11, 0.2],
         heavy: [95, 42, 0.16, 0.22],
         launch: [290, 145, 0.06, 0.07]
       }, [HZ, END, DURATION3, GAIN] = DEFS[kind];
@@ -18461,11 +18490,236 @@
 
   // src/combat-feel.js
   init_farm_model();
-  init_presentation7();
+
+  // src/damage-numbers.js
+  var DAMAGE_NUMBER = Object.freeze({
+    lifeMs: 800,
+    // World units: the digit height of a normal hit and the factor a critical hit adds.
+    height: 0.7,
+    criticalScale: 1.7,
+    rise: 1.1,
+    // How far apart simultaneous numbers drift, so a volley stays readable.
+    spread: 0.09,
+    popFraction: 0.14,
+    fadeFraction: 0.35
+  });
+  var GLYPH_WIDTH = 0.6;
+  var FLIP = (strokes) => strokes.map((stroke2) => stroke2.map(([x, y]) => [GLYPH_WIDTH - x, 1 - y]));
+  var SIX = [
+    [
+      [0.5, 1],
+      [0.15, 0.85],
+      [0, 0.5],
+      [0, 0.2],
+      [0.2, 0],
+      [0.45, 0],
+      [0.6, 0.2],
+      [0.6, 0.4],
+      [0.4, 0.55],
+      [0.15, 0.5],
+      [0, 0.35]
+    ]
+  ];
+  var GLYPHS = Object.freeze({
+    0: [
+      [
+        [0, 0.2],
+        [0.1, 0.05],
+        [0.3, 0],
+        [0.5, 0.05],
+        [0.6, 0.2],
+        [0.6, 0.8],
+        [0.5, 0.95],
+        [0.3, 1],
+        [0.1, 0.95],
+        [0, 0.8],
+        [0, 0.2]
+      ]
+    ],
+    1: [
+      [
+        [0.1, 0.8],
+        [0.32, 1],
+        [0.32, 0]
+      ]
+    ],
+    2: [
+      [
+        [0, 0.8],
+        [0.1, 0.95],
+        [0.3, 1],
+        [0.5, 0.95],
+        [0.6, 0.8],
+        [0.55, 0.6],
+        [0, 0],
+        [0.6, 0]
+      ]
+    ],
+    3: [
+      [
+        [0, 0.9],
+        [0.3, 1],
+        [0.55, 0.9],
+        [0.55, 0.62],
+        [0.25, 0.5],
+        [0.55, 0.38],
+        [0.55, 0.1],
+        [0.3, 0],
+        [0, 0.1]
+      ]
+    ],
+    4: [
+      [
+        [0.45, 0],
+        [0.45, 1],
+        [0, 0.3],
+        [0.6, 0.3]
+      ]
+    ],
+    5: [
+      [
+        [0.55, 1],
+        [0.05, 1],
+        [0, 0.55],
+        [0.3, 0.62],
+        [0.55, 0.5],
+        [0.6, 0.2],
+        [0.4, 0],
+        [0.05, 0.05]
+      ]
+    ],
+    6: SIX,
+    7: [
+      [
+        [0, 1],
+        [0.6, 1],
+        [0.2, 0]
+      ]
+    ],
+    8: [
+      [
+        [0.3, 0.5],
+        [0.05, 0.65],
+        [0.05, 0.9],
+        [0.3, 1],
+        [0.55, 0.9],
+        [0.55, 0.65],
+        [0.3, 0.5],
+        [0, 0.35],
+        [0, 0.1],
+        [0.3, 0],
+        [0.6, 0.1],
+        [0.6, 0.35],
+        [0.3, 0.5]
+      ]
+    ],
+    9: FLIP(SIX),
+    "-": [
+      [
+        [0, 0.5],
+        [0.4, 0.5]
+      ]
+    ],
+    "!": [
+      [
+        [0.1, 1],
+        [0.1, 0.3]
+      ],
+      [
+        [0.1, 0],
+        [0.1, 0.02]
+      ]
+    ],
+    ".": [
+      [
+        [0.1, 0],
+        [0.1, 0.02]
+      ]
+    ],
+    K: [
+      [
+        [0, 0],
+        [0, 1]
+      ],
+      [
+        [0.6, 1],
+        [0, 0.45],
+        [0.6, 0]
+      ]
+    ],
+    M: [
+      [
+        [0, 0],
+        [0, 1],
+        [0.3, 0.45],
+        [0.6, 1],
+        [0.6, 0]
+      ]
+    ]
+  });
+  var ADVANCE = Object.freeze({ "!": 0.35, ".": 0.35, "-": 0.55 });
+  var ADVANCE_DEFAULT = 0.8;
+  function formatDamage(amount) {
+    const VALUE = Math.max(1, Math.round(amount));
+    if (VALUE >= 1e6) {
+      return `${(VALUE / 1e6).toFixed(VALUE < 1e7 ? 1 : 0)}M`;
+    }
+    if (VALUE >= 1e4) {
+      return `${(VALUE / 1e3).toFixed(VALUE < 1e5 ? 1 : 0)}K`;
+    }
+    return String(VALUE);
+  }
+  function textWidth(text) {
+    let width = 0;
+    for (const CHAR of text) {
+      width += ADVANCE[CHAR] ?? ADVANCE_DEFAULT;
+    }
+    return width - 0.2;
+  }
+  var STYLES = Object.freeze({
+    dealt: Object.freeze({ fill: [255, 244, 214], outline: [54, 38, 24], prefix: "", suffix: "" }),
+    critical: Object.freeze({ fill: [255, 207, 74], outline: [122, 59, 0], prefix: "", suffix: "!" }),
+    taken: Object.freeze({ fill: [255, 154, 120], outline: [84, 30, 20], prefix: "-", suffix: "" })
+  });
+  var OUTLINE_WIDTH = 0.3;
+  var FILL_WIDTH = 0.14;
+  var DamageNumberPresentation = class {
+    lifeMs = DAMAGE_NUMBER.lifeMs;
+    // `reduced` keeps the number but drops the pop and the rise: the information stays, the motion goes.
+    draw(renderer, event, progress, feel) {
+      const STYLE = STYLES[event.critical ? "critical" : event.role], REDUCED = feel?.reduced === true, POP = Math.min(1, progress / DAMAGE_NUMBER.popFraction), ALPHA = Math.min(1, (1 - progress) / DAMAGE_NUMBER.fadeFraction), SCALE = (event.critical ? DAMAGE_NUMBER.criticalScale : 1) * (REDUCED ? 1 : 0.65 + 0.45 * Math.sin(POP * Math.PI * 0.5)), LIFT = REDUCED ? 0 : DAMAGE_NUMBER.rise * (1 - (1 - progress) ** 2), DRIFT = (event.sequence * 7919 % 11 - 5) * DAMAGE_NUMBER.spread, POINT2 = renderer.project(event.x + DRIFT, event.y, event.z + 0.5 + LIFT), TEXT = `${STYLE.prefix}${formatDamage(event.amount)}${STYLE.suffix}`, HEIGHT = DAMAGE_NUMBER.height * SCALE * renderer.scale;
+      if (ALPHA <= 0) {
+        return;
+      }
+      const OUTLINE = `rgba(${STYLE.outline},${ALPHA * 0.9})`, FILL = `rgba(${STYLE.fill},${ALPHA})`;
+      let cursor = POINT2.x - textWidth(TEXT) * HEIGHT / 2;
+      for (const CHAR of TEXT) {
+        for (const STROKE of GLYPHS[CHAR]) {
+          const POINTS = STROKE.map(([x, y]) => ({ x: cursor + x * HEIGHT, y: POINT2.y - y * HEIGHT }));
+          for (const [WIDTH, COLOR] of [
+            [OUTLINE_WIDTH, OUTLINE],
+            [FILL_WIDTH, FILL]
+          ]) {
+            for (let index = 1; index < POINTS.length; index++) {
+              renderer.pixelLine(POINTS[index - 1], POINTS[index], HEIGHT * WIDTH, COLOR);
+            }
+          }
+        }
+        cursor += (ADVANCE[CHAR] ?? ADVANCE_DEFAULT) * HEIGHT;
+      }
+    }
+  };
+
+  // src/combat-feel.js
   init_presentation9();
   var { ObjectPool: OBJECT_POOL } = globalThis.BloomGamekitObjectPool;
   var EMPTY_NOTICES = Object.freeze([]);
-  var RICE_CRITICAL_PRESENTATION = new RiceCriticalPresentation();
+  var COMBAT_FEEL_CONFIG = Object.freeze({
+    lifeMs: 430,
+    maxEffects: 96,
+    denseHits: 12,
+    denseParticles: 2
+  });
   var BARLEY_SHRED_PRESENTATION3 = new BarleyArmorShredPresentation();
   var CREATE_LANDING_EFFECT = () => ({
     sequence: 0,
@@ -18498,13 +18752,13 @@
         );
       }
     }
-    draw(renderer, event, progress) {
+    draw(renderer, event, progress, feel) {
       const T = Math.min(1, progress / this.durationFraction), ALPHA = 1 - T;
       if (ALPHA <= 0) {
         return;
       }
       const SIZE = this.size(event), COLOR = this.color;
-      const CENTER = renderer.project(event.x, event.y, event.z || 0.1), N = this.particleCount;
+      const CENTER = renderer.project(event.x, event.y, event.z || 0.1), N = feel?.dense ? Math.min(this.particleCount, COMBAT_FEEL_CONFIG.denseParticles) : this.particleCount;
       for (let i = 0; i < N; i++) {
         const ANGLE = i * Math.PI * 2 / N + event.sequence % 11 * 0.19, DISTANCE = (0.12 + T * SIZE) * this.distanceMultiplier, POINT2 = renderer.project(
           event.x + Math.cos(ANGLE) * DISTANCE,
@@ -18521,11 +18775,48 @@
     ringWidth = 0.075;
     particleCount = 6;
     distanceMultiplier = 1;
-    draw(renderer, event, progress) {
-      super.draw(renderer, event, progress);
+    draw(renderer, event, progress, feel) {
+      super.draw(renderer, event, progress, feel);
       if (event.critical) {
-        RICE_CRITICAL_PRESENTATION.drawCriticalHit(renderer, event, progress);
+        this.drawCritical(renderer, event, progress);
       }
+    }
+    // A critical hit reads by shape, not only by colour: a wide orange ring and a star of thick rays, where a normal
+    // hit has a thin cream ring and short sparks.
+    drawCritical(renderer, event, progress) {
+      const T = Math.min(1, progress / 0.58), ALPHA = 1 - T, CENTER = renderer.project(event.x, event.y, (event.z || 0) + 0.22);
+      if (ALPHA <= 0) {
+        return;
+      }
+      renderer.ring(event.x, event.y, 0.3 + T * 0.62, `rgba(255,150,40,${ALPHA * 0.95})`, 0.11);
+      for (let index = 0; index < 6; index++) {
+        const ANGLE = index * Math.PI / 3 + event.sequence % 7 * 0.08, REACH = renderer.scale * (0.16 + T * 0.3), START = REACH * 0.45;
+        renderer.line(
+          { x: CENTER.x + Math.cos(ANGLE) * START, y: CENTER.y + Math.sin(ANGLE) * START },
+          { x: CENTER.x + Math.cos(ANGLE) * REACH, y: CENTER.y + Math.sin(ANGLE) * REACH },
+          0.075,
+          `rgba(255,214,102,${ALPHA})`
+        );
+      }
+    }
+    // Every confirmed hit that did damage gets its own number; a blocked hit has none.
+    spawnNumber(feel, event, at, role) {
+      if (!(event.damage > 0)) {
+        return;
+      }
+      feel.counts.numbers++;
+      feel.push({
+        kind: "damage-number",
+        sequence: event.sequence,
+        x: event.x,
+        y: event.y,
+        z: event.z,
+        amount: event.damage,
+        critical: event.critical,
+        role,
+        at,
+        heard: true
+      });
     }
     size(event) {
       const BASE = event.attackKind === "sweep" ? 1.15 : 0.6;
@@ -18559,14 +18850,16 @@
       feel.counts.hits++;
       feel.bossHit = displayEvent;
       feel.kick(event.strength, displayEvent.at);
+      this.spawnNumber(feel, event, displayEvent.at, "dealt");
     }
     sound(audio, event) {
-      audio.sound("strike", event.species || 0);
+      audio.sound(event.critical ? "crit" : "strike", event.species || 0);
     }
   };
   var UnitHitPresentation = class extends HitPresentation {
     color = "231,147,83";
     observe(feel, event, _displayEvent, at) {
+      this.spawnNumber(feel, event, at, "taken");
       feel.poses.set(event.unit, {
         at,
         until: at + 180,
@@ -18575,7 +18868,7 @@
       feel.counts.hits++;
     }
     sound(audio, event) {
-      audio.sound(event.attackKind === "sweep" ? "heavy" : "strike");
+      audio.sound(event.critical ? "crit" : event.attackKind === "sweep" ? "heavy" : "strike");
     }
   };
   var UnitLandingPresentation = class extends BurstPresentation {
@@ -18629,6 +18922,7 @@
     }
   };
   var COMBAT_EFFECT_PRESENTATIONS = /* @__PURE__ */ new Map([
+    ["damage-number", Object.freeze(new DamageNumberPresentation())],
     ["boss-hit", Object.freeze(new BossHitPresentation())],
     ["unit-hit", Object.freeze(new UnitHitPresentation())],
     ["barley-shred", Object.freeze(BARLEY_SHRED_PRESENTATION3)],
@@ -18651,8 +18945,10 @@
       this.reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
       this.counts = {
         hits: 0,
-        landings: 0
+        landings: 0,
+        numbers: 0
       };
+      this.dense = false;
     }
     acquireLandingEffect(e, at) {
       const EVENT = this.landingPool.acquire();
@@ -18666,6 +18962,16 @@
       EVENT.at = at;
       EVENT.heard = false;
       return EVENT;
+    }
+    push(event) {
+      this.effects.push(event);
+      if (this.effects.length > COMBAT_FEEL_CONFIG.maxEffects) {
+        this.releaseEffect(this.effects.shift());
+      }
+    }
+    // How long an effect stays: the effect decides, the shared budget is only the default.
+    lifeMs(event) {
+      return COMBAT_EFFECT_PRESENTATIONS.get(event.kind)?.lifeMs ?? COMBAT_FEEL_CONFIG.lifeMs;
     }
     releaseEffect(event) {
       COMBAT_EFFECT_PRESENTATIONS.get(event.kind)?.release?.(this, event);
@@ -18692,16 +18998,13 @@
           continue;
         }
         const AT = presentationEventTimeMs(E), EVENT = PRESENTATION.acquire?.(this, E, AT) ?? { ...E, at: AT, heard: false };
-        this.effects.push(EVENT);
-        if (this.effects.length > 48) {
-          this.releaseEffect(this.effects.shift());
-        }
+        this.push(EVENT);
         PRESENTATION.observe?.(this, E, EVENT, AT);
       }
       this.sequence = world.eventSequence;
       let retained = 0;
       for (const E of this.effects) {
-        if (displayTimeMs - E.at < 430) {
+        if (displayTimeMs - E.at < this.lifeMs(E)) {
           this.effects[retained++] = E;
         } else {
           this.releaseEffect(E);
@@ -18751,24 +19054,30 @@
     }
     drawGround(r, displayTimeMs) {
       for (const E of this.effects) {
-        const AGE = displayTimeMs - E.at;
-        if (AGE >= 0 && AGE <= 430) {
-          COMBAT_EFFECT_PRESENTATIONS.get(E.kind)?.drawGround?.(r, E, AGE / 430);
+        const AGE = displayTimeMs - E.at, LIFE = this.lifeMs(E);
+        if (AGE >= 0 && AGE <= LIFE) {
+          COMBAT_EFFECT_PRESENTATIONS.get(E.kind)?.drawGround?.(r, E, AGE / LIFE);
         }
       }
     }
     draw(r, displayTimeMs) {
+      let hits = 0;
       for (const E of this.effects) {
-        const AGE = displayTimeMs - E.at;
-        if (AGE < 0 || AGE > 430) {
+        if (E.kind === "boss-hit" || E.kind === "unit-hit") {
+          hits++;
+        }
+      }
+      this.dense = hits > COMBAT_FEEL_CONFIG.denseHits;
+      for (const E of this.effects) {
+        const AGE = displayTimeMs - E.at, LIFE = this.lifeMs(E);
+        if (AGE < 0 || AGE > LIFE) {
           continue;
         }
         if (!E.heard) {
           E.heard = true;
           this.sound(E);
         }
-        const PRESENTATION = COMBAT_EFFECT_PRESENTATIONS.get(E.kind);
-        PRESENTATION?.draw?.(r, E, AGE / 430);
+        COMBAT_EFFECT_PRESENTATIONS.get(E.kind)?.draw?.(r, E, AGE / LIFE, this);
       }
     }
   };

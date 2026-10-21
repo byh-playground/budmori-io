@@ -732,9 +732,13 @@ const DIORAMA = class Diorama {
         }
         feel?.draw(this, this.displayTimeMs);
         for (const GROUP of sim2.cornAttachments?.groups || []) {
+            const BODY = this.attachmentBody(sim2, GROUP, feel);
             for (const ATTACHMENT of GROUP.attachments) {
                 if (ATTACHMENT.status === 'attached' || ATTACHMENT.status === 'fading') {
-                    CORN_ATTACHMENT_PRESENTATION.drawAttachment(this, ATTACHMENT, GROUP);
+                    CORN_ATTACHMENT_PRESENTATION.drawAttachment(this, ATTACHMENT, GROUP, {
+                        tick: sim2.simulationTick,
+                        body: BODY,
+                    });
                 }
             }
         }
@@ -746,6 +750,20 @@ const DIORAMA = class Diorama {
         drawFormationEffects(this, sim2);
         this.drawSceneFade(sim2, now);
         this.stats = C.endFrame();
+    }
+    // The body a stuck kernel sits on: the boss is big and recoils when hit, a unit is small.
+    attachmentBody(sim2, group, feel) {
+        if (group.targetId !== 'boss') {
+            return undefined;
+        }
+        const RECOIL = feel?.boss(this.displayTimeMs);
+        return {
+            radius: sim2.boss.radius,
+            height: sim2.boss.height,
+            scale: 3.4,
+            shiftX: RECOIL?.x || 0,
+            shiftY: RECOIL?.y || 0,
+        };
     }
     dispose() {
         disposeEffectPresentations(this);
