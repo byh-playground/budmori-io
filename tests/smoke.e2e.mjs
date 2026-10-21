@@ -275,6 +275,22 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
     expect(!LEFT.active && LEFT.units > 0, `leave ${JSON.stringify(LEFT)}`);
 });
 
+await check('upgrade menu opens on the species abilities without the old stat tab', async () => {
+    await PAGE.locator('#bossRewardClose')
+        .click({ timeout: 2000 })
+        .catch(() => {});
+    await PAGE.locator('#upgradeMenu').click();
+    await PAGE.waitForTimeout(800);
+    const MENU = await WORLD(() => ({
+        abilities: !document.getElementById('abilityPanel').hidden,
+        growthTab: !!document.getElementById('menuTabGrowth'),
+        tabs: document.querySelectorAll('#gameMenuTabs [role="tab"]').length,
+    }));
+    expect(MENU.abilities && !MENU.growthTab && MENU.tabs === 3, `menu ${JSON.stringify(MENU)}`);
+    await PAGE.locator('#gameMenuClose').click();
+    await PAGE.waitForTimeout(300);
+});
+
 await check('progress survives a reload', async () => {
     await WORLD(() => {
         BUDMORI.sim.playerProgression.towerBest = 4;

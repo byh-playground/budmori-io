@@ -1,5 +1,4 @@
 import { SPECIES_ABILITY_DEFINITIONS } from './ability-definitions.js';
-import { createFarmUpgradeState, isValidFarmUpgradeState } from './farm-upgrades.js';
 export const ABILITY_TREE_SCHEMA_VERSION = 2;
 export function createAbilityProgressionState({ availablePoints = 0 } = {}) {
     if (!isNonNegativeInteger(availablePoints)) {
@@ -8,7 +7,6 @@ export function createAbilityProgressionState({ availablePoints = 0 } = {}) {
     return {
         schemaVersion: ABILITY_TREE_SCHEMA_VERSION,
         availablePoints,
-        farmUpgrades: createFarmUpgradeState(),
         abilities: Object.fromEntries(
             SPECIES_ABILITY_DEFINITIONS.map((definition) => [
                 definition.id,
@@ -30,12 +28,7 @@ export function isValidAbilityProgressionState(state) {
     if (!state || typeof state !== 'object' || state.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION) {
         return false;
     }
-    if (
-        !isNonNegativeInteger(state.availablePoints) ||
-        !isValidFarmUpgradeState(state.farmUpgrades) ||
-        !state.abilities ||
-        typeof state.abilities !== 'object'
-    ) {
+    if (!isNonNegativeInteger(state.availablePoints) || !state.abilities || typeof state.abilities !== 'object') {
         return false;
     }
     if (Object.keys(state.abilities).length !== SPECIES_ABILITY_DEFINITIONS.length) {

@@ -1,7 +1,6 @@
 import { FarmMode } from '../model-base.js';
 import { FEATURE } from './definition.js';
 import { scaleMoveSpeed } from '../../../unit-stats.js';
-import { farmUpgradeRate } from '../../../farm-upgrades.js';
 
 export class BreedFarmMode extends FarmMode {
     constructor(config) {
@@ -30,19 +29,7 @@ export class BreedFarmMode extends FarmMode {
             this.wander(world, u, dt);
             return;
         }
-        world.steer(
-            u,
-            target.x,
-            target.y,
-            dt,
-            scaleMoveSpeed(
-                2.2 *
-                    (target.phase === 'grounded'
-                        ? farmUpgradeRate(world.playerProgression?.farmUpgrades, 'growth')
-                        : 1),
-                u,
-            ),
-        );
+        world.steer(u, target.x, target.y, dt, scaleMoveSpeed(2.2, u));
     }
     resolveContacts(world, units) {
         world.resolveFarmContactPairs(units, true);

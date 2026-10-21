@@ -2,10 +2,8 @@ import { SPECIES_ABILITY_DEFINITIONS, abilityPresentationFor } from './ability-c
 import { SPECIES_CATALOG, speciesById } from './species-catalog.js';
 import { isValidAbilityProgressionState } from './ability-state.js';
 import { abilityProfile } from './unit-abilities.js';
-import { experienceForNextLevel, formatXpForDisplay, isValidPlayerProgressionState } from './player-progression.js';
-import { FARM_UPGRADE_MAX_LEVELS, FARM_UPGRADE_NODES } from './farm-upgrades.js';
+import { experienceForNextLevel, formatXpForDisplay } from './player-progression.js';
 import {
-    canPurchaseFarmUpgrade,
     canResetAbilityProgression,
     getAbilityNodeStatus,
     getInvestedAbilityPointCount,
@@ -37,27 +35,6 @@ const RESET_REASON_LABELS = new Map([
     ['farm-only', '농장에서만 초기화할 수 있어요.'],
     ['invalid-state', INVESTMENT_REASON_LABELS.get('invalid-state')],
 ]);
-const FARM_UPGRADE_REASON_LABELS = new Map([
-    ...['combat-lock', 'farm-only', 'max-level', 'invalid-state'].map((reason) => [
-        reason,
-        INVESTMENT_REASON_LABELS.get(reason),
-    ]),
-    ['insufficient-points', '공용 포인트가 필요해요.'],
-]);
-export function renderFarmUpgradeTreeMarkup(state, { location = 'farm', inCombat = false } = {}) {
-    if (!isValidPlayerProgressionState(state)) {
-        throw new TypeError('Cannot render invalid player progression state');
-    }
-    const NODES = FARM_UPGRADE_NODES.map((node) => {
-        const LEVEL = state.farmUpgrades[node.id];
-        const CHECK = canPurchaseFarmUpgrade(state, node.id, {
-            location,
-            inCombat,
-        });
-        return `<article class="tree-node" data-ready="${CHECK.allowed}"><div class="node-heading"><span class="node-icon" aria-hidden="true">${node.icon}</span><h3>${node.name}</h3><span>${LEVEL}/${FARM_UPGRADE_MAX_LEVELS[node.id]}</span></div><p>${node.description}</p><div class="node-values">${node.value(LEVEL)}${LEVEL < FARM_UPGRADE_MAX_LEVELS[node.id] ? ` <span>→ ${node.value(LEVEL + 1)}</span>` : ''}</div><small>${LEVEL === FARM_UPGRADE_MAX_LEVELS[node.id] ? '완료' : CHECK.reason ? farmUpgradeReasonLabel(CHECK.reason) : '공용 포인트 1개'}</small><button type="button" data-progression-farm-node="${node.id}" aria-disabled="${!CHECK.allowed}" ${CHECK.allowed ? '' : 'disabled'}>${LEVEL === FARM_UPGRADE_MAX_LEVELS[node.id] ? '✓' : '+'}<span class="sr-only">${node.name} 투자</span></button></article>`;
-    }).join('');
-    return `<section class="farm-upgrade-tree" aria-label="공통 스탯"><p class="ability-tree__wallet" aria-live="polite"><strong>${state.availablePoints}</strong><span>공용 포인트</span></p>${renderPlayerProgressMarkup(state)}<div class="farm-upgrade-tree__nodes">${NODES}</div></section>`;
-}
 export function renderAbilitySpeciesTabsMarkup(selectedSpecies = 0) {
     return SPECIES_CATALOG.map(
         (species) =>
@@ -281,7 +258,4 @@ function nodeReasonLabel(reason, definition, context) {
 }
 function resetReasonLabel(reason, invested) {
     return RESET_REASON_LABELS.get(reason) ?? `투자 ${invested}개를 무료로 돌려받아요.`;
-}
-function farmUpgradeReasonLabel(reason) {
-    return FARM_UPGRADE_REASON_LABELS.get(reason) ?? '사용할 수 없는 노드예요.';
 }

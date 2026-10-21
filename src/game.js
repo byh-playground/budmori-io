@@ -3269,82 +3269,6 @@
     }
   });
 
-  // src/farm-upgrades.js
-  function createFarmUpgradeState() {
-    return Object.fromEntries(FARM_UPGRADE_IDS.map((id) => [id, 0]));
-  }
-  function isValidFarmUpgradeState(state) {
-    if (!state || typeof state !== "object" || Array.isArray(state)) {
-      return false;
-    }
-    if (Object.keys(state).length !== FARM_UPGRADE_IDS.length) {
-      return false;
-    }
-    return FARM_UPGRADE_IDS.every(
-      (id) => Object.hasOwn(state, id) && Number.isSafeInteger(state[id]) && state[id] >= 0 && state[id] <= FARM_UPGRADE_MAX_LEVELS[id]
-    );
-  }
-  function getFarmUpgradeLevel(state, id) {
-    return Number.isSafeInteger(state?.[id]) ? state[id] : 0;
-  }
-  function getFarmUpgradeInvestedCount(state) {
-    if (!isValidFarmUpgradeState(state)) {
-      return 0;
-    }
-    return FARM_UPGRADE_IDS.reduce((total, id) => total + state[id], 0);
-  }
-  function farmUpgradeRate(state, id) {
-    return 1 + 0.1 * getFarmUpgradeLevel(state, id);
-  }
-  function getBreedCooldownSeconds(state, baseSeconds = 10) {
-    return baseSeconds / farmUpgradeRate(state, "breed");
-  }
-  function getMergeCooldownSeconds(state, baseSeconds = 4) {
-    return baseSeconds / farmUpgradeRate(state, "merge");
-  }
-  var FARM_UPGRADE_MAX_LEVELS, FARM_UPGRADE_NODES, FARM_UPGRADE_IDS;
-  var init_farm_upgrades = __esm({
-    "src/farm-upgrades.js"() {
-      FARM_UPGRADE_MAX_LEVELS = Object.freeze({
-        food: 4,
-        growth: 4,
-        breed: 4,
-        merge: 4
-      });
-      FARM_UPGRADE_NODES = Object.freeze([
-        {
-          id: "food",
-          name: "일꾼 속도",
-          icon: "◒",
-          description: "일꾼이 먹이를 만드는 속도를 단계마다 10% 높여요.",
-          value: (level) => `×${(1 + 0.1 * level).toFixed(1)}`
-        },
-        {
-          id: "growth",
-          name: "먹이 찾기",
-          icon: "❧",
-          description: "먹이를 향해 움직일 때의 속도를 단계마다 10% 높여요.",
-          value: (level) => `${(2.2 * (1 + 0.1 * level)).toFixed(2)} 속도`
-        },
-        {
-          id: "breed",
-          name: "번식 회복",
-          icon: "♡",
-          description: "부모의 번식 대기시간을 단계마다 10% 줄여요.",
-          value: (level) => `${(10 / (1 + 0.1 * level)).toFixed(2)}초`
-        },
-        {
-          id: "merge",
-          name: "합성 회복",
-          icon: "◇",
-          description: "합성 후 대기시간을 단계마다 10% 줄여요.",
-          value: (level) => `${(4 / (1 + 0.1 * level)).toFixed(2)}초`
-        }
-      ]);
-      FARM_UPGRADE_IDS = Object.freeze(Object.keys(FARM_UPGRADE_MAX_LEVELS));
-    }
-  });
-
   // src/ability-state.js
   function createAbilityProgressionState({ availablePoints = 0 } = {}) {
     if (!isNonNegativeInteger(availablePoints)) {
@@ -3353,7 +3277,6 @@
     return {
       schemaVersion: ABILITY_TREE_SCHEMA_VERSION,
       availablePoints,
-      farmUpgrades: createFarmUpgradeState(),
       abilities: Object.fromEntries(
         SPECIES_ABILITY_DEFINITIONS.map((definition) => [
           definition.id,
@@ -3373,7 +3296,7 @@
     if (!state || typeof state !== "object" || state.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION) {
       return false;
     }
-    if (!isNonNegativeInteger(state.availablePoints) || !isValidFarmUpgradeState(state.farmUpgrades) || !state.abilities || typeof state.abilities !== "object") {
+    if (!isNonNegativeInteger(state.availablePoints) || !state.abilities || typeof state.abilities !== "object") {
       return false;
     }
     if (Object.keys(state.abilities).length !== SPECIES_ABILITY_DEFINITIONS.length) {
@@ -3409,7 +3332,6 @@
   var init_ability_state = __esm({
     "src/ability-state.js"() {
       init_ability_definitions();
-      init_farm_upgrades();
       ABILITY_TREE_SCHEMA_VERSION = 2;
     }
   });
@@ -3519,14 +3441,13 @@
       (total, [, investment]) => total + investment.powerLevel + Object.values(investment.branchLevels || {}).reduce((branchTotal, level) => branchTotal + level, 0),
       0
     );
-    return INVESTED_POINTS + getFarmUpgradeInvestedCount(state.farmUpgrades) + formationInvestedPoints(state.formationSkills) + state.availablePoints === state.level - 1;
+    return INVESTED_POINTS + formationInvestedPoints(state.formationSkills) + state.availablePoints === state.level - 1;
   }
   var PLAYER_PROGRESS_BASE_XP, BOSS_KILL_XP, FIRST_LEVEL_XP, LEVEL_XP_MULTIPLIER, SHARED_POINTS_PER_LEVEL, FARM_BOSS_EVENT_MAX_STAGE;
   var init_player_progression = __esm({
     "src/player-progression.js"() {
       init_ability_state();
       init_formation_skill_state();
-      init_farm_upgrades();
       PLAYER_PROGRESS_BASE_XP = 100;
       BOSS_KILL_XP = 20;
       FIRST_LEVEL_XP = PLAYER_PROGRESS_BASE_XP;
@@ -3737,9 +3658,6 @@
     }
     const NEXT = cloneState(state), TYPE = NORMALIZED_SCOPE.type;
     NEXT.availablePoints += CHECK.refunded;
-    if (TYPE === "all" || TYPE === "farm") {
-      NEXT.farmUpgrades = createFarmUpgradeState();
-    }
     if (TYPE === "all" || TYPE === "abilities") {
       for (const DEFINITION13 of SPECIES_ABILITY_DEFINITIONS) {
         if (TYPE === "all" || NORMALIZED_SCOPE.speciesId === void 0 || DEFINITION13.species === NORMALIZED_SCOPE.speciesId) {
@@ -3757,9 +3675,7 @@
   function progressionResetInvestment(state, scope) {
     switch (scope.type) {
       case "all":
-        return getInvestedPointCount(state) + getFarmUpgradeInvestedCount(state.farmUpgrades) + formationInvestedPoints(state.formationSkills);
-      case "farm":
-        return getFarmUpgradeInvestedCount(state.farmUpgrades);
+        return getInvestedPointCount(state) + formationInvestedPoints(state.formationSkills);
       case "abilities":
         return getInvestedAbilityPointCount(state, scope.speciesId ?? null);
       case "formation":
@@ -3773,7 +3689,7 @@
     if (!NORMALIZED || typeof NORMALIZED !== "object" || Array.isArray(NORMALIZED)) {
       return null;
     }
-    if (NORMALIZED.type === "all" || NORMALIZED.type === "farm" || NORMALIZED.type === "formation") {
+    if (NORMALIZED.type === "all" || NORMALIZED.type === "formation") {
       return NORMALIZED;
     }
     if (NORMALIZED.type === "abilities") {
@@ -3783,62 +3699,6 @@
       }
     }
     return null;
-  }
-  function canPurchaseFarmUpgrade(state, nodeId, context = {}) {
-    const NODE = FARM_UPGRADE_NODES.find((candidate) => candidate.id === nodeId);
-    if (!NODE) {
-      return {
-        allowed: false,
-        reason: "unknown-node"
-      };
-    }
-    if (!isValidPlayerProgressionState(state)) {
-      return {
-        allowed: false,
-        reason: "invalid-state"
-      };
-    }
-    const LOCK_REASON = progressionLockReason(context);
-    if (LOCK_REASON) {
-      return {
-        allowed: false,
-        reason: LOCK_REASON
-      };
-    }
-    if (state.farmUpgrades[nodeId] >= FARM_UPGRADE_MAX_LEVELS[nodeId]) {
-      return {
-        allowed: false,
-        reason: "max-level"
-      };
-    }
-    if (state.availablePoints < SHARED_ABILITY_POINT_COST) {
-      return {
-        allowed: false,
-        reason: "insufficient-points"
-      };
-    }
-    return {
-      allowed: true,
-      reason: null
-    };
-  }
-  function purchaseFarmUpgrade(state, nodeId, context = {}) {
-    const CHECK = canPurchaseFarmUpgrade(state, nodeId, context);
-    if (!CHECK.allowed) {
-      return {
-        ok: false,
-        reason: CHECK.reason,
-        state
-      };
-    }
-    const NEXT = cloneState(state);
-    NEXT.availablePoints -= SHARED_ABILITY_POINT_COST;
-    NEXT.farmUpgrades[nodeId] += 1;
-    return {
-      ok: true,
-      reason: null,
-      state: NEXT
-    };
   }
   function getAbilityNodeStatus(state, definition, nodeId, context = {}) {
     const NODE = parseNodeId(nodeId);
@@ -3885,9 +3745,6 @@
   function cloneState(state) {
     return {
       ...state,
-      farmUpgrades: {
-        ...state.farmUpgrades
-      },
       abilities: Object.fromEntries(
         Object.entries(state.abilities).map(([id, value]) => [
           id,
@@ -3934,7 +3791,6 @@
       init_ability_state();
       init_player_progression();
       init_formation_skill_state();
-      init_farm_upgrades();
       SHARED_ABILITY_POINT_COST = 1;
       DEFINITION_BY_ID = new Map(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, definition]));
     }
@@ -5348,7 +5204,6 @@
       init_model_base4();
       init_definition20();
       init_unit_stats();
-      init_farm_upgrades();
       BreedFarmMode = class extends FarmMode {
         constructor(config) {
           super(FEATURE6, config);
@@ -5376,16 +5231,7 @@
             this.wander(world, u, dt);
             return;
           }
-          world.steer(
-            u,
-            target.x,
-            target.y,
-            dt,
-            scaleMoveSpeed(
-              2.2 * (target.phase === "grounded" ? farmUpgradeRate(world.playerProgression?.farmUpgrades, "growth") : 1),
-              u
-            )
-          );
+          world.steer(u, target.x, target.y, dt, scaleMoveSpeed(2.2, u));
         }
         resolveContacts(world, units) {
           world.resolveFarmContactPairs(units, true);
@@ -7392,7 +7238,6 @@
       init_species_catalog();
       init_player_progression();
       init_ability_progression();
-      init_farm_upgrades();
       init_unit_attack_capabilities();
       init_unit_grades();
       init_boss_patterns();
@@ -7455,6 +7300,7 @@
             efficiency: 0.5
           }),
           merge: Object.freeze({
+            cooldownSeconds: 4,
             animationSeconds: 0.85,
             celebrationSeconds: 1,
             centerHeight: 1.8,
@@ -8606,7 +8452,7 @@
           return true;
         }
         breedCooldownDuration() {
-          return getBreedCooldownSeconds(this.playerProgression?.farmUpgrades, CONFIG.farm.breeding.cooldownSeconds);
+          return CONFIG.farm.breeding.cooldownSeconds;
         }
         breedGrowthDuration() {
           return this.breedCooldownDuration() / 2;
@@ -8637,18 +8483,6 @@
           }
           return RESULT;
         }
-        investFarmUpgrade(nodeId) {
-          const IN_COMBAT = this.farmBossEvent?.phase !== "idle";
-          const RESULT = purchaseFarmUpgrade(this.playerProgression, nodeId, {
-            location: this.scene,
-            inCombat: IN_COMBAT
-          });
-          if (RESULT.ok) {
-            this.playerProgression = RESULT.state;
-            this.markProgressChanged();
-          }
-          return RESULT;
-        }
         resetProgression(scope) {
           const IN_COMBAT = this.farmBossEvent?.phase !== "idle";
           const RESULT = resetPlayerProgression(this.playerProgression, scope, {
@@ -8656,15 +8490,6 @@
             inCombat: IN_COMBAT
           });
           if (RESULT.ok) {
-            const RESET_FARMS = scope?.type === "farm" || scope?.type === "all" || scope === "farm" || scope === "all";
-            if (RESET_FARMS) {
-              this.cancelMergeTasks();
-              for (const UNIT_LOCAL of this.unitCollection.items) {
-                if (UNIT_LOCAL.mateId) {
-                  this.releaseMate(UNIT_LOCAL);
-                }
-              }
-            }
             this.playerProgression = RESULT.state;
             this.markProgressChanged();
           }
@@ -9130,7 +8955,7 @@
         // Workers are chosen per species so every species keeps a breeding pair.
         // A worker does not eat or breed. Its output scales with its tier and the food upgrade.
         refreshWorkers() {
-          const WORK = CONFIG.farm.work, RATIO = this.workBasisPoints / 1e4, NEXT = /* @__PURE__ */ new Set(), RATES = /* @__PURE__ */ new Map(), UPGRADE_RATE = farmUpgradeRate(this.playerProgression?.farmUpgrades, "food");
+          const WORK = CONFIG.farm.work, RATIO = this.workBasisPoints / 1e4, NEXT = /* @__PURE__ */ new Set(), RATES = /* @__PURE__ */ new Map();
           let total = 0;
           if (this.scene === "farm") {
             const BY_SPECIES = /* @__PURE__ */ new Map();
@@ -9150,7 +8975,7 @@
                 Math.max(0, LIST.length - WORK.minBreeders)
               );
               for (let index = 0; index < COUNT; index++) {
-                const WORKER = LIST[index], RATE = (1 + WORK.tierBonus * (WORKER.tier - 1)) / WORK.secondsPerFood * UPGRADE_RATE;
+                const WORKER = LIST[index], RATE = (1 + WORK.tierBonus * (WORKER.tier - 1)) / WORK.secondsPerFood;
                 NEXT.add(WORKER.id);
                 RATES.set(WORKER.id, RATE);
                 total += RATE;
@@ -10109,7 +9934,7 @@
           RESULT.growthElapsed = RESULT.growthDuration;
           RESULT.z = Math.max(0, Z - RESULT.height * 0.85);
           RESULT.vz = -CONFIG.farm.merge.resultFallVelocity;
-          RESULT.cooldown = getMergeCooldownSeconds(this.playerProgression?.farmUpgrades);
+          RESULT.cooldown = CONFIG.farm.merge.cooldownSeconds;
           RESULT.cooldownDuration = RESULT.cooldown;
           const SEQUENCE_WINDOW = CONFIG.farm.merge.animationSeconds * 0.72, STEP = SEQUENCE_WINDOW / ORDERED.length;
           if (!this.replaceUnitGroup(
@@ -12146,9 +11971,6 @@
       experience: player.experience,
       towerBest: player.towerBest,
       availablePoints: player.availablePoints,
-      farmUpgrades: {
-        ...player.farmUpgrades
-      },
       abilities: Object.fromEntries(
         Object.entries(player.abilities).map(([id, build]) => [
           id,
@@ -12273,7 +12095,6 @@
     );
     const PLAYER = data.player, DEFAULTS = createPlayerProgressionState();
     keys(PLAYER, Object.keys(DEFAULTS));
-    keys(PLAYER.farmUpgrades, Object.keys(DEFAULTS.farmUpgrades));
     keys(PLAYER.abilities, Object.keys(DEFAULTS.abilities));
     for (const [ABILITY_ID8, BUILD] of Object.entries(PLAYER.abilities)) {
       const BRANCH_KEYS = Object.keys(DEFAULTS.abilities[ABILITY_ID8].branchLevels || {});
@@ -12586,7 +12407,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.25.0";
+      PRODUCT_VERSION = "0.26.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -16455,9 +16276,6 @@
           return W.scene === "farm" && W.startManualMerge();
         case "progression-invest":
           if (W.scene === "farm" && typeof c.nodeId === "string" && c.nodeId.length < 64) {
-            if (c.scope === "farm") {
-              return W.investFarmUpgrade(c.nodeId).ok;
-            }
             if (c.scope === "ability" && typeof c.abilityId === "string" && c.abilityId.length < 64) {
               return W.investAbilityNode(c.abilityId, c.nodeId).ok;
             }
@@ -16951,12 +16769,6 @@
       formationSkills: createFormationSkillState(),
       schemaVersion: 2,
       availablePoints: 0,
-      farmUpgrades: {
-        food: 0,
-        growth: 0,
-        breed: 0,
-        merge: 0
-      },
       abilities: ABILITY_INVESTMENTS(),
       level: 1,
       experience: 0,
@@ -18151,7 +17963,6 @@
   init_ability_state();
   init_unit_abilities();
   init_player_progression();
-  init_farm_upgrades();
   init_ability_progression();
   var DEFAULT_ABILITY_PRESENTATION = {
     label(_definition, _value, level) {
@@ -18177,27 +17988,6 @@
     ["farm-only", "농장에서만 초기화할 수 있어요."],
     ["invalid-state", INVESTMENT_REASON_LABELS.get("invalid-state")]
   ]);
-  var FARM_UPGRADE_REASON_LABELS = new Map([
-    ...["combat-lock", "farm-only", "max-level", "invalid-state"].map((reason) => [
-      reason,
-      INVESTMENT_REASON_LABELS.get(reason)
-    ]),
-    ["insufficient-points", "공용 포인트가 필요해요."]
-  ]);
-  function renderFarmUpgradeTreeMarkup(state, { location: location2 = "farm", inCombat = false } = {}) {
-    if (!isValidPlayerProgressionState(state)) {
-      throw new TypeError("Cannot render invalid player progression state");
-    }
-    const NODES = FARM_UPGRADE_NODES.map((node) => {
-      const LEVEL = state.farmUpgrades[node.id];
-      const CHECK = canPurchaseFarmUpgrade(state, node.id, {
-        location: location2,
-        inCombat
-      });
-      return `<article class="tree-node" data-ready="${CHECK.allowed}"><div class="node-heading"><span class="node-icon" aria-hidden="true">${node.icon}</span><h3>${node.name}</h3><span>${LEVEL}/${FARM_UPGRADE_MAX_LEVELS[node.id]}</span></div><p>${node.description}</p><div class="node-values">${node.value(LEVEL)}${LEVEL < FARM_UPGRADE_MAX_LEVELS[node.id] ? ` <span>→ ${node.value(LEVEL + 1)}</span>` : ""}</div><small>${LEVEL === FARM_UPGRADE_MAX_LEVELS[node.id] ? "완료" : CHECK.reason ? farmUpgradeReasonLabel(CHECK.reason) : "공용 포인트 1개"}</small><button type="button" data-progression-farm-node="${node.id}" aria-disabled="${!CHECK.allowed}" ${CHECK.allowed ? "" : "disabled"}>${LEVEL === FARM_UPGRADE_MAX_LEVELS[node.id] ? "✓" : "+"}<span class="sr-only">${node.name} 투자</span></button></article>`;
-    }).join("");
-    return `<section class="farm-upgrade-tree" aria-label="공통 스탯"><p class="ability-tree__wallet" aria-live="polite"><strong>${state.availablePoints}</strong><span>공용 포인트</span></p>${renderPlayerProgressMarkup(state)}<div class="farm-upgrade-tree__nodes">${NODES}</div></section>`;
-  }
   function renderAbilitySpeciesTabsMarkup(selectedSpecies = 0) {
     return SPECIES_CATALOG.map(
       (species) => `<button type="button" data-ability-species="${species.id}" aria-pressed="${species.id === selectedSpecies}">${species.name}</button>`
@@ -18346,9 +18136,6 @@
   }
   function resetReasonLabel(reason, invested) {
     return RESET_REASON_LABELS.get(reason) ?? `투자 ${invested}개를 무료로 돌려받아요.`;
-  }
-  function farmUpgradeReasonLabel(reason) {
-    return FARM_UPGRADE_REASON_LABELS.get(reason) ?? "사용할 수 없는 노드예요.";
   }
 
   // src/farm-app.js
@@ -18793,7 +18580,6 @@
     }
     const OK = STORAGE.save(world);
     DOLLAR2("saveNotice").textContent = OK ? "" : STORAGE.error;
-    DOLLAR2("treeStorage").hidden = OK;
     return OK;
   }
   var AUTOSAVE = new FarmAutosave(() => writeCheckpoint());
@@ -19075,14 +18861,6 @@
       e.preventDefault();
     }
   });
-  function drawTree() {
-    const W = personalGarden || active.world, IN_COMBAT = W.farmBossEvent?.phase !== "idle";
-    DOLLAR2("treeNodes").innerHTML = renderFarmUpgradeTreeMarkup(W.playerProgression, {
-      location: active.world.scene,
-      inCombat: IN_COMBAT
-    });
-    renderProgressionResetActions();
-  }
   function drawFarmPanel() {
     const W = personalGarden || active?.world;
     if (!W || farmPanelRevision === W.progressRevision) {
@@ -19115,9 +18893,6 @@
     renderProgressionResetActions();
   }
   function currentProgressionResetScope() {
-    if (menuTab === "growth") {
-      return { type: "farm" };
-    }
     if (menuTab === "abilities") {
       return { type: "abilities", speciesId: Number(DOLLAR2("abilityPanel").dataset.selectedSpecies || 0) };
     }
@@ -19128,11 +18903,11 @@
   }
   function renderProgressionResetActions() {
     const HOST = DOLLAR2("progressionResetActions"), CURRENT = DOLLAR2("progressionResetCurrent"), ALL = DOLLAR2("progressionResetAll");
-    if (!active || !menuOpen || !["growth", "abilities", "formation"].includes(menuTab)) {
+    if (!active || !menuOpen || !["abilities", "formation"].includes(menuTab)) {
       HOST.hidden = true;
       return;
     }
-    const W = personalGarden || active.world, IN_COMBAT = W.farmBossEvent?.phase !== "idle", CONTEXT = { location: active.world.scene, inCombat: IN_COMBAT }, SCOPE = currentProgressionResetScope(), CURRENT_CHECK = canResetPlayerProgression(W.playerProgression, SCOPE, CONTEXT), ALL_CHECK = canResetPlayerProgression(W.playerProgression, { type: "all" }, CONTEXT), LABEL = menuTab === "growth" ? "성장 항목 초기화" : menuTab === "formation" ? "형성 능력 초기화" : "이 종 특성 초기화";
+    const W = personalGarden || active.world, IN_COMBAT = W.farmBossEvent?.phase !== "idle", CONTEXT = { location: active.world.scene, inCombat: IN_COMBAT }, SCOPE = currentProgressionResetScope(), CURRENT_CHECK = canResetPlayerProgression(W.playerProgression, SCOPE, CONTEXT), ALL_CHECK = canResetPlayerProgression(W.playerProgression, { type: "all" }, CONTEXT), LABEL = menuTab === "formation" ? "형성 능력 초기화" : "이 종 특성 초기화";
     HOST.hidden = false;
     CURRENT.hidden = menuTab === "abilities";
     CURRENT.disabled = !CURRENT_CHECK.allowed;
@@ -19143,7 +18918,6 @@
   var MENU_ROUTES = {
     play: "#/menu",
     farms: "#/farms",
-    growth: "#/growth",
     abilities: "#/abilities",
     help: "#/help",
     formation: "#/formation"
@@ -19151,7 +18925,7 @@
   var ROUTE_MENU_TAB = (route2) => Object.keys(MENU_ROUTES).find((tab) => MENU_ROUTES[tab] === route2) || "play";
   function applyMenuTab(tab) {
     menuTab = tab;
-    const UPGRADES = ["farms", "growth", "abilities", "formation"].includes(tab);
+    const UPGRADES = ["farms", "abilities", "formation"].includes(tab);
     DOLLAR2("gameMenuTabs").hidden = !UPGRADES;
     DOLLAR2("gameMenuTitle").textContent = UPGRADES ? "업그레이드" : tab === "help" ? "도움말" : "설정";
     DOLLAR2("gameMenuClose").setAttribute("aria-label", `${DOLLAR2("gameMenuTitle").textContent} 닫기`);
@@ -19170,7 +18944,6 @@
     for (const [NAME, ID] of [
       ["play", "menuPlayPanel"],
       ["farms", "farmPanel"],
-      ["growth", "treePanel"],
       ["abilities", "abilityPanel"],
       ["help", "helpPanel"],
       ["formation", "formationPanel"]
@@ -19180,8 +18953,6 @@
     if (tab === "farms") {
       farmPanelRevision = -1;
       drawFarmPanel();
-    } else if (tab === "growth") {
-      drawTree();
     } else if (tab === "abilities") {
       drawAbilityTree();
     }
@@ -19256,11 +19027,11 @@
       history.pushState(null, "", "#/farm");
     }
     DOLLAR2(
-      ["farms", "growth", "abilities", "formation"].includes(menuTab) ? "upgradeMenu" : menuTab === "help" ? "helpMenu" : "gameMenu"
+      ["farms", "abilities", "formation"].includes(menuTab) ? "upgradeMenu" : menuTab === "help" ? "helpMenu" : "gameMenu"
     ).focus();
   }
   DOLLAR2("gameMenu").onclick = () => menuOpen && menuTab === "play" ? closeMenu() : openMenu();
-  DOLLAR2("upgradeMenu").onclick = () => openMenu(personalGarden?.farmBossEvent?.phase !== "idle" ? "formation" : "growth");
+  DOLLAR2("upgradeMenu").onclick = () => openMenu(personalGarden?.farmBossEvent?.phase !== "idle" ? "formation" : "abilities");
   DOLLAR2("helpMenu").onclick = () => openMenu("help");
   DOLLAR2("gameMenuClose").onclick = () => closeMenu();
   DOLLAR2("gameMenuTabs").onclick = (e) => {
@@ -19290,7 +19061,6 @@
     if (SCOPE) {
       active.queue("progression-reset", { scope: SCOPE });
       setTimeout(() => {
-        drawTree();
         drawAbilityTree();
         renderProgressionResetActions();
       }, 180);
@@ -19323,16 +19093,6 @@
     }
   };
   GAME_MENU_OVERLAY.addEventListener("click", CLOSE_MENU_FROM_BACKDROP);
-  DOLLAR2("treeNodes").onclick = (e) => {
-    const B = e.target.closest("[data-progression-farm-node]");
-    if (B) {
-      active.queue("progression-invest", {
-        scope: "farm",
-        nodeId: B.dataset.progressionFarmNode
-      });
-      setTimeout(drawTree, 180);
-    }
-  };
   DOLLAR2("abilitySpeciesTabs").onclick = (e) => {
     const BUTTON = e.target.closest("[data-ability-species]");
     if (!BUTTON) {
@@ -19832,9 +19592,9 @@
         start(new GARDEN(), false);
       }
     }
-    if (R2 === "#/help" || R2 === "#/farms" || R2 === "#/growth" || R2 === "#/abilities" || R2 === "#/formation" || R2 === "#/menu") {
+    if (R2 === "#/help" || R2 === "#/farms" || R2 === "#/abilities" || R2 === "#/formation" || R2 === "#/menu") {
       const FARM_EVENT_ACTIVE = personalGarden?.farmBossEvent?.phase !== "idle";
-      const RESTRICTED = (R2 === "#/farms" || R2 === "#/growth") && FARM_EVENT_ACTIVE || R2 === "#/abilities" && !personalGarden;
+      const RESTRICTED = R2 === "#/farms" && FARM_EVENT_ACTIVE || R2 === "#/abilities" && !personalGarden;
       if (RESTRICTED) {
         closeMenu(false);
         history.replaceState(null, "", "#/farm");
@@ -19934,7 +19694,6 @@
     syncFlag("bossChallenge", "hidden", FARM_EVENT_ACTIVE || home);
     syncAttribute("bossChallenge", "aria-disabled", String(raidStartBlockReason() !== ""));
     syncFlag("menuTabFarms", "disabled", FARM_EVENT_ACTIVE);
-    syncFlag("menuTabGrowth", "disabled", FARM_EVENT_ACTIVE);
     syncFlag("menuTabAbilities", "disabled", !personalGarden);
     const WORK_WORLD = personalGarden || W, WORKERS = WORK_WORLD.workerCount, BREEDERS = Math.max(0, WORK_WORLD.units.length - WORKERS), CUT = workCut(WORK_WORLD);
     let note = `일꾼 ${WORKERS}마리 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분`, warn = false;

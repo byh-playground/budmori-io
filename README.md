@@ -66,7 +66,7 @@ PR CI는 `npm ci`와 `npm run build`만 실행해 SVG 원본·제품 번들을 �
 
 ## 화면과 싱글 실행
 
-설정 `#/menu`에는 효과음을 두고, 업그보스전 안에 공통 스탯 `#/growth`·병종 특성 `#/abilities`·편성 스킬 `#/formation` 탭을 둡니다. [현재 병종 특성 효과 표](docs/ability-reference.md)는 제품 정의에서 생성하고 빌드에서 일치 여부를 확인합니다.
+설정 `#/menu`에는 효과음을 두고, 업그보스전 안에 병종 특성 `#/abilities`·편성 스킬 `#/formation` 탭을 둡니다. [현재 병종 특성 효과 표](docs/ability-reference.md)는 제품 정의에서 생성하고 빌드에서 일치 여부를 확인합니다.
 
 도움말 `#/help`, 농장 `#/farm`, 시작 `#/`는 화면·이력·F5와 동기화됩니다.
 

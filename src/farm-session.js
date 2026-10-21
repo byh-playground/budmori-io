@@ -575,9 +575,6 @@ class FarmSession {
                 return W.scene === 'farm' && W.startManualMerge();
             case 'progression-invest':
                 if (W.scene === 'farm' && typeof c.nodeId === 'string' && c.nodeId.length < 64) {
-                    if (c.scope === 'farm') {
-                        return W.investFarmUpgrade(c.nodeId).ok;
-                    }
                     if (c.scope === 'ability' && typeof c.abilityId === 'string' && c.abilityId.length < 64) {
                         return W.investAbilityNode(c.abilityId, c.nodeId).ok;
                     }
