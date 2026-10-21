@@ -721,6 +721,7 @@ function startFloorValue(garden) {
 }
 DOLLAR('startFloor').oninput = (e) => {
     startFloorChoice = Number(e.target.value);
+    paintRange(e.target);
 };
 DOLLAR('doorCards').addEventListener('click', (e) => {
     const BUTTON = e.target.closest('[data-door]');
@@ -1015,7 +1016,13 @@ DOLLAR('farmPlotActions').addEventListener('click', (e) => {
         beginFarmSortTransition(BUTTON.dataset.farmSort);
     }
 });
+// The track colour split follows the slider value.
+function paintRange(node) {
+    const RANGE = Number(node.max) - Number(node.min) || 1;
+    node.style.setProperty('--fill', `${((Number(node.value) - Number(node.min)) / RANGE) * 100}%`);
+}
 DOLLAR('workCutA').addEventListener('input', () => {
+    paintRange(DOLLAR('workCutA'));
     const CUT = Number(DOLLAR('workCutA').value),
         POINTS = (100 - CUT) * 100;
     saveWorkSetting(POINTS);
@@ -1732,7 +1739,8 @@ function sync(display, now, notices) {
     if (document.activeElement !== DOLLAR('startFloor') && DOLLAR('startFloor').value !== String(START_FLOOR)) {
         DOLLAR('startFloor').value = String(START_FLOOR);
     }
-    syncText('startFloorValue', `시작 ${START_FLOOR}층 · 최고 ${BEST_FLOOR}층`);
+    paintRange(DOLLAR('startFloor'));
+    syncText('startFloorValue', `시작 ${START_FLOOR} / ${BEST_FLOOR}층`);
     syncText('bossChallenge', '탑 오르기');
     syncFlag('bossChallenge', 'hidden', FARM_EVENT_ACTIVE || home);
     syncAttribute('bossChallenge', 'aria-disabled', String(raidStartBlockReason() !== ''));
@@ -1759,8 +1767,7 @@ function sync(display, now, notices) {
     syncText('workHudBreed', `번식 ${BREEDERS}`);
     syncText('workHudFood', `먹이 ${WORKERS}`);
     syncData('workHud', 'warn', warn);
-    DOLLAR('workHudBreed').style.flex = `${Math.max(1, CUT)} 1 0`;
-    DOLLAR('workHudFood').style.flex = `${Math.max(1, 100 - CUT)} 1 0`;
+    paintRange(DOLLAR('workCutA'));
     if (menuOpen && menuTab === 'farms') {
         drawFarmPanel();
     }

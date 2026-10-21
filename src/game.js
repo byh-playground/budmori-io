@@ -12268,7 +12268,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.29.0";
+      PRODUCT_VERSION = "0.29.1";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -18530,6 +18530,7 @@
   }
   DOLLAR2("startFloor").oninput = (e) => {
     startFloorChoice = Number(e.target.value);
+    paintRange(e.target);
   };
   DOLLAR2("doorCards").addEventListener("click", (e) => {
     const BUTTON = e.target.closest("[data-door]");
@@ -18813,7 +18814,12 @@
       beginFarmSortTransition(BUTTON.dataset.farmSort);
     }
   });
+  function paintRange(node) {
+    const RANGE = Number(node.max) - Number(node.min) || 1;
+    node.style.setProperty("--fill", `${(Number(node.value) - Number(node.min)) / RANGE * 100}%`);
+  }
   DOLLAR2("workCutA").addEventListener("input", () => {
+    paintRange(DOLLAR2("workCutA"));
     const CUT = Number(DOLLAR2("workCutA").value), POINTS = (100 - CUT) * 100;
     saveWorkSetting(POINTS);
     (personalGarden || active.world).setWorkBasisPoints(POINTS);
@@ -19446,7 +19452,8 @@
     if (document.activeElement !== DOLLAR2("startFloor") && DOLLAR2("startFloor").value !== String(START_FLOOR)) {
       DOLLAR2("startFloor").value = String(START_FLOOR);
     }
-    syncText("startFloorValue", `시작 ${START_FLOOR}층 · 최고 ${BEST_FLOOR}층`);
+    paintRange(DOLLAR2("startFloor"));
+    syncText("startFloorValue", `시작 ${START_FLOOR} / ${BEST_FLOOR}층`);
     syncText("bossChallenge", "탑 오르기");
     syncFlag("bossChallenge", "hidden", FARM_EVENT_ACTIVE || home);
     syncAttribute("bossChallenge", "aria-disabled", String(raidStartBlockReason() !== ""));
@@ -19469,8 +19476,7 @@
     syncText("workHudBreed", `번식 ${BREEDERS}`);
     syncText("workHudFood", `먹이 ${WORKERS}`);
     syncData("workHud", "warn", warn);
-    DOLLAR2("workHudBreed").style.flex = `${Math.max(1, CUT)} 1 0`;
-    DOLLAR2("workHudFood").style.flex = `${Math.max(1, 100 - CUT)} 1 0`;
+    paintRange(DOLLAR2("workCutA"));
     if (menuOpen && menuTab === "farms") {
       drawFarmPanel();
     }

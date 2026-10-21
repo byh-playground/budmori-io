@@ -356,7 +356,7 @@ body > header {
     color: var(--ui-ink-2);
 }
 .work-hud[data-warn='true'] .work-hud__row small {
-    color: var(--ui-danger-ink);
+    color: #b3261e;
     font-weight: var(--ui-fw-b);
 }
 .work-hud__body {
@@ -366,92 +366,84 @@ body > header {
     overflow-y: auto;
     overscroll-behavior: contain;
 }
-.work-hud__bar {
+.work-hud__labels {
     display: flex;
-    height: 28px;
-    border-radius: var(--ui-r-m);
-    overflow: hidden;
-    font-size: var(--ui-fs-1);
+    justify-content: space-between;
+    gap: var(--ui-s3);
+    font-size: var(--ui-fs-2);
     font-weight: var(--ui-fw-b);
-    color: var(--ui-ink-on-base);
 }
-.work-hud__bar span {
-    display: flex;
-    align-items: center;
-    padding: 0 var(--ui-s3) 0 var(--ui-s2);
-    min-width: 0;
-    text-overflow: ellipsis;
+.work-hud__labels span {
     white-space: nowrap;
-    overflow: hidden;
+}
+#workHudBreed::before,
+#workHudFood::before {
+    content: '';
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    margin-right: 6px;
+    border-radius: 3px;
+    background: var(--a);
 }
 #workHudBreed {
-    background: #7fa77a;
+    --a: #7fa77a;
 }
 #workHudFood {
-    background: #c2913e;
+    --a: #c2913e;
 }
-#workHudRes {
-    background: #8b8a7c;
+.flat-range.work-hud__cut {
+    --a: #7fa77a;
+    --b: #c2913e;
 }
-#workHudWood {
-    background: #8a7a4a;
-}
-#workHudStone {
-    background: #8d8f93;
-    justify-content: flex-end;
-}
-#workHudJobs {
-    background: #8b8a7c;
-    justify-content: flex-end;
-}
-#workHudHaul {
-    background: #a58f5f;
-}
-#workHudBuild {
-    background: #b9774a;
-}
-#workHudExplore {
-    background: #7c9bb0;
-    justify-content: flex-end;
-}
-.work-hud__track {
-    position: relative;
-}
-.work-hud__cut {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    background: none;
-    pointer-events: none;
+/* 납작한 슬라이더: 얇은 막대와 평평한 손잡이, 터치 영역은 44px */
+.flat-range {
+    --a: var(--ui-accent, #7fa77a);
+    --b: rgba(120, 120, 120, 0.35);
+    --fill: 50%;
     -webkit-appearance: none;
     appearance: none;
+    width: 100%;
+    height: 44px;
+    margin: 0;
+    background: transparent;
+    touch-action: none;
+    cursor: pointer;
 }
-.work-hud__cut::-webkit-slider-runnable-track {
-    background: none;
+.flat-range::-webkit-slider-runnable-track {
+    height: 12px;
+    border-radius: 6px;
+    background: linear-gradient(to right, var(--a) var(--fill), var(--b) var(--fill));
 }
-.work-hud__cut::-moz-range-track {
-    background: none;
+.flat-range::-moz-range-track {
+    height: 12px;
+    border-radius: 6px;
+    background: linear-gradient(to right, var(--a) var(--fill), var(--b) var(--fill));
 }
-.work-hud__cut::-webkit-slider-thumb {
+.flat-range::-webkit-slider-thumb {
     -webkit-appearance: none;
-    pointer-events: auto;
-    width: 6px;
-    height: 34px;
-    border-radius: 3px;
+    width: 28px;
+    height: 28px;
+    margin-top: -8px;
+    border-radius: 50%;
     background: #fff;
-    border: 2px solid var(--ui-ink);
-    cursor: ew-resize;
+    border: 3px solid var(--ui-ink);
+    box-shadow: none;
 }
-.work-hud__cut::-moz-range-thumb {
-    pointer-events: auto;
-    width: 4px;
-    height: 30px;
-    border-radius: 3px;
+.flat-range::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
     background: #fff;
-    border: 2px solid var(--ui-ink);
-    cursor: ew-resize;
+    border: 3px solid var(--ui-ink);
+    box-shadow: none;
+}
+.flat-range:focus-visible {
+    outline: 2px solid var(--ui-ink);
+    outline-offset: 2px;
+}
+.flat-range:disabled {
+    opacity: 0.5;
 }
 .controls {
     display: flex;
