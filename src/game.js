@@ -2921,7 +2921,10 @@
         }
         setupRoster(_world) {
         }
-        advanceRest(_world, unit, dt) {
+        advanceRest(world, unit, dt) {
+          if (world.tower.active) {
+            return true;
+          }
           unit.down = Math.max(0, unit.down - dt);
           if (unit.down < 1e-9) {
             unit.down = 0;
@@ -3418,7 +3421,7 @@
       formationSkills: createFormationSkillState(),
       level: 1,
       experience: 0,
-      farmBossEventStage: 1,
+      towerBest: 0,
       processedBossKillReceipts: []
     };
   }
@@ -3509,7 +3512,7 @@
     }).format(VALUE);
   }
   function isValidPlayerProgressionState(state) {
-    if (!isValidAbilityProgressionState(state) || state.formationSkills !== void 0 && !isValidFormationSkillState(state.formationSkills) || !Number.isSafeInteger(state.level) || state.level < 1 || !Number.isSafeInteger(state.farmBossEventStage) || state.farmBossEventStage < 1 || state.farmBossEventStage > FARM_BOSS_EVENT_MAX_STAGE || !Number.isFinite(state.experience) || state.experience < 0 || state.experience >= experienceForNextLevel(state.level) || !Array.isArray(state.processedBossKillReceipts) || !state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) || new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length) {
+    if (!isValidAbilityProgressionState(state) || state.formationSkills !== void 0 && !isValidFormationSkillState(state.formationSkills) || !Number.isSafeInteger(state.level) || state.level < 1 || !Number.isSafeInteger(state.towerBest) || state.towerBest < 0 || state.towerBest > FARM_BOSS_EVENT_MAX_STAGE || !Number.isFinite(state.experience) || state.experience < 0 || state.experience >= experienceForNextLevel(state.level) || !Array.isArray(state.processedBossKillReceipts) || !state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) || new Set(state.processedBossKillReceipts).size !== state.processedBossKillReceipts.length) {
       return false;
     }
     const INVESTED_POINTS = Object.entries(state.abilities).reduce(
@@ -5247,6 +5250,7 @@
           };
           world.boss = world.createBoss();
           world.markProgressChanged();
+          world.afterFloor();
         }
         return true;
       }
@@ -7459,6 +7463,15 @@
           }),
           // Draft numbers: one unit every 0.6 s, at most 30 on the field at once.
           deploy: Object.freeze({ cooldownSeconds: 0.6, fieldCap: 30 }),
+          // Draft numbers for the tower: every 5th floor is a mid-boss; fallen units sleep tier (max 3) floors.
+          tower: Object.freeze({
+            midBossEvery: 5,
+            sleepMax: 3,
+            topFloor: 61,
+            battle: Object.freeze({ hp: 1, attack: 1, edge: 0, reward: 1 }),
+            elite: Object.freeze({ hp: 1.6, attack: 1.25, edge: 0.25, reward: 2 }),
+            mid: Object.freeze({ hp: 2.2, attack: 1.4, edge: 0.5, reward: 3 })
+          }),
           bossEvent: Object.freeze({
             fadeSeconds: 0.5,
             celebrationSeconds: 1
@@ -8425,6 +8438,7 @@
           this._benchRevision = 0;
           this._fieldCache = { revision: -1, bench: -1, list: [] };
           this._deployReadyTime = 0;
+          this.tower = { active: false, floor: 0, kind: "battle", doors: [], sleepUntil: /* @__PURE__ */ new Map(), record: false };
           this._stepUnits.length = 0;
           this.corpseRecoveryVersion = 1;
           this.rng = new SEEDED_PRNG(this.seed);
@@ -9219,10 +9233,100 @@
           }
           return spawned;
         }
-        // Challenge the next boss: every unit of the farm fights it, and its stage is where the farm's fights have got to.
-        startBossFight() {
-          if (this.scene !== "farm" || this.boss.active || this.farmBossEvent.phase !== "idle" || !this.units.some((u) => !u.isBattleOnlySummon && u.hp > 0)) {
+        // Start a climb: the farm's units go up the tower floor by floor, from floor 1.
+        startTower() {
+          if (this.scene !== "farm" || this.boss.active || this.farmBossEvent.phase !== "idle" || this.tower.active || !this.units.some((u) => !u.isBattleOnlySummon && u.hp > 0)) {
             return false;
+          }
+          const SLEEP = new Map(this.units.filter((u) => !u.isBattleOnlySummon && u.hp <= 0).map((u) => [u.id, 1]));
+          this.tower = { active: true, floor: 1, kind: "battle", doors: [], sleepUntil: SLEEP, record: false };
+          return this._beginFloor("battle");
+        }
+        // The next floor's doors: a mid-boss floor has only its boss; otherwise two of battle / elite / rest (rest only if someone sleeps).
+        _rollDoors() {
+          const NEXT = this.tower.floor + 1;
+          if (NEXT % CONFIG.farm.tower.midBossEvery === 0) {
+            return ["mid"];
+          }
+          const POOL = ["battle", "elite"];
+          if (this.tower.sleepUntil.size) {
+            POOL.push("rest");
+          }
+          while (POOL.length > 2) {
+            POOL.splice(Math.floor(this.random() * POOL.length), 1);
+          }
+          return POOL;
+        }
+        // Between floors everybody waits in the hand; the fallen start sleeping for tier (max 3) floors.
+        afterFloor() {
+          const T = this.tower;
+          if (!T.active) {
+            return;
+          }
+          for (const U of this.unitCollection.items) {
+            if (!U.isBattleOnlySummon && U.hp <= 0 && !T.sleepUntil.has(U.id)) {
+              T.sleepUntil.set(U.id, T.floor + Math.min(CONFIG.farm.tower.sleepMax, U.tier));
+            }
+          }
+          this._benched = new Set(this.unitCollection.items.filter((u) => !u.isBattleOnlySummon));
+          this._benchRevision++;
+          this._unitSpatialDirty = true;
+          T.doors = this._rollDoors();
+          this.markProgressChanged();
+        }
+        _wakeUnit(unit) {
+          unit.revive(STATS(unit.tier, unit.species).maxHp);
+          this.tower.sleepUntil.delete(unit.id);
+        }
+        chooseDoor(index) {
+          const T = this.tower, DOOR = T.doors[index];
+          if (!T.active || this.farmBossEvent.phase !== "idle" || !DOOR) {
+            return false;
+          }
+          T.floor++;
+          T.doors = [];
+          if (DOOR === "rest") {
+            for (const U of this.unitCollection.items) {
+              if (T.sleepUntil.has(U.id)) {
+                this._wakeUnit(U);
+              }
+            }
+            T.kind = "rest";
+            T.doors = this._rollDoors();
+            this.combat("tower-rest", { floor: T.floor });
+            this.markProgressChanged();
+            return true;
+          }
+          return this._beginFloor(DOOR);
+        }
+        // Stopping after a cleared floor keeps everything that was won.
+        leaveTower() {
+          if (!this.tower.active || this.farmBossEvent.phase !== "idle") {
+            return false;
+          }
+          this._endTower();
+          return true;
+        }
+        _endTower() {
+          this.tower.active = false;
+          this.tower.doors = [];
+          this._benched.clear();
+          this._benchRevision++;
+          this._unitSpatialDirty = true;
+          this.markProgressChanged();
+        }
+        _beginFloor(kind) {
+          const T = this.tower;
+          T.kind = kind;
+          for (const UNIT_LOCAL of this.unitCollection.items) {
+            if (UNIT_LOCAL.isBattleOnlySummon) {
+              continue;
+            }
+            if (UNIT_LOCAL.hp <= 0 && T.sleepUntil.has(UNIT_LOCAL.id) && T.sleepUntil.get(UNIT_LOCAL.id) < T.floor) {
+              this._wakeUnit(UNIT_LOCAL);
+            } else if (UNIT_LOCAL.hp > 0) {
+              UNIT_LOCAL.hp = STATS(UNIT_LOCAL.tier, UNIT_LOCAL.species).maxHp;
+            }
           }
           for (const UNIT_LOCAL of this.units) {
             if (!UNIT_LOCAL.isBattleOnlySummon) {
@@ -9233,7 +9337,10 @@
           }
           const SPECIES = this.randomBossSpecies();
           this.boss = this.createBoss(SPECIES);
-          this.configureBossStage(this.playerProgression.farmBossEventStage, SPECIES);
+          this.configureBossStage(T.floor, SPECIES);
+          const KIND = CONFIG.farm.tower[kind];
+          this.boss.maxHp = this.boss.hp = this.boss.hp * KIND.hp;
+          this.boss.attackPower *= KIND.attack;
           Object.assign(this.boss, { x: 0, y: 0, z: CONFIG.battle.dropHeight, active: true });
           this.farmBossEvent = {
             phase: "dropping",
@@ -9247,7 +9354,7 @@
           };
           this.boss.encounterId = this.farmBossEvent.encounterId;
           this.boss.patternRuntime = createBossPatternRuntime();
-          this._benched = new Set(this.unitCollection.items.filter((u) => !u.isBattleOnlySummon && u.hp > 0));
+          this._benched = new Set(this.unitCollection.items.filter((u) => !u.isBattleOnlySummon));
           this._benchRevision++;
           this._deployReadyTime = this.time;
           this._unitSpatialDirty = true;
@@ -9369,8 +9476,12 @@
         }
         // 1-based boss phase from remaining HP: each unlockHp threshold crossed opens a phase.
         get bossPhase() {
-          const RATIO = this.boss.maxHp ? this.boss.hp / this.boss.maxHp : 1;
-          return 1 + BOSS_PHASE_THRESHOLDS.filter((t) => RATIO <= t).length;
+          return 1 + BOSS_PHASE_THRESHOLDS.filter((t) => this.bossHpRatio <= t).length;
+        }
+        // Remaining HP as the patterns see it: elites and mid-bosses start further along, so they know their skills early.
+        get bossHpRatio() {
+          const EDGE = this.tower.active ? CONFIG.farm.tower[this.tower.kind]?.edge || 0 : 0;
+          return (this.boss.maxHp ? this.boss.hp / this.boss.maxHp : 1) - EDGE;
         }
         // A boss fight lasts 90 seconds at stage 1 and 10 seconds longer for every stage after it.
         battleTimeLimit() {
@@ -11263,9 +11374,14 @@
           }
           this.formationSkills.end();
           this.cleanupBattleSummons();
-          this._benched.clear();
-          this._benchRevision++;
-          this._unitSpatialDirty = true;
+          const CLIMBING = outcome === "victory" && this.tower.active && this.tower.floor < CONFIG.farm.tower.topFloor;
+          if (!CLIMBING) {
+            this.tower.active = false;
+            this.tower.doors = [];
+            this._benched.clear();
+            this._benchRevision++;
+            this._unitSpatialDirty = true;
+          }
           this.boss.active = false;
           if (this.boss.patternRuntime) {
             this.boss.patternRuntime.active = null;
@@ -11290,8 +11406,12 @@
             }
           }
           if (outcome === "victory") {
-            const EVENT_STAGE = this.boss.stage, STAGE_STATS = bossStageStats(EVENT_STAGE);
-            const SETTLEMENT = settleBossKill(this, {
+            const EVENT_STAGE = this.boss.stage, STAGE_STATS = bossStageStats(EVENT_STAGE), BEST = this.playerProgression.towerBest, KIND = CONFIG.farm.tower[this.tower.floor ? this.tower.kind : "battle"];
+            this.tower.record = EVENT_STAGE > BEST;
+            if (EVENT_STAGE > BEST) {
+              this.playerProgression.towerBest = EVENT_STAGE;
+            }
+            const SETTLEMENT = !this.tower.record ? null : settleBossKill(this, {
               encounterId: ENCOUNTER_ID,
               source: "farm",
               stage: EVENT_STAGE,
@@ -11299,28 +11419,29 @@
               tier: 1,
               x: this.boss.x,
               y: this.boss.y,
-              rollBudget: STAGE_STATS.rollBudget,
-              xpAmount: STAGE_STATS.xp
+              rollBudget: STAGE_STATS.rollBudget * KIND.reward,
+              xpAmount: STAGE_STATS.xp * KIND.reward
             });
-            this.playerProgression.farmBossEventStage = Math.min(EVENT_STAGE + 1, BOSS_REWARD_SETTINGS.maxStage);
-            const REWARD2 = SETTLEMENT.receipt;
-            this.combat("farm-boss-xp", {
-              encounterId: ENCOUNTER_ID,
-              xp: SETTLEMENT.xpAwarded,
-              levelsGained: SETTLEMENT.levelsGained,
-              pointsAwarded: SETTLEMENT.pointsAwarded
-            });
-            this.combat("farm-boss-reward", {
-              acquired: REWARD2.grantedCount > 0,
-              pending: REWARD2.status === "pending",
-              successCount: REWARD2.successCount,
-              grantedCount: REWARD2.grantedCount,
-              species: REWARD2.species,
-              tier: REWARD2.tier,
-              chance: REWARD2.chance,
-              roll: REWARD2.roll,
-              encounterId: ENCOUNTER_ID
-            });
+            if (SETTLEMENT) {
+              const REWARD2 = SETTLEMENT.receipt;
+              this.combat("farm-boss-xp", {
+                encounterId: ENCOUNTER_ID,
+                xp: SETTLEMENT.xpAwarded,
+                levelsGained: SETTLEMENT.levelsGained,
+                pointsAwarded: SETTLEMENT.pointsAwarded
+              });
+              this.combat("farm-boss-reward", {
+                acquired: REWARD2.grantedCount > 0,
+                pending: REWARD2.status === "pending",
+                successCount: REWARD2.successCount,
+                grantedCount: REWARD2.grantedCount,
+                species: REWARD2.species,
+                tier: REWARD2.tier,
+                chance: REWARD2.chance,
+                roll: REWARD2.roll,
+                encounterId: ENCOUNTER_ID
+              });
+            }
           }
           this.markProgressChanged();
           this.combat(outcome === "victory" ? "farm-boss-victory" : "farm-boss-defeat", {
@@ -11524,7 +11645,7 @@
         eligibleBossPatterns(living, targets = this.bossPatternTargets(living)) {
           const RUNTIME = this.boss.patternRuntime, ALIVE_ADDS = this.units.reduce((n, u) => n + (hasFaction(u, FACTION_CONFIG.ENEMY) && u.hp > 0 ? 1 : 0), 0), ELIGIBLE = [];
           for (const ID of BOSS_PATTERN_IDS) {
-            if (RUNTIME.cooldowns[ID] > 1e-9 || this.boss.hp > this.boss.maxHp * BOSS_PATTERN_CONFIG[ID].unlockHp) {
+            if (RUNTIME.cooldowns[ID] > 1e-9 || this.bossHpRatio > BOSS_PATTERN_CONFIG[ID].unlockHp) {
               continue;
             }
             if (BOSS_BEHAVIORS.forId(ID).eligible(this, targets, ALIVE_ADDS)) {
@@ -12023,7 +12144,7 @@
       formationSkills: structuredClone(player.formationSkills),
       level: player.level,
       experience: player.experience,
-      farmBossEventStage: player.farmBossEventStage,
+      towerBest: player.towerBest,
       availablePoints: player.availablePoints,
       farmUpgrades: {
         ...player.farmUpgrades
@@ -12465,7 +12586,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.24.0";
+      PRODUCT_VERSION = "0.25.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -16322,8 +16443,12 @@
           return W.scene === "farm" && W.setWorkBasisPoints(c.basisPoints);
         case "deploy":
           return W.scene === "farm" && W.deployUnit(c.species, c.x, c.y);
-        case "boss-challenge":
-          return W.scene === "farm" && W.startBossFight();
+        case "tower-start":
+          return W.scene === "farm" && W.startTower();
+        case "tower-door":
+          return W.scene === "farm" && W.chooseDoor(c.index);
+        case "tower-leave":
+          return W.scene === "farm" && W.leaveTower();
         case "farm-sort":
           return W.scene === "farm" && W.sortActiveFarm(c.order);
         case "merge":
@@ -16835,7 +16960,7 @@
       abilities: ABILITY_INVESTMENTS(),
       level: 1,
       experience: 0,
-      farmBossEventStage: 1,
+      towerBest: 0,
       processedBossKillReceipts: []
     },
     starter: 0,
@@ -18323,7 +18448,7 @@
   function renderBossRewardBoxes(receipt) {
     DOLLAR2("bossRewardChest").dataset.tier = bossRewardChestTier(receipt);
     const COUNT = receipt.boxCount || 0, REVEALED = receipt.revealedCount || 0, BOXES = receipt.boxes || [], HAS_PRESENTATION = BOXES.length === COUNT, PAYOUTS = receipt.calculation?.payouts || BOXES.map((box) => box.payout), MIN = PAYOUTS.length ? Math.min(...PAYOUTS) : 0, MAX = PAYOUTS.length ? Math.max(...PAYOUTS) : 0, FIRST_CLEAR = receipt.firstClear === true, NOMINAL_CHANCE = receipt.baselineChance ?? 0.1, CUMULATIVE = BOXES.slice(0, REVEALED).reduce((sum, box) => sum + (box.hit ? box.payout : 0), 0), PROCESSED = receipt.calculation?.jobState?.processedTrials ?? 0;
-    DOLLAR2("bossRewardStage").textContent = receipt.stage ? `보스 격파 · ${receipt.stage}단계` : "보스 격파";
+    DOLLAR2("bossRewardStage").textContent = receipt.stage ? `보스 격파 · ${receipt.stage}층` : "보스 격파";
     DOLLAR2("bossRewardRibbon").hidden = !FIRST_CLEAR;
     DOLLAR2("bossRewardTitle").textContent = receipt.status === "calculating" ? "보상 준비 중" : "승리 보상";
     DOLLAR2("bossRewardSummary").textContent = receipt.status === "calculating" ? "상자 " + COUNT + "개의 보상을 준비하고 있어요." : HAS_PRESENTATION ? COUNT + "회 추첨 · 상자당 " + MIN + (MIN === MAX ? "" : "–" + MAX) + "마리 · " + (FIRST_CLEAR ? "첫 클리어 " : "재도전 ") + Math.round(NOMINAL_CHANCE * 100) + "% (편성 반영 " + Math.round(receipt.chance * 100) + "%)" : "이미 확정된 보상 합계";
@@ -18833,7 +18958,7 @@
       say(REASON);
       return;
     }
-    if (personalGarden.startBossFight()) {
+    if (personalGarden.startTower()) {
       active.paused = false;
       active.loop.resetTiming();
     }
@@ -18847,6 +18972,15 @@
     personalGarden?.retreatFromFight();
   };
   DOLLAR2("bossChallenge").onclick = beginChallenge;
+  DOLLAR2("doorCards").addEventListener("click", (e) => {
+    const BUTTON = e.target.closest("[data-door]");
+    if (BUTTON) {
+      personalGarden?.chooseDoor(Number(BUTTON.dataset.door));
+    }
+  });
+  DOLLAR2("towerLeave").onclick = () => {
+    personalGarden?.leaveTower();
+  };
   DOLLAR2("newGame").onclick = () => {
     if (STORAGE.raw && !DOLLAR2("newConfirm").hidden) {
       return;
@@ -19261,6 +19395,90 @@
     }
   };
   var CANVAS = DOLLAR2("world");
+  var FLOOR_KIND = { battle: "전투", elite: "정예", mid: "중간 보스", rest: "쉼터" };
+  var DOOR_TEXT = {
+    battle: "보스 한 마리",
+    elite: "더 세지만 보상 ×2",
+    mid: "피할 수 없어요 · 보상 ×3",
+    rest: "잠든 병력을 모두 깨워요"
+  };
+  var railKey = "";
+  var railTimer = 0;
+  var bannerKey = "";
+  var bannerTimer = 0;
+  var doorKey = "";
+  var tintFloor = -1;
+  function syncTower(garden, home2, event) {
+    const T = garden.tower, CLIMBING = T.active && !home2, BEST = garden.playerProgression.towerBest;
+    syncFlag("tower", "hidden", !CLIMBING);
+    const TINT = DOLLAR2("towerTint");
+    if (TINT.dataset.on !== String(CLIMBING)) {
+      TINT.dataset.on = String(CLIMBING);
+    }
+    if (CLIMBING && tintFloor !== T.floor) {
+      tintFloor = T.floor;
+      TINT.style.setProperty("--floor", String(T.floor));
+    }
+    const SLEEPERS = T.sleepUntil.size;
+    if (CLIMBING) {
+      const KEY2 = `${T.floor}|${T.kind}|${BEST}`;
+      if (KEY2 !== railKey) {
+        const STEPPED = railKey !== "" && railKey.split("|")[0] !== String(T.floor);
+        railKey = KEY2;
+        const FLOORS = [];
+        for (let f = T.floor + 2; f >= Math.max(1, T.floor - 1); f--) {
+          FLOORS.push(f);
+        }
+        const RAIL = DOLLAR2("towerRail");
+        RAIL.innerHTML = FLOORS.map((f) => {
+          const MID = f % CONFIG.farm.tower.midBossEvery === 0, NOTE = f === T.floor ? FLOOR_KIND[T.kind] : MID ? "♛ 중간" : f === BEST ? "★ 최고" : "";
+          return `<li class="tower__floor${f === T.floor ? " is-now" : ""}${MID ? " is-mid" : ""}${f < T.floor ? " is-gone" : ""}">${f}<small>${NOTE}</small></li>`;
+        }).join("");
+        if (STEPPED) {
+          RAIL.classList.add("is-climbing");
+          clearTimeout(railTimer);
+          railTimer = setTimeout(() => RAIL.classList.remove("is-climbing"), 750);
+        }
+      }
+    } else {
+      railKey = "";
+    }
+    const NEXT_BANNER = !CLIMBING ? "" : T.kind === "rest" && T.doors.length ? `r${T.floor}` : event?.phase === "dropping" ? `e${event.encounterId}` : "";
+    if (NEXT_BANNER && NEXT_BANNER !== bannerKey) {
+      DOLLAR2("floorBannerNum").textContent = `${T.floor}층`;
+      DOLLAR2("floorBannerKind").textContent = FLOOR_KIND[T.kind];
+      const BANNER = DOLLAR2("floorBanner");
+      BANNER.hidden = false;
+      clearTimeout(bannerTimer);
+      bannerTimer = setTimeout(() => {
+        BANNER.hidden = true;
+      }, 1500);
+    }
+    if (NEXT_BANNER !== "" || !CLIMBING) {
+      bannerKey = NEXT_BANNER;
+    }
+    const DOORS = CLIMBING && event?.phase === "idle" && T.doors.length > 0;
+    syncFlag("towerDoors", "hidden", !DOORS);
+    if (DOORS) {
+      const KEY2 = `${T.doors.join()}|${T.floor}|${SLEEPERS}`;
+      if (KEY2 !== doorKey) {
+        doorKey = KEY2;
+        DOLLAR2("doorCards").innerHTML = T.doors.map(
+          (d, i) => `<button type="button" class="door door--${d}" data-door="${i}"><b>${FLOOR_KIND[d]}</b><small>${DOOR_TEXT[d]}</small></button>`
+        ).join("");
+      }
+      syncText(
+        "doorsTitle",
+        T.kind === "rest" ? `${T.floor}층 쉼터 · 잠든 병력이 모두 깼어요` : `${T.floor}층 돌파!`
+      );
+      syncText("doorsNote", `다음은 ${T.floor + 1}층 · 잠든 병력 ${SLEEPERS}마리`);
+    } else {
+      doorKey = "";
+    }
+    const RESULT = !T.active && T.floor > 0 && !home2 && event?.phase === "idle";
+    syncFlag("towerResult", "hidden", !RESULT);
+    syncText("towerResult", `지난 도전 ${T.floor}층${T.record ? " · 새 기록!" : ""} · 최고 ${BEST}층`);
+  }
   function syncText(id, value) {
     const NODE = DOLLAR2(id), TEXT = String(value);
     if (NODE.textContent !== TEXT) {
@@ -19338,7 +19556,7 @@
     );
     syncText(
       "handNote",
-      IDS.length ? `카드를 고르고 땅을 눌러 투입해요 · 필드 ${garden.fieldFighterCount}/${CONFIG.farm.deploy.fieldCap}` : "대기 중인 병력이 없어요"
+      IDS.length ? `카드를 고르고 땅을 눌러 투입해요 · 필드 ${garden.fieldFighterCount}/${CONFIG.farm.deploy.fieldCap}${garden.tower.sleepUntil.size ? ` · 잠든 병력 ${garden.tower.sleepUntil.size}` : ""}` : "대기 중인 병력이 없어요"
     );
   }
   DOLLAR2("handCards").addEventListener("click", (e) => {
@@ -19462,7 +19680,7 @@
     panPointer = {
       id: e.pointerId,
       // Food only goes on this farm's own ground; the land around it can be looked at and dragged.
-      mode: !(active.world.scene === "farm" && ARENA_GEOMETRY.inside(POINT2, "farm")) ? "pan" : fightActive() ? "deploy" : "pending",
+      mode: !(active.world.scene === "farm" && ARENA_GEOMETRY.inside(POINT2, "farm")) ? "pan" : fightActive() ? "deploy" : active.world.tower.active ? "pan" : "pending",
       startX: e.clientX,
       startY: e.clientY,
       x: e.clientX,
@@ -19665,8 +19883,9 @@
         worldCount++;
       }
     }
-    syncFlag("farmControls", "hidden", FARM_EVENT_ACTIVE || home);
-    syncFlag("workHud", "hidden", FARM_EVENT_ACTIVE || home);
+    syncFlag("farmControls", "hidden", FARM_EVENT_ACTIVE || home || W.tower.active);
+    syncFlag("workHud", "hidden", FARM_EVENT_ACTIVE || home || W.tower.active);
+    syncTower(W, home, FARM_EVENT);
     syncFlag("bossbar", "hidden", !FARM_EVENT_ACTIVE || home);
     syncHand(W, !home && ["dropping", "fighting"].includes(FARM_EVENT?.phase));
     syncText("count", displayedCount);
@@ -19683,7 +19902,10 @@
     const BOSS2 = display.boss, FARM_REWARD = FARM_EVENT?.outcome === "victory" ? W.bossRewardReceipts.find(
       (reward) => reward.source === "farm" && reward.encounterId === FARM_EVENT.encounterId
     ) : null, REWARD_NAME = speciesRewardName(BOSS2.species), ENCOUNTER_NAME = giantSpeciesName(BOSS2.species);
-    syncText("bossName", BOSS2.stage ? `${ENCOUNTER_NAME} ${BOSS2.stage}단계` : ENCOUNTER_NAME);
+    syncText(
+      "bossName",
+      BOSS2.stage ? `${BOSS2.stage}층 · ${W.tower.kind === "battle" ? "" : FLOOR_KIND[W.tower.kind] + " "}${ENCOUNTER_NAME}` : ENCOUNTER_NAME
+    );
     syncAttribute("bossHealth", "aria-label", `${ENCOUNTER_NAME} 체력`);
     syncText("bossHealthText", Math.ceil(BOSS2.hp) + "/" + BOSS2.maxHp);
     syncText(
@@ -19698,14 +19920,17 @@
     syncWidth("bossHealth", BOSS2.maxHp ? BOSS2.hp / BOSS2.maxHp * 100 + "%" : "0%");
     syncText(
       "battleOutcome",
-      BATTLE_OUTCOME === "victory" ? FARM_EVENT.rewardStatus === "granted" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 농장에 합류했어요` : FARM_EVENT.rewardStatus === "pending" ? `${ENCOUNTER_NAME} 격파 · ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요` : `${ENCOUNTER_NAME} 격파` : BATTLE_OUTCOME === "defeat" ? `${ENCOUNTER_NAME}에게 졌어요 · 병력이 회복하는 동안 잠자요` : ""
+      BATTLE_OUTCOME === "victory" ? FARM_EVENT.rewardStatus === "granted" ? `${BOSS2.stage}층 돌파 · 새 기록! ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 농장에 합류했어요` : FARM_EVENT.rewardStatus === "pending" ? `${BOSS2.stage}층 돌파 · 새 기록! ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요` : W.tower.record ? `${BOSS2.stage}층 돌파 · 새 기록!` : `${BOSS2.stage}층 돌파 · 이미 오른 층이라 보상은 없어요` : BATTLE_OUTCOME === "defeat" ? `${BOSS2.stage}층에서 쓰러졌어요 · 최고 ${W.playerProgression.towerBest}층 · 쓰러진 병력은 농장에서 쉬어요` : ""
     );
     syncFlag(
       "battleOutcome",
       "hidden",
       home || !FARM_EVENT_ACTIVE || BATTLE_OUTCOME === "fighting" || BATTLE_OUTCOME === "idle"
     );
-    syncText("bossChallenge", `도전 ${(personalGarden || W).playerProgression.farmBossEventStage}단계`);
+    syncText(
+      "bossChallenge",
+      W.playerProgression.towerBest ? `탑 오르기 · 최고 ${W.playerProgression.towerBest}층` : "탑 오르기"
+    );
     syncFlag("bossChallenge", "hidden", FARM_EVENT_ACTIVE || home);
     syncAttribute("bossChallenge", "aria-disabled", String(raidStartBlockReason() !== ""));
     syncFlag("menuTabFarms", "disabled", FARM_EVENT_ACTIVE);

@@ -40,7 +40,6 @@ import {
 } from './unit-stats.js';
 import { UNIT_ABILITY_PROFILES as ATTACK_TYPES, abilityProfile, unitCapabilityComposition } from './unit-abilities.js';
 import {
-    BOSS_REWARD_SETTINGS,
     bossAcquisitionChance,
     bossStageStats,
     settleBossKill,
@@ -144,6 +143,15 @@ const CONFIG = Object.freeze({
         }),
         // Draft numbers: one unit every 0.6 s, at most 30 on the field at once.
         deploy: Object.freeze({ cooldownSeconds: 0.6, fieldCap: 30 }),
+        // Draft numbers for the tower: every 5th floor is a mid-boss; fallen units sleep tier (max 3) floors.
+        tower: Object.freeze({
+            midBossEvery: 5,
+            sleepMax: 3,
+            topFloor: 61,
+            battle: Object.freeze({ hp: 1, attack: 1, edge: 0, reward: 1 }),
+            elite: Object.freeze({ hp: 1.6, attack: 1.25, edge: 0.25, reward: 2 }),
+            mid: Object.freeze({ hp: 2.2, attack: 1.4, edge: 0.5, reward: 3 }),
+        }),
         bossEvent: Object.freeze({
             fadeSeconds: 0.5,
             celebrationSeconds: 1,
@@ -1232,6 +1240,7 @@ const GARDEN = class Garden {
         this._benchRevision = 0;
         this._fieldCache = { revision: -1, bench: -1, list: [] };
         this._deployReadyTime = 0;
+        this.tower = { active: false, floor: 0, kind: 'battle', doors: [], sleepUntil: new Map(), record: false };
         this._stepUnits.length = 0;
         this.corpseRecoveryVersion = 1;
         this.rng = new SEEDED_PRNG(this.seed);
@@ -2083,15 +2092,108 @@ const GARDEN = class Garden {
         }
         return spawned;
     }
-    // Challenge the next boss: every unit of the farm fights it, and its stage is where the farm's fights have got to.
-    startBossFight() {
+    // Start a climb: the farm's units go up the tower floor by floor, from floor 1.
+    startTower() {
         if (
             this.scene !== 'farm' ||
             this.boss.active ||
             this.farmBossEvent.phase !== 'idle' ||
+            this.tower.active ||
             !this.units.some((u) => !u.isBattleOnlySummon && u.hp > 0)
         ) {
             return false;
+        }
+        // Whoever is already down sleeps through the first floor.
+        const SLEEP = new Map(this.units.filter((u) => !u.isBattleOnlySummon && u.hp <= 0).map((u) => [u.id, 1]));
+        this.tower = { active: true, floor: 1, kind: 'battle', doors: [], sleepUntil: SLEEP, record: false };
+        return this._beginFloor('battle');
+    }
+    // The next floor's doors: a mid-boss floor has only its boss; otherwise two of battle / elite / rest (rest only if someone sleeps).
+    _rollDoors() {
+        const NEXT = this.tower.floor + 1;
+        if (NEXT % CONFIG.farm.tower.midBossEvery === 0) {
+            return ['mid'];
+        }
+        const POOL = ['battle', 'elite'];
+        if (this.tower.sleepUntil.size) {
+            POOL.push('rest');
+        }
+        while (POOL.length > 2) {
+            POOL.splice(Math.floor(this.random() * POOL.length), 1);
+        }
+        return POOL;
+    }
+    // Between floors everybody waits in the hand; the fallen start sleeping for tier (max 3) floors.
+    afterFloor() {
+        const T = this.tower;
+        if (!T.active) {
+            return;
+        }
+        for (const U of this.unitCollection.items) {
+            if (!U.isBattleOnlySummon && U.hp <= 0 && !T.sleepUntil.has(U.id)) {
+                T.sleepUntil.set(U.id, T.floor + Math.min(CONFIG.farm.tower.sleepMax, U.tier));
+            }
+        }
+        this._benched = new Set(this.unitCollection.items.filter((u) => !u.isBattleOnlySummon));
+        this._benchRevision++;
+        this._unitSpatialDirty = true;
+        T.doors = this._rollDoors();
+        this.markProgressChanged();
+    }
+    _wakeUnit(unit) {
+        unit.revive(STATS(unit.tier, unit.species).maxHp);
+        this.tower.sleepUntil.delete(unit.id);
+    }
+    chooseDoor(index) {
+        const T = this.tower,
+            DOOR = T.doors[index];
+        if (!T.active || this.farmBossEvent.phase !== 'idle' || !DOOR) {
+            return false;
+        }
+        T.floor++;
+        T.doors = [];
+        if (DOOR === 'rest') {
+            for (const U of this.unitCollection.items) {
+                if (T.sleepUntil.has(U.id)) {
+                    this._wakeUnit(U);
+                }
+            }
+            T.kind = 'rest';
+            T.doors = this._rollDoors();
+            this.combat('tower-rest', { floor: T.floor });
+            this.markProgressChanged();
+            return true;
+        }
+        return this._beginFloor(DOOR);
+    }
+    // Stopping after a cleared floor keeps everything that was won.
+    leaveTower() {
+        if (!this.tower.active || this.farmBossEvent.phase !== 'idle') {
+            return false;
+        }
+        this._endTower();
+        return true;
+    }
+    _endTower() {
+        this.tower.active = false;
+        this.tower.doors = [];
+        this._benched.clear();
+        this._benchRevision++;
+        this._unitSpatialDirty = true;
+        this.markProgressChanged();
+    }
+    _beginFloor(kind) {
+        const T = this.tower;
+        T.kind = kind;
+        for (const UNIT_LOCAL of this.unitCollection.items) {
+            if (UNIT_LOCAL.isBattleOnlySummon) {
+                continue;
+            }
+            if (UNIT_LOCAL.hp <= 0 && T.sleepUntil.has(UNIT_LOCAL.id) && T.sleepUntil.get(UNIT_LOCAL.id) < T.floor) {
+                this._wakeUnit(UNIT_LOCAL);
+            } else if (UNIT_LOCAL.hp > 0) {
+                UNIT_LOCAL.hp = STATS(UNIT_LOCAL.tier, UNIT_LOCAL.species).maxHp;
+            }
         }
         for (const UNIT_LOCAL of this.units) {
             if (!UNIT_LOCAL.isBattleOnlySummon) {
@@ -2102,7 +2204,10 @@ const GARDEN = class Garden {
         }
         const SPECIES = this.randomBossSpecies();
         this.boss = this.createBoss(SPECIES);
-        this.configureBossStage(this.playerProgression.farmBossEventStage, SPECIES);
+        this.configureBossStage(T.floor, SPECIES);
+        const KIND = CONFIG.farm.tower[kind];
+        this.boss.maxHp = this.boss.hp = this.boss.hp * KIND.hp;
+        this.boss.attackPower *= KIND.attack;
         Object.assign(this.boss, { x: 0, y: 0, z: CONFIG.battle.dropHeight, active: true });
         this.farmBossEvent = {
             phase: 'dropping',
@@ -2117,7 +2222,7 @@ const GARDEN = class Garden {
         this.boss.encounterId = this.farmBossEvent.encounterId;
         this.boss.patternRuntime = createBossPatternRuntime();
         // Nobody walks in by themselves: every living unit waits in the hand until the player deploys it.
-        this._benched = new Set(this.unitCollection.items.filter((u) => !u.isBattleOnlySummon && u.hp > 0));
+        this._benched = new Set(this.unitCollection.items.filter((u) => !u.isBattleOnlySummon));
         this._benchRevision++;
         this._deployReadyTime = this.time;
         this._unitSpatialDirty = true;
@@ -2250,8 +2355,12 @@ const GARDEN = class Garden {
     }
     // 1-based boss phase from remaining HP: each unlockHp threshold crossed opens a phase.
     get bossPhase() {
-        const RATIO = this.boss.maxHp ? this.boss.hp / this.boss.maxHp : 1;
-        return 1 + BOSS_PHASE_THRESHOLDS.filter((t) => RATIO <= t).length;
+        return 1 + BOSS_PHASE_THRESHOLDS.filter((t) => this.bossHpRatio <= t).length;
+    }
+    // Remaining HP as the patterns see it: elites and mid-bosses start further along, so they know their skills early.
+    get bossHpRatio() {
+        const EDGE = this.tower.active ? CONFIG.farm.tower[this.tower.kind]?.edge || 0 : 0;
+        return (this.boss.maxHp ? this.boss.hp / this.boss.maxHp : 1) - EDGE;
     }
     // A boss fight lasts 90 seconds at stage 1 and 10 seconds longer for every stage after it.
     battleTimeLimit() {
@@ -4566,10 +4675,15 @@ const GARDEN = class Garden {
         }
         this.formationSkills.end();
         this.cleanupBattleSummons();
-        // Whoever never got deployed is simply back on the farm.
-        this._benched.clear();
-        this._benchRevision++;
-        this._unitSpatialDirty = true;
+        // A cleared floor keeps the hand for the next one; any other ending sends everyone back to the farm.
+        const CLIMBING = outcome === 'victory' && this.tower.active && this.tower.floor < CONFIG.farm.tower.topFloor;
+        if (!CLIMBING) {
+            this.tower.active = false;
+            this.tower.doors = [];
+            this._benched.clear();
+            this._benchRevision++;
+            this._unitSpatialDirty = true;
+        }
         this.boss.active = false;
         if (this.boss.patternRuntime) {
             this.boss.patternRuntime.active = null;
@@ -4595,37 +4709,47 @@ const GARDEN = class Garden {
         }
         if (outcome === 'victory') {
             const EVENT_STAGE = this.boss.stage,
-                STAGE_STATS = bossStageStats(EVENT_STAGE);
-            const SETTLEMENT = settleBossKill(this, {
-                encounterId: ENCOUNTER_ID,
-                source: 'farm',
-                stage: EVENT_STAGE,
-                species: this.boss.species,
-                tier: 1,
-                x: this.boss.x,
-                y: this.boss.y,
-                rollBudget: STAGE_STATS.rollBudget,
-                xpAmount: STAGE_STATS.xp,
-            });
-            this.playerProgression.farmBossEventStage = Math.min(EVENT_STAGE + 1, BOSS_REWARD_SETTINGS.maxStage);
-            const REWARD = SETTLEMENT.receipt;
-            this.combat('farm-boss-xp', {
-                encounterId: ENCOUNTER_ID,
-                xp: SETTLEMENT.xpAwarded,
-                levelsGained: SETTLEMENT.levelsGained,
-                pointsAwarded: SETTLEMENT.pointsAwarded,
-            });
-            this.combat('farm-boss-reward', {
-                acquired: REWARD.grantedCount > 0,
-                pending: REWARD.status === 'pending',
-                successCount: REWARD.successCount,
-                grantedCount: REWARD.grantedCount,
-                species: REWARD.species,
-                tier: REWARD.tier,
-                chance: REWARD.chance,
-                roll: REWARD.roll,
-                encounterId: ENCOUNTER_ID,
-            });
+                STAGE_STATS = bossStageStats(EVENT_STAGE),
+                BEST = this.playerProgression.towerBest,
+                KIND = CONFIG.farm.tower[this.tower.floor ? this.tower.kind : 'battle'];
+            this.tower.record = EVENT_STAGE > BEST;
+            // Only a floor higher than ever before pays out: the best floor decides the rewards.
+            if (EVENT_STAGE > BEST) {
+                this.playerProgression.towerBest = EVENT_STAGE;
+            }
+            const SETTLEMENT = !this.tower.record
+                ? null
+                : settleBossKill(this, {
+                      encounterId: ENCOUNTER_ID,
+                      source: 'farm',
+                      stage: EVENT_STAGE,
+                      species: this.boss.species,
+                      tier: 1,
+                      x: this.boss.x,
+                      y: this.boss.y,
+                      rollBudget: STAGE_STATS.rollBudget * KIND.reward,
+                      xpAmount: STAGE_STATS.xp * KIND.reward,
+                  });
+            if (SETTLEMENT) {
+                const REWARD = SETTLEMENT.receipt;
+                this.combat('farm-boss-xp', {
+                    encounterId: ENCOUNTER_ID,
+                    xp: SETTLEMENT.xpAwarded,
+                    levelsGained: SETTLEMENT.levelsGained,
+                    pointsAwarded: SETTLEMENT.pointsAwarded,
+                });
+                this.combat('farm-boss-reward', {
+                    acquired: REWARD.grantedCount > 0,
+                    pending: REWARD.status === 'pending',
+                    successCount: REWARD.successCount,
+                    grantedCount: REWARD.grantedCount,
+                    species: REWARD.species,
+                    tier: REWARD.tier,
+                    chance: REWARD.chance,
+                    roll: REWARD.roll,
+                    encounterId: ENCOUNTER_ID,
+                });
+            }
         }
         this.markProgressChanged();
         this.combat(outcome === 'victory' ? 'farm-boss-victory' : 'farm-boss-defeat', {
@@ -4898,7 +5022,7 @@ const GARDEN = class Garden {
             ALIVE_ADDS = this.units.reduce((n, u) => n + (hasFaction(u, FACTION_CONFIG.ENEMY) && u.hp > 0 ? 1 : 0), 0),
             ELIGIBLE = [];
         for (const ID of BOSS_PATTERN_IDS) {
-            if (RUNTIME.cooldowns[ID] > 1e-9 || this.boss.hp > this.boss.maxHp * BOSS_PATTERN_CONFIG[ID].unlockHp) {
+            if (RUNTIME.cooldowns[ID] > 1e-9 || this.bossHpRatio > BOSS_PATTERN_CONFIG[ID].unlockHp) {
                 continue;
             }
             if (BOSS_BEHAVIORS.forId(ID).eligible(this, targets, ALIVE_ADDS)) {

@@ -35,7 +35,11 @@ export class FarmSimulationScene extends SimulationScene {
         Object.assign(unit, unit.home);
     }
     setupRoster(_world) {}
-    advanceRest(_world, unit, dt) {
+    advanceRest(world, unit, dt) {
+        // Up the tower the fallen stay down: they sleep by floors, not by seconds.
+        if (world.tower.active) {
+            return true;
+        }
         unit.down = Math.max(0, unit.down - dt);
         if (unit.down < 1e-9) {
             unit.down = 0;

@@ -563,8 +563,12 @@ class FarmSession {
                 return W.scene === 'farm' && W.setWorkBasisPoints(c.basisPoints);
             case 'deploy':
                 return W.scene === 'farm' && W.deployUnit(c.species, c.x, c.y);
-            case 'boss-challenge':
-                return W.scene === 'farm' && W.startBossFight();
+            case 'tower-start':
+                return W.scene === 'farm' && W.startTower();
+            case 'tower-door':
+                return W.scene === 'farm' && W.chooseDoor(c.index);
+            case 'tower-leave':
+                return W.scene === 'farm' && W.leaveTower();
             case 'farm-sort':
                 return W.scene === 'farm' && W.sortActiveFarm(c.order);
             case 'merge':

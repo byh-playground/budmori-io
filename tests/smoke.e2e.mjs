@@ -103,7 +103,7 @@ await check('new game boots with a minimal HUD', async () => {
     expect(STATE.removed.length === 0, `removed controls are back: ${STATE.removed}`);
     expect(STATE.handles === 1, `the role bar needs exactly one handle, has ${STATE.handles}`);
     expect(STATE.roles.length === 2, `the role bar should have two parts, has ${STATE.roles.length}`);
-    expect(STATE.challenge === '도전 1단계', `challenge button reads "${STATE.challenge}"`);
+    expect(STATE.challenge === '탑 오르기', `challenge button reads "${STATE.challenge}"`);
 });
 
 await check('food workers hit grain piles and food is produced', async () => {
@@ -197,16 +197,94 @@ await check('challenge button starts a boss fight and retreat ends it', async ()
     expect(AFTER === 'idle', `fight did not end (${AFTER})`);
 });
 
+await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async () => {
+    await PAGE.locator('#bossChallenge').click();
+    await PAGE.waitForTimeout(3500);
+    const CLEAR_FLOOR = () =>
+        WORLD(() => {
+            const W = BUDMORI.sim;
+            W.deployUnit([...W.handCounts.keys()][0], 0, 0);
+            const FALLEN = W.units.find((u) => !u.isBattleOnlySummon && u.hp > 0);
+            if (FALLEN) {
+                FALLEN.hp = 0;
+            }
+            W.boss.hp = 0;
+        });
+    await CLEAR_FLOOR();
+    await PAGE.waitForTimeout(3500);
+    const ONE = await WORLD(() => {
+        const W = BUDMORI.sim;
+        return {
+            active: W.tower.active,
+            floor: W.tower.floor,
+            doors: W.tower.doors.length,
+            sleepers: W.tower.sleepUntil.size,
+            best: W.playerProgression.towerBest,
+            record: W.tower.record,
+            onField: W.units.filter((u) => !u.isBattleOnlySummon).length,
+            panel: !document.getElementById('towerDoors').hidden,
+            rail: document.querySelectorAll('#towerRail li').length,
+        };
+    });
+    expect(
+        ONE.active && ONE.floor === 1 && ONE.doors >= 1 && ONE.best === 1 && ONE.record,
+        `floor 1 ${JSON.stringify(ONE)}`,
+    );
+    expect(ONE.sleepers === 1 && ONE.onField === 0, `sleep/hand ${JSON.stringify(ONE)}`);
+    expect(ONE.panel && ONE.rail >= 3, `tower UI ${JSON.stringify(ONE)}`);
+    const REST = await WORLD(() => {
+        const W = BUDMORI.sim;
+        W.tower.doors = ['rest', 'battle'];
+        W.chooseDoor(0);
+        return {
+            floor: W.tower.floor,
+            sleepers: W.tower.sleepUntil.size,
+            kind: W.tower.kind,
+            doors: W.tower.doors.length,
+        };
+    });
+    expect(
+        REST.floor === 2 && REST.sleepers === 0 && REST.kind === 'rest' && REST.doors >= 1,
+        `rest ${JSON.stringify(REST)}`,
+    );
+    const MID = await WORLD(() => {
+        const W = BUDMORI.sim;
+        W.tower.floor = 4;
+        return W._rollDoors().join();
+    });
+    expect(MID === 'mid', `floor 5 doors: ${MID}`);
+    await WORLD(() => {
+        const W = BUDMORI.sim;
+        W.tower.floor = 2;
+        W.tower.doors = ['battle'];
+        W.chooseDoor(0);
+    });
+    await PAGE.waitForTimeout(3500);
+    await CLEAR_FLOOR();
+    await PAGE.waitForTimeout(3500);
+    const THREE = await WORLD(() => ({
+        floor: BUDMORI.sim.tower.floor,
+        best: BUDMORI.sim.playerProgression.towerBest,
+    }));
+    expect(THREE.floor === 3 && THREE.best === 3, `floor 3 ${JSON.stringify(THREE)}`);
+    const LEFT = await WORLD(() => {
+        const W = BUDMORI.sim;
+        W.leaveTower();
+        return { active: W.tower.active, units: W.units.filter((u) => !u.isBattleOnlySummon).length };
+    });
+    expect(!LEFT.active && LEFT.units > 0, `leave ${JSON.stringify(LEFT)}`);
+});
+
 await check('progress survives a reload', async () => {
     await WORLD(() => {
-        BUDMORI.sim.playerProgression.farmBossEventStage = 3;
+        BUDMORI.sim.playerProgression.towerBest = 4;
         BUDMORI.sim.markProgressChanged();
     });
     await PAGE.waitForTimeout(3000);
     await PAGE.reload();
     await PAGE.waitForTimeout(4000);
-    const STAGE = await WORLD(() => BUDMORI.sim.playerProgression.farmBossEventStage);
-    expect(STAGE >= 3, `stage after reload is ${STAGE}`);
+    const STAGE = await WORLD(() => BUDMORI.sim.playerProgression.towerBest);
+    expect(STAGE >= 4, `best floor after reload is ${STAGE}`);
 });
 
 await check('no page errors', async () => {

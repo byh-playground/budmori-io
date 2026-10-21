@@ -25,7 +25,7 @@ function copyPlayer(player) {
         formationSkills: structuredClone(player.formationSkills),
         level: player.level,
         experience: player.experience,
-        farmBossEventStage: player.farmBossEventStage,
+        towerBest: player.towerBest,
         availablePoints: player.availablePoints,
         farmUpgrades: {
             ...player.farmUpgrades,
