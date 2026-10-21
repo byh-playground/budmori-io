@@ -16,7 +16,7 @@ import { SPECIES_ABILITY_DEFINITIONS } from './ability-catalog.js';
 import { advanceBossRewardReveal, openAllBossRewardBoxes, bossSpeciesOwned } from './boss-rewards.js';
 import { workersBySpecies } from './farm-work.js';
 import { speciesById, giantSpeciesName, speciesRewardName } from './species-catalog.js';
-import { HELP_PLAYBACK_RATE, helpSceneById } from './help-scenes.js';
+import { HELP_MAX_FRAME_MS, HELP_PLAYBACK_RATE, helpSceneById } from './help-scenes.js';
 import { createHelpPanel } from './help-panel.js';
 const DOLLAR = (id) => document.getElementById(id),
     STORAGE = new FarmStorage();
@@ -2098,7 +2098,9 @@ const HELP = {
     last: null,
     clock(now) {
         this.scaled =
-            this.last === null ? now : this.scaled + (now - this.last) * (this.scene.rate ?? HELP_PLAYBACK_RATE);
+            this.last === null
+                ? now
+                : this.scaled + Math.min(now - this.last, HELP_MAX_FRAME_MS) * (this.scene.rate ?? HELP_PLAYBACK_RATE);
         this.last = now;
         return this.scaled;
     },
@@ -2132,7 +2134,7 @@ if (HELP.scene) {
                 frame.events.forEach((event) => HELP.run(event));
                 // A scene may also react to the run itself, e.g. choose a door once the real win has opened them.
                 const REACTION = SCENE.auto?.(active.world, frame.timeMs, HELP.memo);
-                if (REACTION?.door) {
+                if (REACTION?.door || REACTION?.cmd) {
                     HELP.run(REACTION);
                 }
                 HELP.complete ||= REACTION?.complete === true;

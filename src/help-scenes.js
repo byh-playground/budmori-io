@@ -2,6 +2,8 @@
 // The scene owns its setup and scripted commands; the game owns every rule. A caption follows the
 // authoritative world state, so it never claims something the run has not shown yet.
 export const HELP_PLAYBACK_RATE = 0.5;
+// A slow frame never makes the run jump: past this much wall time it just plays slower, instead of dropping time.
+export const HELP_MAX_FRAME_MS = 40;
 
 export const HELP_SCENES = Object.freeze([
     Object.freeze({
@@ -60,33 +62,51 @@ export const HELP_SCENES = Object.freeze([
     Object.freeze({
         id: 'tower',
         title: '보스와 탑',
-        rule: '탑 오르기를 누르면 보스가 떨어져요. 병력을 한 마리씩 투입하면 자동으로 싸우고, 이기면 문을 골라요. 이긴 보스 종의 숙련이 쌓여 능력 포인트가 돼요.',
+        rule: '탑 오르기를 누르면 보스가 떨어져요. 병력을 투입하면 수십 마리가 자동으로 싸우고, 이기면 문을 골라요. 이긴 보스 종의 숙련이 쌓여 능력 포인트가 돼요.',
         seed: 4104,
         rate: 4,
-        durationMs: 90000,
+        durationMs: 60000,
         setup(world) {
             world.setWorkBasisPoints(0);
-            // Strong peas, so a real fight is short; each one is dropped next to the boss.
-            for (let index = 0; index < 6; index++) {
-                world.spawn(0, 6, -40 + index * 12, -30 + index * 10);
+            // A big mixed army: many low tiers and a few high ones, across every species.
+            for (let index = 0; index < 50; index++) {
+                const ANGLE = index * 2.399963229728653;
+                world.spawn(
+                    index % 6,
+                    1 + (index % 4),
+                    Math.cos(ANGLE) * (20 + index),
+                    Math.sin(ANGLE) * (14 + index * 0.6),
+                );
             }
         },
-        timeline: [
-            { atMs: 100, cmd: 'tower-start', args: { floor: 1 } },
-            { atMs: 6300, cmd: 'deploy', args: { species: 0, x: -45, y: 20 } },
-            { atMs: 6500, cmd: 'deploy', args: { species: 0, x: -50, y: -10 } },
-            { atMs: 6700, cmd: 'deploy', args: { species: 0, x: -40, y: -30 } },
-            { atMs: 6900, cmd: 'deploy', args: { species: 0, x: -55, y: 5 } },
-            { atMs: 7100, cmd: 'deploy', args: { species: 0, x: -35, y: 15 } },
-            { atMs: 7300, cmd: 'deploy', args: { species: 0, x: -48, y: -20 } },
-        ],
-        // Once the real win opens the doors, the demo picks the strengthening door after a beat, then ends.
+        timeline: [{ atMs: 100, cmd: 'tower-start', args: { floor: 1 } }],
+        // The army is dropped in one by one as the hand allows; once the real win opens the doors, the demo
+        // picks the strengthening door after a beat, then ends.
         auto(world, timeMs, memo) {
-            if (world.tower.boost.hp > 1 || world.tower.boost.attack > 1) {
+            const PHASE = world.farmBossEvent.phase;
+            if (
+                (PHASE === 'dropping' || PHASE === 'fighting') &&
+                timeMs >= (memo.nextDeployAt ?? 0) &&
+                (memo.attempts ?? 0) < 120
+            ) {
+                memo.attempts = (memo.attempts ?? 0) + 1;
+                memo.nextDeployAt = timeMs + 100;
+                const ANGLE = memo.attempts * 2.399963229728653,
+                    RADIUS = 60 + (memo.attempts % 3) * 25;
+                return {
+                    cmd: 'deploy',
+                    args: {
+                        species: memo.attempts % 6,
+                        x: world.boss.x + Math.cos(ANGLE) * RADIUS,
+                        y: world.boss.y + Math.sin(ANGLE) * RADIUS * 0.7,
+                    },
+                };
+            }
+            if (world.tower.floor > 1) {
                 memo.doneAt ??= timeMs;
                 return { complete: timeMs - memo.doneAt > 1200 };
             }
-            if (world.tower.doors?.length && world.tower.floor === 1) {
+            if (world.tower.doors?.length) {
                 memo.doorsAt ??= timeMs;
                 if (timeMs - memo.doorsAt > 1200 && !memo.picked) {
                     memo.picked = true;
@@ -120,8 +140,8 @@ export const HELP_SCENES = Object.freeze([
         steps: {
             start: '탑 오르기를 누르면 병력이 탑으로 향해요',
             march: '병력이 탑으로 올라가요',
-            drop: '보스가 떨어져요. 병력을 한 마리씩 투입해요',
-            fight: '투입된 병력이 자동으로 싸워요',
+            drop: '보스가 떨어져요. 병력을 투입해요',
+            fight: '수십 마리가 자동으로 보스와 싸워요',
             win: '보스를 쓰러뜨렸어요',
             doors: '이겼어요. 다음 문을 골라요',
             boost: '강화를 골랐어요. 이번 도전 동안 모든 유닛이 강해져요',
