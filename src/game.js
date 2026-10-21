@@ -12511,7 +12511,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.6";
+      PRODUCT_VERSION = "0.30.7";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -18938,30 +18938,23 @@
       title: "먹이와 번식",
       rule: "일꾼이 곡식 더미를 쳐서 낟알을 만들고, 성체 두 마리가 하나씩 먹으면 새끼가 태어나요. 슬라이더로 번식과 먹이 일꾼의 비율을 정해요.",
       seed: 731,
-      rate: 2,
-      durationMs: 6e3,
+      rate: 4,
+      durationMs: 2e4,
       setup(world) {
-        world.setWorkBasisPoints(0);
-        const UNITS = world.units;
-        let pair = null;
-        for (let first = 0; first < UNITS.length; first++) {
-          for (let second = first + 1; second < UNITS.length; second++) {
-            const GAP = Math.hypot(UNITS[first].x - UNITS[second].x, UNITS[first].y - UNITS[second].y);
-            if (!pair || GAP < pair.gap) {
-              pair = { a: UNITS[first], b: UNITS[second], gap: GAP };
-            }
-          }
-        }
-        pair.a.meals = 1;
-        pair.b.meals = 1;
+        world.setWorkBasisPoints(5e3);
+        world.setBreedWeights(null);
       },
       timeline: [],
       step(world) {
-        return world.units.length > 6 ? "born" : "fed";
+        if (world.units.length > 6) {
+          return "born";
+        }
+        return world.food.length > 0 ? "food" : "work";
       },
       steps: {
-        fed: "먹이를 먹은 성체 두 마리가 만나요",
-        born: "새끼가 태어났어요. 5초 동안 자라요"
+        work: "일꾼 3마리가 곡식 더미를 쳐요",
+        food: "낟알이 떨어졌어요. 번식 3마리가 먹어요",
+        born: "먹은 두 마리가 번식해 새끼가 태어났어요"
       }
     }),
     Object.freeze({
