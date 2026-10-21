@@ -8293,6 +8293,7 @@
           };
           this.playerProgression = createPlayerProgressionState();
           this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
+          this.speciesWorkBasisPoints = new Array(CONFIG.unit.speciesCount).fill(CONFIG.farm.work.defaultBasisPoints);
           this._workerIds = /* @__PURE__ */ new Set();
           resetWork(this);
           this._workerRates = /* @__PURE__ */ new Map();
@@ -8901,17 +8902,26 @@
           if (!Number.isSafeInteger(basisPoints) || basisPoints < 0 || basisPoints > 1e4) {
             return false;
           }
-          if (basisPoints !== this.workBasisPoints) {
-            this.workBasisPoints = basisPoints;
-            this._nextWorkerRefreshTick = 0;
-            this.refreshWorkers();
+          this.workBasisPoints = basisPoints;
+          this.speciesWorkBasisPoints.fill(basisPoints);
+          this._nextWorkerRefreshTick = 0;
+          this.refreshWorkers();
+          return true;
+        }
+        // One species' own share, so the farm can grow what the player wants: 0 works none and breeds all.
+        setSpeciesWorkBasisPoints(species, basisPoints) {
+          if (!Number.isSafeInteger(species) || species < 0 || species >= this.speciesWorkBasisPoints.length || !Number.isSafeInteger(basisPoints) || basisPoints < 0 || basisPoints > 1e4) {
+            return false;
           }
+          this.speciesWorkBasisPoints[species] = basisPoints;
+          this._nextWorkerRefreshTick = 0;
+          this.refreshWorkers();
           return true;
         }
         // The slider's share of each species' adults work; the rest breed. A worker does not eat or breed, and its
         // output scales with its tier. A full field only pauses the food they make; who works never depends on it.
         refreshWorkers() {
-          const WORK = CONFIG.farm.work, RATIO = this.workBasisPoints / 1e4, NEXT = /* @__PURE__ */ new Set(), RATES = /* @__PURE__ */ new Map();
+          const WORK = CONFIG.farm.work, NEXT = /* @__PURE__ */ new Set(), RATES = /* @__PURE__ */ new Map();
           let total = 0;
           if (this.scene === "farm") {
             const BY_SPECIES = /* @__PURE__ */ new Map();
@@ -8924,9 +8934,9 @@
               }
               BY_SPECIES.get(UNIT_LOCAL.species).push(UNIT_LOCAL);
             }
-            for (const LIST of BY_SPECIES.values()) {
+            for (const [SPECIES, LIST] of BY_SPECIES) {
               LIST.sort((a, b) => a.id - b.id);
-              const COUNT = Math.floor(RATIO * LIST.length + 1e-9);
+              const COUNT = Math.floor(this.speciesWorkBasisPoints[SPECIES] / 1e4 * LIST.length + 1e-9);
               for (let index = 0; index < COUNT; index++) {
                 const WORKER = LIST[index], RATE = (1 + WORK.tierBonus * (WORKER.tier - 1)) / WORK.secondsPerFood;
                 NEXT.add(WORKER.id);
@@ -12387,7 +12397,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.29.7";
+      PRODUCT_VERSION = "0.29.8";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -16917,6 +16927,8 @@
       switch (c.type) {
         case "farm-work":
           return W.scene === "farm" && W.setWorkBasisPoints(c.basisPoints);
+        case "farm-species-work":
+          return W.scene === "farm" && W.setSpeciesWorkBasisPoints(c.species, c.basisPoints);
         case "deploy":
           return W.scene === "farm" && W.deployUnit(c.species, c.x, c.y);
         case "tower-start":
@@ -19249,6 +19261,26 @@
       return fallback;
     }
   }
+  var SPECIES_WORK_KEY = "budmori.work.species";
+  function loadSpeciesWork(world) {
+    try {
+      const LIST = JSON.parse(localStorage.getItem(SPECIES_WORK_KEY) || "null");
+      if (Array.isArray(LIST)) {
+        LIST.forEach((value, species) => {
+          if (Number.isSafeInteger(value)) {
+            world.setSpeciesWorkBasisPoints(species, value);
+          }
+        });
+      }
+    } catch {
+    }
+  }
+  function saveSpeciesWork(world) {
+    try {
+      localStorage.setItem(SPECIES_WORK_KEY, JSON.stringify(world.speciesWorkBasisPoints));
+    } catch {
+    }
+  }
   function saveWorkSetting(value) {
     try {
       localStorage.setItem(WORK_STORAGE_KEY, String(value));
@@ -19265,8 +19297,8 @@
       }
     }
     let workers = 0;
-    for (const COUNT of COUNTS.values()) {
-      workers += Math.floor(world.workBasisPoints / 1e4 * COUNT + 1e-9);
+    for (const [SPECIES, COUNT] of COUNTS) {
+      workers += Math.floor(world.speciesWorkBasisPoints[SPECIES] / 1e4 * COUNT + 1e-9);
     }
     return { total, workers };
   }
@@ -19284,6 +19316,7 @@
       onError: FAIL2
     });
     world.setWorkBasisPoints(loadWorkSetting(world.workBasisPoints));
+    loadSpeciesWork(world);
     return active;
   }
   install(new GARDEN());
@@ -19553,6 +19586,96 @@
       e.preventDefault();
     }
   });
+  var DIAL_LENGTH = 2 * Math.PI * 42;
+  var speciesRoleKey = "";
+  function paintDial(row, breedPercent) {
+    const ARC = row.querySelector(".dial__breed"), ANGLE = breedPercent / 100 * Math.PI * 2 - Math.PI / 2;
+    ARC.setAttribute("stroke-dasharray", `${breedPercent / 100 * DIAL_LENGTH} ${DIAL_LENGTH}`);
+    const KNOB = row.querySelector(".dial__knob");
+    KNOB.setAttribute("cx", String(50 + Math.cos(ANGLE) * 42));
+    KNOB.setAttribute("cy", String(50 + Math.sin(ANGLE) * 42));
+    row.querySelector(".dial").setAttribute("aria-valuenow", String(breedPercent));
+  }
+  function speciesCounts(world) {
+    const COUNTS = /* @__PURE__ */ new Map();
+    for (const UNIT3 of world.units) {
+      if (!UNIT3.isBattleOnlySummon && !UNIT3.isFormationClone) {
+        COUNTS.set(UNIT3.species, (COUNTS.get(UNIT3.species) || 0) + 1);
+      }
+    }
+    return COUNTS;
+  }
+  function paintRoleText(row, count, basisPoints) {
+    const WORK = Math.floor(basisPoints / 1e4 * count + 1e-9), TEXT = `번식 ${count - WORK} · 먹이 ${WORK}`, NODE = row.querySelector("small");
+    if (NODE.textContent !== TEXT) {
+      NODE.textContent = TEXT;
+    }
+  }
+  function drawSpeciesRoles(world) {
+    const COUNTS = speciesCounts(world), IDS = [...COUNTS.keys()].sort((x, y) => x - y), HOST = DOLLAR2("speciesRoles"), KEY2 = IDS.join(",");
+    if (KEY2 !== speciesRoleKey) {
+      speciesRoleKey = KEY2;
+      HOST.innerHTML = IDS.map((id) => {
+        const SPECIES = speciesById(id);
+        return `<div class="species-role" data-species="${id}"><div class="dial" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="100" aria-label="${SPECIES.name} 번식 비율"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="dial__track" cx="50" cy="50" r="42"/><circle class="dial__breed" cx="50" cy="50" r="42" transform="rotate(-90 50 50)"/><image href="./assets/troops/${SPECIES.asset}" x="26" y="26" width="48" height="48"/><circle class="dial__knob" r="7"/></svg></div><b>${SPECIES.name}</b><small></small></div>`;
+      }).join("");
+    }
+    for (const ROW of HOST.children) {
+      const ID = Number(ROW.dataset.species), BP = world.speciesWorkBasisPoints[ID];
+      paintRoleText(ROW, COUNTS.get(ID) || 0, BP);
+      if (!ROW.classList.contains("is-dragging")) {
+        paintDial(ROW, Math.round((100 - BP / 100) / 5) * 5);
+      }
+    }
+  }
+  function setSpeciesBreedShare(row, percent) {
+    const SPECIES = Number(row.dataset.species), POINTS = (100 - percent) * 100, WORLD = personalGarden || active.world;
+    WORLD.setSpeciesWorkBasisPoints(SPECIES, POINTS);
+    saveSpeciesWork(WORLD);
+    active.queue("farm-species-work", { species: SPECIES, basisPoints: POINTS });
+    paintDial(row, percent);
+    paintRoleText(row, speciesCounts(WORLD).get(SPECIES) || 0, POINTS);
+  }
+  var dialDrag = null;
+  DOLLAR2("speciesRoles").addEventListener("pointerdown", (event) => {
+    const DIAL = event.target.closest(".dial"), ROW = DIAL?.closest("[data-species]");
+    if (!ROW || event.button !== 0) {
+      return;
+    }
+    dialDrag = { row: ROW, dial: DIAL, id: event.pointerId, last: Number(DIAL.getAttribute("aria-valuenow")) || 0 };
+    ROW.classList.add("is-dragging");
+    DIAL.setPointerCapture?.(event.pointerId);
+    dialMove(event);
+    event.preventDefault();
+  });
+  function dialMove(event) {
+    if (!dialDrag || event.pointerId !== dialDrag.id) {
+      return;
+    }
+    const BOX = dialDrag.dial.getBoundingClientRect(), ANGLE = Math.atan2(event.clientY - (BOX.top + BOX.height / 2), event.clientX - (BOX.left + BOX.width / 2)), RAW = (ANGLE + Math.PI / 2 + Math.PI * 2) % (Math.PI * 2) / (Math.PI * 2), STEPPED = Math.round(RAW * 20) * 5 === 100 ? 0 : Math.round(RAW * 20) * 5;
+    let value = STEPPED;
+    if (Math.abs(value - dialDrag.last) > 50) {
+      value = dialDrag.last > 50 ? 100 : 0;
+    }
+    if (value !== dialDrag.last) {
+      dialDrag.last = value;
+      setSpeciesBreedShare(dialDrag.row, value);
+    }
+  }
+  DOLLAR2("speciesRoles").addEventListener("pointermove", dialMove);
+  for (const EVENT of ["pointerup", "pointercancel"]) {
+    DOLLAR2("speciesRoles").addEventListener(EVENT, () => {
+      dialDrag?.row.classList.remove("is-dragging");
+      dialDrag = null;
+    });
+  }
+  DOLLAR2("speciesRoles").addEventListener("keydown", (event) => {
+    const DIAL = event.target.closest(".dial"), ROW = DIAL?.closest("[data-species]"), STEP = event.key === "ArrowRight" || event.key === "ArrowUp" ? 5 : event.key === "ArrowLeft" || event.key === "ArrowDown" ? -5 : 0;
+    if (ROW && STEP) {
+      setSpeciesBreedShare(ROW, Math.max(0, Math.min(100, (Number(DIAL.getAttribute("aria-valuenow")) || 0) + STEP)));
+      event.preventDefault();
+    }
+  });
   function drawFarmPanel() {
     const W = personalGarden || active?.world;
     if (!W || farmPanelRevision === W.progressRevision) {
@@ -19564,6 +19687,7 @@
     DOLLAR2("farmStatCapacity").textContent = `/ ${W.capacity}`;
     DOLLAR2("farmStatPending").textContent = String(W.pendingRewardPopulation);
     syncFlag("farmLockNote", "hidden", !LOCKED || !!farmSortTransition);
+    drawSpeciesRoles(W);
     for (const BUTTON of DOLLAR2("farmPlotActions").querySelectorAll("[data-farm-sort]")) {
       BUTTON.disabled = LOCKED;
     }
@@ -19750,7 +19874,9 @@
     const CUT = Number(DOLLAR2("workCutA").value), POINTS = (100 - CUT) * 100;
     saveWorkSetting(POINTS);
     (personalGarden || active.world).setWorkBasisPoints(POINTS);
+    saveSpeciesWork(personalGarden || active.world);
     active.queue("farm-work", { basisPoints: POINTS });
+    farmPanelRevision = -1;
   });
   DOLLAR2("progressionResetActions").onclick = (event) => {
     const BUTTON = event.target.closest("button[data-progression-reset]");

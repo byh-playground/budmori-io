@@ -167,6 +167,27 @@ await check('a full field keeps the worker share', async () => {
     await WORLD(() => BUDMORI.sim.setWorkBasisPoints(0));
 });
 
+await check('each species has its own worker share', async () => {
+    const GOT = await WORLD(() => {
+        const W = BUDMORI.sim;
+        for (let i = 0; i < 8; i++) {
+            for (const SP of [0, 1]) {
+                const U = W.spawn(SP, 1, i, SP);
+                U.growthElapsed = U.growthDuration;
+            }
+        }
+        W.setWorkBasisPoints(0);
+        W.setSpeciesWorkBasisPoints(1, 10000);
+        W._nextWorkerRefreshTick = 0;
+        W.refreshWorkers();
+        const WORKERS = (species) => W.units.filter((u) => u.species === species && W.isWorker(u)).length;
+        const OUT = { pea: WORKERS(0), corn: WORKERS(1) };
+        W.setWorkBasisPoints(0);
+        return OUT;
+    });
+    expect(GOT.pea === 0 && GOT.corn >= 8, `species shares did not apply ${JSON.stringify(GOT)}`);
+});
+
 await check('units eat, breed and the farm stays under its capacity', async () => {
     await WORLD(() => {
         const W = BUDMORI.sim;
