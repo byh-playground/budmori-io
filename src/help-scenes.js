@@ -10,11 +10,22 @@ export const HELP_SCENES = Object.freeze([
         rule: '일꾼이 곡식 더미를 쳐서 낟알을 만들고, 성체 두 마리가 하나씩 먹으면 새끼가 태어나요. 슬라이더로 번식과 먹이 일꾼의 비율을 정해요.',
         seed: 731,
         rate: 1.5,
-        durationMs: 20000,
+        durationMs: 12000,
         setup(world) {
-            // Seed grain is already on the ground, so the first birth does not wait for the first worker swing.
+            // Seed grain lands right beside the closest pair, so the first birth does not wait for a long walk.
             world.setWorkBasisPoints(0);
-            world.spawnFood(-60, 20, 6);
+            const UNITS = world.units;
+            let pair = null;
+            for (let first = 0; first < UNITS.length; first++) {
+                for (let second = first + 1; second < UNITS.length; second++) {
+                    const GAP = Math.hypot(UNITS[first].x - UNITS[second].x, UNITS[first].y - UNITS[second].y);
+                    if (!pair || GAP < pair.gap) {
+                        pair = { a: UNITS[first], b: UNITS[second], gap: GAP };
+                    }
+                }
+            }
+            world.spawnFood(pair.a.x, pair.a.y + 12, 1);
+            world.spawnFood(pair.b.x, pair.b.y + 12, 1);
         },
         timeline: [],
         step(world) {
