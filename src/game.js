@@ -12511,7 +12511,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.10";
+      PRODUCT_VERSION = "0.30.11";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -19169,6 +19169,7 @@
     PREV.onclick = () => show(index - 1);
     NEXT.onclick = () => show(index + 1);
     window.addEventListener("resize", () => visible && fit());
+    new ResizeObserver(() => visible && fit()).observe(dollar("helpPanel"));
     paintCard();
     return {
       setVisible(value) {

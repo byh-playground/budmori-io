@@ -117,7 +117,10 @@ export function createHelpPanel(dollar) {
     );
     PREV.onclick = () => show(index - 1);
     NEXT.onclick = () => show(index + 1);
+    // The tab can open straight onto this card while its panel is still laid out at zero width, so the card
+    // is fitted whenever the panel itself changes size, not only when the window does.
     window.addEventListener('resize', () => visible && fit());
+    new ResizeObserver(() => visible && fit()).observe(dollar('helpPanel'));
     paintCard();
     return {
         setVisible(value) {
