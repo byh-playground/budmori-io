@@ -284,7 +284,7 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
             record: W.tower.record,
             onField: W.units.filter((u) => !u.isBattleOnlySummon).length,
             panel: !document.getElementById('towerDoors').hidden,
-            rail: document.querySelectorAll('#towerRail li').length,
+            rail: document.getElementById('floorNow')?.textContent || '',
         };
     });
     expect(
@@ -292,7 +292,7 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
         `floor 1 ${JSON.stringify(ONE)}`,
     );
     expect(ONE.sleepers === 1 && ONE.onField === 0, `sleep/hand ${JSON.stringify(ONE)}`);
-    expect(ONE.panel && ONE.rail >= 3, `tower UI ${JSON.stringify(ONE)}`);
+    expect(ONE.panel && /^1층/.test(ONE.rail), `tower UI ${JSON.stringify(ONE)}`);
     const REST = await WORLD(() => {
         const W = BUDMORI.sim;
         W.tower.doors = ['rest', 'battle'];

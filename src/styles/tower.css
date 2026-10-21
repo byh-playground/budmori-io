@@ -22,47 +22,6 @@
     transform: translateY(-62%);
     pointer-events: none;
 }
-.tower__rail {
-    display: flex;
-    flex-direction: column;
-    gap: var(--ui-s2);
-    margin: 0;
-    padding: var(--ui-s2);
-    list-style: none;
-    border-radius: var(--ui-r-l);
-    background: var(--ui-panel);
-    border: var(--ui-bw) solid var(--ui-line);
-}
-.tower__rail.is-climbing .tower__floor {
-    animation: tower-step 0.7s cubic-bezier(0.2, 0.9, 0.3, 1);
-}
-.tower__floor {
-    display: grid;
-    justify-items: center;
-    min-width: 44px;
-    padding: 4px var(--ui-s2);
-    border-radius: var(--ui-r-s);
-    color: var(--ui-ink-3);
-    font-weight: var(--ui-fw-m);
-    font-variant-numeric: tabular-nums;
-    line-height: 1.15;
-}
-.tower__floor small {
-    min-height: 1.1em;
-    font-size: 10px;
-}
-.tower__floor.is-mid {
-    color: var(--ui-ink);
-}
-.tower__floor.is-now {
-    background: var(--ui-primary);
-    color: var(--ui-primary-ink);
-    box-shadow: 0 2px 0 var(--ui-line);
-    transform: scale(1.12);
-}
-.tower__floor.is-gone {
-    opacity: 0.45;
-}
 .tower__relics {
     display: block;
     margin-top: var(--ui-s2);
@@ -155,12 +114,6 @@
     color: var(--ui-ink-2);
     text-align: center;
 }
-@keyframes tower-step {
-    from {
-        transform: translateY(-120%);
-        opacity: 0;
-    }
-}
 @keyframes floor-sweep {
     to {
         transform: translateY(-100%);
@@ -188,7 +141,6 @@
     }
 }
 @media (prefers-reduced-motion: reduce) {
-    .tower__rail.is-climbing .tower__floor,
     .doors,
     .floor-banner::before,
     .floor-banner b,
