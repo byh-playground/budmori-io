@@ -5399,6 +5399,7 @@
       BOSS_PATTERN_CONFIG = Object.freeze({
         "attack.sweep-360": Object.freeze({
           kind: "sweep-360",
+          maxTargets: 5,
           unlockHp: 0.4,
           windup: 1.05,
           active: 1.05,
@@ -5413,6 +5414,7 @@
         }),
         "attack.front-slam": Object.freeze({
           kind: "front-slam",
+          maxTargets: 3,
           unlockHp: 1,
           windup: 0.75,
           active: 0,
@@ -5427,6 +5429,7 @@
         }),
         "attack.charge": Object.freeze({
           kind: "charge",
+          maxTargets: 3,
           unlockHp: 1,
           windup: 0.5,
           active: 6.6 / 5.3,
@@ -5441,6 +5444,7 @@
         }),
         "attack.leap-slam": Object.freeze({
           kind: "leap-slam",
+          maxTargets: 4,
           unlockHp: 0.6,
           windup: 0.5,
           active: 1.013,
@@ -5455,6 +5459,7 @@
         }),
         "attack.fan-sweep": Object.freeze({
           kind: "fan-sweep",
+          maxTargets: 4,
           unlockHp: 0.75,
           windup: 1,
           active: 0.8,
@@ -11578,7 +11583,7 @@
         }
         _hitBossPatternUnit(unit, patternId, point2, normal = null) {
           const B_LOCAL = this.boss, ACTION = B_LOCAL.patternRuntime.active, CONFIG_LOCAL = BOSS_PATTERN_CONFIG[patternId];
-          if (!ACTION || !CONFIG_LOCAL || !hasFaction(unit, FACTION_CONFIG.PLAYER) || !areOpposingFactions(B_LOCAL, unit) || unit.hp <= 0 || !unit.dropLanded || ACTION.hitIds.has(unit.id)) {
+          if (!ACTION || !CONFIG_LOCAL || !hasFaction(unit, FACTION_CONFIG.PLAYER) || !areOpposingFactions(B_LOCAL, unit) || unit.hp <= 0 || !unit.dropLanded || ACTION.hitIds.has(unit.id) || ACTION.hitIds.size >= CONFIG_LOCAL.maxTargets) {
             return false;
           }
           if (CONFIG_LOCAL.groundOnly && unit.z > 0.1) {
@@ -11623,17 +11628,25 @@
           });
           return true;
         }
+        _nearestBossFirst(candidates) {
+          const B_LOCAL = this.boss;
+          return candidates.sort(
+            (a, b) => Math.hypot(a.x - B_LOCAL.x, a.y - B_LOCAL.y) - Math.hypot(b.x - B_LOCAL.x, b.y - B_LOCAL.y)
+          );
+        }
         resolveBossSector(action, patternId, range, sector) {
           const B_LOCAL = this.boss, AIM = action.aim, HALF = sector / 2;
           let hits = 0;
           const EXTENT = range + CONFIG.unit.maxRadius;
-          for (const UNIT_LOCAL of this._collectBossTargets(
-            B_LOCAL.x - EXTENT,
-            B_LOCAL.y - EXTENT,
-            B_LOCAL.x + EXTENT,
-            B_LOCAL.y + EXTENT,
-            this._bossHitCandidates,
-            true
+          for (const UNIT_LOCAL of this._nearestBossFirst(
+            this._collectBossTargets(
+              B_LOCAL.x - EXTENT,
+              B_LOCAL.y - EXTENT,
+              B_LOCAL.x + EXTENT,
+              B_LOCAL.y + EXTENT,
+              this._bossHitCandidates,
+              true
+            )
           )) {
             if (action.hitIds.has(UNIT_LOCAL.id) || UNIT_LOCAL.z > 0.1) {
               continue;
@@ -11669,13 +11682,15 @@
           const B_LOCAL = this.boss;
           let hits = 0;
           const EXTENT = range + CONFIG.unit.maxRadius;
-          for (const UNIT_LOCAL of this._collectBossTargets(
-            B_LOCAL.x - EXTENT,
-            B_LOCAL.y - EXTENT,
-            B_LOCAL.x + EXTENT,
-            B_LOCAL.y + EXTENT,
-            this._bossHitCandidates,
-            true
+          for (const UNIT_LOCAL of this._nearestBossFirst(
+            this._collectBossTargets(
+              B_LOCAL.x - EXTENT,
+              B_LOCAL.y - EXTENT,
+              B_LOCAL.x + EXTENT,
+              B_LOCAL.y + EXTENT,
+              this._bossHitCandidates,
+              true
+            )
           )) {
             if (action.hitIds.has(UNIT_LOCAL.id)) {
               continue;

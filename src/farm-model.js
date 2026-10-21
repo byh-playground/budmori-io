@@ -5081,7 +5081,8 @@ const GARDEN = class Garden {
             !areOpposingFactions(B_LOCAL, unit) ||
             unit.hp <= 0 ||
             !unit.dropLanded ||
-            ACTION.hitIds.has(unit.id)
+            ACTION.hitIds.has(unit.id) ||
+            ACTION.hitIds.size >= CONFIG_LOCAL.maxTargets
         ) {
             return false;
         }
@@ -5134,19 +5135,27 @@ const GARDEN = class Garden {
         });
         return true;
     }
+    _nearestBossFirst(candidates) {
+        const B_LOCAL = this.boss;
+        return candidates.sort(
+            (a, b) => Math.hypot(a.x - B_LOCAL.x, a.y - B_LOCAL.y) - Math.hypot(b.x - B_LOCAL.x, b.y - B_LOCAL.y),
+        );
+    }
     resolveBossSector(action, patternId, range, sector) {
         const B_LOCAL = this.boss,
             AIM = action.aim,
             HALF = sector / 2;
         let hits = 0;
         const EXTENT = range + CONFIG.unit.maxRadius;
-        for (const UNIT_LOCAL of this._collectBossTargets(
-            B_LOCAL.x - EXTENT,
-            B_LOCAL.y - EXTENT,
-            B_LOCAL.x + EXTENT,
-            B_LOCAL.y + EXTENT,
-            this._bossHitCandidates,
-            true,
+        for (const UNIT_LOCAL of this._nearestBossFirst(
+            this._collectBossTargets(
+                B_LOCAL.x - EXTENT,
+                B_LOCAL.y - EXTENT,
+                B_LOCAL.x + EXTENT,
+                B_LOCAL.y + EXTENT,
+                this._bossHitCandidates,
+                true,
+            ),
         )) {
             if (action.hitIds.has(UNIT_LOCAL.id) || UNIT_LOCAL.z > 0.1) {
                 continue;
@@ -5190,13 +5199,15 @@ const GARDEN = class Garden {
         const B_LOCAL = this.boss;
         let hits = 0;
         const EXTENT = range + CONFIG.unit.maxRadius;
-        for (const UNIT_LOCAL of this._collectBossTargets(
-            B_LOCAL.x - EXTENT,
-            B_LOCAL.y - EXTENT,
-            B_LOCAL.x + EXTENT,
-            B_LOCAL.y + EXTENT,
-            this._bossHitCandidates,
-            true,
+        for (const UNIT_LOCAL of this._nearestBossFirst(
+            this._collectBossTargets(
+                B_LOCAL.x - EXTENT,
+                B_LOCAL.y - EXTENT,
+                B_LOCAL.x + EXTENT,
+                B_LOCAL.y + EXTENT,
+                this._bossHitCandidates,
+                true,
+            ),
         )) {
             if (action.hitIds.has(UNIT_LOCAL.id)) {
                 continue;
