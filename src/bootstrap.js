@@ -1,5 +1,19 @@
 // Game-owned startup integration. Diagnostics start before configuration parsing
 // or any asynchronous SDK import so an unresponsive startup can be inspected.
+// A help card runs this same page inside a frame: it must never read or write the player's save.
+if (new URLSearchParams(location.search).has('help')) {
+    const MEMORY = new Map([['budmori.food.muted', 'true']]);
+    Object.defineProperty(window, 'localStorage', {
+        configurable: true,
+        value: {
+            getItem: (key) => MEMORY.get(key) ?? null,
+            setItem: (key, value) => void MEMORY.set(key, String(value)),
+            removeItem: (key) => void MEMORY.delete(key),
+            clear: () => MEMORY.clear(),
+        },
+    });
+    document.documentElement.classList.add('help-scene');
+}
 let config = null;
 let initStage = 'bootstrap';
 let debugTools = null;

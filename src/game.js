@@ -12511,7 +12511,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.2";
+      PRODUCT_VERSION = "0.30.3";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -18929,9 +18929,247 @@
   init_boss_rewards();
   init_farm_work();
   init_species_catalog();
+
+  // src/help-scenes.js
+  var HELP_PLAYBACK_RATE = 0.5;
+  var HELP_SCENES = Object.freeze([
+    Object.freeze({
+      id: "breed",
+      title: "먹이와 번식",
+      rule: "일꾼이 곡식 더미를 쳐서 낟알을 만들고, 성체 두 마리가 하나씩 먹으면 새끼가 태어나요. 슬라이더로 번식과 먹이 일꾼의 비율을 정해요.",
+      seed: 731,
+      rate: 1.5,
+      durationMs: 2e4,
+      setup(world) {
+        world.setWorkBasisPoints(0);
+        world.spawnFood(-60, 20, 6);
+      },
+      timeline: [],
+      step(world) {
+        if (world.units.length > 6) {
+          return "born";
+        }
+        return world.food.length > 0 ? "food" : "work";
+      },
+      steps: {
+        work: "일꾼이 곡식 더미를 쳐요",
+        food: "낟알이 떨어졌어요. 부모가 하나씩 먹어요",
+        born: "새끼가 태어났어요. 5초 동안 자라요"
+      }
+    }),
+    Object.freeze({
+      id: "merge",
+      title: "합성",
+      rule: "합성 버튼을 누를 때마다 가장 낮은 등급의 같은 병종부터 한 번 합쳐요. 재료는 T2 = T1 2마리, T3 = T2 2마리, T4 = T3 3마리, T5 = T4 4마리, T6 = T5 5마리예요.",
+      seed: 4102,
+      durationMs: 12e3,
+      setup(world) {
+        world.setWorkBasisPoints(0);
+      },
+      timeline: [
+        { atMs: 3e3, cmd: "merge" },
+        { atMs: 3500, cmd: "merge" },
+        { atMs: 4e3, cmd: "merge" }
+      ],
+      step(world) {
+        if (world.units.some((unit) => unit.tier >= 2)) {
+          return "done";
+        }
+        return world.mergeTask ? "merging" : "start";
+      },
+      steps: {
+        start: "같은 병종 성체가 여럿 있어요",
+        merging: "합성을 누르면 두 마리가 모여요",
+        done: "한 등급 위가 됐어요. 체력과 공격력이 커져요"
+      }
+    }),
+    Object.freeze({
+      id: "boss",
+      title: "보스 도전",
+      rule: "탑 오르기를 누르면 보스가 떨어져요. 카드를 골라 땅을 눌러 병력을 한 마리씩 투입하면 자동으로 싸워요.",
+      seed: 4103,
+      rate: 1.5,
+      durationMs: 42e3,
+      setup(world) {
+        world.setWorkBasisPoints(0);
+        for (let index = 0; index < 4; index++) {
+          world.spawn(0, 5, -40 + index * 20, -30 + index * 15);
+        }
+      },
+      timeline: [
+        { atMs: 3e3, cmd: "tower-start", args: { floor: 1 } },
+        { atMs: 8600, cmd: "deploy", args: { species: 0, x: -120, y: 60 } },
+        { atMs: 9400, cmd: "deploy", args: { species: 0, x: -150, y: -10 } },
+        { atMs: 10200, cmd: "deploy", args: { species: 0, x: -110, y: -70 } },
+        { atMs: 11e3, cmd: "deploy", args: { species: 0, x: -170, y: 30 } },
+        { atMs: 12e3, cmd: "deploy", args: { species: 0, x: -90, y: 10 } },
+        { atMs: 12800, cmd: "deploy", args: { species: 0, x: -130, y: -40 } }
+      ],
+      step(world) {
+        const PHASE = world.farmBossEvent.phase;
+        if (PHASE === "marching") {
+          return "march";
+        }
+        if (PHASE === "dropping") {
+          return "drop";
+        }
+        if (PHASE === "idle") {
+          return world.tower.floor > 0 ? "win" : "start";
+        }
+        if (PHASE === "fighting") {
+          return world.fieldFighterCount > 0 ? "fight" : "drop";
+        }
+        return "win";
+      },
+      steps: {
+        start: "탑 오르기를 누르면 병력이 탑으로 향해요",
+        march: "병력이 탑으로 올라가요",
+        drop: "보스가 떨어져요. 병력을 한 마리씩 투입해요",
+        fight: "투입된 병력이 자동으로 싸워요",
+        win: "보스를 쓰러뜨렸어요"
+      }
+    }),
+    Object.freeze({
+      id: "tower",
+      title: "탑과 성장",
+      rule: "보스를 이기면 문을 골라요. 전투·정예·쉼터·유물·강화 중 하나고, 이긴 보스 종의 숙련이 쌓여 능력 포인트가 돼요.",
+      seed: 4104,
+      rate: 1.5,
+      durationMs: 3e4,
+      setup(world) {
+        world.setWorkBasisPoints(0);
+        for (let index = 0; index < 4; index++) {
+          world.spawn(0, 5, -40 + index * 20, -30 + index * 15);
+        }
+      },
+      timeline: [
+        { atMs: 1e3, cmd: "tower-start", args: { floor: 1 } },
+        { atMs: 6200, cmd: "deploy", args: { species: 0, x: -120, y: 60 } },
+        { atMs: 6700, cmd: "deploy", args: { species: 0, x: -150, y: -10 } },
+        { atMs: 7e3, set: "bossHp", fraction: 0.02 },
+        { atMs: 24e3, cmd: "tower-door", args: { index: 1 } }
+      ],
+      step(world) {
+        if (world.tower.boost.hp > 1) {
+          return "boost";
+        }
+        if (world.tower.floor === 0) {
+          return "start";
+        }
+        if (world.tower.doors?.length) {
+          return "doors";
+        }
+        return "fight";
+      },
+      steps: {
+        start: "탑에 오르면 보스가 기다려요",
+        fight: "보스를 쓰러뜨려요",
+        doors: "이겼어요. 다음 문을 골라요",
+        boost: "체력 강화를 골랐어요. 이번 도전 동안 모든 유닛이 튼튼해져요"
+      }
+    })
+  ]);
+  function helpSceneById(id) {
+    return HELP_SCENES.find((scene) => scene.id === id) ?? null;
+  }
+
+  // src/help-panel.js
+  var LOAD_TIMEOUT_MS = 15e3;
+  function readSnapshot(frame2) {
+    try {
+      return frame2.contentWindow?.__budmoriHelp?.snapshot() ?? null;
+    } catch {
+      return null;
+    }
+  }
+  function createHelpPanel(dollar) {
+    const DEMO = dollar("helpDemo"), CAPTION = dollar("helpCaption"), TITLE = dollar("helpTitle"), RULE = dollar("helpRule"), DOTS = dollar("helpDots"), PREV = dollar("helpPrev"), NEXT = dollar("helpNext"), REPLAY = dollar("helpReplay");
+    let index = 0, frame2 = null, watch = 0, visible = false, startedAt = 0;
+    function unmount() {
+      cancelAnimationFrame(watch);
+      watch = 0;
+      frame2?.remove();
+      frame2 = null;
+    }
+    function observe() {
+      if (!frame2) {
+        return;
+      }
+      const SNAPSHOT = readSnapshot(frame2);
+      if (SNAPSHOT) {
+        CAPTION.textContent = HELP_SCENES[index].steps[SNAPSHOT.step] ?? "";
+        REPLAY.dataset.ended = String(SNAPSHOT.state === "ended");
+      } else if (performance.now() - startedAt > LOAD_TIMEOUT_MS) {
+        CAPTION.textContent = "데모를 불러오지 못했어요. 다시 보기를 눌러 주세요";
+        return;
+      }
+      watch = requestAnimationFrame(observe);
+    }
+    function mount() {
+      unmount();
+      if (!visible) {
+        return;
+      }
+      const SCENE = HELP_SCENES[index];
+      CAPTION.textContent = "불러오는 중이에요";
+      REPLAY.dataset.ended = "false";
+      startedAt = performance.now();
+      frame2 = document.createElement("iframe");
+      frame2.title = `${SCENE.title} 데모`;
+      frame2.tabIndex = -1;
+      frame2.src = new URL(`?help=${SCENE.id}`, location.href).href;
+      DEMO.replaceChildren(frame2);
+      watch = requestAnimationFrame(observe);
+    }
+    function paintCard() {
+      const SCENE = HELP_SCENES[index];
+      TITLE.textContent = `${index + 1}/${HELP_SCENES.length} · ${SCENE.title}`;
+      RULE.textContent = SCENE.rule;
+      PREV.disabled = index === 0;
+      NEXT.disabled = index === HELP_SCENES.length - 1;
+      for (const DOT of DOTS.children) {
+        DOT.setAttribute("aria-current", String(Number(DOT.dataset.card) === index));
+      }
+    }
+    function show(next) {
+      index = Math.max(0, Math.min(HELP_SCENES.length - 1, next));
+      paintCard();
+      mount();
+    }
+    DOTS.replaceChildren(
+      ...HELP_SCENES.map((scene, cardIndex) => {
+        const DOT = document.createElement("button");
+        DOT.type = "button";
+        DOT.dataset.card = String(cardIndex);
+        DOT.setAttribute("aria-label", scene.title);
+        DOT.onclick = () => show(cardIndex);
+        return DOT;
+      })
+    );
+    PREV.onclick = () => show(index - 1);
+    NEXT.onclick = () => show(index + 1);
+    REPLAY.onclick = () => show(index);
+    paintCard();
+    return {
+      setVisible(value) {
+        if (visible === value) {
+          return;
+        }
+        visible = value;
+        if (visible) {
+          mount();
+        } else {
+          unmount();
+        }
+      }
+    };
+  }
+
+  // src/farm-app.js
   var DOLLAR2 = (id) => document.getElementById(id);
   var STORAGE = new FarmStorage();
   STORAGE.initializeIncompatible(new GARDEN());
+  var HELP_PANEL = createHelpPanel(DOLLAR2);
   DOLLAR2("abilitySpeciesTabs").innerHTML = renderAbilitySpeciesTabsMarkup();
   var imported = null;
   var active = null;
@@ -19936,6 +20174,7 @@
       BUTTON.setAttribute("aria-selected", String(SELECTED));
       BUTTON.tabIndex = SELECTED ? 0 : -1;
     }
+    HELP_PANEL.setVisible(menuOpen && tab === "help");
     for (const [NAME, ID] of [
       ["play", "menuPlayPanel"],
       ["farms", "farmPanel"],
@@ -20008,6 +20247,7 @@
       return;
     }
     menuOpen = false;
+    HELP_PANEL.setVisible(false);
     DOLLAR2("gameMenuOverlay").hidden = true;
     for (const ID of ["gameMenu", "upgradeMenu", "helpMenu"]) {
       DOLLAR2(ID).setAttribute("aria-expanded", "false");
@@ -20714,12 +20954,14 @@
       active.profiler = PERFORMANCE_DIAGNOSTICS;
       active.world.profiler = PERFORMANCE_DIAGNOSTICS;
       const SIMULATION_START = PERFORMANCE_DIAGNOSTICS.start();
+      const CLOCK = HELP.scene ? HELP.clock(now) : now;
       if (!home && !document.hidden) {
-        active.pulse(now);
+        active.pulse(CLOCK);
+        HELP.scenario?.pulse(CLOCK);
       }
       PERFORMANCE_DIAGNOSTICS.end("simulation", SIMULATION_START);
       const PRESENTATION_START = PERFORMANCE_DIAGNOSTICS.start();
-      const DISPLAY = active.presentation(now), NOTICES = active.takePresentationNotices();
+      const DISPLAY = active.presentation(CLOCK), NOTICES = active.takePresentationNotices();
       COMBAT_FEEL.observe(active.world, DISPLAY.displayTimeMs, DISPLAY.presentationRevision, NOTICES);
       PERFORMANCE_DIAGNOSTICS.end("presentation", PRESENTATION_START);
       const RENDER_START = PERFORMANCE_DIAGNOSTICS.start();
@@ -20749,6 +20991,50 @@
   setHome(true, false);
   if (location.hash && location.hash !== "#/") {
     route();
+  }
+  var HELP = {
+    scene: helpSceneById(new URLSearchParams(location.search).get("help")),
+    scenario: null,
+    scaled: 0,
+    last: null,
+    clock(now) {
+      this.scaled = this.last === null ? now : this.scaled + (now - this.last) * (this.scene.rate ?? HELP_PLAYBACK_RATE);
+      this.last = now;
+      return this.scaled;
+    },
+    run(event) {
+      if (event.cmd) {
+        active.queue(event.cmd, event.args);
+      } else if (event.set === "bossHp" && active.world.boss) {
+        active.world.boss.hp = Math.max(1, Math.round(active.world.boss.maxHp * event.fraction));
+      }
+    }
+  };
+  if (HELP.scene) {
+    const SCENE = HELP.scene, WORLD = new GARDEN(SCENE.seed);
+    SCENE.setup(WORLD);
+    start(WORLD, false);
+    active.paused = false;
+    HELP.scenario = globalThis.BloomGamekitScenario.createScenario({
+      definition: {
+        seed: SCENE.seed,
+        tickRate: LOCAL_PROFILE.tickRate,
+        endTick: Math.ceil(SCENE.durationMs * LOCAL_PROFILE.tickRate / 1e3),
+        timeline: SCENE.timeline
+      },
+      createRun: () => ({
+        step: (frame2) => frame2.events.forEach((event) => HELP.run(event)),
+        dispose() {
+        }
+      }),
+      onEnd: () => {
+        active.paused = true;
+      }
+    });
+    HELP.scenario.play({ automatic: false });
+    globalThis.__budmoriHelp = {
+      snapshot: () => ({ ...HELP.scenario.snapshot(), step: SCENE.step(active.world) })
+    };
   }
   requestAnimationFrame(frame);
   globalThis.BUDMORI = {

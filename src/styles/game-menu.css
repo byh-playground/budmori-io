@@ -429,3 +429,86 @@
 .game-menu__version {
     color: var(--ui-ink-2);
 }
+
+/* 도움말 카드의 데모 프레임: 같은 게임을 ?help=카드 로 불러오므로 판 위의 조작 UI는 모두 숨겨요. */
+html.help-scene #startScreen,
+html.help-scene header,
+html.help-scene .utility,
+html.help-scene #workHud,
+html.help-scene #farmControls,
+html.help-scene #startFloorBox,
+html.help-scene #bossRewardDialog,
+html.help-scene #bossRewardOpen,
+html.help-scene #towerLeave,
+html.help-scene #gameMenuOverlay,
+html.help-scene #error,
+html.help-scene #fightRetreat {
+    display: none !important;
+}
+
+/* 도움말 카드: 실제 게임 데모 + 한 줄 캡션 + 규칙 한두 줄 */
+.help-demo {
+    aspect-ratio: 3 / 2;
+    max-height: 46vh;
+    margin: 0 auto var(--ui-s2);
+    overflow: hidden;
+    border: var(--ui-bw) solid var(--ui-line);
+    border-radius: var(--ui-r-m);
+    background: #1c2433;
+}
+.help-demo iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    pointer-events: none;
+}
+.help-caption {
+    min-height: 1.6em;
+    margin: 0 0 var(--ui-s2);
+    font-weight: 700;
+    text-align: center;
+}
+#helpPanel #helpRule {
+    margin: 0 0 var(--ui-s3);
+}
+.help-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ui-s2);
+}
+.help-nav button {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 var(--ui-s3);
+    border: var(--ui-bw) solid var(--ui-line);
+    border-radius: var(--ui-r-m);
+    background: var(--ui-card);
+    color: inherit;
+    font: inherit;
+}
+.help-nav button:disabled {
+    opacity: 0.4;
+}
+.help-nav #helpReplay[data-ended='true'] {
+    border-color: var(--ui-ink-2);
+    font-weight: 700;
+}
+.help-dots {
+    display: flex;
+    flex: 1;
+    justify-content: center;
+    gap: var(--ui-s2);
+}
+.help-dots button {
+    min-width: 0;
+    width: 14px;
+    min-height: 0;
+    height: 14px;
+    padding: 0;
+    border-radius: 50%;
+}
+.help-dots button[aria-current='true'] {
+    background: var(--ui-ink-2);
+}
