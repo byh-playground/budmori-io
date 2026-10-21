@@ -273,6 +273,22 @@ await check('challenge button starts a boss fight and retreat ends it', async ()
     await PAGE.waitForTimeout(400);
     const ORDER = await WORLD(() => BUDMORI.sim.deployOrder[0]);
     expect(ORDER === FIRST, `tapped card did not move to the front (${ORDER} vs ${FIRST})`);
+    // A hit is drawn where and when it happens (the effect's time is in the same ms as the display clock), and every
+    // hit that did damage has its own number.
+    const FEEL = await WORLD(() => {
+        const FEEL_LOCAL = BUDMORI.combatFeel,
+            NOW = BUDMORI.renderer?.displayTimeMs ?? 0;
+        return {
+            numbers: FEEL_LOCAL.counts.numbers,
+            hits: FEEL_LOCAL.counts.hits,
+            ages: FEEL_LOCAL.effects.map((effect) => NOW - effect.at),
+        };
+    });
+    expect(FEEL.numbers > 0 && FEEL.numbers <= FEEL.hits + 5, `damage numbers ${JSON.stringify(FEEL)}`);
+    expect(
+        FEEL.ages.every((age) => age > -1000 && age < 1500),
+        `effect times are off the display clock ${JSON.stringify(FEEL.ages)}`,
+    );
     const RAGE = await WORLD(() => {
         const W = BUDMORI.sim,
             FULL = W.boss.maxHp;

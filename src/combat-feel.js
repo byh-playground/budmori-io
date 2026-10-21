@@ -1,9 +1,16 @@
 import { presentationEventTimeMs } from './farm-model.js';
-import { RiceCriticalPresentation } from './features/abilities/rice-critical/presentation.js';
+import { DamageNumberPresentation } from './damage-numbers.js';
 import { BarleyArmorShredPresentation } from './features/abilities/barley-shred/presentation.js';
 const { ObjectPool: OBJECT_POOL } = globalThis.BloomGamekitObjectPool;
 const EMPTY_NOTICES = Object.freeze([]);
-const RICE_CRITICAL_PRESENTATION = new RiceCriticalPresentation();
+// One place for the budget of a fight's feedback: how long an effect lives, how many may be alive, and when the
+// decoration thins out. Numbers never thin out; the particles around them do.
+export const COMBAT_FEEL_CONFIG = Object.freeze({
+    lifeMs: 430,
+    maxEffects: 96,
+    denseHits: 12,
+    denseParticles: 2,
+});
 const BARLEY_SHRED_PRESENTATION = new BarleyArmorShredPresentation();
 // Only these primitive unit-land notice copies are owned by the display queue.
 // Garden notices, interpolation history and the longer-lived bossHit alias are not pooled.
@@ -43,7 +50,7 @@ class BurstPresentation {
             );
         }
     }
-    draw(renderer, event, progress) {
+    draw(renderer, event, progress, feel) {
         const T = Math.min(1, progress / this.durationFraction),
             ALPHA = 1 - T;
         if (ALPHA <= 0) {
@@ -52,7 +59,7 @@ class BurstPresentation {
         const SIZE = this.size(event),
             COLOR = this.color;
         const CENTER = renderer.project(event.x, event.y, event.z || 0.1),
-            N = this.particleCount;
+            N = feel?.dense ? Math.min(this.particleCount, COMBAT_FEEL_CONFIG.denseParticles) : this.particleCount;
         for (let i = 0; i < N; i++) {
             const ANGLE = (i * Math.PI * 2) / N + (event.sequence % 11) * 0.19,
                 DISTANCE = (0.12 + T * SIZE) * this.distanceMultiplier,
@@ -71,11 +78,52 @@ class HitPresentation extends BurstPresentation {
     ringWidth = 0.075;
     particleCount = 6;
     distanceMultiplier = 1;
-    draw(renderer, event, progress) {
-        super.draw(renderer, event, progress);
+    draw(renderer, event, progress, feel) {
+        super.draw(renderer, event, progress, feel);
         if (event.critical) {
-            RICE_CRITICAL_PRESENTATION.drawCriticalHit(renderer, event, progress);
+            this.drawCritical(renderer, event, progress);
         }
+    }
+    // A critical hit reads by shape, not only by colour: a wide orange ring and a star of thick rays, where a normal
+    // hit has a thin cream ring and short sparks.
+    drawCritical(renderer, event, progress) {
+        const T = Math.min(1, progress / 0.58),
+            ALPHA = 1 - T,
+            CENTER = renderer.project(event.x, event.y, (event.z || 0) + 0.22);
+        if (ALPHA <= 0) {
+            return;
+        }
+        renderer.ring(event.x, event.y, 0.3 + T * 0.62, `rgba(255,150,40,${ALPHA * 0.95})`, 0.11);
+        for (let index = 0; index < 6; index++) {
+            const ANGLE = (index * Math.PI) / 3 + (event.sequence % 7) * 0.08,
+                REACH = renderer.scale * (0.16 + T * 0.3),
+                START = REACH * 0.45;
+            renderer.line(
+                { x: CENTER.x + Math.cos(ANGLE) * START, y: CENTER.y + Math.sin(ANGLE) * START },
+                { x: CENTER.x + Math.cos(ANGLE) * REACH, y: CENTER.y + Math.sin(ANGLE) * REACH },
+                0.075,
+                `rgba(255,214,102,${ALPHA})`,
+            );
+        }
+    }
+    // Every confirmed hit that did damage gets its own number; a blocked hit has none.
+    spawnNumber(feel, event, at, role) {
+        if (!(event.damage > 0)) {
+            return;
+        }
+        feel.counts.numbers++;
+        feel.push({
+            kind: 'damage-number',
+            sequence: event.sequence,
+            x: event.x,
+            y: event.y,
+            z: event.z,
+            amount: event.damage,
+            critical: event.critical,
+            role,
+            at,
+            heard: true,
+        });
     }
     size(event) {
         const BASE = event.attackKind === 'sweep' ? 1.15 : 0.6;
@@ -109,14 +157,16 @@ class BossHitPresentation extends HitPresentation {
         feel.counts.hits++;
         feel.bossHit = displayEvent;
         feel.kick(event.strength, displayEvent.at);
+        this.spawnNumber(feel, event, displayEvent.at, 'dealt');
     }
     sound(audio, event) {
-        audio.sound('strike', event.species || 0);
+        audio.sound(event.critical ? 'crit' : 'strike', event.species || 0);
     }
 }
 class UnitHitPresentation extends HitPresentation {
     color = '231,147,83';
     observe(feel, event, _displayEvent, at) {
+        this.spawnNumber(feel, event, at, 'taken');
         feel.poses.set(event.unit, {
             at,
             until: at + 180,
@@ -125,7 +175,7 @@ class UnitHitPresentation extends HitPresentation {
         feel.counts.hits++;
     }
     sound(audio, event) {
-        audio.sound(event.attackKind === 'sweep' ? 'heavy' : 'strike');
+        audio.sound(event.critical ? 'crit' : event.attackKind === 'sweep' ? 'heavy' : 'strike');
     }
 }
 class UnitLandingPresentation extends BurstPresentation {
@@ -180,6 +230,7 @@ class BossLaunchPresentation {
     }
 }
 const COMBAT_EFFECT_PRESENTATIONS = new Map([
+    ['damage-number', Object.freeze(new DamageNumberPresentation())],
     ['boss-hit', Object.freeze(new BossHitPresentation())],
     ['unit-hit', Object.freeze(new UnitHitPresentation())],
     ['barley-shred', Object.freeze(BARLEY_SHRED_PRESENTATION)],
@@ -206,7 +257,9 @@ class CombatFeel {
         this.counts = {
             hits: 0,
             landings: 0,
+            numbers: 0,
         };
+        this.dense = false;
     }
     acquireLandingEffect(e, at) {
         const EVENT = this.landingPool.acquire();
@@ -220,6 +273,16 @@ class CombatFeel {
         EVENT.at = at;
         EVENT.heard = false;
         return EVENT;
+    }
+    push(event) {
+        this.effects.push(event);
+        if (this.effects.length > COMBAT_FEEL_CONFIG.maxEffects) {
+            this.releaseEffect(this.effects.shift());
+        }
+    }
+    // How long an effect stays: the effect decides, the shared budget is only the default.
+    lifeMs(event) {
+        return COMBAT_EFFECT_PRESENTATIONS.get(event.kind)?.lifeMs ?? COMBAT_FEEL_CONFIG.lifeMs;
     }
     releaseEffect(event) {
         COMBAT_EFFECT_PRESENTATIONS.get(event.kind)?.release?.(this, event);
@@ -247,17 +310,14 @@ class CombatFeel {
             }
             const AT = presentationEventTimeMs(E),
                 EVENT = PRESENTATION.acquire?.(this, E, AT) ?? { ...E, at: AT, heard: false };
-            this.effects.push(EVENT);
-            if (this.effects.length > 48) {
-                this.releaseEffect(this.effects.shift());
-            }
+            this.push(EVENT);
             PRESENTATION.observe?.(this, E, EVENT, AT);
         }
         this.sequence = world.eventSequence;
         // Finish compaction before the next acquire; no released queue slot is read again.
         let retained = 0;
         for (const E of this.effects) {
-            if (displayTimeMs - E.at < 430) {
+            if (displayTimeMs - E.at < this.lifeMs(E)) {
                 this.effects[retained++] = E;
             } else {
                 this.releaseEffect(E);
@@ -312,24 +372,33 @@ class CombatFeel {
     }
     drawGround(r, displayTimeMs) {
         for (const E of this.effects) {
-            const AGE = displayTimeMs - E.at;
-            if (AGE >= 0 && AGE <= 430) {
-                COMBAT_EFFECT_PRESENTATIONS.get(E.kind)?.drawGround?.(r, E, AGE / 430);
+            const AGE = displayTimeMs - E.at,
+                LIFE = this.lifeMs(E);
+            if (AGE >= 0 && AGE <= LIFE) {
+                COMBAT_EFFECT_PRESENTATIONS.get(E.kind)?.drawGround?.(r, E, AGE / LIFE);
             }
         }
     }
     draw(r, displayTimeMs) {
+        let hits = 0;
         for (const E of this.effects) {
-            const AGE = displayTimeMs - E.at;
-            if (AGE < 0 || AGE > 430) {
+            if (E.kind === 'boss-hit' || E.kind === 'unit-hit') {
+                hits++;
+            }
+        }
+        // A crowded moment draws less decoration around each hit; the hits and their numbers all stay.
+        this.dense = hits > COMBAT_FEEL_CONFIG.denseHits;
+        for (const E of this.effects) {
+            const AGE = displayTimeMs - E.at,
+                LIFE = this.lifeMs(E);
+            if (AGE < 0 || AGE > LIFE) {
                 continue;
             }
             if (!E.heard) {
                 E.heard = true;
                 this.sound(E);
             }
-            const PRESENTATION = COMBAT_EFFECT_PRESENTATIONS.get(E.kind);
-            PRESENTATION?.draw?.(r, E, AGE / 430);
+            COMBAT_EFFECT_PRESENTATIONS.get(E.kind)?.draw?.(r, E, AGE / LIFE, this);
         }
     }
 }
