@@ -493,10 +493,6 @@ html.help-scene #hand {
 .help-nav button:disabled {
     opacity: 0.4;
 }
-.help-nav #helpReplay[data-ended='true'] {
-    border-color: var(--ui-ink-2);
-    font-weight: 700;
-}
 .help-dots {
     display: flex;
     flex: 1;
