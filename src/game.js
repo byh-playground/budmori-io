@@ -9349,11 +9349,13 @@
         get deployCooldownLeft() {
           return Math.max(0, this._deployReadyTime - this.time);
         }
-        setDeployFirst(species) {
-          if (!Number.isSafeInteger(species) || species < 0 || species >= CONFIG.unit.speciesCount) {
+        // The whole order at once: it must list every species exactly once.
+        setDeployOrder(order) {
+          const COUNT = CONFIG.unit.speciesCount;
+          if (!Array.isArray(order) || order.length !== COUNT || new Set(order).size !== COUNT || !order.every((species) => Number.isSafeInteger(species) && species >= 0 && species < COUNT)) {
             return false;
           }
-          this.deployOrder = [species, ...this.deployOrder.filter((other) => other !== species)];
+          this.deployOrder = [...order];
           return true;
         }
         // A fight sends everyone in by itself: one unit every 0.1 s from all around the hall's edge, the species at the
@@ -12536,7 +12538,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.12";
+      PRODUCT_VERSION = "0.30.13";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -17069,8 +17071,8 @@
           return W.scene === "farm" && W.setWorkBasisPoints(c.basisPoints);
         case "farm-breed-weights":
           return W.scene === "farm" && W.setBreedWeights(c.weights);
-        case "deploy-first":
-          return W.scene === "farm" && W.setDeployFirst(c.species);
+        case "deploy-order":
+          return W.scene === "farm" && W.setDeployOrder(c.order);
         case "tower-start":
           return W.scene === "farm" && W.startTower(c.floor);
         case "tower-door":
@@ -19832,11 +19834,57 @@
       say(REASON);
       return;
     }
+    if (ownedCounts(personalGarden).size < 2) {
+      climb();
+      return;
+    }
+    openDeck();
+  }
+  function climb() {
     if (personalGarden.startTower(startFloorValue(personalGarden))) {
       active.paused = false;
       active.loop.resetTiming();
     }
   }
+  var deckOrder = [];
+  var deckPicked = -1;
+  function paintDeck() {
+    const COUNTS = ownedCounts(personalGarden), OWNED = deckOrder.filter((id) => COUNTS.has(id));
+    DOLLAR2("deckCards").innerHTML = OWNED.map((id, slot) => deckCardHtml(id, COUNTS.get(id), slot + 1)).join("");
+    for (const BUTTON of DOLLAR2("deckCards").children) {
+      BUTTON.setAttribute("aria-pressed", String(Number(BUTTON.dataset.deploy) === deckPicked));
+    }
+  }
+  function openDeck() {
+    deckOrder = [...personalGarden.deployOrder];
+    deckPicked = -1;
+    paintDeck();
+    DOLLAR2("deckDialog").hidden = false;
+  }
+  DOLLAR2("deckClose").onclick = () => {
+    DOLLAR2("deckDialog").hidden = true;
+  };
+  DOLLAR2("deckGo").onclick = () => {
+    DOLLAR2("deckDialog").hidden = true;
+    personalGarden.setDeployOrder(deckOrder);
+    saveDeployOrder(deckOrder);
+    climb();
+  };
+  DOLLAR2("deckCards").addEventListener("click", (e) => {
+    const BUTTON = e.target.closest("[data-deploy]");
+    if (!BUTTON) {
+      return;
+    }
+    const ID = Number(BUTTON.dataset.deploy);
+    if (deckPicked < 0 || deckPicked === ID) {
+      deckPicked = deckPicked === ID ? -1 : ID;
+    } else {
+      const FROM = deckOrder.indexOf(deckPicked), TO = deckOrder.indexOf(ID);
+      [deckOrder[FROM], deckOrder[TO]] = [deckOrder[TO], deckOrder[FROM]];
+      deckPicked = -1;
+    }
+    paintDeck();
+  });
   DOLLAR2("continueGame").onclick = () => {
     if (STORAGE.world) {
       start(restore(snapshot(STORAGE.world)), true, true);
@@ -20561,60 +20609,43 @@
   var DEPLOY_ORDER_KEY = "budmori.deploy.order";
   function loadDeployOrder(world) {
     try {
-      const SAVED = JSON.parse(localStorage.getItem(DEPLOY_ORDER_KEY) || "[]");
-      for (const SPECIES of [...SAVED].reverse()) {
-        world.setDeployFirst(SPECIES);
-      }
+      world.setDeployOrder(JSON.parse(localStorage.getItem(DEPLOY_ORDER_KEY) || "null"));
     } catch {
     }
   }
-  function saveDeployOrder(world) {
+  function saveDeployOrder(order) {
     try {
-      localStorage.setItem(DEPLOY_ORDER_KEY, JSON.stringify(world.deployOrder));
+      localStorage.setItem(DEPLOY_ORDER_KEY, JSON.stringify(order));
     } catch {
     }
+  }
+  function deckCardHtml(id, count, slot) {
+    const SPECIES = speciesById(id);
+    return `<button type="button" class="deck-card" data-deploy="${id}" aria-label="${slot}번 ${SPECIES.name}"><i>${slot}</i><img src="./assets/troops/${SPECIES.asset}" alt="" width="40" height="40" draggable="false"><b>×${count}</b></button>`;
+  }
+  function ownedCounts(garden) {
+    const COUNTS = /* @__PURE__ */ new Map();
+    for (const UNIT3 of garden.units) {
+      if (UNIT3.faction === "player" && !UNIT3.isBattleOnlySummon && UNIT3.hp > 0) {
+        COUNTS.set(UNIT3.species, (COUNTS.get(UNIT3.species) || 0) + 1);
+      }
+    }
+    return COUNTS;
   }
   function syncHand(garden, visible) {
-    syncFlag("hand", "hidden", !visible);
-    if (!visible) {
-      handKey = "";
-      return;
-    }
-    const COUNTS = fightActive() ? garden.handCounts : /* @__PURE__ */ new Map();
-    if (!fightActive()) {
-      for (const UNIT3 of garden.units) {
-        if (UNIT3.faction === "player" && !UNIT3.isBattleOnlySummon && UNIT3.hp > 0) {
-          COUNTS.set(UNIT3.species, (COUNTS.get(UNIT3.species) || 0) + 1);
-        }
-      }
-    }
-    const IDS = garden.deployOrder.filter((id) => COUNTS.has(id)), KEY2 = garden.deployOrder.join(",");
-    syncFlag("hand", "hidden", IDS.length < 2);
-    if (KEY2 !== handKey || DOLLAR2("handCards").children.length !== IDS.length) {
-      if (handKey) {
-        saveDeployOrder(garden);
-      }
+    const COUNTS = visible ? garden.handCounts : /* @__PURE__ */ new Map(), IDS = garden.deployOrder.filter((id) => COUNTS.has(id)), KEY2 = IDS.map((id) => `${id}x${COUNTS.get(id)}`).join(",");
+    syncFlag("hand", "hidden", !visible || IDS.length < 2);
+    if (KEY2 !== handKey) {
       handKey = KEY2;
-      DOLLAR2("handCards").innerHTML = IDS.map((id) => {
-        const SPECIES = speciesById(id);
-        return `<button type="button" class="hand__card" data-deploy="${id}" aria-label="${SPECIES.name}"><img src="./assets/troops/${SPECIES.asset}" alt="" width="40" height="40" draggable="false"><b></b></button>`;
-      }).join("");
+      DOLLAR2("handCards").innerHTML = IDS.map((id, slot) => deckCardHtml(id, COUNTS.get(id), slot + 1)).join("");
     }
-    for (const BUTTON of DOLLAR2("handCards").children) {
-      const TEXT = `×${COUNTS.get(Number(BUTTON.dataset.deploy)) || 0}`, LABEL = BUTTON.querySelector("b");
-      if (LABEL.textContent !== TEXT) {
-        LABEL.textContent = TEXT;
-      }
-    }
-    syncText(
-      "handNote",
-      fightActive() ? `투입 순서 · 누른 병종이 맨 앞 · 필드 ${garden.fieldFighterCount}/${CONFIG.farm.deploy.fieldCap}${garden.tower.sleepUntil.size ? ` · 잠든 병력 ${garden.tower.sleepUntil.size}` : ""}` : "투입 순서 · 누른 병종이 맨 앞에서 싸워요"
-    );
   }
   DOLLAR2("handCards").addEventListener("click", (e) => {
     const BUTTON = e.target.closest("[data-deploy]");
     if (BUTTON) {
-      active.queue("deploy-first", { species: Number(BUTTON.dataset.deploy) });
+      const FIRST = Number(BUTTON.dataset.deploy), ORDER = [FIRST, ...personalGarden.deployOrder.filter((id) => id !== FIRST)];
+      saveDeployOrder(ORDER);
+      active.queue("deploy-order", { order: ORDER });
     }
   });
   function canUseWorldInput() {
@@ -20881,7 +20912,7 @@
     syncFlag("workHud", "hidden", FARM_EVENT_ACTIVE || home || W.tower.active);
     syncTower(W, home, FARM_EVENT);
     syncFlag("bossbar", "hidden", !FARM_EVENT_ACTIVE || home || FARM_EVENT.phase === "marching");
-    syncHand(W, !home);
+    syncHand(W, !home && fightActive());
     syncText("count", displayedCount);
     syncText("capacity", personalGarden?.capacity ?? CONFIG.farm.capacity.max);
     syncText(
