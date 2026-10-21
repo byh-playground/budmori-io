@@ -2065,6 +2065,7 @@ function frame(now) {
 }
 DOLLAR('productVersion').textContent = PRODUCT_VERSION;
 DOLLAR('startVersion').textContent = PRODUCT_VERSION;
+DOLLAR('settingsVersion').textContent = `v${PRODUCT_VERSION}`;
 setHome(true, false);
 if (location.hash && location.hash !== '#/') {
     route();

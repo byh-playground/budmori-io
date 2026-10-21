@@ -20738,6 +20738,7 @@
   }
   DOLLAR2("productVersion").textContent = PRODUCT_VERSION;
   DOLLAR2("startVersion").textContent = PRODUCT_VERSION;
+  DOLLAR2("settingsVersion").textContent = `v${PRODUCT_VERSION}`;
   setHome(true, false);
   if (location.hash && location.hash !== "#/") {
     route();
