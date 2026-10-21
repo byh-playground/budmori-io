@@ -39,11 +39,6 @@ export function createFarmBossEventPhases(config) {
                 world.finishFarmBossEvent('defeat');
                 return true;
             }
-            if (world.farmBossEvent.elapsed >= world.battleTimeLimit()) {
-                world.finishFarmBossEvent('defeat');
-                return true;
-            }
-
             return false;
         }
     }

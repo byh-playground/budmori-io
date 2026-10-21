@@ -168,6 +168,29 @@ await check('challenge button starts a boss fight and retreat ends it', async ()
         return BUDMORI.sim.fieldFighterCount;
     });
     expect(CAP <= DEPLOYED + 1, `cooldown ignored (${DEPLOYED} -> ${CAP})`);
+    const RAGE = await WORLD(() => {
+        const W = BUDMORI.sim,
+            FULL = W.boss.maxHp;
+        W.boss.hp = FULL;
+        const EARLY = W.eligibleBossPatterns(W.livingBossTargets());
+        const P1 = W.bossPhase,
+            LIMIT = W.battleTimeLimit();
+        W.boss.hp = FULL * 0.3;
+        const P5 = W.bossPhase;
+        W.boss.hp = FULL;
+        const CALM = W.bossEnraged;
+        W.farmBossEvent.elapsed = LIMIT + 1;
+        const ANGRY = W.bossEnraged,
+            PHASE = W.farmBossEvent.phase;
+        W.farmBossEvent.elapsed = 0;
+        return { EARLY, P1, P5, CALM, ANGRY, PHASE };
+    });
+    expect(RAGE.P1 === 1 && RAGE.P5 === 5, `phases ${RAGE.P1}/${RAGE.P5}`);
+    expect(
+        !RAGE.EARLY.some((id) => ['attack.sweep-360', 'attack.leap-slam', 'summon.mouth-t1'].includes(id)),
+        `locked pattern eligible at full HP: ${RAGE.EARLY}`,
+    );
+    expect(!RAGE.CALM && RAGE.ANGRY && RAGE.PHASE === 'fighting', `enrage ${JSON.stringify(RAGE)}`);
     await WORLD(() => BUDMORI.sim.retreatFromFight());
     await PAGE.waitForTimeout(6000);
     const AFTER = await WORLD(() => BUDMORI.sim.farmBossEvent.phase);
