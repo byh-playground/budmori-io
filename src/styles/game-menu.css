@@ -377,3 +377,58 @@
         grid-column: span 1;
     }
 }
+
+#speciesRoles {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--ui-s3) var(--ui-s2);
+    margin: var(--ui-s2) 0 var(--ui-s3);
+}
+.species-role {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    text-align: center;
+}
+.species-role small {
+    font-size: 11px;
+    color: var(--ui-ink-3, inherit);
+}
+.dial {
+    width: 84px;
+    height: 84px;
+    touch-action: none;
+    cursor: pointer;
+}
+.dial svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+.dial__track {
+    fill: none;
+    stroke: #c2913e;
+    stroke-width: 9;
+}
+.dial__breed {
+    fill: none;
+    stroke: #7fa77a;
+    stroke-width: 9;
+    stroke-linecap: butt;
+}
+.dial__knob {
+    fill: #fff;
+    stroke: #3d4a37;
+    stroke-width: 3;
+}
+.dial:focus-visible {
+    outline: 2px solid var(--ui-accent, #7fa77a);
+    outline-offset: 4px;
+    border-radius: 50%;
+}
+
+.farm-hint {
+    margin: 0 0 var(--ui-s2);
+    font-size: 13px;
+    color: var(--ui-ink-3, inherit);
+}

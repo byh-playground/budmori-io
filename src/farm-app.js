@@ -555,6 +555,28 @@ function loadWorkSetting(fallback) {
         return fallback;
     }
 }
+const SPECIES_WORK_KEY = 'budmori.work.species';
+function loadSpeciesWork(world) {
+    try {
+        const LIST = JSON.parse(localStorage.getItem(SPECIES_WORK_KEY) || 'null');
+        if (Array.isArray(LIST)) {
+            LIST.forEach((value, species) => {
+                if (Number.isSafeInteger(value)) {
+                    world.setSpeciesWorkBasisPoints(species, value);
+                }
+            });
+        }
+    } catch {
+        /* Defaults stand. */
+    }
+}
+function saveSpeciesWork(world) {
+    try {
+        localStorage.setItem(SPECIES_WORK_KEY, JSON.stringify(world.speciesWorkBasisPoints));
+    } catch {
+        /* Applies for this run. */
+    }
+}
 function saveWorkSetting(value) {
     try {
         localStorage.setItem(WORK_STORAGE_KEY, String(value));
@@ -575,8 +597,8 @@ function plannedWorkers(world) {
         }
     }
     let workers = 0;
-    for (const COUNT of COUNTS.values()) {
-        workers += Math.floor((world.workBasisPoints / 10000) * COUNT + 1e-9);
+    for (const [SPECIES, COUNT] of COUNTS) {
+        workers += Math.floor((world.speciesWorkBasisPoints[SPECIES] / 10000) * COUNT + 1e-9);
     }
     return { total, workers };
 }
@@ -594,6 +616,7 @@ function install(world) {
         onError: FAIL,
     });
     world.setWorkBasisPoints(loadWorkSetting(world.workBasisPoints));
+    loadSpeciesWork(world);
     return active;
 }
 install(new Garden());
@@ -874,6 +897,118 @@ DOLLAR('merge').addEventListener('keydown', (e) => {
         e.preventDefault();
     }
 });
+// Per species: a dial. The green arc is the share that breeds, the tan rest works. Rows exist for owned species only.
+const DIAL_LENGTH = 2 * Math.PI * 42;
+let speciesRoleKey = '';
+function paintDial(row, breedPercent) {
+    const ARC = row.querySelector('.dial__breed'),
+        ANGLE = (breedPercent / 100) * Math.PI * 2 - Math.PI / 2;
+    ARC.setAttribute('stroke-dasharray', `${(breedPercent / 100) * DIAL_LENGTH} ${DIAL_LENGTH}`);
+    const KNOB = row.querySelector('.dial__knob');
+    KNOB.setAttribute('cx', String(50 + Math.cos(ANGLE) * 42));
+    KNOB.setAttribute('cy', String(50 + Math.sin(ANGLE) * 42));
+    row.querySelector('.dial').setAttribute('aria-valuenow', String(breedPercent));
+}
+function speciesCounts(world) {
+    const COUNTS = new Map();
+    for (const UNIT of world.units) {
+        if (!UNIT.isBattleOnlySummon && !UNIT.isFormationClone) {
+            COUNTS.set(UNIT.species, (COUNTS.get(UNIT.species) || 0) + 1);
+        }
+    }
+    return COUNTS;
+}
+function paintRoleText(row, count, basisPoints) {
+    const WORK = Math.floor((basisPoints / 10000) * count + 1e-9),
+        TEXT = `번식 ${count - WORK} · 먹이 ${WORK}`,
+        NODE = row.querySelector('small');
+    if (NODE.textContent !== TEXT) {
+        NODE.textContent = TEXT;
+    }
+}
+function drawSpeciesRoles(world) {
+    const COUNTS = speciesCounts(world),
+        IDS = [...COUNTS.keys()].sort((x, y) => x - y),
+        HOST = DOLLAR('speciesRoles'),
+        KEY = IDS.join(',');
+    if (KEY !== speciesRoleKey) {
+        speciesRoleKey = KEY;
+        HOST.innerHTML = IDS.map((id) => {
+            const SPECIES = speciesById(id);
+            return `<div class="species-role" data-species="${id}"><div class="dial" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="100" aria-label="${SPECIES.name} 번식 비율"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="dial__track" cx="50" cy="50" r="42"/><circle class="dial__breed" cx="50" cy="50" r="42" transform="rotate(-90 50 50)"/><image href="./assets/troops/${SPECIES.asset}" x="26" y="26" width="48" height="48"/><circle class="dial__knob" r="7"/></svg></div><b>${SPECIES.name}</b><small></small></div>`;
+        }).join('');
+    }
+    for (const ROW of HOST.children) {
+        const ID = Number(ROW.dataset.species),
+            BP = world.speciesWorkBasisPoints[ID];
+        paintRoleText(ROW, COUNTS.get(ID) || 0, BP);
+        if (!ROW.classList.contains('is-dragging')) {
+            paintDial(ROW, Math.round((100 - BP / 100) / 5) * 5);
+        }
+    }
+}
+function setSpeciesBreedShare(row, percent) {
+    const SPECIES = Number(row.dataset.species),
+        POINTS = (100 - percent) * 100,
+        WORLD = personalGarden || active.world;
+    WORLD.setSpeciesWorkBasisPoints(SPECIES, POINTS);
+    saveSpeciesWork(WORLD);
+    active.queue('farm-species-work', { species: SPECIES, basisPoints: POINTS });
+    paintDial(row, percent);
+    paintRoleText(row, speciesCounts(WORLD).get(SPECIES) || 0, POINTS);
+}
+// Drag around the ring: the angle from the top, clockwise, is the breeding share. Crossing the top stops at 0 or 100.
+let dialDrag = null;
+DOLLAR('speciesRoles').addEventListener('pointerdown', (event) => {
+    const DIAL = event.target.closest('.dial'),
+        ROW = DIAL?.closest('[data-species]');
+    if (!ROW || event.button !== 0) {
+        return;
+    }
+    dialDrag = { row: ROW, dial: DIAL, id: event.pointerId, last: Number(DIAL.getAttribute('aria-valuenow')) || 0 };
+    ROW.classList.add('is-dragging');
+    DIAL.setPointerCapture?.(event.pointerId);
+    dialMove(event);
+    event.preventDefault();
+});
+function dialMove(event) {
+    if (!dialDrag || event.pointerId !== dialDrag.id) {
+        return;
+    }
+    const BOX = dialDrag.dial.getBoundingClientRect(),
+        ANGLE = Math.atan2(event.clientY - (BOX.top + BOX.height / 2), event.clientX - (BOX.left + BOX.width / 2)),
+        RAW = ((ANGLE + Math.PI / 2 + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2),
+        STEPPED = Math.round(RAW * 20) * 5 === 100 ? 0 : Math.round(RAW * 20) * 5;
+    let value = STEPPED;
+    if (Math.abs(value - dialDrag.last) > 50) {
+        value = dialDrag.last > 50 ? 100 : 0;
+    }
+    if (value !== dialDrag.last) {
+        dialDrag.last = value;
+        setSpeciesBreedShare(dialDrag.row, value);
+    }
+}
+DOLLAR('speciesRoles').addEventListener('pointermove', dialMove);
+for (const EVENT of ['pointerup', 'pointercancel']) {
+    DOLLAR('speciesRoles').addEventListener(EVENT, () => {
+        dialDrag?.row.classList.remove('is-dragging');
+        dialDrag = null;
+    });
+}
+DOLLAR('speciesRoles').addEventListener('keydown', (event) => {
+    const DIAL = event.target.closest('.dial'),
+        ROW = DIAL?.closest('[data-species]'),
+        STEP =
+            event.key === 'ArrowRight' || event.key === 'ArrowUp'
+                ? 5
+                : event.key === 'ArrowLeft' || event.key === 'ArrowDown'
+                  ? -5
+                  : 0;
+    if (ROW && STEP) {
+        setSpeciesBreedShare(ROW, Math.max(0, Math.min(100, (Number(DIAL.getAttribute('aria-valuenow')) || 0) + STEP)));
+        event.preventDefault();
+    }
+});
 function drawFarmPanel() {
     const W = personalGarden || active?.world;
     if (!W || farmPanelRevision === W.progressRevision) {
@@ -885,6 +1020,7 @@ function drawFarmPanel() {
     DOLLAR('farmStatCapacity').textContent = `/ ${W.capacity}`;
     DOLLAR('farmStatPending').textContent = String(W.pendingRewardPopulation);
     syncFlag('farmLockNote', 'hidden', !LOCKED || !!farmSortTransition);
+    drawSpeciesRoles(W);
     for (const BUTTON of DOLLAR('farmPlotActions').querySelectorAll('[data-farm-sort]')) {
         BUTTON.disabled = LOCKED;
     }
@@ -1082,7 +1218,9 @@ DOLLAR('workCutA').addEventListener('input', () => {
         POINTS = (100 - CUT) * 100;
     saveWorkSetting(POINTS);
     (personalGarden || active.world).setWorkBasisPoints(POINTS);
+    saveSpeciesWork(personalGarden || active.world);
     active.queue('farm-work', { basisPoints: POINTS });
+    farmPanelRevision = -1;
 });
 DOLLAR('progressionResetActions').onclick = (event) => {
     const BUTTON = event.target.closest('button[data-progression-reset]');

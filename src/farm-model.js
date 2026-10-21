@@ -1267,6 +1267,7 @@ const GARDEN = class Garden {
         };
         this.playerProgression = createPlayerProgressionState();
         this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
+        this.speciesWorkBasisPoints = new Array(CONFIG.unit.speciesCount).fill(CONFIG.farm.work.defaultBasisPoints);
         this._workerIds = new Set();
         resetWork(this);
         this._workerRates = new Map();
@@ -1909,18 +1910,33 @@ const GARDEN = class Garden {
         if (!Number.isSafeInteger(basisPoints) || basisPoints < 0 || basisPoints > 10000) {
             return false;
         }
-        if (basisPoints !== this.workBasisPoints) {
-            this.workBasisPoints = basisPoints;
-            this._nextWorkerRefreshTick = 0;
-            this.refreshWorkers();
+        this.workBasisPoints = basisPoints;
+        this.speciesWorkBasisPoints.fill(basisPoints);
+        this._nextWorkerRefreshTick = 0;
+        this.refreshWorkers();
+        return true;
+    }
+    // One species' own share, so the farm can grow what the player wants: 0 works none and breeds all.
+    setSpeciesWorkBasisPoints(species, basisPoints) {
+        if (
+            !Number.isSafeInteger(species) ||
+            species < 0 ||
+            species >= this.speciesWorkBasisPoints.length ||
+            !Number.isSafeInteger(basisPoints) ||
+            basisPoints < 0 ||
+            basisPoints > 10000
+        ) {
+            return false;
         }
+        this.speciesWorkBasisPoints[species] = basisPoints;
+        this._nextWorkerRefreshTick = 0;
+        this.refreshWorkers();
         return true;
     }
     // The slider's share of each species' adults work; the rest breed. A worker does not eat or breed, and its
     // output scales with its tier. A full field only pauses the food they make; who works never depends on it.
     refreshWorkers() {
         const WORK = CONFIG.farm.work,
-            RATIO = this.workBasisPoints / 10000,
             NEXT = new Set(),
             RATES = new Map();
         let total = 0;
@@ -1942,9 +1958,9 @@ const GARDEN = class Garden {
                 }
                 BY_SPECIES.get(UNIT_LOCAL.species).push(UNIT_LOCAL);
             }
-            for (const LIST of BY_SPECIES.values()) {
+            for (const [SPECIES, LIST] of BY_SPECIES) {
                 LIST.sort((a, b) => a.id - b.id);
-                const COUNT = Math.floor(RATIO * LIST.length + 1e-9);
+                const COUNT = Math.floor((this.speciesWorkBasisPoints[SPECIES] / 10000) * LIST.length + 1e-9);
                 for (let index = 0; index < COUNT; index++) {
                     const WORKER = LIST[index],
                         RATE = (1 + WORK.tierBonus * (WORKER.tier - 1)) / WORK.secondsPerFood;
