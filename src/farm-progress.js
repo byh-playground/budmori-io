@@ -147,9 +147,6 @@ export function captureFarmProgress(world) {
         player: copyPlayer(world.playerProgression),
         roster: ROSTER,
         food: {
-            warehouse: world.warehouseFood,
-            autoClock: world.foodTaps.autoClock,
-            remainder: world.foodTaps.remainder,
             produced: world.foodTaps.produced,
             count: world.food.length,
         },
@@ -253,15 +250,8 @@ export function validateFarmProgress(data) {
     }
     ASSERT(RESIDENT_IDS.size <= CONFIG.farm.capacity.max);
     ASSERT(data.nextId > maxResidentId);
-    keys(data.food, ['warehouse', 'autoClock', 'remainder', 'produced', 'count']);
-    ASSERT(
-        SAFE_INTEGER(data.food.warehouse) &&
-            NUMBER(data.food.autoClock, 0, 0.51) &&
-            data.food.autoClock < 0.51 &&
-            INTEGER(data.food.remainder, 0, 4) &&
-            INTEGER(data.food.produced) &&
-            INTEGER(data.food.count, 0, 140),
-    );
+    keys(data.food, ['produced', 'count']);
+    ASSERT(INTEGER(data.food.produced) && INTEGER(data.food.count, 0, 140));
     keys(data.totals, ['births', 'merges']);
     ASSERT(INTEGER(data.totals.births) && INTEGER(data.totals.merges));
     const LEDGER = data.ledger;
@@ -486,7 +476,6 @@ export function restoreFarmProgress(data) {
     WORLD.food = [];
     WORLD.nextId = 1;
     WORLD.playerProgression = copyPlayer(data.player);
-    WORLD.warehouseFood = data.food.warehouse;
     Object.assign(WORLD.metrics, data.totals);
     const RESIDENT_TOTAL = data.roster.reduce((total, row) => total + row.residentIds.length, 0);
     let placed = 0;
@@ -524,11 +513,7 @@ export function restoreFarmProgress(data) {
             ty: POINT.y,
         });
     }
-    Object.assign(WORLD.foodTaps, {
-        remainder: data.food.remainder,
-        produced: data.food.produced,
-        autoClock: data.food.autoClock,
-    });
+    WORLD.foodTaps.produced = data.food.produced;
     WORLD.nextId = data.nextId;
     const { boss: BOSS } = data.ledger;
     Object.assign(WORLD, {

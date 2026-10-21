@@ -555,10 +555,6 @@ class FarmSession {
     command(c) {
         const W = this.world;
         switch (c.type) {
-            case 'feed':
-                return W.scene === 'farm' && W.scatterFoodAtRandomLocation();
-            case 'scatter-food':
-                return W.scene === 'farm' && W.scatterFood(c.x, c.y);
             case 'farm-work':
                 return W.scene === 'farm' && W.setWorkBasisPoints(c.basisPoints);
             case 'deploy':

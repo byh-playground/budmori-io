@@ -100,12 +100,10 @@ const CONFIG = Object.freeze({
         maxUnitId: 999999999,
         work: Object.freeze({
             secondsPerFood: 8,
-            warehouseLimit: 200,
             tierBonus: 0.5,
             resumeFoodShare: 0.5,
             refreshTicks: 20,
             defaultBasisPoints: 4000,
-            starterFood: 0,
             maxFood: 50,
             pileKind: Object.freeze({ count: 2, amount: 12 }),
             pileGap: 6,
@@ -120,10 +118,10 @@ const CONFIG = Object.freeze({
             matureMeals: 3,
         }),
         offline: Object.freeze({
-            capSeconds: 3600,
+            capSeconds: 1800,
             minSeconds: 60,
             // Idle output is a share of what the workers would make while you watch.
-            efficiency: 0.2,
+            efficiency: 0.1,
         }),
         merge: Object.freeze({
             cooldownSeconds: 4,
@@ -1264,7 +1262,6 @@ const GARDEN = class Garden {
             farm: 0,
         };
         this.playerProgression = createPlayerProgressionState();
-        this.warehouseFood = CONFIG.farm.work.starterFood;
         this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
         this._workerIds = new Set();
         resetWork(this);
@@ -1276,8 +1273,6 @@ const GARDEN = class Garden {
         this.notices = [];
         this.eventSequence = 0;
         this.foodTaps = {
-            remainder: 0,
-            autoClock: 0,
             produced: 0,
             revision: 0,
         };
@@ -1884,41 +1879,6 @@ const GARDEN = class Garden {
         if (this.events.length > 20) {
             this.events.shift();
         }
-    }
-    tapFood(source) {
-        return this.mutateUnits(this._tapFood, source);
-    }
-    // Food is no longer made by taps: workers fight grain piles instead (see farm-work.js).
-    _tapFood() {
-        return false;
-    }
-    scatterFoodAtRandomLocation() {
-        if (this.scene !== 'farm' || this.warehouseFood <= 0 || this.food.length >= CONFIG.farm.work.maxFood) {
-            return false;
-        }
-        const SCATTERED = this.scatterFood(
-            (this.random() - 0.5) * CONFIG.farm.arena.radiusX * 1.5,
-            (this.random() - 0.5) * CONFIG.farm.arena.radiusY * 1.35,
-        );
-        if (SCATTERED) {
-            this.notice('manual-feed');
-        }
-        return SCATTERED;
-    }
-    scatterFood(x, y) {
-        if (
-            this.scene !== 'farm' ||
-            !Number.isFinite(x) ||
-            !Number.isFinite(y) ||
-            this.warehouseFood <= 0 ||
-            this.food.length >= CONFIG.farm.work.maxFood
-        ) {
-            return false;
-        }
-        this.warehouseFood--;
-        this.spawnFood(x, y, 1);
-        this.markProgressChanged();
-        return true;
     }
     isWorker(unit) {
         return this._workerIds.has(unit.id);

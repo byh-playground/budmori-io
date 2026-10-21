@@ -4,7 +4,6 @@
 
 export function applyOffline(world, config, rawSeconds) {
     const OFFLINE = config.farm.offline,
-        WORK = config.farm.work,
         BREEDING = config.farm.breeding;
     if (world.scene !== 'farm' || world.farmBossEvent?.phase !== 'idle') {
         return null;
@@ -69,8 +68,6 @@ export function applyOffline(world, config, rawSeconds) {
             break;
         }
     }
-    // Food nobody ate goes to the warehouse.
-    world.warehouseFood = Math.min(WORK.warehouseLimit, world.warehouseFood + pool);
     world.metrics.births += SUMMARY.births;
     world._nextWorkerRefreshTick = 0;
     world.refreshWorkers();

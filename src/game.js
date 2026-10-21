@@ -280,7 +280,7 @@
 
   // src/farm-offline.js
   function applyOffline(world, config, rawSeconds) {
-    const OFFLINE = config.farm.offline, WORK = config.farm.work, BREEDING = config.farm.breeding;
+    const OFFLINE = config.farm.offline, BREEDING = config.farm.breeding;
     if (world.scene !== "farm" || world.farmBossEvent?.phase !== "idle") {
       return null;
     }
@@ -336,7 +336,6 @@
         break;
       }
     }
-    world.warehouseFood = Math.min(WORK.warehouseLimit, world.warehouseFood + pool);
     world.metrics.births += SUMMARY.births;
     world._nextWorkerRefreshTick = 0;
     world.refreshWorkers();
@@ -7180,12 +7179,10 @@
           maxUnitId: 999999999,
           work: Object.freeze({
             secondsPerFood: 8,
-            warehouseLimit: 200,
             tierBonus: 0.5,
             resumeFoodShare: 0.5,
             refreshTicks: 20,
             defaultBasisPoints: 4e3,
-            starterFood: 0,
             maxFood: 50,
             pileKind: Object.freeze({ count: 2, amount: 12 }),
             pileGap: 6,
@@ -7200,10 +7197,10 @@
             matureMeals: 3
           }),
           offline: Object.freeze({
-            capSeconds: 3600,
+            capSeconds: 1800,
             minSeconds: 60,
             // Idle output is a share of what the workers would make while you watch.
-            efficiency: 0.2
+            efficiency: 0.1
           }),
           merge: Object.freeze({
             cooldownSeconds: 4,
@@ -8222,7 +8219,6 @@
             farm: 0
           };
           this.playerProgression = createPlayerProgressionState();
-          this.warehouseFood = CONFIG.farm.work.starterFood;
           this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
           this._workerIds = /* @__PURE__ */ new Set();
           resetWork(this);
@@ -8234,8 +8230,6 @@
           this.notices = [];
           this.eventSequence = 0;
           this.foodTaps = {
-            remainder: 0,
-            autoClock: 0,
             produced: 0,
             revision: 0
           };
@@ -8808,35 +8802,6 @@
           if (this.events.length > 20) {
             this.events.shift();
           }
-        }
-        tapFood(source) {
-          return this.mutateUnits(this._tapFood, source);
-        }
-        // Food is no longer made by taps: workers fight grain piles instead (see farm-work.js).
-        _tapFood() {
-          return false;
-        }
-        scatterFoodAtRandomLocation() {
-          if (this.scene !== "farm" || this.warehouseFood <= 0 || this.food.length >= CONFIG.farm.work.maxFood) {
-            return false;
-          }
-          const SCATTERED = this.scatterFood(
-            (this.random() - 0.5) * CONFIG.farm.arena.radiusX * 1.5,
-            (this.random() - 0.5) * CONFIG.farm.arena.radiusY * 1.35
-          );
-          if (SCATTERED) {
-            this.notice("manual-feed");
-          }
-          return SCATTERED;
-        }
-        scatterFood(x, y) {
-          if (this.scene !== "farm" || !Number.isFinite(x) || !Number.isFinite(y) || this.warehouseFood <= 0 || this.food.length >= CONFIG.farm.work.maxFood) {
-            return false;
-          }
-          this.warehouseFood--;
-          this.spawnFood(x, y, 1);
-          this.markProgressChanged();
-          return true;
         }
         isWorker(unit) {
           return this._workerIds.has(unit.id);
@@ -11969,9 +11934,6 @@
       player: copyPlayer(world.playerProgression),
       roster: ROSTER,
       food: {
-        warehouse: world.warehouseFood,
-        autoClock: world.foodTaps.autoClock,
-        remainder: world.foodTaps.remainder,
         produced: world.foodTaps.produced,
         count: world.food.length
       },
@@ -12054,10 +12016,8 @@
     }
     ASSERT(RESIDENT_IDS.size <= CONFIG.farm.capacity.max);
     ASSERT(data.nextId > maxResidentId);
-    keys(data.food, ["warehouse", "autoClock", "remainder", "produced", "count"]);
-    ASSERT(
-      SAFE_INTEGER(data.food.warehouse) && NUMBER3(data.food.autoClock, 0, 0.51) && data.food.autoClock < 0.51 && INTEGER(data.food.remainder, 0, 4) && INTEGER(data.food.produced) && INTEGER(data.food.count, 0, 140)
-    );
+    keys(data.food, ["produced", "count"]);
+    ASSERT(INTEGER(data.food.produced) && INTEGER(data.food.count, 0, 140));
     keys(data.totals, ["births", "merges"]);
     ASSERT(INTEGER(data.totals.births) && INTEGER(data.totals.merges));
     const LEDGER = data.ledger;
@@ -12200,7 +12160,6 @@
     WORLD.food = [];
     WORLD.nextId = 1;
     WORLD.playerProgression = copyPlayer(data.player);
-    WORLD.warehouseFood = data.food.warehouse;
     Object.assign(WORLD.metrics, data.totals);
     const RESIDENT_TOTAL = data.roster.reduce((total, row) => total + row.residentIds.length, 0);
     let placed = 0;
@@ -12237,11 +12196,7 @@
         ty: POINT2.y
       });
     }
-    Object.assign(WORLD.foodTaps, {
-      remainder: data.food.remainder,
-      produced: data.food.produced,
-      autoClock: data.food.autoClock
-    });
+    WORLD.foodTaps.produced = data.food.produced;
     WORLD.nextId = data.nextId;
     const { boss: BOSS2 } = data.ledger;
     Object.assign(WORLD, {
@@ -12313,7 +12268,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.28.0";
+      PRODUCT_VERSION = "0.29.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -16100,10 +16055,6 @@
     command(c) {
       const W = this.world;
       switch (c.type) {
-        case "feed":
-          return W.scene === "farm" && W.scatterFoodAtRandomLocation();
-        case "scatter-food":
-          return W.scene === "farm" && W.scatterFood(c.x, c.y);
         case "farm-work":
           return W.scene === "farm" && W.setWorkBasisPoints(c.basisPoints);
         case "deploy":
@@ -16614,8 +16565,6 @@
     },
     starter: 0,
     foodTaps: {
-      remainder: 0,
-      autoClock: 0,
       produced: 0,
       revision: 0
     },
@@ -17102,7 +17051,7 @@
       );
     }
     ASSERT2(
-      raw.corpseRecoveryVersion === 1 && INTEGER2(raw.nextId, 1, 1e9) && INTEGER2(raw.bossSummonSerial, 0, 1e12) && INTEGER2(raw.foodTaps.remainder, 0, 4) && raw.foodTaps.autoClock >= 0 && raw.foodTaps.autoClock < 0.51
+      raw.corpseRecoveryVersion === 1 && INTEGER2(raw.nextId, 1, 1e9) && INTEGER2(raw.bossSummonSerial, 0, 1e12) && INTEGER2(raw.foodTaps.produced, 0, 1e12)
     );
     const IDS = /* @__PURE__ */ new Set(), MATE_ID_LIMIT = CONFIG.farm.maxUnitId;
     const UNITS_BY_ID = /* @__PURE__ */ new Map(), SUMMONS_BY_PARENT = /* @__PURE__ */ new Map();
@@ -17382,9 +17331,6 @@
       this.muted = false;
       this.peakVoices = 0;
       this.counts = {
-        manual: 0,
-        auto: 0,
-        complete: 0,
         land: 0,
         eat: 0
       };
@@ -17489,20 +17435,6 @@
       };
       O.start(NOW);
       O.stop(NOW + DURATION3 + 0.01);
-    }
-    // The field shows the food itself; a tap only makes its sound.
-    tap(source, complete, remainder) {
-      this.counts[source]++;
-      if (complete) {
-        this.counts.complete++;
-      }
-      if (source === "manual") {
-        this.sound(complete ? "complete" : "tap", remainder);
-      }
-    }
-    manualScatter() {
-      this.counts.manual++;
-      this.sound("tap", 0);
     }
     event(kind) {
       if (kind === "food-land" || kind === "eat") {
@@ -18712,7 +18644,6 @@
     DOLLAR2("farmStatPlaced").textContent = String(W.ownedPopulation);
     DOLLAR2("farmStatCapacity").textContent = `/ ${W.capacity}`;
     DOLLAR2("farmStatPending").textContent = String(W.pendingRewardPopulation);
-    DOLLAR2("farmStatFood").textContent = String(W.warehouseFood);
     syncFlag("farmLockNote", "hidden", !LOCKED || !!farmSortTransition);
     for (const BUTTON of DOLLAR2("farmPlotActions").querySelectorAll("[data-farm-sort]")) {
       BUTTON.disabled = LOCKED;
@@ -19305,25 +19236,6 @@
         }, 150)
       };
     }
-    if (panPointer.mode === "pending") {
-      foodHold = {
-        pointerId: e.pointerId,
-        point: { x: POINT2.x, y: POINT2.y },
-        initialTimer: setTimeout(() => {
-          if (foodHold?.pointerId !== e.pointerId || panPointer?.mode !== "pending") {
-            return;
-          }
-          panPointer.mode = "feed";
-          active.queue("scatter-food", foodHold.point);
-          foodHold.repeatTimer = setInterval(() => {
-            if (foodHold?.pointerId === e.pointerId && canUseWorldInput() && panPointer?.mode === "feed") {
-              active.queue("scatter-food", foodHold.point);
-            }
-          }, 100);
-        }, 100),
-        repeatTimer: null
-      };
-    }
     CANVAS.setPointerCapture?.(e.pointerId);
     e.preventDefault();
   });
@@ -19349,7 +19261,7 @@
     if (panPointer.mode === "pending" && DISTANCE >= 8) {
       stopFoodHold(e);
       panPointer.mode = "pan";
-    } else if ((panPointer.mode === "feed" || panPointer.mode === "deploy") && DISTANCE >= 8) {
+    } else if (panPointer.mode === "deploy" && DISTANCE >= 8) {
       stopFoodHold(e);
       panPointer.mode = "pan";
     }
@@ -19563,13 +19475,7 @@
       drawFarmPanel();
     }
     for (const E of notices) {
-      if (E.kind === "food-tap") {
-        FOOD_FEEL.tap(E.source, E.completed, E.remainder);
-      } else if (E.kind === "manual-feed") {
-        FOOD_FEEL.manualScatter();
-      } else {
-        FOOD_FEEL.event(E.kind);
-      }
+      FOOD_FEEL.event(E.kind);
     }
     FOOD_FEEL.frame();
   }

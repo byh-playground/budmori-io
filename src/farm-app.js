@@ -837,7 +837,6 @@ function drawFarmPanel() {
     DOLLAR('farmStatPlaced').textContent = String(W.ownedPopulation);
     DOLLAR('farmStatCapacity').textContent = `/ ${W.capacity}`;
     DOLLAR('farmStatPending').textContent = String(W.pendingRewardPopulation);
-    DOLLAR('farmStatFood').textContent = String(W.warehouseFood);
     syncFlag('farmLockNote', 'hidden', !LOCKED || !!farmSortTransition);
     for (const BUTTON of DOLLAR('farmPlotActions').querySelectorAll('[data-farm-sort]')) {
         BUTTON.disabled = LOCKED;
@@ -1483,25 +1482,6 @@ CANVAS.addEventListener('pointerdown', (e) => {
             }, 150),
         };
     }
-    if (panPointer.mode === 'pending') {
-        foodHold = {
-            pointerId: e.pointerId,
-            point: { x: POINT.x, y: POINT.y },
-            initialTimer: setTimeout(() => {
-                if (foodHold?.pointerId !== e.pointerId || panPointer?.mode !== 'pending') {
-                    return;
-                }
-                panPointer.mode = 'feed';
-                active.queue('scatter-food', foodHold.point);
-                foodHold.repeatTimer = setInterval(() => {
-                    if (foodHold?.pointerId === e.pointerId && canUseWorldInput() && panPointer?.mode === 'feed') {
-                        active.queue('scatter-food', foodHold.point);
-                    }
-                }, 100);
-            }, 100),
-            repeatTimer: null,
-        };
-    }
     CANVAS.setPointerCapture?.(e.pointerId);
     e.preventDefault();
 });
@@ -1527,7 +1507,7 @@ CANVAS.addEventListener('pointermove', (e) => {
     if (panPointer.mode === 'pending' && DISTANCE >= 8) {
         stopFoodHold(e);
         panPointer.mode = 'pan';
-    } else if ((panPointer.mode === 'feed' || panPointer.mode === 'deploy') && DISTANCE >= 8) {
+    } else if (panPointer.mode === 'deploy' && DISTANCE >= 8) {
         stopFoodHold(e);
         panPointer.mode = 'pan';
     }
@@ -1785,13 +1765,7 @@ function sync(display, now, notices) {
         drawFarmPanel();
     }
     for (const E of notices) {
-        if (E.kind === 'food-tap') {
-            FOOD_FEEL.tap(E.source, E.completed, E.remainder);
-        } else if (E.kind === 'manual-feed') {
-            FOOD_FEEL.manualScatter();
-        } else {
-            FOOD_FEEL.event(E.kind);
-        }
+        FOOD_FEEL.event(E.kind);
     }
     FOOD_FEEL.frame();
 }
