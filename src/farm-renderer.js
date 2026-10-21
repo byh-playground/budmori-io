@@ -21,6 +21,7 @@ import { bindBossSocketAsset, unbindBossSocketAsset } from './boss-vector-socket
 import { BossPresentation, bossAttackPresentation } from './farm-render-boss.js';
 import { CONFIG, clamp, bossAttackArea } from './farm-model.js';
 import { bossDangerContour } from './attack-telegraph.js';
+import { drawFarmGrounds, drawTowerHall } from './farm-scenery.js';
 const { bosses: BOSS_VECTOR_ASSETS, troops: TROOP_VECTOR_ASSETS } = globalThis.BudmoriVectorResources;
 // Original SVG sources are compiled once by the startup loader before this module runs.
 const {
@@ -213,12 +214,12 @@ const DIORAMA = class Diorama {
                 x: 0,
                 y: 0,
             };
-            this.zoom = 1;
+            this.zoom = this.homeZoom();
         }
         this.scene = scene;
         this.scenePresentation = scenePresentation(scene);
         const A = this.aspect;
-        this.zoom ??= 1;
+        this.zoom ??= this.homeZoom();
         this.baseView = this.scenePresentation.cameraView(A);
         const ZOOM = scene === 'farm' ? this.zoom : 1;
         this.view = [this.baseView[0] / ZOOM, this.baseView[1] / ZOOM];
@@ -249,7 +250,7 @@ const DIORAMA = class Diorama {
         for (const RECORD of this.bossAssets.values()) {
             INCLUDE_BOSS(RECORD);
         }
-        const BASE_Y = A < 0.8 ? 1.1 : -0.3,
+        const BASE_Y = this.baseY(),
             TOP = this.view[1] - BASE_Y,
             BOTTOM = TOP - this.canvas.height / this.scale;
         this.panLimits = {
@@ -268,28 +269,6 @@ const DIORAMA = class Diorama {
         this.pan.x = clamp(this.pan.x, this.panLimits.minX, this.panLimits.maxX);
         this.pan.y = clamp(this.pan.y, this.panLimits.minY, this.panLimits.maxY);
         this.offset = [this.pan.x, BASE_Y + this.pan.y];
-        this.terrainDots = Array.from(
-            {
-                length: 92,
-            },
-            (_, i) => {
-                const ANGLE = i * 2.39996,
-                    RAD = Math.sqrt((i + 0.5) / 92);
-                return this.project(Math.cos(ANGLE) * (RX + 0.3) * RAD, Math.sin(ANGLE) * (RY + 0.3) * RAD);
-            },
-        );
-        this.terrainLeaves = Array.from(
-            {
-                length: 24,
-            },
-            (_, i) => {
-                const ANGLE = i * 2.39996;
-                return {
-                    ...this.project(Math.cos(ANGLE) * (RX + 0.55), Math.sin(ANGLE) * (RY + 0.55)),
-                    angle: ANGLE,
-                };
-            },
-        );
     }
     get cameraPan() {
         return {
@@ -312,15 +291,7 @@ const DIORAMA = class Diorama {
         this.pan.x = NEXT_X;
         this.pan.y = NEXT_Y;
         this.offset[0] = NEXT_X;
-        this.offset[1] = (this.aspect < 0.8 ? 1.1 : -0.3) + NEXT_Y;
-        // Cached terrain decoration follows the same camera delta without being
-        // regenerated on every pointer move.
-        for (const POINTS of [this.terrainDots, this.terrainLeaves]) {
-            for (const POINT of POINTS) {
-                POINT.x += DX * this.scale;
-                POINT.y -= DY * this.scale;
-            }
-        }
+        this.offset[1] = this.baseY() + NEXT_Y;
         return true;
     }
     panByScreen(dx, dy) {
@@ -352,8 +323,15 @@ const DIORAMA = class Diorama {
         this.setPan(PX / this.scale - this.view[0] - WX, this.view[1] - PY / this.scale - WY - BASE_Y);
         return true;
     }
+    // A wide screen sits a little further back and higher up, so the tower behind the farm shows.
+    homeZoom() {
+        return this.aspect > 1.2 ? 0.72 : 1;
+    }
+    baseY() {
+        return this.aspect < 0.8 ? 1.1 : this.aspect > 1.2 ? -3.3 : -0.3;
+    }
     resetZoom() {
-        this.zoom = 1;
+        this.zoom = this.homeZoom();
         this.configure(this.scene, true);
         return this.resetPan();
     }
@@ -444,36 +422,67 @@ const DIORAMA = class Diorama {
         C.lineTo(b.x, b.y);
         C.stroke();
     }
-    groundCell(x, y, color2, inset = 0) {
-        const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena,
-            A = this.project(x - RX + inset, y + RY - inset),
-            B = this.project(x + RX - inset, y - RY + inset),
-            C = this.ctx;
-        C.fillStyle = color2;
-        C.fillRect(Math.floor(A.x), Math.floor(A.y), Math.ceil(B.x - A.x) + 1, Math.ceil(B.y - A.y) + 1);
+    terrain(sim2, now) {
+        if (sim2.insideTower) {
+            drawTowerHall(this, sim2, now);
+            return;
+        }
+        drawFarmGrounds(this, sim2);
+        this.scenePresentation.drawBoundary(this);
+        this.drawWorkShadows(sim2);
     }
-    terrain(sim2) {
-        const S = this.scale,
-            PRESENTATION = this.scenePresentation,
-            { radiusX: RX, radiusY: RY } = CONFIG[sim2.scene].arena;
-        if (sim2.scene === 'farm') {
-            this.groundCell(0, 0, PRESENTATION.groundColor);
-            this.groundCell(0, 0, PRESENTATION.surfaceColor, 0.7);
-        } else {
-            this.groundEllipse(0, -0.2, RX + 1.3, RY + 1.1, '#bcc7a6');
-            this.groundEllipse(0, 0, RX + 1.2, RY + 1.1, PRESENTATION.groundColor);
-            this.groundEllipse(0, 0.15, RX + 0.3, RY + 0.3, PRESENTATION.surfaceColor);
-            for (const P of this.terrainDots) {
-                this.ellipse(P.x, P.y, S * 0.026, S * 0.02, '#a7b58b80');
-            }
-            for (const P of this.terrainLeaves) {
-                this.ellipse(P.x, P.y, 0.25 * S, 0.11 * S, '#94a577', P.angle);
-                this.ellipse(P.x + 0.1 * S, P.y - 0.09 * S, 0.19 * S, 0.075 * S, '#a8b78a', P.angle + 0.7);
+    // The camera follows the climb: on the march it pulls back to show the tower and its door, and
+    // it stays there a moment when the troops come back out; inside, it rests on the hall.
+    directCamera(sim2, now) {
+        const INSIDE = !!sim2.insideTower,
+            KEY = INSIDE ? `in${sim2.tower?.floor}` : 'out',
+            MARCHING = sim2.farmBossEvent?.phase === 'marching';
+        if (this.sceneKey === undefined) {
+            this.sceneKey = KEY;
+            this.sceneChangedAt = -1e9;
+            this.towerShotUntil = 0;
+        } else if (KEY !== this.sceneKey) {
+            const WAS_INSIDE = this.sceneKey !== 'out';
+            this.sceneKey = KEY;
+            this.sceneChangedAt = now;
+            if (INSIDE && !WAS_INSIDE) {
+                this.resetZoom();
+            } else if (!INSIDE) {
+                this.towerShotUntil = now + 2600;
             }
         }
-        PRESENTATION.drawBoundary(this);
-        if (sim2.scene === 'farm') {
-            this.drawWorkShadows(sim2);
+        if (MARCHING || now < this.towerShotUntil) {
+            const ZOOM_TARGET = this.aspect > 1.2 ? 0.55 : 0.8;
+            this.zoom += (ZOOM_TARGET - this.zoom) * 0.07;
+            this.configure(this.scene, true);
+            const BASE_Y = this.baseY(),
+                TARGET_Y = -0.2 * this.view[1] - WORLD_DEPTH_PROJECTION * CONFIG.farm.arena.radiusY - BASE_Y;
+            this.setPan(this.pan.x * 0.9, this.pan.y + (TARGET_Y - this.pan.y) * 0.07);
+            this.cameraReturning = true;
+        } else if (this.cameraReturning && !INSIDE) {
+            this.zoom += (this.homeZoom() - this.zoom) * 0.1;
+            this.configure(this.scene, true);
+            this.setPan(this.pan.x * 0.9, this.pan.y * 0.9);
+            if (Math.abs(this.zoom - this.homeZoom()) < 0.01 && Math.abs(this.pan.y) < 0.05) {
+                this.resetZoom();
+                this.cameraReturning = false;
+            }
+        } else if (INSIDE) {
+            this.cameraReturning = false;
+        }
+    }
+    // Going through the door fades out and each new place fades in, so the climb reads as a cut, not a pop.
+    drawSceneFade(sim2, now) {
+        const EVENT = sim2.farmBossEvent,
+            MARCH = EVENT?.phase === 'marching' ? EVENT.elapsed / CONFIG.farm.tower.marchSeconds : 0,
+            OUT = MARCH > 0.82 ? (MARCH - 0.82) / 0.18 : 0,
+            IN_MS = sim2.insideTower ? 700 : 500,
+            IN = clamp(1 - (now - this.sceneChangedAt) / IN_MS, 0, 1),
+            DARK = Math.max(clamp(OUT, 0, 1), IN);
+        if (DARK > 0.01) {
+            const C = this.ctx;
+            C.fillStyle = `rgba(14,10,22,${DARK})`;
+            C.fillRect(0, 0, this.canvas.width, this.canvas.height);
         }
     }
     drawDanger(sim2) {
@@ -570,6 +579,7 @@ const DIORAMA = class Diorama {
         this.feel = feel;
         this.displayTimeMs = now;
         this.configure(sim2.scene);
+        this.directCamera(sim2, now);
         const C = this.ctx,
             PRESENTATION = this.scenePresentation;
         PRESENTATION.collectJoy(sim2, this.joyEffects);
@@ -578,7 +588,7 @@ const DIORAMA = class Diorama {
             height: this.canvas.height,
             clearColor: [0.9, 0.92, 0.87, 1],
         });
-        this.terrain(sim2);
+        this.terrain(sim2, now);
         for (const U of sim2.units) {
             const A = clamp(0.22 / (1 + U.z * 0.3), 0.045, 0.22),
                 SHADOW = (U.size * 0.66) / (1 + U.z * 0.65);
@@ -612,7 +622,7 @@ const DIORAMA = class Diorama {
             this.addActor(this.bossPresentation, sim2.boss, 0.785 * sim2.boss.y - 0.62 * (sim2.boss.z || 0), 0, true);
         }
         PRESENTATION.collectFood(this, sim2);
-        if (sim2.scene === 'farm') {
+        if (sim2.scene === 'farm' && !sim2.insideTower) {
             this.addWorkActors(sim2);
         }
         if (BOSS_VISIBLE) {
@@ -679,6 +689,7 @@ const DIORAMA = class Diorama {
             }
         }
         drawFormationEffects(this, sim2);
+        this.drawSceneFade(sim2, now);
         this.stats = C.endFrame();
     }
     dispose() {

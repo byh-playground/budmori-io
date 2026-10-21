@@ -8,6 +8,29 @@ export function createFarmBossEventPhases(config) {
             return false;
         }
     }
+    class MarchingFarmBossEventPhase extends FarmBossEventPhase {
+        update(world, dt) {
+            const TOWER = config.farm.tower,
+                GATE = world.towerGate;
+            world.farmBossEvent.elapsed += dt;
+            // Whoever reaches the door goes in and is out of sight; the rest follow until the march runs out.
+            let outside = 0;
+            for (const UNIT of [...world.units]) {
+                if (UNIT.isBattleOnlySummon || UNIT.hp <= 0) {
+                    continue;
+                }
+                if (Math.hypot(UNIT.x - GATE.x, UNIT.y - GATE.y) <= TOWER.gateRadius) {
+                    world.benchUnit(UNIT);
+                } else {
+                    outside++;
+                }
+            }
+            if (outside === 0 || world.farmBossEvent.elapsed >= TOWER.marchSeconds) {
+                world.finishMarch();
+            }
+            return true;
+        }
+    }
     class DroppingFarmBossEventPhase extends FarmBossEventPhase {
         update(world, dt) {
             world.farmBossEvent.elapsed += dt;
@@ -79,6 +102,7 @@ export function createFarmBossEventPhases(config) {
     }
     return Object.freeze({
         idle: Object.freeze(new FarmBossEventPhase()),
+        marching: Object.freeze(new MarchingFarmBossEventPhase()),
         dropping: Object.freeze(new DroppingFarmBossEventPhase()),
         fighting: Object.freeze(new FightingFarmBossEventPhase()),
         celebrating: Object.freeze(new CelebratingFarmBossEventPhase()),

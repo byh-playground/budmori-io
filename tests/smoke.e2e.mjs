@@ -172,7 +172,13 @@ await check('units eat, breed and the farm stays under its capacity', async () =
 
 await check('challenge button starts a boss fight and retreat ends it', async () => {
     await PAGE.locator('#bossChallenge').click();
-    await PAGE.waitForTimeout(4000);
+    // The troops walk to the tower door first, then the floor begins inside.
+    const MARCH = await WORLD(() => ({ phase: BUDMORI.sim.farmBossEvent.phase, inside: BUDMORI.sim.insideTower }));
+    expect(MARCH.phase === 'marching' && !MARCH.inside, `no march at the start ${JSON.stringify(MARCH)}`);
+    await PAGE.waitForFunction(() => BUDMORI.sim.insideTower && BUDMORI.sim.farmBossEvent.phase !== 'marching', null, {
+        timeout: 15000,
+    });
+    await PAGE.waitForTimeout(1500);
     const FIGHTING = await WORLD(() => BUDMORI.sim.farmBossEvent.phase);
     expect(FIGHTING !== 'idle', `fight did not start (${FIGHTING})`);
     const HAND = await WORLD(() => ({
@@ -222,10 +228,24 @@ await check('challenge button starts a boss fight and retreat ends it', async ()
     await PAGE.waitForTimeout(6000);
     const AFTER = await WORLD(() => BUDMORI.sim.farmBossEvent.phase);
     expect(AFTER === 'idle', `fight did not end (${AFTER})`);
+    const OUT = await WORLD(() => {
+        const W = BUDMORI.sim,
+            LIVING = W.units.filter((u) => !u.isBattleOnlySummon);
+        return {
+            inside: W.insideTower,
+            count: LIVING.length,
+            nearDoor: LIVING.filter((u) => u.y > W.towerGate.y - 8).length,
+        };
+    });
+    expect(!OUT.inside && OUT.count > 0, `still inside the tower ${JSON.stringify(OUT)}`);
+    expect(OUT.nearDoor > 0, `troops did not come out of the door ${JSON.stringify(OUT)}`);
 });
 
 await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async () => {
     await PAGE.locator('#bossChallenge').click();
+    await PAGE.waitForFunction(() => BUDMORI.sim.insideTower && BUDMORI.sim.farmBossEvent.phase !== 'marching', null, {
+        timeout: 15000,
+    });
     await PAGE.waitForTimeout(3500);
     const CLEAR_FLOOR = () =>
         WORLD(() => {

@@ -1659,7 +1659,7 @@ function sync(display, now, notices) {
     syncFlag('farmControls', 'hidden', FARM_EVENT_ACTIVE || home || W.tower.active);
     syncFlag('workHud', 'hidden', FARM_EVENT_ACTIVE || home || W.tower.active);
     syncTower(W, home, FARM_EVENT);
-    syncFlag('bossbar', 'hidden', !FARM_EVENT_ACTIVE || home);
+    syncFlag('bossbar', 'hidden', !FARM_EVENT_ACTIVE || home || FARM_EVENT.phase === 'marching');
     syncHand(W, !home && ['dropping', 'fighting'].includes(FARM_EVENT?.phase));
     syncText('count', displayedCount);
     syncText('capacity', personalGarden?.capacity ?? CONFIG.farm.capacity.max);
