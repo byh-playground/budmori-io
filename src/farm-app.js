@@ -12,7 +12,7 @@ import { FoodFeel } from './food-feel.js';
 import { CombatFeel } from './combat-feel.js';
 import { renderAbilityTreeMarkup, renderAbilitySpeciesTabsMarkup } from './ability-tree.js';
 import { canResetPlayerProgression } from './ability-progression.js';
-import { advanceBossRewardReveal, openAllBossRewardBoxes } from './boss-rewards.js';
+import { advanceBossRewardReveal, openAllBossRewardBoxes, bossSpeciesOwned } from './boss-rewards.js';
 import { workersBySpecies } from './farm-work.js';
 import { speciesById, giantSpeciesName, speciesRewardName } from './species-catalog.js';
 const DOLLAR = (id) => document.getElementById(id),
@@ -132,18 +132,20 @@ function renderBossRewardBoxes(receipt) {
     DOLLAR('bossRewardSummary').textContent =
         receipt.status === 'calculating'
             ? '상자 ' + COUNT + '개의 보상을 준비하고 있어요.'
-            : HAS_PRESENTATION
-              ? COUNT +
-                '회 추첨 · 상자당 ' +
-                MIN +
-                (MIN === MAX ? '' : '–' + MAX) +
-                '마리 · ' +
-                (FIRST_CLEAR ? '첫 클리어 ' : '재도전 ') +
-                Math.round(NOMINAL_CHANCE * 100) +
-                '% (편성 반영 ' +
-                Math.round(receipt.chance * 100) +
-                '%)'
-              : '이미 확정된 보상 합계';
+            : FIRST_CLEAR
+              ? '처음 만난 종이에요 · 동료로 합류해요'
+              : HAS_PRESENTATION
+                ? COUNT +
+                  '회 추첨 · 상자당 ' +
+                  MIN +
+                  (MIN === MAX ? '' : '–' + MAX) +
+                  '마리 · ' +
+                  '재도전 ' +
+                  Math.round(NOMINAL_CHANCE * 100) +
+                  '% (편성 반영 ' +
+                  Math.round(receipt.chance * 100) +
+                  '%)'
+                : '이미 확정된 보상 합계';
     DOLLAR('bossRewardTotals').textContent =
         receipt.status === 'calculating'
             ? '추첨 계산 ' + PROCESSED + '/' + COUNT
@@ -1927,12 +1929,13 @@ function sync(display, now, notices) {
                   )
                 : null,
         REWARD_NAME = speciesRewardName(BOSS.species),
-        ENCOUNTER_NAME = giantSpeciesName(BOSS.species);
+        ENCOUNTER_NAME = giantSpeciesName(BOSS.species),
+        FIRST_MEETING = FARM_EVENT_ACTIVE && !bossSpeciesOwned(W, BOSS.species) ? ' · 첫 조우' : '';
     syncText(
         'bossName',
-        BOSS.stage
+        (BOSS.stage
             ? `${BOSS.stage}층 · ${W.tower.kind === 'battle' ? '' : FLOOR_KIND[W.tower.kind] + ' '}${ENCOUNTER_NAME}`
-            : ENCOUNTER_NAME,
+            : ENCOUNTER_NAME) + FIRST_MEETING,
     );
     syncAttribute('bossHealth', 'aria-label', `${ENCOUNTER_NAME} 체력`);
     syncText('bossHealthText', Math.ceil(BOSS.hp) + '/' + BOSS.maxHp);

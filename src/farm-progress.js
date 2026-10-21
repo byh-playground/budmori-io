@@ -347,8 +347,7 @@ export function validateFarmProgress(data) {
                 INTEGER(REWARD.species, 0, CONFIG.unit.speciesCount - 1) &&
                 INTEGER(REWARD.tier, 1, CONFIG.unit.maxTier) &&
                 NUMBER(REWARD.chance, 0, 1) &&
-                typeof REWARD.firstClear === 'boolean' &&
-                !REWARD.firstClear,
+                typeof REWARD.firstClear === 'boolean',
         );
         RECEIPTS.add(REWARD.receiptKey);
         const ENCOUNTER = `${REWARD.source}:${REWARD.encounterId}`;

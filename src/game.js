@@ -6228,11 +6228,16 @@
     if (!Number.isFinite(acquisitionMultiplier) || acquisitionMultiplier < 0 || acquisitionMultiplier > 2) {
       throw new RangeError("Boss acquisition multiplier must be in [0, 2]");
     }
-    if (farmEvent) {
-      return BOSS_REWARD_SETTINGS.acquisitionChance * BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier;
-    }
     const BASE = firstClear ? BOSS_REWARD_SETTINGS.firstClearAcquisitionChance : BOSS_REWARD_SETTINGS.acquisitionChance;
+    if (farmEvent) {
+      return Math.min(1, BASE * BOSS_REWARD_SETTINGS.farmEventAcquisitionMultiplier);
+    }
     return Math.min(1, BASE * acquisitionMultiplier);
+  }
+  function bossSpeciesOwned(world, species) {
+    return (world.unitCollection?.items ?? world.units).some(
+      (unit) => unit.species === species && !unit.isBattleOnlySummon
+    ) || (world.bossRewardInventory || []).some((entry) => entry.species === species && entry.count > 0);
   }
   function ensureWorldRewardState(world) {
     world.bossRewardReceipts ||= [];
@@ -6283,7 +6288,9 @@
       if (capacity <= 0) {
         break;
       }
-      const COUNT = Math.min(capacity, GROUP.count), NEW_SPECIES = !world.units.some((unit) => unit.species === GROUP.species && !unit.isBattleOnlySummon);
+      const COUNT = Math.min(capacity, GROUP.count), NEW_SPECIES = !(world.unitCollection?.items ?? world.units).some(
+        (unit) => unit.species === GROUP.species && !unit.isBattleOnlySummon
+      );
       let placed = 0;
       while (placed < COUNT) {
         const INDEX = world.units.length, ANGLE = INDEX * 2.399963229728653 + (world.seed >>> 0) % 6283 / 1e3, RADIUS = Math.sqrt(INDEX + 0.5) * 0.35, UNIT3 = world.spawn(GROUP.species, GROUP.tier, Math.cos(ANGLE) * RADIUS, Math.sin(ANGLE) * RADIUS);
@@ -6337,7 +6344,7 @@
     if (ENCOUNTER_ID <= (world.bossRewardWatermarks[SOURCE] || 0)) {
       throw new RangeError("A settled or stale boss encounter cannot be rolled again");
     }
-    const TOTAL = options.rollBudget ?? options.rollCount ?? 1;
+    const FIRST_CLEAR = options.firstClear === true, TOTAL = FIRST_CLEAR ? 1 : options.rollBudget ?? options.rollCount ?? 1;
     if (!Number.isSafeInteger(TOTAL) || TOTAL < 1 || TOTAL > BOSS_REWARD_SETTINGS.maxRollCount) {
       throw new RangeError("Boss reward quantity is outside the safe integer range");
     }
@@ -6345,7 +6352,7 @@
     if (!Number.isSafeInteger(SPECIES) || SPECIES < 0 || SPECIES >= BOSS_REWARD_SETTINGS.speciesWeights.length) {
       throw new RangeError("Boss reward species is invalid");
     }
-    const FIRST_CLEAR = false, STREAM_KIND = streamFor(SOURCE), STREAM = world.bossRewardStreams[STREAM_KIND], CHANCE = bossAcquisitionChance({
+    const STREAM_KIND = streamFor(SOURCE, FIRST_CLEAR), STREAM = world.bossRewardStreams[STREAM_KIND], CHANCE = bossAcquisitionChance({
       farmEvent: SOURCE === "farm",
       firstClear: FIRST_CLEAR,
       acquisitionMultiplier: options.acquisitionMultiplier ?? 1
@@ -6600,7 +6607,7 @@
       STREAM_SOURCE = Object.freeze({ farm: "event" });
       BOSS_REWARD_SETTINGS = Object.freeze({
         acquisitionChance: 0.05,
-        firstClearAcquisitionChance: 0.15,
+        firstClearAcquisitionChance: 1,
         farmEventAcquisitionMultiplier: 2,
         stageHpBase: 200,
         stageHpMultiplier: 1.2,
@@ -11338,7 +11345,7 @@
             if (EVENT_STAGE > BEST) {
               this.playerProgression.towerBest = EVENT_STAGE;
             }
-            const SETTLEMENT = !this.tower.record ? null : settleBossKill(this, {
+            const FIRST_CLEAR = !bossSpeciesOwned(this, this.boss.species), SETTLEMENT = !this.tower.record && !FIRST_CLEAR ? null : settleBossKill(this, {
               encounterId: ENCOUNTER_ID,
               source: "farm",
               stage: EVENT_STAGE,
@@ -11346,17 +11353,20 @@
               tier: 1,
               x: this.boss.x,
               y: this.boss.y,
+              firstClear: FIRST_CLEAR,
               rollBudget: STAGE_STATS.rollBudget * KIND.reward,
-              xpAmount: STAGE_STATS.xp * KIND.reward
+              xpAmount: this.tower.record ? STAGE_STATS.xp * KIND.reward : 0
             });
             if (SETTLEMENT) {
               const REWARD2 = SETTLEMENT.receipt;
-              this.combat("farm-boss-xp", {
-                encounterId: ENCOUNTER_ID,
-                xp: SETTLEMENT.xpAwarded,
-                levelsGained: SETTLEMENT.levelsGained,
-                pointsAwarded: SETTLEMENT.pointsAwarded
-              });
+              if (this.tower.record) {
+                this.combat("farm-boss-xp", {
+                  encounterId: ENCOUNTER_ID,
+                  xp: SETTLEMENT.xpAwarded,
+                  levelsGained: SETTLEMENT.levelsGained,
+                  pointsAwarded: SETTLEMENT.pointsAwarded
+                });
+              }
               this.combat("farm-boss-reward", {
                 acquired: REWARD2.grantedCount > 0,
                 pending: REWARD2.status === "pending",
@@ -12313,7 +12323,7 @@
       const BASE_KEYS = ["encounterId", "source", "receiptKey", "species", "tier", "chance", "firstClear"];
       keys(REWARD2, BASE_KEYS, [...REWARD_EXTRAS, "rolls"]);
       ASSERT(
-        REWARD2.source === "farm" && INTEGER(REWARD2.encounterId, 1, BOSS2.settledThrough[REWARD2.source]) && STRING(REWARD2.receiptKey) && !RECEIPTS.has(REWARD2.receiptKey) && INTEGER(REWARD2.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER(REWARD2.tier, 1, CONFIG.unit.maxTier) && NUMBER3(REWARD2.chance, 0, 1) && typeof REWARD2.firstClear === "boolean" && !REWARD2.firstClear
+        REWARD2.source === "farm" && INTEGER(REWARD2.encounterId, 1, BOSS2.settledThrough[REWARD2.source]) && STRING(REWARD2.receiptKey) && !RECEIPTS.has(REWARD2.receiptKey) && INTEGER(REWARD2.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER(REWARD2.tier, 1, CONFIG.unit.maxTier) && NUMBER3(REWARD2.chance, 0, 1) && typeof REWARD2.firstClear === "boolean"
       );
       RECEIPTS.add(REWARD2.receiptKey);
       const ENCOUNTER = `${REWARD2.source}:${REWARD2.encounterId}`;
@@ -17974,7 +17984,7 @@
     const REWARD_IDS = /* @__PURE__ */ new Set(), QUEUED_BY_GROUP = /* @__PURE__ */ new Map();
     for (const REWARD2 of raw.bossRewardReceipts) {
       ASSERT2(
-        REWARD2 && INTEGER2(REWARD2.encounterId, 1, 1e12) && REWARD2.source === "farm" && REWARD2.encounterId <= raw.bossRewardWatermarks[REWARD2.source] && INTEGER2(REWARD2.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER2(REWARD2.tier, 1, CONFIG.unit.maxTier) && Number.isFinite(REWARD2.x) && Number.isFinite(REWARD2.y) && Number.isFinite(REWARD2.chance) && REWARD2.chance >= 0 && REWARD2.chance <= 1 && typeof REWARD2.firstClear === "boolean" && !REWARD2.firstClear
+        REWARD2 && INTEGER2(REWARD2.encounterId, 1, 1e12) && REWARD2.source === "farm" && REWARD2.encounterId <= raw.bossRewardWatermarks[REWARD2.source] && INTEGER2(REWARD2.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER2(REWARD2.tier, 1, CONFIG.unit.maxTier) && Number.isFinite(REWARD2.x) && Number.isFinite(REWARD2.y) && Number.isFinite(REWARD2.chance) && REWARD2.chance >= 0 && REWARD2.chance <= 1 && typeof REWARD2.firstClear === "boolean"
       );
       const KEY2 = REWARD2.receiptKey || REWARD2.source + ":" + REWARD2.encounterId;
       ASSERT2(!REWARD_IDS.has(KEY2));
@@ -19024,7 +19034,7 @@
     DOLLAR2("bossRewardStage").textContent = receipt.stage ? `보스 격파 · ${receipt.stage}층` : "보스 격파";
     DOLLAR2("bossRewardRibbon").hidden = !FIRST_CLEAR;
     DOLLAR2("bossRewardTitle").textContent = receipt.status === "calculating" ? "보상 준비 중" : "승리 보상";
-    DOLLAR2("bossRewardSummary").textContent = receipt.status === "calculating" ? "상자 " + COUNT + "개의 보상을 준비하고 있어요." : HAS_PRESENTATION ? COUNT + "회 추첨 · 상자당 " + MIN + (MIN === MAX ? "" : "–" + MAX) + "마리 · " + (FIRST_CLEAR ? "첫 클리어 " : "재도전 ") + Math.round(NOMINAL_CHANCE * 100) + "% (편성 반영 " + Math.round(receipt.chance * 100) + "%)" : "이미 확정된 보상 합계";
+    DOLLAR2("bossRewardSummary").textContent = receipt.status === "calculating" ? "상자 " + COUNT + "개의 보상을 준비하고 있어요." : FIRST_CLEAR ? "처음 만난 종이에요 · 동료로 합류해요" : HAS_PRESENTATION ? COUNT + "회 추첨 · 상자당 " + MIN + (MIN === MAX ? "" : "–" + MAX) + "마리 · 재도전 " + Math.round(NOMINAL_CHANCE * 100) + "% (편성 반영 " + Math.round(receipt.chance * 100) + "%)" : "이미 확정된 보상 합계";
     DOLLAR2("bossRewardTotals").textContent = receipt.status === "calculating" ? "추첨 계산 " + PROCESSED + "/" + COUNT : "현재 합계 " + CUMULATIVE + "마리 · " + bossRewardSummary(receipt);
     DOLLAR2("bossRewardRevealCount").textContent = receipt.status === "calculating" ? "추첨 " + PROCESSED + "/" + COUNT : REVEALED + "/" + COUNT + " 상자 공개";
     const SCENE = DOLLAR2("bossRewardChestScene");
@@ -20634,10 +20644,10 @@
     );
     const BOSS2 = display.boss, FARM_REWARD = FARM_EVENT?.outcome === "victory" ? W.bossRewardReceipts.find(
       (reward) => reward.source === "farm" && reward.encounterId === FARM_EVENT.encounterId
-    ) : null, REWARD_NAME = speciesRewardName(BOSS2.species), ENCOUNTER_NAME = giantSpeciesName(BOSS2.species);
+    ) : null, REWARD_NAME = speciesRewardName(BOSS2.species), ENCOUNTER_NAME = giantSpeciesName(BOSS2.species), FIRST_MEETING = FARM_EVENT_ACTIVE && !bossSpeciesOwned(W, BOSS2.species) ? " · 첫 조우" : "";
     syncText(
       "bossName",
-      BOSS2.stage ? `${BOSS2.stage}층 · ${W.tower.kind === "battle" ? "" : FLOOR_KIND[W.tower.kind] + " "}${ENCOUNTER_NAME}` : ENCOUNTER_NAME
+      (BOSS2.stage ? `${BOSS2.stage}층 · ${W.tower.kind === "battle" ? "" : FLOOR_KIND[W.tower.kind] + " "}${ENCOUNTER_NAME}` : ENCOUNTER_NAME) + FIRST_MEETING
     );
     syncAttribute("bossHealth", "aria-label", `${ENCOUNTER_NAME} 체력`);
     syncText("bossHealthText", Math.ceil(BOSS2.hp) + "/" + BOSS2.maxHp);

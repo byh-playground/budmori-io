@@ -44,6 +44,7 @@ import {
     bossAcquisitionChance,
     bossStageStats,
     settleBossKill,
+    bossSpeciesOwned,
     grantPendingBossAcquisitions,
     advanceBossRewardCalculations,
     createBossRewardStreams,
@@ -4741,27 +4742,33 @@ const GARDEN = class Garden {
             if (EVENT_STAGE > BEST) {
                 this.playerProgression.towerBest = EVENT_STAGE;
             }
-            const SETTLEMENT = !this.tower.record
-                ? null
-                : settleBossKill(this, {
-                      encounterId: ENCOUNTER_ID,
-                      source: 'farm',
-                      stage: EVENT_STAGE,
-                      species: this.boss.species,
-                      tier: 1,
-                      x: this.boss.x,
-                      y: this.boss.y,
-                      rollBudget: STAGE_STATS.rollBudget * KIND.reward,
-                      xpAmount: STAGE_STATS.xp * KIND.reward,
-                  });
+            // A species the farm does not have yet always pays out its first win, record floor or not.
+            const FIRST_CLEAR = !bossSpeciesOwned(this, this.boss.species),
+                SETTLEMENT =
+                    !this.tower.record && !FIRST_CLEAR
+                        ? null
+                        : settleBossKill(this, {
+                              encounterId: ENCOUNTER_ID,
+                              source: 'farm',
+                              stage: EVENT_STAGE,
+                              species: this.boss.species,
+                              tier: 1,
+                              x: this.boss.x,
+                              y: this.boss.y,
+                              firstClear: FIRST_CLEAR,
+                              rollBudget: STAGE_STATS.rollBudget * KIND.reward,
+                              xpAmount: this.tower.record ? STAGE_STATS.xp * KIND.reward : 0,
+                          });
             if (SETTLEMENT) {
                 const REWARD = SETTLEMENT.receipt;
-                this.combat('farm-boss-xp', {
-                    encounterId: ENCOUNTER_ID,
-                    xp: SETTLEMENT.xpAwarded,
-                    levelsGained: SETTLEMENT.levelsGained,
-                    pointsAwarded: SETTLEMENT.pointsAwarded,
-                });
+                if (this.tower.record) {
+                    this.combat('farm-boss-xp', {
+                        encounterId: ENCOUNTER_ID,
+                        xp: SETTLEMENT.xpAwarded,
+                        levelsGained: SETTLEMENT.levelsGained,
+                        pointsAwarded: SETTLEMENT.pointsAwarded,
+                    });
+                }
                 this.combat('farm-boss-reward', {
                     acquired: REWARD.grantedCount > 0,
                     pending: REWARD.status === 'pending',
