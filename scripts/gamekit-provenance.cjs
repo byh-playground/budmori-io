@@ -24,6 +24,7 @@ const MODULES = Object.freeze({
     input: 'BloomGamekitInput',
     'debug-tools': 'BloomGamekitDebugTools',
     'object-pool': 'BloomGamekitObjectPool',
+    scenario: 'BloomGamekitScenario',
 });
 const DIST_MODULES = Object.freeze([
     'interpolation',
