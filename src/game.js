@@ -384,6 +384,52 @@
   function pileRadius(pile) {
     return 0.85 * (0.95 + 0.5 * (pile.food / pile.maxFood));
   }
+  function workersBySpecies(lengths, ratio, weights) {
+    const WORKERS = /* @__PURE__ */ new Map();
+    if (!weights) {
+      for (const [SPECIES, LENGTH] of lengths) {
+        WORKERS.set(SPECIES, Math.floor(ratio * LENGTH + 1e-9));
+      }
+      return WORKERS;
+    }
+    let total = 0;
+    for (const LENGTH of lengths.values()) {
+      total += LENGTH;
+    }
+    const ALLOC = new Map([...lengths.keys()].map((species) => [species, 0]));
+    let remaining = total - Math.floor(ratio * total + 1e-9), active2 = [...lengths.keys()].filter((species) => (weights[species] || 0) > 0 && lengths.get(species) > 0);
+    while (remaining > 0 && active2.length) {
+      const WEIGHT = active2.reduce((sum, species) => sum + weights[species], 0), FULL = active2.filter(
+        (species) => remaining * weights[species] / WEIGHT >= lengths.get(species) - ALLOC.get(species) - 1e-9
+      );
+      if (FULL.length) {
+        for (const FULL_SPECIES of FULL) {
+          const ROOM = lengths.get(FULL_SPECIES) - ALLOC.get(FULL_SPECIES);
+          ALLOC.set(FULL_SPECIES, lengths.get(FULL_SPECIES));
+          remaining -= ROOM;
+        }
+        active2 = active2.filter((species) => !FULL.includes(species));
+        continue;
+      }
+      const SHARES = active2.map((species) => ({ species, exact: remaining * weights[species] / WEIGHT }));
+      let given = 0;
+      for (const SHARE of SHARES) {
+        const BASE = Math.floor(SHARE.exact + 1e-9);
+        ALLOC.set(SHARE.species, ALLOC.get(SHARE.species) + BASE);
+        given += BASE;
+        SHARE.rest = SHARE.exact - BASE;
+      }
+      SHARES.sort((a, b) => b.rest - a.rest || a.species - b.species);
+      for (let i = 0; given < remaining && i < SHARES.length; i++, given++) {
+        ALLOC.set(SHARES[i].species, ALLOC.get(SHARES[i].species) + 1);
+      }
+      remaining = 0;
+    }
+    for (const [SPECIES, LENGTH] of lengths) {
+      WORKERS.set(SPECIES, LENGTH - ALLOC.get(SPECIES));
+    }
+    return WORKERS;
+  }
   function resetWork(world) {
     world._piles = [];
     world._pileId = 0;
@@ -8293,7 +8339,7 @@
           };
           this.playerProgression = createPlayerProgressionState();
           this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
-          this.speciesWorkBasisPoints = new Array(CONFIG.unit.speciesCount).fill(CONFIG.farm.work.defaultBasisPoints);
+          this.breedWeights = null;
           this._workerIds = /* @__PURE__ */ new Set();
           resetWork(this);
           this._workerRates = /* @__PURE__ */ new Map();
@@ -8903,17 +8949,16 @@
             return false;
           }
           this.workBasisPoints = basisPoints;
-          this.speciesWorkBasisPoints.fill(basisPoints);
           this._nextWorkerRefreshTick = 0;
           this.refreshWorkers();
           return true;
         }
-        // One species' own share, so the farm can grow what the player wants: 0 works none and breeds all.
-        setSpeciesWorkBasisPoints(species, basisPoints) {
-          if (!Number.isSafeInteger(species) || species < 0 || species >= this.speciesWorkBasisPoints.length || !Number.isSafeInteger(basisPoints) || basisPoints < 0 || basisPoints > 1e4) {
+        // Who gets the breeding: one weight per species (null: even by headcount).
+        setBreedWeights(weights) {
+          if (weights !== null && !(Array.isArray(weights) && weights.length <= CONFIG.unit.speciesCount && weights.every((weight) => Number.isSafeInteger(weight) && weight >= 0) && weights.some((weight) => weight > 0))) {
             return false;
           }
-          this.speciesWorkBasisPoints[species] = basisPoints;
+          this.breedWeights = weights;
           this._nextWorkerRefreshTick = 0;
           this.refreshWorkers();
           return true;
@@ -8921,7 +8966,7 @@
         // The slider's share of each species' adults work; the rest breed. A worker does not eat or breed, and its
         // output scales with its tier. A full field only pauses the food they make; who works never depends on it.
         refreshWorkers() {
-          const WORK = CONFIG.farm.work, NEXT = /* @__PURE__ */ new Set(), RATES = /* @__PURE__ */ new Map();
+          const WORK = CONFIG.farm.work, RATIO = this.workBasisPoints / 1e4, NEXT = /* @__PURE__ */ new Set(), RATES = /* @__PURE__ */ new Map();
           let total = 0;
           if (this.scene === "farm") {
             const BY_SPECIES = /* @__PURE__ */ new Map();
@@ -8934,9 +8979,14 @@
               }
               BY_SPECIES.get(UNIT_LOCAL.species).push(UNIT_LOCAL);
             }
+            const WORKERS = workersBySpecies(
+              new Map([...BY_SPECIES].map(([species, list]) => [species, list.length])),
+              RATIO,
+              this.breedWeights
+            );
             for (const [SPECIES, LIST] of BY_SPECIES) {
               LIST.sort((a, b) => a.id - b.id);
-              const COUNT = Math.floor(this.speciesWorkBasisPoints[SPECIES] / 1e4 * LIST.length + 1e-9);
+              const COUNT = WORKERS.get(SPECIES);
               for (let index = 0; index < COUNT; index++) {
                 const WORKER = LIST[index], RATE = (1 + WORK.tierBonus * (WORKER.tier - 1)) / WORK.secondsPerFood;
                 NEXT.add(WORKER.id);
@@ -12397,7 +12447,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.29.8";
+      PRODUCT_VERSION = "0.29.9";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -16927,8 +16977,8 @@
       switch (c.type) {
         case "farm-work":
           return W.scene === "farm" && W.setWorkBasisPoints(c.basisPoints);
-        case "farm-species-work":
-          return W.scene === "farm" && W.setSpeciesWorkBasisPoints(c.species, c.basisPoints);
+        case "farm-breed-weights":
+          return W.scene === "farm" && W.setBreedWeights(c.weights);
         case "deploy":
           return W.scene === "farm" && W.deployUnit(c.species, c.x, c.y);
         case "tower-start":
@@ -18798,6 +18848,7 @@
   // src/farm-app.js
   init_ability_progression();
   init_boss_rewards();
+  init_farm_work();
   init_species_catalog();
   var DOLLAR2 = (id) => document.getElementById(id);
   var STORAGE = new FarmStorage();
@@ -19261,23 +19312,16 @@
       return fallback;
     }
   }
-  var SPECIES_WORK_KEY = "budmori.work.species";
-  function loadSpeciesWork(world) {
+  var BREED_WEIGHTS_KEY = "budmori.breed.weights";
+  function loadBreedWeights(world) {
     try {
-      const LIST = JSON.parse(localStorage.getItem(SPECIES_WORK_KEY) || "null");
-      if (Array.isArray(LIST)) {
-        LIST.forEach((value, species) => {
-          if (Number.isSafeInteger(value)) {
-            world.setSpeciesWorkBasisPoints(species, value);
-          }
-        });
-      }
+      world.setBreedWeights(JSON.parse(localStorage.getItem(BREED_WEIGHTS_KEY) || "null"));
     } catch {
     }
   }
-  function saveSpeciesWork(world) {
+  function saveBreedWeights(world) {
     try {
-      localStorage.setItem(SPECIES_WORK_KEY, JSON.stringify(world.speciesWorkBasisPoints));
+      localStorage.setItem(BREED_WEIGHTS_KEY, JSON.stringify(world.breedWeights));
     } catch {
     }
   }
@@ -19297,8 +19341,8 @@
       }
     }
     let workers = 0;
-    for (const [SPECIES, COUNT] of COUNTS) {
-      workers += Math.floor(world.speciesWorkBasisPoints[SPECIES] / 1e4 * COUNT + 1e-9);
+    for (const COUNT of workersBySpecies(COUNTS, world.workBasisPoints / 1e4, world.breedWeights).values()) {
+      workers += COUNT;
     }
     return { total, workers };
   }
@@ -19316,7 +19360,7 @@
       onError: FAIL2
     });
     world.setWorkBasisPoints(loadWorkSetting(world.workBasisPoints));
-    loadSpeciesWork(world);
+    loadBreedWeights(world);
     return active;
   }
   install(new GARDEN());
@@ -19586,16 +19630,10 @@
       e.preventDefault();
     }
   });
-  var DIAL_LENGTH = 2 * Math.PI * 42;
+  var RING_RADIUS = 80;
+  var RING_COLORS = ["#7fa77a", "#d98f5c", "#6f9fc8", "#c8a24a", "#b07aa8", "#5fb0a0", "#c46f6f", "#8f8f5a", "#7a86c4"];
   var speciesRoleKey = "";
-  function paintDial(row, breedPercent) {
-    const ARC = row.querySelector(".dial__breed"), ANGLE = breedPercent / 100 * Math.PI * 2 - Math.PI / 2;
-    ARC.setAttribute("stroke-dasharray", `${breedPercent / 100 * DIAL_LENGTH} ${DIAL_LENGTH}`);
-    const KNOB = row.querySelector(".dial__knob");
-    KNOB.setAttribute("cx", String(50 + Math.cos(ANGLE) * 42));
-    KNOB.setAttribute("cy", String(50 + Math.sin(ANGLE) * 42));
-    row.querySelector(".dial").setAttribute("aria-valuenow", String(breedPercent));
-  }
+  var ringShares = [];
   function speciesCounts(world) {
     const COUNTS = /* @__PURE__ */ new Map();
     for (const UNIT3 of world.units) {
@@ -19605,76 +19643,131 @@
     }
     return COUNTS;
   }
-  function paintRoleText(row, count, basisPoints) {
-    const WORK = Math.floor(basisPoints / 1e4 * count + 1e-9), TEXT = `번식 ${count - WORK} · 먹이 ${WORK}`, NODE = row.querySelector("small");
-    if (NODE.textContent !== TEXT) {
-      NODE.textContent = TEXT;
-    }
+  function ringSharesFor(world, ids, counts) {
+    const WEIGHTS = world.breedWeights, RAW = ids.map((id) => WEIGHTS ? WEIGHTS[id] || 0 : counts.get(id)), SUM = RAW.reduce((a, b) => a + b, 0) || 1, PERCENT = RAW.map((value) => Math.floor(value / SUM * 100));
+    PERCENT[PERCENT.indexOf(Math.max(...PERCENT))] += 100 - PERCENT.reduce((a, b) => a + b, 0);
+    return PERCENT;
   }
-  function drawSpeciesRoles(world) {
-    const COUNTS = speciesCounts(world), IDS = [...COUNTS.keys()].sort((x, y) => x - y), HOST = DOLLAR2("speciesRoles"), KEY2 = IDS.join(",");
-    if (KEY2 !== speciesRoleKey) {
-      speciesRoleKey = KEY2;
-      HOST.innerHTML = IDS.map((id) => {
-        const SPECIES = speciesById(id);
-        return `<div class="species-role" data-species="${id}"><div class="dial" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="100" aria-label="${SPECIES.name} 번식 비율"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="dial__track" cx="50" cy="50" r="42"/><circle class="dial__breed" cx="50" cy="50" r="42" transform="rotate(-90 50 50)"/><image href="./assets/troops/${SPECIES.asset}" x="26" y="26" width="48" height="48"/><circle class="dial__knob" r="7"/></svg></div><b>${SPECIES.name}</b><small></small></div>`;
-      }).join("");
-    }
-    for (const ROW of HOST.children) {
-      const ID = Number(ROW.dataset.species), BP = world.speciesWorkBasisPoints[ID];
-      paintRoleText(ROW, COUNTS.get(ID) || 0, BP);
-      if (!ROW.classList.contains("is-dragging")) {
-        paintDial(ROW, Math.round((100 - BP / 100) / 5) * 5);
+  function arcPath(from, to) {
+    const A = from / 100 * Math.PI * 2 - Math.PI / 2, B = Math.min(to, 99.99) / 100 * Math.PI * 2 - Math.PI / 2, POINT2 = (angle) => `${100 + Math.cos(angle) * RING_RADIUS} ${100 + Math.sin(angle) * RING_RADIUS}`;
+    return `M ${POINT2(A)} A ${RING_RADIUS} ${RING_RADIUS} 0 ${to - from > 50 ? 1 : 0} 1 ${POINT2(B)}`;
+  }
+  function paintRing(ids) {
+    const SVG = DOLLAR2("speciesRing");
+    let from = 0;
+    ids.forEach((id, index) => {
+      const SHARE = ringShares[index], ARC = SVG.querySelector(`[data-arc="${id}"]`), ICON = SVG.querySelector(`[data-icon="${id}"]`), MID = (from + SHARE / 2) / 100 * Math.PI * 2 - Math.PI / 2;
+      ARC.setAttribute("d", SHARE > 0 ? arcPath(from, from + SHARE) : "");
+      ICON.setAttribute("x", String(100 + Math.cos(MID) * RING_RADIUS - 11));
+      ICON.setAttribute("y", String(100 + Math.sin(MID) * RING_RADIUS - 11));
+      ICON.style.display = SHARE >= 8 ? "" : "none";
+      from += SHARE;
+      const KNOB = SVG.querySelector(`[data-knob="${index}"]`);
+      if (KNOB) {
+        const ANGLE = from / 100 * Math.PI * 2 - Math.PI / 2;
+        KNOB.setAttribute("cx", String(100 + Math.cos(ANGLE) * RING_RADIUS));
+        KNOB.setAttribute("cy", String(100 + Math.sin(ANGLE) * RING_RADIUS));
       }
-    }
-  }
-  function setSpeciesBreedShare(row, percent) {
-    const SPECIES = Number(row.dataset.species), POINTS = (100 - percent) * 100, WORLD = personalGarden || active.world;
-    WORLD.setSpeciesWorkBasisPoints(SPECIES, POINTS);
-    saveSpeciesWork(WORLD);
-    active.queue("farm-species-work", { species: SPECIES, basisPoints: POINTS });
-    paintDial(row, percent);
-    paintRoleText(row, speciesCounts(WORLD).get(SPECIES) || 0, POINTS);
-  }
-  var dialDrag = null;
-  DOLLAR2("speciesRoles").addEventListener("pointerdown", (event) => {
-    const DIAL = event.target.closest(".dial"), ROW = DIAL?.closest("[data-species]");
-    if (!ROW || event.button !== 0) {
-      return;
-    }
-    dialDrag = { row: ROW, dial: DIAL, id: event.pointerId, last: Number(DIAL.getAttribute("aria-valuenow")) || 0 };
-    ROW.classList.add("is-dragging");
-    DIAL.setPointerCapture?.(event.pointerId);
-    dialMove(event);
-    event.preventDefault();
-  });
-  function dialMove(event) {
-    if (!dialDrag || event.pointerId !== dialDrag.id) {
-      return;
-    }
-    const BOX = dialDrag.dial.getBoundingClientRect(), ANGLE = Math.atan2(event.clientY - (BOX.top + BOX.height / 2), event.clientX - (BOX.left + BOX.width / 2)), RAW = (ANGLE + Math.PI / 2 + Math.PI * 2) % (Math.PI * 2) / (Math.PI * 2), STEPPED = Math.round(RAW * 20) * 5 === 100 ? 0 : Math.round(RAW * 20) * 5;
-    let value = STEPPED;
-    if (Math.abs(value - dialDrag.last) > 50) {
-      value = dialDrag.last > 50 ? 100 : 0;
-    }
-    if (value !== dialDrag.last) {
-      dialDrag.last = value;
-      setSpeciesBreedShare(dialDrag.row, value);
-    }
-  }
-  DOLLAR2("speciesRoles").addEventListener("pointermove", dialMove);
-  for (const EVENT of ["pointerup", "pointercancel"]) {
-    DOLLAR2("speciesRoles").addEventListener(EVENT, () => {
-      dialDrag?.row.classList.remove("is-dragging");
-      dialDrag = null;
     });
   }
-  DOLLAR2("speciesRoles").addEventListener("keydown", (event) => {
-    const DIAL = event.target.closest(".dial"), ROW = DIAL?.closest("[data-species]"), STEP = event.key === "ArrowRight" || event.key === "ArrowUp" ? 5 : event.key === "ArrowLeft" || event.key === "ArrowDown" ? -5 : 0;
-    if (ROW && STEP) {
-      setSpeciesBreedShare(ROW, Math.max(0, Math.min(100, (Number(DIAL.getAttribute("aria-valuenow")) || 0) + STEP)));
-      event.preventDefault();
+  function paintRingLegend(world, ids, counts) {
+    const WORKERS = workersBySpecies(counts, world.workBasisPoints / 1e4, world.breedWeights);
+    ids.forEach((id, index) => {
+      const ROW = DOLLAR2("speciesRoles").querySelector(`[data-legend="${id}"] small`), TEXT = `${ringShares[index]}% · 번식 ${counts.get(id) - WORKERS.get(id)} · 먹이 ${WORKERS.get(id)}`;
+      if (ROW && ROW.textContent !== TEXT) {
+        ROW.textContent = TEXT;
+      }
+    });
+  }
+  function drawSpeciesRoles(world) {
+    const COUNTS = speciesCounts(world), IDS = [...COUNTS.keys()].sort((x, y) => x - y), KEY2 = IDS.join(",");
+    if (KEY2 !== speciesRoleKey) {
+      speciesRoleKey = KEY2;
+      if (world.breedWeights) {
+        const NEXT = ringSharesFor(world, IDS, COUNTS);
+        const MISSING = IDS.filter((id) => !(world.breedWeights[id] > 0));
+        if (MISSING.length) {
+          const WEIGHTS = new Array(world.breedWeights.length).fill(0);
+          const KEEP = IDS.filter((id) => !MISSING.includes(id)), EACH = Math.round(100 / IDS.length);
+          KEEP.forEach((id) => {
+            WEIGHTS[id] = Math.max(
+              1,
+              Math.round(world.breedWeights[id] * (100 - EACH * MISSING.length) / 100)
+            );
+          });
+          for (const ID of MISSING) {
+            WEIGHTS[ID] = EACH;
+          }
+          world.setBreedWeights(WEIGHTS);
+          saveBreedWeights(world);
+          active.queue("farm-breed-weights", { weights: WEIGHTS });
+        }
+        void NEXT;
+      }
+      DOLLAR2("speciesRing").innerHTML = '<circle class="ring__track" cx="100" cy="100" r="80"/>' + IDS.map(
+        (id, index) => `<path class="ring__arc" data-arc="${id}" stroke="${RING_COLORS[index % RING_COLORS.length]}"/>`
+      ).join("") + IDS.map(
+        (id) => `<image data-icon="${id}" href="./assets/troops/${speciesById(id).asset}" width="22" height="22" pointer-events="none"/>`
+      ).join("") + (IDS.length > 1 ? IDS.slice(0, -1).map((_, index) => `<circle class="ring__knob" data-knob="${index}" r="8"/>`).join("") : "");
+      DOLLAR2("speciesRoles").innerHTML = IDS.map(
+        (id, index) => `<div class="ring-legend" data-legend="${id}"><i style="background:${RING_COLORS[index % RING_COLORS.length]}"></i><b>${speciesById(id).name}</b><small></small></div>`
+      ).join("");
     }
+    if (!ringDrag) {
+      ringShares = ringSharesFor(world, IDS, COUNTS);
+    }
+    paintRing(IDS);
+    paintRingLegend(world, IDS, COUNTS);
+    DOLLAR2("speciesRingAuto").hidden = !world.breedWeights;
+  }
+  function applyRing(world) {
+    const COUNTS = speciesCounts(world), IDS = [...COUNTS.keys()].sort((x, y) => x - y), WEIGHTS = new Array(Math.max(...IDS) + 1).fill(0);
+    IDS.forEach((id, index) => {
+      WEIGHTS[id] = ringShares[index];
+    });
+    world.setBreedWeights(WEIGHTS);
+    saveBreedWeights(world);
+    active.queue("farm-breed-weights", { weights: WEIGHTS });
+    paintRing(IDS);
+    paintRingLegend(world, IDS, COUNTS);
+    DOLLAR2("speciesRingAuto").hidden = false;
+  }
+  var ringDrag = null;
+  DOLLAR2("speciesRing").addEventListener("pointerdown", (event) => {
+    const KNOB = event.target.closest("[data-knob]");
+    if (!KNOB || event.button !== 0) {
+      return;
+    }
+    ringDrag = { index: Number(KNOB.dataset.knob), id: event.pointerId };
+    KNOB.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  });
+  DOLLAR2("speciesRing").addEventListener("pointermove", (event) => {
+    if (!ringDrag || event.pointerId !== ringDrag.id) {
+      return;
+    }
+    const BOX = DOLLAR2("speciesRing").getBoundingClientRect(), ANGLE = Math.atan2(event.clientY - (BOX.top + BOX.height / 2), event.clientX - (BOX.left + BOX.width / 2)), POSITION = (ANGLE + Math.PI / 2 + Math.PI * 2) % (Math.PI * 2) / (Math.PI * 2) * 100, INDEX = ringDrag.index, BEFORE = ringShares.slice(0, INDEX).reduce((a, b) => a + b, 0), PAIR = ringShares[INDEX] + ringShares[INDEX + 1], WANT = Math.max(0, Math.min(PAIR, Math.round(POSITION - BEFORE)));
+    if (Math.abs(POSITION - (BEFORE + ringShares[INDEX])) > 50) {
+      return;
+    }
+    if (WANT !== ringShares[INDEX]) {
+      ringShares[INDEX] = WANT;
+      ringShares[INDEX + 1] = PAIR - WANT;
+      applyRing(personalGarden || active.world);
+    }
+    event.preventDefault();
+  });
+  for (const EVENT of ["pointerup", "pointercancel"]) {
+    DOLLAR2("speciesRing").addEventListener(EVENT, () => {
+      ringDrag = null;
+    });
+  }
+  DOLLAR2("speciesRingAuto").addEventListener("click", () => {
+    const WORLD = personalGarden || active.world;
+    WORLD.setBreedWeights(null);
+    saveBreedWeights(WORLD);
+    active.queue("farm-breed-weights", { weights: null });
+    drawSpeciesRoles(WORLD);
   });
   function drawFarmPanel() {
     const W = personalGarden || active?.world;
@@ -19874,7 +19967,6 @@
     const CUT = Number(DOLLAR2("workCutA").value), POINTS = (100 - CUT) * 100;
     saveWorkSetting(POINTS);
     (personalGarden || active.world).setWorkBasisPoints(POINTS);
-    saveSpeciesWork(personalGarden || active.world);
     active.queue("farm-work", { basisPoints: POINTS });
     farmPanelRevision = -1;
   });

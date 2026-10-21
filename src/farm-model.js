@@ -1,5 +1,5 @@
 import { applyOffline } from './farm-offline.js';
-import { assignWorkers, resetWork, stepWork, workOrder } from './farm-work.js';
+import { assignWorkers, resetWork, stepWork, workOrder, workersBySpecies } from './farm-work.js';
 import { FormationSkills } from './formation-skills.js';
 import { createFormationRuntime, FORMATION_SKILL_DEFINITIONS } from './formation-skill-state.js';
 import { Signal } from './signal.js';
@@ -1267,7 +1267,8 @@ const GARDEN = class Garden {
         };
         this.playerProgression = createPlayerProgressionState();
         this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
-        this.speciesWorkBasisPoints = new Array(CONFIG.unit.speciesCount).fill(CONFIG.farm.work.defaultBasisPoints);
+        // null: every species gives the same worker share. Otherwise the breeders are split between species by weight.
+        this.breedWeights = null;
         this._workerIds = new Set();
         resetWork(this);
         this._workerRates = new Map();
@@ -1911,24 +1912,24 @@ const GARDEN = class Garden {
             return false;
         }
         this.workBasisPoints = basisPoints;
-        this.speciesWorkBasisPoints.fill(basisPoints);
         this._nextWorkerRefreshTick = 0;
         this.refreshWorkers();
         return true;
     }
-    // One species' own share, so the farm can grow what the player wants: 0 works none and breeds all.
-    setSpeciesWorkBasisPoints(species, basisPoints) {
+    // Who gets the breeding: one weight per species (null: even by headcount).
+    setBreedWeights(weights) {
         if (
-            !Number.isSafeInteger(species) ||
-            species < 0 ||
-            species >= this.speciesWorkBasisPoints.length ||
-            !Number.isSafeInteger(basisPoints) ||
-            basisPoints < 0 ||
-            basisPoints > 10000
+            weights !== null &&
+            !(
+                Array.isArray(weights) &&
+                weights.length <= CONFIG.unit.speciesCount &&
+                weights.every((weight) => Number.isSafeInteger(weight) && weight >= 0) &&
+                weights.some((weight) => weight > 0)
+            )
         ) {
             return false;
         }
-        this.speciesWorkBasisPoints[species] = basisPoints;
+        this.breedWeights = weights;
         this._nextWorkerRefreshTick = 0;
         this.refreshWorkers();
         return true;
@@ -1937,6 +1938,7 @@ const GARDEN = class Garden {
     // output scales with its tier. A full field only pauses the food they make; who works never depends on it.
     refreshWorkers() {
         const WORK = CONFIG.farm.work,
+            RATIO = this.workBasisPoints / 10000,
             NEXT = new Set(),
             RATES = new Map();
         let total = 0;
@@ -1958,9 +1960,14 @@ const GARDEN = class Garden {
                 }
                 BY_SPECIES.get(UNIT_LOCAL.species).push(UNIT_LOCAL);
             }
+            const WORKERS = workersBySpecies(
+                new Map([...BY_SPECIES].map(([species, list]) => [species, list.length])),
+                RATIO,
+                this.breedWeights,
+            );
             for (const [SPECIES, LIST] of BY_SPECIES) {
                 LIST.sort((a, b) => a.id - b.id);
-                const COUNT = Math.floor((this.speciesWorkBasisPoints[SPECIES] / 10000) * LIST.length + 1e-9);
+                const COUNT = WORKERS.get(SPECIES);
                 for (let index = 0; index < COUNT; index++) {
                     const WORKER = LIST[index],
                         RATE = (1 + WORK.tierBonus * (WORKER.tier - 1)) / WORK.secondsPerFood;

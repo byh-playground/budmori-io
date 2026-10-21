@@ -167,25 +167,26 @@ await check('a full field keeps the worker share', async () => {
     await WORLD(() => BUDMORI.sim.setWorkBasisPoints(0));
 });
 
-await check('each species has its own worker share', async () => {
+await check('breeding weights split the breeders between species', async () => {
     const GOT = await WORLD(() => {
         const W = BUDMORI.sim;
         for (let i = 0; i < 8; i++) {
-            for (const SP of [0, 1]) {
-                const U = W.spawn(SP, 1, i, SP);
+            for (const SPECIES of [0, 1]) {
+                const U = W.spawn(SPECIES, 1, i, SPECIES);
                 U.growthElapsed = U.growthDuration;
             }
         }
-        W.setWorkBasisPoints(0);
-        W.setSpeciesWorkBasisPoints(1, 10000);
+        W.setWorkBasisPoints(5000);
+        W.setBreedWeights([0, 1]);
         W._nextWorkerRefreshTick = 0;
         W.refreshWorkers();
         const WORKERS = (species) => W.units.filter((u) => u.species === species && W.isWorker(u)).length;
         const OUT = { pea: WORKERS(0), corn: WORKERS(1) };
+        W.setBreedWeights(null);
         W.setWorkBasisPoints(0);
         return OUT;
     });
-    expect(GOT.pea === 0 && GOT.corn >= 8, `species shares did not apply ${JSON.stringify(GOT)}`);
+    expect(GOT.pea >= 8 && GOT.corn < GOT.pea, `weights did not apply ${JSON.stringify(GOT)}`);
 });
 
 await check('units eat, breed and the farm stays under its capacity', async () => {
@@ -378,9 +379,11 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
 await check('upgrade menu opens on the species abilities without the old stat tab', async () => {
     // The reward dialog can open late and cover the menu button, so close it by script first.
     await PAGE.waitForTimeout(1500);
-    await WORLD(() => document.getElementById('bossRewardClose')?.click());
-    await PAGE.waitForTimeout(500);
-    await PAGE.locator('#upgradeMenu').click();
+    for (let attempt = 0; attempt < 4; attempt++) {
+        await WORLD(() => document.getElementById('bossRewardClose')?.click());
+        await PAGE.waitForTimeout(400);
+    }
+    await WORLD(() => document.getElementById('upgradeMenu').click());
     await PAGE.waitForTimeout(800);
     const MENU = await WORLD(() => ({
         abilities: !document.getElementById('abilityPanel').hidden,
