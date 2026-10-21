@@ -1205,8 +1205,6 @@ function relicDoorCard(tower, index) {
         GAIN = LEVEL ? `Lv.${LEVEL} → ${LEVEL + 1}` : '새 유물';
     return `<button type="button" class="door door--relic" data-door="${index}"><b>${RELIC_ICONS[ID]} ${DEFINITION.name}</b><small>${GAIN} · ${DEFINITION.description || ''}${LEVEL ? ` (→ ${VALUE}${DEFINITION.upgradeUnit})` : ''}</small></button>`;
 }
-let railKey = '';
-let railTimer = 0;
 let bannerKey = '';
 let bannerTimer = 0;
 let doorKey = '';
@@ -1227,29 +1225,9 @@ function syncTower(garden, home, event) {
         TINT.style.setProperty('--floor', String(T.floor));
     }
     const SLEEPERS = T.sleepUntil.size;
+    syncFlag('floorChip', 'hidden', !CLIMBING);
     if (CLIMBING) {
-        const KEY = `${T.floor}|${T.kind}|${BEST}`;
-        if (KEY !== railKey) {
-            const STEPPED = railKey !== '' && railKey.split('|')[0] !== String(T.floor);
-            railKey = KEY;
-            const FLOORS = [];
-            for (let f = T.floor + 2; f >= Math.max(1, T.floor - 1); f--) {
-                FLOORS.push(f);
-            }
-            const RAIL = DOLLAR('towerRail');
-            RAIL.innerHTML = FLOORS.map((f) => {
-                const MID = f % CONFIG.farm.tower.midBossEvery === 0,
-                    NOTE = f === T.floor ? FLOOR_KIND[T.kind] : MID ? '♛ 중간' : f === BEST ? '★ 최고' : '';
-                return `<li class="tower__floor${f === T.floor ? ' is-now' : ''}${MID ? ' is-mid' : ''}${f < T.floor ? ' is-gone' : ''}">${f}<small>${NOTE}</small></li>`;
-            }).join('');
-            if (STEPPED) {
-                RAIL.classList.add('is-climbing');
-                clearTimeout(railTimer);
-                railTimer = setTimeout(() => RAIL.classList.remove('is-climbing'), 750);
-            }
-        }
-    } else {
-        railKey = '';
+        syncText('floorNow', `${T.floor}층 · ${FLOOR_KIND[T.kind]}`);
     }
     // A banner announces each new floor as the boss drops in, and the rest stop.
     const NEXT_BANNER = !CLIMBING

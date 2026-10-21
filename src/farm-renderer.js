@@ -393,6 +393,38 @@ const DIORAMA = class Diorama {
         C.stroke();
         C.globalAlpha = ALPHA;
     }
+    // In a fight every body stands on a side ring: ally blue, enemy red. A fallen one turns grey with a cross.
+    drawSideMarker(u, shadow) {
+        if (u.hp <= 0 || u.down > 0) {
+            this.groundEllipse(u.x, u.y, shadow * 1.05, shadow * 0.7, 'rgba(30,30,36,0.35)');
+            this.ring(u.x, u.y, shadow * 1.05, 'rgba(120,124,134,0.9)', 0.05);
+            const C = this.ctx,
+                ARM = shadow * 0.8,
+                A = this.project(u.x - ARM, u.y - ARM * 0.6, 0),
+                B = this.project(u.x + ARM, u.y + ARM * 0.6, 0),
+                D = this.project(u.x - ARM, u.y + ARM * 0.6, 0),
+                E = this.project(u.x + ARM, u.y - ARM * 0.6, 0);
+            C.beginPath();
+            C.moveTo(A.x, A.y);
+            C.lineTo(B.x, B.y);
+            C.moveTo(D.x, D.y);
+            C.lineTo(E.x, E.y);
+            C.strokeStyle = 'rgba(232,90,80,0.95)';
+            C.lineWidth = Math.max(2 * this.pixelRatio, this.scale * 0.12);
+            C.lineCap = 'round';
+            C.stroke();
+            return;
+        }
+        const ALLY = u.faction === 'player';
+        this.groundEllipse(
+            u.x,
+            u.y,
+            shadow * 1.05,
+            shadow * 0.7,
+            ALLY ? 'rgba(70,170,240,0.22)' : 'rgba(240,70,60,0.26)',
+        );
+        this.ring(u.x, u.y, shadow * 1.05, ALLY ? '#4fb8f2' : '#f0463c', 0.08);
+    }
     ring(x, y, r, color2, width = 0.045, start = 0, end = Math.PI * 2) {
         const C = this.ctx,
             P = this.project(x, y);
@@ -601,6 +633,7 @@ const DIORAMA = class Diorama {
             clearColor: [0.9, 0.92, 0.87, 1],
         });
         this.terrain(sim2, now);
+        const SIDES = sim2.insideTower || sim2.scene !== 'farm';
         for (const U of sim2.units) {
             const A = clamp(0.22 / (1 + U.z * 0.3), 0.045, 0.22),
                 SHADOW = (U.size * 0.66) / (1 + U.z * 0.65);
@@ -609,11 +642,17 @@ const DIORAMA = class Diorama {
             if (U.tier > 1 && !U.isFormationClone) {
                 this.ring(U.x, U.y, SHADOW * 1.12, GRADE_RING_COLORS[U.tier - 1], GRADE_RING_WIDTHS[U.tier - 1]);
             }
+            if (SIDES) {
+                this.drawSideMarker(U, SHADOW);
+            }
         }
         this.drawDanger(sim2);
         const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2);
         if (BOSS_VISIBLE) {
             this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, '#38472c33');
+            if (SIDES) {
+                this.ring(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, '#f0463c', 0.12);
+            }
         }
         const HIDDEN_MERGE_RESULT_IDS = PRESENTATION.hiddenUnitIds?.(sim2) || EMPTY_UNIT_IDS,
             ACTORS = this.actors;

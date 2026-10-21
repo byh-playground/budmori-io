@@ -12361,7 +12361,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.29.4";
+      PRODUCT_VERSION = "0.29.5";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -16002,6 +16002,33 @@
       C.stroke();
       C.globalAlpha = ALPHA;
     }
+    // In a fight every body stands on a side ring: ally blue, enemy red. A fallen one turns grey with a cross.
+    drawSideMarker(u, shadow) {
+      if (u.hp <= 0 || u.down > 0) {
+        this.groundEllipse(u.x, u.y, shadow * 1.05, shadow * 0.7, "rgba(30,30,36,0.35)");
+        this.ring(u.x, u.y, shadow * 1.05, "rgba(120,124,134,0.9)", 0.05);
+        const C = this.ctx, ARM = shadow * 0.8, A = this.project(u.x - ARM, u.y - ARM * 0.6, 0), B = this.project(u.x + ARM, u.y + ARM * 0.6, 0), D = this.project(u.x - ARM, u.y + ARM * 0.6, 0), E = this.project(u.x + ARM, u.y - ARM * 0.6, 0);
+        C.beginPath();
+        C.moveTo(A.x, A.y);
+        C.lineTo(B.x, B.y);
+        C.moveTo(D.x, D.y);
+        C.lineTo(E.x, E.y);
+        C.strokeStyle = "rgba(232,90,80,0.95)";
+        C.lineWidth = Math.max(2 * this.pixelRatio, this.scale * 0.12);
+        C.lineCap = "round";
+        C.stroke();
+        return;
+      }
+      const ALLY = u.faction === "player";
+      this.groundEllipse(
+        u.x,
+        u.y,
+        shadow * 1.05,
+        shadow * 0.7,
+        ALLY ? "rgba(70,170,240,0.22)" : "rgba(240,70,60,0.26)"
+      );
+      this.ring(u.x, u.y, shadow * 1.05, ALLY ? "#4fb8f2" : "#f0463c", 0.08);
+    }
     ring(x, y, r, color2, width = 0.045, start2 = 0, end = Math.PI * 2) {
       const C = this.ctx, P = this.project(x, y);
       C.strokeStyle = color2;
@@ -16188,17 +16215,24 @@
         clearColor: [0.9, 0.92, 0.87, 1]
       });
       this.terrain(sim2, now);
+      const SIDES = sim2.insideTower || sim2.scene !== "farm";
       for (const U of sim2.units) {
         const A = CLAMP2(0.22 / (1 + U.z * 0.3), 0.045, 0.22), SHADOW = U.size * 0.66 / (1 + U.z * 0.65);
         this.groundEllipse(U.x, U.y, SHADOW, SHADOW * 0.62, `rgba(42,61,35,${A})`);
         if (U.tier > 1 && !U.isFormationClone) {
           this.ring(U.x, U.y, SHADOW * 1.12, GRADE_RING_COLORS[U.tier - 1], GRADE_RING_WIDTHS[U.tier - 1]);
         }
+        if (SIDES) {
+          this.drawSideMarker(U, SHADOW);
+        }
       }
       this.drawDanger(sim2);
       const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2);
       if (BOSS_VISIBLE) {
         this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, "#38472c33");
+        if (SIDES) {
+          this.ring(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, "#f0463c", 0.12);
+        }
       }
       const HIDDEN_MERGE_RESULT_IDS = PRESENTATION.hiddenUnitIds?.(sim2) || EMPTY_UNIT_IDS, ACTORS = this.actors;
       ACTORS.length = 0;
@@ -19789,8 +19823,6 @@
     const ID = tower.offer, DEFINITION13 = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === ID), LEVEL = tower.relics.get(ID) || 0, VALUE = Math.round(formationUpgradeValue(DEFINITION13, LEVEL + 1) * 10) / 10, GAIN = LEVEL ? `Lv.${LEVEL} → ${LEVEL + 1}` : "새 유물";
     return `<button type="button" class="door door--relic" data-door="${index}"><b>${RELIC_ICONS[ID]} ${DEFINITION13.name}</b><small>${GAIN} · ${DEFINITION13.description || ""}${LEVEL ? ` (→ ${VALUE}${DEFINITION13.upgradeUnit})` : ""}</small></button>`;
   }
-  var railKey = "";
-  var railTimer = 0;
   var bannerKey = "";
   var bannerTimer = 0;
   var doorKey = "";
@@ -19808,28 +19840,9 @@
       TINT.style.setProperty("--floor", String(T.floor));
     }
     const SLEEPERS = T.sleepUntil.size;
+    syncFlag("floorChip", "hidden", !CLIMBING);
     if (CLIMBING) {
-      const KEY2 = `${T.floor}|${T.kind}|${BEST}`;
-      if (KEY2 !== railKey) {
-        const STEPPED = railKey !== "" && railKey.split("|")[0] !== String(T.floor);
-        railKey = KEY2;
-        const FLOORS = [];
-        for (let f = T.floor + 2; f >= Math.max(1, T.floor - 1); f--) {
-          FLOORS.push(f);
-        }
-        const RAIL = DOLLAR2("towerRail");
-        RAIL.innerHTML = FLOORS.map((f) => {
-          const MID = f % CONFIG.farm.tower.midBossEvery === 0, NOTE = f === T.floor ? FLOOR_KIND[T.kind] : MID ? "♛ 중간" : f === BEST ? "★ 최고" : "";
-          return `<li class="tower__floor${f === T.floor ? " is-now" : ""}${MID ? " is-mid" : ""}${f < T.floor ? " is-gone" : ""}">${f}<small>${NOTE}</small></li>`;
-        }).join("");
-        if (STEPPED) {
-          RAIL.classList.add("is-climbing");
-          clearTimeout(railTimer);
-          railTimer = setTimeout(() => RAIL.classList.remove("is-climbing"), 750);
-        }
-      }
-    } else {
-      railKey = "";
+      syncText("floorNow", `${T.floor}층 · ${FLOOR_KIND[T.kind]}`);
     }
     const NEXT_BANNER = !CLIMBING ? "" : (T.kind === "rest" || T.kind === "relic") && T.doors.length ? `r${T.floor}` : event?.phase === "dropping" ? `e${event.encounterId}` : "";
     if (NEXT_BANNER && NEXT_BANNER !== bannerKey) {
