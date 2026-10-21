@@ -1,5 +1,6 @@
 // Idle progress: when the player was away, the farm is settled with a formula instead of replaying the simulation.
-// Workers keep making food and breeders keep breeding as long as food lasts.
+// Same rules as while playing, at a fraction of the pace: workers make food, each adult pair breeds once per round for
+// two food, and only the parents that were adults when you left breed.
 
 export function applyOffline(world, config, rawSeconds) {
     const OFFLINE = config.farm.offline,
@@ -29,15 +30,14 @@ export function applyOffline(world, config, rawSeconds) {
         if (UNIT.down > 0) {
             UNIT.down = Math.min(UNIT.down, 0.05);
         }
-        if (!UNIT.mature && pool >= BREEDING.matureMeals) {
-            pool -= BREEDING.matureMeals;
+        if (!UNIT.mature) {
             UNIT.growthElapsed = UNIT.growthDuration;
         }
     }
     // Breeding rounds: every pair of resting adults of a species makes a child per round while food and room last.
-    const COST = 2 + BREEDING.matureMeals,
+    const COST = 2,
         ROUND_SECONDS = BREEDING.cooldownSeconds + BREEDING.growthSeconds,
-        ROUNDS = Math.floor(AWAY / ROUND_SECONDS),
+        ROUNDS = Math.floor(SECONDS / ROUND_SECONDS),
         CAPACITY = world.capacity,
         SPECIES_COUNT = config.unit.speciesCount,
         ADULTS = new Array(SPECIES_COUNT).fill(0);
@@ -61,7 +61,6 @@ export function applyOffline(world, config, rawSeconds) {
                 }
                 CHILD.growthElapsed = CHILD.growthDuration;
                 pool -= COST;
-                ADULTS[species]++;
                 SUMMARY.births++;
                 progressed = true;
             }

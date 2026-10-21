@@ -32,13 +32,10 @@ export class BreedFarmMode extends FarmMode {
         world.steer(u, target.x, target.y, dt, scaleMoveSpeed(3.6, u));
     }
     resolveContacts(world, units) {
-        world.resolveFarmContactPairs(units, true);
-        if (!world.hasEligibleSameTierBreedPair()) {
-            world.resolveFarmContactPairs(units, false);
-        }
+        world.resolveFarmContactPairs(units);
         world.resolveMergeTaskAfterMovement();
     }
-    pair(world, a, b, priorityResolved) {
+    pair(world, a, b) {
         if (
             !a ||
             !b ||
@@ -69,7 +66,6 @@ export class BreedFarmMode extends FarmMode {
             world.ownedPopulation >= world.capacity ||
             (a.mateId && a.mateId !== b.id) ||
             (b.mateId && b.mateId !== a.id) ||
-            (!priorityResolved && a.tier !== b.tier && world.hasEligibleSameTierBreedPair()) ||
             !world.reserveActiveBreedPair(a, b)
         ) {
             return false;

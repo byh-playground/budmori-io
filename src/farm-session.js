@@ -564,7 +564,7 @@ class FarmSession {
             case 'deploy':
                 return W.scene === 'farm' && W.deployUnit(c.species, c.x, c.y);
             case 'tower-start':
-                return W.scene === 'farm' && W.startTower();
+                return W.scene === 'farm' && W.startTower(c.floor);
             case 'tower-door':
                 return W.scene === 'farm' && W.chooseDoor(c.index);
             case 'tower-leave':
