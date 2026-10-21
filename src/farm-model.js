@@ -2285,7 +2285,7 @@ const GARDEN = class Garden {
         this.boss = this.createBoss(SPECIES);
         this.configureBossStage(T.floor, SPECIES);
         const KIND = CONFIG.farm.tower[kind];
-        this.boss.maxHp = this.boss.hp = this.boss.hp * KIND.hp;
+        this.boss.maxHp = this.boss.hp = Math.round(this.boss.hp * KIND.hp);
         this.boss.attackPower *= KIND.attack;
         Object.assign(this.boss, { x: 0, y: 0, z: CONFIG.battle.dropHeight, active: true });
         this.farmBossEvent = {

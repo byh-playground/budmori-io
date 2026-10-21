@@ -1954,7 +1954,7 @@ function sync(display, now, notices) {
             : ENCOUNTER_NAME) + FIRST_MEETING,
     );
     syncAttribute('bossHealth', 'aria-label', `${ENCOUNTER_NAME} 체력`);
-    syncText('bossHealthText', Math.ceil(BOSS.hp) + '/' + BOSS.maxHp);
+    syncText('bossHealthText', Math.ceil(BOSS.hp) + '/' + Math.round(BOSS.maxHp));
     syncText(
         'bossHealthNote',
         FARM_EVENT_ACTIVE && FARM_EVENT.phase === 'dropping'

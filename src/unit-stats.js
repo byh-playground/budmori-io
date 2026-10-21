@@ -50,7 +50,7 @@ function createBaseStats(tier, speciesProfile) {
         attackPower *= TIER_ATTACK_SCALE * TRANSITION_MULTIPLIER;
     }
     return Object.freeze({
-        maxHp,
+        maxHp: Math.round(maxHp),
         attackPower,
         ...COMMON_UNIT_STAT_DEFAULTS,
         ...speciesProfile,
