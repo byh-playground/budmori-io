@@ -150,7 +150,7 @@ export class BossPresentation {
             PLAYER.setExpression(SAFE_EXPRESSION);
         }
         PRESENTATION.seek(PLAYER, this.renderer.displayTimeMs);
-        const S_LOCAL = this.renderer.scale * bossVectorScale(B.radius),
+        const S_LOCAL = this.renderer.scale * bossVectorScale(),
             GROUND = RECORD.anchors.ground,
             MATRIX = [S_LOCAL, 0, 0, S_LOCAL, P.x - GROUND.x * S_LOCAL, P.y - GROUND.y * S_LOCAL];
         const DEFEAT_BOUNCE =

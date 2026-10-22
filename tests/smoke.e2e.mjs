@@ -486,6 +486,10 @@ await check(
             }
             W.randomBossSpecies = () => 3;
             W.playerProgression.towerBest = 50;
+            // Earlier fights in this run already fed mastery; start from empty xp so a level-up cannot wrap the count.
+            for (const ABILITY of Object.values(W.playerProgression.abilities)) {
+                ABILITY.masteryXp = 0;
+            }
             const BEFORE = JSON.parse(SNAP());
             W.startTower(1);
             const TICK = () => {
@@ -649,20 +653,17 @@ await check('a full farm keeps queued rewards and the panel names their species'
     expect(GOT.CHIPS.join() === '3,5', `queue chips ${JSON.stringify(GOT)}`);
 });
 
-await check('every display rule reads one drawn body: a unit and each boss species', async () => {
-    const GOT = await WORLD(() => {
-        const W = BUDMORI.sim,
-            BOSSES = Array.from({ length: 9 }, (_, species) => {
-                const BOSS = W.createBoss(species);
-                return { species, drawn: BOSS.drawnHeight, radius: BOSS.drawnRadius, hit: BOSS.height };
-            }),
-            UNIT = W.units.find((unit) => !unit.isBattleOnlySummon);
-        return { BOSSES, same: UNIT.drawnHeight === UNIT.height && UNIT.drawnRadius === UNIT.radius };
-    });
-    expect(GOT.same, 'a unit draws its hit volume');
-    for (const BOSS of GOT.BOSSES) {
-        expect(BOSS.drawn > BOSS.hit * 1.5 && BOSS.radius > 0, `species ${BOSS.species}: ${JSON.stringify(BOSS)}`);
+await check('a boss hit volume is its drawn body: it differs per species and is never the old fixed box', async () => {
+    const GOT = await WORLD(() =>
+        Array.from({ length: 9 }, (_, species) => {
+            const BOSS = BUDMORI.sim.createBoss(species);
+            return { species, radius: BOSS.radius, height: BOSS.height };
+        }),
+    );
+    for (const BOSS of GOT) {
+        expect(BOSS.height > 8 && BOSS.radius > 2, `species ${BOSS.species}: ${JSON.stringify(BOSS)}`);
     }
+    expect(new Set(GOT.map((boss) => boss.height)).size > 4, `heights ${JSON.stringify(GOT)}`);
 });
 
 await check('no page errors', async () => {

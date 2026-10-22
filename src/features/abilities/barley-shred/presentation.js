@@ -49,15 +49,15 @@ export class BarleyArmorShredPresentation {
         }
     }
     // A cracked shield and "-N" over the head of whatever is shredded, placed and sized from its drawn body
-    // (`drawnHeight`, `drawnRadius`), the same numbers every skill effect uses.
+    // (`height`, `radius`), the same numbers every skill effect uses.
     drawStatus(renderer, target) {
         const AMOUNT = target.barleyArmorShredTotal || 0;
         if (target.hp <= 0 || AMOUNT <= 0) {
             return;
         }
         const PIXEL = renderer.pixelRatio,
-            HEAD = renderer.project(target.x, target.y, (target.z || 0) + target.drawnHeight),
-            BODY_WIDTH = 2 * target.drawnRadius * renderer.scale,
+            HEAD = renderer.project(target.x, target.y, (target.z || 0) + target.height),
+            BODY_WIDTH = 2 * target.radius * renderer.scale,
             HEIGHT = Math.max(
                 STATUS.minHeight * PIXEL,
                 Math.min(STATUS.maxHeight * PIXEL, BODY_WIDTH * STATUS.bodyShare),
