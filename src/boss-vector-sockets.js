@@ -1,7 +1,9 @@
 import { BOSS_PATTERN_CONFIG } from './boss-patterns.js';
-import { readVectorSockets, socketWorldPoint, WORLD_DEPTH_PROJECTION } from './vector-sockets.cjs';
+import { bossVectorScale, readVectorSockets, socketWorldPoint, WORLD_DEPTH_PROJECTION } from './vector-sockets.cjs';
 const CLAMP = (x, a, b) => Math.max(a, Math.min(b, x));
 const BOSS_ASSETS = new Map();
+// A resting hand points at the camera; every hand pose says which way the knuckles face (0 = right, down = +90 degrees).
+export const HAND_REST_FACE = Math.PI / 2;
 // Runtime-only assets/players are never attached to a Garden or save snapshot.
 export function bindBossSocketAsset(species, record) {
     const LABEL = `species ${species}, ${record.compiled.sourcePath || record.compiled.metadata.id}`;
@@ -22,6 +24,28 @@ export function unbindBossSocketAsset(species, record) {
     ENTRY.player?.dispose();
     BOSS_ASSETS.delete(species);
 }
+// The floating hands of a boss asset, in world units: how big they are and where each rests, measured from the middle of
+// the body (the point the sweep turns round).
+export function bossHandRig(compiled) {
+    const SOCKETS = compiled.metadata.sockets,
+        SCALE = bossVectorScale(),
+        POINT = (name) => {
+            const POINT = SOCKETS[name]?.point;
+            if (!POINT) {
+                throw new Error(`Vector socket contract (${compiled.metadata.id}): the boss needs a ${name} socket`);
+            }
+            return POINT;
+        },
+        CENTRE = POINT('hand-centre'),
+        REST = (name) => {
+            const AT = POINT(name);
+            return { x: (AT[0] - CENTRE[0]) * SCALE, y: (AT[1] - CENTRE[1]) * SCALE };
+        };
+    return Object.freeze({
+        radius: (POINT('hand-edge')[0] - POINT('hand-left')[0]) * SCALE,
+        rest: Object.freeze({ 'arm-left': REST('hand-left'), 'arm-right': REST('hand-right') }),
+    });
+}
 export function bossSummonPose(b, parts = new Set()) {
     const CONFIG = BOSS_PATTERN_CONFIG['summon.mouth-t1'],
         PHASE = b.patternPhase,
@@ -37,10 +61,11 @@ export function bossSummonPose(b, parts = new Set()) {
             scaleX: 1,
             scaleY: 1,
         },
-        ARMS = {
-            'arm-left': 0,
-            'arm-right': 0,
-        };
+        HANDS = {
+            'arm-left': { x: 0, y: 0, face: HAND_REST_FACE },
+            'arm-right': { x: 0, y: 0, face: HAND_REST_FACE },
+        },
+        R = b.radius || 0;
     let releasePulse = 0;
     if (PHASE === 'windup') {
         const WIND = CLAMP(ELAPSED / CONFIG.windup, 0, 1),
@@ -48,8 +73,8 @@ export function bossSummonPose(b, parts = new Set()) {
         BODY.y = 2 * EASE;
         BODY.scaleX = 1 + 0.025 * EASE;
         BODY.scaleY = 1 - 0.035 * EASE;
-        ARMS['arm-left'] = -0.34 * EASE;
-        ARMS['arm-right'] = 0.34 * EASE;
+        Object.assign(HANDS['arm-left'], { x: -0.4 * R * EASE, y: -0.5 * R * EASE });
+        Object.assign(HANDS['arm-right'], { x: 0.4 * R * EASE, y: -0.5 * R * EASE });
     } else if (PHASE === 'active' || PHASE === 'recover') {
         const LAST = (b.patternReleased || 0) - 1,
             AGE = LAST < 0 ? 1 : PHASE === 'active' ? Math.max(0, ELAPSED - LAST * CONFIG.releaseInterval) : ELAPSED;
@@ -57,8 +82,8 @@ export function bossSummonPose(b, parts = new Set()) {
         BODY.scaleX = 1 + 0.025 * releasePulse;
         BODY.scaleY = 1 - 0.018 * releasePulse;
         BODY.rotation = AIM * 0.02;
-        ARMS['arm-left'] = -0.3;
-        ARMS['arm-right'] = 0.3;
+        Object.assign(HANDS['arm-left'], { x: -0.45 * R, y: -0.55 * R });
+        Object.assign(HANDS['arm-right'], { x: 0.45 * R, y: -0.55 * R });
     }
     const EXTRAS = {};
     for (const PART of ['foot-left', 'foot-right', 'leaf', 'kernel-mark', 'hilum']) {
@@ -72,7 +97,7 @@ export function bossSummonPose(b, parts = new Set()) {
     }
     return {
         body: BODY,
-        arms: ARMS,
+        hands: HANDS,
         extras: EXTRAS,
         impact: false,
         releasePulse,

@@ -7,9 +7,9 @@ export class MouthSummonPresentation extends BossAttackPresentation {
         super(FEATURE, 'fire');
         this.summoning = true;
     }
-    pose(boss, parts, scratch) {
+    pose(boss, parts, scratch, rig) {
         if (!parts.has('body')) {
-            return super.pose(boss, parts, scratch);
+            return super.pose(boss, parts, scratch, rig);
         }
         return bossSummonPose(boss, parts);
     }

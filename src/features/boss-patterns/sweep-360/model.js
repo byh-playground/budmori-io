@@ -1,26 +1,24 @@
 import { BossPattern } from '../model-base.js';
 import { FEATURE } from './definition.js';
 
-// Both arms start out to the sides (-90 and +90 degrees from the aim) and swing round the same way at once, half a
-// turn each: one across the front, one across the back, so between them the whole circle is swept. The area is the
-// whole disc from the body out.
+// Both hands start out at the two sides of the body (screen left and right, whatever way the boss faces) and swing
+// round the same way at once, half a turn each: the left one across the front, the right one across the back, so
+// between them the whole circle is swept. The area is the whole disc from the body out.
+export const SWEEP_HAND_STARTS = Object.freeze({ 'arm-left': Math.PI, 'arm-right': 0 });
 export class SweepBossPattern extends BossPattern {
     constructor(dependencies) {
         super(FEATURE, dependencies);
         this.physicalActive = true;
     }
-    writeArea(_boss, action, _scene, pad, area) {
+    writeArea(_boss, _action, _scene, pad, area) {
         area.kind = 'sweep';
         area.reach = this.config.reach + pad;
-        area.angle = action.startAngle ?? action.aim - Math.PI / 2;
-    }
-    activate(_world, action) {
-        action.startAngle = action.aim - Math.PI / 2;
+        area.angle = 0;
     }
     updateActive(world, action, dt) {
         const Q0 = Math.max(0, (action.phaseElapsed - dt) / this.config.active),
             Q1 = Math.min(1, action.phaseElapsed / this.config.active);
-        for (const ARM_START of [action.startAngle, action.startAngle + Math.PI]) {
+        for (const ARM_START of Object.values(SWEEP_HAND_STARTS)) {
             world.resolveBossWedge(
                 action,
                 action.id,

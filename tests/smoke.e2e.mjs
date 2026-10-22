@@ -824,7 +824,7 @@ await check(
                 W.step(1 / 30);
             }
             const UNITS = W.unitCollection.items.filter((u) => !u.isBattleOnlySummon).slice(0, 8),
-                RUN = (id, aim, startAngle) => {
+                RUN = (id, aim) => {
                     W.boss.stun = 0;
                     W.boss.hp = W.boss.maxHp ?? W.boss.hp;
                     const RING = W.boss.radius + 0.6;
@@ -850,7 +850,6 @@ await check(
                         phaseElapsed: 0,
                         hitIds: new Set(),
                         locked: true,
-                        startAngle,
                     };
                     W.boss.patternRuntime.active = ACTION;
                     for (let i = 0; i < 50 && W.boss.patternRuntime.active === ACTION; i++) {
@@ -858,8 +857,8 @@ await check(
                     }
                     return UNITS.map((u) => ACTION.hitIds.has(u.id));
                 };
-            const SWEEP = RUN('attack.sweep-360', 0, -Math.PI / 2),
-                FAN = RUN('attack.fan-sweep', 0, undefined);
+            const SWEEP = RUN('attack.sweep-360', 0),
+                FAN = RUN('attack.fan-sweep', 0);
             W.boss.patternRuntime.active = null;
             W.retreatFromFight();
             for (let i = 0; i < 60; i++) {
@@ -996,6 +995,31 @@ await check(
         expect(R.sleepersFell >= 3, `sleeping units fall too ${JSON.stringify(R)}`);
         expect(R.released > 5 && R.released < 35, `released one by one ${JSON.stringify(R)}`);
         expect(R.spreadX > 20 && R.spreadY > 14 && R.outside === 0, `scatter ${JSON.stringify(R)}`);
+    },
+);
+
+await check(
+    'the start-floor slider can be dragged: a click on it changes the floor the climb starts from',
+    async () => {
+        await WORLD(() => {
+            const W = BUDMORI.sim;
+            if (W.insideTower) {
+                W.retreatFromFight();
+            }
+            W.playerProgression.towerBest = Math.max(W.playerProgression.towerBest, 12);
+            W.markProgressChanged();
+        });
+        await PAGE.waitForFunction(() => !document.getElementById('startFloorBox').hidden, null, { timeout: 40000 });
+        const BOX = await PAGE.locator('#startFloor').boundingBox();
+        await PAGE.mouse.click(BOX.x + BOX.width * 0.2, BOX.y + BOX.height / 2);
+        const CHOSEN = await WORLD(() => ({
+            value: Number(document.getElementById('startFloor').value),
+            best: BUDMORI.sim.playerProgression.towerBest,
+        }));
+        expect(
+            CHOSEN.value >= 1 && CHOSEN.value < CHOSEN.best,
+            `the slider moved off the best floor ${JSON.stringify(CHOSEN)}`,
+        );
     },
 );
 

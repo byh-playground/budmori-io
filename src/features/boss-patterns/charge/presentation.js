@@ -12,8 +12,9 @@ export class ChargePresentation extends BossAttackPresentation {
         pose.body.scaleX = 1.055;
         pose.body.scaleY = 0.965;
         pose.body.rotation = pose.aim * 0.11;
-        pose.arm(pose.lead, -0.72 + pose.strikeAngle * 0.3 + STRIDE * 0.12);
-        pose.arm(pose.trail, 0.46 - STRIDE * 0.18);
+        // The hands swing against each other with the stride.
+        pose.hand(pose.lead, pose.side(pose.lead) * 0.35 * pose.radius, STRIDE * 0.3 * pose.radius);
+        pose.hand(pose.trail, pose.side(pose.trail) * 0.35 * pose.radius, -STRIDE * 0.3 * pose.radius);
         pose.extras['foot-left'] = { x: -STRIDE * 4, y: -LIFT * 5, rotation: -STRIDE * 0.12 };
         pose.extras['foot-right'] = { x: STRIDE * 4, y: -Math.max(0, -STRIDE) * 5, rotation: STRIDE * 0.12 };
         if (pose.parts.has('leaf')) {
