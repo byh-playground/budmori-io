@@ -9773,7 +9773,7 @@
             const NEXT = this._ejectQueue.shift(), UNIT_LOCAL = NEXT.unit, TARGET = NEXT.target;
             this._benched.delete(UNIT_LOCAL);
             this._benchRevision++;
-            if (UNIT_LOCAL.hp > 0 && this.unitCollection.has(UNIT_LOCAL)) {
+            if (this.unitCollection.has(UNIT_LOCAL)) {
               const X = GATE.x + (this.random() - 0.5) * 3, Y = GATE.y - 0.8, T = SETTINGS.flightSeconds;
               Object.assign(UNIT_LOCAL, {
                 x: X,
@@ -9782,7 +9782,8 @@
                 vx: (TARGET.x - X) / T,
                 vy: (TARGET.y - Y) / T,
                 vz: (0.5 * CONFIG.physics.gravity * T * T - SETTINGS.ejectHeight) / T,
-                dropLanded: false
+                // A sleeping unit has no drop landing of its own: it just falls.
+                dropLanded: UNIT_LOCAL.hp <= 0
               });
             }
             this._unitSpatialDirty = true;
@@ -13179,7 +13180,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.27";
+      PRODUCT_VERSION = "0.30.28";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
