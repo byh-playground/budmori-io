@@ -13193,7 +13193,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.39";
+      PRODUCT_VERSION = "0.30.40";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -19945,6 +19945,34 @@
   init_ability_catalog();
   init_boss_rewards();
   init_farm_work();
+
+  // src/breed-allocation.js
+  function apportionBreedShares(weights, total = 100) {
+    if (!weights.length) {
+      return [];
+    }
+    const SUM = weights.reduce((sum, weight) => sum + weight, 0), EXACT = weights.map((weight) => SUM > 0 ? weight / SUM * total : total / weights.length), SHARES = EXACT.map(Math.floor), ORDER = EXACT.map((value, index) => ({ index, rest: value - SHARES[index] })).sort(
+      (a, b) => b.rest - a.rest || a.index - b.index
+    );
+    const REMAINING = total - SHARES.reduce((sum, share) => sum + share, 0);
+    for (let index = 0; index < REMAINING; index++) {
+      SHARES[ORDER[index].index]++;
+    }
+    return SHARES;
+  }
+  function adjustBreedShare(weights, selectedIndex, value) {
+    if (weights.length <= 1) {
+      return weights.map(() => 100);
+    }
+    const SELECTED = Math.max(0, Math.min(100, Math.round(value))), OTHER_SHARES = apportionBreedShares(
+      weights.filter((_, index) => index !== selectedIndex),
+      100 - SELECTED
+    );
+    OTHER_SHARES.splice(selectedIndex, 0, SELECTED);
+    return OTHER_SHARES;
+  }
+
+  // src/farm-app.js
   init_species_catalog();
 
   // src/help-scenes.js
@@ -21019,10 +21047,7 @@
       e.preventDefault();
     }
   });
-  var RING_RADIUS = 80;
-  var RING_COLORS = ["#7fa77a", "#d98f5c", "#6f9fc8", "#c8a24a", "#b07aa8", "#5fb0a0", "#c46f6f", "#8f8f5a", "#7a86c4"];
-  var speciesRoleKey = "";
-  var ringShares = [];
+  var BREED_CONTROL = { selected: null, idsKey: "", world: null, sourceKey: "", basis: [] };
   function speciesCounts(world) {
     const COUNTS = /* @__PURE__ */ new Map();
     for (const UNIT3 of world.units) {
@@ -21032,131 +21057,99 @@
     }
     return COUNTS;
   }
-  function ringSharesFor(world, ids, counts) {
-    const WEIGHTS = world.breedWeights, RAW = ids.map((id) => WEIGHTS ? WEIGHTS[id] || 0 : counts.get(id)), SUM = RAW.reduce((a, b) => a + b, 0) || 1, PERCENT2 = RAW.map((value) => Math.floor(value / SUM * 100));
-    PERCENT2[PERCENT2.indexOf(Math.max(...PERCENT2))] += 100 - PERCENT2.reduce((a, b) => a + b, 0);
-    return PERCENT2;
-  }
-  function arcPath(from, to) {
-    const A = from / 100 * Math.PI * 2 - Math.PI / 2, B = Math.min(to, 99.99) / 100 * Math.PI * 2 - Math.PI / 2, POINT2 = (angle) => `${100 + Math.cos(angle) * RING_RADIUS} ${100 + Math.sin(angle) * RING_RADIUS}`;
-    return `M ${POINT2(A)} A ${RING_RADIUS} ${RING_RADIUS} 0 ${to - from > 50 ? 1 : 0} 1 ${POINT2(B)}`;
-  }
-  function paintRing(ids) {
-    const SVG = DOLLAR2("speciesRing");
-    let from = 0;
-    ids.forEach((id, index) => {
-      const SHARE = ringShares[index], ARC = SVG.querySelector(`[data-arc="${id}"]`), ICON = SVG.querySelector(`[data-icon="${id}"]`), MID = (from + SHARE / 2) / 100 * Math.PI * 2 - Math.PI / 2;
-      ARC.setAttribute("d", SHARE > 0 ? arcPath(from, from + SHARE) : "");
-      ICON.setAttribute("x", String(100 + Math.cos(MID) * RING_RADIUS - 11));
-      ICON.setAttribute("y", String(100 + Math.sin(MID) * RING_RADIUS - 11));
-      ICON.style.display = SHARE >= 8 ? "" : "none";
-      from += SHARE;
-      const KNOB = SVG.querySelector(`[data-knob="${index}"]`);
-      if (KNOB) {
-        const ANGLE = from / 100 * Math.PI * 2 - Math.PI / 2;
-        KNOB.setAttribute("cx", String(100 + Math.cos(ANGLE) * RING_RADIUS));
-        KNOB.setAttribute("cy", String(100 + Math.sin(ANGLE) * RING_RADIUS));
-      }
-    });
-  }
-  function paintRingLegend(world, ids, counts) {
-    const WORKERS = workersBySpecies(counts, world.workBasisPoints / 1e4, world.breedWeights);
-    ids.forEach((id, index) => {
-      const ROW = DOLLAR2("speciesRoles").querySelector(`[data-legend="${id}"] small`), TEXT = `${ringShares[index]}% · 번식 ${counts.get(id) - WORKERS.get(id)} · 먹이 ${WORKERS.get(id)}`;
-      if (ROW && ROW.textContent !== TEXT) {
-        ROW.textContent = TEXT;
-      }
-    });
+  function breedControlState(world) {
+    const COUNTS = speciesCounts(world), IDS = [...COUNTS.keys()].sort((x, y) => x - y), WEIGHTS = IDS.map((id) => world.breedWeights ? world.breedWeights[id] || 0 : COUNTS.get(id)), SOURCE_KEY = WEIGHTS.join(","), IDS_KEY = IDS.join(",");
+    if (BREED_CONTROL.world !== world || BREED_CONTROL.idsKey !== IDS_KEY || BREED_CONTROL.sourceKey !== SOURCE_KEY) {
+      BREED_CONTROL.world = world;
+      BREED_CONTROL.basis = WEIGHTS;
+      BREED_CONTROL.sourceKey = SOURCE_KEY;
+    }
+    if (!IDS.includes(BREED_CONTROL.selected)) {
+      BREED_CONTROL.selected = IDS[0] ?? null;
+    }
+    return { counts: COUNTS, ids: IDS, weights: WEIGHTS, shares: apportionBreedShares(WEIGHTS), idsKey: IDS_KEY };
   }
   function drawSpeciesRoles(world) {
-    const COUNTS = speciesCounts(world), IDS = [...COUNTS.keys()].sort((x, y) => x - y), KEY2 = IDS.join(",");
-    if (KEY2 !== speciesRoleKey) {
-      speciesRoleKey = KEY2;
-      if (world.breedWeights) {
-        const NEXT = ringSharesFor(world, IDS, COUNTS);
-        const MISSING = IDS.filter((id) => !(world.breedWeights[id] > 0));
-        if (MISSING.length) {
-          const WEIGHTS = new Array(world.breedWeights.length).fill(0);
-          const KEEP = IDS.filter((id) => !MISSING.includes(id)), EACH = Math.round(100 / IDS.length);
-          KEEP.forEach((id) => {
-            WEIGHTS[id] = Math.max(
-              1,
-              Math.round(world.breedWeights[id] * (100 - EACH * MISSING.length) / 100)
-            );
-          });
-          for (const ID of MISSING) {
-            WEIGHTS[ID] = EACH;
-          }
-          world.setBreedWeights(WEIGHTS);
-          saveBreedWeights(world);
-          active.queue("farm-breed-weights", { weights: WEIGHTS });
-        }
-        void NEXT;
-      }
-      DOLLAR2("speciesRing").innerHTML = '<circle class="ring__track" cx="100" cy="100" r="80"/>' + IDS.map(
-        (id, index) => `<path class="ring__arc" data-arc="${id}" stroke="${RING_COLORS[index % RING_COLORS.length]}"/>`
-      ).join("") + IDS.map(
-        (id) => `<image data-icon="${id}" href="./assets/troops/${speciesById(id).asset}" width="22" height="22" pointer-events="none"/>`
-      ).join("") + (IDS.length > 1 ? IDS.slice(0, -1).map((_, index) => `<circle class="ring__knob" data-knob="${index}" r="8"/>`).join("") : "");
-      DOLLAR2("speciesRoles").innerHTML = IDS.map(
-        (id, index) => `<div class="ring-legend" data-legend="${id}"><i style="background:${RING_COLORS[index % RING_COLORS.length]}"></i><b>${speciesById(id).name}</b><small></small></div>`
-      ).join("");
+    const STATE = breedControlState(world), HOST = DOLLAR2("speciesRoles");
+    if (BREED_CONTROL.idsKey !== STATE.idsKey) {
+      BREED_CONTROL.idsKey = STATE.idsKey;
+      HOST.innerHTML = STATE.ids.map((id) => {
+        const SPECIES = speciesById(id);
+        return `<button type="button" class="breed-chip" data-breed-species="${id}" aria-pressed="false"><img src="./assets/troops/${SPECIES.asset}" alt="" width="36" height="36"><span>${SPECIES.name}</span><b data-breed-percent></b></button>`;
+      }).join("");
     }
-    if (!ringDrag) {
-      ringShares = ringSharesFor(world, IDS, COUNTS);
-    }
-    paintRing(IDS);
-    paintRingLegend(world, IDS, COUNTS);
-    DOLLAR2("speciesRingAuto").hidden = !world.breedWeights;
-  }
-  function applyRing(world) {
-    const COUNTS = speciesCounts(world), IDS = [...COUNTS.keys()].sort((x, y) => x - y), WEIGHTS = new Array(Math.max(...IDS) + 1).fill(0);
-    IDS.forEach((id, index) => {
-      WEIGHTS[id] = ringShares[index];
+    STATE.ids.forEach((id, index) => {
+      const CHIP = HOST.querySelector(`[data-breed-species="${id}"]`), SELECTED = id === BREED_CONTROL.selected;
+      CHIP.setAttribute("aria-pressed", String(SELECTED));
+      CHIP.querySelector("[data-breed-percent]").textContent = `${STATE.shares[index]}%`;
     });
-    world.setBreedWeights(WEIGHTS);
+    const INDEX = STATE.ids.indexOf(BREED_CONTROL.selected), SHARE = STATE.shares[INDEX] ?? 0, RANGE = DOLLAR2("speciesBreedShare"), DISABLED = STATE.ids.length < 2;
+    DOLLAR2("speciesBreedLabel").textContent = INDEX < 0 ? "병종이 없어요" : `${speciesById(BREED_CONTROL.selected).name} 번식 몫`;
+    DOLLAR2("speciesBreedValue").textContent = `${SHARE}%`;
+    RANGE.value = String(SHARE);
+    RANGE.disabled = DISABLED;
+    RANGE.setAttribute("aria-valuetext", `${SHARE}%`);
+    paintRange(RANGE);
+    DOLLAR2("speciesBreedLess").disabled = DISABLED || SHARE === 0;
+    DOLLAR2("speciesBreedMore").disabled = DISABLED || SHARE === 100;
+    DOLLAR2("speciesBreedEqual").disabled = STATE.ids.length === 0;
+    const WORKERS = workersBySpecies(STATE.counts, world.workBasisPoints / 1e4, world.breedWeights);
+    DOLLAR2("speciesBreedPlan").textContent = INDEX < 0 ? "" : `배분 계획 · 번식 ${STATE.counts.get(BREED_CONTROL.selected) - WORKERS.get(BREED_CONTROL.selected)} · 먹이 ${WORKERS.get(BREED_CONTROL.selected)}`;
+  }
+  function applyBreedShares(world, ids, shares) {
+    const WEIGHTS = new Array(Math.max(...ids) + 1).fill(0);
+    ids.forEach((id, index) => {
+      WEIGHTS[id] = shares[index];
+    });
+    if (!world.setBreedWeights(WEIGHTS)) {
+      return;
+    }
+    BREED_CONTROL.sourceKey = shares.join(",");
     saveBreedWeights(world);
     active.queue("farm-breed-weights", { weights: WEIGHTS });
-    paintRing(IDS);
-    paintRingLegend(world, IDS, COUNTS);
-    DOLLAR2("speciesRingAuto").hidden = false;
+    drawSpeciesRoles(world);
   }
-  var ringDrag = null;
-  DOLLAR2("speciesRing").addEventListener("pointerdown", (event) => {
-    const KNOB = event.target.closest("[data-knob]");
-    if (!KNOB || event.button !== 0) {
+  function changeBreedShare(value) {
+    const WORLD = personalGarden || active?.world;
+    if (!WORLD) {
       return;
     }
-    ringDrag = { index: Number(KNOB.dataset.knob), id: event.pointerId };
-    KNOB.setPointerCapture?.(event.pointerId);
-    event.preventDefault();
-  });
-  DOLLAR2("speciesRing").addEventListener("pointermove", (event) => {
-    if (!ringDrag || event.pointerId !== ringDrag.id) {
+    const STATE = breedControlState(WORLD), INDEX = STATE.ids.indexOf(BREED_CONTROL.selected);
+    if (STATE.ids.length < 2 || Number(value) === STATE.shares[INDEX]) {
       return;
     }
-    const BOX = DOLLAR2("speciesRing").getBoundingClientRect(), ANGLE = Math.atan2(event.clientY - (BOX.top + BOX.height / 2), event.clientX - (BOX.left + BOX.width / 2)), POSITION = (ANGLE + Math.PI / 2 + Math.PI * 2) % (Math.PI * 2) / (Math.PI * 2) * 100, INDEX = ringDrag.index, BEFORE = ringShares.slice(0, INDEX).reduce((a, b) => a + b, 0), PAIR = ringShares[INDEX] + ringShares[INDEX + 1], WANT = Math.max(0, Math.min(PAIR, Math.round(POSITION - BEFORE)));
-    if (Math.abs(POSITION - (BEFORE + ringShares[INDEX])) > 50) {
-      return;
-    }
-    if (WANT !== ringShares[INDEX]) {
-      ringShares[INDEX] = WANT;
-      ringShares[INDEX + 1] = PAIR - WANT;
-      applyRing(personalGarden || active.world);
-    }
-    event.preventDefault();
-  });
-  for (const EVENT of ["pointerup", "pointercancel"]) {
-    DOLLAR2("speciesRing").addEventListener(EVENT, () => {
-      ringDrag = null;
-    });
+    applyBreedShares(WORLD, STATE.ids, adjustBreedShare(BREED_CONTROL.basis, INDEX, Number(value)));
   }
-  DOLLAR2("speciesRingAuto").addEventListener("click", () => {
-    const WORLD = personalGarden || active.world;
-    WORLD.setBreedWeights(null);
-    saveBreedWeights(WORLD);
-    active.queue("farm-breed-weights", { weights: null });
+  DOLLAR2("speciesRoles").addEventListener("click", (event) => {
+    const CHIP = event.target.closest("[data-breed-species]"), WORLD = personalGarden || active?.world;
+    if (!CHIP || !WORLD || Number(CHIP.dataset.breedSpecies) === BREED_CONTROL.selected) {
+      return;
+    }
+    const STATE = breedControlState(WORLD);
+    BREED_CONTROL.selected = Number(CHIP.dataset.breedSpecies);
+    BREED_CONTROL.basis = STATE.weights;
     drawSpeciesRoles(WORLD);
+  });
+  DOLLAR2("speciesBreedShare").addEventListener("input", (event) => changeBreedShare(event.target.value));
+  DOLLAR2("speciesBreedLess").addEventListener(
+    "click",
+    () => changeBreedShare(Number(DOLLAR2("speciesBreedShare").value) - 1)
+  );
+  DOLLAR2("speciesBreedMore").addEventListener(
+    "click",
+    () => changeBreedShare(Number(DOLLAR2("speciesBreedShare").value) + 1)
+  );
+  DOLLAR2("speciesBreedEqual").addEventListener("click", () => {
+    const WORLD = personalGarden || active?.world;
+    if (!WORLD) {
+      return;
+    }
+    const STATE = breedControlState(WORLD);
+    if (!STATE.ids.length) {
+      return;
+    }
+    BREED_CONTROL.basis = STATE.ids.map(() => 1);
+    applyBreedShares(WORLD, STATE.ids, apportionBreedShares(BREED_CONTROL.basis));
   });
   function drawRewardQueue(world) {
     const QUEUE = bossRewardQueueBySpecies(world), BOX = DOLLAR2("farmQueue"), HTML = QUEUE.map(
