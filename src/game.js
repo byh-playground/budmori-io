@@ -7997,6 +7997,10 @@
           this.stun = Math.max(this.stun, resolveStatusDuration(0.5, source, this));
           this.flash = 0.18;
         }
+        // How fast a free (knocked or falling) body loses speed, per second.
+        dragRate() {
+          return this.z > 0.04 ? 0.8 : 5;
+        }
         integrate(dt) {
           this.x += this.vx * dt;
           this.y += this.vy * dt;
@@ -8013,7 +8017,7 @@
               }
             }
           }
-          const DRAG = Math.exp(-(this.z > 0.04 ? 0.8 : 5) * dt);
+          const DRAG = Math.exp(-this.dragRate() * dt);
           this.vx *= DRAG;
           this.vy *= DRAG;
           this.stun = Math.max(0, this.stun - dt);
@@ -8281,6 +8285,10 @@
           if (SOURCE && areOpposingFactions(SOURCE, this) && hasFaction(SOURCE, FACTION_CONFIG.ENEMY)) {
             this.peaRecoveryPending = true;
           }
+        }
+        // A unit that is walking to a place keeps the speed it was told to walk at: drag is for bodies that are thrown.
+        dragRate() {
+          return this.moveControlActive && this.stun <= 0 && this.down <= 0 && this.z <= 0.04 ? 0 : super.dragRate();
         }
         integrate(dt) {
           if (this.moveControlActive && this.stun <= 0 && this.down <= 0) {
@@ -13129,7 +13137,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.36";
+      PRODUCT_VERSION = "0.30.38";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
