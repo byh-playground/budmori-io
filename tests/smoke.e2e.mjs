@@ -319,6 +319,15 @@ await check('challenge button starts a boss fight and retreat ends it', async ()
     await PAGE.waitForTimeout(6000);
     const AFTER = await WORLD(() => BUDMORI.sim.farmBossEvent.phase);
     expect(AFTER === 'idle', `fight did not end (${AFTER})`);
+    // The troops drop out one after another and bounce on landing: wait until every one is on the ground.
+    await PAGE.waitForFunction(
+        () => {
+            const W = BUDMORI.sim;
+            return !W._ejectQueue.length && W.units.every((u) => u.isBattleOnlySummon || (u.dropLanded && u.z === 0));
+        },
+        null,
+        { timeout: 8000 },
+    ).catch(() => {});
     const OUT = await WORLD(() => {
         const W = BUDMORI.sim,
             LIVING = W.units.filter((u) => !u.isBattleOnlySummon);
