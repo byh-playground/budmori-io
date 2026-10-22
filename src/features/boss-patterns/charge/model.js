@@ -43,6 +43,19 @@ export class ChargeBossPattern extends BossPattern {
         action.traveled = 0;
         return;
     }
+    // The units in the lane the boss runs along, as wide as its body.
+    expectedHits(world, targets) {
+        const TARGET = this.selectedTarget(world, targets),
+            BOSS = world.boss,
+            AIM = Math.atan2(TARGET.y - BOSS.y, TARGET.x - BOSS.x),
+            DX = Math.cos(AIM),
+            DY = Math.sin(AIM);
+        return world.bossGroundUnitsNear(BOSS.x, BOSS.y, this.config.reach).filter((unit) => {
+            const AHEAD = (unit.x - BOSS.x) * DX + (unit.y - BOSS.y) * DY,
+                SIDE = Math.abs((unit.x - BOSS.x) * DY - (unit.y - BOSS.y) * DX);
+            return AHEAD >= 0 && SIDE <= BOSS.radius + unit.radius;
+        }).length;
+    }
     updateActive(world, action, dt) {
         const { ARENA_GEOMETRY } = this.dependencies;
         const DIRECTION = {

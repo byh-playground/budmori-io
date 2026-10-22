@@ -5881,6 +5881,10 @@
           const TARGET = this.selectedTarget(world, targets);
           return !!TARGET && Math.hypot(TARGET.x - world.boss.x, TARGET.y - world.boss.y) <= this.config.reach + TARGET.radius + 1e-9;
         }
+        // How many units this attack would hit right now; null for an attack that does no damage.
+        expectedHits(_world, _targets) {
+          return null;
+        }
         selected(_world) {
         }
         activate(_world, _action) {
@@ -5898,6 +5902,9 @@
   });
 
   // src/boss-patterns.js
+  function bossAttackTotal(multiplier, hits) {
+    return multiplier * (BOSS_HIT_SPLIT.everyone * hits + (1 - BOSS_HIT_SPLIT.everyone));
+  }
   function createBossPatternRuntime() {
     return {
       weights: Object.fromEntries(BOSS_PATTERN_IDS.map((id) => [id, BOSS_PATTERN_WEIGHT_DEFAULTS.base])),
@@ -5914,20 +5921,24 @@
     if (!ELIGIBLE.length) {
       return null;
     }
-    const TOTAL = ELIGIBLE.reduce((sum, id) => sum + Math.max(0, runtime.weights[id] || 0), 0);
+    const AREA = ELIGIBLE.filter((id) => id !== BOSS_BASIC_ID);
+    if (ELIGIBLE.includes(BOSS_BASIC_ID) && (!AREA.length || random() < BOSS_BASIC_SHARE)) {
+      return BOSS_BASIC_ID;
+    }
+    const TOTAL = AREA.reduce((sum, id) => sum + Math.max(0, runtime.weights[id] || 0), 0);
     if (!(TOTAL > 0)) {
       return null;
     }
     let roll = random() * TOTAL;
-    let chosen = ELIGIBLE.at(-1);
-    for (const ID of ELIGIBLE) {
+    let chosen = AREA.at(-1);
+    for (const ID of AREA) {
       roll -= Math.max(0, runtime.weights[ID] || 0);
       if (roll < 0) {
         chosen = ID;
         break;
       }
     }
-    for (const ID of ELIGIBLE) {
+    for (const ID of AREA) {
       runtime.weights[ID] = ID === chosen ? BOSS_PATTERN_WEIGHT_DEFAULTS.base : Math.min(
         BOSS_PATTERN_WEIGHT_DEFAULTS.cap,
         Math.max(0, runtime.weights[ID] || 0) + BOSS_PATTERN_WEIGHT_DEFAULTS.eligibleBonus
@@ -5935,7 +5946,7 @@
     }
     return chosen;
   }
-  var BOSS_PATTERN_IDS, BOSS_HIT_SPLIT, BOSS_PATTERN_CONFIG, BOSS_PATTERN_WEIGHT_DEFAULTS, BOSS_ENRAGE, BOSS_PHASE_THRESHOLDS, BOSS_AIM_TURN_RATE;
+  var BOSS_PATTERN_IDS, BOSS_HIT_SPLIT, BOSS_BASIC_ID, BOSS_PATTERN_CONFIG, BOSS_BASIC_SHARE, BOSS_PATTERN_WEIGHT_DEFAULTS, BOSS_ENRAGE, BOSS_PHASE_THRESHOLDS, BOSS_AIM_TURN_RATE;
   var init_boss_patterns = __esm({
     "src/boss-patterns.js"() {
       BOSS_PATTERN_IDS = Object.freeze([
@@ -5947,6 +5958,7 @@
         "summon.mouth-t1"
       ]);
       BOSS_HIT_SPLIT = Object.freeze({ everyone: 0.35 });
+      BOSS_BASIC_ID = "attack.front-slam";
       BOSS_PATTERN_CONFIG = Object.freeze({
         "attack.sweep-360": Object.freeze({
           kind: "sweep-360",
@@ -5969,8 +5981,8 @@
           recover: 0.75,
           cooldown: 5,
           reach: 5.5,
-          sector: Math.PI / 2,
-          damageMultiplier: 2.5,
+          sector: Math.PI / 3,
+          damageMultiplier: 4,
           knockback: 13,
           lift: 10.2,
           groundOnly: true
@@ -6033,6 +6045,7 @@
           landingRadius: 4.8
         })
       });
+      BOSS_BASIC_SHARE = 0.5;
       BOSS_PATTERN_WEIGHT_DEFAULTS = Object.freeze({
         base: 1,
         eligibleBonus: 0.5,
@@ -6073,6 +6086,9 @@
           area.kind = "sweep";
           area.reach = this.config.reach + pad;
           area.angle = 0;
+        }
+        expectedHits(world, _targets) {
+          return world.bossGroundUnitsNear(world.boss.x, world.boss.y, this.config.reach).length;
         }
         updateActive(world, action, dt) {
           const Q0 = Math.max(0, (action.phaseElapsed - dt) / this.config.active), Q1 = Math.min(1, action.phaseElapsed / this.config.active);
@@ -6126,7 +6142,8 @@
             action.id,
             this.config.reach,
             action.aim - this.config.sector / 2,
-            action.aim + this.config.sector / 2
+            action.aim + this.config.sector / 2,
+            1
           );
           world.enterBossPatternRecovery(action);
           return;
@@ -6181,6 +6198,14 @@
           };
           action.traveled = 0;
           return;
+        }
+        // The units in the lane the boss runs along, as wide as its body.
+        expectedHits(world, targets) {
+          const TARGET = this.selectedTarget(world, targets), BOSS2 = world.boss, AIM = Math.atan2(TARGET.y - BOSS2.y, TARGET.x - BOSS2.x), DX = Math.cos(AIM), DY = Math.sin(AIM);
+          return world.bossGroundUnitsNear(BOSS2.x, BOSS2.y, this.config.reach).filter((unit2) => {
+            const AHEAD = (unit2.x - BOSS2.x) * DX + (unit2.y - BOSS2.y) * DY, SIDE = Math.abs((unit2.x - BOSS2.x) * DY - (unit2.y - BOSS2.y) * DX);
+            return AHEAD >= 0 && SIDE <= BOSS2.radius + unit2.radius;
+          }).length;
         }
         updateActive(world, action, dt) {
           const { ARENA_GEOMETRY: ARENA_GEOMETRY2 } = this.dependencies;
@@ -6302,6 +6327,10 @@
           );
           return;
         }
+        expectedHits(world, targets) {
+          const TARGET = this.selectedTarget(world, targets);
+          return world.bossGroundUnitsNear(TARGET.x, TARGET.y, this.config.landingRadius).length;
+        }
         updateActive(world, action, _dt) {
           const { CONFIG: CONFIG2, BALLISTICS: BALLISTICS2 } = this.dependencies;
           const OLD = {
@@ -6393,6 +6422,10 @@
           area.kind = "sector";
           area.reach = this.config.reach + pad;
           area.sector = this.config.sector;
+        }
+        expectedHits(world, targets) {
+          const TARGET = this.selectedTarget(world, targets), AIM = Math.atan2(TARGET.y - world.boss.y, TARGET.x - world.boss.x);
+          return world.bossGroundUnitsNear(world.boss.x, world.boss.y, this.config.reach).filter((unit2) => world.bossWedgeContains(unit2, this.config.reach, AIM, this.config.sector / 2)).length;
         }
         updateActive(world, action, dt) {
           const Q0 = Math.max(0, (action.phaseElapsed - dt) / this.config.active), Q1 = Math.min(1, action.phaseElapsed / this.config.active), START = action.aim - this.config.sector / 2;
@@ -12285,11 +12318,36 @@
             if (RUNTIME.cooldowns[ID] > 1e-9 || this.bossHpRatio > BOSS_PATTERN_CONFIG[ID].unlockHp) {
               continue;
             }
-            if (BOSS_BEHAVIORS.forId(ID).eligible(this, targets, ALIVE_ADDS)) {
+            const BEHAVIOR = BOSS_BEHAVIORS.forId(ID);
+            if (BEHAVIOR.eligible(this, targets, ALIVE_ADDS) && this.bossAttackWorthIt(BEHAVIOR, targets)) {
               ELIGIBLE.push(ID);
             }
           }
           return ELIGIBLE;
+        }
+        // An area attack is used only when it deals more in total than the basic attack's one strong hit.
+        bossAttackWorthIt(behavior, targets) {
+          if (behavior.id === BOSS_BASIC_ID) {
+            return true;
+          }
+          const HITS = behavior.expectedHits(this, targets);
+          return HITS === null || bossAttackTotal(behavior.config.damageMultiplier, HITS) > bossAttackTotal(BOSS_PATTERN_CONFIG[BOSS_BASIC_ID].damageMultiplier, 1);
+        }
+        // Whether the unit's body touches the wedge from the boss out to `range` around bearing `aim`, `half` to each side.
+        bossWedgeContains(unit2, range, aim, half) {
+          const DX = unit2.x - this.boss.x, DY = unit2.y - this.boss.y, D_LOCAL = Math.hypot(DX, DY);
+          if (D_LOCAL > range + unit2.radius) {
+            return false;
+          }
+          const BEARING = Math.atan2(DY, DX), OFFSET = Math.atan2(Math.sin(BEARING - aim), Math.cos(BEARING - aim)), PAD = D_LOCAL <= unit2.radius ? Math.PI : Math.asin(Math.min(1, unit2.radius / Math.max(D_LOCAL, 1e-6)));
+          return Math.abs(OFFSET) <= half + PAD;
+        }
+        // The units on the ground within `range` of a point (their bodies counted), nearest the boss first.
+        bossGroundUnitsNear(x, y, range) {
+          const EXTENT = range + CONFIG.unit.maxRadius;
+          return this._nearestBossFirst(
+            this._collectBossTargets(x - EXTENT, y - EXTENT, x + EXTENT, y + EXTENT, this._bossHitCandidates, true)
+          ).filter((unit2) => Math.hypot(unit2.x - x, unit2.y - y) <= range + unit2.radius);
         }
         beginBossPattern(id, target) {
           const B_LOCAL = this.boss, RUNTIME = B_LOCAL.patternRuntime, CONFIG_LOCAL = BOSS_PATTERN_CONFIG[id];
@@ -12415,7 +12473,7 @@
         }
         // Everyone within `range` of the boss's middle (so from its body outwards, no gap) whose bearing lies in the wedge
         // from..to, widened by the unit's own size. A sweep calls it each tick with the wedge its arm crossed since the last.
-        resolveBossWedge(action, patternId, range, from, to) {
+        resolveBossWedge(action, patternId, range, from, to, limit = Infinity) {
           const B_LOCAL = this.boss, AIM = (from + to) / 2, HALF = (to - from) / 2;
           let hits = 0;
           const EXTENT = range + CONFIG.unit.maxRadius;
@@ -12429,18 +12487,16 @@
               true
             )
           )) {
+            if (hits >= limit) {
+              break;
+            }
             if (action.hitIds.has(UNIT_LOCAL.id) || UNIT_LOCAL.z > 0.1) {
               continue;
             }
-            const DX = UNIT_LOCAL.x - B_LOCAL.x, DY = UNIT_LOCAL.y - B_LOCAL.y, D_LOCAL = Math.hypot(DX, DY);
-            if (D_LOCAL > range + UNIT_LOCAL.radius) {
+            if (!this.bossWedgeContains(UNIT_LOCAL, range, AIM, HALF)) {
               continue;
             }
-            const OFFSET = Math.atan2(Math.sin(Math.atan2(DY, DX) - AIM), Math.cos(Math.atan2(DY, DX) - AIM)), PAD = D_LOCAL <= UNIT_LOCAL.radius ? Math.PI : Math.asin(Math.min(1, UNIT_LOCAL.radius / Math.max(D_LOCAL, 1e-6)));
-            if (Math.abs(OFFSET) > HALF + PAD) {
-              continue;
-            }
-            const N = D_LOCAL || 1;
+            const DX = UNIT_LOCAL.x - B_LOCAL.x, DY = UNIT_LOCAL.y - B_LOCAL.y, N = Math.hypot(DX, DY) || 1;
             if (this.hitBossPatternUnit(
               UNIT_LOCAL,
               patternId,
@@ -13137,7 +13193,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.38";
+      PRODUCT_VERSION = "0.30.39";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });

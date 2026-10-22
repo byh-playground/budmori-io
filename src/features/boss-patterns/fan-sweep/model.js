@@ -12,6 +12,13 @@ export class FanBossPattern extends BossPattern {
         area.reach = this.config.reach + pad;
         area.sector = this.config.sector;
     }
+    expectedHits(world, targets) {
+        const TARGET = this.selectedTarget(world, targets),
+            AIM = Math.atan2(TARGET.y - world.boss.y, TARGET.x - world.boss.x);
+        return world
+            .bossGroundUnitsNear(world.boss.x, world.boss.y, this.config.reach)
+            .filter((unit) => world.bossWedgeContains(unit, this.config.reach, AIM, this.config.sector / 2)).length;
+    }
     updateActive(world, action, dt) {
         const Q0 = Math.max(0, (action.phaseElapsed - dt) / this.config.active),
             Q1 = Math.min(1, action.phaseElapsed / this.config.active),

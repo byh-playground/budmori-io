@@ -20,6 +20,10 @@ export class BossPattern {
             Math.hypot(TARGET.x - world.boss.x, TARGET.y - world.boss.y) <= this.config.reach + TARGET.radius + 1e-9
         );
     }
+    // How many units this attack would hit right now; null for an attack that does no damage.
+    expectedHits(_world, _targets) {
+        return null;
+    }
     selected(_world) {
         /* Most cooldowns begin on activation. */
     }

@@ -72,6 +72,10 @@ export class LeapBossPattern extends BossPattern {
         );
         return;
     }
+    expectedHits(world, targets) {
+        const TARGET = this.selectedTarget(world, targets);
+        return world.bossGroundUnitsNear(TARGET.x, TARGET.y, this.config.landingRadius).length;
+    }
     updateActive(world, action, _dt) {
         const { CONFIG, BALLISTICS } = this.dependencies;
         const OLD = {

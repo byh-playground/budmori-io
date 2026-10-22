@@ -15,6 +15,9 @@ export class SweepBossPattern extends BossPattern {
         area.reach = this.config.reach + pad;
         area.angle = 0;
     }
+    expectedHits(world, _targets) {
+        return world.bossGroundUnitsNear(world.boss.x, world.boss.y, this.config.reach).length;
+    }
     updateActive(world, action, dt) {
         const Q0 = Math.max(0, (action.phaseElapsed - dt) / this.config.active),
             Q1 = Math.min(1, action.phaseElapsed / this.config.active);
