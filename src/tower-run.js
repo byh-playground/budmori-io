@@ -11,6 +11,9 @@ export const TOWER_RUN_SETTINGS = Object.freeze({
     // A card can be taken this many times in one climb, whatever its rarity.
     cardCap: 10,
     // Rarity weights at floor 0 and how much each floor adds, capped. Order: common, rare, epic.
+    // Three cards a strengthening floor, and how likely each kind is to fill a slot: stat 8, passive 1, skill 1.
+    cardsPerFloor: 3,
+    kindWeights: Object.freeze({ stat: 8, passive: 1, skill: 1 }),
     rarityBase: Object.freeze([70, 25, 5]),
     rarityPerFloor: Object.freeze([0, 0.25, 0.1]),
     rarityMax: Object.freeze([70, 40, 15]),
@@ -24,6 +27,9 @@ export const TOWER_EVENTS = Object.freeze([]);
 export function freshTowerRun() {
     return { doors: [], nextKind: '', cards: [], relics: new Map(), since: { battle: 0, power: 1, event: 1 } };
 }
+
+// Passive cards: conditional effects, added with their own definitions; the pool is empty until then.
+export const PASSIVE_CARDS = Object.freeze([]);
 
 export const RARITY_NAMES = Object.freeze(['일반', '희귀', '영웅']);
 
@@ -131,21 +137,36 @@ export function rollRarity(floor, random) {
     );
 }
 
-// A strengthening floor's cards: one stat card (never one already at the cap) and one skill card. Passive cards will
-// join as a third kind; a kind with nothing left to offer is simply left out.
-export function rollCardOffers({ floor, cards, relics, skillIds, relicSlots, relicMaxLevel, random }) {
-    const OFFERS = [],
-        STATS = STAT_CARDS.filter((card) => cardStacks(cards, card.id) < TOWER_RUN_SETTINGS.cardCap);
-    if (STATS.length) {
-        const CARD = STATS[Math.floor(random() * STATS.length)];
-        OFFERS.push({ type: 'stat', id: CARD.id, rarity: rollRarity(floor, random) });
-    }
-    const SKILLS = skillIds.filter((id) => {
-        const LEVEL = relics.get(id) || 0;
-        return LEVEL ? LEVEL < relicMaxLevel : relics.size < relicSlots;
-    });
-    if (SKILLS.length) {
-        OFFERS.push({ type: 'skill', id: SKILLS[Math.floor(random() * SKILLS.length)] });
+// A strengthening floor always offers three different cards. Each slot draws its kind by `kindWeights`, then a card of
+// that kind; a kind with nothing left to offer is skipped, so there are fewer than three only when almost nothing is left.
+export function rollCardOffers({ floor, cards, relics, skillIds, passiveIds, relicSlots, relicMaxLevel, random }) {
+    const POOLS = {
+        stat: STAT_CARDS.filter((card) => cardStacks(cards, card.id) < TOWER_RUN_SETTINGS.cardCap).map(
+            (card) => card.id,
+        ),
+        skill: skillIds.filter((id) => {
+            const LEVEL = relics.get(id) || 0;
+            return LEVEL ? LEVEL < relicMaxLevel : relics.size < relicSlots;
+        }),
+        passive: passiveIds.filter((id) => cardStacks(cards, id) < TOWER_RUN_SETTINGS.cardCap),
+    };
+    const OFFERS = [];
+    while (OFFERS.length < TOWER_RUN_SETTINGS.cardsPerFloor) {
+        const TYPES = Object.keys(POOLS).filter((type) => POOLS[type].length);
+        if (!TYPES.length) {
+            break;
+        }
+        const TYPE =
+                TYPES[
+                    weightedIndex(
+                        TYPES.map((type) => TOWER_RUN_SETTINGS.kindWeights[type]),
+                        random,
+                    )
+                ],
+            ID = POOLS[TYPE].splice(Math.floor(random() * POOLS[TYPE].length), 1)[0];
+        OFFERS.push(
+            TYPE === 'skill' ? { type: TYPE, id: ID } : { type: TYPE, id: ID, rarity: rollRarity(floor, random) },
+        );
     }
     return OFFERS;
 }

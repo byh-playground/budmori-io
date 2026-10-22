@@ -53,6 +53,7 @@ import {
     createBossRewardStreams,
 } from './boss-rewards.js';
 import {
+    PASSIVE_CARDS,
     TOWER_EVENTS,
     advanceSince,
     freshTowerRun,
@@ -2173,6 +2174,7 @@ const GARDEN = class Garden {
             cards: T.cards,
             relics: T.relics,
             skillIds: FORMATION_SKILL_DEFINITIONS.map(({ id }) => id),
+            passiveIds: PASSIVE_CARDS.map((card) => card.id),
             relicSlots: CONFIG.farm.tower.relicSlots,
             relicMaxLevel: CONFIG.farm.tower.relicMaxLevel,
             random: () => this.random(),
