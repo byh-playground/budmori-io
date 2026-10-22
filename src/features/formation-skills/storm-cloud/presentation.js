@@ -27,7 +27,11 @@ export class StormCloudPresentation extends FormationPresentation {
             CLOUD_SIZE = BODY_RADIUS * 2.6,
             ENTER = Math.min(1, effect.age / 0.5),
             EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5,
-            Z = effect.z + Math.sin(effect.age * 3) * Math.min(0.1, BODY_RADIUS * 0.12),
+            // The cloud's screen-facing lobes grow with the target. Keep their underside clear of the head;
+            // this is presentation-only, so flying-skill targeting, range and pulse timing stay unchanged.
+            LIFT = CLOUD_SIZE * 0.5 + BODY_RADIUS * 0.6,
+            Z = effect.z + LIFT + Math.sin(effect.age * 3) * Math.min(0.1, BODY_RADIUS * 0.12),
+            ARC_Z = Z - CLOUD_SIZE * 0.25,
             SPREAD = (1 - ENTER + EXIT) * BODY_RADIUS * 2.6;
         for (let index = 0; index < 3; index++) {
             const ANGLE = (index * Math.PI * 2) / 3;
@@ -71,7 +75,7 @@ export class StormCloudPresentation extends FormationPresentation {
                         POINT = POINTS[index];
                     POINT[0] = effect.x + (effect.targetX - effect.x) * T + BEND * 0.55 + SIDE;
                     POINT[1] = effect.y + (effect.targetY - effect.y) * T + BEND * 0.22 - SIDE * 0.42;
-                    POINT[2] = Z + (effect.targetZ - Z) * T + CURVE * (0.18 + BEND * 0.16);
+                    POINT[2] = ARC_Z + (effect.targetZ - ARC_Z) * T + CURVE * (0.18 + BEND * 0.16);
                 }
                 const BRANCH = BRANCHES[arcIndex],
                     ROOT_T = 0.3 + arcIndex * 0.18 + visualOffset(effect, arcIndex, 1) * 0.08,

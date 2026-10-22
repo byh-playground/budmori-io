@@ -13193,7 +13193,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.40";
+      PRODUCT_VERSION = "0.30.41";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -14257,7 +14257,7 @@
   }
   var StormCloudPresentation = class extends FormationPresentation {
     draw(renderer, effect) {
-      const BODY_RADIUS = Math.max(0.2, (effect.bodyRadius || 0.3) * 0.55), BODY_SCALE = bodyScale(effect.bodyRadius), CLOUD_SIZE = BODY_RADIUS * 2.6, ENTER = Math.min(1, effect.age / 0.5), EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5, Z = effect.z + Math.sin(effect.age * 3) * Math.min(0.1, BODY_RADIUS * 0.12), SPREAD = (1 - ENTER + EXIT) * BODY_RADIUS * 2.6;
+      const BODY_RADIUS = Math.max(0.2, (effect.bodyRadius || 0.3) * 0.55), BODY_SCALE = bodyScale(effect.bodyRadius), CLOUD_SIZE = BODY_RADIUS * 2.6, ENTER = Math.min(1, effect.age / 0.5), EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5, LIFT = CLOUD_SIZE * 0.5 + BODY_RADIUS * 0.6, Z = effect.z + LIFT + Math.sin(effect.age * 3) * Math.min(0.1, BODY_RADIUS * 0.12), ARC_Z = Z - CLOUD_SIZE * 0.25, SPREAD = (1 - ENTER + EXIT) * BODY_RADIUS * 2.6;
       for (let index = 0; index < 3; index++) {
         const ANGLE = index * Math.PI * 2 / 3;
         cloud(
@@ -14293,7 +14293,7 @@
             const T = index / (POINTS.length - 1), CURVE = Math.sin(T * Math.PI), SEED = arcIndex * 17, BEND = visualOffset(effect, index, SEED) * CURVE, SIDE = (arcIndex - 1) * BODY_RADIUS * 0.34 * CURVE, POINT2 = POINTS[index];
             POINT2[0] = effect.x + (effect.targetX - effect.x) * T + BEND * 0.55 + SIDE;
             POINT2[1] = effect.y + (effect.targetY - effect.y) * T + BEND * 0.22 - SIDE * 0.42;
-            POINT2[2] = Z + (effect.targetZ - Z) * T + CURVE * (0.18 + BEND * 0.16);
+            POINT2[2] = ARC_Z + (effect.targetZ - ARC_Z) * T + CURVE * (0.18 + BEND * 0.16);
           }
           const BRANCH = BRANCHES[arcIndex], ROOT_T = 0.3 + arcIndex * 0.18 + visualOffset(effect, arcIndex, 1) * 0.08, ROOT = POINTS[Math.round(ROOT_T * (POINTS.length - 1))], DX = visualOffset(effect, arcIndex, 2) * BODY_RADIUS * 2.4, DY = visualOffset(effect, arcIndex, 3) * BODY_RADIUS * 1.9;
           BRANCH[0][0] = ROOT[0];
