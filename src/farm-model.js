@@ -43,6 +43,7 @@ import {
 } from './unit-stats.js';
 import { UNIT_ABILITY_PROFILES as ATTACK_TYPES, abilityProfile, unitCapabilityComposition } from './unit-abilities.js';
 import {
+    BOSS_REWARD_SETTINGS,
     bossAcquisitionChance,
     bossStageStats,
     settleBossKill,
@@ -143,16 +144,16 @@ const CONFIG = Object.freeze({
             topFloor: 61,
             relicSlots: 3,
             relicMaxLevel: 5,
-            // A strengthening door gives one run-long multiplier to every unit. It grows with the same steps as the boss
-            // (hp 1.2, attack 1.1); attackShare is how often the offer is the attack card.
-            boost: Object.freeze({ attack: 1.1, hp: 1.2, attackShare: 0.5, startEvery: 3 }),
+            // A strengthening door gives one run-long multiplier to every unit (hp 1.2, attack 1.1); attackShare is how
+            // often the offer is the attack card.
+            boost: Object.freeze({ attack: 1.1, hp: 1.2, attackShare: 0.5 }),
             // The troops walk to the tower door at the back of the farm and go in; the door is where the fence opens.
             marchSeconds: 4.5,
             marchSpeed: 7,
             gateRadius: 1.8,
             battle: Object.freeze({ hp: 1, attack: 1, edge: 0, reward: 1 }),
             elite: Object.freeze({ hp: 1.6, attack: 1.25, edge: 0.25, reward: 2 }),
-            mid: Object.freeze({ hp: 2.2, attack: 1.4, edge: 0.5, reward: 3 }),
+            mid: Object.freeze({ hp: 2.2, attack: 1.4, edge: 0.5, reward: BOSS_REWARD_SETTINGS.maxKindReward }),
         }),
         bossEvent: Object.freeze({
             fadeSeconds: 0.5,
@@ -2093,7 +2094,7 @@ const GARDEN = class Garden {
             doors: [],
             offer: '',
             relics: new Map(),
-            boost: this.towerStartBoost(FLOOR),
+            boost: { attack: 1, hp: 1 },
             boostOffer: 'attack',
             sleepUntil: SLEEP,
             record: false,
@@ -2102,13 +2103,6 @@ const GARDEN = class Garden {
         this.farmBossEvent = { ...this.farmBossEvent, phase: 'marching', elapsed: 0, outcome: 'fighting' };
         this.markProgressChanged();
         return true;
-    }
-    // Starting above floor 1 skips the strengthening doors the climb would have passed: one door per `startEvery`
-    // skipped floors, attack first then hp, so the first floor is no harder than the climb to it.
-    towerStartBoost(floor) {
-        const BOOST = CONFIG.farm.tower.boost,
-            DOORS = Math.floor((floor - 1) / BOOST.startEvery);
-        return { attack: BOOST.attack ** Math.ceil(DOORS / 2), hp: BOOST.hp ** Math.floor(DOORS / 2) };
     }
     // One unit's walk to the tower door while the march lasts.
     _marchUnit(unit) {

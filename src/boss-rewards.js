@@ -54,19 +54,25 @@ export function createBossRewardStreams(seed) {
     };
 }
 
+const MAX_KIND_REWARD = 3;
 export const BOSS_REWARD_SETTINGS = Object.freeze({
     acquisitionChance: 0.05,
     firstClearAcquisitionChance: 1,
     farmEventAcquisitionMultiplier: 2,
+    // Every stage stat is its stage-1 base, plus `stageStep` of that base for each floor above 1 (linear), so a floor is
+    // a fixed step up rather than a wall. Boss hp and attack also climb by `stageGrowth` per floor, up to `stageGrowthCap`
+    // in all: a short, capped compounding that makes each floor feel heavier without outrunning the player late.
     stageHpBase: 200,
-    stageHpMultiplier: 1.2,
     stageAttackBase: 4,
-    stageAttackMultiplier: 1.1,
     stageXpBase: 20,
-    stageXpMultiplier: 1.5,
-    stageRollMultiplier: 1.5,
+    stageStep: 0.5,
+    stageGrowth: 1.03,
+    stageGrowthCap: 2,
+    // Reward draws per stage: one more draw for each floor. A floor kind may multiply them by up to `maxKindReward`.
+    stageRollStep: 1,
+    maxKindReward: MAX_KIND_REWARD,
     maxStage: FARM_BOSS_EVENT_MAX_STAGE,
-    maxRollCount: Math.floor(1.5 ** (FARM_BOSS_EVENT_MAX_STAGE - 1)),
+    maxRollCount: FARM_BOSS_EVENT_MAX_STAGE * MAX_KIND_REWARD,
     maxBoxCount: 100,
     prdUnitsPerTick: PRD_UNITS_PER_TICK,
     speciesWeights: BOSS_SPECIES_WEIGHTS,
@@ -90,14 +96,16 @@ export function bossStageStats(stage) {
     if (!Number.isSafeInteger(stage) || stage < 1 || stage > BOSS_REWARD_SETTINGS.maxStage) {
         throw new RangeError(`Boss stage must be from 1 to ${BOSS_REWARD_SETTINGS.maxStage}`);
     }
-    const EXPONENT = stage - 1,
-        TOTAL = Math.floor(BOSS_REWARD_SETTINGS.stageRollMultiplier ** EXPONENT),
+    const FLOORS = stage - 1,
+        LINEAR = 1 + BOSS_REWARD_SETTINGS.stageStep * FLOORS,
+        GROWTH = Math.min(BOSS_REWARD_SETTINGS.stageGrowthCap, BOSS_REWARD_SETTINGS.stageGrowth ** FLOORS),
+        TOTAL = 1 + BOSS_REWARD_SETTINGS.stageRollStep * FLOORS,
         PAYOUTS = bossRewardBoxPayouts(TOTAL);
     return {
         stage,
-        hp: Math.round(BOSS_REWARD_SETTINGS.stageHpBase * BOSS_REWARD_SETTINGS.stageHpMultiplier ** EXPONENT),
-        attackPower: BOSS_REWARD_SETTINGS.stageAttackBase * BOSS_REWARD_SETTINGS.stageAttackMultiplier ** EXPONENT,
-        xp: Math.round(BOSS_REWARD_SETTINGS.stageXpBase * BOSS_REWARD_SETTINGS.stageXpMultiplier ** EXPONENT),
+        hp: Math.round(BOSS_REWARD_SETTINGS.stageHpBase * LINEAR * GROWTH),
+        attackPower: BOSS_REWARD_SETTINGS.stageAttackBase * LINEAR * GROWTH,
+        xp: Math.round(BOSS_REWARD_SETTINGS.stageXpBase * LINEAR),
         rollBudget: TOTAL,
         rolls: PAYOUTS.length,
         boxCount: PAYOUTS.length,

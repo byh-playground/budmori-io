@@ -5,6 +5,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { bossStageStats } from '../src/boss-rewards.js';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     PORT = 8499,
@@ -666,20 +667,14 @@ await check('a boss hit volume is its drawn body: it differs per species and is 
     expect(new Set(GOT.map((boss) => boss.height)).size > 4, `heights ${JSON.stringify(GOT)}`);
 });
 
-await check(
-    'starting the tower above floor 1 carries the strengthening doors the climb would have passed',
-    async () => {
-        const GOT = await WORLD(() => {
-            const W = BUDMORI.sim;
-            return [1, 4, 7, 10].map((floor) => W.towerStartBoost(floor));
-        });
-        const OK = (got, attack, hp) => Math.abs(got.attack - attack) < 1e-9 && Math.abs(got.hp - hp) < 1e-9;
-        expect(
-            OK(GOT[0], 1, 1) && OK(GOT[1], 1.1, 1) && OK(GOT[2], 1.1, 1.2) && OK(GOT[3], 1.21, 1.2),
-            JSON.stringify(GOT),
-        );
-    },
-);
+await check('boss stage stats and rewards climb linearly, with a capped compounding on hp and attack', async () => {
+    const [S1, S2, S10, S30, S61] = [1, 2, 10, 30, 61].map(bossStageStats);
+    expect(S1.hp === 200 && S1.attackPower === 4 && S1.xp === 20 && S1.rollBudget === 1, JSON.stringify(S1));
+    expect(S2.hp > S1.hp && S2.rollBudget === 2 && S2.xp === 30, JSON.stringify(S2));
+    expect(S10.rollBudget === 10 && S61.rollBudget === 61 && S61.xp === 620, JSON.stringify([S10, S61]));
+    // Past the cap the growth stops, so hp is linear again and the last 31 floors only double it.
+    expect(S61.hp / S30.hp < 2.2 && S61.hp < 20000, JSON.stringify([S30.hp, S61.hp]));
+});
 
 await check('no page errors', async () => {
     expect(ERRORS.length === 0, ERRORS.slice(0, 3).join(' | '));

@@ -6485,12 +6485,12 @@
     if (!Number.isSafeInteger(stage) || stage < 1 || stage > BOSS_REWARD_SETTINGS.maxStage) {
       throw new RangeError(`Boss stage must be from 1 to ${BOSS_REWARD_SETTINGS.maxStage}`);
     }
-    const EXPONENT = stage - 1, TOTAL = Math.floor(BOSS_REWARD_SETTINGS.stageRollMultiplier ** EXPONENT), PAYOUTS = bossRewardBoxPayouts(TOTAL);
+    const FLOORS = stage - 1, LINEAR = 1 + BOSS_REWARD_SETTINGS.stageStep * FLOORS, GROWTH = Math.min(BOSS_REWARD_SETTINGS.stageGrowthCap, BOSS_REWARD_SETTINGS.stageGrowth ** FLOORS), TOTAL = 1 + BOSS_REWARD_SETTINGS.stageRollStep * FLOORS, PAYOUTS = bossRewardBoxPayouts(TOTAL);
     return {
       stage,
-      hp: Math.round(BOSS_REWARD_SETTINGS.stageHpBase * BOSS_REWARD_SETTINGS.stageHpMultiplier ** EXPONENT),
-      attackPower: BOSS_REWARD_SETTINGS.stageAttackBase * BOSS_REWARD_SETTINGS.stageAttackMultiplier ** EXPONENT,
-      xp: Math.round(BOSS_REWARD_SETTINGS.stageXpBase * BOSS_REWARD_SETTINGS.stageXpMultiplier ** EXPONENT),
+      hp: Math.round(BOSS_REWARD_SETTINGS.stageHpBase * LINEAR * GROWTH),
+      attackPower: BOSS_REWARD_SETTINGS.stageAttackBase * LINEAR * GROWTH,
+      xp: Math.round(BOSS_REWARD_SETTINGS.stageXpBase * LINEAR),
       rollBudget: TOTAL,
       rolls: PAYOUTS.length,
       boxCount: PAYOUTS.length,
@@ -6874,7 +6874,7 @@
       pointsAwarded: RESULT.pointsAwarded
     };
   }
-  var FORMAT_PERCENT, FORMAT_COUNT, PRD_UNITS_PER_TICK, STREAM_DOMAINS, STREAM_SOURCE, BOSS_REWARD_SETTINGS;
+  var FORMAT_PERCENT, FORMAT_COUNT, PRD_UNITS_PER_TICK, STREAM_DOMAINS, STREAM_SOURCE, MAX_KIND_REWARD, BOSS_REWARD_SETTINGS;
   var init_boss_rewards = __esm({
     "src/boss-rewards.js"() {
       init_player_progression();
@@ -6888,19 +6888,25 @@
         firstClear: Object.freeze({ prd: 1247922131, boxes: 767049617 })
       });
       STREAM_SOURCE = Object.freeze({ farm: "event" });
+      MAX_KIND_REWARD = 3;
       BOSS_REWARD_SETTINGS = Object.freeze({
         acquisitionChance: 0.05,
         firstClearAcquisitionChance: 1,
         farmEventAcquisitionMultiplier: 2,
+        // Every stage stat is its stage-1 base, plus `stageStep` of that base for each floor above 1 (linear), so a floor is
+        // a fixed step up rather than a wall. Boss hp and attack also climb by `stageGrowth` per floor, up to `stageGrowthCap`
+        // in all: a short, capped compounding that makes each floor feel heavier without outrunning the player late.
         stageHpBase: 200,
-        stageHpMultiplier: 1.2,
         stageAttackBase: 4,
-        stageAttackMultiplier: 1.1,
         stageXpBase: 20,
-        stageXpMultiplier: 1.5,
-        stageRollMultiplier: 1.5,
+        stageStep: 0.5,
+        stageGrowth: 1.03,
+        stageGrowthCap: 2,
+        // Reward draws per stage: one more draw for each floor. A floor kind may multiply them by up to `maxKindReward`.
+        stageRollStep: 1,
+        maxKindReward: MAX_KIND_REWARD,
         maxStage: FARM_BOSS_EVENT_MAX_STAGE,
-        maxRollCount: Math.floor(1.5 ** (FARM_BOSS_EVENT_MAX_STAGE - 1)),
+        maxRollCount: FARM_BOSS_EVENT_MAX_STAGE * MAX_KIND_REWARD,
         maxBoxCount: 100,
         prdUnitsPerTick: PRD_UNITS_PER_TICK,
         speciesWeights: BOSS_SPECIES_WEIGHTS
@@ -7640,16 +7646,16 @@
             topFloor: 61,
             relicSlots: 3,
             relicMaxLevel: 5,
-            // A strengthening door gives one run-long multiplier to every unit. It grows with the same steps as the boss
-            // (hp 1.2, attack 1.1); attackShare is how often the offer is the attack card.
-            boost: Object.freeze({ attack: 1.1, hp: 1.2, attackShare: 0.5, startEvery: 3 }),
+            // A strengthening door gives one run-long multiplier to every unit (hp 1.2, attack 1.1); attackShare is how
+            // often the offer is the attack card.
+            boost: Object.freeze({ attack: 1.1, hp: 1.2, attackShare: 0.5 }),
             // The troops walk to the tower door at the back of the farm and go in; the door is where the fence opens.
             marchSeconds: 4.5,
             marchSpeed: 7,
             gateRadius: 1.8,
             battle: Object.freeze({ hp: 1, attack: 1, edge: 0, reward: 1 }),
             elite: Object.freeze({ hp: 1.6, attack: 1.25, edge: 0.25, reward: 2 }),
-            mid: Object.freeze({ hp: 2.2, attack: 1.4, edge: 0.5, reward: 3 })
+            mid: Object.freeze({ hp: 2.2, attack: 1.4, edge: 0.5, reward: BOSS_REWARD_SETTINGS.maxKindReward })
           }),
           bossEvent: Object.freeze({
             fadeSeconds: 0.5,
@@ -9400,7 +9406,7 @@
             doors: [],
             offer: "",
             relics: /* @__PURE__ */ new Map(),
-            boost: this.towerStartBoost(FLOOR),
+            boost: { attack: 1, hp: 1 },
             boostOffer: "attack",
             sleepUntil: SLEEP,
             record: false
@@ -9408,12 +9414,6 @@
           this.farmBossEvent = { ...this.farmBossEvent, phase: "marching", elapsed: 0, outcome: "fighting" };
           this.markProgressChanged();
           return true;
-        }
-        // Starting above floor 1 skips the strengthening doors the climb would have passed: one door per `startEvery`
-        // skipped floors, attack first then hp, so the first floor is no harder than the climb to it.
-        towerStartBoost(floor) {
-          const BOOST = CONFIG.farm.tower.boost, DOORS = Math.floor((floor - 1) / BOOST.startEvery);
-          return { attack: BOOST.attack ** Math.ceil(DOORS / 2), hp: BOOST.hp ** Math.floor(DOORS / 2) };
         }
         // One unit's walk to the tower door while the march lasts.
         _marchUnit(unit2) {
@@ -21436,11 +21436,7 @@
       DOLLAR2("startFloor").value = String(START_FLOOR);
     }
     paintRange(DOLLAR2("startFloor"));
-    const START_BOOST = W.towerStartBoost(START_FLOOR);
-    syncText(
-      "startFloorValue",
-      `시작 ${START_FLOOR} / ${BEST_FLOOR}층${START_FLOOR > 1 ? ` · 강화 공격 ×${START_BOOST.attack.toFixed(2)} 체력 ×${START_BOOST.hp.toFixed(2)}` : ""}`
-    );
+    syncText("startFloorValue", `시작 ${START_FLOOR} / ${BEST_FLOOR}층`);
     syncText("bossChallenge", "탑 오르기");
     syncFlag("bossChallenge", "hidden", FARM_EVENT_ACTIVE || home);
     syncAttribute("bossChallenge", "aria-disabled", String(raidStartBlockReason() !== ""));
