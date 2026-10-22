@@ -929,7 +929,7 @@
           id: 0,
           name: "콩",
           asset: "pea.svg",
-          // The colours of the limbs a boss of this species swings: body fill and outline.
+          // The colours of the floating hands a boss of this species swings: fill and outline.
           limbFill: "#83ad47",
           limbOutline: "#4a1c16",
           bossWeight: 1
@@ -938,7 +938,7 @@
           id: 1,
           name: "옥수수",
           asset: "corn-kernel.svg",
-          // The colours of the limbs a boss of this species swings: body fill and outline.
+          // The colours of the floating hands a boss of this species swings: fill and outline.
           limbFill: "#f7cd36",
           limbOutline: "#4a1c16",
           bossWeight: 1
@@ -947,7 +947,7 @@
           id: 2,
           name: "팥",
           asset: "kidney-bean.svg",
-          // The colours of the limbs a boss of this species swings: body fill and outline.
+          // The colours of the floating hands a boss of this species swings: fill and outline.
           limbFill: "#d06a8f",
           limbOutline: "#4b1a20",
           bossWeight: 1
@@ -956,7 +956,7 @@
           id: 3,
           name: "밤톨",
           asset: "chestnut.svg",
-          // The colours of the limbs a boss of this species swings: body fill and outline.
+          // The colours of the floating hands a boss of this species swings: fill and outline.
           limbFill: "#84472f",
           limbOutline: "#2c201c",
           bossWeight: 1
@@ -965,7 +965,7 @@
           id: 4,
           name: "땅콩",
           asset: "peanut.svg",
-          // The colours of the limbs a boss of this species swings: body fill and outline.
+          // The colours of the floating hands a boss of this species swings: fill and outline.
           limbFill: "#c89d67",
           limbOutline: "#3b241e",
           bossWeight: 1
@@ -974,34 +974,40 @@
           id: 5,
           name: "호두",
           asset: "walnut.svg",
-          // The colours of the limbs a boss of this species swings: body fill and outline.
+          // The colours of the floating hands a boss of this species swings: fill and outline.
           limbFill: "#a96c18",
           limbOutline: "#431811",
+          // The weapon this species' boss holds: it goes wherever that floating hand goes.
+          heldItem: Object.freeze({ part: "hammer", hand: "arm-right" }),
           bossWeight: 1
         }),
         Object.freeze({
           id: 6,
           name: "쌀",
           asset: "rice.svg",
-          // The colours of the limbs a boss of this species swings: body fill and outline.
+          // The colours of the floating hands a boss of this species swings: fill and outline.
           limbFill: "#f3efe4",
           limbOutline: "#4b211b",
+          // The weapon this species' boss holds: it goes wherever that floating hand goes.
+          heldItem: Object.freeze({ part: "sickle", hand: "arm-right" }),
           bossWeight: 1
         }),
         Object.freeze({
           id: 7,
           name: "밀",
           asset: "wheat.svg",
-          // The colours of the limbs a boss of this species swings: body fill and outline.
+          // The colours of the floating hands a boss of this species swings: fill and outline.
           limbFill: "#e4b247",
           limbOutline: "#34271f",
+          // The weapon this species' boss holds: it goes wherever that floating hand goes.
+          heldItem: Object.freeze({ part: "command-baton", hand: "arm-right" }),
           bossWeight: 1
         }),
         Object.freeze({
           id: 8,
           name: "보리",
           asset: "barley.svg",
-          // The colours of the limbs a boss of this species swings: body fill and outline.
+          // The colours of the floating hands a boss of this species swings: fill and outline.
           limbFill: "#ddaa43",
           limbOutline: "#4b211b",
           bossWeight: 1
@@ -1501,13 +1507,13 @@
       var BOSS_VECTOR_DIAMETER = 220;
       var BOSS_VECTOR_RADIUS_SCALE = 1.16;
       var WORLD_HEIGHT_PROJECTION5 = 0.785;
-      var WORLD_DEPTH_PROJECTION3 = 0.62;
+      var WORLD_DEPTH_PROJECTION4 = 0.62;
       var BOSS_ART_RADIUS2 = 4.4;
-      function bossVectorScale3() {
+      function bossVectorScale4() {
         return 2 * BOSS_ART_RADIUS2 * BOSS_VECTOR_RADIUS_SCALE / BOSS_VECTOR_DIAMETER;
       }
       function socketWorldPoint2(boss, socket, ground) {
-        const SCALE = bossVectorScale3();
+        const SCALE = bossVectorScale4();
         return {
           x: boss.x + (socket.x - ground.x) * SCALE,
           y: boss.y,
@@ -1517,10 +1523,10 @@
       module.exports = {
         readVectorSockets: readVectorSockets3,
         BOSS_ART_RADIUS: BOSS_ART_RADIUS2,
-        bossVectorScale: bossVectorScale3,
+        bossVectorScale: bossVectorScale4,
         socketWorldPoint: socketWorldPoint2,
         WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION5,
-        WORLD_DEPTH_PROJECTION: WORLD_DEPTH_PROJECTION3
+        WORLD_DEPTH_PROJECTION: WORLD_DEPTH_PROJECTION4
       };
     }
   });
@@ -6052,27 +6058,25 @@
   });
 
   // src/features/boss-patterns/sweep-360/model.js
-  var SweepBossPattern;
+  var SWEEP_HAND_STARTS, SweepBossPattern;
   var init_model23 = __esm({
     "src/features/boss-patterns/sweep-360/model.js"() {
       init_model_base5();
       init_definition21();
+      SWEEP_HAND_STARTS = Object.freeze({ "arm-left": Math.PI, "arm-right": 0 });
       SweepBossPattern = class extends BossPattern {
         constructor(dependencies) {
           super(FEATURE7, dependencies);
           this.physicalActive = true;
         }
-        writeArea(_boss, action, _scene, pad, area) {
+        writeArea(_boss, _action, _scene, pad, area) {
           area.kind = "sweep";
           area.reach = this.config.reach + pad;
-          area.angle = action.startAngle ?? action.aim - Math.PI / 2;
-        }
-        activate(_world, action) {
-          action.startAngle = action.aim - Math.PI / 2;
+          area.angle = 0;
         }
         updateActive(world, action, dt) {
           const Q0 = Math.max(0, (action.phaseElapsed - dt) / this.config.active), Q1 = Math.min(1, action.phaseElapsed / this.config.active);
-          for (const ARM_START of [action.startAngle, action.startAngle + Math.PI]) {
+          for (const ARM_START of Object.values(SWEEP_HAND_STARTS)) {
             world.resolveBossWedge(
               action,
               action.id,
@@ -6582,6 +6586,22 @@
     ENTRY.player?.dispose();
     BOSS_ASSETS.delete(species);
   }
+  function bossHandRig(compiled) {
+    const SOCKETS = compiled.metadata.sockets, SCALE = (0, import_vector_sockets2.bossVectorScale)(), POINT2 = (name) => {
+      const POINT3 = SOCKETS[name]?.point;
+      if (!POINT3) {
+        throw new Error(`Vector socket contract (${compiled.metadata.id}): the boss needs a ${name} socket`);
+      }
+      return POINT3;
+    }, CENTRE = POINT2("hand-centre"), REST = (name) => {
+      const AT = POINT2(name);
+      return { x: (AT[0] - CENTRE[0]) * SCALE, y: (AT[1] - CENTRE[1]) * SCALE };
+    };
+    return Object.freeze({
+      radius: (POINT2("hand-edge")[0] - POINT2("hand-left")[0]) * SCALE,
+      rest: Object.freeze({ "arm-left": REST("hand-left"), "arm-right": REST("hand-right") })
+    });
+  }
   function bossSummonPose(b, parts = /* @__PURE__ */ new Set()) {
     const CONFIG2 = BOSS_PATTERN_CONFIG["summon.mouth-t1"], PHASE = b.patternPhase, ELAPSED = Math.max(0, b.patternPhaseElapsed || 0);
     const AIM = Math.atan2(
@@ -6594,26 +6614,26 @@
       rotation: 0,
       scaleX: 1,
       scaleY: 1
-    }, ARMS = {
-      "arm-left": 0,
-      "arm-right": 0
-    };
+    }, HANDS = {
+      "arm-left": { x: 0, y: 0, face: HAND_REST_FACE },
+      "arm-right": { x: 0, y: 0, face: HAND_REST_FACE }
+    }, R2 = b.radius || 0;
     let releasePulse = 0;
     if (PHASE === "windup") {
       const WIND = CLAMP(ELAPSED / CONFIG2.windup, 0, 1), EASE2 = WIND * WIND * (3 - 2 * WIND);
       BODY2.y = 2 * EASE2;
       BODY2.scaleX = 1 + 0.025 * EASE2;
       BODY2.scaleY = 1 - 0.035 * EASE2;
-      ARMS["arm-left"] = -0.34 * EASE2;
-      ARMS["arm-right"] = 0.34 * EASE2;
+      Object.assign(HANDS["arm-left"], { x: -0.4 * R2 * EASE2, y: -0.5 * R2 * EASE2 });
+      Object.assign(HANDS["arm-right"], { x: 0.4 * R2 * EASE2, y: -0.5 * R2 * EASE2 });
     } else if (PHASE === "active" || PHASE === "recover") {
       const LAST = (b.patternReleased || 0) - 1, AGE = LAST < 0 ? 1 : PHASE === "active" ? Math.max(0, ELAPSED - LAST * CONFIG2.releaseInterval) : ELAPSED;
       releasePulse = CLAMP(1 - AGE / 0.16, 0, 1);
       BODY2.scaleX = 1 + 0.025 * releasePulse;
       BODY2.scaleY = 1 - 0.018 * releasePulse;
       BODY2.rotation = AIM * 0.02;
-      ARMS["arm-left"] = -0.3;
-      ARMS["arm-right"] = 0.3;
+      Object.assign(HANDS["arm-left"], { x: -0.45 * R2, y: -0.55 * R2 });
+      Object.assign(HANDS["arm-right"], { x: 0.45 * R2, y: -0.55 * R2 });
     }
     const EXTRAS = {};
     for (const PART of ["foot-left", "foot-right", "leaf", "kernel-mark", "hilum"]) {
@@ -6627,7 +6647,7 @@
     }
     return {
       body: BODY2,
-      arms: ARMS,
+      hands: HANDS,
       extras: EXTRAS,
       impact: false,
       releasePulse
@@ -6669,13 +6689,14 @@
     });
     return (0, import_vector_sockets2.socketWorldPoint)(boss, ENTRY.player.getSocket("mouth"), ANCHORS.ground);
   }
-  var import_vector_sockets2, CLAMP, BOSS_ASSETS;
+  var import_vector_sockets2, CLAMP, BOSS_ASSETS, HAND_REST_FACE;
   var init_boss_vector_sockets = __esm({
     "src/boss-vector-sockets.js"() {
       init_boss_patterns();
       import_vector_sockets2 = __toESM(require_vector_sockets(), 1);
       CLAMP = (x, a, b) => Math.max(a, Math.min(b, x));
       BOSS_ASSETS = /* @__PURE__ */ new Map();
+      HAND_REST_FACE = Math.PI / 2;
     }
   });
 
@@ -13109,7 +13130,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.34";
+      PRODUCT_VERSION = "0.30.35";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15512,25 +15533,32 @@
   // src/farm-renderer.js
   init_unit_grades();
   init_presentation6();
-  var import_vector_sockets6 = __toESM(require_vector_sockets(), 1);
+  var import_vector_sockets7 = __toESM(require_vector_sockets(), 1);
   init_boss_vector_sockets();
 
   // src/farm-render-boss.js
-  var import_vector_sockets4 = __toESM(require_vector_sockets(), 1);
+  var import_vector_sockets5 = __toESM(require_vector_sockets(), 1);
+  init_species_catalog();
   init_farm_model();
 
   // src/features/boss-patterns/presentation-base.js
   init_farm_model();
+  init_boss_vector_sockets();
   var EXTRA_PARTS = ["foot-left", "foot-right", "leaf", "kernel-mark", "hilum"];
   var POSE_PHASE_METHODS = { windup: "windup", active: "active", recover: "recover" };
   var BossAttackPose = class {
-    reset(boss, parts, config, recoveryImpactSeconds) {
+    reset(boss, parts, config, recoveryImpactSeconds, rig) {
       this.parts = parts;
       this.config = config;
       this.elapsed = Math.max(0, boss.patternPhaseElapsed || 0);
       this.aim = Math.atan2(-0.62 * Math.sin(boss.patternAim ?? boss.angle), Math.cos(boss.patternAim ?? boss.angle));
       this.body = { y: 0, rotation: 0, scaleX: 1, scaleY: 1 };
-      this.arms = { "arm-left": 0, "arm-right": 0 };
+      this.rig = rig;
+      this.radius = boss.radius;
+      this.hands = {
+        "arm-left": { x: 0, y: 0, face: HAND_REST_FACE },
+        "arm-right": { x: 0, y: 0, face: HAND_REST_FACE }
+      };
       this.extras = {};
       for (const PART of EXTRA_PARTS) {
         if (parts.has(PART)) {
@@ -15546,36 +15574,46 @@
       this.recoverEase = RECOVER * RECOVER * (3 - 2 * RECOVER);
       this.lead = Math.cos(this.aim) >= 0 ? "arm-right" : "arm-left";
       this.trail = this.lead === "arm-right" ? "arm-left" : "arm-right";
-      this.strikeAngle = CLAMP2(this.aim, -1.2, 1.2);
     }
-    arm(key, value) {
-      if (this.parts.has(key)) {
-        this.arms[key] = value;
-      }
+    side(key) {
+      return key === "arm-left" ? -1 : 1;
+    }
+    hand(key, x, y, face = HAND_REST_FACE) {
+      Object.assign(this.hands[key], { x, y, face });
+    }
+    // The same, but placed from the middle of the body instead of from the resting spot.
+    handAt(key, x, y, face = HAND_REST_FACE) {
+      const REST = this.rig.rest[key];
+      this.hand(key, x - REST.x, y - REST.y, face);
+    }
+    // Where the lead hand goes in a strike: out toward the target. The other one hangs out to its own side.
+    strikeHands(amount) {
+      const R2 = this.radius;
+      this.hand(this.lead, Math.cos(this.aim) * 1.1 * R2 * amount, Math.sin(this.aim) * 1.1 * R2 * amount, this.aim);
+      this.hand(this.trail, this.side(this.trail) * 0.4 * R2 * amount, -0.1 * R2 * amount);
     }
     windup() {
       this.body.y = 4 * this.windEase;
       this.body.scaleX = 1 - 0.035 * this.windEase;
       this.body.scaleY = 1 + 0.06 * this.windEase;
       this.body.rotation = this.aim * 0.045 * this.windEase;
-      this.arm(this.lead, -0.72 + this.strikeAngle * 0.22);
-      this.arm(this.trail, 0.28 - this.strikeAngle * 0.12);
+      const R2 = this.radius;
+      this.hand(this.lead, this.side(this.lead) * 0.3 * R2 * this.windEase, -0.95 * R2 * this.windEase);
+      this.hand(this.trail, this.side(this.trail) * 0.5 * R2 * this.windEase, -0.35 * R2 * this.windEase);
     }
     settle() {
       this.body.y = 3 * (1 - this.recoverEase);
       this.body.scaleX = 1 + 0.045 * (1 - this.recoverEase);
       this.body.scaleY = 1 - 0.065 * (1 - this.recoverEase);
       this.body.rotation = this.aim * 0.025 * (1 - this.recoverEase);
-      this.arm(this.lead, 0.35 * (1 - this.recoverEase) + this.strikeAngle * 0.16);
-      this.arm(this.trail, -0.12 * (1 - this.recoverEase));
+      this.strikeHands(1 - this.recoverEase);
     }
     strike() {
       this.body.y = -3;
       this.body.scaleX = 1.075;
       this.body.scaleY = 0.91;
       this.body.rotation = this.aim * 0.09;
-      this.arm(this.lead, 0.95 + this.strikeAngle * 0.55);
-      this.arm(this.trail, -0.42 - this.strikeAngle * 0.18);
+      this.strikeHands(1);
     }
   };
   var BossAttackPresentation = class {
@@ -15587,8 +15625,8 @@
       this.recoveryImpactSeconds = recoveryImpactSeconds;
       this.summoning = false;
     }
-    pose(boss, parts, scratch) {
-      scratch.reset(boss, parts, this.config, this.recoveryImpactSeconds);
+    pose(boss, parts, scratch, rig) {
+      scratch.reset(boss, parts, this.config, this.recoveryImpactSeconds, rig);
       if (this.config && parts.has("body")) {
         this[POSE_PHASE_METHODS[boss.patternPhase]]?.(boss, scratch);
       }
@@ -15623,10 +15661,6 @@
     }
     drawRelease() {
     }
-    drawBehind() {
-    }
-    drawWeapon() {
-    }
     drawTelegraph(renderer, area) {
       renderer.drawBossDanger(area);
     }
@@ -15649,33 +15683,48 @@
 
   // src/features/boss-patterns/sweep-360/presentation.js
   init_definition21();
+  init_model23();
   init_farm_model();
-  init_species_catalog();
+  var import_vector_sockets4 = __toESM(require_vector_sockets(), 1);
+  init_boss_vector_sockets();
   var HALF_TURN = Math.PI;
   var EASE = (t) => t * t * (3 - 2 * t);
-  var ARM_WIDTH = 1;
-  var ARM_FIST = 0.85;
-  var ARM_FOLD_SECONDS = 0.4;
-  var HIGHLIGHT_MIX = 0.3;
-  function highlight(hex) {
-    const CHANNELS = [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
-    return `rgb(${CHANNELS.map((c) => Math.round(c + (255 - c) * HIGHLIGHT_MIX)).join(",")})`;
-  }
+  var HAND_FOLD_SECONDS = 0.4;
   var CircleSweepPresentation = class extends BossAttackPresentation {
     constructor() {
       super(FEATURE7, "sweep", 0.14, 0.14);
     }
+    // Where a hand is after the given share of its half turn: on the ellipse the reach circle makes on screen, with its
+    // knuckles pointing along the way it is going (so the wrist turns with the swing).
+    orbit(pose, key, turn) {
+      const ANGLE = SWEEP_HAND_STARTS[key] + HALF_TURN * turn, R2 = this.config.reach - pose.rig.radius, DEPTH = import_vector_sockets4.WORLD_DEPTH_PROJECTION;
+      return {
+        x: R2 * Math.cos(ANGLE),
+        y: -DEPTH * R2 * Math.sin(ANGLE),
+        face: Math.atan2(-DEPTH * Math.cos(ANGLE), -Math.sin(ANGLE))
+      };
+    }
+    // The hands go from where they rest to (amount 1) the given point of their turn, and back.
+    place(pose, turn, amount) {
+      for (const KEY2 of Object.keys(SWEEP_HAND_STARTS)) {
+        const AT = this.orbit(pose, KEY2, turn), REST = pose.rig.rest[KEY2];
+        pose.handAt(
+          KEY2,
+          REST.x + (AT.x - REST.x) * amount,
+          REST.y + (AT.y - REST.y) * amount,
+          HAND_REST_FACE + (AT.face - HAND_REST_FACE) * amount
+        );
+      }
+    }
     windup(boss, pose) {
       super.windup(boss, pose);
-      pose.arm("arm-left", -0.72);
-      pose.arm("arm-right", 0.72);
+      this.place(pose, 0, pose.windEase);
     }
-    // Both arms swing together: each goes out further the nearer it is to the middle of its half turn.
+    // Both hands swing together, each across its own half of the circle.
     active(_boss, pose) {
-      const Q = pose.recoverImpact ? 1 : CLAMP2(pose.elapsed / Math.max(this.config.active, 1e-3), 0, 1), SWAY = Math.sin(HALF_TURN * Q) * 0.48;
+      const Q = pose.recoverImpact ? 1 : CLAMP2(pose.elapsed / Math.max(this.config.active, 1e-3), 0, 1);
       pose.body.rotation = 0.06 * Math.sin(HALF_TURN * Q);
-      pose.arm("arm-left", -0.72 - SWAY);
-      pose.arm("arm-right", 0.72 + SWAY);
+      this.place(pose, Q, 1);
     }
     recover(boss, pose) {
       if (pose.recoverImpact) {
@@ -15683,8 +15732,9 @@
         return;
       }
       super.recover(boss, pose);
+      this.place(pose, 1, 1 - EASE(CLAMP2(pose.elapsed / HAND_FOLD_SECONDS, 0, 1)));
     }
-    // The whole disc is the danger; the two bright arcs are the halves the arms have swept so far.
+    // The whole disc is the danger; the two bright arcs are the halves the hands have swept so far.
     drawTelegraph(renderer, area) {
       const FADE = area.phase === "recover" ? Math.max(0, 1 - area.elapsed / 0.14) : 1;
       if (!FADE) {
@@ -15697,66 +15747,6 @@
         renderer.ring(area.x, area.y, area.reach, "#dfad65", 0.14, START, START + SWEPT);
       }
       CTX.globalAlpha = ALPHA;
-    }
-    // The arms are drawn by hand: long limbs that swing round the body, so the turn can be seen. The one on the far half
-    // of the circle goes behind the body (drawBehind), the one on the near half in front of it (drawWeapon).
-    drawBehind(renderer, boss) {
-      this.drawArms(renderer, boss, true);
-    }
-    drawWeapon(renderer, boss) {
-      this.drawArms(renderer, boss, false);
-    }
-    // How far out the arms are (0 folded in, 1 stretched to the reach) and how far round they have turned (0..1).
-    armPose(boss) {
-      const ELAPSED = boss.patternPhaseElapsed || 0;
-      if (boss.patternPhase === "windup") {
-        return { out: EASE(CLAMP2(ELAPSED / this.config.windup, 0, 1)), turn: 0 };
-      }
-      if (boss.patternPhase === "active") {
-        return { out: 1, turn: CLAMP2(ELAPSED / Math.max(this.config.active, 1e-3), 0, 1) };
-      }
-      if (boss.patternPhase === "recover") {
-        return { out: 1 - EASE(CLAMP2(ELAPSED / ARM_FOLD_SECONDS, 0, 1)), turn: 1 };
-      }
-      return { out: 0, turn: 0 };
-    }
-    drawArms(renderer, boss, behind) {
-      const POSE = this.armPose(boss);
-      if (POSE.out <= 1e-3) {
-        return;
-      }
-      const SPECIES = speciesById(boss.species), OUTLINE = SPECIES.limbOutline, FILL = SPECIES.limbFill, LIGHT = highlight(FILL), START = (boss.patternAim ?? boss.angle) - Math.PI / 2, SHOULDER_Z = (boss.z || 0) + boss.height * 0.3, REACH = this.config.reach - ARM_FIST, TIP_DISTANCE = boss.radius * 0.8 + (REACH - boss.radius * 0.8) * POSE.out;
-      renderer.ctx.flush();
-      for (const ARM_START of [START, START + HALF_TURN]) {
-        const ANGLE = ARM_START + HALF_TURN * POSE.turn, COS = Math.cos(ANGLE), SIN = Math.sin(ANGLE);
-        if (SIN > 0 !== behind) {
-          continue;
-        }
-        const FROM = renderer.project(
-          boss.x + COS * boss.radius * 0.55,
-          boss.y + SIN * boss.radius * 0.55,
-          SHOULDER_Z
-        ), TO = renderer.project(boss.x + COS * TIP_DISTANCE, boss.y + SIN * TIP_DISTANCE, SHOULDER_Z);
-        renderer.line(FROM, TO, ARM_WIDTH + 0.34, OUTLINE);
-        renderer.line(FROM, TO, ARM_WIDTH, FILL);
-        renderer.line(FROM, TO, ARM_WIDTH * 0.28, LIGHT);
-        renderer.ellipse(
-          TO.x,
-          TO.y,
-          renderer.scale * (ARM_FIST + 0.17),
-          renderer.scale * (ARM_FIST + 0.17),
-          OUTLINE
-        );
-        renderer.ellipse(TO.x, TO.y, renderer.scale * ARM_FIST, renderer.scale * ARM_FIST, FILL);
-        renderer.ellipse(
-          TO.x - renderer.scale * 0.2,
-          TO.y - renderer.scale * 0.22,
-          renderer.scale * ARM_FIST * 0.38,
-          renderer.scale * ARM_FIST * 0.3,
-          LIGHT
-        );
-      }
-      renderer.ctx.flush();
     }
   };
 
@@ -15772,8 +15762,8 @@
       pose.body.scaleX = 1.055;
       pose.body.scaleY = 0.965;
       pose.body.rotation = pose.aim * 0.11;
-      pose.arm(pose.lead, -0.72 + pose.strikeAngle * 0.3 + STRIDE * 0.12);
-      pose.arm(pose.trail, 0.46 - STRIDE * 0.18);
+      pose.hand(pose.lead, pose.side(pose.lead) * 0.35 * pose.radius, STRIDE * 0.3 * pose.radius);
+      pose.hand(pose.trail, pose.side(pose.trail) * 0.35 * pose.radius, -STRIDE * 0.3 * pose.radius);
       pose.extras["foot-left"] = { x: -STRIDE * 4, y: -LIFT * 5, rotation: -STRIDE * 0.12 };
       pose.extras["foot-right"] = { x: STRIDE * 4, y: -Math.max(0, -STRIDE) * 5, rotation: STRIDE * 0.12 };
       if (pose.parts.has("leaf")) {
@@ -15801,6 +15791,12 @@
     constructor() {
       super(FEATURE10, "strike", 0.18, 0.18);
     }
+    // Both hands go up and out to the sides, as high as the given share of the body radius.
+    handsUp(pose, height) {
+      for (const KEY2 of ["arm-left", "arm-right"]) {
+        pose.hand(KEY2, pose.side(KEY2) * 0.55 * pose.radius, -height * pose.radius);
+      }
+    }
     activeMotion(boss) {
       return boss.z > 0.1 ? "airborne" : "strike";
     }
@@ -15809,16 +15805,14 @@
       pose.body.y = 5 * pose.windEase;
       pose.body.scaleX = 1 - 0.05 * pose.windEase;
       pose.body.scaleY = 1 + 0.09 * pose.windEase;
-      pose.arm(pose.lead, -0.9);
-      pose.arm(pose.trail, -0.45);
+      this.handsUp(pose, 0.9 * pose.windEase);
     }
     active(boss, pose) {
       const LIFT = CLAMP2((boss.z || 0) / Math.max(1, boss.height || 1), 0, 1);
       pose.body.rotation = pose.aim * 0.06;
       pose.body.scaleX = 1 + 0.045 * LIFT;
       pose.body.scaleY = 1 - 0.035 * LIFT;
-      pose.arm("arm-left", -0.28);
-      pose.arm("arm-right", 0.28);
+      this.handsUp(pose, 0.7);
       pose.extras["foot-left"] = { y: -4 * LIFT, rotation: -0.08 * LIFT };
       pose.extras["foot-right"] = { y: -4 * LIFT, rotation: 0.08 * LIFT };
       if (pose.parts.has("leaf")) {
@@ -15834,8 +15828,9 @@
       pose.body.scaleX = 1.12;
       pose.body.scaleY = 0.8;
       pose.body.rotation = pose.aim * 0.08;
-      pose.arm("arm-left", -0.65);
-      pose.arm("arm-right", 0.65);
+      for (const KEY2 of ["arm-left", "arm-right"]) {
+        pose.hand(KEY2, pose.side(KEY2) * 0.7 * pose.radius, 0.25 * pose.radius);
+      }
       pose.extras["foot-left"] = { x: -5, y: 2, rotation: -0.14 };
       pose.extras["foot-right"] = { x: 5, y: 2, rotation: 0.14 };
     }
@@ -15853,8 +15848,7 @@
       pose.body.rotation = 0.1 * Math.sin(PROJECTED - pose.aim);
       pose.body.scaleX = 1.035;
       pose.body.scaleY = 0.97;
-      pose.arm(pose.lead, 0.4 + CLAMP2(PROJECTED, -1.1, 1.1) * 0.58);
-      pose.arm(pose.trail, -0.3 - CLAMP2(PROJECTED, -1.1, 1.1) * 0.2);
+      this.hands(pose, PROJECTED);
       if (pose.parts.has("leaf")) {
         pose.extras.leaf = { rotation: 0.12 * Math.sin(Q * Math.PI) };
       }
@@ -15867,7 +15861,12 @@
       const ARC = pose.aim + this.config.sector / 2, PROJECTED = Math.atan2(-0.62 * Math.sin(ARC), Math.cos(ARC));
       pose.body.rotation = 0.08 * Math.sin(PROJECTED - pose.aim);
       pose.body.scaleX = 1.05;
-      pose.arm(pose.lead, 0.4 + PROJECTED * 0.5);
+      this.hands(pose, PROJECTED);
+    }
+    // The lead hand follows the sweep, out along the angle it has reached; the other hangs at its side.
+    hands(pose, angle) {
+      pose.hand(pose.lead, Math.cos(angle) * 1.15 * pose.radius, Math.sin(angle) * 1.15 * pose.radius, angle);
+      pose.hand(pose.trail, pose.side(pose.trail) * 0.45 * pose.radius, -0.15 * pose.radius);
     }
   };
 
@@ -15879,9 +15878,9 @@
       super(FEATURE12, "fire");
       this.summoning = true;
     }
-    pose(boss, parts, scratch) {
+    pose(boss, parts, scratch, rig) {
       if (!parts.has("body")) {
-        return super.pose(boss, parts, scratch);
+        return super.pose(boss, parts, scratch, rig);
       }
       return bossSummonPose(boss, parts);
     }
@@ -16020,10 +16019,10 @@
         PLAYER.setExpression(SAFE_EXPRESSION);
       }
       PRESENTATION.seek(PLAYER, this.renderer.displayTimeMs);
-      const S_LOCAL = this.renderer.scale * (0, import_vector_sockets4.bossVectorScale)(), GROUND = RECORD.anchors.ground, MATRIX = [S_LOCAL, 0, 0, S_LOCAL, P.x - GROUND.x * S_LOCAL, P.y - GROUND.y * S_LOCAL];
+      const S_LOCAL = this.renderer.scale * (0, import_vector_sockets5.bossVectorScale)(), GROUND = RECORD.anchors.ground, MATRIX = [S_LOCAL, 0, 0, S_LOCAL, P.x - GROUND.x * S_LOCAL, P.y - GROUND.y * S_LOCAL];
       const DEFEAT_BOUNCE = EVENT?.phase === "celebrating" && EVENT.outcome === "defeat" ? Math.max(0, Math.sin(EVENT.elapsed * Math.PI * 2 / CONFIG.farm.bossEvent.celebrationSeconds * 2)) : 0;
       const FADE = EVENT?.phase === "fading" ? CLAMP2(1 - EVENT.elapsed / CONFIG.farm.bossEvent.fadeSeconds, 0, 1) : 1;
-      const PARTS = RECORD.parts, POSE = PRESENTATION.pose(B, PARTS, this.bossAttackPose);
+      const PARTS = RECORD.parts, POSE = PRESENTATION.pose(B, PARTS, this.bossAttackPose, RECORD.hands);
       PLAYER.setBasePose("body", {
         x: 0,
         y: POSE.body.y - 18 * DEFEAT_BOUNCE,
@@ -16032,11 +16031,12 @@
         scaleY: POSE.body.scaleY * (1 - (K.squash || 0)) * (1 + 0.06 * DEFEAT_BOUNCE),
         opacity: FADE
       });
-      for (const [PART, ROTATION] of Object.entries(POSE.arms)) {
-        if (PARTS.has(PART)) {
-          PLAYER.setBasePose(PART, {
-            rotation: ROTATION
-          });
+      const TO_SVG = 1 / (0, import_vector_sockets5.bossVectorScale)(), HELD = speciesById(SPECIES).heldItem;
+      for (const [PART, HAND] of Object.entries(POSE.hands)) {
+        const AT = { x: HAND.x * TO_SVG, y: HAND.y * TO_SVG + POSE.body.y };
+        PLAYER.setBasePose(PART, { ...AT, rotation: HAND.face });
+        if (HELD?.hand === PART && PARTS.has(HELD.part)) {
+          PLAYER.setBasePose(HELD.part, AT);
         }
       }
       for (const [PART, PART_POSE] of Object.entries(POSE.extras)) {
@@ -16048,14 +16048,12 @@
         x: MOUTH_SOCKET.x * S_LOCAL + MATRIX[4],
         y: MOUTH_SOCKET.y * S_LOCAL + MATRIX[5]
       };
-      PRESENTATION.drawBehind(this.renderer, B);
       this.renderer.ctx.vector.flush();
       PLAYER.draw({
         projection: this.renderer.ctx.vector.projection,
         matrix: MATRIX
       });
       PRESENTATION.drawRelease(this.renderer, B, POSE, MOUTH_SCREEN);
-      PRESENTATION.drawWeapon(this.renderer, B, PLAYER, MATRIX, POSE, RECORD);
       BARLEY_SHRED_PRESENTATION2.drawStatus(this.renderer, B);
     }
   };
@@ -16117,7 +16115,7 @@
   }
 
   // src/farm-scenery.js
-  var import_vector_sockets5 = __toESM(require_vector_sockets(), 1);
+  var import_vector_sockets6 = __toESM(require_vector_sockets(), 1);
   init_farm_model();
   var { radiusX: RX, radiusY: RY } = CONFIG.farm.arena;
   var TAU3 = Math.PI * 2;
@@ -16264,9 +16262,9 @@
     C.lineCap = "round";
     C.beginPath();
     C.moveTo(B.x, B.y);
-    C.lineTo(B.x, B.y - 1.9 * S * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * 1.3);
+    C.lineTo(B.x, B.y - 1.9 * S * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * 1.3);
     C.stroke();
-    const TOP = B.y - 2.9 * S * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * 1.3, DARK = tree.shade > 0.5 ? "#5f8c58" : "#67955c", LIGHT = tree.shade > 0.5 ? "#86b36d" : "#8dbb72";
+    const TOP = B.y - 2.9 * S * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * 1.3, DARK = tree.shade > 0.5 ? "#5f8c58" : "#67955c", LIGHT = tree.shade > 0.5 ? "#86b36d" : "#8dbb72";
     paint.r.ellipse(B.x, TOP + 0.35 * S, 1.65 * S, 1.25 * S, DARK);
     paint.r.ellipse(B.x - 0.55 * S, TOP + 0.05 * S, 1.15 * S, 0.95 * S, DARK);
     paint.r.ellipse(B.x + 0.6 * S, TOP + 0.1 * S, 1.1 * S, 0.9 * S, DARK);
@@ -16313,7 +16311,7 @@
       }
       if (i > 0) {
         for (const T of [-0.55, 0, 0.55]) {
-          const WX = T * TIER_R * 0.98, WY = TOWER_Y - TIER_R * Math.sqrt(1 - T * T) * 0.98, BASE = paint.p(WX, WY, z + TIER_H * 0.32), WW = 0.42 * S * Math.sqrt(1 - T * T) + 1, WH = TIER_H * 0.4 * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S;
+          const WX = T * TIER_R * 0.98, WY = TOWER_Y - TIER_R * Math.sqrt(1 - T * T) * 0.98, BASE = paint.p(WX, WY, z + TIER_H * 0.32), WW = 0.42 * S * Math.sqrt(1 - T * T) + 1, WH = TIER_H * 0.4 * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S;
           C.fillStyle = "#4b4358";
           C.fillRect(BASE.x - WW - 1, BASE.y - WH - WW, WW * 2 + 2, WH + WW);
           C.fillStyle = glow > 0 ? "#ffe3a1" : "#f3cf86";
@@ -16357,7 +16355,7 @@
     drawDoor(paint, glow);
   }
   function drawDoor(paint, glow) {
-    const S = paint.s, C = paint.c, BASE = paint.p(0, RY + 0.05, 0), W = 1.7 * S, H = 3.6 * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S;
+    const S = paint.s, C = paint.c, BASE = paint.p(0, RY + 0.05, 0), W = 1.7 * S, H = 3.6 * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S;
     paint.r.ellipse(BASE.x, BASE.y + 0.1 * S, 2.6 * S, 0.9 * S, "#b3ab97");
     paint.r.ellipse(BASE.x, BASE.y, 2.1 * S, 0.7 * S, "#c4bda9");
     C.fillStyle = "#5a4f6c";
@@ -16420,7 +16418,7 @@
             continue;
           }
           for (const RZ of [0.45, 0.9]) {
-            const DZ = RZ * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S - PASS * 0.05 * S;
+            const DZ = RZ * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S - PASS * 0.05 * S;
             C.moveTo(A.x, A.y - DZ);
             C.lineTo(B.x, B.y - DZ);
           }
@@ -16441,7 +16439,7 @@
             continue;
           }
           C.moveTo(A.x + PASS * -0.03 * S, A.y);
-          C.lineTo(A.x + PASS * -0.03 * S, A.y - POST_Z * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S);
+          C.lineTo(A.x + PASS * -0.03 * S, A.y - POST_Z * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S);
         }
       }
       C.stroke();
@@ -16452,9 +16450,9 @@
       C.lineWidth = 0.38 * S;
       C.beginPath();
       C.moveTo(A.x, A.y);
-      C.lineTo(A.x, A.y - 1.8 * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S);
+      C.lineTo(A.x, A.y - 1.8 * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S);
       C.stroke();
-      paint.r.ellipse(A.x, A.y - 1.8 * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S, 0.3 * S, 0.22 * S, "#8f6c45");
+      paint.r.ellipse(A.x, A.y - 1.8 * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S, 0.3 * S, 0.22 * S, "#8f6c45");
     }
   }
   function drawFarmGrounds(renderer, world) {
@@ -16538,14 +16536,14 @@
   }
   function drawHallWall(paint, tint, sky, now) {
     const S = paint.s, C = paint.c, Z = HALL_WALL_HEIGHT, X0 = -RX - 2, X1 = RX + 2;
-    const A = paint.p(X0, RY, 0), B = paint.p(X1, RY, 0), TOP = Z * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S;
+    const A = paint.p(X0, RY, 0), B = paint.p(X1, RY, 0), TOP = Z * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S;
     C.fillStyle = rgb(tint.wall);
     C.fillRect(A.x, A.y - TOP, B.x - A.x, TOP);
     C.strokeStyle = "rgba(0,0,0,0.16)";
     C.lineWidth = Math.max(1, 0.04 * S);
     C.beginPath();
     for (let z = 1; z < Z; z++) {
-      const Y = A.y - z * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S;
+      const Y = A.y - z * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S;
       C.moveTo(A.x, Y);
       C.lineTo(B.x, Y);
     }
@@ -16556,7 +16554,7 @@
       if (!paint.visible(BASE, 160)) {
         continue;
       }
-      const WW = 1.5 * S, WB = BASE.y - 2.6 * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S, WT = BASE.y - 7 * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S;
+      const WW = 1.5 * S, WB = BASE.y - 2.6 * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S, WT = BASE.y - 7 * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S;
       C.fillStyle = rgb(tint.floor, 0.9);
       C.fillRect(BASE.x - WW - 0.25 * S, WT - WW, WW * 2 + 0.5 * S, WB - WT + WW);
       paint.r.ellipse(BASE.x, WT, WW + 0.25 * S, WW + 0.2 * S, rgb(tint.floor, 0.9));
@@ -16589,11 +16587,11 @@
         C.fillStyle = rgb(mix(tint.wall, [0, 0, 0], 0.25));
         C.fillRect(
           TX - 0.35 * S,
-          BASE.y - 6 * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S,
+          BASE.y - 6 * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S,
           0.7 * S,
-          6 * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S
+          6 * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S
         );
-        const TY = BASE.y - 3.6 * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * S;
+        const TY = BASE.y - 3.6 * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S;
         paint.r.ellipse(
           TX,
           TY,
@@ -16765,7 +16763,7 @@
         this.vectorAssets.set(Number(SPECIES), {
           compiled: COMPILED,
           asset: CREATE_VECTOR_ASSET(this.meshes, COMPILED),
-          anchors: (0, import_vector_sockets6.readVectorSockets)(COMPILED, `species ${SPECIES}, ${COMPILED.sourcePath}`),
+          anchors: (0, import_vector_sockets7.readVectorSockets)(COMPILED, `species ${SPECIES}, ${COMPILED.sourcePath}`),
           parts: new Set(COMPILED.metadata.parts.map((part) => part.id))
         });
       }
@@ -16781,11 +16779,12 @@
       );
       this.bossSpeciesAssets = /* @__PURE__ */ new Map();
       for (const SPECIES of this.vectorAssets.keys()) {
-        const RECORD = this.bossAssets.get(SPECIES === 3 ? "chestnut" : `species-${SPECIES}`);
+        const RECORD = this.bossAssets.get(`species-${SPECIES}`);
         if (!RECORD) {
           throw new Error("Missing required boss vector asset for species " + SPECIES);
         }
         RECORD.anchors = bindBossSocketAsset(SPECIES, RECORD);
+        RECORD.hands = bossHandRig(RECORD.compiled);
         this.bossSpeciesAssets.set(SPECIES, RECORD);
       }
       this.bossPlayer = null;
@@ -16799,9 +16798,9 @@
       this.ctx.isBloomWebGL = true;
       this.canvas.dataset.rendererBackend = "Budmori authored 2.5D vectors";
       this.resize();
-      const BOSS2 = this.bossAssets.get("chestnut");
+      const BOSS2 = this.bossAssets.get("species-3");
       if (!BOSS2) {
-        throw new Error("Pinned chestnut boss vector asset is required");
+        throw new Error("Pinned species-3 boss vector asset is required");
       }
       const PREWARM_AT = performance.now();
       this.bossPlayer = BOSS2.asset.createPlayer({
@@ -16837,14 +16836,14 @@
     project(x, y, z = 0) {
       return {
         x: (x + this.offset[0] + this.view[0] + (this.shakeX || 0)) * this.scale,
-        y: (this.view[1] - (import_vector_sockets6.WORLD_DEPTH_PROJECTION * y + import_vector_sockets6.WORLD_HEIGHT_PROJECTION * z + this.offset[1])) * this.scale
+        y: (this.view[1] - (import_vector_sockets7.WORLD_DEPTH_PROJECTION * y + import_vector_sockets7.WORLD_HEIGHT_PROJECTION * z + this.offset[1])) * this.scale
       };
     }
     screenToWorld(clientX, clientY) {
       const R2 = this.canvas.getBoundingClientRect(), PX = (clientX - R2.left) * this.pixelRatio, PY = (clientY - R2.top) * this.pixelRatio;
       return {
         x: PX / this.scale - this.offset[0] - this.view[0],
-        y: (this.view[1] - PY / this.scale - this.offset[1]) / import_vector_sockets6.WORLD_DEPTH_PROJECTION
+        y: (this.view[1] - PY / this.scale - this.offset[1]) / import_vector_sockets7.WORLD_DEPTH_PROJECTION
       };
     }
     // The smallest a unit is drawn, in pixels. Zoomed out it shrinks with the view instead of staying full size.
@@ -16875,10 +16874,10 @@
       const BOUNDS = {
         left: -RX2 - 1.3,
         right: RX2 + 1.3,
-        bottom: -(RY2 + 1.3) * import_vector_sockets6.WORLD_DEPTH_PROJECTION,
-        top: (RY2 + 1.3) * import_vector_sockets6.WORLD_DEPTH_PROJECTION
+        bottom: -(RY2 + 1.3) * import_vector_sockets7.WORLD_DEPTH_PROJECTION,
+        top: (RY2 + 1.3) * import_vector_sockets7.WORLD_DEPTH_PROJECTION
       };
-      const BOSS_SCALE = (0, import_vector_sockets6.bossVectorScale)(), BOSS_X = RX2 - import_vector_sockets6.BOSS_ART_RADIUS, BOSS_Y = (RY2 - import_vector_sockets6.BOSS_ART_RADIUS) * import_vector_sockets6.WORLD_DEPTH_PROJECTION;
+      const BOSS_SCALE = (0, import_vector_sockets7.bossVectorScale)(), BOSS_X = RX2 - import_vector_sockets7.BOSS_ART_RADIUS, BOSS_Y = (RY2 - import_vector_sockets7.BOSS_ART_RADIUS) * import_vector_sockets7.WORLD_DEPTH_PROJECTION;
       const INCLUDE_BOSS = (record) => {
         const [X, Y, W, H] = record.compiled.viewBox, G = record.anchors.ground;
         BOUNDS.left = Math.min(BOUNDS.left, -BOSS_X - (G.x - X) * BOSS_SCALE);
@@ -16886,7 +16885,7 @@
         BOUNDS.bottom = Math.min(BOUNDS.bottom, -BOSS_Y - (Y + H - G.y) * BOSS_SCALE);
         BOUNDS.top = Math.max(
           BOUNDS.top,
-          BOSS_Y + (G.y - Y) * BOSS_SCALE + CONFIG.battle.dropHeight * import_vector_sockets6.WORLD_HEIGHT_PROJECTION
+          BOSS_Y + (G.y - Y) * BOSS_SCALE + CONFIG.battle.dropHeight * import_vector_sockets7.WORLD_HEIGHT_PROJECTION
         );
       };
       for (const RECORD of this.bossAssets.values()) {
@@ -16996,7 +16995,7 @@
       const S = this.scale, OX = this.offset[0] + this.view[0], OY = this.view[1] - this.offset[1], ALPHA = C.globalAlpha;
       C.beginPath();
       for (let i = 0; i < COUNT; i++) {
-        const X = (POINTS[i * 2] + OX) * S, Y = (OY - import_vector_sockets6.WORLD_DEPTH_PROJECTION * POINTS[i * 2 + 1]) * S;
+        const X = (POINTS[i * 2] + OX) * S, Y = (OY - import_vector_sockets7.WORLD_DEPTH_PROJECTION * POINTS[i * 2 + 1]) * S;
         if (i === 0) {
           C.moveTo(X, Y);
         } else {
@@ -17102,7 +17101,7 @@
         const ZOOM_TARGET = this.aspect > 1.2 ? 0.55 : 0.8;
         this.zoom += (ZOOM_TARGET - this.zoom) * 0.07;
         this.configure(this.scene, true);
-        const BASE_Y = this.baseY(), TARGET_Y = -0.2 * this.view[1] - import_vector_sockets6.WORLD_DEPTH_PROJECTION * CONFIG.farm.arena.radiusY - BASE_Y;
+        const BASE_Y = this.baseY(), TARGET_Y = -0.2 * this.view[1] - import_vector_sockets7.WORLD_DEPTH_PROJECTION * CONFIG.farm.arena.radiusY - BASE_Y;
         this.setPan(this.pan.x * 0.9, this.pan.y + (TARGET_Y - this.pan.y) * 0.07);
         this.cameraReturning = true;
       } else if (this.cameraReturning && !INSIDE) {
@@ -17120,7 +17119,7 @@
     }
     // Inside the tower the whole hall is always in view: no panning or zooming, so tapping anywhere deploys.
     fitHall() {
-      const { radiusX: RX2, radiusY: RY2 } = CONFIG.farm.arena, BASE = this.scenePresentation.cameraView(this.aspect), FIT = Math.min(BASE[0] / (RX2 + 1), BASE[1] / (RY2 * import_vector_sockets6.WORLD_DEPTH_PROJECTION + 3.5));
+      const { radiusX: RX2, radiusY: RY2 } = CONFIG.farm.arena, BASE = this.scenePresentation.cameraView(this.aspect), FIT = Math.min(BASE[0] / (RX2 + 1), BASE[1] / (RY2 * import_vector_sockets7.WORLD_DEPTH_PROJECTION + 3.5));
       if (Math.abs(this.zoom - FIT) > 1e-6) {
         this.zoom = FIT;
         this.configure(this.scene, true);

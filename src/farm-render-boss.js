@@ -1,4 +1,5 @@
 import { bossVectorScale } from './vector-sockets.cjs';
+import { speciesById } from './species-catalog.js';
 import { CONFIG, clamp } from './farm-model.js';
 import { BossAttackPose, BossAttackPresentation } from './features/boss-patterns/presentation-base.js';
 import { FrontSlamPresentation } from './features/boss-patterns/front-slam/presentation.js';
@@ -159,7 +160,7 @@ export class BossPresentation {
                 : 0;
         const FADE = EVENT?.phase === 'fading' ? clamp(1 - EVENT.elapsed / CONFIG.farm.bossEvent.fadeSeconds, 0, 1) : 1;
         const PARTS = RECORD.parts,
-            POSE = PRESENTATION.pose(B, PARTS, this.bossAttackPose);
+            POSE = PRESENTATION.pose(B, PARTS, this.bossAttackPose, RECORD.hands);
         PLAYER.setBasePose('body', {
             x: 0,
             y: POSE.body.y - 18 * DEFEAT_BOUNCE,
@@ -168,11 +169,14 @@ export class BossPresentation {
             scaleY: POSE.body.scaleY * (1 - (K.squash || 0)) * (1 + 0.06 * DEFEAT_BOUNCE),
             opacity: FADE,
         });
-        for (const [PART, ROTATION] of Object.entries(POSE.arms)) {
-            if (PARTS.has(PART)) {
-                PLAYER.setBasePose(PART, {
-                    rotation: ROTATION,
-                });
+        // The hands float: each is moved (and turned) round the body, and the weapon a species holds goes with its hand.
+        const TO_SVG = 1 / bossVectorScale(),
+            HELD = speciesById(SPECIES).heldItem;
+        for (const [PART, HAND] of Object.entries(POSE.hands)) {
+            const AT = { x: HAND.x * TO_SVG, y: HAND.y * TO_SVG + POSE.body.y };
+            PLAYER.setBasePose(PART, { ...AT, rotation: HAND.face });
+            if (HELD?.hand === PART && PARTS.has(HELD.part)) {
+                PLAYER.setBasePose(HELD.part, AT);
             }
         }
         for (const [PART, PART_POSE] of Object.entries(POSE.extras)) {
@@ -185,14 +189,12 @@ export class BossPresentation {
                 x: MOUTH_SOCKET.x * S_LOCAL + MATRIX[4],
                 y: MOUTH_SOCKET.y * S_LOCAL + MATRIX[5],
             };
-        PRESENTATION.drawBehind(this.renderer, B);
         this.renderer.ctx.vector.flush();
         PLAYER.draw({
             projection: this.renderer.ctx.vector.projection,
             matrix: MATRIX,
         });
         PRESENTATION.drawRelease(this.renderer, B, POSE, MOUTH_SCREEN);
-        PRESENTATION.drawWeapon(this.renderer, B, PLAYER, MATRIX, POSE, RECORD);
         BARLEY_SHRED_PRESENTATION.drawStatus(this.renderer, B);
     }
 }

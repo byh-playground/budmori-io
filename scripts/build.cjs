@@ -78,6 +78,7 @@ async function verifyStartupPresentation() {
 (async () => {
     const { validateVectorSources: VALIDATE_VECTOR_SOURCES } = require('./vector-sources.cjs');
     const { validateVectorArtifacts: VALIDATE_VECTOR_ARTIFACTS } = require('./vector-artifacts.cjs');
+    await require('./compose-bosses.cjs').composeBosses(ROOT);
     VALIDATE_VECTOR_ARTIFACTS(ROOT);
     const VECTOR_ASSETS = VALIDATE_VECTOR_SOURCES(ROOT);
     const STARTUP_PRESENTATION = await verifyStartupPresentation();

@@ -137,6 +137,7 @@
     pointer-events: none;
 }
 #gameplayDock .controls,
+#gameplayDock .start-floor,
 #gameplayDock .raid-panel,
 #gameplayDock .utility {
     pointer-events: auto;

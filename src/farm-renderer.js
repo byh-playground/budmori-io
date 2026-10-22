@@ -18,7 +18,7 @@ import {
     WORLD_HEIGHT_PROJECTION,
     WORLD_DEPTH_PROJECTION,
 } from './vector-sockets.cjs';
-import { bindBossSocketAsset, unbindBossSocketAsset } from './boss-vector-sockets.js';
+import { bindBossSocketAsset, bossHandRig, unbindBossSocketAsset } from './boss-vector-sockets.js';
 import { BossPresentation, bossAttackPresentation } from './farm-render-boss.js';
 import { CONFIG, clamp, bossAttackArea } from './farm-model.js';
 import { bossDangerContour } from './attack-telegraph.js';
@@ -130,11 +130,12 @@ const DIORAMA = class Diorama {
         );
         this.bossSpeciesAssets = new Map();
         for (const SPECIES of this.vectorAssets.keys()) {
-            const RECORD = this.bossAssets.get(SPECIES === 3 ? 'chestnut' : `species-${SPECIES}`);
+            const RECORD = this.bossAssets.get(`species-${SPECIES}`);
             if (!RECORD) {
                 throw new Error('Missing required boss vector asset for species ' + SPECIES);
             }
             RECORD.anchors = bindBossSocketAsset(SPECIES, RECORD);
+            RECORD.hands = bossHandRig(RECORD.compiled);
             this.bossSpeciesAssets.set(SPECIES, RECORD);
         }
         this.bossPlayer = null;
@@ -148,9 +149,9 @@ const DIORAMA = class Diorama {
         this.ctx.isBloomWebGL = true;
         this.canvas.dataset.rendererBackend = 'Budmori authored 2.5D vectors';
         this.resize();
-        const BOSS = this.bossAssets.get('chestnut');
+        const BOSS = this.bossAssets.get('species-3');
         if (!BOSS) {
-            throw new Error('Pinned chestnut boss vector asset is required');
+            throw new Error('Pinned species-3 boss vector asset is required');
         }
         const PREWARM_AT = performance.now();
         this.bossPlayer = BOSS.asset.createPlayer({
