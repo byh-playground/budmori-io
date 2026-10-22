@@ -5922,7 +5922,6 @@
       BOSS_PATTERN_CONFIG = Object.freeze({
         "attack.sweep-360": Object.freeze({
           kind: "sweep-360",
-          maxTargets: 5,
           unlockHp: 0.4,
           windup: 1.05,
           active: 1.05,
@@ -5937,7 +5936,6 @@
         }),
         "attack.front-slam": Object.freeze({
           kind: "front-slam",
-          maxTargets: 3,
           unlockHp: 1,
           windup: 0.75,
           active: 0,
@@ -5952,7 +5950,6 @@
         }),
         "attack.charge": Object.freeze({
           kind: "charge",
-          maxTargets: 3,
           unlockHp: 1,
           windup: 0.5,
           active: 6.6 / 5.3,
@@ -5967,7 +5964,6 @@
         }),
         "attack.leap-slam": Object.freeze({
           kind: "leap-slam",
-          maxTargets: 4,
           unlockHp: 0.6,
           windup: 0.5,
           active: 1.013,
@@ -5982,7 +5978,6 @@
         }),
         "attack.fan-sweep": Object.freeze({
           kind: "fan-sweep",
-          maxTargets: 4,
           unlockHp: 0.75,
           windup: 1,
           active: 0.8,
@@ -8863,6 +8858,7 @@
           this._activeBreedReservations = /* @__PURE__ */ new Map();
           this._benched = /* @__PURE__ */ new Set();
           this._ejectQueue = [];
+          this._bossHitBatch = [];
           this._benchRevision = 0;
           this._fieldCache = { revision: -1, bench: -1, list: [] };
           this._deployReadyTime = 0;
@@ -12302,6 +12298,8 @@
         hitBossPatternUnit(unit2, patternId, point2, normal = null) {
           return this.mutateUnits(this._hitBossPatternUnit, unit2, patternId, point2, normal);
         }
+        // A hit knocks the unit back at once and queues its damage: the damage is shared among everyone hit in the same
+        // moment, which is only known once the attack has looked at all of them (_settleBossHits).
         _hitBossPatternUnit(unit2, patternId, point2, normal = null) {
           const B_LOCAL = this.boss, ACTION = B_LOCAL.patternRuntime.active, CONFIG_LOCAL = BOSS_PATTERN_CONFIG[patternId];
           if (!ACTION || !CONFIG_LOCAL || !hasFaction(unit2, FACTION_CONFIG.PLAYER) || !areOpposingFactions(B_LOCAL, unit2) || unit2.hp <= 0 || !unit2.dropLanded || ACTION.hitIds.has(unit2.id)) {
@@ -12311,7 +12309,6 @@
             return false;
           }
           ACTION.hitIds.add(unit2.id);
-          const SHARE = BOSS_HIT_SPLIT.everyone + (1 - BOSS_HIT_SPLIT.everyone) * Math.min(1, CONFIG_LOCAL.maxTargets / ACTION.hitIds.size);
           const DX = normal?.x ?? unit2.x - B_LOCAL.x, DY = normal?.y ?? unit2.y - B_LOCAL.y, N = Math.hypot(DX, DY) || 1;
           const GUARD = unit2.ability.receiveGuard?.(this), KNOCKBACK_MULTIPLIER = GUARD?.receivedKnockbackMultiplier ?? 1;
           unit2.knock(
@@ -12321,35 +12318,55 @@
             CONFIG_LOCAL.lift * KNOCKBACK_MULTIPLIER,
             B_LOCAL
           );
-          if (!hasFaction(unit2, FACTION_CONFIG.PLAYER) || !areOpposingFactions(B_LOCAL, unit2)) {
-            return false;
-          }
-          const RECEIVED = applyDamageToTargets(null, [unit2], {
-            armorForTarget: () => this.combatTargetDefense(unit2).armor,
-            rawDamage: B_LOCAL.attackPower * CONFIG_LOCAL.damageMultiplier * SHARE * (this.bossEnraged ? BOSS_ENRAGE.damageMultiplier : 1) * (GUARD?.receivedDamageMultiplier ?? 1) * this.passiveReceivedScale(unit2),
-            sourceKind: "enemy"
-          });
-          this.passiveUndying(unit2);
-          this.onCombatResolved.emit({ damageTaken: RECEIVED.totalActualLoss, excluded: unit2.isFormationClone });
-          this._syncUnitAliveCount(unit2);
-          if (unit2.hp === 0) {
-            unit2.down = unit2.isBattleOnlySummon ? 0 : CONFIG.unit.corpseRecoverySeconds;
-            this.handleUnitDeath(unit2);
-          }
-          this.metrics.directHits++;
-          this.metrics[BOSS_BEHAVIORS.forId(patternId).hitMetric]++;
-          this.combat("unit-hit", {
-            attackKind: patternId,
-            attackId: B_LOCAL.attackId,
-            unit: unit2.id,
-            x: point2.x,
-            y: point2.y,
-            z: Math.max(0.15, unit2.z + 0.25),
+          this._bossHitBatch.push({
+            unit: unit2,
+            patternId,
+            point: { x: point2.x, y: point2.y },
             nx: DX / N,
             ny: DY / N,
-            strength: CONFIG_LOCAL.damageMultiplier
+            guard: GUARD
           });
           return true;
+        }
+        // The damage of the hits queued since the last call: each unit takes 35% of the attack plus its share of the other 65%.
+        _settleBossHits() {
+          const BATCH = this._bossHitBatch, B_LOCAL = this.boss;
+          if (!BATCH.length) {
+            return;
+          }
+          const SHARE = BOSS_HIT_SPLIT.everyone + (1 - BOSS_HIT_SPLIT.everyone) / BATCH.length;
+          for (const HIT of BATCH) {
+            const UNIT_LOCAL = HIT.unit, CONFIG_LOCAL = BOSS_PATTERN_CONFIG[HIT.patternId];
+            const RECEIVED = applyDamageToTargets(null, [UNIT_LOCAL], {
+              armorForTarget: () => this.combatTargetDefense(UNIT_LOCAL).armor,
+              rawDamage: B_LOCAL.attackPower * CONFIG_LOCAL.damageMultiplier * SHARE * (this.bossEnraged ? BOSS_ENRAGE.damageMultiplier : 1) * (HIT.guard?.receivedDamageMultiplier ?? 1) * this.passiveReceivedScale(UNIT_LOCAL),
+              sourceKind: "enemy"
+            });
+            this.passiveUndying(UNIT_LOCAL);
+            this.onCombatResolved.emit({
+              damageTaken: RECEIVED.totalActualLoss,
+              excluded: UNIT_LOCAL.isFormationClone
+            });
+            this._syncUnitAliveCount(UNIT_LOCAL);
+            if (UNIT_LOCAL.hp === 0) {
+              UNIT_LOCAL.down = UNIT_LOCAL.isBattleOnlySummon ? 0 : CONFIG.unit.corpseRecoverySeconds;
+              this.handleUnitDeath(UNIT_LOCAL);
+            }
+            this.metrics.directHits++;
+            this.metrics[BOSS_BEHAVIORS.forId(HIT.patternId).hitMetric]++;
+            this.combat("unit-hit", {
+              attackKind: HIT.patternId,
+              attackId: B_LOCAL.attackId,
+              unit: UNIT_LOCAL.id,
+              x: HIT.point.x,
+              y: HIT.point.y,
+              z: Math.max(0.15, UNIT_LOCAL.z + 0.25),
+              nx: HIT.nx,
+              ny: HIT.ny,
+              strength: CONFIG_LOCAL.damageMultiplier
+            });
+          }
+          BATCH.length = 0;
         }
         _nearestBossFirst(candidates) {
           const B_LOCAL = this.boss;
@@ -12741,6 +12758,7 @@
             return;
           }
           this.updateBossPattern(dt, LIVING);
+          this._settleBossHits();
         }
       };
     }
@@ -13182,7 +13200,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.29";
+      PRODUCT_VERSION = "0.30.30";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });

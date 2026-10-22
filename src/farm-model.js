@@ -1254,6 +1254,7 @@ const GARDEN = class Garden {
         this._activeBreedReservations = new Map();
         this._benched = new Set();
         this._ejectQueue = [];
+        this._bossHitBatch = [];
         this._benchRevision = 0;
         this._fieldCache = { revision: -1, bench: -1, list: [] };
         this._deployReadyTime = 0;
@@ -5305,6 +5306,8 @@ const GARDEN = class Garden {
     hitBossPatternUnit(unit, patternId, point, normal = null) {
         return this.mutateUnits(this._hitBossPatternUnit, unit, patternId, point, normal);
     }
+    // A hit knocks the unit back at once and queues its damage: the damage is shared among everyone hit in the same
+    // moment, which is only known once the attack has looked at all of them (_settleBossHits).
     _hitBossPatternUnit(unit, patternId, point, normal = null) {
         const B_LOCAL = this.boss,
             ACTION = B_LOCAL.patternRuntime.active,
@@ -5324,9 +5327,6 @@ const GARDEN = class Garden {
             return false;
         }
         ACTION.hitIds.add(unit.id);
-        const SHARE =
-            BOSS_HIT_SPLIT.everyone +
-            (1 - BOSS_HIT_SPLIT.everyone) * Math.min(1, CONFIG_LOCAL.maxTargets / ACTION.hitIds.size);
         const DX = normal?.x ?? unit.x - B_LOCAL.x,
             DY = normal?.y ?? unit.y - B_LOCAL.y,
             N = Math.hypot(DX, DY) || 1;
@@ -5339,41 +5339,63 @@ const GARDEN = class Garden {
             CONFIG_LOCAL.lift * KNOCKBACK_MULTIPLIER,
             B_LOCAL,
         );
-        if (!hasFaction(unit, FACTION_CONFIG.PLAYER) || !areOpposingFactions(B_LOCAL, unit)) {
-            return false;
-        }
-        const RECEIVED = applyDamageToTargets(null, [unit], {
-            armorForTarget: () => this.combatTargetDefense(unit).armor,
-            rawDamage:
-                B_LOCAL.attackPower *
-                CONFIG_LOCAL.damageMultiplier *
-                SHARE *
-                (this.bossEnraged ? BOSS_ENRAGE.damageMultiplier : 1) *
-                (GUARD?.receivedDamageMultiplier ?? 1) *
-                this.passiveReceivedScale(unit),
-            sourceKind: 'enemy',
-        });
-        this.passiveUndying(unit);
-        this.onCombatResolved.emit({ damageTaken: RECEIVED.totalActualLoss, excluded: unit.isFormationClone });
-        this._syncUnitAliveCount(unit);
-        if (unit.hp === 0) {
-            unit.down = unit.isBattleOnlySummon ? 0 : CONFIG.unit.corpseRecoverySeconds;
-            this.handleUnitDeath(unit);
-        }
-        this.metrics.directHits++;
-        this.metrics[BOSS_BEHAVIORS.forId(patternId).hitMetric]++;
-        this.combat('unit-hit', {
-            attackKind: patternId,
-            attackId: B_LOCAL.attackId,
-            unit: unit.id,
-            x: point.x,
-            y: point.y,
-            z: Math.max(0.15, unit.z + 0.25),
+        this._bossHitBatch.push({
+            unit,
+            patternId,
+            point: { x: point.x, y: point.y },
             nx: DX / N,
             ny: DY / N,
-            strength: CONFIG_LOCAL.damageMultiplier,
+            guard: GUARD,
         });
         return true;
+    }
+    // The damage of the hits queued since the last call: each unit takes 35% of the attack plus its share of the other 65%.
+    _settleBossHits() {
+        const BATCH = this._bossHitBatch,
+            B_LOCAL = this.boss;
+        if (!BATCH.length) {
+            return;
+        }
+        const SHARE = BOSS_HIT_SPLIT.everyone + (1 - BOSS_HIT_SPLIT.everyone) / BATCH.length;
+        for (const HIT of BATCH) {
+            const UNIT_LOCAL = HIT.unit,
+                CONFIG_LOCAL = BOSS_PATTERN_CONFIG[HIT.patternId];
+            const RECEIVED = applyDamageToTargets(null, [UNIT_LOCAL], {
+                armorForTarget: () => this.combatTargetDefense(UNIT_LOCAL).armor,
+                rawDamage:
+                    B_LOCAL.attackPower *
+                    CONFIG_LOCAL.damageMultiplier *
+                    SHARE *
+                    (this.bossEnraged ? BOSS_ENRAGE.damageMultiplier : 1) *
+                    (HIT.guard?.receivedDamageMultiplier ?? 1) *
+                    this.passiveReceivedScale(UNIT_LOCAL),
+                sourceKind: 'enemy',
+            });
+            this.passiveUndying(UNIT_LOCAL);
+            this.onCombatResolved.emit({
+                damageTaken: RECEIVED.totalActualLoss,
+                excluded: UNIT_LOCAL.isFormationClone,
+            });
+            this._syncUnitAliveCount(UNIT_LOCAL);
+            if (UNIT_LOCAL.hp === 0) {
+                UNIT_LOCAL.down = UNIT_LOCAL.isBattleOnlySummon ? 0 : CONFIG.unit.corpseRecoverySeconds;
+                this.handleUnitDeath(UNIT_LOCAL);
+            }
+            this.metrics.directHits++;
+            this.metrics[BOSS_BEHAVIORS.forId(HIT.patternId).hitMetric]++;
+            this.combat('unit-hit', {
+                attackKind: HIT.patternId,
+                attackId: B_LOCAL.attackId,
+                unit: UNIT_LOCAL.id,
+                x: HIT.point.x,
+                y: HIT.point.y,
+                z: Math.max(0.15, UNIT_LOCAL.z + 0.25),
+                nx: HIT.nx,
+                ny: HIT.ny,
+                strength: CONFIG_LOCAL.damageMultiplier,
+            });
+        }
+        BATCH.length = 0;
     }
     _nearestBossFirst(candidates) {
         const B_LOCAL = this.boss;
@@ -5824,6 +5846,7 @@ const GARDEN = class Garden {
             return;
         }
         this.updateBossPattern(dt, LIVING);
+        this._settleBossHits();
     }
 };
 export {

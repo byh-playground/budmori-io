@@ -11,16 +11,13 @@ export const BOSS_PATTERN_IDS = Object.freeze([
 
 // Numeric balance values are implementation defaults derived from the source
 // combat scale (T1 attack 4, boss radius 4.4). The boss HP 2,000 is 50x T1 HP.
-// Everyone an attack reaches is hit and knocked back, but its damage is shared: `maxTargets` units' worth of damage is
-// the full share, and of each hit `BOSS_HIT_SPLIT.everyone` (35%) is dealt to every unit no matter how many are hit,
-// the rest is split among all the units hit. The k-th unit hit by one attack (nearest the boss first) takes
-// everyone + (1 - everyone) * min(1, maxTargets / k) of the damage: the first maxTargets units take all of it, a crowd
-// takes down to 35% each, so a tight pack is hurt a little more, never in proportion.
+// Everyone an attack reaches is hit and knocked back. Of the attack's damage, `BOSS_HIT_SPLIT.everyone` (35%) is dealt to
+// every unit hit and the rest (65%) is split among all the units hit in the same moment: one unit takes it all, a crowd
+// takes just over 35% each, so a tight pack is hurt a little more but never in proportion to its size.
 export const BOSS_HIT_SPLIT = Object.freeze({ everyone: 0.35 });
 export const BOSS_PATTERN_CONFIG = Object.freeze({
     'attack.sweep-360': Object.freeze({
         kind: 'sweep-360',
-        maxTargets: 5,
         unlockHp: 0.4,
         windup: 1.05,
         active: 1.05,
@@ -35,7 +32,6 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
     }),
     'attack.front-slam': Object.freeze({
         kind: 'front-slam',
-        maxTargets: 3,
         unlockHp: 1,
         windup: 0.75,
         active: 0,
@@ -50,7 +46,6 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
     }),
     'attack.charge': Object.freeze({
         kind: 'charge',
-        maxTargets: 3,
         unlockHp: 1,
         windup: 0.5,
         active: 6.6 / 5.3,
@@ -65,7 +60,6 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
     }),
     'attack.leap-slam': Object.freeze({
         kind: 'leap-slam',
-        maxTargets: 4,
         unlockHp: 0.6,
         windup: 0.5,
         active: 1.013,
@@ -80,7 +74,6 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
     }),
     'attack.fan-sweep': Object.freeze({
         kind: 'fan-sweep',
-        maxTargets: 4,
         unlockHp: 0.75,
         windup: 1,
         active: 0.8,
