@@ -5907,7 +5907,7 @@
     }
     return chosen;
   }
-  var BOSS_PATTERN_IDS, BOSS_PATTERN_CONFIG, BOSS_PATTERN_WEIGHT_DEFAULTS, BOSS_ENRAGE, BOSS_PHASE_THRESHOLDS, BOSS_AIM_TURN_RATE;
+  var BOSS_PATTERN_IDS, BOSS_HIT_SPLIT, BOSS_PATTERN_CONFIG, BOSS_PATTERN_WEIGHT_DEFAULTS, BOSS_ENRAGE, BOSS_PHASE_THRESHOLDS, BOSS_AIM_TURN_RATE;
   var init_boss_patterns = __esm({
     "src/boss-patterns.js"() {
       BOSS_PATTERN_IDS = Object.freeze([
@@ -5918,6 +5918,7 @@
         "attack.fan-sweep",
         "summon.mouth-t1"
       ]);
+      BOSS_HIT_SPLIT = Object.freeze({ everyone: 0.35 });
       BOSS_PATTERN_CONFIG = Object.freeze({
         "attack.sweep-360": Object.freeze({
           kind: "sweep-360",
@@ -12303,13 +12304,14 @@
         }
         _hitBossPatternUnit(unit2, patternId, point2, normal = null) {
           const B_LOCAL = this.boss, ACTION = B_LOCAL.patternRuntime.active, CONFIG_LOCAL = BOSS_PATTERN_CONFIG[patternId];
-          if (!ACTION || !CONFIG_LOCAL || !hasFaction(unit2, FACTION_CONFIG.PLAYER) || !areOpposingFactions(B_LOCAL, unit2) || unit2.hp <= 0 || !unit2.dropLanded || ACTION.hitIds.has(unit2.id) || ACTION.hitIds.size >= CONFIG_LOCAL.maxTargets) {
+          if (!ACTION || !CONFIG_LOCAL || !hasFaction(unit2, FACTION_CONFIG.PLAYER) || !areOpposingFactions(B_LOCAL, unit2) || unit2.hp <= 0 || !unit2.dropLanded || ACTION.hitIds.has(unit2.id)) {
             return false;
           }
           if (CONFIG_LOCAL.groundOnly && unit2.z > 0.1) {
             return false;
           }
           ACTION.hitIds.add(unit2.id);
+          const SHARE = BOSS_HIT_SPLIT.everyone + (1 - BOSS_HIT_SPLIT.everyone) * Math.min(1, CONFIG_LOCAL.maxTargets / ACTION.hitIds.size);
           const DX = normal?.x ?? unit2.x - B_LOCAL.x, DY = normal?.y ?? unit2.y - B_LOCAL.y, N = Math.hypot(DX, DY) || 1;
           const GUARD = unit2.ability.receiveGuard?.(this), KNOCKBACK_MULTIPLIER = GUARD?.receivedKnockbackMultiplier ?? 1;
           unit2.knock(
@@ -12324,7 +12326,7 @@
           }
           const RECEIVED = applyDamageToTargets(null, [unit2], {
             armorForTarget: () => this.combatTargetDefense(unit2).armor,
-            rawDamage: B_LOCAL.attackPower * CONFIG_LOCAL.damageMultiplier * (this.bossEnraged ? BOSS_ENRAGE.damageMultiplier : 1) * (GUARD?.receivedDamageMultiplier ?? 1) * this.passiveReceivedScale(unit2),
+            rawDamage: B_LOCAL.attackPower * CONFIG_LOCAL.damageMultiplier * SHARE * (this.bossEnraged ? BOSS_ENRAGE.damageMultiplier : 1) * (GUARD?.receivedDamageMultiplier ?? 1) * this.passiveReceivedScale(unit2),
             sourceKind: "enemy"
           });
           this.passiveUndying(unit2);
@@ -13180,7 +13182,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.28";
+      PRODUCT_VERSION = "0.30.29";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });

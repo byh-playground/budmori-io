@@ -71,6 +71,7 @@ import { composeUnitAttackCycles } from './unit-attack-capabilities.js';
 import { MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT, mergeMaterialCostForTier } from './unit-grades.js';
 import {
     BOSS_PATTERN_IDS,
+    BOSS_HIT_SPLIT,
     BOSS_PATTERN_CONFIG,
     createBossPatternRuntime,
     chooseBossPattern,
@@ -5315,8 +5316,7 @@ const GARDEN = class Garden {
             !areOpposingFactions(B_LOCAL, unit) ||
             unit.hp <= 0 ||
             !unit.dropLanded ||
-            ACTION.hitIds.has(unit.id) ||
-            ACTION.hitIds.size >= CONFIG_LOCAL.maxTargets
+            ACTION.hitIds.has(unit.id)
         ) {
             return false;
         }
@@ -5324,6 +5324,9 @@ const GARDEN = class Garden {
             return false;
         }
         ACTION.hitIds.add(unit.id);
+        const SHARE =
+            BOSS_HIT_SPLIT.everyone +
+            (1 - BOSS_HIT_SPLIT.everyone) * Math.min(1, CONFIG_LOCAL.maxTargets / ACTION.hitIds.size);
         const DX = normal?.x ?? unit.x - B_LOCAL.x,
             DY = normal?.y ?? unit.y - B_LOCAL.y,
             N = Math.hypot(DX, DY) || 1;
@@ -5344,6 +5347,7 @@ const GARDEN = class Garden {
             rawDamage:
                 B_LOCAL.attackPower *
                 CONFIG_LOCAL.damageMultiplier *
+                SHARE *
                 (this.bossEnraged ? BOSS_ENRAGE.damageMultiplier : 1) *
                 (GUARD?.receivedDamageMultiplier ?? 1) *
                 this.passiveReceivedScale(unit),
