@@ -4,7 +4,7 @@ export class LightningPresentation extends FormationPresentation {
         const BODY_HEIGHT = Math.max(0.5, effect.bodyHeight || 0.7),
             BODY_RADIUS = Math.max(0.2, effect.bodyRadius || 0.3),
             // A bolt reaches three body heights up for a small body; a tall one stays within a screen's sky.
-            RISE = Math.min(BODY_HEIGHT * 3.4, BODY_HEIGHT + 2.4);
+            RISE = Math.min(BODY_HEIGHT * 3.4, BODY_HEIGHT * 0.5 + 2.4);
         bolt(renderer, effect.x, effect.y, effect.z + BODY_HEIGHT, RISE, effect.age, effect.id, BODY_RADIUS);
         if (effect.age < 0.5) {
             burst(

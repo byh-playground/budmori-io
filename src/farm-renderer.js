@@ -425,9 +425,10 @@ const DIORAMA = class Diorama {
         );
         this.ring(u.x, u.y, shadow * 1.05, ALLY ? '#4fb8f2' : '#f0463c', 0.08);
     }
-    ring(x, y, r, color2, width = 0.045, start = 0, end = Math.PI * 2) {
+    // `z` lifts the ring off the floor for marks that belong at a body's height, such as a hit on a boss's head.
+    ring(x, y, r, color2, width = 0.045, start = 0, end = Math.PI * 2, z = 0) {
         const C = this.ctx,
-            P = this.project(x, y);
+            P = this.project(x, y, z);
         C.strokeStyle = color2;
         C.lineWidth = width * this.scale;
         C.beginPath();

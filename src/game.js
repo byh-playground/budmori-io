@@ -12847,7 +12847,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.18";
+      PRODUCT_VERSION = "0.30.19";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -13437,7 +13437,16 @@
         stroke(renderer, SEGMENT, `rgba(216,247,255,${FRAGMENT})`, 0.035 * BODY_SCALE);
       }
     }
-    renderer.ring(x, y, radius + age * radius * 10, `rgba(157,212,255,${FADE * 0.8})`, 0.09 * BODY_SCALE);
+    renderer.ring(
+      x,
+      y,
+      radius + age * radius * 10,
+      `rgba(157,212,255,${FADE * 0.8})`,
+      0.09 * BODY_SCALE,
+      0,
+      Math.PI * 2,
+      z
+    );
     if (age < 0.09) {
       const P = renderer.project(x, y, z + 0.15);
       renderer.ellipse(P.x, P.y, renderer.scale * radius * 2.17, renderer.scale * radius * 1.4, "#effcffdd");
@@ -13516,7 +13525,7 @@
   // src/features/formation-skills/lightning/presentation.js
   var LightningPresentation = class extends FormationPresentation {
     draw(renderer, effect) {
-      const BODY_HEIGHT = Math.max(0.5, effect.bodyHeight || 0.7), BODY_RADIUS = Math.max(0.2, effect.bodyRadius || 0.3), RISE = Math.min(BODY_HEIGHT * 3.4, BODY_HEIGHT + 2.4);
+      const BODY_HEIGHT = Math.max(0.5, effect.bodyHeight || 0.7), BODY_RADIUS = Math.max(0.2, effect.bodyRadius || 0.3), RISE = Math.min(BODY_HEIGHT * 3.4, BODY_HEIGHT * 0.5 + 2.4);
       bolt(renderer, effect.x, effect.y, effect.z + BODY_HEIGHT, RISE, effect.age, effect.id, BODY_RADIUS);
       if (effect.age < 0.5) {
         burst(
@@ -13800,14 +13809,20 @@
           effect.y,
           R2 * (1 + T * 7),
           `rgba(255,224,130,${Math.max(0, 1 - T / 0.5)})`,
-          R2 * 0.3
+          R2 * 0.3,
+          0,
+          Math.PI * 2,
+          AIM_Z
         );
         renderer.ring(
           effect.x,
           effect.y,
           R2 * (0.6 + T * 4.5),
           `rgba(255,255,255,${Math.max(0, 1 - T / 0.35)})`,
-          R2 * 0.16
+          R2 * 0.16,
+          0,
+          Math.PI * 2,
+          AIM_Z
         );
         if (T < 0.1) {
           const F = renderer.project(effect.x, effect.y, AIM_Z);
@@ -16577,8 +16592,9 @@
       );
       this.ring(u.x, u.y, shadow * 1.05, ALLY ? "#4fb8f2" : "#f0463c", 0.08);
     }
-    ring(x, y, r, color2, width = 0.045, start2 = 0, end = Math.PI * 2) {
-      const C = this.ctx, P = this.project(x, y);
+    // `z` lifts the ring off the floor for marks that belong at a body's height, such as a hit on a boss's head.
+    ring(x, y, r, color2, width = 0.045, start2 = 0, end = Math.PI * 2, z = 0) {
+      const C = this.ctx, P = this.project(x, y, z);
       C.strokeStyle = color2;
       C.lineWidth = width * this.scale;
       C.beginPath();
