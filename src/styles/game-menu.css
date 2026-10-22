@@ -197,7 +197,8 @@
     gap: var(--ui-s2);
     margin: var(--ui-s3) 0;
 }
-#farmPlotActions button {
+#farmPlotActions button,
+.breed-heading .farm-sort {
     min-height: var(--ui-tap);
     border-radius: var(--ui-r-s);
     background: var(--ui-neutral);
@@ -421,6 +422,7 @@
     font-size: var(--ui-fs-3);
     font-variant-numeric: tabular-nums;
 }
+.breed-heading .farm-sort:focus-visible,
 .breed-chip:focus-visible,
 .breed-editor button:focus-visible {
     outline: 2px solid var(--ui-focus);
