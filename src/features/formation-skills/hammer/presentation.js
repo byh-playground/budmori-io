@@ -86,6 +86,9 @@ export class HammerPresentation extends FormationPresentation {
                 R * (1 + T * 7),
                 `rgba(255,224,130,${Math.max(0, 1 - T / 0.5)})`,
                 R * 0.3,
+                0,
+                Math.PI * 2,
+                AIM_Z,
             );
             renderer.ring(
                 effect.x,
@@ -93,6 +96,9 @@ export class HammerPresentation extends FormationPresentation {
                 R * (0.6 + T * 4.5),
                 `rgba(255,255,255,${Math.max(0, 1 - T / 0.35)})`,
                 R * 0.16,
+                0,
+                Math.PI * 2,
+                AIM_Z,
             );
             if (T < 0.1) {
                 const F = renderer.project(effect.x, effect.y, AIM_Z);

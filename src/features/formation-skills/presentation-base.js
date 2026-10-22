@@ -52,7 +52,16 @@ export function bolt(renderer, x, y, z, height, age, seed = 0, radius = 0.3) {
             stroke(renderer, SEGMENT, `rgba(216,247,255,${FRAGMENT})`, 0.035 * BODY_SCALE);
         }
     }
-    renderer.ring(x, y, radius + age * radius * 10, `rgba(157,212,255,${FADE * 0.8})`, 0.09 * BODY_SCALE);
+    renderer.ring(
+        x,
+        y,
+        radius + age * radius * 10,
+        `rgba(157,212,255,${FADE * 0.8})`,
+        0.09 * BODY_SCALE,
+        0,
+        Math.PI * 2,
+        z,
+    );
     if (age < 0.09) {
         const P = renderer.project(x, y, z + 0.15);
         renderer.ellipse(P.x, P.y, renderer.scale * radius * 2.17, renderer.scale * radius * 1.4, '#effcffdd');
