@@ -325,11 +325,12 @@ await check('challenge button starts a boss fight and retreat ends it', async ()
         return {
             inside: W.insideTower,
             count: LIVING.length,
-            nearDoor: LIVING.filter((u) => u.y > W.towerGate.y - 8).length,
+            landed: LIVING.filter((u) => u.dropLanded && u.z === 0).length,
+            queued: W._ejectQueue.length,
         };
     });
     expect(!OUT.inside && OUT.count > 0, `still inside the tower ${JSON.stringify(OUT)}`);
-    expect(OUT.nearDoor > 0, `troops did not come out of the door ${JSON.stringify(OUT)}`);
+    expect(OUT.landed === OUT.count && OUT.queued === 0, `troops did not all land ${JSON.stringify(OUT)}`);
 });
 
 await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async () => {
@@ -442,7 +443,7 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
     const LEFT = await WORLD(() => {
         const W = BUDMORI.sim;
         W.leaveTower();
-        return { active: W.tower.active, units: W.units.filter((u) => !u.isBattleOnlySummon).length };
+        return { active: W.tower.active, units: W.unitCollection.items.filter((u) => !u.isBattleOnlySummon).length };
     });
     expect(!LEFT.active && LEFT.units > 0, `leave ${JSON.stringify(LEFT)}`);
 });
@@ -450,6 +451,7 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
 await check('a species the farm lacks joins as a pair on its first win, even below the best floor', async () => {
     const R = await WORLD(async () => {
         const W = BUDMORI.sim;
+        W._flushEjected();
         for (const U of [...W.units]) {
             W.removeUnit(U);
         }
@@ -807,6 +809,48 @@ await check('passive cards: damage scale, undying once per fight, helper heals, 
     expect(NEAR(R.SAVED, 10) && R.SECOND === 0, `undying ${JSON.stringify(R)}`);
     expect(R.HEALED === 30 && R.FALLEN === 3, `helper ${JSON.stringify(R)}`);
 });
+
+await check(
+    'troops coming back from the tower drop out of the door in turn and scatter over the farm within 3 s',
+    async () => {
+        const R = await WORLD(() => {
+            const W = BUDMORI.sim;
+            for (const U of [...W.units]) {
+                W.removeUnit(U);
+            }
+            for (let index = 0; index < 40; index++) {
+                W.spawn(index % 4, 1, index * 0.2, 0);
+            }
+            W.insideTower = true;
+            W._leaveTowerView();
+            const START = W.time,
+                AFTER_ONE_SECOND = [];
+            let landedAt = null;
+            for (let tick = 0; tick < 150 && landedAt === null; tick++) {
+                W.step(1 / 30);
+                if (tick === 30) {
+                    AFTER_ONE_SECOND.push(W.units.length, W.units.filter((u) => u.z > 0.2).length);
+                }
+                if (!W._ejectQueue.length && W.units.length === 40 && W.units.every((u) => u.dropLanded && u.z === 0)) {
+                    landedAt = W.time - START;
+                }
+            }
+            const XS = W.units.map((u) => u.x),
+                YS = W.units.map((u) => u.y);
+            return {
+                landedAt,
+                released: AFTER_ONE_SECOND[0],
+                airborne: AFTER_ONE_SECOND[1],
+                spreadX: Math.max(...XS) - Math.min(...XS),
+                spreadY: Math.max(...YS) - Math.min(...YS),
+                outside: W.units.filter((u) => W.outsideFarm(u.x, u.y)).length,
+            };
+        });
+        expect(R.landedAt !== null && R.landedAt <= 3, `landing time ${JSON.stringify(R)}`);
+        expect(R.released > 5 && R.released < 35, `released one by one ${JSON.stringify(R)}`);
+        expect(R.spreadX > 20 && R.spreadY > 14 && R.outside === 0, `scatter ${JSON.stringify(R)}`);
+    },
+);
 
 await check('no page errors', async () => {
     expect(ERRORS.length === 0, ERRORS.slice(0, 3).join(' | '));
