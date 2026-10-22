@@ -169,12 +169,12 @@ export class BossPresentation {
             scaleY: POSE.body.scaleY * (1 - (K.squash || 0)) * (1 + 0.06 * DEFEAT_BOUNCE),
             opacity: FADE,
         });
-        // The hands float: each is moved (and turned) round the body, and the weapon a species holds goes with its hand.
+        // The hands float: each is moved round the body, and the weapon a species holds goes with its hand.
         const TO_SVG = 1 / bossVectorScale(),
             HELD = speciesById(SPECIES).heldItem;
         for (const [PART, HAND] of Object.entries(POSE.hands)) {
             const AT = { x: HAND.x * TO_SVG, y: HAND.y * TO_SVG + POSE.body.y };
-            PLAYER.setBasePose(PART, { ...AT, rotation: HAND.face });
+            PLAYER.setBasePose(PART, AT);
             if (HELD?.hand === PART && PARTS.has(HELD.part)) {
                 PLAYER.setBasePose(HELD.part, AT);
             }

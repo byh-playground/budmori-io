@@ -6615,8 +6615,8 @@
       scaleX: 1,
       scaleY: 1
     }, HANDS = {
-      "arm-left": { x: 0, y: 0, face: HAND_REST_FACE },
-      "arm-right": { x: 0, y: 0, face: HAND_REST_FACE }
+      "arm-left": { x: 0, y: 0 },
+      "arm-right": { x: 0, y: 0 }
     }, R2 = b.radius || 0;
     let releasePulse = 0;
     if (PHASE === "windup") {
@@ -6689,14 +6689,13 @@
     });
     return (0, import_vector_sockets2.socketWorldPoint)(boss, ENTRY.player.getSocket("mouth"), ANCHORS.ground);
   }
-  var import_vector_sockets2, CLAMP, BOSS_ASSETS, HAND_REST_FACE;
+  var import_vector_sockets2, CLAMP, BOSS_ASSETS;
   var init_boss_vector_sockets = __esm({
     "src/boss-vector-sockets.js"() {
       init_boss_patterns();
       import_vector_sockets2 = __toESM(require_vector_sockets(), 1);
       CLAMP = (x, a, b) => Math.max(a, Math.min(b, x));
       BOSS_ASSETS = /* @__PURE__ */ new Map();
-      HAND_REST_FACE = Math.PI / 2;
     }
   });
 
@@ -13130,7 +13129,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.35";
+      PRODUCT_VERSION = "0.30.36";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15543,7 +15542,6 @@
 
   // src/features/boss-patterns/presentation-base.js
   init_farm_model();
-  init_boss_vector_sockets();
   var EXTRA_PARTS = ["foot-left", "foot-right", "leaf", "kernel-mark", "hilum"];
   var POSE_PHASE_METHODS = { windup: "windup", active: "active", recover: "recover" };
   var BossAttackPose = class {
@@ -15556,8 +15554,8 @@
       this.rig = rig;
       this.radius = boss.radius;
       this.hands = {
-        "arm-left": { x: 0, y: 0, face: HAND_REST_FACE },
-        "arm-right": { x: 0, y: 0, face: HAND_REST_FACE }
+        "arm-left": { x: 0, y: 0 },
+        "arm-right": { x: 0, y: 0 }
       };
       this.extras = {};
       for (const PART of EXTRA_PARTS) {
@@ -15578,18 +15576,18 @@
     side(key) {
       return key === "arm-left" ? -1 : 1;
     }
-    hand(key, x, y, face = HAND_REST_FACE) {
-      Object.assign(this.hands[key], { x, y, face });
+    hand(key, x, y) {
+      Object.assign(this.hands[key], { x, y });
     }
     // The same, but placed from the middle of the body instead of from the resting spot.
-    handAt(key, x, y, face = HAND_REST_FACE) {
+    handAt(key, x, y) {
       const REST = this.rig.rest[key];
-      this.hand(key, x - REST.x, y - REST.y, face);
+      this.hand(key, x - REST.x, y - REST.y);
     }
     // Where the lead hand goes in a strike: out toward the target. The other one hangs out to its own side.
     strikeHands(amount) {
       const R2 = this.radius;
-      this.hand(this.lead, Math.cos(this.aim) * 1.1 * R2 * amount, Math.sin(this.aim) * 1.1 * R2 * amount, this.aim);
+      this.hand(this.lead, Math.cos(this.aim) * 1.1 * R2 * amount, Math.sin(this.aim) * 1.1 * R2 * amount);
       this.hand(this.trail, this.side(this.trail) * 0.4 * R2 * amount, -0.1 * R2 * amount);
     }
     windup() {
@@ -15686,7 +15684,6 @@
   init_model23();
   init_farm_model();
   var import_vector_sockets4 = __toESM(require_vector_sockets(), 1);
-  init_boss_vector_sockets();
   var HALF_TURN = Math.PI;
   var EASE = (t) => t * t * (3 - 2 * t);
   var HAND_FOLD_SECONDS = 0.4;
@@ -15694,26 +15691,19 @@
     constructor() {
       super(FEATURE7, "sweep", 0.14, 0.14);
     }
-    // Where a hand is after the given share of its half turn: on the ellipse the reach circle makes on screen, with its
-    // knuckles pointing along the way it is going (so the wrist turns with the swing).
+    // Where a hand is after the given share of its half turn: on the ellipse the reach circle makes on screen.
     orbit(pose, key, turn) {
       const ANGLE = SWEEP_HAND_STARTS[key] + HALF_TURN * turn, R2 = this.config.reach - pose.rig.radius, DEPTH = import_vector_sockets4.WORLD_DEPTH_PROJECTION;
       return {
         x: R2 * Math.cos(ANGLE),
-        y: -DEPTH * R2 * Math.sin(ANGLE),
-        face: Math.atan2(-DEPTH * Math.cos(ANGLE), -Math.sin(ANGLE))
+        y: -DEPTH * R2 * Math.sin(ANGLE)
       };
     }
     // The hands go from where they rest to (amount 1) the given point of their turn, and back.
     place(pose, turn, amount) {
       for (const KEY2 of Object.keys(SWEEP_HAND_STARTS)) {
         const AT = this.orbit(pose, KEY2, turn), REST = pose.rig.rest[KEY2];
-        pose.handAt(
-          KEY2,
-          REST.x + (AT.x - REST.x) * amount,
-          REST.y + (AT.y - REST.y) * amount,
-          HAND_REST_FACE + (AT.face - HAND_REST_FACE) * amount
-        );
+        pose.handAt(KEY2, REST.x + (AT.x - REST.x) * amount, REST.y + (AT.y - REST.y) * amount);
       }
     }
     windup(boss, pose) {
@@ -15865,7 +15855,7 @@
     }
     // The lead hand follows the sweep, out along the angle it has reached; the other hangs at its side.
     hands(pose, angle) {
-      pose.hand(pose.lead, Math.cos(angle) * 1.15 * pose.radius, Math.sin(angle) * 1.15 * pose.radius, angle);
+      pose.hand(pose.lead, Math.cos(angle) * 1.15 * pose.radius, Math.sin(angle) * 1.15 * pose.radius);
       pose.hand(pose.trail, pose.side(pose.trail) * 0.45 * pose.radius, -0.15 * pose.radius);
     }
   };
@@ -16034,7 +16024,7 @@
       const TO_SVG = 1 / (0, import_vector_sockets5.bossVectorScale)(), HELD = speciesById(SPECIES).heldItem;
       for (const [PART, HAND] of Object.entries(POSE.hands)) {
         const AT = { x: HAND.x * TO_SVG, y: HAND.y * TO_SVG + POSE.body.y };
-        PLAYER.setBasePose(PART, { ...AT, rotation: HAND.face });
+        PLAYER.setBasePose(PART, AT);
         if (HELD?.hand === PART && PARTS.has(HELD.part)) {
           PLAYER.setBasePose(HELD.part, AT);
         }

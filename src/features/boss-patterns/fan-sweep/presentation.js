@@ -31,7 +31,7 @@ export class FanSweepPresentation extends BossAttackPresentation {
     }
     // The lead hand follows the sweep, out along the angle it has reached; the other hangs at its side.
     hands(pose, angle) {
-        pose.hand(pose.lead, Math.cos(angle) * 1.15 * pose.radius, Math.sin(angle) * 1.15 * pose.radius, angle);
+        pose.hand(pose.lead, Math.cos(angle) * 1.15 * pose.radius, Math.sin(angle) * 1.15 * pose.radius);
         pose.hand(pose.trail, pose.side(pose.trail) * 0.45 * pose.radius, -0.15 * pose.radius);
     }
 }

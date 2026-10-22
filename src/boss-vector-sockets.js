@@ -2,8 +2,6 @@ import { BOSS_PATTERN_CONFIG } from './boss-patterns.js';
 import { bossVectorScale, readVectorSockets, socketWorldPoint, WORLD_DEPTH_PROJECTION } from './vector-sockets.cjs';
 const CLAMP = (x, a, b) => Math.max(a, Math.min(b, x));
 const BOSS_ASSETS = new Map();
-// A resting hand points at the camera; every hand pose says which way the knuckles face (0 = right, down = +90 degrees).
-export const HAND_REST_FACE = Math.PI / 2;
 // Runtime-only assets/players are never attached to a Garden or save snapshot.
 export function bindBossSocketAsset(species, record) {
     const LABEL = `species ${species}, ${record.compiled.sourcePath || record.compiled.metadata.id}`;
@@ -62,8 +60,8 @@ export function bossSummonPose(b, parts = new Set()) {
             scaleY: 1,
         },
         HANDS = {
-            'arm-left': { x: 0, y: 0, face: HAND_REST_FACE },
-            'arm-right': { x: 0, y: 0, face: HAND_REST_FACE },
+            'arm-left': { x: 0, y: 0 },
+            'arm-right': { x: 0, y: 0 },
         },
         R = b.radius || 0;
     let releasePulse = 0;

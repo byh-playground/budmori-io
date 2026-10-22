@@ -1,5 +1,4 @@
 import { clamp } from '../../farm-model.js';
-import { HAND_REST_FACE } from '../../boss-vector-sockets.js';
 
 const EXTRA_PARTS = ['foot-left', 'foot-right', 'leaf', 'kernel-mark', 'hilum'];
 const POSE_PHASE_METHODS = { windup: 'windup', active: 'active', recover: 'recover' };
@@ -12,12 +11,12 @@ export class BossAttackPose {
         this.aim = Math.atan2(-0.62 * Math.sin(boss.patternAim ?? boss.angle), Math.cos(boss.patternAim ?? boss.angle));
         this.body = { y: 0, rotation: 0, scaleX: 1, scaleY: 1 };
         // The floating hands: how far each is from where it rests (world units on the screen, +x right, +y down) and
-        // which way its knuckles face. R is the body radius, the unit the poses are written in.
+        // R is the body radius, the unit the poses are written in.
         this.rig = rig;
         this.radius = boss.radius;
         this.hands = {
-            'arm-left': { x: 0, y: 0, face: HAND_REST_FACE },
-            'arm-right': { x: 0, y: 0, face: HAND_REST_FACE },
+            'arm-left': { x: 0, y: 0 },
+            'arm-right': { x: 0, y: 0 },
         };
         this.extras = {};
         for (const PART of EXTRA_PARTS) {
@@ -39,18 +38,18 @@ export class BossAttackPose {
     side(key) {
         return key === 'arm-left' ? -1 : 1;
     }
-    hand(key, x, y, face = HAND_REST_FACE) {
-        Object.assign(this.hands[key], { x, y, face });
+    hand(key, x, y) {
+        Object.assign(this.hands[key], { x, y });
     }
     // The same, but placed from the middle of the body instead of from the resting spot.
-    handAt(key, x, y, face = HAND_REST_FACE) {
+    handAt(key, x, y) {
         const REST = this.rig.rest[key];
-        this.hand(key, x - REST.x, y - REST.y, face);
+        this.hand(key, x - REST.x, y - REST.y);
     }
     // Where the lead hand goes in a strike: out toward the target. The other one hangs out to its own side.
     strikeHands(amount) {
         const R = this.radius;
-        this.hand(this.lead, Math.cos(this.aim) * 1.1 * R * amount, Math.sin(this.aim) * 1.1 * R * amount, this.aim);
+        this.hand(this.lead, Math.cos(this.aim) * 1.1 * R * amount, Math.sin(this.aim) * 1.1 * R * amount);
         this.hand(this.trail, this.side(this.trail) * 0.4 * R * amount, -0.1 * R * amount);
     }
     windup() {

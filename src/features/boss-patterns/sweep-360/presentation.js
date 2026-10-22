@@ -3,7 +3,6 @@ import { FEATURE } from './definition.js';
 import { SWEEP_HAND_STARTS } from './model.js';
 import { clamp } from '../../../farm-model.js';
 import { WORLD_DEPTH_PROJECTION } from '../../../vector-sockets.cjs';
-import { HAND_REST_FACE } from '../../../boss-vector-sockets.js';
 
 const HALF_TURN = Math.PI;
 const EASE = (t) => t * t * (3 - 2 * t);
@@ -14,8 +13,7 @@ export class CircleSweepPresentation extends BossAttackPresentation {
     constructor() {
         super(FEATURE, 'sweep', 0.14, 0.14);
     }
-    // Where a hand is after the given share of its half turn: on the ellipse the reach circle makes on screen, with its
-    // knuckles pointing along the way it is going (so the wrist turns with the swing).
+    // Where a hand is after the given share of its half turn: on the ellipse the reach circle makes on screen.
     orbit(pose, key, turn) {
         const ANGLE = SWEEP_HAND_STARTS[key] + HALF_TURN * turn,
             R = this.config.reach - pose.rig.radius,
@@ -23,7 +21,6 @@ export class CircleSweepPresentation extends BossAttackPresentation {
         return {
             x: R * Math.cos(ANGLE),
             y: -DEPTH * R * Math.sin(ANGLE),
-            face: Math.atan2(-DEPTH * Math.cos(ANGLE), -Math.sin(ANGLE)),
         };
     }
     // The hands go from where they rest to (amount 1) the given point of their turn, and back.
@@ -31,12 +28,7 @@ export class CircleSweepPresentation extends BossAttackPresentation {
         for (const KEY of Object.keys(SWEEP_HAND_STARTS)) {
             const AT = this.orbit(pose, KEY, turn),
                 REST = pose.rig.rest[KEY];
-            pose.handAt(
-                KEY,
-                REST.x + (AT.x - REST.x) * amount,
-                REST.y + (AT.y - REST.y) * amount,
-                HAND_REST_FACE + (AT.face - HAND_REST_FACE) * amount,
-            );
+            pose.handAt(KEY, REST.x + (AT.x - REST.x) * amount, REST.y + (AT.y - REST.y) * amount);
         }
     }
     windup(boss, pose) {
