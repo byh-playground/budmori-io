@@ -821,13 +821,20 @@ await check(
             for (let index = 0; index < 40; index++) {
                 W.spawn(index % 4, 1, index * 0.2, 0);
             }
+            const SLEEPERS = W.unitCollection.items.slice(0, 10);
+            for (const U of SLEEPERS) {
+                U.hp = 0;
+                U.down = 5;
+            }
             W.insideTower = true;
             W._leaveTowerView();
             const START = W.time,
                 AFTER_ONE_SECOND = [];
-            let landedAt = null;
+            let landedAt = null,
+                sleepersFell = 0;
             for (let tick = 0; tick < 150 && landedAt === null; tick++) {
                 W.step(1 / 30);
+                sleepersFell = Math.max(sleepersFell, SLEEPERS.filter((u) => u.z > 0.5).length);
                 if (tick === 30) {
                     AFTER_ONE_SECOND.push(W.units.length, W.units.filter((u) => u.z > 0.2).length);
                 }
@@ -839,6 +846,7 @@ await check(
                 YS = W.units.map((u) => u.y);
             return {
                 landedAt,
+                sleepersFell,
                 released: AFTER_ONE_SECOND[0],
                 airborne: AFTER_ONE_SECOND[1],
                 spreadX: Math.max(...XS) - Math.min(...XS),
@@ -847,6 +855,7 @@ await check(
             };
         });
         expect(R.landedAt !== null && R.landedAt <= 3, `landing time ${JSON.stringify(R)}`);
+        expect(R.sleepersFell >= 3, `sleeping units fall too ${JSON.stringify(R)}`);
         expect(R.released > 5 && R.released < 35, `released one by one ${JSON.stringify(R)}`);
         expect(R.spreadX > 20 && R.spreadY > 14 && R.outside === 0, `scatter ${JSON.stringify(R)}`);
     },
