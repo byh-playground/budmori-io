@@ -1,4 +1,4 @@
-import { drawFormationEffects } from './formation-skill-presentations.js';
+import { drawFormationEffects, includeFormationEffectBounds } from './formation-skill-presentations.js';
 import { scenePresentation } from './farm-render-scenes.js';
 import { FoodPresentation, ProjectilePresentation } from './farm-render-items.js';
 import { UnitPresentation } from './farm-render-units.js';
@@ -481,7 +481,7 @@ const DIORAMA = class Diorama {
             this.sceneKey = KEY;
             this.sceneChangedAt = now;
             if (INSIDE && !WAS_INSIDE) {
-                this.fitHall();
+                this.fitHall(sim2);
             } else if (!INSIDE) {
                 this.towerShotUntil = now + 2600;
             }
@@ -504,19 +504,42 @@ const DIORAMA = class Diorama {
             }
         } else if (INSIDE) {
             this.cameraReturning = false;
-            this.fitHall();
+            this.fitHall(sim2);
         }
     }
     // Inside the tower the whole hall is always in view: no panning or zooming, so tapping anywhere deploys.
-    fitHall() {
+    fitHall(world) {
         const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena,
             BASE = this.scenePresentation.cameraView(this.aspect),
-            FIT = Math.min(BASE[0] / (RX + 1), BASE[1] / (RY * WORLD_DEPTH_PROJECTION + 3.5));
+            HALL_FIT = Math.min(BASE[0] / (RX + 1), BASE[1] / (RY * WORLD_DEPTH_PROJECTION + 3.5)),
+            HALF_X = BASE[0] / HALL_FIT,
+            HALL_SCALE = this.canvas.width / (2 * HALF_X),
+            TOP = BASE[1] / HALL_FIT - this.baseY(),
+            BOTTOM = TOP - this.canvas.height / HALL_SCALE;
+        // Keep any extra sky for this floor instead of snapping in and out on every cloud cast.
+        if (this.hallFramingKey !== this.sceneKey) {
+            this.hallFramingKey = this.sceneKey;
+            this.hallEffectBounds = { left: Infinity, right: -Infinity, top: -Infinity };
+        }
+        const BOUNDS = this.hallEffectBounds;
+        includeFormationEffectBounds(world, BOUNDS);
+        const LEFT = Math.min(-HALF_X, BOUNDS.left),
+            RIGHT = Math.max(HALF_X, BOUNDS.right),
+            FRAME_TOP = Math.max(TOP, BOUNDS.top),
+            SCALE = Math.min(this.canvas.width / (RIGHT - LEFT), this.canvas.height / (FRAME_TOP - BOTTOM)),
+            FIT = (2 * BASE[0] * SCALE) / this.canvas.width;
         if (Math.abs(this.zoom - FIT) > 1e-6) {
             this.zoom = FIT;
             this.configure(this.scene, true);
         }
-        this.setPan(0, 0);
+        const PAN_X = -(LEFT + RIGHT) / 2,
+            PAN_Y = this.view[1] - this.baseY() - this.canvas.height / (2 * this.scale) - (FRAME_TOP + BOTTOM) / 2;
+        // Hall framing owns these bounds; the farm's manual-pan limits must not crop airborne effects.
+        this.panLimits.minX = Math.min(this.panLimits.minX, PAN_X);
+        this.panLimits.maxX = Math.max(this.panLimits.maxX, PAN_X);
+        this.panLimits.minY = Math.min(this.panLimits.minY, PAN_Y);
+        this.panLimits.maxY = Math.max(this.panLimits.maxY, PAN_Y);
+        this.setPan(PAN_X, PAN_Y);
     }
     // Going through the door fades out and each new place fades in, so the climb reads as a cut, not a pop.
     drawSceneFade(sim2, now) {

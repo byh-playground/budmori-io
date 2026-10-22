@@ -140,7 +140,7 @@ try {
                     BUDMORI.runtime.capturePresentation('reset');
                     const VIEW = BUDMORI.runtime.presentation(performance.now());
                     if (sample.small) {
-                        VIEW.boss.active = false;
+                        VIEW.farmBossEvent = { ...VIEW.farmBossEvent, phase: 'idle' };
                     }
                     const ELLIPSE = R.ellipse;
                     const BOX = { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity };
