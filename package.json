@@ -9,7 +9,8 @@
         "vector-assets:validate": "node scripts/vector-sources.cjs",
         "format": "prettier --write .",
         "format:check": "prettier --check .",
-        "lint": "eslint . --max-warnings 0"
+        "lint": "eslint . --max-warnings 0",
+        "test:breed-allocation": "node tests/breed-allocation.e2e.mjs"
     },
     "devDependencies": {
         "@eslint/js": "10.0.1",

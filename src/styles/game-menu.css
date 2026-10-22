@@ -197,7 +197,8 @@
     gap: var(--ui-s2);
     margin: var(--ui-s3) 0;
 }
-#farmPlotActions button {
+#farmPlotActions button,
+.breed-heading .farm-sort {
     min-height: var(--ui-tap);
     border-radius: var(--ui-r-s);
     background: var(--ui-neutral);
@@ -378,47 +379,95 @@
     }
 }
 
-.ring {
-    display: block;
-    width: min(100%, 280px);
-    margin: var(--ui-s2) auto;
-    touch-action: none;
+.breed-heading,
+.breed-editor__label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ui-s3);
 }
-.ring__track {
-    fill: none;
-    stroke: rgba(120, 120, 120, 0.22);
-    stroke-width: 18;
+.breed-heading h3 {
+    margin: var(--ui-s3) 0;
 }
-.ring__arc {
-    fill: none;
-    stroke-width: 18;
+.breed-heading .farm-sort {
+    min-width: 72px;
+    margin: 0;
 }
-.ring__knob {
-    fill: #fff;
-    stroke: #3d4a37;
-    stroke-width: 3;
-    cursor: grab;
-    touch-action: none;
-}
-#speciesRoles {
+.breed-chips {
     display: grid;
-    gap: 4px;
-    margin: var(--ui-s2) 0 var(--ui-s3);
+    grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+    gap: var(--ui-s2);
+    margin: var(--ui-s3) 0;
 }
-.ring-legend {
+.breed-chip {
     display: grid;
-    grid-template-columns: 14px auto 1fr;
+    justify-items: center;
+    align-content: center;
+    gap: var(--ui-s1);
+    min-width: 0;
+    min-height: 100px;
+    padding: var(--ui-s2) var(--ui-s1);
+    border: var(--ui-bw) solid var(--ui-line);
+    border-radius: var(--ui-r-s);
+    background: var(--ui-neutral);
+    color: var(--ui-ink);
+    font-size: var(--ui-fs-2);
+    touch-action: pan-y;
+}
+.breed-chip[aria-pressed='true'] {
+    border-color: var(--ui-primary);
+    background: var(--ui-card);
+}
+.breed-chip b {
+    font-size: var(--ui-fs-3);
+    font-variant-numeric: tabular-nums;
+}
+.breed-heading .farm-sort:focus-visible,
+.breed-chip:focus-visible,
+.breed-editor button:focus-visible {
+    outline: 2px solid var(--ui-focus);
+    outline-offset: 2px;
+}
+.breed-editor {
+    padding: var(--ui-s3);
+    border: var(--ui-bw) solid var(--ui-line);
+    border-radius: var(--ui-r-m);
+    background: var(--ui-card);
+}
+.breed-editor__label {
+    font-weight: var(--ui-fw-b);
+}
+.breed-editor__label output {
+    font-size: var(--ui-fs-4);
+    font-variant-numeric: tabular-nums;
+}
+.breed-editor__controls {
+    display: grid;
+    grid-template-columns: var(--ui-tap) minmax(0, 1fr) var(--ui-tap);
     align-items: center;
     gap: var(--ui-s2);
+    margin: var(--ui-s2) 0;
 }
-.ring-legend i {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
+.breed-editor button {
+    height: var(--ui-tap);
+    min-height: var(--ui-tap);
+    padding: 0;
+    border: var(--ui-bw) solid var(--ui-line);
+    border-radius: var(--ui-r-s);
+    background: var(--ui-panel);
+    color: var(--ui-ink);
+    font-size: var(--ui-fs-4);
 }
-.ring-legend small {
-    text-align: right;
-    color: var(--ui-ink-3, inherit);
+.breed-editor button:disabled {
+    background: var(--ui-disabled);
+    color: var(--ui-disabled-ink);
+}
+.breed-editor .flat-range {
+    height: var(--ui-tap);
+    touch-action: pan-y;
+}
+.breed-editor .farm-hint {
+    margin-bottom: 0;
 }
 .farm-hint {
     margin: 0 0 var(--ui-s2);
