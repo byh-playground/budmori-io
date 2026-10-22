@@ -7948,6 +7948,8 @@
           maxTier: MAX_UNIT_TIER,
           maxRadius: (0, import_definition50.maximumUnitRadius)(MAX_UNIT_TIER),
           perceptionRange: 18,
+          // How fast a unit runs to its place around the target in a fight (the farm walk is slower).
+          battleMoveSpeed: 8.2,
           corpseRecoverySeconds: 60
         }),
         boss: Object.freeze({
@@ -11971,7 +11973,7 @@
               this.scene,
               u.radius
             );
-            this.steer(u, SLOT.x, SLOT.y, dt, scaleMoveSpeed(4.1, u));
+            this.steer(u, SLOT.x, SLOT.y, dt, scaleMoveSpeed(CONFIG.unit.battleMoveSpeed, u));
             return;
           }
           u.vx = u.vy = 0;
@@ -13129,7 +13131,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.36";
+      PRODUCT_VERSION = "0.30.37";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
