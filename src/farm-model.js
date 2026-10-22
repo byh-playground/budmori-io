@@ -188,6 +188,8 @@ const CONFIG = Object.freeze({
         maxTier: MAX_UNIT_TIER,
         maxRadius: maximumUnitRadius(MAX_UNIT_TIER),
         perceptionRange: 18,
+        // How fast a unit runs to its place around the target in a fight (the farm walk is slower).
+        battleMoveSpeed: 8.2,
         corpseRecoverySeconds: 60,
     }),
     boss: Object.freeze({
@@ -4859,7 +4861,7 @@ const GARDEN = class Garden {
                 this.scene,
                 u.radius,
             );
-            this.steer(u, SLOT.x, SLOT.y, dt, scaleMoveSpeed(4.1, u));
+            this.steer(u, SLOT.x, SLOT.y, dt, scaleMoveSpeed(CONFIG.unit.battleMoveSpeed, u));
             return;
         }
         u.vx = u.vy = 0;
