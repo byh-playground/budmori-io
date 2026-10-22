@@ -11,8 +11,12 @@ export const BOSS_PATTERN_IDS = Object.freeze([
 
 // Numeric balance values are implementation defaults derived from the source
 // combat scale (T1 attack 4, boss radius 4.4). The boss HP 2,000 is 50x T1 HP.
-// maxTargets caps how many units one attack can damage, so a boss hit never
-// scales with how tightly the army is packed.
+// Everyone an attack reaches is hit and knocked back, but its damage is shared: `maxTargets` units' worth of damage is
+// the full share, and of each hit `BOSS_HIT_SPLIT.everyone` (35%) is dealt to every unit no matter how many are hit,
+// the rest is split among all the units hit. The k-th unit hit by one attack (nearest the boss first) takes
+// everyone + (1 - everyone) * min(1, maxTargets / k) of the damage: the first maxTargets units take all of it, a crowd
+// takes down to 35% each, so a tight pack is hurt a little more, never in proportion.
+export const BOSS_HIT_SPLIT = Object.freeze({ everyone: 0.35 });
 export const BOSS_PATTERN_CONFIG = Object.freeze({
     'attack.sweep-360': Object.freeze({
         kind: 'sweep-360',
