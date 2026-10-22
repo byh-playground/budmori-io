@@ -280,7 +280,30 @@
 
   // src/tower-run.js
   function freshTowerRun() {
-    return { doors: [], nextKind: "", cards: [], relics: /* @__PURE__ */ new Map(), since: { battle: 0, power: 1, event: 1 } };
+    return {
+      doors: [],
+      nextKind: "",
+      cards: [],
+      passives: {},
+      relics: /* @__PURE__ */ new Map(),
+      since: { battle: 0, power: 1, event: 1 },
+      // This fight's: allies fallen so far and the units whose undying card is already spent.
+      fallen: 0,
+      undyingUsed: /* @__PURE__ */ new Set()
+    };
+  }
+  function passiveCard(id) {
+    return PASSIVE_CARDS.find((card) => card.id === id);
+  }
+  function passiveTotals(cards) {
+    const TOTALS = {};
+    for (const TAKEN of cards) {
+      const CARD = passiveCard(TAKEN.id);
+      if (CARD) {
+        TOTALS[CARD.id] = (TOTALS[CARD.id] || 0) + CARD.values[TAKEN.rarity];
+      }
+    }
+    return TOTALS;
   }
   function statCardText(card, rarity) {
     const VALUE = card.values[rarity];
@@ -302,8 +325,10 @@
     const MODS = {};
     for (const TAKEN of cards) {
       const CARD = statCard(TAKEN.id);
-      MODS[CARD.stat] ??= { flat: 0, pct: 0 };
-      MODS[CARD.stat][CARD.mode] += CARD.values[TAKEN.rarity];
+      if (CARD) {
+        MODS[CARD.stat] ??= { flat: 0, pct: 0 };
+        MODS[CARD.stat][CARD.mode] += CARD.values[TAKEN.rarity];
+      }
     }
     return MODS;
   }
@@ -384,7 +409,7 @@
     }
     return OFFERS;
   }
-  var TOWER_RUN_SETTINGS, TOWER_EVENTS, PASSIVE_CARDS, RARITY_NAMES, STAT_CARDS;
+  var TOWER_RUN_SETTINGS, TOWER_EVENTS, PASSIVE_SETTINGS, PERCENT, PASSIVE_CARDS, RARITY_NAMES, STAT_CARDS;
   var init_tower_run = __esm({
     "src/tower-run.js"() {
       TOWER_RUN_SETTINGS = Object.freeze({
@@ -405,7 +430,56 @@
         rarityMax: Object.freeze([70, 40, 15])
       });
       TOWER_EVENTS = Object.freeze([]);
-      PASSIVE_CARDS = Object.freeze([]);
+      PASSIVE_SETTINGS = Object.freeze({
+        lastStandBelow: 0.5,
+        resolveBelow: 0.3,
+        openingSeconds: 10,
+        // A fallen ally adds to vengeance this many times at most.
+        vengeanceMaxFallen: 10,
+        // Healing of a fallen ally's neighbours reaches this far.
+        helperRadius: 7,
+        resolveMaxReduction: 0.8,
+        undyingMaxRestore: 0.9
+      });
+      PERCENT = (value) => `${Math.round(value * 1e3) / 10}%`;
+      PASSIVE_CARDS = Object.freeze([
+        {
+          id: "last-stand",
+          name: "배수진",
+          values: [0.15, 0.24, 0.38],
+          text: (value) => `체력 50% 이하일 때 공격 +${PERCENT(value)}`
+        },
+        {
+          id: "resolve",
+          name: "불굴",
+          values: [0.15, 0.22, 0.32],
+          text: (value) => `체력 30% 이하일 때 받는 피해 -${PERCENT(value)}`
+        },
+        {
+          id: "vengeance",
+          name: "복수",
+          values: [0.03, 0.045, 0.07],
+          text: (value) => `아군이 쓰러질 때마다 공격 +${PERCENT(value)} (전투 동안, 최대 10회)`
+        },
+        {
+          id: "opening",
+          name: "선제 공격",
+          values: [0.4, 0.6, 0.9],
+          text: (value) => `전투 시작 후 ${PASSIVE_SETTINGS.openingSeconds}초간 공격 +${PERCENT(value)}`
+        },
+        {
+          id: "helper",
+          name: "도우미",
+          values: [0.05, 0.08, 0.12],
+          text: (value) => `아군이 쓰러지면 주변 아군을 최대 체력의 ${PERCENT(value)}만큼 회복`
+        },
+        {
+          id: "undying",
+          name: "불사",
+          values: [0.05, 0.15, 0.3],
+          text: (value) => `유닛마다 전투에 한 번, 쓰러질 피해를 견디고 체력 ${PERCENT(value)}로 남음`
+        }
+      ]);
       RARITY_NAMES = Object.freeze(["일반", "희귀", "영웅"]);
       STAT_CARDS = Object.freeze([
         { id: "attack-pct", stat: "attackPower", mode: "pct", name: "공격력", values: [0.1, 0.16, 0.25] },
@@ -9173,7 +9247,77 @@
         processUnitDeath(unit2) {
           return this.mutateUnits(this._processUnitDeath, unit2);
         }
+        // The run's passive cards in a fight. A hit gains from the attacker's low health, the fight's first seconds and the
+        // allies fallen so far; a unit hurt while low takes less. All of it is zero outside a tower climb.
+        passiveDamageScale(source, sourceMaxHp, target, targetMaxHp) {
+          const TOWER = this.tower;
+          if (!TOWER.active) {
+            return 1;
+          }
+          const TOTALS = TOWER.passives, SETTINGS = PASSIVE_SETTINGS;
+          let scale = 1;
+          if (hasFaction(source, FACTION_CONFIG.PLAYER)) {
+            scale += (source.hp <= sourceMaxHp * SETTINGS.lastStandBelow ? TOTALS["last-stand"] || 0 : 0) + (this.farmBossEvent.elapsed <= SETTINGS.openingSeconds ? TOTALS.opening || 0 : 0) + (TOTALS.vengeance || 0) * Math.min(TOWER.fallen, SETTINGS.vengeanceMaxFallen);
+          }
+          return scale * (target === this.boss ? 1 : this.passiveReceivedScale(target, targetMaxHp));
+        }
+        passiveReceivedScale(unit2, maxHp = STATS(unit2.tier, unit2.species).maxHp) {
+          const TOWER = this.tower;
+          if (!TOWER.active || !hasFaction(unit2, FACTION_CONFIG.PLAYER) || unit2.hp > maxHp * PASSIVE_SETTINGS.resolveBelow) {
+            return 1;
+          }
+          return 1 - Math.min(PASSIVE_SETTINGS.resolveMaxReduction, TOWER.passives.resolve || 0);
+        }
+        // A unit that took a killing blow holds on once per fight, at the card's share of its health.
+        passiveUndying(unit2) {
+          const TOWER = this.tower, RESTORE = TOWER.passives.undying;
+          if (!TOWER.active || !RESTORE || unit2.hp > 0 || !hasFaction(unit2, FACTION_CONFIG.PLAYER) || unit2.isBattleOnlySummon || TOWER.undyingUsed.has(unit2.id)) {
+            return;
+          }
+          TOWER.undyingUsed.add(unit2.id);
+          unit2.hp = Math.max(
+            1,
+            STATS(unit2.tier, unit2.species).maxHp * Math.min(PASSIVE_SETTINGS.undyingMaxRestore, RESTORE)
+          );
+          this.combat("passive-undying", {
+            unit: unit2.id,
+            x: unit2.x,
+            y: unit2.y,
+            z: unit2.z,
+            radius: unit2.radius,
+            height: unit2.height
+          });
+        }
+        // An ally falls: vengeance counts it and the helper card heals the ones standing near.
+        passiveAllyFell(unit2) {
+          const TOWER = this.tower;
+          if (!TOWER.active || unit2.isBattleOnlySummon || !hasFaction(unit2, FACTION_CONFIG.PLAYER)) {
+            return;
+          }
+          TOWER.fallen++;
+          const HEAL = TOWER.passives.helper || 0, VENGEANCE = TOWER.passives.vengeance || 0;
+          if (!HEAL && !VENGEANCE) {
+            return;
+          }
+          const NEAR = this.unitCollection.items.filter(
+            (other) => other !== unit2 && other.hp > 0 && !other.isBattleOnlySummon && hasFaction(other, FACTION_CONFIG.PLAYER) && Math.hypot(other.x - unit2.x, other.y - unit2.y) <= PASSIVE_SETTINGS.helperRadius
+          ).sort(
+            (a, b) => Math.hypot(a.x - unit2.x, a.y - unit2.y) - Math.hypot(b.x - unit2.x, b.y - unit2.y) || a.id - b.id
+          );
+          if (HEAL) {
+            for (const OTHER of NEAR) {
+              applyHealing(OTHER, STATS(OTHER.tier, OTHER.species).maxHp * HEAL);
+            }
+          }
+          const TARGETS = NEAR.slice(0, 6).map((other) => ({ x: other.x, y: other.y, z: other.z, height: other.height }));
+          for (const KIND of [HEAL && "passive-helper", VENGEANCE && "passive-vengeance"]) {
+            if (KIND) {
+              this.combat(KIND, { x: unit2.x, y: unit2.y, z: unit2.z, height: unit2.height, targets: TARGETS });
+            }
+          }
+        }
         _processUnitDeath(unit2) {
+          this.passiveAllyFell(unit2);
           unit2.ability.interrupt();
           unit2.specialAbility?.interrupt();
           unit2.ability.resetCombatEffects?.();
@@ -9683,7 +9827,7 @@
           }
           if (DOOR.type === "skill") {
             T.relics.set(DOOR.id, (T.relics.get(DOOR.id) || 0) + 1);
-          } else if (DOOR.type === "stat") {
+          } else if (DOOR.type === "stat" || DOOR.type === "passive") {
             T.cards.push({ id: DOOR.id, rarity: DOOR.rarity });
             this._applyRunStats();
           } else {
@@ -9703,6 +9847,7 @@
         // The run's stat cards change every unit's stats; hit points never stay above the new top.
         _applyRunStats() {
           setRunStatMods(runStatModifiers(this.tower.cards));
+          this.tower.passives = passiveTotals(this.tower.cards);
           for (const UNIT_LOCAL of this.unitCollection.items) {
             if (UNIT_LOCAL.hp > 0 && !UNIT_LOCAL.isFormationClone) {
               UNIT_LOCAL.hp = Math.min(UNIT_LOCAL.hp, STATS(UNIT_LOCAL.tier, UNIT_LOCAL.species).maxHp);
@@ -9739,6 +9884,8 @@
               UNIT_LOCAL.hp = STATS(UNIT_LOCAL.tier, UNIT_LOCAL.species).maxHp;
             }
           }
+          T.fallen = 0;
+          T.undyingUsed = /* @__PURE__ */ new Set();
           for (const UNIT_LOCAL of this.units) {
             if (!UNIT_LOCAL.isBattleOnlySummon) {
               UNIT_LOCAL.splitUsedThisBattle = false;
@@ -11612,7 +11759,7 @@
             ...CONTEXT.sourceStatOverrides,
             critChance: CLAMP2(ATTACKER_STATS.critChance + CRITICAL_BONUS, 0, 1)
           };
-          const RAW_BASE_DAMAGE = ATTACKER_STATS.attackPower * (CONTEXT.attackPowerMultiplier ?? (SOURCE.giantUntil > this.time ? 3 : 1)) * DAMAGE_MULTIPLIER, RAW_DAMAGE = RAW_BASE_DAMAGE + (SOURCE.ability?.rawDamageBonus?.(this, action, KIND) || 0);
+          const RAW_BASE_DAMAGE = ATTACKER_STATS.attackPower * (CONTEXT.attackPowerMultiplier ?? (SOURCE.giantUntil > this.time ? 3 : 1)) * DAMAGE_MULTIPLIER, RAW_DAMAGE = (RAW_BASE_DAMAGE + (SOURCE.ability?.rawDamageBonus?.(this, action, KIND) || 0)) * this.passiveDamageScale(SOURCE, ATTACKER_STATS.maxHp, target, DEFENSE.maxHp);
           const DAMAGE = applyDamageToTargets(SOURCE, [target], {
             rawDamage: RAW_DAMAGE,
             area: CONTEXT.area,
@@ -11622,6 +11769,7 @@
             roll: () => CONTEXT.criticalRoll ?? (CONTEXT.criticalRoll = this.random())
           });
           if (!IS_BOSS) {
+            this.passiveUndying(target);
             const CRITICAL_RAW_DAMAGE = RAW_DAMAGE * (DAMAGE.critical ? SOURCE_STAT_OVERRIDES.critMultiplier ?? ATTACKER_STATS.critMultiplier ?? 1 : 1);
             target.ability?.receiveRawDamage?.(this, CRITICAL_RAW_DAMAGE, SOURCE, action);
           }
@@ -12133,9 +12281,10 @@
           }
           const RECEIVED = applyDamageToTargets(null, [unit2], {
             armorForTarget: () => this.combatTargetDefense(unit2).armor,
-            rawDamage: B_LOCAL.attackPower * CONFIG_LOCAL.damageMultiplier * (this.bossEnraged ? BOSS_ENRAGE.damageMultiplier : 1) * (GUARD?.receivedDamageMultiplier ?? 1),
+            rawDamage: B_LOCAL.attackPower * CONFIG_LOCAL.damageMultiplier * (this.bossEnraged ? BOSS_ENRAGE.damageMultiplier : 1) * (GUARD?.receivedDamageMultiplier ?? 1) * this.passiveReceivedScale(unit2),
             sourceKind: "enemy"
           });
+          this.passiveUndying(unit2);
           this.onCombatResolved.emit({ damageTaken: RECEIVED.totalActualLoss, excluded: unit2.isFormationClone });
           this._syncUnitAliveCount(unit2);
           if (unit2.hp === 0) {
@@ -12988,7 +13137,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.24";
+      PRODUCT_VERSION = "0.30.25";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -14993,9 +15142,150 @@
     return result;
   }
 
+  // src/tower-passive-presentations.js
+  var FULL_TURN = Math.PI * 2;
+  var EASE_OUT = (t) => 1 - (1 - t) ** 2;
+  var PassiveMarksPresentation = class {
+    drawUnit(renderer, u, time) {
+      if (u.hp <= 0) {
+        return;
+      }
+      if (u.lastStandOn) {
+        this.drawEmbers(renderer, u, time);
+      }
+      if (u.resolveOn) {
+        renderer.ring(
+          u.x,
+          u.y,
+          u.radius * 1.25,
+          `rgba(255,214,102,${0.55 + 0.3 * Math.sin(time * 5 + u.seed)})`,
+          0.045,
+          0,
+          FULL_TURN,
+          u.height * 0.45
+        );
+      }
+      if (u.vengeanceStacks > 0) {
+        renderer.ring(
+          u.x,
+          u.y,
+          u.radius * 1.4,
+          `rgba(226,70,70,${0.22 + 0.06 * u.vengeanceStacks})`,
+          0.03 + 6e-3 * u.vengeanceStacks
+        );
+      }
+      if (u.openingLeft > 0) {
+        this.drawStreaks(renderer, u);
+      }
+    }
+    drawEmbers(renderer, u, time) {
+      for (let index = 0; index < 3; index++) {
+        const PHASE = (time * 0.9 + u.seed * 0.37 + index / 3) % 1, SIDE = Math.sin(u.seed * 1.7 + index * 2.1) * u.radius * 0.7, POINT2 = renderer.project(u.x + SIDE, u.y, u.z + PHASE * u.height * 0.9);
+        renderer.ellipse(
+          POINT2.x,
+          POINT2.y,
+          renderer.scale * 0.05 * (1 - PHASE * 0.5),
+          renderer.scale * 0.05 * (1 - PHASE * 0.5),
+          `rgba(255,110,60,${(1 - PHASE) * 0.9})`
+        );
+      }
+    }
+    drawStreaks(renderer, u) {
+      const SPEED = Math.hypot(u.vx || 0, u.vy || 0), DX = SPEED > 0.2 ? u.vx / SPEED : Math.cos(u.angle), DY = SPEED > 0.2 ? u.vy / SPEED : Math.sin(u.angle), ALPHA = Math.min(1, u.openingLeft) * 0.6;
+      for (let index = 0; index < 3; index++) {
+        const LIFT = u.height * (0.25 + index * 0.22), NEAR = u.radius * (0.9 + index * 0.1), FAR = NEAR + u.radius * (1.4 + index * 0.3);
+        renderer.line(
+          renderer.project(u.x - DX * NEAR, u.y - DY * NEAR, u.z + LIFT),
+          renderer.project(u.x - DX * FAR, u.y - DY * FAR, u.z + LIFT),
+          0.04,
+          `rgba(255,240,170,${ALPHA})`
+        );
+      }
+    }
+  };
+  var UndyingPresentation = class {
+    lifeMs = 750;
+    draw(renderer, event, progress) {
+      const T = Math.min(1, progress), ALPHA = 1 - T, MID = (event.z || 0) + event.height * 0.5, CENTER = renderer.project(event.x, event.y, MID);
+      renderer.ring(
+        event.x,
+        event.y,
+        event.radius * (1 + 0.7 * EASE_OUT(T)),
+        `rgba(255,214,102,${ALPHA})`,
+        0.06,
+        0,
+        FULL_TURN,
+        event.height * 0.5
+      );
+      for (let index = 0; index < 8; index++) {
+        const ANGLE = index * FULL_TURN / 8 + 0.3, REACH = renderer.scale * (event.radius * (0.9 + 1.2 * EASE_OUT(T))), START = REACH * 0.7;
+        renderer.line(
+          { x: CENTER.x + Math.cos(ANGLE) * START, y: CENTER.y + Math.sin(ANGLE) * START * 0.7 },
+          { x: CENTER.x + Math.cos(ANGLE) * REACH, y: CENTER.y + Math.sin(ANGLE) * REACH * 0.7 },
+          0.05,
+          `rgba(255,236,170,${ALPHA})`
+        );
+      }
+      if (T < 0.25) {
+        renderer.ellipse(
+          CENTER.x,
+          CENTER.y,
+          renderer.scale * event.radius * 1.1 * (1 - T * 3),
+          renderer.scale * event.radius * 0.8 * (1 - T * 3),
+          `rgba(255,255,255,${0.7 * (1 - T * 4)})`
+        );
+      }
+    }
+  };
+  var MotesPresentation = class {
+    lifeMs = 850;
+    draw(renderer, event, progress) {
+      const T = Math.min(1, progress);
+      for (const TARGET of event.targets) {
+        const E = EASE_OUT(T), X = event.x + (TARGET.x - event.x) * E, Y = event.y + (TARGET.y - event.y) * E, START_Z = (event.z || 0) + event.height * 0.5, END_Z = (TARGET.z || 0) + TARGET.height * 0.5, Z = START_Z + (END_Z - START_Z) * E + Math.sin(T * Math.PI) * 0.8, POINT2 = renderer.project(X, Y, Z);
+        renderer.ellipse(
+          POINT2.x,
+          POINT2.y,
+          renderer.scale * 0.1 * (1 - T * 0.4),
+          renderer.scale * 0.06 * (1 - T * 0.4),
+          this.color(1 - T * 0.5),
+          T * 9
+        );
+        if (T > 0.8) {
+          renderer.ring(
+            TARGET.x,
+            TARGET.y,
+            0.15 + (T - 0.8) * 2.5,
+            this.color((1 - T) * 4),
+            0.04,
+            0,
+            FULL_TURN,
+            TARGET.height * 0.5
+          );
+        }
+      }
+    }
+  };
+  var HelperPresentation = class extends MotesPresentation {
+    color(alpha) {
+      return `rgba(120,220,140,${alpha})`;
+    }
+  };
+  var VengeancePresentation = class extends MotesPresentation {
+    color(alpha) {
+      return `rgba(235,70,70,${alpha})`;
+    }
+  };
+  var PASSIVE_PRESENTATION_EVENTS = Object.freeze([
+    ["passive-undying", new UndyingPresentation()],
+    ["passive-helper", new HelperPresentation()],
+    ["passive-vengeance", new VengeancePresentation()]
+  ]);
+
   // src/farm-render-units.js
   var DEFAULT_ATTACK = new UnitAttackPresentation();
   var BARLEY_SHRED_PRESENTATION = new BarleyArmorShredPresentation();
+  var PASSIVE_MARKS = new PassiveMarksPresentation();
   var ATTACK_PRESENTATIONS = new Map(
     [new DualStrikePresentation(), new LobPresentation()].map((presentation) => [presentation.id, presentation])
   );
@@ -15242,6 +15532,7 @@
       const POSE = this.drawUnit(u, sim, REST);
       this.drawUnitRingLayer(u, EFFECTS, "front");
       this.drawSleepIndicator(REST, POSE);
+      PASSIVE_MARKS.drawUnit(this.renderer, u, sim.time);
       BARLEY_SHRED_PRESENTATION.drawStatus(this.renderer, u);
     }
   };
@@ -17078,6 +17369,7 @@
   // src/farm-session.js
   init_farm_model();
   init_unit_stats();
+  init_tower_run();
   init_model19();
   var { PresentationRuntime: PRESENTATION_RUNTIME, RenderObject: RENDER_OBJECT } = globalThis.BloomGamekitInterpolation;
   var R = RENDER_OBJECT;
@@ -17136,7 +17428,11 @@
       cloneParentId: R.STEP,
       cloneBornAt: R.STEP,
       barleyArmorShredTotal: R.STEP,
-      barleyArmorShredLeft: R.STEP
+      barleyArmorShredLeft: R.STEP,
+      lastStandOn: R.STEP,
+      resolveOn: R.STEP,
+      vengeanceStacks: R.STEP,
+      openingLeft: R.LINEAR
     });
     constructor() {
       super();
@@ -17185,6 +17481,15 @@
       this.cloneBornAt = u.cloneBornAt;
       this.barleyArmorShredTotal = BarleyArmorShredModel.total(u, world.simulationTick);
       this.barleyArmorShredLeft = BarleyArmorShredModel.remaining(u, world.simulationTick);
+      this.updatePassiveMarks(u, world);
+    }
+    // The tower's passive cards as flags the marks draw from: which condition each card is in for this unit right now.
+    updatePassiveMarks(u, world) {
+      const TOWER = world.tower, TOTALS = TOWER.passives, LIVE = TOWER.active && u.hp > 0 && !u.isBattleOnlySummon;
+      this.lastStandOn = LIVE && !!TOTALS["last-stand"] && u.hp <= this.maxHp * PASSIVE_SETTINGS.lastStandBelow;
+      this.resolveOn = LIVE && !!TOTALS.resolve && u.hp <= this.maxHp * PASSIVE_SETTINGS.resolveBelow;
+      this.vengeanceStacks = LIVE && TOTALS.vengeance ? Math.min(TOWER.fallen, PASSIVE_SETTINGS.vengeanceMaxFallen) : 0;
+      this.openingLeft = LIVE && TOTALS.opening && world.farmBossEvent.phase === "fighting" ? Math.max(0, PASSIVE_SETTINGS.openingSeconds - world.farmBossEvent.elapsed) : 0;
     }
   };
   var BossRender = class extends RENDER_OBJECT {
@@ -19220,14 +19525,15 @@
       audio.sound("launch");
     }
   };
-  var COMBAT_EFFECT_PRESENTATIONS = /* @__PURE__ */ new Map([
+  var COMBAT_EFFECT_PRESENTATIONS = new Map([
     ["damage-number", Object.freeze(new DamageNumberPresentation())],
     ["boss-hit", Object.freeze(new BossHitPresentation())],
     ["unit-hit", Object.freeze(new UnitHitPresentation())],
     ["barley-shred", Object.freeze(BARLEY_SHRED_PRESENTATION3)],
     ["unit-land", Object.freeze(new UnitLandingPresentation())],
     ["attack-launch", Object.freeze(new AttackLaunchPresentation())],
-    ["boss-launch", Object.freeze(new BossLaunchPresentation())]
+    ["boss-launch", Object.freeze(new BossLaunchPresentation())],
+    ...PASSIVE_PRESENTATION_EVENTS
   ]);
   var CombatFeel = class {
     constructor(audio) {
@@ -20651,9 +20957,9 @@
     return COUNTS;
   }
   function ringSharesFor(world, ids, counts) {
-    const WEIGHTS = world.breedWeights, RAW = ids.map((id) => WEIGHTS ? WEIGHTS[id] || 0 : counts.get(id)), SUM = RAW.reduce((a, b) => a + b, 0) || 1, PERCENT = RAW.map((value) => Math.floor(value / SUM * 100));
-    PERCENT[PERCENT.indexOf(Math.max(...PERCENT))] += 100 - PERCENT.reduce((a, b) => a + b, 0);
-    return PERCENT;
+    const WEIGHTS = world.breedWeights, RAW = ids.map((id) => WEIGHTS ? WEIGHTS[id] || 0 : counts.get(id)), SUM = RAW.reduce((a, b) => a + b, 0) || 1, PERCENT2 = RAW.map((value) => Math.floor(value / SUM * 100));
+    PERCENT2[PERCENT2.indexOf(Math.max(...PERCENT2))] += 100 - PERCENT2.reduce((a, b) => a + b, 0);
+    return PERCENT2;
   }
   function arcPath(from, to) {
     const A = from / 100 * Math.PI * 2 - Math.PI / 2, B = Math.min(to, 99.99) / 100 * Math.PI * 2 - Math.PI / 2, POINT2 = (angle) => `${100 + Math.cos(angle) * RING_RADIUS} ${100 + Math.sin(angle) * RING_RADIUS}`;
@@ -21118,6 +21424,10 @@
     const CARD = statCard(door.id);
     return `<button type="button" class="door door--stat door--rarity-${door.rarity}" data-door="${index}"><b>${CARD.name} ${statCardText(CARD, door.rarity)}</b><small>${RARITY_NAMES[door.rarity]} · 모든 유닛 · ${cardStacks(cards, door.id)}/${TOWER_RUN_SETTINGS.cardCap}장</small></button>`;
   }
+  function passiveDoorCard(door, cards, index) {
+    const CARD = passiveCard(door.id);
+    return `<button type="button" class="door door--passive door--rarity-${door.rarity}" data-door="${index}"><b>${CARD.name}</b><small>${RARITY_NAMES[door.rarity]} · ${CARD.text(CARD.values[door.rarity])} · ${cardStacks(cards, door.id)}/${TOWER_RUN_SETTINGS.cardCap}장</small></button>`;
+  }
   function skillDoorCard(tower, door, index) {
     const DEFINITION13 = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === door.id), LEVEL = tower.relics.get(door.id) || 0, VALUE = Math.round(formationUpgradeValue(DEFINITION13, LEVEL + 1) * 10) / 10, GAIN = LEVEL ? `Lv.${LEVEL} → ${LEVEL + 1}` : "새 스킬";
     return `<button type="button" class="door door--skill" data-door="${index}"><b>${RELIC_ICONS[door.id]} ${DEFINITION13.name}</b><small>${GAIN} · ${DEFINITION13.description || ""}${LEVEL ? ` (→ ${VALUE}${DEFINITION13.upgradeUnit})` : ""}</small></button>`;
@@ -21132,6 +21442,9 @@
     }
     if (door.type === "stat") {
       return statDoorCard(door, tower.cards, index);
+    }
+    if (door.type === "passive") {
+      return passiveDoorCard(door, tower.cards, index);
     }
     return door.type === "skill" ? skillDoorCard(tower, door, index) : eventDoorCard(door, index);
   }

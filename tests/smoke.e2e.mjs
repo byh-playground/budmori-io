@@ -759,6 +759,55 @@ await check('boss stage stats and rewards climb linearly, with a capped compound
     expect(S61.hp / S30.hp < 2.2 && S61.hp < 20000, JSON.stringify([S30.hp, S61.hp]));
 });
 
+await check('passive cards: damage scale, undying once per fight, helper heals, fallen allies count', async () => {
+    const R = await WORLD(() => {
+        const W = BUDMORI.sim,
+            T = W.tower;
+        for (const U of [...W.units]) {
+            W.removeUnit(U);
+        }
+        const A = W.spawn(0, 1, 0, 0),
+            B = W.spawn(0, 1, 2, 0),
+            C = W.spawn(0, 1, 40, 0);
+        const SAVE = { active: T.active, passives: T.passives, fallen: T.fallen, used: T.undyingUsed };
+        T.active = true;
+        T.fallen = 2;
+        T.undyingUsed = new Set();
+        T.passives = { 'last-stand': 0.24, opening: 0.4, vengeance: 0.07, resolve: 0.15, helper: 0.5, undying: 0.25 };
+        W.farmBossEvent.elapsed = 5;
+        const MAX = 40;
+        const FULL = W.passiveDamageScale(A, MAX, W.boss, W.boss.maxHp);
+        A.hp = MAX * 0.4;
+        const LOW = W.passiveDamageScale(A, MAX, W.boss, W.boss.maxHp);
+        W.farmBossEvent.elapsed = 12;
+        const LATE = W.passiveDamageScale(A, MAX, W.boss, W.boss.maxHp);
+        const TAKEN_FULL = W.passiveReceivedScale(B),
+            TAKEN_LOW = (() => {
+                B.hp = MAX * 0.2;
+                return W.passiveReceivedScale(B);
+            })();
+        C.hp = 0;
+        W.passiveUndying(C);
+        const SAVED = C.hp;
+        C.hp = 0;
+        W.passiveUndying(C);
+        const SECOND = C.hp;
+        B.hp = 10;
+        W.passiveAllyFell(A);
+        const HEALED = B.hp;
+        const FALLEN = T.fallen;
+        Object.assign(T, { active: SAVE.active, passives: SAVE.passives, fallen: SAVE.fallen, undyingUsed: SAVE.used });
+        return { FULL, LOW, LATE, TAKEN_FULL, TAKEN_LOW, SAVED, SECOND, HEALED, FALLEN };
+    });
+    const NEAR = (a, b) => Math.abs(a - b) < 1e-9;
+    expect(NEAR(R.FULL, 1 + 0.4 + 0.14), `opening + vengeance ${JSON.stringify(R)}`);
+    expect(NEAR(R.LOW, 1 + 0.4 + 0.14 + 0.24), `last stand ${JSON.stringify(R)}`);
+    expect(NEAR(R.LATE, 1 + 0.14 + 0.24), `opening over ${JSON.stringify(R)}`);
+    expect(R.TAKEN_FULL === 1 && NEAR(R.TAKEN_LOW, 0.85), `resolve ${JSON.stringify(R)}`);
+    expect(NEAR(R.SAVED, 10) && R.SECOND === 0, `undying ${JSON.stringify(R)}`);
+    expect(R.HEALED === 30 && R.FALLEN === 3, `helper ${JSON.stringify(R)}`);
+});
+
 await check('no page errors', async () => {
     expect(ERRORS.length === 0, ERRORS.slice(0, 3).join(' | '));
 });

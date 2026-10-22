@@ -1,7 +1,15 @@
 import { PerformanceDiagnostics } from './performance-diagnostics.js';
 import { RelicDock, RELIC_ICONS } from './relic-dock.js';
 import { FORMATION_SKILL_DEFINITIONS, formationUpgradeValue } from './formation-skill-state.js';
-import { RARITY_NAMES, TOWER_EVENTS, TOWER_RUN_SETTINGS, cardStacks, statCard, statCardText } from './tower-run.js';
+import {
+    RARITY_NAMES,
+    TOWER_EVENTS,
+    TOWER_RUN_SETTINGS,
+    cardStacks,
+    passiveCard,
+    statCard,
+    statCardText,
+} from './tower-run.js';
 import { Garden, CONFIG, ArenaGeometry, ATTACK_TYPES, Ballistics } from './farm-model.js';
 import { Diorama } from './farm-renderer.js';
 import { FarmSession, LOCAL_PROFILE } from './farm-session.js';
@@ -1498,6 +1506,10 @@ function statDoorCard(door, cards, index) {
     const CARD = statCard(door.id);
     return `<button type="button" class="door door--stat door--rarity-${door.rarity}" data-door="${index}"><b>${CARD.name} ${statCardText(CARD, door.rarity)}</b><small>${RARITY_NAMES[door.rarity]} · 모든 유닛 · ${cardStacks(cards, door.id)}/${TOWER_RUN_SETTINGS.cardCap}장</small></button>`;
 }
+function passiveDoorCard(door, cards, index) {
+    const CARD = passiveCard(door.id);
+    return `<button type="button" class="door door--passive door--rarity-${door.rarity}" data-door="${index}"><b>${CARD.name}</b><small>${RARITY_NAMES[door.rarity]} · ${CARD.text(CARD.values[door.rarity])} · ${cardStacks(cards, door.id)}/${TOWER_RUN_SETTINGS.cardCap}장</small></button>`;
+}
 function skillDoorCard(tower, door, index) {
     const DEFINITION = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === door.id),
         LEVEL = tower.relics.get(door.id) || 0,
@@ -1515,6 +1527,9 @@ function doorCard(tower, door, index) {
     }
     if (door.type === 'stat') {
         return statDoorCard(door, tower.cards, index);
+    }
+    if (door.type === 'passive') {
+        return passiveDoorCard(door, tower.cards, index);
     }
     return door.type === 'skill' ? skillDoorCard(tower, door, index) : eventDoorCard(door, index);
 }
