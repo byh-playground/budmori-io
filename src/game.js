@@ -929,54 +929,81 @@
           id: 0,
           name: "콩",
           asset: "pea.svg",
+          // The colours of the limbs a boss of this species swings: body fill and outline.
+          limbFill: "#83ad47",
+          limbOutline: "#4a1c16",
           bossWeight: 1
         }),
         Object.freeze({
           id: 1,
           name: "옥수수",
           asset: "corn-kernel.svg",
+          // The colours of the limbs a boss of this species swings: body fill and outline.
+          limbFill: "#f7cd36",
+          limbOutline: "#4a1c16",
           bossWeight: 1
         }),
         Object.freeze({
           id: 2,
           name: "팥",
           asset: "kidney-bean.svg",
+          // The colours of the limbs a boss of this species swings: body fill and outline.
+          limbFill: "#d06a8f",
+          limbOutline: "#4b1a20",
           bossWeight: 1
         }),
         Object.freeze({
           id: 3,
           name: "밤톨",
           asset: "chestnut.svg",
+          // The colours of the limbs a boss of this species swings: body fill and outline.
+          limbFill: "#84472f",
+          limbOutline: "#2c201c",
           bossWeight: 1
         }),
         Object.freeze({
           id: 4,
           name: "땅콩",
           asset: "peanut.svg",
+          // The colours of the limbs a boss of this species swings: body fill and outline.
+          limbFill: "#c89d67",
+          limbOutline: "#3b241e",
           bossWeight: 1
         }),
         Object.freeze({
           id: 5,
           name: "호두",
           asset: "walnut.svg",
+          // The colours of the limbs a boss of this species swings: body fill and outline.
+          limbFill: "#a96c18",
+          limbOutline: "#431811",
           bossWeight: 1
         }),
         Object.freeze({
           id: 6,
           name: "쌀",
           asset: "rice.svg",
+          // The colours of the limbs a boss of this species swings: body fill and outline.
+          limbFill: "#f3efe4",
+          limbOutline: "#4b211b",
           bossWeight: 1
         }),
         Object.freeze({
           id: 7,
           name: "밀",
           asset: "wheat.svg",
+          // The colours of the limbs a boss of this species swings: body fill and outline.
+          limbFill: "#e4b247",
+          limbOutline: "#34271f",
           bossWeight: 1
         }),
         Object.freeze({
           id: 8,
           name: "보리",
           asset: "barley.svg",
+          // The colours of the limbs a boss of this species swings: body fill and outline.
+          limbFill: "#ddaa43",
+          limbOutline: "#4b211b",
           bossWeight: 1
         })
       ]);
@@ -6573,12 +6600,12 @@
     };
     let releasePulse = 0;
     if (PHASE === "windup") {
-      const WIND = CLAMP(ELAPSED / CONFIG2.windup, 0, 1), EASE = WIND * WIND * (3 - 2 * WIND);
-      BODY2.y = 2 * EASE;
-      BODY2.scaleX = 1 + 0.025 * EASE;
-      BODY2.scaleY = 1 - 0.035 * EASE;
-      ARMS["arm-left"] = -0.34 * EASE;
-      ARMS["arm-right"] = 0.34 * EASE;
+      const WIND = CLAMP(ELAPSED / CONFIG2.windup, 0, 1), EASE2 = WIND * WIND * (3 - 2 * WIND);
+      BODY2.y = 2 * EASE2;
+      BODY2.scaleX = 1 + 0.025 * EASE2;
+      BODY2.scaleY = 1 - 0.035 * EASE2;
+      ARMS["arm-left"] = -0.34 * EASE2;
+      ARMS["arm-right"] = 0.34 * EASE2;
     } else if (PHASE === "active" || PHASE === "recover") {
       const LAST = (b.patternReleased || 0) - 1, AGE = LAST < 0 ? 1 : PHASE === "active" ? Math.max(0, ELAPSED - LAST * CONFIG2.releaseInterval) : ELAPSED;
       releasePulse = CLAMP(1 - AGE / 0.16, 0, 1);
@@ -13082,7 +13109,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.31";
+      PRODUCT_VERSION = "0.30.32";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15596,6 +15623,8 @@
     }
     drawRelease() {
     }
+    drawBehind() {
+    }
     drawWeapon() {
     }
     drawTelegraph(renderer, area) {
@@ -15621,8 +15650,17 @@
   // src/features/boss-patterns/sweep-360/presentation.js
   init_definition21();
   init_farm_model();
+  init_species_catalog();
   var HALF_TURN = Math.PI;
-  var ARM_INNER = 0.45;
+  var EASE = (t) => t * t * (3 - 2 * t);
+  var ARM_WIDTH = 1;
+  var ARM_FIST = 0.85;
+  var ARM_FOLD_SECONDS = 0.4;
+  var HIGHLIGHT_MIX = 0.3;
+  function highlight(hex) {
+    const CHANNELS = [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
+    return `rgb(${CHANNELS.map((c) => Math.round(c + (255 - c) * HIGHLIGHT_MIX)).join(",")})`;
+  }
   var CircleSweepPresentation = class extends BossAttackPresentation {
     constructor() {
       super(FEATURE7, "sweep", 0.14, 0.14);
@@ -15660,26 +15698,65 @@
       }
       CTX.globalAlpha = ALPHA;
     }
-    // Two arm strokes from near the body out to the reach, one per arm.
-    drawWeapon(renderer, boss, _player, _matrix, _pose) {
-      if (boss.patternPhase !== "active") {
+    // The arms are drawn by hand: long limbs that swing round the body, so the turn can be seen. The one on the far half
+    // of the circle goes behind the body (drawBehind), the one on the near half in front of it (drawWeapon).
+    drawBehind(renderer, boss) {
+      this.drawArms(renderer, boss, true);
+    }
+    drawWeapon(renderer, boss) {
+      this.drawArms(renderer, boss, false);
+    }
+    // How far out the arms are (0 folded in, 1 stretched to the reach) and how far round they have turned (0..1).
+    armPose(boss) {
+      const ELAPSED = boss.patternPhaseElapsed || 0;
+      if (boss.patternPhase === "windup") {
+        return { out: EASE(CLAMP2(ELAPSED / this.config.windup, 0, 1)), turn: 0 };
+      }
+      if (boss.patternPhase === "active") {
+        return { out: 1, turn: CLAMP2(ELAPSED / Math.max(this.config.active, 1e-3), 0, 1) };
+      }
+      if (boss.patternPhase === "recover") {
+        return { out: 1 - EASE(CLAMP2(ELAPSED / ARM_FOLD_SECONDS, 0, 1)), turn: 1 };
+      }
+      return { out: 0, turn: 0 };
+    }
+    drawArms(renderer, boss, behind) {
+      const POSE = this.armPose(boss);
+      if (POSE.out <= 1e-3) {
         return;
       }
-      const Q = CLAMP2((boss.patternPhaseElapsed || 0) / Math.max(this.config.active, 1e-3), 0, 1), START = (boss.patternAim ?? boss.angle) - Math.PI / 2;
+      const SPECIES = speciesById(boss.species), OUTLINE = SPECIES.limbOutline, FILL = SPECIES.limbFill, LIGHT = highlight(FILL), START = (boss.patternAim ?? boss.angle) - Math.PI / 2, SHOULDER_Z = (boss.z || 0) + boss.height * 0.3, REACH = this.config.reach - ARM_FIST, TIP_DISTANCE = boss.radius * 0.8 + (REACH - boss.radius * 0.8) * POSE.out;
       renderer.ctx.flush();
       for (const ARM_START of [START, START + HALF_TURN]) {
-        const ANGLE = ARM_START + HALF_TURN * Q, COS = Math.cos(ANGLE), SIN = Math.sin(ANGLE), FROM = renderer.project(
-          boss.x + COS * this.config.reach * ARM_INNER,
-          boss.y + SIN * this.config.reach * ARM_INNER,
-          (boss.z || 0) + 0.2
-        ), TO = renderer.project(
-          boss.x + COS * this.config.reach,
-          boss.y + SIN * this.config.reach,
-          (boss.z || 0) + 0.2
+        const ANGLE = ARM_START + HALF_TURN * POSE.turn, COS = Math.cos(ANGLE), SIN = Math.sin(ANGLE);
+        if (SIN > 0 !== behind) {
+          continue;
+        }
+        const FROM = renderer.project(
+          boss.x + COS * boss.radius * 0.55,
+          boss.y + SIN * boss.radius * 0.55,
+          SHOULDER_Z
+        ), TO = renderer.project(boss.x + COS * TIP_DISTANCE, boss.y + SIN * TIP_DISTANCE, SHOULDER_Z);
+        renderer.line(FROM, TO, ARM_WIDTH + 0.34, OUTLINE);
+        renderer.line(FROM, TO, ARM_WIDTH, FILL);
+        renderer.line(FROM, TO, ARM_WIDTH * 0.28, LIGHT);
+        renderer.ellipse(
+          TO.x,
+          TO.y,
+          renderer.scale * (ARM_FIST + 0.17),
+          renderer.scale * (ARM_FIST + 0.17),
+          OUTLINE
         );
-        renderer.line(FROM, TO, 0.2, "#68463299");
-        renderer.line(FROM, TO, 0.085, "#f0c77c");
+        renderer.ellipse(TO.x, TO.y, renderer.scale * ARM_FIST, renderer.scale * ARM_FIST, FILL);
+        renderer.ellipse(
+          TO.x - renderer.scale * 0.2,
+          TO.y - renderer.scale * 0.22,
+          renderer.scale * ARM_FIST * 0.38,
+          renderer.scale * ARM_FIST * 0.3,
+          LIGHT
+        );
       }
+      renderer.ctx.flush();
     }
   };
 
@@ -15971,6 +16048,7 @@
         x: MOUTH_SOCKET.x * S_LOCAL + MATRIX[4],
         y: MOUTH_SOCKET.y * S_LOCAL + MATRIX[5]
       };
+      PRESENTATION.drawBehind(this.renderer, B);
       this.renderer.ctx.vector.flush();
       PLAYER.draw({
         projection: this.renderer.ctx.vector.projection,
