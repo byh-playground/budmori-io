@@ -7893,9 +7893,9 @@
             gateRadius: 1.8,
             // Coming back from the tower, the troops drop out of the door one after another (ejectSeconds in all), each in a
             // short arc (flightSeconds) from ejectHeight onto a spot of its own anywhere on the farm.
-            ejectSeconds: 1.8,
-            flightSeconds: 0.8,
-            ejectHeight: 4,
+            ejectSeconds: 1.3,
+            flightSeconds: 1.1,
+            ejectHeight: 7,
             battle: Object.freeze({ hp: 1, attack: 1, edge: 0, reward: 1 }),
             elite: Object.freeze({ hp: 1.6, attack: 1.25, edge: 0.25, reward: 2 }),
             mid: Object.freeze({ hp: 2.2, attack: 1.4, edge: 0.5, reward: BOSS_REWARD_SETTINGS.maxKindReward })
@@ -13179,7 +13179,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.26";
+      PRODUCT_VERSION = "0.30.27";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
