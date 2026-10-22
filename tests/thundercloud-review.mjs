@@ -107,16 +107,20 @@ try {
             for (const CASE of [
                 { name: 'boss-active', age: 1, y: 0 },
                 { name: 'boss-enter', age: 0.25, y: 0 },
+                { name: 'boss-enter-start', age: 0.02, y: 0 },
                 { name: 'boss-exit', age: 5.75, y: 0 },
+                { name: 'boss-exit-end', age: 5.98, y: 0 },
                 { name: 'boss-back', age: 1.4, y: 10 },
+                { name: 'boss-side', age: 0.02, y: 0, x: 16 },
                 { name: 'small-active', age: 1, y: 0, small: true },
             ]) {
                 const METRICS = await PAGE.evaluate((sample) => {
                     const W = BUDMORI.sim,
                         R = BUDMORI.renderer;
                     W.boss.y = sample.y;
+                    W.boss.x = sample.x || 0;
                     const TARGET = sample.small ? W.units[0] : W.boss;
-                    TARGET.x = 0;
+                    TARGET.x = sample.x || 0;
                     TARGET.y = sample.y;
                     TARGET.z = 0;
                     const HEIGHT = TARGET.height,
@@ -124,10 +128,10 @@ try {
                     const TARGET_Z = HEIGHT + Math.max(0.12, HEIGHT * 0.06);
                     W.formationRuntime.effects.length = 0;
                     W.formationSkills.addEffect('storm-cloud', {
-                        x: 0,
+                        x: sample.x || 0,
                         y: sample.y,
                         z: TARGET_Z + 2,
-                        targetX: 0,
+                        targetX: sample.x || 0,
                         targetY: sample.y,
                         targetZ: TARGET_Z,
                         bodyHeight: HEIGHT,
@@ -158,7 +162,7 @@ try {
                     R.sceneChangedAt = -1e9;
                     R.render(VIEW, null, performance.now() + 10000);
                     R.ellipse = ELLIPSE;
-                    const HEAD = R.project(0, sample.y, HEIGHT);
+                    const HEAD = R.project(sample.x || 0, sample.y, HEIGHT);
                     return {
                         box: BOX,
                         head: HEAD,
@@ -182,6 +186,25 @@ try {
                         `${CASE.name}: cloud clipped horizontally ${JSON.stringify(METRICS)}`,
                     );
                 }
+            }
+            if (VARIANT === 'after') {
+                const RESET = await PAGE.evaluate(() => {
+                    const R = BUDMORI.renderer,
+                        W = BUDMORI.sim;
+                    W.formationRuntime.effects.length = 0;
+                    BUDMORI.runtime.capturePresentation('reset');
+                    const VIEW = BUDMORI.runtime.presentation(performance.now());
+                    R.directCamera({ ...VIEW, insideTower: false }, performance.now());
+                    R.directCamera(VIEW, performance.now());
+                    const BASE = R.scenePresentation.cameraView(R.aspect);
+                    const FIT = Math.min(
+                        BASE[0] / (BUDMORI.CONFIG.farm.arena.radiusX + 1),
+                        BASE[1] / (BUDMORI.CONFIG.farm.arena.radiusY * 0.62 + 3.5),
+                    );
+                    return { zoom: R.zoom, expected: FIT, pan: R.cameraPan };
+                });
+                assert(Math.abs(RESET.zoom - RESET.expected) < 1e-9, JSON.stringify(RESET));
+                assert(Math.abs(RESET.pan.x) < 1e-9 && Math.abs(RESET.pan.y) < 1e-9, JSON.stringify(RESET));
             }
             await CONTEXT.close();
         }

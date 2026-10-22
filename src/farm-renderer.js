@@ -483,6 +483,7 @@ const DIORAMA = class Diorama {
             if (INSIDE && !WAS_INSIDE) {
                 this.fitHall(sim2);
             } else if (!INSIDE) {
+                this.hallFramingKey = null;
                 this.towerShotUntil = now + 2600;
             }
         }

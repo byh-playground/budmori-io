@@ -14239,6 +14239,7 @@
   // src/features/formation-skills/storm-cloud/presentation.js
   var import_vector_sockets3 = __toESM(require_vector_sockets(), 1);
   var POINT_BUFFERS = /* @__PURE__ */ new WeakMap();
+  var CLOUD_SPREAD_DEPTH = 0.35;
   function pointBuffersFor(effect) {
     let buffers = POINT_BUFFERS.get(effect);
     if (!buffers) {
@@ -14267,7 +14268,7 @@
       bounds.right = Math.max(bounds.right, effect.x + SIZE * 1.84 + 1);
       bounds.top = Math.max(
         bounds.top,
-        (effect.y + SIZE) * import_vector_sockets3.WORLD_DEPTH_PROJECTION + (effect.z + LIFT + 0.1 + SIZE * 0.24) * import_vector_sockets3.WORLD_HEIGHT_PROJECTION + SIZE * 0.26 + 1
+        (effect.y + SIZE * CLOUD_SPREAD_DEPTH) * import_vector_sockets3.WORLD_DEPTH_PROJECTION + (effect.z + LIFT + 0.1 + SIZE * 0.24) * import_vector_sockets3.WORLD_HEIGHT_PROJECTION + SIZE * 0.26 + 1
       );
     }
     draw(renderer, effect) {
@@ -14277,7 +14278,7 @@
         cloud(
           renderer,
           effect.x + Math.cos(ANGLE) * SPREAD,
-          effect.y + Math.sin(ANGLE) * SPREAD,
+          effect.y + Math.sin(ANGLE) * SPREAD * CLOUD_SPREAD_DEPTH,
           Z,
           CLOUD_SIZE,
           Math.max(0, 1 - EXIT) * Math.min(1, effect.age * 8)
@@ -17167,6 +17168,7 @@
         if (INSIDE && !WAS_INSIDE) {
           this.fitHall(sim2);
         } else if (!INSIDE) {
+          this.hallFramingKey = null;
           this.towerShotUntil = now + 2600;
         }
       }

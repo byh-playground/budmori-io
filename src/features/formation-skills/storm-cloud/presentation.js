@@ -1,6 +1,7 @@
 import { FormationPresentation, bodyScale, cloud, stroke } from '../presentation-base.js';
 import { WORLD_HEIGHT_PROJECTION, WORLD_DEPTH_PROJECTION } from '../../../vector-sockets.cjs';
 const POINT_BUFFERS = new WeakMap();
+const CLOUD_SPREAD_DEPTH = 0.35;
 
 function pointBuffersFor(effect) {
     let buffers = POINT_BUFFERS.get(effect);
@@ -34,7 +35,7 @@ export class StormCloudPresentation extends FormationPresentation {
         bounds.right = Math.max(bounds.right, effect.x + SIZE * 1.84 + 1);
         bounds.top = Math.max(
             bounds.top,
-            (effect.y + SIZE) * WORLD_DEPTH_PROJECTION +
+            (effect.y + SIZE * CLOUD_SPREAD_DEPTH) * WORLD_DEPTH_PROJECTION +
                 (effect.z + LIFT + 0.1 + SIZE * 0.24) * WORLD_HEIGHT_PROJECTION +
                 SIZE * 0.26 +
                 1,
@@ -55,7 +56,7 @@ export class StormCloudPresentation extends FormationPresentation {
             cloud(
                 renderer,
                 effect.x + Math.cos(ANGLE) * SPREAD,
-                effect.y + Math.sin(ANGLE) * SPREAD,
+                effect.y + Math.sin(ANGLE) * SPREAD * CLOUD_SPREAD_DEPTH,
                 Z,
                 CLOUD_SIZE,
                 Math.max(0, 1 - EXIT) * Math.min(1, effect.age * 8),
