@@ -37,10 +37,11 @@ function mix(hex, amount) {
     const CHANNELS = [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
     return `rgb(${CHANNELS.map((c) => Math.round(c + (255 - c) * amount)).join(',')})`;
 }
-// A mitten fist that faces +x, thumb on top, drawn in a unit circle at the origin.
+// A mitten fist, knuckles toward the camera and thumb on the outer side, drawn in a unit circle at the origin. It never
+// turns: the hands only move.
 function handArt(side, [fill, outline, x, y, radius]) {
     const ID = (name) => `hand-${side}-${name}`;
-    return `<g id="${ID('art')}" transform="translate(${x} ${y}) scale(${radius})">
+    return `<g id="${ID('art')}" transform="translate(${x} ${y}) rotate(90) scale(${radius})">
       <path id="${ID('palm')}" d="M-.15 -1 C.7 -1 1 -.4 1 .1 C1 .75 .5 1 -.1 1 C-.75 1 -1 .5 -1 0 C-1 -.6 -.6 -1 -.15 -1Z" fill="${fill}" stroke="${outline}" stroke-width=".26" stroke-linejoin="round"/>
       <path id="${ID('thumb')}" d="M.55 -.55 C.85 -.95 1.35 -.8 1.25 -.4 C1.18 -.15 .95 -.1 .8 -.2" fill="${fill}" stroke="${outline}" stroke-width=".24" stroke-linecap="round" stroke-linejoin="round"/>
       <path id="${ID('shine')}" d="M-.5 -.45 C-.3 -.7 0 -.75 .2 -.7" fill="none" stroke="${mix(fill, 0.4)}" stroke-width=".18" stroke-linecap="round"/>
