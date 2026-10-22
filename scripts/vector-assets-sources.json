@@ -5,7 +5,7 @@
         { "id": "species-0", "file": "assets/troops/pea.svg", "qualityPreset": "standard" },
         { "id": "species-1", "file": "assets/troops/corn-kernel.svg", "qualityPreset": "standard" },
         { "id": "species-2", "file": "assets/troops/kidney-bean.svg", "qualityPreset": "standard" },
-        { "id": "species-4", "file": "assets/troops/peanut.svg", "qualityPreset": "standard" },
+        { "id": "species-4", "file": "assets/bosses/peanut.svg", "qualityPreset": "standard" },
         { "id": "species-5", "file": "assets/troops/walnut.svg", "qualityPreset": "standard" },
         { "id": "species-6", "file": "assets/troops/rice.svg", "qualityPreset": "standard" },
         { "id": "species-7", "file": "assets/troops/wheat.svg", "qualityPreset": "standard" },
