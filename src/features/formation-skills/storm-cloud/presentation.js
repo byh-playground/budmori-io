@@ -22,33 +22,33 @@ function visualOffset(effect, index, salt) {
     return (VALUE - Math.floor(VALUE)) * 2 - 1;
 }
 
-function cloudDimensions(effect) {
+function cloudGeometry(effect) {
     const RADIUS = Math.max(0.2, (effect.bodyRadius || 0.3) * 0.55);
-    return { radius: RADIUS, size: RADIUS * 2.6, lift: RADIUS * 1.9 };
+    return { radius: RADIUS, size: RADIUS * 2.6, z: Math.max(effect.z, effect.targetZ + 2) + RADIUS * 1.9 };
 }
 
 export class StormCloudPresentation extends FormationPresentation {
     includeBounds(effect, bounds) {
-        const { size: SIZE, lift: LIFT } = cloudDimensions(effect);
+        const { size: SIZE, z: Z } = cloudGeometry(effect);
         // Reserve the complete entrance/exit spread, not the current pulse, to avoid camera pumping.
         bounds.left = Math.min(bounds.left, effect.x - SIZE * 1.84 - 1);
         bounds.right = Math.max(bounds.right, effect.x + SIZE * 1.84 + 1);
         bounds.top = Math.max(
             bounds.top,
             (effect.y + SIZE * CLOUD_SPREAD_DEPTH) * WORLD_DEPTH_PROJECTION +
-                (effect.z + LIFT + 0.1 + SIZE * 0.24) * WORLD_HEIGHT_PROJECTION +
+                (Z + 0.1 + SIZE * 0.24) * WORLD_HEIGHT_PROJECTION +
                 SIZE * 0.26 +
                 1,
         );
     }
     draw(renderer, effect) {
-        const { radius: BODY_RADIUS, size: CLOUD_SIZE, lift: LIFT } = cloudDimensions(effect),
+        const { radius: BODY_RADIUS, size: CLOUD_SIZE, z: CLOUD_Z } = cloudGeometry(effect),
             BODY_SCALE = bodyScale(effect.bodyRadius),
             ENTER = Math.min(1, effect.age / 0.5),
             EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5,
             // The cloud's screen-facing lobes grow with the target. Keep their underside clear of the head;
             // this is presentation-only, so flying-skill targeting, range and pulse timing stay unchanged.
-            Z = effect.z + LIFT + Math.sin(effect.age * 3) * Math.min(0.1, BODY_RADIUS * 0.12),
+            Z = CLOUD_Z + Math.sin(effect.age * 3) * Math.min(0.1, BODY_RADIUS * 0.12),
             ARC_Z = Z - CLOUD_SIZE * 0.25,
             SPREAD = (1 - ENTER + EXIT) * BODY_RADIUS * 2.6;
         for (let index = 0; index < 3; index++) {

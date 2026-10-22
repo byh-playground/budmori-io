@@ -111,6 +111,7 @@ try {
                 { name: 'boss-exit', age: 5.75, y: 0 },
                 { name: 'boss-exit-end', age: 5.98, y: 0 },
                 { name: 'boss-back', age: 1.4, y: 10 },
+                { name: 'boss-rising', age: 1, y: 0, lag: 12 },
                 { name: 'boss-side', age: 0.02, y: 0, x: 16 },
                 { name: 'small-active', age: 1, y: 0, small: true },
             ]) {
@@ -130,7 +131,7 @@ try {
                     W.formationSkills.addEffect('storm-cloud', {
                         x: sample.x || 0,
                         y: sample.y,
-                        z: TARGET_Z + 2,
+                        z: TARGET_Z + 2 - (sample.lag || 0),
                         targetX: sample.x || 0,
                         targetY: sample.y,
                         targetZ: TARGET_Z,
@@ -195,13 +196,13 @@ try {
                     BUDMORI.runtime.capturePresentation('reset');
                     const VIEW = BUDMORI.runtime.presentation(performance.now());
                     R.directCamera({ ...VIEW, insideTower: false }, performance.now());
-                    R.directCamera(VIEW, performance.now());
+                    R.directCamera(VIEW, performance.now() + 10000);
                     const BASE = R.scenePresentation.cameraView(R.aspect);
                     const FIT = Math.min(
                         BASE[0] / (BUDMORI.CONFIG.farm.arena.radiusX + 1),
                         BASE[1] / (BUDMORI.CONFIG.farm.arena.radiusY * 0.62 + 3.5),
                     );
-                    return { zoom: R.zoom, expected: FIT, pan: R.cameraPan };
+                    return { zoom: R.zoom, expected: FIT, pan: R.pan };
                 });
                 assert(Math.abs(RESET.zoom - RESET.expected) < 1e-9, JSON.stringify(RESET));
                 assert(Math.abs(RESET.pan.x) < 1e-9 && Math.abs(RESET.pan.y) < 1e-9, JSON.stringify(RESET));

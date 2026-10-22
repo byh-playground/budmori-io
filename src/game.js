@@ -14257,22 +14257,22 @@
     const VALUE = Math.sin(effect.id * 127.1 + effect.pulse * 311.7 + index * 74.7 + salt * 41.3) * 43758.5453;
     return (VALUE - Math.floor(VALUE)) * 2 - 1;
   }
-  function cloudDimensions(effect) {
+  function cloudGeometry(effect) {
     const RADIUS = Math.max(0.2, (effect.bodyRadius || 0.3) * 0.55);
-    return { radius: RADIUS, size: RADIUS * 2.6, lift: RADIUS * 1.9 };
+    return { radius: RADIUS, size: RADIUS * 2.6, z: Math.max(effect.z, effect.targetZ + 2) + RADIUS * 1.9 };
   }
   var StormCloudPresentation = class extends FormationPresentation {
     includeBounds(effect, bounds) {
-      const { size: SIZE, lift: LIFT } = cloudDimensions(effect);
+      const { size: SIZE, z: Z } = cloudGeometry(effect);
       bounds.left = Math.min(bounds.left, effect.x - SIZE * 1.84 - 1);
       bounds.right = Math.max(bounds.right, effect.x + SIZE * 1.84 + 1);
       bounds.top = Math.max(
         bounds.top,
-        (effect.y + SIZE * CLOUD_SPREAD_DEPTH) * import_vector_sockets3.WORLD_DEPTH_PROJECTION + (effect.z + LIFT + 0.1 + SIZE * 0.24) * import_vector_sockets3.WORLD_HEIGHT_PROJECTION + SIZE * 0.26 + 1
+        (effect.y + SIZE * CLOUD_SPREAD_DEPTH) * import_vector_sockets3.WORLD_DEPTH_PROJECTION + (Z + 0.1 + SIZE * 0.24) * import_vector_sockets3.WORLD_HEIGHT_PROJECTION + SIZE * 0.26 + 1
       );
     }
     draw(renderer, effect) {
-      const { radius: BODY_RADIUS, size: CLOUD_SIZE, lift: LIFT } = cloudDimensions(effect), BODY_SCALE = bodyScale(effect.bodyRadius), ENTER = Math.min(1, effect.age / 0.5), EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5, Z = effect.z + LIFT + Math.sin(effect.age * 3) * Math.min(0.1, BODY_RADIUS * 0.12), ARC_Z = Z - CLOUD_SIZE * 0.25, SPREAD = (1 - ENTER + EXIT) * BODY_RADIUS * 2.6;
+      const { radius: BODY_RADIUS, size: CLOUD_SIZE, z: CLOUD_Z } = cloudGeometry(effect), BODY_SCALE = bodyScale(effect.bodyRadius), ENTER = Math.min(1, effect.age / 0.5), EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5, Z = CLOUD_Z + Math.sin(effect.age * 3) * Math.min(0.1, BODY_RADIUS * 0.12), ARC_Z = Z - CLOUD_SIZE * 0.25, SPREAD = (1 - ENTER + EXIT) * BODY_RADIUS * 2.6;
       for (let index = 0; index < 3; index++) {
         const ANGLE = index * Math.PI * 2 / 3;
         cloud(
