@@ -350,18 +350,30 @@
       random
     );
   }
-  function rollCardOffers({ floor, cards, relics, skillIds, relicSlots, relicMaxLevel, random }) {
-    const OFFERS = [], STATS2 = STAT_CARDS.filter((card) => cardStacks(cards, card.id) < TOWER_RUN_SETTINGS.cardCap);
-    if (STATS2.length) {
-      const CARD = STATS2[Math.floor(random() * STATS2.length)];
-      OFFERS.push({ type: "stat", id: CARD.id, rarity: rollRarity(floor, random) });
-    }
-    const SKILLS = skillIds.filter((id) => {
-      const LEVEL = relics.get(id) || 0;
-      return LEVEL ? LEVEL < relicMaxLevel : relics.size < relicSlots;
-    });
-    if (SKILLS.length) {
-      OFFERS.push({ type: "skill", id: SKILLS[Math.floor(random() * SKILLS.length)] });
+  function rollCardOffers({ floor, cards, relics, skillIds, passiveIds, relicSlots, relicMaxLevel, random }) {
+    const POOLS = {
+      stat: STAT_CARDS.filter((card) => cardStacks(cards, card.id) < TOWER_RUN_SETTINGS.cardCap).map(
+        (card) => card.id
+      ),
+      skill: skillIds.filter((id) => {
+        const LEVEL = relics.get(id) || 0;
+        return LEVEL ? LEVEL < relicMaxLevel : relics.size < relicSlots;
+      }),
+      passive: passiveIds.filter((id) => cardStacks(cards, id) < TOWER_RUN_SETTINGS.cardCap)
+    };
+    const OFFERS = [];
+    while (OFFERS.length < TOWER_RUN_SETTINGS.cardsPerFloor) {
+      const TYPES = Object.keys(POOLS).filter((type) => POOLS[type].length);
+      if (!TYPES.length) {
+        break;
+      }
+      const TYPE = TYPES[weightedIndex(
+        TYPES.map((type) => TOWER_RUN_SETTINGS.kindWeights[type]),
+        random
+      )], ID = POOLS[TYPE].splice(Math.floor(random() * POOLS[TYPE].length), 1)[0];
+      OFFERS.push(
+        TYPE === "skill" ? { type: TYPE, id: ID } : { type: TYPE, id: ID, rarity: rollRarity(floor, random) }
+      );
     }
     return OFFERS;
   }
@@ -372,7 +384,7 @@
     }
     return OFFERS;
   }
-  var TOWER_RUN_SETTINGS, TOWER_EVENTS, RARITY_NAMES, STAT_CARDS;
+  var TOWER_RUN_SETTINGS, TOWER_EVENTS, PASSIVE_CARDS, RARITY_NAMES, STAT_CARDS;
   var init_tower_run = __esm({
     "src/tower-run.js"() {
       TOWER_RUN_SETTINGS = Object.freeze({
@@ -385,11 +397,15 @@
         // A card can be taken this many times in one climb, whatever its rarity.
         cardCap: 10,
         // Rarity weights at floor 0 and how much each floor adds, capped. Order: common, rare, epic.
+        // Three cards a strengthening floor, and how likely each kind is to fill a slot: stat 8, passive 1, skill 1.
+        cardsPerFloor: 3,
+        kindWeights: Object.freeze({ stat: 8, passive: 1, skill: 1 }),
         rarityBase: Object.freeze([70, 25, 5]),
         rarityPerFloor: Object.freeze([0, 0.25, 0.1]),
         rarityMax: Object.freeze([70, 40, 15])
       });
       TOWER_EVENTS = Object.freeze([]);
+      PASSIVE_CARDS = Object.freeze([]);
       RARITY_NAMES = Object.freeze(["일반", "희귀", "영웅"]);
       STAT_CARDS = Object.freeze([
         { id: "attack-pct", stat: "attackPower", mode: "pct", name: "공격력", values: [0.1, 0.16, 0.25] },
@@ -9624,6 +9640,7 @@
             cards: T.cards,
             relics: T.relics,
             skillIds: FORMATION_SKILL_DEFINITIONS.map(({ id }) => id),
+            passiveIds: PASSIVE_CARDS.map((card) => card.id),
             relicSlots: CONFIG.farm.tower.relicSlots,
             relicMaxLevel: CONFIG.farm.tower.relicMaxLevel,
             random: () => this.random()
@@ -12971,7 +12988,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.23";
+      PRODUCT_VERSION = "0.30.24";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });

@@ -607,21 +607,45 @@ await check(
         );
     },
 );
-await check('a card is offered at most ten times and passes on to the skill card', async () => {
-    const CARDS = Array.from({ length: 10 }, () => ({ id: 'attack-pct', rarity: 0 })),
-        OFFER = (cards) =>
+await check('a strengthening floor offers three different cards, stat : passive : skill about 8 : 1 : 1', async () => {
+    let seed = 11;
+    const RANDOM = () => {
+            seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+            return seed / 4294967296;
+        },
+        OFFER = (cards, passiveIds = ['p1', 'p2', 'p3']) =>
             rollCardOffers({
                 floor: 3,
                 cards,
                 relics: new Map(),
-                skillIds: ['lightning'],
+                skillIds: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'],
+                passiveIds,
                 relicSlots: 3,
                 relicMaxLevel: 5,
-                random: () => 0,
-            });
-    expect(OFFER([])[0].id === 'attack-pct', 'first card');
-    expect(OFFER(CARDS)[0].id !== 'attack-pct', 'capped card skipped');
-    expect(OFFER([])[1].type === 'skill', 'skill card');
+                random: RANDOM,
+            }),
+        COUNT = { stat: 0, passive: 0, skill: 0 };
+    let slots = 0;
+    for (let index = 0; index < 20000; index++) {
+        const OFFERS = OFFER([]);
+        expect(OFFERS.length === 3 && new Set(OFFERS.map((offer) => offer.id)).size === 3, JSON.stringify(OFFERS));
+        for (const OFFER_CARD of OFFERS) {
+            COUNT[OFFER_CARD.type]++;
+            slots++;
+        }
+    }
+    expect(
+        Math.abs(COUNT.stat / slots - 0.8) < 0.03 &&
+            Math.abs(COUNT.passive / slots - 0.1) < 0.03 &&
+            Math.abs(COUNT.skill / slots - 0.1) < 0.03,
+        JSON.stringify(COUNT),
+    );
+    const CAPPED = Array.from({ length: 10 }, () => ({ id: 'attack-pct', rarity: 0 }));
+    expect(
+        OFFER(CAPPED).every((offer) => offer.id !== 'attack-pct'),
+        'a card at its cap is not offered',
+    );
+    expect(OFFER([], []).length === 3, 'three cards even with no passives to offer');
 });
 
 await check('upgrade menu opens on the species abilities without the old stat tab', async () => {
