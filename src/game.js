@@ -1506,8 +1506,8 @@
       }
       var BOSS_VECTOR_DIAMETER = 220;
       var BOSS_VECTOR_RADIUS_SCALE = 1.16;
-      var WORLD_HEIGHT_PROJECTION5 = 0.785;
-      var WORLD_DEPTH_PROJECTION4 = 0.62;
+      var WORLD_HEIGHT_PROJECTION6 = 0.785;
+      var WORLD_DEPTH_PROJECTION5 = 0.62;
       var BOSS_ART_RADIUS2 = 4.4;
       function bossVectorScale4() {
         return 2 * BOSS_ART_RADIUS2 * BOSS_VECTOR_RADIUS_SCALE / BOSS_VECTOR_DIAMETER;
@@ -1517,7 +1517,7 @@
         return {
           x: boss.x + (socket.x - ground.x) * SCALE,
           y: boss.y,
-          z: (boss.z || 0) + (ground.y - socket.y) * SCALE / WORLD_HEIGHT_PROJECTION5
+          z: (boss.z || 0) + (ground.y - socket.y) * SCALE / WORLD_HEIGHT_PROJECTION6
         };
       }
       module.exports = {
@@ -1525,8 +1525,8 @@
         BOSS_ART_RADIUS: BOSS_ART_RADIUS2,
         bossVectorScale: bossVectorScale4,
         socketWorldPoint: socketWorldPoint2,
-        WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION5,
-        WORLD_DEPTH_PROJECTION: WORLD_DEPTH_PROJECTION4
+        WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION6,
+        WORLD_DEPTH_PROJECTION: WORLD_DEPTH_PROJECTION5
       };
     }
   });
@@ -1535,7 +1535,7 @@
   var require_definition = __commonJS({
     "src/features/unit-body/definition.cjs"(exports, module) {
       "use strict";
-      var { WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION5, bossVectorScale: BOSS_VECTOR_SCALE } = require_vector_sockets();
+      var { WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION6, bossVectorScale: BOSS_VECTOR_SCALE } = require_vector_sockets();
       var AUTHORED_BODIES = [
         {
           species: 0,
@@ -1767,18 +1767,18 @@
       }
       function unitBodyHeight2(unit2) {
         const BODY2 = unitBodyDefinition3(unit2.species);
-        return (BODY2.ground.y - BODY2.bounds.top) * unitVectorScale2(unit2) / WORLD_HEIGHT_PROJECTION5;
+        return (BODY2.ground.y - BODY2.bounds.top) * unitVectorScale2(unit2) / WORLD_HEIGHT_PROJECTION6;
       }
       function bossBodyHeight2(boss) {
         const BODY2 = unitBodyDefinition3(boss.species);
-        return (BODY2.ground.y - BODY2.bounds.top) * BOSS_VECTOR_SCALE() / WORLD_HEIGHT_PROJECTION5;
+        return (BODY2.ground.y - BODY2.bounds.top) * BOSS_VECTOR_SCALE() / WORLD_HEIGHT_PROJECTION6;
       }
       function bossBodyRadius2(boss) {
         return bodyRadiusAtScale(unitBodyDefinition3(boss.species), BOSS_VECTOR_SCALE());
       }
       function unitTorsoHeight2(unit2) {
         const BODY2 = unitBodyDefinition3(unit2.species);
-        return (BODY2.bounds.bottom - BODY2.bounds.top) * unitVectorScale2(unit2) / WORLD_HEIGHT_PROJECTION5;
+        return (BODY2.bounds.bottom - BODY2.bounds.top) * unitVectorScale2(unit2) / WORLD_HEIGHT_PROJECTION6;
       }
       function maximumUnitRadius2(tier) {
         return Math.max(
@@ -13193,7 +13193,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.40";
+      PRODUCT_VERSION = "0.30.41";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -14237,7 +14237,9 @@
   };
 
   // src/features/formation-skills/storm-cloud/presentation.js
+  var import_vector_sockets3 = __toESM(require_vector_sockets(), 1);
   var POINT_BUFFERS = /* @__PURE__ */ new WeakMap();
+  var CLOUD_SPREAD_DEPTH = 0.35;
   function pointBuffersFor(effect) {
     let buffers = POINT_BUFFERS.get(effect);
     if (!buffers) {
@@ -14255,15 +14257,28 @@
     const VALUE = Math.sin(effect.id * 127.1 + effect.pulse * 311.7 + index * 74.7 + salt * 41.3) * 43758.5453;
     return (VALUE - Math.floor(VALUE)) * 2 - 1;
   }
+  function cloudGeometry(effect) {
+    const RADIUS = Math.max(0.2, (effect.bodyRadius || 0.3) * 0.55);
+    return { radius: RADIUS, size: RADIUS * 2.6, z: Math.max(effect.z, effect.targetZ + 2) + RADIUS * 1.9 };
+  }
   var StormCloudPresentation = class extends FormationPresentation {
+    includeBounds(effect, bounds) {
+      const { size: SIZE, z: Z } = cloudGeometry(effect);
+      bounds.left = Math.min(bounds.left, effect.x - SIZE * 1.84 - 1);
+      bounds.right = Math.max(bounds.right, effect.x + SIZE * 1.84 + 1);
+      bounds.top = Math.max(
+        bounds.top,
+        (effect.y + SIZE * CLOUD_SPREAD_DEPTH) * import_vector_sockets3.WORLD_DEPTH_PROJECTION + (Z + 0.1 + SIZE * 0.24) * import_vector_sockets3.WORLD_HEIGHT_PROJECTION + SIZE * 0.26 + 1
+      );
+    }
     draw(renderer, effect) {
-      const BODY_RADIUS = Math.max(0.2, (effect.bodyRadius || 0.3) * 0.55), BODY_SCALE = bodyScale(effect.bodyRadius), CLOUD_SIZE = BODY_RADIUS * 2.6, ENTER = Math.min(1, effect.age / 0.5), EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5, Z = effect.z + Math.sin(effect.age * 3) * Math.min(0.1, BODY_RADIUS * 0.12), SPREAD = (1 - ENTER + EXIT) * BODY_RADIUS * 2.6;
+      const { radius: BODY_RADIUS, size: CLOUD_SIZE, z: CLOUD_Z } = cloudGeometry(effect), BODY_SCALE = bodyScale(effect.bodyRadius), ENTER = Math.min(1, effect.age / 0.5), EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5, Z = CLOUD_Z + Math.sin(effect.age * 3) * Math.min(0.1, BODY_RADIUS * 0.12), ARC_Z = Z - CLOUD_SIZE * 0.25, SPREAD = (1 - ENTER + EXIT) * BODY_RADIUS * 2.6;
       for (let index = 0; index < 3; index++) {
         const ANGLE = index * Math.PI * 2 / 3;
         cloud(
           renderer,
           effect.x + Math.cos(ANGLE) * SPREAD,
-          effect.y + Math.sin(ANGLE) * SPREAD,
+          effect.y + Math.sin(ANGLE) * SPREAD * CLOUD_SPREAD_DEPTH,
           Z,
           CLOUD_SIZE,
           Math.max(0, 1 - EXIT) * Math.min(1, effect.age * 8)
@@ -14293,7 +14308,7 @@
             const T = index / (POINTS.length - 1), CURVE = Math.sin(T * Math.PI), SEED = arcIndex * 17, BEND = visualOffset(effect, index, SEED) * CURVE, SIDE = (arcIndex - 1) * BODY_RADIUS * 0.34 * CURVE, POINT2 = POINTS[index];
             POINT2[0] = effect.x + (effect.targetX - effect.x) * T + BEND * 0.55 + SIDE;
             POINT2[1] = effect.y + (effect.targetY - effect.y) * T + BEND * 0.22 - SIDE * 0.42;
-            POINT2[2] = Z + (effect.targetZ - Z) * T + CURVE * (0.18 + BEND * 0.16);
+            POINT2[2] = ARC_Z + (effect.targetZ - ARC_Z) * T + CURVE * (0.18 + BEND * 0.16);
           }
           const BRANCH = BRANCHES[arcIndex], ROOT_T = 0.3 + arcIndex * 0.18 + visualOffset(effect, arcIndex, 1) * 0.08, ROOT = POINTS[Math.round(ROOT_T * (POINTS.length - 1))], DX = visualOffset(effect, arcIndex, 2) * BODY_RADIUS * 2.4, DY = visualOffset(effect, arcIndex, 3) * BODY_RADIUS * 1.9;
           BRANCH[0][0] = ROOT[0];
@@ -14330,6 +14345,11 @@
   function drawFormationEffects(renderer, world) {
     for (const EFFECT of world.formationEffects || []) {
       PRESENTATIONS.get(EFFECT.kind)?.draw(renderer, EFFECT, world);
+    }
+  }
+  function includeFormationEffectBounds(world, bounds) {
+    for (const EFFECT of world.formationEffects || []) {
+      PRESENTATIONS.get(EFFECT.kind)?.includeBounds?.(EFFECT, bounds);
     }
   }
 
@@ -15024,9 +15044,9 @@
   // src/features/projectiles/seed/presentation.js
   init_definition10();
   var import_definition54 = __toESM(require_definition(), 1);
-  var import_vector_sockets3 = __toESM(require_vector_sockets(), 1);
+  var import_vector_sockets4 = __toESM(require_vector_sockets(), 1);
   function seedDisplayMultiplier(renderer, projectile) {
-    const BODY2 = (0, import_definition54.unitBodyDefinition)(projectile.species), OWNER_VECTOR_SCALE = projectile.height * import_vector_sockets3.WORLD_HEIGHT_PROJECTION / (FEATURE.bodyHeightFraction * (BODY2.bounds.bottom - BODY2.bounds.top)), DISPLAY_SCALE = (0, import_definition54.unitDisplayScale)(BODY2, OWNER_VECTOR_SCALE, renderer.scale, renderer.minimumUnitPixels());
+    const BODY2 = (0, import_definition54.unitBodyDefinition)(projectile.species), OWNER_VECTOR_SCALE = projectile.height * import_vector_sockets4.WORLD_HEIGHT_PROJECTION / (FEATURE.bodyHeightFraction * (BODY2.bounds.bottom - BODY2.bounds.top)), DISPLAY_SCALE = (0, import_definition54.unitDisplayScale)(BODY2, OWNER_VECTOR_SCALE, renderer.scale, renderer.minimumUnitPixels());
     return DISPLAY_SCALE / OWNER_VECTOR_SCALE;
   }
   var SeedProjectilePresentation = class {
@@ -15038,7 +15058,7 @@
       renderer.groundEllipse(projectile.x, projectile.y, RADIUS, RADIUS * 5 / 7, "#55452433");
     }
     draw(renderer, projectile, point2, tail) {
-      const RADII = seedEllipseRadii(projectile), SCALE = seedDisplayMultiplier(renderer, projectile), HEIGHT = projectile.height * import_vector_sockets3.WORLD_HEIGHT_PROJECTION * SCALE, P = { x: point2.x, y: point2.y - HEIGHT * 0.5 }, TAIL = renderer.project(tail.x, tail.y, tail.z), X = RADII.x * SCALE, Y = RADII.y * SCALE;
+      const RADII = seedEllipseRadii(projectile), SCALE = seedDisplayMultiplier(renderer, projectile), HEIGHT = projectile.height * import_vector_sockets4.WORLD_HEIGHT_PROJECTION * SCALE, P = { x: point2.x, y: point2.y - HEIGHT * 0.5 }, TAIL = renderer.project(tail.x, tail.y, tail.z), X = RADII.x * SCALE, Y = RADII.y * SCALE;
       TAIL.y -= HEIGHT * 0.5;
       renderer.line(TAIL, P, RADII.y * 0.35 * SCALE / renderer.scale, "#ba964a80");
       renderer.ellipse(P.x, P.y, X, Y, "#cfa957", FEATURE.rotation);
@@ -15596,11 +15616,11 @@
   // src/farm-renderer.js
   init_unit_grades();
   init_presentation6();
-  var import_vector_sockets7 = __toESM(require_vector_sockets(), 1);
+  var import_vector_sockets8 = __toESM(require_vector_sockets(), 1);
   init_boss_vector_sockets();
 
   // src/farm-render-boss.js
-  var import_vector_sockets5 = __toESM(require_vector_sockets(), 1);
+  var import_vector_sockets6 = __toESM(require_vector_sockets(), 1);
   init_species_catalog();
   init_farm_model();
 
@@ -15747,7 +15767,7 @@
   init_definition21();
   init_model23();
   init_farm_model();
-  var import_vector_sockets4 = __toESM(require_vector_sockets(), 1);
+  var import_vector_sockets5 = __toESM(require_vector_sockets(), 1);
   var HALF_TURN = Math.PI;
   var EASE = (t) => t * t * (3 - 2 * t);
   var HAND_FOLD_SECONDS = 0.4;
@@ -15757,7 +15777,7 @@
     }
     // Where a hand is after the given share of its half turn: on the ellipse the reach circle makes on screen.
     orbit(pose, key, turn) {
-      const ANGLE = SWEEP_HAND_STARTS[key] + HALF_TURN * turn, R2 = this.config.reach - pose.rig.radius, DEPTH = import_vector_sockets4.WORLD_DEPTH_PROJECTION;
+      const ANGLE = SWEEP_HAND_STARTS[key] + HALF_TURN * turn, R2 = this.config.reach - pose.rig.radius, DEPTH = import_vector_sockets5.WORLD_DEPTH_PROJECTION;
       return {
         x: R2 * Math.cos(ANGLE),
         y: -DEPTH * R2 * Math.sin(ANGLE)
@@ -16073,7 +16093,7 @@
         PLAYER.setExpression(SAFE_EXPRESSION);
       }
       PRESENTATION.seek(PLAYER, this.renderer.displayTimeMs);
-      const S_LOCAL = this.renderer.scale * (0, import_vector_sockets5.bossVectorScale)(), GROUND = RECORD.anchors.ground, MATRIX = [S_LOCAL, 0, 0, S_LOCAL, P.x - GROUND.x * S_LOCAL, P.y - GROUND.y * S_LOCAL];
+      const S_LOCAL = this.renderer.scale * (0, import_vector_sockets6.bossVectorScale)(), GROUND = RECORD.anchors.ground, MATRIX = [S_LOCAL, 0, 0, S_LOCAL, P.x - GROUND.x * S_LOCAL, P.y - GROUND.y * S_LOCAL];
       const DEFEAT_BOUNCE = EVENT?.phase === "celebrating" && EVENT.outcome === "defeat" ? Math.max(0, Math.sin(EVENT.elapsed * Math.PI * 2 / CONFIG.farm.bossEvent.celebrationSeconds * 2)) : 0;
       const FADE = EVENT?.phase === "fading" ? CLAMP2(1 - EVENT.elapsed / CONFIG.farm.bossEvent.fadeSeconds, 0, 1) : 1;
       const PARTS = RECORD.parts, POSE = PRESENTATION.pose(B, PARTS, this.bossAttackPose, RECORD.hands);
@@ -16085,7 +16105,7 @@
         scaleY: POSE.body.scaleY * (1 - (K.squash || 0)) * (1 + 0.06 * DEFEAT_BOUNCE),
         opacity: FADE
       });
-      const TO_SVG = 1 / (0, import_vector_sockets5.bossVectorScale)(), HELD = speciesById(SPECIES).heldItem;
+      const TO_SVG = 1 / (0, import_vector_sockets6.bossVectorScale)(), HELD = speciesById(SPECIES).heldItem;
       for (const [PART, HAND] of Object.entries(POSE.hands)) {
         const AT = { x: HAND.x * TO_SVG, y: HAND.y * TO_SVG + POSE.body.y };
         PLAYER.setBasePose(PART, AT);
@@ -16169,7 +16189,7 @@
   }
 
   // src/farm-scenery.js
-  var import_vector_sockets6 = __toESM(require_vector_sockets(), 1);
+  var import_vector_sockets7 = __toESM(require_vector_sockets(), 1);
   init_farm_model();
   var { radiusX: RX, radiusY: RY } = CONFIG.farm.arena;
   var TAU3 = Math.PI * 2;
@@ -16316,9 +16336,9 @@
     C.lineCap = "round";
     C.beginPath();
     C.moveTo(B.x, B.y);
-    C.lineTo(B.x, B.y - 1.9 * S * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * 1.3);
+    C.lineTo(B.x, B.y - 1.9 * S * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * 1.3);
     C.stroke();
-    const TOP = B.y - 2.9 * S * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * 1.3, DARK = tree.shade > 0.5 ? "#5f8c58" : "#67955c", LIGHT = tree.shade > 0.5 ? "#86b36d" : "#8dbb72";
+    const TOP = B.y - 2.9 * S * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * 1.3, DARK = tree.shade > 0.5 ? "#5f8c58" : "#67955c", LIGHT = tree.shade > 0.5 ? "#86b36d" : "#8dbb72";
     paint.r.ellipse(B.x, TOP + 0.35 * S, 1.65 * S, 1.25 * S, DARK);
     paint.r.ellipse(B.x - 0.55 * S, TOP + 0.05 * S, 1.15 * S, 0.95 * S, DARK);
     paint.r.ellipse(B.x + 0.6 * S, TOP + 0.1 * S, 1.1 * S, 0.9 * S, DARK);
@@ -16365,7 +16385,7 @@
       }
       if (i > 0) {
         for (const T of [-0.55, 0, 0.55]) {
-          const WX = T * TIER_R * 0.98, WY = TOWER_Y - TIER_R * Math.sqrt(1 - T * T) * 0.98, BASE = paint.p(WX, WY, z + TIER_H * 0.32), WW = 0.42 * S * Math.sqrt(1 - T * T) + 1, WH = TIER_H * 0.4 * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S;
+          const WX = T * TIER_R * 0.98, WY = TOWER_Y - TIER_R * Math.sqrt(1 - T * T) * 0.98, BASE = paint.p(WX, WY, z + TIER_H * 0.32), WW = 0.42 * S * Math.sqrt(1 - T * T) + 1, WH = TIER_H * 0.4 * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S;
           C.fillStyle = "#4b4358";
           C.fillRect(BASE.x - WW - 1, BASE.y - WH - WW, WW * 2 + 2, WH + WW);
           C.fillStyle = glow > 0 ? "#ffe3a1" : "#f3cf86";
@@ -16409,7 +16429,7 @@
     drawDoor(paint, glow);
   }
   function drawDoor(paint, glow) {
-    const S = paint.s, C = paint.c, BASE = paint.p(0, RY + 0.05, 0), W = 1.7 * S, H = 3.6 * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S;
+    const S = paint.s, C = paint.c, BASE = paint.p(0, RY + 0.05, 0), W = 1.7 * S, H = 3.6 * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S;
     paint.r.ellipse(BASE.x, BASE.y + 0.1 * S, 2.6 * S, 0.9 * S, "#b3ab97");
     paint.r.ellipse(BASE.x, BASE.y, 2.1 * S, 0.7 * S, "#c4bda9");
     C.fillStyle = "#5a4f6c";
@@ -16472,7 +16492,7 @@
             continue;
           }
           for (const RZ of [0.45, 0.9]) {
-            const DZ = RZ * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S - PASS * 0.05 * S;
+            const DZ = RZ * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S - PASS * 0.05 * S;
             C.moveTo(A.x, A.y - DZ);
             C.lineTo(B.x, B.y - DZ);
           }
@@ -16493,7 +16513,7 @@
             continue;
           }
           C.moveTo(A.x + PASS * -0.03 * S, A.y);
-          C.lineTo(A.x + PASS * -0.03 * S, A.y - POST_Z * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S);
+          C.lineTo(A.x + PASS * -0.03 * S, A.y - POST_Z * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S);
         }
       }
       C.stroke();
@@ -16504,9 +16524,9 @@
       C.lineWidth = 0.38 * S;
       C.beginPath();
       C.moveTo(A.x, A.y);
-      C.lineTo(A.x, A.y - 1.8 * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S);
+      C.lineTo(A.x, A.y - 1.8 * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S);
       C.stroke();
-      paint.r.ellipse(A.x, A.y - 1.8 * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S, 0.3 * S, 0.22 * S, "#8f6c45");
+      paint.r.ellipse(A.x, A.y - 1.8 * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S, 0.3 * S, 0.22 * S, "#8f6c45");
     }
   }
   function drawFarmGrounds(renderer, world) {
@@ -16590,14 +16610,14 @@
   }
   function drawHallWall(paint, tint, sky, now) {
     const S = paint.s, C = paint.c, Z = HALL_WALL_HEIGHT, X0 = -RX - 2, X1 = RX + 2;
-    const A = paint.p(X0, RY, 0), B = paint.p(X1, RY, 0), TOP = Z * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S;
+    const A = paint.p(X0, RY, 0), B = paint.p(X1, RY, 0), TOP = Z * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S;
     C.fillStyle = rgb(tint.wall);
     C.fillRect(A.x, A.y - TOP, B.x - A.x, TOP);
     C.strokeStyle = "rgba(0,0,0,0.16)";
     C.lineWidth = Math.max(1, 0.04 * S);
     C.beginPath();
     for (let z = 1; z < Z; z++) {
-      const Y = A.y - z * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S;
+      const Y = A.y - z * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S;
       C.moveTo(A.x, Y);
       C.lineTo(B.x, Y);
     }
@@ -16608,7 +16628,7 @@
       if (!paint.visible(BASE, 160)) {
         continue;
       }
-      const WW = 1.5 * S, WB = BASE.y - 2.6 * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S, WT = BASE.y - 7 * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S;
+      const WW = 1.5 * S, WB = BASE.y - 2.6 * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S, WT = BASE.y - 7 * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S;
       C.fillStyle = rgb(tint.floor, 0.9);
       C.fillRect(BASE.x - WW - 0.25 * S, WT - WW, WW * 2 + 0.5 * S, WB - WT + WW);
       paint.r.ellipse(BASE.x, WT, WW + 0.25 * S, WW + 0.2 * S, rgb(tint.floor, 0.9));
@@ -16641,11 +16661,11 @@
         C.fillStyle = rgb(mix(tint.wall, [0, 0, 0], 0.25));
         C.fillRect(
           TX - 0.35 * S,
-          BASE.y - 6 * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S,
+          BASE.y - 6 * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S,
           0.7 * S,
-          6 * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S
+          6 * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S
         );
-        const TY = BASE.y - 3.6 * import_vector_sockets6.WORLD_HEIGHT_PROJECTION * S;
+        const TY = BASE.y - 3.6 * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S;
         paint.r.ellipse(
           TX,
           TY,
@@ -16817,7 +16837,7 @@
         this.vectorAssets.set(Number(SPECIES), {
           compiled: COMPILED,
           asset: CREATE_VECTOR_ASSET(this.meshes, COMPILED),
-          anchors: (0, import_vector_sockets7.readVectorSockets)(COMPILED, `species ${SPECIES}, ${COMPILED.sourcePath}`),
+          anchors: (0, import_vector_sockets8.readVectorSockets)(COMPILED, `species ${SPECIES}, ${COMPILED.sourcePath}`),
           parts: new Set(COMPILED.metadata.parts.map((part) => part.id))
         });
       }
@@ -16890,14 +16910,14 @@
     project(x, y, z = 0) {
       return {
         x: (x + this.offset[0] + this.view[0] + (this.shakeX || 0)) * this.scale,
-        y: (this.view[1] - (import_vector_sockets7.WORLD_DEPTH_PROJECTION * y + import_vector_sockets7.WORLD_HEIGHT_PROJECTION * z + this.offset[1])) * this.scale
+        y: (this.view[1] - (import_vector_sockets8.WORLD_DEPTH_PROJECTION * y + import_vector_sockets8.WORLD_HEIGHT_PROJECTION * z + this.offset[1])) * this.scale
       };
     }
     screenToWorld(clientX, clientY) {
       const R2 = this.canvas.getBoundingClientRect(), PX = (clientX - R2.left) * this.pixelRatio, PY = (clientY - R2.top) * this.pixelRatio;
       return {
         x: PX / this.scale - this.offset[0] - this.view[0],
-        y: (this.view[1] - PY / this.scale - this.offset[1]) / import_vector_sockets7.WORLD_DEPTH_PROJECTION
+        y: (this.view[1] - PY / this.scale - this.offset[1]) / import_vector_sockets8.WORLD_DEPTH_PROJECTION
       };
     }
     // The smallest a unit is drawn, in pixels. Zoomed out it shrinks with the view instead of staying full size.
@@ -16928,10 +16948,10 @@
       const BOUNDS = {
         left: -RX2 - 1.3,
         right: RX2 + 1.3,
-        bottom: -(RY2 + 1.3) * import_vector_sockets7.WORLD_DEPTH_PROJECTION,
-        top: (RY2 + 1.3) * import_vector_sockets7.WORLD_DEPTH_PROJECTION
+        bottom: -(RY2 + 1.3) * import_vector_sockets8.WORLD_DEPTH_PROJECTION,
+        top: (RY2 + 1.3) * import_vector_sockets8.WORLD_DEPTH_PROJECTION
       };
-      const BOSS_SCALE = (0, import_vector_sockets7.bossVectorScale)(), BOSS_X = RX2 - import_vector_sockets7.BOSS_ART_RADIUS, BOSS_Y = (RY2 - import_vector_sockets7.BOSS_ART_RADIUS) * import_vector_sockets7.WORLD_DEPTH_PROJECTION;
+      const BOSS_SCALE = (0, import_vector_sockets8.bossVectorScale)(), BOSS_X = RX2 - import_vector_sockets8.BOSS_ART_RADIUS, BOSS_Y = (RY2 - import_vector_sockets8.BOSS_ART_RADIUS) * import_vector_sockets8.WORLD_DEPTH_PROJECTION;
       const INCLUDE_BOSS = (record) => {
         const [X, Y, W, H] = record.compiled.viewBox, G = record.anchors.ground;
         BOUNDS.left = Math.min(BOUNDS.left, -BOSS_X - (G.x - X) * BOSS_SCALE);
@@ -16939,7 +16959,7 @@
         BOUNDS.bottom = Math.min(BOUNDS.bottom, -BOSS_Y - (Y + H - G.y) * BOSS_SCALE);
         BOUNDS.top = Math.max(
           BOUNDS.top,
-          BOSS_Y + (G.y - Y) * BOSS_SCALE + CONFIG.battle.dropHeight * import_vector_sockets7.WORLD_HEIGHT_PROJECTION
+          BOSS_Y + (G.y - Y) * BOSS_SCALE + CONFIG.battle.dropHeight * import_vector_sockets8.WORLD_HEIGHT_PROJECTION
         );
       };
       for (const RECORD of this.bossAssets.values()) {
@@ -17049,7 +17069,7 @@
       const S = this.scale, OX = this.offset[0] + this.view[0], OY = this.view[1] - this.offset[1], ALPHA = C.globalAlpha;
       C.beginPath();
       for (let i = 0; i < COUNT; i++) {
-        const X = (POINTS[i * 2] + OX) * S, Y = (OY - import_vector_sockets7.WORLD_DEPTH_PROJECTION * POINTS[i * 2 + 1]) * S;
+        const X = (POINTS[i * 2] + OX) * S, Y = (OY - import_vector_sockets8.WORLD_DEPTH_PROJECTION * POINTS[i * 2 + 1]) * S;
         if (i === 0) {
           C.moveTo(X, Y);
         } else {
@@ -17146,8 +17166,9 @@
         this.sceneKey = KEY2;
         this.sceneChangedAt = now;
         if (INSIDE && !WAS_INSIDE) {
-          this.fitHall();
+          this.fitHall(sim2);
         } else if (!INSIDE) {
+          this.hallFramingKey = null;
           this.towerShotUntil = now + 2600;
         }
       }
@@ -17155,7 +17176,7 @@
         const ZOOM_TARGET = this.aspect > 1.2 ? 0.55 : 0.8;
         this.zoom += (ZOOM_TARGET - this.zoom) * 0.07;
         this.configure(this.scene, true);
-        const BASE_Y = this.baseY(), TARGET_Y = -0.2 * this.view[1] - import_vector_sockets7.WORLD_DEPTH_PROJECTION * CONFIG.farm.arena.radiusY - BASE_Y;
+        const BASE_Y = this.baseY(), TARGET_Y = -0.2 * this.view[1] - import_vector_sockets8.WORLD_DEPTH_PROJECTION * CONFIG.farm.arena.radiusY - BASE_Y;
         this.setPan(this.pan.x * 0.9, this.pan.y + (TARGET_Y - this.pan.y) * 0.07);
         this.cameraReturning = true;
       } else if (this.cameraReturning && !INSIDE) {
@@ -17168,17 +17189,29 @@
         }
       } else if (INSIDE) {
         this.cameraReturning = false;
-        this.fitHall();
+        this.fitHall(sim2);
       }
     }
     // Inside the tower the whole hall is always in view: no panning or zooming, so tapping anywhere deploys.
-    fitHall() {
-      const { radiusX: RX2, radiusY: RY2 } = CONFIG.farm.arena, BASE = this.scenePresentation.cameraView(this.aspect), FIT = Math.min(BASE[0] / (RX2 + 1), BASE[1] / (RY2 * import_vector_sockets7.WORLD_DEPTH_PROJECTION + 3.5));
+    fitHall(world) {
+      const { radiusX: RX2, radiusY: RY2 } = CONFIG.farm.arena, BASE = this.scenePresentation.cameraView(this.aspect), HALL_FIT = Math.min(BASE[0] / (RX2 + 1), BASE[1] / (RY2 * import_vector_sockets8.WORLD_DEPTH_PROJECTION + 3.5)), HALF_X = BASE[0] / HALL_FIT, HALL_SCALE = this.canvas.width / (2 * HALF_X), TOP = BASE[1] / HALL_FIT - this.baseY(), BOTTOM = TOP - this.canvas.height / HALL_SCALE;
+      if (this.hallFramingKey !== this.sceneKey) {
+        this.hallFramingKey = this.sceneKey;
+        this.hallEffectBounds = { left: Infinity, right: -Infinity, top: -Infinity };
+      }
+      const BOUNDS = this.hallEffectBounds;
+      includeFormationEffectBounds(world, BOUNDS);
+      const LEFT = Math.min(-HALF_X, BOUNDS.left), RIGHT = Math.max(HALF_X, BOUNDS.right), FRAME_TOP = Math.max(TOP, BOUNDS.top), SCALE = Math.min(this.canvas.width / (RIGHT - LEFT), this.canvas.height / (FRAME_TOP - BOTTOM)), FIT = 2 * BASE[0] * SCALE / this.canvas.width;
       if (Math.abs(this.zoom - FIT) > 1e-6) {
         this.zoom = FIT;
         this.configure(this.scene, true);
       }
-      this.setPan(0, 0);
+      const PAN_X = -(LEFT + RIGHT) / 2, PAN_Y = this.view[1] - this.baseY() - this.canvas.height / (2 * this.scale) - (FRAME_TOP + BOTTOM) / 2;
+      this.panLimits.minX = Math.min(this.panLimits.minX, PAN_X);
+      this.panLimits.maxX = Math.max(this.panLimits.maxX, PAN_X);
+      this.panLimits.minY = Math.min(this.panLimits.minY, PAN_Y);
+      this.panLimits.maxY = Math.max(this.panLimits.maxY, PAN_Y);
+      this.setPan(PAN_X, PAN_Y);
     }
     // Going through the door fades out and each new place fades in, so the climb reads as a cut, not a pop.
     drawSceneFade(sim2, now) {

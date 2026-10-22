@@ -23,3 +23,9 @@ export function drawFormationEffects(renderer, world) {
         PRESENTATIONS.get(EFFECT.kind)?.draw(renderer, EFFECT, world);
     }
 }
+
+export function includeFormationEffectBounds(world, bounds) {
+    for (const EFFECT of world.formationEffects || []) {
+        PRESENTATIONS.get(EFFECT.kind)?.includeBounds?.(EFFECT, bounds);
+    }
+}
