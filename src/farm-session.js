@@ -95,8 +95,6 @@ class UnitRender extends RENDER_OBJECT {
         this.bodyScale = u.bodyScale;
         this.height = u.height;
         this.radius = u.radius;
-        this.drawnHeight = u.drawnHeight;
-        this.drawnRadius = u.drawnRadius;
         this.maxHp = u.isFormationClone ? 1 : baseUnitStatsFor(u.tier, u.species).maxHp;
         this.fed = u.fed;
         this.ownerId = u.ownerId;
@@ -128,8 +126,6 @@ class BossRender extends RENDER_OBJECT {
         maxHp: R.STEP,
         radius: R.STEP,
         height: R.STEP,
-        drawnRadius: R.STEP,
-        drawnHeight: R.STEP,
         flash: R.LINEAR,
         species: R.STEP,
         patternId: R.STATE_KEY,
@@ -173,8 +169,6 @@ class BossRender extends RENDER_OBJECT {
         this.maxHp = b.maxHp;
         this.radius = b.radius;
         this.height = b.height;
-        this.drawnHeight = b.drawnHeight;
-        this.drawnRadius = b.drawnRadius;
         this.flash = b.flash;
         this.species = b.species ?? 3;
         this.stage = b.stage ?? 0;
@@ -238,8 +232,6 @@ class ProjectileRender extends RENDER_OBJECT {
         tier: R.STEP,
         radius: R.STEP,
         height: R.STEP,
-        drawnRadius: R.STEP,
-        drawnHeight: R.STEP,
         projectileKind: R.STATE_KEY,
         shotIndex: R.STEP,
         fanIndex: R.STEP,

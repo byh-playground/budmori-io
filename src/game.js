@@ -1238,11 +1238,12 @@
       var BOSS_VECTOR_RADIUS_SCALE = 1.16;
       var WORLD_HEIGHT_PROJECTION5 = 0.785;
       var WORLD_DEPTH_PROJECTION3 = 0.62;
-      function bossVectorScale3(radius) {
-        return 2 * radius * BOSS_VECTOR_RADIUS_SCALE / BOSS_VECTOR_DIAMETER;
+      var BOSS_ART_RADIUS2 = 4.4;
+      function bossVectorScale3() {
+        return 2 * BOSS_ART_RADIUS2 * BOSS_VECTOR_RADIUS_SCALE / BOSS_VECTOR_DIAMETER;
       }
       function socketWorldPoint2(boss, socket, ground) {
-        const SCALE = bossVectorScale3(boss.radius);
+        const SCALE = bossVectorScale3();
         return {
           x: boss.x + (socket.x - ground.x) * SCALE,
           y: boss.y,
@@ -1251,6 +1252,7 @@
       }
       module.exports = {
         readVectorSockets: readVectorSockets3,
+        BOSS_ART_RADIUS: BOSS_ART_RADIUS2,
         bossVectorScale: bossVectorScale3,
         socketWorldPoint: socketWorldPoint2,
         WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION5,
@@ -1499,10 +1501,10 @@
       }
       function bossBodyHeight2(boss) {
         const BODY2 = unitBodyDefinition3(boss.species);
-        return (BODY2.ground.y - BODY2.bounds.top) * BOSS_VECTOR_SCALE(boss.radius) / WORLD_HEIGHT_PROJECTION5;
+        return (BODY2.ground.y - BODY2.bounds.top) * BOSS_VECTOR_SCALE() / WORLD_HEIGHT_PROJECTION5;
       }
       function bossBodyRadius2(boss) {
-        return bodyRadiusAtScale(unitBodyDefinition3(boss.species), BOSS_VECTOR_SCALE(boss.radius));
+        return bodyRadiusAtScale(unitBodyDefinition3(boss.species), BOSS_VECTOR_SCALE());
       }
       function unitTorsoHeight2(unit2) {
         const BODY2 = unitBodyDefinition3(unit2.species);
@@ -1552,7 +1554,7 @@
 
   // src/features/formation-skills/model-base.js
   function targetBodyDimensions(target) {
-    const BODY_HEIGHT = Number.isFinite(target?.drawnHeight) ? Math.max(0, target.drawnHeight) : T1_DIAMETER * 1.7, BODY_RADIUS = Number.isFinite(target?.drawnRadius) ? Math.max(0, target.drawnRadius) : T1_DIAMETER * 0.5, BASE_Z = Number.isFinite(target?.z) ? target.z : 0;
+    const BODY_HEIGHT = Number.isFinite(target?.height) ? Math.max(0, target.height) : T1_DIAMETER * 1.7, BODY_RADIUS = Number.isFinite(target?.radius) ? Math.max(0, target.radius) : T1_DIAMETER * 0.5, BASE_Z = Number.isFinite(target?.z) ? target.z : 0;
     return {
       z: BASE_Z,
       bodyHeight: BODY_HEIGHT,
@@ -5051,13 +5053,13 @@
           }
         }
         // A cracked shield and "-N" over the head of whatever is shredded, placed and sized from its drawn body
-        // (`drawnHeight`, `drawnRadius`), the same numbers every skill effect uses.
+        // (`height`, `radius`), the same numbers every skill effect uses.
         drawStatus(renderer, target) {
           const AMOUNT = target.barleyArmorShredTotal || 0;
           if (target.hp <= 0 || AMOUNT <= 0) {
             return;
           }
-          const PIXEL = renderer.pixelRatio, HEAD = renderer.project(target.x, target.y, (target.z || 0) + target.drawnHeight), BODY_WIDTH = 2 * target.drawnRadius * renderer.scale, HEIGHT = Math.max(
+          const PIXEL = renderer.pixelRatio, HEAD = renderer.project(target.x, target.y, (target.z || 0) + target.height), BODY_WIDTH = 2 * target.radius * renderer.scale, HEIGHT = Math.max(
             STATUS.minHeight * PIXEL,
             Math.min(STATUS.maxHeight * PIXEL, BODY_WIDTH * STATUS.bodyShare)
           ), TEXT = `-${formatDamage(AMOUNT)}`, TEXT_WIDTH = textWidth(TEXT) * HEIGHT, GAP = HEIGHT * 0.25, SHIELD_WIDTH = HEIGHT * 0.9, LEFT = HEAD.x - (SHIELD_WIDTH + GAP + TEXT_WIDTH) / 2, BASE = HEAD.y - HEIGHT * 0.5, CX = LEFT + SHIELD_WIDTH / 2, LEFT_FRACTION = target.barleyArmorShredLeft ?? 1, FILL = "#d8e5d7", OUTLINE = "rgba(46,58,48,0.9)";
@@ -7672,8 +7674,6 @@
         boss: Object.freeze({
           maxSummons: MAX_BOSS_SUMMONS,
           summonIdBase: 5e6,
-          radius: 4.4,
-          height: 5.2,
           basicReach: 6.2,
           sweepReach: 6.5,
           weaponRadius: 0.85,
@@ -8151,13 +8151,6 @@
         }
         get height() {
           return (0, import_definition50.unitBodyHeight)(this) * this.giantScale;
-        }
-        // The drawn body every display rule reads; for a unit it is the hit volume itself.
-        get drawnRadius() {
-          return this.radius;
-        }
-        get drawnHeight() {
-          return this.height;
         }
         get bodyHeight() {
           return (0, import_definition50.unitTorsoHeight)(this) * this.giantScale;
@@ -9721,13 +9714,11 @@
             faction: FACTION_CONFIG.ENEMY,
             z: 0,
             generation: ++this.entityGenerationSerial,
-            radius: CONFIG.boss.radius,
-            height: CONFIG.boss.height,
-            // radius/height are the hit volume; every display rule reads the drawn body below, as it does for a unit.
-            get drawnRadius() {
+            // The hit volume is the drawn body of the species, exactly as for a unit.
+            get radius() {
               return (0, import_definition50.bossBodyRadius)(this);
             },
-            get drawnHeight() {
+            get height() {
               return (0, import_definition50.bossBodyHeight)(this);
             },
             hp: HP,
@@ -11510,9 +11501,9 @@
             buffed,
             critical: damage.critical,
             damage: damage.totalActualLoss,
-            x: this.boss.x + DX / D_LOCAL * this.boss.drawnRadius,
-            y: this.boss.y + DY / D_LOCAL * this.boss.drawnRadius,
-            z: CLAMP2(point2.z + 0.2, 0.2, this.boss.drawnHeight),
+            x: this.boss.x + DX / D_LOCAL * this.boss.radius,
+            y: this.boss.y + DY / D_LOCAL * this.boss.radius,
+            z: CLAMP2(point2.z + 0.2, 0.2, this.boss.height),
             nx: DX / D_LOCAL,
             ny: DY / D_LOCAL,
             strength
@@ -12851,7 +12842,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.20";
+      PRODUCT_VERSION = "0.30.21";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15552,7 +15543,7 @@
         PLAYER.setExpression(SAFE_EXPRESSION);
       }
       PRESENTATION.seek(PLAYER, this.renderer.displayTimeMs);
-      const S_LOCAL = this.renderer.scale * (0, import_vector_sockets4.bossVectorScale)(B.radius), GROUND = RECORD.anchors.ground, MATRIX = [S_LOCAL, 0, 0, S_LOCAL, P.x - GROUND.x * S_LOCAL, P.y - GROUND.y * S_LOCAL];
+      const S_LOCAL = this.renderer.scale * (0, import_vector_sockets4.bossVectorScale)(), GROUND = RECORD.anchors.ground, MATRIX = [S_LOCAL, 0, 0, S_LOCAL, P.x - GROUND.x * S_LOCAL, P.y - GROUND.y * S_LOCAL];
       const DEFEAT_BOUNCE = EVENT?.phase === "celebrating" && EVENT.outcome === "defeat" ? Math.max(0, Math.sin(EVENT.elapsed * Math.PI * 2 / CONFIG.farm.bossEvent.celebrationSeconds * 2)) : 0;
       const FADE = EVENT?.phase === "fading" ? CLAMP2(1 - EVENT.elapsed / CONFIG.farm.bossEvent.fadeSeconds, 0, 1) : 1;
       const PARTS = RECORD.parts, POSE = PRESENTATION.pose(B, PARTS, this.bossAttackPose);
@@ -16426,7 +16417,7 @@
         bottom: -(RY2 + 1.3) * import_vector_sockets6.WORLD_DEPTH_PROJECTION,
         top: (RY2 + 1.3) * import_vector_sockets6.WORLD_DEPTH_PROJECTION
       };
-      const BOSS_SCALE = (0, import_vector_sockets6.bossVectorScale)(CONFIG.boss.radius), BOSS_X = RX2 - CONFIG.boss.radius, BOSS_Y = (RY2 - CONFIG.boss.radius) * import_vector_sockets6.WORLD_DEPTH_PROJECTION;
+      const BOSS_SCALE = (0, import_vector_sockets6.bossVectorScale)(), BOSS_X = RX2 - import_vector_sockets6.BOSS_ART_RADIUS, BOSS_Y = (RY2 - import_vector_sockets6.BOSS_ART_RADIUS) * import_vector_sockets6.WORLD_DEPTH_PROJECTION;
       const INCLUDE_BOSS = (record) => {
         const [X, Y, W, H] = record.compiled.viewBox, G = record.anchors.ground;
         BOUNDS.left = Math.min(BOUNDS.left, -BOSS_X - (G.x - X) * BOSS_SCALE);
@@ -16793,13 +16784,7 @@
       feel?.drawGround(this, this.displayTimeMs);
       const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2);
       if (BOSS_VISIBLE) {
-        this.groundEllipse(
-          sim2.boss.x,
-          sim2.boss.y,
-          sim2.boss.drawnRadius * 1.05,
-          sim2.boss.drawnRadius * 0.75,
-          "#38472c33"
-        );
+        this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, "#38472c33");
         if (SIDES) {
           this.ring(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, "#f0463c", 0.12);
         }
@@ -16904,8 +16889,8 @@
       }
       const RECOIL = feel?.boss(this.displayTimeMs);
       return {
-        radius: sim2.boss.drawnRadius,
-        height: sim2.boss.drawnHeight,
+        radius: sim2.boss.radius,
+        height: sim2.boss.height,
         scale: 3.4,
         shiftX: RECOIL?.x || 0,
         shiftY: RECOIL?.y || 0
@@ -17038,8 +17023,6 @@
       this.bodyScale = u.bodyScale;
       this.height = u.height;
       this.radius = u.radius;
-      this.drawnHeight = u.drawnHeight;
-      this.drawnRadius = u.drawnRadius;
       this.maxHp = u.isFormationClone ? 1 : baseUnitStatsFor(u.tier, u.species).maxHp;
       this.fed = u.fed;
       this.ownerId = u.ownerId;
@@ -17071,8 +17054,6 @@
       maxHp: R.STEP,
       radius: R.STEP,
       height: R.STEP,
-      drawnRadius: R.STEP,
-      drawnHeight: R.STEP,
       flash: R.LINEAR,
       species: R.STEP,
       patternId: R.STATE_KEY,
@@ -17111,8 +17092,6 @@
       this.maxHp = b.maxHp;
       this.radius = b.radius;
       this.height = b.height;
-      this.drawnHeight = b.drawnHeight;
-      this.drawnRadius = b.drawnRadius;
       this.flash = b.flash;
       this.species = b.species ?? 3;
       this.stage = b.stage ?? 0;
@@ -17176,8 +17155,6 @@
       tier: R.STEP,
       radius: R.STEP,
       height: R.STEP,
-      drawnRadius: R.STEP,
-      drawnHeight: R.STEP,
       projectileKind: R.STATE_KEY,
       shotIndex: R.STEP,
       fanIndex: R.STEP,
@@ -18672,7 +18649,7 @@
     }
     ASSERT2(INTEGER2(raw.projectileSerial, 0, 1e12) && INTEGER2(raw.bossSummonSerial, 0, 1e12));
     ASSERT2(
-      hasFaction(raw.boss, FACTION_CONFIG.ENEMY) && INTEGER2(raw.boss.generation, 1, 1e12) && raw.boss.hp >= 0 && raw.boss.hp <= raw.boss.maxHp && INTEGER2(raw.boss.species, 0, CONFIG.unit.speciesCount - 1) && raw.boss.maxHp > 0 && INTEGER2(raw.boss.stage, 0, BOSS_REWARD_SETTINGS.maxStage) && Number.isFinite(raw.boss.attackPower) && raw.boss.attackPower >= 4 && Number.isFinite(raw.boss.moveSpeed) && raw.boss.moveSpeed > 0 && INTEGER2(raw.boss.encounterId, 0, 1e12) && raw.boss.radius === CONFIG.boss.radius && raw.boss.height === CONFIG.boss.height && Number.isFinite(raw.boss.barleyArmorBreakUntil) && raw.boss.barleyArmorBreakUntil >= 0 && raw.boss.barleyArmorBreakUntil <= 1e12 && Number.isFinite(raw.boss.barleyArmorBreakReduction) && raw.boss.barleyArmorBreakReduction >= 0 && raw.boss.barleyArmorBreakReduction <= 0.75 && validBarleyArmorShredBuckets(raw.boss.barleyArmorShredBuckets)
+      hasFaction(raw.boss, FACTION_CONFIG.ENEMY) && INTEGER2(raw.boss.generation, 1, 1e12) && raw.boss.hp >= 0 && raw.boss.hp <= raw.boss.maxHp && INTEGER2(raw.boss.species, 0, CONFIG.unit.speciesCount - 1) && raw.boss.maxHp > 0 && INTEGER2(raw.boss.stage, 0, BOSS_REWARD_SETTINGS.maxStage) && Number.isFinite(raw.boss.attackPower) && raw.boss.attackPower >= 4 && Number.isFinite(raw.boss.moveSpeed) && raw.boss.moveSpeed > 0 && INTEGER2(raw.boss.encounterId, 0, 1e12) && Number.isFinite(raw.boss.barleyArmorBreakUntil) && raw.boss.barleyArmorBreakUntil >= 0 && raw.boss.barleyArmorBreakUntil <= 1e12 && Number.isFinite(raw.boss.barleyArmorBreakReduction) && raw.boss.barleyArmorBreakReduction >= 0 && raw.boss.barleyArmorBreakReduction <= 0.75 && validBarleyArmorShredBuckets(raw.boss.barleyArmorShredBuckets)
     );
     if (raw.boss.stage === 0) {
       ASSERT2(raw.boss.attackPower === 4);

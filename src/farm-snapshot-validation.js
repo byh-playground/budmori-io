@@ -880,8 +880,6 @@ export function validateSnapshot(raw) {
             Number.isFinite(raw.boss.moveSpeed) &&
             raw.boss.moveSpeed > 0 &&
             INTEGER(raw.boss.encounterId, 0, 1e12) &&
-            raw.boss.radius === CONFIG.boss.radius &&
-            raw.boss.height === CONFIG.boss.height &&
             Number.isFinite(raw.boss.barleyArmorBreakUntil) &&
             raw.boss.barleyArmorBreakUntil >= 0 &&
             raw.boss.barleyArmorBreakUntil <= 1e12 &&

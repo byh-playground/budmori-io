@@ -249,13 +249,13 @@ function unitBodyHeight(unit) {
     return ((BODY.ground.y - BODY.bounds.top) * unitVectorScale(unit)) / WORLD_HEIGHT_PROJECTION;
 }
 // A boss is drawn from the same authored troop art as a unit, only larger, so its drawn body is measured the same way:
-// the torso bounds times the boss vector scale. `radius`/`height` on the boss stay the gameplay hit volume.
+// the torso bounds times the boss vector scale. That drawn body is the boss `radius`/`height`: hit volume and display agree.
 function bossBodyHeight(boss) {
     const BODY = unitBodyDefinition(boss.species);
-    return ((BODY.ground.y - BODY.bounds.top) * BOSS_VECTOR_SCALE(boss.radius)) / WORLD_HEIGHT_PROJECTION;
+    return ((BODY.ground.y - BODY.bounds.top) * BOSS_VECTOR_SCALE()) / WORLD_HEIGHT_PROJECTION;
 }
 function bossBodyRadius(boss) {
-    return bodyRadiusAtScale(unitBodyDefinition(boss.species), BOSS_VECTOR_SCALE(boss.radius));
+    return bodyRadiusAtScale(unitBodyDefinition(boss.species), BOSS_VECTOR_SCALE());
 }
 function unitTorsoHeight(unit) {
     const BODY = unitBodyDefinition(unit.species);
