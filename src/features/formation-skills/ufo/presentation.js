@@ -1,4 +1,4 @@
-import { FormationPresentation, stroke } from '../presentation-base.js';
+import { FormationPresentation, bodyScale, stroke } from '../presentation-base.js';
 const BEAM_POINTS = new WeakMap();
 
 function beamPointsFor(effect) {
@@ -44,7 +44,7 @@ export class UfoPresentation extends FormationPresentation {
             POINTS[1][0] = effect.x;
             POINTS[1][1] = effect.y;
             POINTS[1][2] = effect.beamTargetZ;
-            const BEAM = Math.max(1, BODY_RADIUS / 0.5);
+            const BEAM = bodyScale(effect.bodyRadius);
             stroke(renderer, POINTS, '#74f5db44', 0.33 * BEAM);
             stroke(renderer, POINTS, '#afffe6cc', 0.11 * BEAM);
             stroke(renderer, POINTS, '#f4fff3', 0.035 * BEAM);

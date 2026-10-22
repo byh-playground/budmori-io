@@ -521,12 +521,12 @@
       assignWorkers(world, config);
     }
   }
-  function workOrder(world, unit) {
-    const ASSIGN = world._workAssign.get(unit.id);
+  function workOrder(world, unit2) {
+    const ASSIGN = world._workAssign.get(unit2.id);
     if (!ASSIGN) {
       return null;
     }
-    const PILE = ASSIGN.pile, SWING = world._swings.get(unit.id), DISTANCE = Math.hypot(unit.x - PILE.x, unit.y - PILE.y), ORDER = { x: PILE.x, y: PILE.y, fx: PILE.x, fy: PILE.y, speed: 9, hold: false, face: false };
+    const PILE = ASSIGN.pile, SWING = world._swings.get(unit2.id), DISTANCE = Math.hypot(unit2.x - PILE.x, unit2.y - PILE.y), ORDER = { x: PILE.x, y: PILE.y, fx: PILE.x, fy: PILE.y, speed: 9, hold: false, face: false };
     if (!SWING || SWING.phase === "idle") {
       ORDER.hold = DISTANCE <= NEAR_PILE;
       ORDER.face = ORDER.hold;
@@ -805,18 +805,18 @@
     const PROFILE = COMMON_UNIT_STAT_PROFILES[species] || COMMON_UNIT_STAT_DEFAULTS;
     return BASE_STATS_BY_PROFILE.get(PROFILE)?.[tier - 1] || createBaseStats(tier, PROFILE);
   }
-  function resolveUnitStats(unit, overrides) {
-    const BASE = baseUnitStatsFor(unit?.tier, unit?.species), MULTIPLIER = Number.isFinite(unit?.permanentStatMultiplier) ? Math.max(0, unit.permanentStatMultiplier) : 1;
+  function resolveUnitStats(unit2, overrides) {
+    const BASE = baseUnitStatsFor(unit2?.tier, unit2?.species), MULTIPLIER = Number.isFinite(unit2?.permanentStatMultiplier) ? Math.max(0, unit2.permanentStatMultiplier) : 1;
     return {
       ...BASE,
       maxHp: BASE.maxHp * MULTIPLIER,
       attackPower: BASE.attackPower * MULTIPLIER,
-      ...unit?.isFormationClone ? { maxHp: 1 } : {},
+      ...unit2?.isFormationClone ? { maxHp: 1 } : {},
       ...overrides
     };
   }
-  function combatStats(unit, overrides) {
-    return overrides === void 0 && !unit?.isFormationClone ? baseUnitStatsFor(unit?.tier, unit?.species) : resolveUnitStats(unit, overrides);
+  function combatStats(unit2, overrides) {
+    return overrides === void 0 && !unit2?.isFormationClone ? baseUnitStatsFor(unit2?.tier, unit2?.species) : resolveUnitStats(unit2, overrides);
   }
   function resolveDamage(rawDamage, armor = 0, armorPenetration = 0, critical = false, critMultiplier = COMMON_UNIT_STAT_DEFAULTS.critMultiplier) {
     const RAW = Number.isFinite(rawDamage) ? Math.max(0, rawDamage) : 0;
@@ -835,14 +835,14 @@
     const CHANCE = clamp(Number.isFinite(stats?.critChance) ? stats.critChance : 0, 0, 1);
     return CHANCE > 0 && roll < CHANCE;
   }
-  function scaleMoveSpeed(baseSpeed, unit, overrides) {
-    return Math.max(0, Number.isFinite(baseSpeed) ? baseSpeed : 0) * Math.max(0, combatStats(unit, overrides).moveSpeed);
+  function scaleMoveSpeed(baseSpeed, unit2, overrides) {
+    return Math.max(0, Number.isFinite(baseSpeed) ? baseSpeed : 0) * Math.max(0, combatStats(unit2, overrides).moveSpeed);
   }
-  function scaleAttackRecovery(baseRecovery, unit, overrides) {
-    return Math.max(0, Number.isFinite(baseRecovery) ? baseRecovery : 0) / Math.max(0.05, combatStats(unit, overrides).attackSpeed);
+  function scaleAttackRecovery(baseRecovery, unit2, overrides) {
+    return Math.max(0, Number.isFinite(baseRecovery) ? baseRecovery : 0) / Math.max(0.05, combatStats(unit2, overrides).attackSpeed);
   }
-  function scaleAttackArea(baseArea, unit, overrides) {
-    return Math.max(0, Number.isFinite(baseArea) ? baseArea : 0) * Math.max(0, combatStats(unit, overrides).attackArea);
+  function scaleAttackArea(baseArea, unit2, overrides) {
+    return Math.max(0, Number.isFinite(baseArea) ? baseArea : 0) * Math.max(0, combatStats(unit2, overrides).attackArea);
   }
   function applyDamage(target, rawDamage, {
     armor = 0,
@@ -1479,23 +1479,23 @@
         }
         return BODY2;
       }
-      function unitVisualSize2(unit) {
-        const MATURE = unit.growthElapsed >= unit.growthDuration - 1e-9, GROWTH = MATURE || !(unit.growthDuration > 0) ? 1 : Math.max(0, Math.min(1, unit.growthElapsed / unit.growthDuration));
-        return (UNIT_BODY_CONFIG.baseSize + UNIT_BODY_CONFIG.sizePerTier * unit.tier) * (UNIT_BODY_CONFIG.birthScale + (1 - UNIT_BODY_CONFIG.birthScale) * GROWTH);
+      function unitVisualSize2(unit2) {
+        const MATURE = unit2.growthElapsed >= unit2.growthDuration - 1e-9, GROWTH = MATURE || !(unit2.growthDuration > 0) ? 1 : Math.max(0, Math.min(1, unit2.growthElapsed / unit2.growthDuration));
+        return (UNIT_BODY_CONFIG.baseSize + UNIT_BODY_CONFIG.sizePerTier * unit2.tier) * (UNIT_BODY_CONFIG.birthScale + (1 - UNIT_BODY_CONFIG.birthScale) * GROWTH);
       }
-      function unitVectorScale2(unit) {
-        const BODY2 = unitBodyDefinition3(unit.species);
-        return unitVisualSize2(unit) * 2 * UNIT_BODY_CONFIG.vectorRadiusScale / Math.max(BODY2.viewBox[2], BODY2.viewBox[3]);
+      function unitVectorScale2(unit2) {
+        const BODY2 = unitBodyDefinition3(unit2.species);
+        return unitVisualSize2(unit2) * 2 * UNIT_BODY_CONFIG.vectorRadiusScale / Math.max(BODY2.viewBox[2], BODY2.viewBox[3]);
       }
       function bodyRadiusAtScale(body, scale) {
         return Math.max(body.ground.x - body.bounds.left, body.bounds.right - body.ground.x) * scale;
       }
-      function unitBodyRadius3(unit) {
-        return bodyRadiusAtScale(unitBodyDefinition3(unit.species), unitVectorScale2(unit));
+      function unitBodyRadius3(unit2) {
+        return bodyRadiusAtScale(unitBodyDefinition3(unit2.species), unitVectorScale2(unit2));
       }
-      function unitBodyHeight2(unit) {
-        const BODY2 = unitBodyDefinition3(unit.species);
-        return (BODY2.ground.y - BODY2.bounds.top) * unitVectorScale2(unit) / WORLD_HEIGHT_PROJECTION5;
+      function unitBodyHeight2(unit2) {
+        const BODY2 = unitBodyDefinition3(unit2.species);
+        return (BODY2.ground.y - BODY2.bounds.top) * unitVectorScale2(unit2) / WORLD_HEIGHT_PROJECTION5;
       }
       function bossBodyHeight2(boss) {
         const BODY2 = unitBodyDefinition3(boss.species);
@@ -1504,9 +1504,9 @@
       function bossBodyRadius2(boss) {
         return bodyRadiusAtScale(unitBodyDefinition3(boss.species), BOSS_VECTOR_SCALE(boss.radius));
       }
-      function unitTorsoHeight2(unit) {
-        const BODY2 = unitBodyDefinition3(unit.species);
-        return (BODY2.bounds.bottom - BODY2.bounds.top) * unitVectorScale2(unit) / WORLD_HEIGHT_PROJECTION5;
+      function unitTorsoHeight2(unit2) {
+        const BODY2 = unitBodyDefinition3(unit2.species);
+        return (BODY2.bounds.bottom - BODY2.bounds.top) * unitVectorScale2(unit2) / WORLD_HEIGHT_PROJECTION5;
       }
       function bodyScreenBox3(species, scale, x, y) {
         const BODY2 = unitBodyDefinition3(species);
@@ -1706,7 +1706,7 @@
           super(DEFINITION);
         }
         cast(owner, slot) {
-          const CANDIDATES = owner.allies().filter((unit) => unit.giantUntil <= owner.world.time);
+          const CANDIDATES = owner.allies().filter((unit2) => unit2.giantUntil <= owner.world.time);
           if (!CANDIDATES.length) {
             return false;
           }
@@ -1829,7 +1829,7 @@
           super(DEFINITION5);
         }
         cast(owner, slot) {
-          const ORIGINALS = owner.allies().filter((unit) => !unit.isBattleOnlySummon), RADIUS = this.power(slot.level, T1_DIAMETER * this.definition.upgradeBase);
+          const ORIGINALS = owner.allies().filter((unit2) => !unit2.isBattleOnlySummon), RADIUS = this.power(slot.level, T1_DIAMETER * this.definition.upgradeBase);
           let center = null;
           let targets = [];
           for (const UNIT3 of ORIGINALS) {
@@ -2079,12 +2079,12 @@
             world.onCombatResolved.on((event) => this.contribute(event))
           ];
         }
-        trackHealth(unit) {
-          const MAX_HP = unit.isFormationClone ? 1 : baseUnitStatsFor(unit.tier, unit.species).maxHp;
-          if (unit.faction === "player" && unit.hp > 0 && unit.hp < MAX_HP) {
-            this.injured.add(unit);
+        trackHealth(unit2) {
+          const MAX_HP = unit2.isFormationClone ? 1 : baseUnitStatsFor(unit2.tier, unit2.species).maxHp;
+          if (unit2.faction === "player" && unit2.hp > 0 && unit2.hp < MAX_HP) {
+            this.injured.add(unit2);
           } else {
-            this.injured.delete(unit);
+            this.injured.delete(unit2);
           }
         }
         rebuildInjured() {
@@ -2131,7 +2131,7 @@
             UNIT3.giantUntil = 0;
             UNIT3.giantEndedAt = -10;
           }
-          this.world.unitCollection.removeWhere((unit) => unit.isFormationClone, { markProgress: false });
+          this.world.unitCollection.removeWhere((unit2) => unit2.isFormationClone, { markProgress: false });
           const SERIAL = this.runtime.serial;
           this.world.formationRuntime = createFormationRuntime();
           this.runtime.serial = SERIAL;
@@ -2184,7 +2184,7 @@
           return EFFECT;
         }
         allies() {
-          return [...this.members].filter((unit) => unit.faction === "player" && unit.hp > 0);
+          return [...this.members].filter((unit2) => unit2.faction === "player" && unit2.hp > 0);
         }
         targetId(target) {
           return target === this.world.boss ? "boss" : target.id;
@@ -2251,7 +2251,7 @@
             return BOSS2;
           }
           return this.nearby(x, y, 6).find(
-            (unit) => unit.faction === "enemy" && unit.hp > 0 && unit.z <= 0.5 && Math.hypot(unit.x - x, unit.y - y) <= unit.radius + 0.12
+            (unit2) => unit2.faction === "enemy" && unit2.hp > 0 && unit2.z <= 0.5 && Math.hypot(unit2.x - x, unit2.y - y) <= unit2.radius + 0.12
           ) || null;
         }
         areaDamage(x, y, radius, amount, knock = false, vertical = false) {
@@ -2363,8 +2363,8 @@
     const Y = projectile.height * import_vector_sockets.WORLD_HEIGHT_PROJECTION * 0.5 / VERTICAL_EXTENT;
     return { x: Y * FEATURE.widthToHeight, y: Y };
   }
-  function seedProjectileDimensions(unit) {
-    const HEIGHT = unit.bodyHeight * FEATURE.bodyHeightFraction, RADII = seedEllipseRadii({ height: HEIGHT });
+  function seedProjectileDimensions(unit2) {
+    const HEIGHT = unit2.bodyHeight * FEATURE.bodyHeightFraction, RADII = seedEllipseRadii({ height: HEIGHT });
     return { radius: RADII.y * HORIZONTAL_EXTENT, height: HEIGHT };
   }
   var import_vector_sockets, FEATURE, VERTICAL_EXTENT, HORIZONTAL_EXTENT;
@@ -2484,8 +2484,8 @@
           this.onReset = new Signal(notifications);
           this.onHealthChanged = new Signal(notifications, true);
         }
-        has(unit) {
-          return this.items.includes(unit);
+        has(unit2) {
+          return this.items.includes(unit2);
         }
         unitById(id) {
           return this.byId.get(id) || null;
@@ -2504,54 +2504,54 @@
         refreshIndexes() {
           this._rebuildIndexes();
         }
-        _indexUnit(unit) {
+        _indexUnit(unit2) {
           this.revision++;
-          this.byId.set(unit.id, unit);
-          if (this.isResident(unit)) {
+          this.byId.set(unit2.id, unit2);
+          if (this.isResident(unit2)) {
             this.residentCount++;
-            this.residentCountsBySpecies.set(unit.species, (this.residentCountsBySpecies.get(unit.species) || 0) + 1);
-            let ids = this.residentIdsBySpecies.get(unit.species);
+            this.residentCountsBySpecies.set(unit2.species, (this.residentCountsBySpecies.get(unit2.species) || 0) + 1);
+            let ids = this.residentIdsBySpecies.get(unit2.species);
             if (!ids) {
               ids = /* @__PURE__ */ new Set();
-              this.residentIdsBySpecies.set(unit.species, ids);
+              this.residentIdsBySpecies.set(unit2.species, ids);
             }
-            ids.add(unit.id);
+            ids.add(unit2.id);
           }
         }
-        _unindexUnit(unit) {
+        _unindexUnit(unit2) {
           this.revision++;
-          this.byId.delete(unit.id);
-          if (this.isResident(unit)) {
+          this.byId.delete(unit2.id);
+          if (this.isResident(unit2)) {
             this.residentCount = Math.max(0, this.residentCount - 1);
-            const COUNT = (this.residentCountsBySpecies.get(unit.species) || 0) - 1;
+            const COUNT = (this.residentCountsBySpecies.get(unit2.species) || 0) - 1;
             if (COUNT > 0) {
-              this.residentCountsBySpecies.set(unit.species, COUNT);
+              this.residentCountsBySpecies.set(unit2.species, COUNT);
             } else {
-              this.residentCountsBySpecies.delete(unit.species);
+              this.residentCountsBySpecies.delete(unit2.species);
             }
-            const IDS = this.residentIdsBySpecies.get(unit.species);
-            IDS?.delete(unit.id);
+            const IDS = this.residentIdsBySpecies.get(unit2.species);
+            IDS?.delete(unit2.id);
             if (IDS?.size === 0) {
-              this.residentIdsBySpecies.delete(unit.species);
+              this.residentIdsBySpecies.delete(unit2.species);
             }
           }
           this.world._syncOwnedSpeciesCounts?.();
         }
         // Puts the farm's residents in the given order; everything else keeps its place.
         reorder(orderedIds) {
-          const RESIDENTS = this.items.filter((unit) => this.isResident(unit));
+          const RESIDENTS = this.items.filter((unit2) => this.isResident(unit2));
           if (!Array.isArray(orderedIds) || orderedIds.length !== RESIDENTS.length || new Set(orderedIds).size !== orderedIds.length || orderedIds.some((id) => !this.isResident(this.byId.get(id)))) {
             return false;
           }
           const ORDERED = orderedIds.map((id) => this.byId.get(id));
           let index = 0;
-          this.items = this.items.map((unit) => this.isResident(unit) ? ORDERED[index++] : unit);
+          this.items = this.items.map((unit2) => this.isResident(unit2) ? ORDERED[index++] : unit2);
           this._rebuildIndexes();
           this.world._unitSpatialDirty = true;
           return true;
         }
-        isResident(unit) {
-          return !!(unit && unit.faction === "player" && unit.isBattleOnlySummon !== true && unit.isFormationClone !== true && unit.countsTowardPermanentRoster !== false);
+        isResident(unit2) {
+          return !!(unit2 && unit2.faction === "player" && unit2.isBattleOnlySummon !== true && unit2.isFormationClone !== true && unit2.countsTowardPermanentRoster !== false);
         }
         reservationOwner(unitOrId) {
           return this.reservations.get(typeof unitOrId === "object" ? unitOrId?.id : unitOrId) || null;
@@ -2561,18 +2561,18 @@
             return false;
           }
           const IDS = /* @__PURE__ */ new Set(), ALLOWED_OWNERS = new Set(replaceOwners), REPLACED_OWNERS = /* @__PURE__ */ new Set();
-          if (units.some((unit) => {
-            if (!this.has(unit) || IDS.has(unit.id)) {
+          if (units.some((unit2) => {
+            if (!this.has(unit2) || IDS.has(unit2.id)) {
               return true;
             }
-            const CURRENT_OWNER = this.reservationOwner(unit.id);
+            const CURRENT_OWNER = this.reservationOwner(unit2.id);
             if (CURRENT_OWNER && CURRENT_OWNER !== owner) {
               if (!ALLOWED_OWNERS.has(CURRENT_OWNER)) {
                 return true;
               }
               REPLACED_OWNERS.add(CURRENT_OWNER);
             }
-            IDS.add(unit.id);
+            IDS.add(unit2.id);
             return false;
           })) {
             return false;
@@ -2598,58 +2598,58 @@
         releaseUnitReservation(unitOrId) {
           return this.reservations.delete(typeof unitOrId === "object" ? unitOrId?.id : unitOrId);
         }
-        attach(unit) {
-          Object.defineProperty(unit, "_world", {
+        attach(unit2) {
+          Object.defineProperty(unit2, "_world", {
             value: this.world,
             writable: true,
             configurable: true
           });
-          for (const SIGNAL of [unit.onDied, unit.onRevived, unit.onHealthChanged]) {
+          for (const SIGNAL of [unit2.onDied, unit2.onRevived, unit2.onHealthChanged]) {
             SIGNAL.scope = this.world.mutationNotifications;
             SIGNAL.immediate = true;
           }
-          const OFF_DIED = unit.onDied.on(() => {
-            if (this.has(unit)) {
-              this.world.processUnitDeath(unit);
+          const OFF_DIED = unit2.onDied.on(() => {
+            if (this.has(unit2)) {
+              this.world.processUnitDeath(unit2);
             }
-          }), OFF_REVIVED = unit.onRevived.on(() => {
-            if (this.has(unit)) {
-              this.world.processUnitRevival(unit);
+          }), OFF_REVIVED = unit2.onRevived.on(() => {
+            if (this.has(unit2)) {
+              this.world.processUnitRevival(unit2);
             }
           });
-          const OFF_HEALTH = unit.onHealthChanged.on((event) => {
-            if (this.has(unit)) {
-              this.world._syncUnitAliveCount(unit);
+          const OFF_HEALTH = unit2.onHealthChanged.on((event) => {
+            if (this.has(unit2)) {
+              this.world._syncUnitAliveCount(unit2);
               this.onHealthChanged.emit(event);
             }
           });
-          this.subscriptions.set(unit, [OFF_DIED, OFF_REVIVED, OFF_HEALTH]);
+          this.subscriptions.set(unit2, [OFF_DIED, OFF_REVIVED, OFF_HEALTH]);
         }
-        retire(unit, options, preserveMergeTask = null) {
-          this.world.releaseMate(unit);
+        retire(unit2, options, preserveMergeTask = null) {
+          this.world.releaseMate(unit2);
           for (const TASK of [...this.world.mergeTasks]) {
-            if (TASK !== preserveMergeTask && (TASK.materialIds?.includes(unit.id) || TASK.resultId === unit.id)) {
+            if (TASK !== preserveMergeTask && (TASK.materialIds?.includes(unit2.id) || TASK.resultId === unit2.id)) {
               this.world.cancelMergeTask(TASK);
             }
           }
-          this.releaseUnitReservation(unit.id);
-          for (const OFF of this.subscriptions.get(unit) || []) {
+          this.releaseUnitReservation(unit2.id);
+          for (const OFF of this.subscriptions.get(unit2) || []) {
             OFF();
           }
-          this.subscriptions.delete(unit);
-          this.world._trackUnitRemoved(unit, options);
-          unit.dispose();
+          this.subscriptions.delete(unit2);
+          this.world._trackUnitRemoved(unit2, options);
+          unit2.dispose();
           if (this.world._spatialStepActive) {
-            this.retiredDuringStep.push(unit);
+            this.retiredDuringStep.push(unit2);
           } else {
-            this.releaseReferences(unit);
+            this.releaseReferences(unit2);
             this.clearBorrowedReferences();
           }
         }
-        releaseReferences(unit) {
-          this.world.unitSpatial.remove(unit);
-          this.world._unitStepOrder.delete(unit);
-          this.world._unitAliveState.delete(unit);
+        releaseReferences(unit2) {
+          this.world.unitSpatial.remove(unit2);
+          this.world._unitStepOrder.delete(unit2);
+          this.world._unitAliveState.delete(unit2);
         }
         clearBorrowedReferences() {
           for (const GROUP of this.world._mergeEligibleGroups) {
@@ -2683,47 +2683,47 @@
           this.retiredDuringStep.length = 0;
           this.clearBorrowedReferences();
         }
-        add(unit, { markProgress = true } = {}) {
-          if (!(unit instanceof this.unitType) || this.items.some((owned) => owned === unit || owned.id === unit.id)) {
+        add(unit2, { markProgress = true } = {}) {
+          if (!(unit2 instanceof this.unitType) || this.items.some((owned) => owned === unit2 || owned.id === unit2.id)) {
             return false;
           }
           this.world._beginSpatialQueryBatch();
           try {
-            unit.spawnedAtSimulationTick = this.world.simulationTick;
-            this.items.push(unit);
-            this._indexUnit(unit);
-            this.attach(unit);
-            this.world._trackUnitAdded(unit);
+            unit2.spawnedAtSimulationTick = this.world.simulationTick;
+            this.items.push(unit2);
+            this._indexUnit(unit2);
+            this.attach(unit2);
+            this.world._trackUnitAdded(unit2);
           } finally {
             this.world._endSpatialQueryBatch();
           }
           this.world._markMergeAvailabilityChanged();
-          this.publishChange(this.onAdded, { unitId: unit.id }, markProgress && !unit.isBattleOnlySummon);
+          this.publishChange(this.onAdded, { unitId: unit2.id }, markProgress && !unit2.isBattleOnlySummon);
           return true;
         }
-        remove(unit, { markProgress = true, ...options } = {}) {
-          if (!this.has(unit)) {
+        remove(unit2, { markProgress = true, ...options } = {}) {
+          if (!this.has(unit2)) {
             return false;
           }
-          const REMAINING = this.items.filter((owned) => owned !== unit);
+          const REMAINING = this.items.filter((owned) => owned !== unit2);
           this.world._beginSpatialQueryBatch();
           try {
-            this.retire(unit, options);
-            this._unindexUnit(unit);
+            this.retire(unit2, options);
+            this._unindexUnit(unit2);
             this.items = REMAINING;
           } finally {
             this.world._endSpatialQueryBatch();
           }
           this.world._markMergeAvailabilityChanged();
-          this.publishChange(this.onRemoved, { unitId: unit.id }, markProgress && !unit.isBattleOnlySummon);
+          this.publishChange(this.onRemoved, { unitId: unit2.id }, markProgress && !unit2.isBattleOnlySummon);
           return true;
         }
         replace(materials, result, complete, preserveMergeTask = null) {
           const CONSUMED = new Set(materials);
-          if (CONSUMED.size < 2 || CONSUMED.size !== materials.length || !materials.every((unit) => this.has(unit)) || !(result instanceof this.unitType) || this.items.some((unit) => unit === result || unit.id === result.id)) {
+          if (CONSUMED.size < 2 || CONSUMED.size !== materials.length || !materials.every((unit2) => this.has(unit2)) || !(result instanceof this.unitType) || this.items.some((unit2) => unit2 === result || unit2.id === result.id)) {
             return false;
           }
-          const REMAINING = this.items.filter((unit) => !CONSUMED.has(unit));
+          const REMAINING = this.items.filter((unit2) => !CONSUMED.has(unit2));
           REMAINING.push(result);
           this.world._beginSpatialQueryBatch();
           try {
@@ -2741,7 +2741,7 @@
           this.world._markMergeAvailabilityChanged();
           this.publishChange(
             this.onReplaced,
-            { materialIds: materials.map((unit) => unit.id), resultId: result.id },
+            { materialIds: materials.map((unit2) => unit2.id), resultId: result.id },
             true
           );
           return true;
@@ -2796,7 +2796,7 @@
             this.world._endSpatialQueryBatch();
           }
           this.world._markMergeAvailabilityChanged();
-          this.onReset.emit({ unitIds: NEXT.map((unit) => unit.id) });
+          this.onReset.emit({ unitIds: NEXT.map((unit2) => unit2.id) });
         }
         removeWhere(predicate, options) {
           let index = 0;
@@ -2826,8 +2826,8 @@
   });
 
   // src/farm-roster.js
-  function isResident(unit) {
-    return !!unit && unit.faction === "player" && unit.isBattleOnlySummon !== true && unit.isFormationClone !== true && unit.countsTowardPermanentRoster !== false;
+  function isResident(unit2) {
+    return !!unit2 && unit2.faction === "player" && unit2.isBattleOnlySummon !== true && unit2.isFormationClone !== true && unit2.countsTowardPermanentRoster !== false;
   }
   var FarmingRoster;
   var init_farm_roster = __esm({
@@ -2846,7 +2846,7 @@
           return [...this.collection.residentIdsBySpecies.get(speciesId) || []].map((id) => this.collection.unitById(id)).filter(isResident);
         }
         residentById(id) {
-          return this.collection.items.find((unit) => isResident(unit) && unit.id === id) || null;
+          return this.collection.items.find((unit2) => isResident(unit2) && unit2.id === id) || null;
         }
         ownedPopulation() {
           return this.collection.residentCount;
@@ -2886,20 +2886,20 @@
         updateBossPhase(_world, _dt) {
           return false;
         }
-        advanceDownedUnit(world, unit, dt) {
-          const ADVANCED2 = this.advanceRest(world, unit, dt);
-          this.restoreUnit(world, unit);
+        advanceDownedUnit(world, unit2, dt) {
+          const ADVANCED2 = this.advanceRest(world, unit2, dt);
+          this.restoreUnit(world, unit2);
           return ADVANCED2;
         }
-        advanceDownedPhysics(world, unit, dt) {
-          const OLD_Z = unit.z;
-          unit.integrate(dt);
-          this.afterDownedIntegration(world, unit);
-          if (OLD_Z > 0 && unit.z === 0) {
+        advanceDownedPhysics(world, unit2, dt) {
+          const OLD_Z = unit2.z;
+          unit2.integrate(dt);
+          this.afterDownedIntegration(world, unit2);
+          if (OLD_Z > 0 && unit2.z === 0) {
             world.metrics.landings++;
-            this.landUnit(world, unit);
+            this.landUnit(world, unit2);
           }
-          world.updateUnitSpatial(unit);
+          world.updateUnitSpatial(unit2);
         }
         separateBossUnits(world, units) {
           world.separateBossUnitsJacobi(units);
@@ -2951,40 +2951,40 @@
         capacity(world) {
           return world.capacity;
         }
-        unitId(unit, _index) {
-          return unit.farmId || unit.id;
+        unitId(unit2, _index) {
+          return unit2.farmId || unit2.id;
         }
-        enterUnit(_world, unit, _index) {
-          unit.id = unit.farmId || unit.id;
-          unit.ownerId = "";
-          unit.farmId = 0;
-          unit.dropLanded = true;
-          Object.assign(unit, unit.home);
+        enterUnit(_world, unit2, _index) {
+          unit2.id = unit2.farmId || unit2.id;
+          unit2.ownerId = "";
+          unit2.farmId = 0;
+          unit2.dropLanded = true;
+          Object.assign(unit2, unit2.home);
         }
         setupRoster(_world) {
         }
-        advanceRest(world, unit, dt) {
+        advanceRest(world, unit2, dt) {
           if (world.tower.active) {
             return true;
           }
-          unit.down = Math.max(0, unit.down - dt);
-          if (unit.down < 1e-9) {
-            unit.down = 0;
+          unit2.down = Math.max(0, unit2.down - dt);
+          if (unit2.down < 1e-9) {
+            unit2.down = 0;
           }
           return true;
         }
-        restoreUnit(world, unit) {
+        restoreUnit(world, unit2) {
           const { STATS: STATS2 } = this.dependencies;
-          if (unit.down !== 0) {
+          if (unit2.down !== 0) {
             return;
           }
-          const MAX_HP = STATS2(unit.tier, unit.species).maxHp;
-          world.releaseMate(unit);
-          unit.revive(MAX_HP);
+          const MAX_HP = STATS2(unit2.tier, unit2.species).maxHp;
+          world.releaseMate(unit2);
+          unit2.revive(MAX_HP);
         }
-        landUnit(world, unit) {
-          if (Math.hypot(unit.vx, unit.vy) > 1) {
-            world.emit("land", unit.x, unit.y);
+        landUnit(world, unit2) {
+          if (Math.hypot(unit2.vx, unit2.vy) > 1) {
+            world.emit("land", unit2.x, unit2.y);
           }
         }
         checkpointProgress(world, dt, advanced) {
@@ -3902,24 +3902,24 @@
             statMultiplier: EFFECT.value
           };
         }
-        static descriptors({ unit, progression, inBattle = false } = {}) {
-          if (!inBattle || !unit || unit.hp > 0 || unit.isBattleOnlySummon || unit.canSplit === false || unit.splitUsedThisBattle === true) {
+        static descriptors({ unit: unit2, progression, inBattle = false } = {}) {
+          if (!inBattle || !unit2 || unit2.hp > 0 || unit2.isBattleOnlySummon || unit2.canSplit === false || unit2.splitUsedThisBattle === true) {
             return [];
           }
-          const CONFIG2 = this.config(progression, unit.tier);
+          const CONFIG2 = this.config(progression, unit2.tier);
           if (!CONFIG2) {
             return [];
           }
           return Array.from({ length: CONFIG2.childCount }, () => ({
-            species: unit.species,
+            species: unit2.species,
             tier: 1,
             isBattleOnlySummon: true,
             battleSummonKind: "peanut-death-split",
-            battleSummonParentId: unit.id,
-            battleSummonParentGeneration: unit.generation,
-            ownerId: unit.ownerId || "",
-            farmId: unit.farmId || 0,
-            faction: unit.faction,
+            battleSummonParentId: unit2.id,
+            battleSummonParentGeneration: unit2.generation,
+            ownerId: unit2.ownerId || "",
+            farmId: unit2.farmId || 0,
+            faction: unit2.faction,
             countsTowardPermanentRoster: false,
             breedingEligible: false,
             mergeEligible: false,
@@ -3955,49 +3955,49 @@
             maxBonusAttackMultiples: DEFINITION10.maxBonusAttackMultiples
           };
         }
-        static canStart(unit, tick, config) {
-          return !!(config && unit?.hp > 0 && Number.isSafeInteger(tick) && tick >= (unit.walnutNextGuardTick || 0) && !(unit.walnutStoredRawDamage > 0));
+        static canStart(unit2, tick, config) {
+          return !!(config && unit2?.hp > 0 && Number.isSafeInteger(tick) && tick >= (unit2.walnutNextGuardTick || 0) && !(unit2.walnutStoredRawDamage > 0));
         }
-        static start(unit, tick, config) {
-          if (!this.canStart(unit, tick, config)) {
+        static start(unit2, tick, config) {
+          if (!this.canStart(unit2, tick, config)) {
             return false;
           }
-          unit.walnutNextGuardTick = tick + config.cooldownTicks;
-          unit.walnutGuardUntilTick = tick + config.durationTicks;
+          unit2.walnutNextGuardTick = tick + config.cooldownTicks;
+          unit2.walnutGuardUntilTick = tick + config.durationTicks;
           return true;
         }
-        static isGuarding(unit, tick) {
-          return !!(unit?.hp > 0 && unit.walnutGuardUntilTick > tick);
+        static isGuarding(unit2, tick) {
+          return !!(unit2?.hp > 0 && unit2.walnutGuardUntilTick > tick);
         }
-        static armorBonus(unit, tick, config) {
-          return config && this.isGuarding(unit, tick) ? config.armorBonus : 0;
+        static armorBonus(unit2, tick, config) {
+          return config && this.isGuarding(unit2, tick) ? config.armorBonus : 0;
         }
-        static accumulate(unit, rawDamage, tick, config) {
-          if (!config || !this.isGuarding(unit, tick) || !Number.isFinite(rawDamage) || rawDamage <= 0) {
+        static accumulate(unit2, rawDamage, tick, config) {
+          if (!config || !this.isGuarding(unit2, tick) || !Number.isFinite(rawDamage) || rawDamage <= 0) {
             return false;
           }
-          unit.walnutStoredRawDamage = (unit.walnutStoredRawDamage || 0) + rawDamage;
+          unit2.walnutStoredRawDamage = (unit2.walnutStoredRawDamage || 0) + rawDamage;
           return true;
         }
-        static nextHammerBonus(unit, attackPower, config) {
-          if (!config || !Number.isFinite(unit?.walnutStoredRawDamage) || unit.walnutStoredRawDamage <= 0) {
+        static nextHammerBonus(unit2, attackPower, config) {
+          if (!config || !Number.isFinite(unit2?.walnutStoredRawDamage) || unit2.walnutStoredRawDamage <= 0) {
             return 0;
           }
           return Math.min(
-            unit.walnutStoredRawDamage * config.rawDamageMultiplier,
+            unit2.walnutStoredRawDamage * config.rawDamageMultiplier,
             attackPower * config.maxBonusAttackMultiples
           );
         }
-        static consume(unit) {
-          const CONSUMED = Number.isFinite(unit?.walnutStoredRawDamage) && unit.walnutStoredRawDamage > 0;
-          if (unit) {
-            unit.walnutStoredRawDamage = 0;
+        static consume(unit2) {
+          const CONSUMED = Number.isFinite(unit2?.walnutStoredRawDamage) && unit2.walnutStoredRawDamage > 0;
+          if (unit2) {
+            unit2.walnutStoredRawDamage = 0;
           }
           return CONSUMED;
         }
-        static clear(unit) {
-          unit.walnutGuardUntilTick = 0;
-          unit.walnutStoredRawDamage = 0;
+        static clear(unit2) {
+          unit2.walnutGuardUntilTick = 0;
+          unit2.walnutStoredRawDamage = 0;
         }
       };
     }
@@ -4455,12 +4455,12 @@
           }
           return affected > 0;
         }
-        static refreshBuff(unit, level, tick) {
-          if (!unit || !Number.isSafeInteger(level) || level < 0 || level > 2 || !Number.isSafeInteger(tick) || tick < 0) {
+        static refreshBuff(unit2, level, tick) {
+          if (!unit2 || !Number.isSafeInteger(level) || level < 0 || level > 2 || !Number.isSafeInteger(tick) || tick < 0) {
             return false;
           }
-          const BUFFS = Array.isArray(unit.wheatCommandBuffs) ? unit.wheatCommandBuffs.filter((buff) => buff.expiresAtTick > tick) : [];
-          unit.wheatCommandBuffs = BUFFS;
+          const BUFFS = Array.isArray(unit2.wheatCommandBuffs) ? unit2.wheatCommandBuffs.filter((buff) => buff.expiresAtTick > tick) : [];
+          unit2.wheatCommandBuffs = BUFFS;
           const EXISTING = BUFFS.find((buff) => buff.level === level), EXPIRES_AT_TICK = tick + DEFINITION12.durationTicks;
           if (EXISTING) {
             EXISTING.expiresAtTick = Math.max(EXISTING.expiresAtTick, EXPIRES_AT_TICK);
@@ -4468,11 +4468,11 @@
             BUFFS.push({ level, expiresAtTick: EXPIRES_AT_TICK });
             BUFFS.sort((a, b) => a.level - b.level);
           }
-          unit.ability?.syncAttackSpeedMultiplier?.(tick);
+          unit2.ability?.syncAttackSpeedMultiplier?.(tick);
           return true;
         }
-        static activeBuff(unit, tick) {
-          const BUFFS = Array.isArray(unit?.wheatCommandBuffs) ? unit.wheatCommandBuffs : [];
+        static activeBuff(unit2, tick) {
+          const BUFFS = Array.isArray(unit2?.wheatCommandBuffs) ? unit2.wheatCommandBuffs : [];
           let strongest = null;
           for (const BUFF of BUFFS) {
             if (BUFF.expiresAtTick > tick && (!strongest || BUFF.level > strongest.level)) {
@@ -4481,8 +4481,8 @@
           }
           return strongest;
         }
-        static attackSpeedMultiplier(unit, tick) {
-          const ACTIVE = this.activeBuff(unit, tick);
+        static attackSpeedMultiplier(unit2, tick) {
+          const ACTIVE = this.activeBuff(unit2, tick);
           return ACTIVE ? 1 + DEFINITION12.powerValues[ACTIVE.level] : 1;
         }
       };
@@ -5444,8 +5444,8 @@
     h = Math.imul(h ^ h >>> 12, 695872825);
     return ((h ^ h >>> 15) >>> 0) / 4294967296;
   }
-  function restingSpot(unit, time, arena) {
-    const PERIOD = WANDER_SECONDS_MIN + WANDER_SECONDS_SPREAD * wanderUnit(unit.seed, 7), EPOCH = Math.floor(time / PERIOD + wanderUnit(unit.seed, 3)), X = wanderUnit(unit.seed, EPOCH * 2 + 11) * 2 - 1, Y = wanderUnit(unit.seed, EPOCH * 2 + 12) * 2 - 1;
+  function restingSpot(unit2, time, arena) {
+    const PERIOD = WANDER_SECONDS_MIN + WANDER_SECONDS_SPREAD * wanderUnit(unit2.seed, 7), EPOCH = Math.floor(time / PERIOD + wanderUnit(unit2.seed, 3)), X = wanderUnit(unit2.seed, EPOCH * 2 + 11) * 2 - 1, Y = wanderUnit(unit2.seed, EPOCH * 2 + 12) * 2 - 1;
     return { x: X * WANDER_EXTENT * arena.radiusX, y: Y * WANDER_EXTENT * arena.radiusY };
   }
   var WANDER_SECONDS_MIN, WANDER_SECONDS_SPREAD, WANDER_EXTENT, WANDER_ARRIVE, FarmMode;
@@ -5462,40 +5462,40 @@
           this.config = config;
         }
         // A resting unit walks to a spot of its own and stays there a while before picking the next one.
-        wander(world, unit, dt) {
-          const SPOT = restingSpot(unit, world.time, this.config.farm.arena);
-          if (Math.hypot(SPOT.x - unit.x, SPOT.y - unit.y) < WANDER_ARRIVE) {
+        wander(world, unit2, dt) {
+          const SPOT = restingSpot(unit2, world.time, this.config.farm.arena);
+          if (Math.hypot(SPOT.x - unit2.x, SPOT.y - unit2.y) < WANDER_ARRIVE) {
             return;
           }
-          world.steer(unit, SPOT.x, SPOT.y, dt, scaleMoveSpeed(1.3, unit));
+          world.steer(unit2, SPOT.x, SPOT.y, dt, scaleMoveSpeed(1.3, unit2));
         }
-        update(world, unit, dt) {
-          if (unit.stun > 0 || unit.z > 0.1) {
+        update(world, unit2, dt) {
+          if (unit2.stun > 0 || unit2.z > 0.1) {
             return;
           }
-          if (world.isWorker(unit)) {
-            const ORDER = world.workOrder(unit);
+          if (world.isWorker(unit2)) {
+            const ORDER = world.workOrder(unit2);
             if (!ORDER) {
-              this.wander(world, unit, dt);
+              this.wander(world, unit2, dt);
             } else if (ORDER.hold) {
               if (ORDER.face) {
-                unit.angle = Math.atan2(ORDER.fy - unit.y, ORDER.fx - unit.x);
+                unit2.angle = Math.atan2(ORDER.fy - unit2.y, ORDER.fx - unit2.x);
               }
             } else {
-              world.steer(unit, ORDER.x, ORDER.y, dt, scaleMoveSpeed(ORDER.speed, unit));
-              if (Math.hypot(ORDER.x - unit.x, ORDER.y - unit.y) < 0.4) {
-                unit.angle = Math.atan2(ORDER.fy - unit.y, ORDER.fx - unit.x);
+              world.steer(unit2, ORDER.x, ORDER.y, dt, scaleMoveSpeed(ORDER.speed, unit2));
+              if (Math.hypot(ORDER.x - unit2.x, ORDER.y - unit2.y) < 0.4) {
+                unit2.angle = Math.atan2(ORDER.fy - unit2.y, ORDER.fx - unit2.x);
               }
             }
             return;
           }
-          if (!unit.mature || unit.cooldown > 0) {
-            if (!world.avoidNearbyFood(unit, dt)) {
-              this.wander(world, unit, dt);
+          if (!unit2.mature || unit2.cooldown > 0) {
+            if (!world.avoidNearbyFood(unit2, dt)) {
+              this.wander(world, unit2, dt);
             }
             return;
           }
-          this.updateReady(world, unit, dt);
+          this.updateReady(world, unit2, dt);
         }
       };
     }
@@ -6517,7 +6517,7 @@
   }
   function bossSpeciesOwned(world, species) {
     return (world.unitCollection?.items ?? world.units).some(
-      (unit) => unit.species === species && !unit.isBattleOnlySummon
+      (unit2) => unit2.species === species && !unit2.isBattleOnlySummon
     ) || (world.bossRewardInventory || []).some((entry) => entry.species === species && entry.count > 0);
   }
   function ensureWorldRewardState(world) {
@@ -6574,7 +6574,7 @@
         break;
       }
       const COUNT = Math.min(capacity, GROUP.count), NEW_SPECIES = !(world.unitCollection?.items ?? world.units).some(
-        (unit) => unit.species === GROUP.species && !unit.isBattleOnlySummon
+        (unit2) => unit2.species === GROUP.species && !unit2.isBattleOnlySummon
       );
       let placed = 0;
       while (placed < COUNT) {
@@ -8336,8 +8336,8 @@
         _markMergeAvailabilityChanged() {
           this.mergeAvailabilityRevision++;
         }
-        isMergeTaskMaterial(unit) {
-          return this.unitCollection.reservationOwner(unit)?.startsWith("merge:") || false;
+        isMergeTaskMaterial(unit2) {
+          return this.unitCollection.reservationOwner(unit2)?.startsWith("merge:") || false;
         }
         _pendingMergeCost(species, excludedTask = null) {
           let cost = 0;
@@ -8461,61 +8461,61 @@
           this._groundedFoodRevision++;
           return true;
         }
-        _trackUnitAdded(unit) {
+        _trackUnitAdded(unit2) {
           if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
             this._unitSpatialDirty = true;
             return;
           }
-          this.unitSpatial.insert(unit);
-          this._unitById.set(unit.id, unit);
-          this._unitStepOrder.set(unit, -1);
-          if (unit.species >= 0 && unit.species < CONFIG.unit.speciesCount) {
-            this._speciesGroups[unit.species].push(unit);
-            this._ownedSpeciesCounts[unit.species] = this.unitCollection.residentCountsBySpecies.get(unit.species) || 0;
-            const TIER = Math.max(0, Math.min(CONFIG.unit.maxTier, unit.tier | 0));
-            this._speciesTierGroups[unit.species * (CONFIG.unit.maxTier + 1) + TIER].push(unit);
+          this.unitSpatial.insert(unit2);
+          this._unitById.set(unit2.id, unit2);
+          this._unitStepOrder.set(unit2, -1);
+          if (unit2.species >= 0 && unit2.species < CONFIG.unit.speciesCount) {
+            this._speciesGroups[unit2.species].push(unit2);
+            this._ownedSpeciesCounts[unit2.species] = this.unitCollection.residentCountsBySpecies.get(unit2.species) || 0;
+            const TIER = Math.max(0, Math.min(CONFIG.unit.maxTier, unit2.tier | 0));
+            this._speciesTierGroups[unit2.species * (CONFIG.unit.maxTier + 1) + TIER].push(unit2);
           }
-          if (unit.hp > 0 && typeof unit.faction === "string") {
-            this._liveFactionCounts.set(unit.faction, (this._liveFactionCounts.get(unit.faction) || 0) + 1);
+          if (unit2.hp > 0 && typeof unit2.faction === "string") {
+            this._liveFactionCounts.set(unit2.faction, (this._liveFactionCounts.get(unit2.faction) || 0) + 1);
           }
-          this._unitAliveState.set(unit, unit.hp > 0);
+          this._unitAliveState.set(unit2, unit2.hp > 0);
         }
-        _trackUnitRemoved(unit, { keepStepSnapshot = false } = {}) {
-          this._cancelFoodTargetSearch(unit);
-          this.clearPeaRecoveryBoost(unit);
+        _trackUnitRemoved(unit2, { keepStepSnapshot = false } = {}) {
+          this._cancelFoodTargetSearch(unit2);
+          this.clearPeaRecoveryBoost(unit2);
           if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
             this._unitSpatialDirty = true;
             return;
           }
-          this._unitById.delete(unit.id);
-          this._syncUnitAliveCount(unit);
-          if (unit.hp > 0 && typeof unit.faction === "string") {
-            this._adjustFactionCount(unit.faction, -1);
+          this._unitById.delete(unit2.id);
+          this._syncUnitAliveCount(unit2);
+          if (unit2.hp > 0 && typeof unit2.faction === "string") {
+            this._adjustFactionCount(unit2.faction, -1);
           }
-          this._unitAliveState.set(unit, false);
-          if (unit.species >= 0 && unit.species < CONFIG.unit.speciesCount) {
-            this._removeGroupItem(this._speciesGroups[unit.species], unit);
-            const TIER = Math.max(0, Math.min(CONFIG.unit.maxTier, unit.tier | 0));
-            this._removeGroupItem(this._speciesTierGroups[unit.species * (CONFIG.unit.maxTier + 1) + TIER], unit);
-            if (!unit.isBattleOnlySummon) {
-              this._ownedSpeciesCounts[unit.species] = this.unitCollection.residentCountsBySpecies.get(unit.species) || 0;
+          this._unitAliveState.set(unit2, false);
+          if (unit2.species >= 0 && unit2.species < CONFIG.unit.speciesCount) {
+            this._removeGroupItem(this._speciesGroups[unit2.species], unit2);
+            const TIER = Math.max(0, Math.min(CONFIG.unit.maxTier, unit2.tier | 0));
+            this._removeGroupItem(this._speciesTierGroups[unit2.species * (CONFIG.unit.maxTier + 1) + TIER], unit2);
+            if (!unit2.isBattleOnlySummon) {
+              this._ownedSpeciesCounts[unit2.species] = this.unitCollection.residentCountsBySpecies.get(unit2.species) || 0;
             }
           }
-          if (!keepStepSnapshot || !this._unitStepOrder.has(unit) || this._unitStepOrder.get(unit) < 0) {
-            this.unitSpatial.remove(unit);
-            this._unitStepOrder.delete(unit);
+          if (!keepStepSnapshot || !this._unitStepOrder.has(unit2) || this._unitStepOrder.get(unit2) < 0) {
+            this.unitSpatial.remove(unit2);
+            this._unitStepOrder.delete(unit2);
           }
         }
-        _cancelFoodTargetSearch(unit) {
-          const STATE = this._foodSearchStates?.get(unit);
+        _cancelFoodTargetSearch(unit2) {
+          const STATE = this._foodSearchStates?.get(unit2);
           if (!STATE) {
             return false;
           }
-          this._foodSearchStates.delete(unit);
+          this._foodSearchStates.delete(unit2);
           return this._foodSearchScheduler?.cancel(STATE.key) ?? false;
         }
-        clearFoodTargetSearch(unit) {
-          this._cancelFoodTargetSearch(unit);
+        clearFoodTargetSearch(unit2) {
+          this._cancelFoodTargetSearch(unit2);
         }
         _removeGroupItem(group, item) {
           const INDEX = group.indexOf(item);
@@ -8531,18 +8531,18 @@
             this._liveFactionCounts.delete(faction);
           }
         }
-        _syncUnitAliveCount(unit) {
-          const WAS_ALIVE = this._unitAliveState?.get(unit);
-          const IS_ALIVE = unit.hp > 0;
+        _syncUnitAliveCount(unit2) {
+          const WAS_ALIVE = this._unitAliveState?.get(unit2);
+          const IS_ALIVE = unit2.hp > 0;
           if (WAS_ALIVE === IS_ALIVE) {
             return;
           }
           if (!this._unitAliveState) {
             this._unitAliveState = /* @__PURE__ */ new Map();
           }
-          this._unitAliveState.set(unit, IS_ALIVE);
-          if (typeof unit.faction === "string") {
-            this._adjustFactionCount(unit.faction, IS_ALIVE ? 1 : -1);
+          this._unitAliveState.set(unit2, IS_ALIVE);
+          if (typeof unit2.faction === "string") {
+            this._adjustFactionCount(unit2.faction, IS_ALIVE ? 1 : -1);
           }
         }
         _unitForId(id) {
@@ -8551,8 +8551,8 @@
           }
           return this._unitById.get(id);
         }
-        _unitIsActive(unit) {
-          return this._unitById.get(unit?.id) === unit;
+        _unitIsActive(unit2) {
+          return this._unitById.get(unit2?.id) === unit2;
         }
         _beginSpatialQueryBatch() {
           if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
@@ -8563,13 +8563,13 @@
         _endSpatialQueryBatch() {
           this._spatialQueryDepth = Math.max(0, this._spatialQueryDepth - 1);
         }
-        _collectContactOrders(unit, minimumOrder, maximumOrder, out) {
-          const RADIUS = unit.radius + CONFIG.unit.maxRadius + 0.22;
+        _collectContactOrders(unit2, minimumOrder, maximumOrder, out) {
+          const RADIUS = unit2.radius + CONFIG.unit.maxRadius + 0.22;
           this.unitSpatial.queryAABB(
-            unit.x - RADIUS,
-            unit.y - RADIUS,
-            unit.x + RADIUS,
-            unit.y + RADIUS,
+            unit2.x - RADIUS,
+            unit2.y - RADIUS,
+            unit2.x + RADIUS,
+            unit2.y + RADIUS,
             this._contactQuery
           );
           out.length = 0;
@@ -8719,7 +8719,7 @@
           }
         }
         hasProgressTimers() {
-          return this.roster.residents().some((unit) => unit.down > 0 || unit.cooldown > 0 || !unit.mature);
+          return this.roster.residents().some((unit2) => unit2.down > 0 || unit2.cooldown > 0 || !unit2.mature);
         }
         _syncOwnedSpeciesCounts() {
           this._ownedSpeciesCounts.fill(0);
@@ -8797,7 +8797,7 @@
             }
             return a.id - b.id;
           });
-          if (!this.unitCollection.reorder(UNITS.map((unit) => unit.id))) {
+          if (!this.unitCollection.reorder(UNITS.map((unit2) => unit2.id))) {
             return false;
           }
           UNITS.forEach((unitLocal, index) => {
@@ -8815,11 +8815,11 @@
         breedGrowthDuration() {
           return this.breedCooldownDuration() / 2;
         }
-        abilityProgressionFor(unit) {
-          if (hasFaction(unit, FACTION_CONFIG.ENEMY)) {
+        abilityProgressionFor(unit2) {
+          if (hasFaction(unit2, FACTION_CONFIG.ENEMY)) {
             return null;
           }
-          return SIMULATION_SCENES[this.scene].progressionFor(this, unit);
+          return SIMULATION_SCENES[this.scene].progressionFor(this, unit2);
         }
         highestSpeciesTiers() {
           const TIERS2 = Array(CONFIG.unit.speciesCount).fill(0);
@@ -8856,33 +8856,33 @@
         resetAbilityTree() {
           return this.resetProgression({ type: "abilities" });
         }
-        spawnLobProjectile(unit, action, shot, projectileEffect = null) {
+        spawnLobProjectile(unit2, action, shot, projectileEffect = null) {
           if (this.projectiles.length >= CONFIG.battle.capacity.projectiles) {
             return null;
           }
-          const ID = ++this.projectileSerial, ATTACK_CONTEXT = this.createAttackContext(unit, {
-            attackMultiplier: shot.attackMultiplier ?? this.speciesAbilityDamageMultiplier(unit),
-            attackKind: abilityProfile(unit.species).kind
+          const ID = ++this.projectileSerial, ATTACK_CONTEXT = this.createAttackContext(unit2, {
+            attackMultiplier: shot.attackMultiplier ?? this.speciesAbilityDamageMultiplier(unit2),
+            attackKind: abilityProfile(unit2.species).kind
           });
           const PROJECTILE2 = {
             id: ID,
-            owner: unit.id,
-            ownerGeneration: unit.generation,
+            owner: unit2.id,
+            ownerGeneration: unit2.generation,
             targetId: action.targetId || "boss",
             targetGeneration: action.targetGeneration || 0,
-            faction: unit.faction,
-            isFormationClone: unit.isFormationClone,
-            ownerId: unit.ownerId,
-            species: unit.species,
-            tier: unit.tier,
+            faction: unit2.faction,
+            isFormationClone: unit2.isFormationClone,
+            ownerId: unit2.ownerId,
+            species: unit2.species,
+            tier: unit2.tier,
             path: structuredClone(action.path),
             elapsed: 0,
-            x: unit.x,
-            y: unit.y,
+            x: unit2.x,
+            y: unit2.y,
             z: 0.45,
-            ...seedProjectileDimensions(unit),
+            ...seedProjectileDimensions(unit2),
             hit: false,
-            attackMultiplier: shot.attackMultiplier ?? this.speciesAbilityDamageMultiplier(unit),
+            attackMultiplier: shot.attackMultiplier ?? this.speciesAbilityDamageMultiplier(unit2),
             shotIndex: shot.shotIndex ?? 0,
             attackPayload: {
               sourceKind: ATTACK_CONTEXT.sourceKind,
@@ -8895,14 +8895,14 @@
             },
             ...projectileEffect?.abilityId === "corn-kernel-chain" ? {
               cornPayload: {
-                ownerId: unit.ownerId,
-                faction: unit.faction,
-                isFormationClone: unit.isFormationClone,
-                species: unit.species,
-                tier: unit.tier,
-                x: unit.x,
-                y: unit.y,
-                z: unit.z || 0,
+                ownerId: unit2.ownerId,
+                faction: unit2.faction,
+                isFormationClone: unit2.isFormationClone,
+                species: unit2.species,
+                tier: unit2.tier,
+                x: unit2.x,
+                y: unit2.y,
+                z: unit2.z || 0,
                 attackerStats: structuredClone(ATTACK_CONTEXT.attackerStats),
                 attackPowerMultiplier: ATTACK_CONTEXT.attackPowerMultiplier,
                 buffed: ATTACK_CONTEXT.buffed
@@ -8913,10 +8913,10 @@
           this.projectiles.push(PROJECTILE2);
           return PROJECTILE2;
         }
-        speciesAbilityDamageMultiplier(unit) {
-          return abilityProfile(unit.species).skillMultiplier;
+        speciesAbilityDamageMultiplier(unit2) {
+          return abilityProfile(unit2.species).skillMultiplier;
         }
-        spawnChestnutThorn(unit, action, config, shotIndex) {
+        spawnChestnutThorn(unit2, action, config, shotIndex) {
           if (this.projectiles.length >= CONFIG.battle.capacity.projectiles) {
             return false;
           }
@@ -8927,14 +8927,14 @@
           if (TARGET.generation !== action.thornTargetGeneration) {
             return false;
           }
-          const ATTACK_CONTEXT = this.createAttackContext(unit, {
+          const ATTACK_CONTEXT = this.createAttackContext(unit2, {
             attackMultiplier: config.attackMultiplier,
             attackKind: "chestnut-thorns"
           }), PATH2 = BALLISTICS.create(
             {
-              x: unit.x,
-              y: unit.y,
-              z: unit.z || 0
+              x: unit2.x,
+              y: unit2.y,
+              z: unit2.z || 0
             },
             action.target,
             "punch"
@@ -8942,20 +8942,20 @@
           PATH2.height = 0.7;
           this.projectiles.push({
             id: ++this.projectileSerial,
-            owner: unit.id,
-            ownerGeneration: unit.generation,
+            owner: unit2.id,
+            ownerGeneration: unit2.generation,
             targetId: action.thornTargetId,
             targetGeneration: action.thornTargetGeneration,
-            faction: unit.faction,
-            ownerId: unit.ownerId,
-            species: unit.species,
-            tier: unit.tier,
+            faction: unit2.faction,
+            ownerId: unit2.ownerId,
+            species: unit2.species,
+            tier: unit2.tier,
             path: PATH2,
             elapsed: 0,
-            x: unit.x,
-            y: unit.y,
-            z: unit.z || 0,
-            radius: scaleAttackArea(0.08, unit),
+            x: unit2.x,
+            y: unit2.y,
+            z: unit2.z || 0,
+            radius: scaleAttackArea(0.08, unit2),
             height: 0.22,
             hit: false,
             attackMultiplier: config.attackMultiplier,
@@ -8969,7 +8969,7 @@
               sourceStatOverrides: { ...ATTACK_CONTEXT.sourceStatOverrides }
             },
             projectileKind: "chestnut-spike",
-            isFormationClone: unit.isFormationClone,
+            isFormationClone: unit2.isFormationClone,
             fanIndex: shotIndex
           });
           return true;
@@ -9003,50 +9003,50 @@
           this.addUnit(CLONE, { markProgress: false });
           return CLONE;
         }
-        handleUnitDeath(unit) {
-          return this.mutateUnits(this._handleUnitDeath, unit);
+        handleUnitDeath(unit2) {
+          return this.mutateUnits(this._handleUnitDeath, unit2);
         }
-        _handleUnitDeath(unit) {
-          if (!this.unitCollection.has(unit)) {
+        _handleUnitDeath(unit2) {
+          if (!this.unitCollection.has(unit2)) {
             return false;
           }
-          const SPLIT_BEFORE = unit.splitUsedThisBattle, DIED = unit.die();
-          return DIED && !SPLIT_BEFORE && unit.splitUsedThisBattle;
+          const SPLIT_BEFORE = unit2.splitUsedThisBattle, DIED = unit2.die();
+          return DIED && !SPLIT_BEFORE && unit2.splitUsedThisBattle;
         }
-        processUnitDeath(unit) {
-          return this.mutateUnits(this._processUnitDeath, unit);
+        processUnitDeath(unit2) {
+          return this.mutateUnits(this._processUnitDeath, unit2);
         }
-        _processUnitDeath(unit) {
-          unit.ability.interrupt();
-          unit.specialAbility?.interrupt();
-          unit.ability.resetCombatEffects?.();
-          this.clearPeaRecoveryBoost(unit);
-          this.onCombatResolved.emit({ allyDeaths: unit.faction === "player" && !unit.isFormationClone ? 1 : 0 });
-          this._syncUnitAliveCount(unit);
-          if (!unit.isBattleOnlySummon) {
+        _processUnitDeath(unit2) {
+          unit2.ability.interrupt();
+          unit2.specialAbility?.interrupt();
+          unit2.ability.resetCombatEffects?.();
+          this.clearPeaRecoveryBoost(unit2);
+          this.onCombatResolved.emit({ allyDeaths: unit2.faction === "player" && !unit2.isFormationClone ? 1 : 0 });
+          this._syncUnitAliveCount(unit2);
+          if (!unit2.isBattleOnlySummon) {
             this.markProgressChanged();
           }
-          if (unit.isBattleOnlySummon) {
-            if (unit.isFormationClone) {
-              this.emit("formation-copy-death", unit.x, unit.y, unit.z, { duration: 0.6 });
+          if (unit2.isBattleOnlySummon) {
+            if (unit2.isFormationClone) {
+              this.emit("formation-copy-death", unit2.x, unit2.y, unit2.z, { duration: 0.6 });
             }
-            unit.down = 0;
-            this.removeUnit(unit, { keepStepSnapshot: true });
+            unit2.down = 0;
+            this.removeUnit(unit2, { keepStepSnapshot: true });
             return false;
           }
           const IN_BATTLE = SIMULATION_SCENES[this.scene].inBattle(this);
-          const DESCRIPTORS = unit.ability.deathSplitDescriptors?.(this, IN_BATTLE) || [];
+          const DESCRIPTORS = unit2.ability.deathSplitDescriptors?.(this, IN_BATTLE) || [];
           if (!DESCRIPTORS.length) {
             return false;
           }
-          unit.splitUsedThisBattle = true;
-          unit.down = CONFIG.unit.corpseRecoverySeconds;
+          unit2.splitUsedThisBattle = true;
+          unit2.down = CONFIG.unit.corpseRecoverySeconds;
           for (let index = 0; index < DESCRIPTORS.length; index++) {
             const DESC = DESCRIPTORS[index], ANGLE = (index + 0.5) * Math.PI * 2 / DESCRIPTORS.length, ID = SIMULATION_SCENES[this.scene].summonId(this);
-            const X = unit.x + Math.cos(ANGLE) * 0.38, Y = unit.y + Math.sin(ANGLE) * 0.38, CHILD = new UNIT(ID, DESC.species, DESC.tier, X, Y);
+            const X = unit2.x + Math.cos(ANGLE) * 0.38, Y = unit2.y + Math.sin(ANGLE) * 0.38, CHILD = new UNIT(ID, DESC.species, DESC.tier, X, Y);
             Object.assign(CHILD, DESC, {
-              ownerId: unit.ownerId,
-              farmId: unit.farmId,
+              ownerId: unit2.ownerId,
+              farmId: unit2.farmId,
               home: {
                 x: X,
                 y: Y
@@ -9066,32 +9066,32 @@
           this.effects.push({
             kind: "peanut-split",
             eventId: EFFECT_ID,
-            owner: unit.id,
-            ownerGeneration: unit.generation,
-            species: unit.species,
-            x: unit.x,
-            y: unit.y,
+            owner: unit2.id,
+            ownerGeneration: unit2.generation,
+            species: unit2.species,
+            x: unit2.x,
+            y: unit2.y,
             z: 0,
             life: 0,
             duration: 0.7
           });
           this.combat("peanut-split", {
             effectId: EFFECT_ID,
-            unit: unit.id,
-            ownerId: unit.ownerId,
-            species: unit.species,
+            unit: unit2.id,
+            ownerId: unit2.ownerId,
+            species: unit2.species,
             count: DESCRIPTORS.length,
-            x: unit.x,
-            y: unit.y
+            x: unit2.x,
+            y: unit2.y
           });
           return true;
         }
-        processUnitRevival(unit) {
-          return this.mutateUnits(this._processUnitRevival, unit);
+        processUnitRevival(unit2) {
+          return this.mutateUnits(this._processUnitRevival, unit2);
         }
-        _processUnitRevival(unit) {
-          this._syncUnitAliveCount(unit);
-          this.combat("unit-recover", { unit: unit.id, x: unit.x, y: unit.y });
+        _processUnitRevival(unit2) {
+          this._syncUnitAliveCount(unit2);
+          this.combat("unit-recover", { unit: unit2.id, x: unit2.x, y: unit2.y });
           this.markProgressChanged();
         }
         cleanupBattleSummons() {
@@ -9103,23 +9103,23 @@
               UNIT_LOCAL.ability.resetCombatEffects?.();
             }
           }
-          this.unitCollection.removeWhere((unit) => unit.isBattleOnlySummon);
+          this.unitCollection.removeWhere((unit2) => unit2.isBattleOnlySummon);
           this.projectiles = [];
           this.cornAttachments = CornAttachmentModel.createManager();
           return true;
         }
-        senseEnemy(unit) {
-          if (unit.hp <= 0 || !unit.dropLanded) {
+        senseEnemy(unit2) {
+          if (unit2.hp <= 0 || !unit2.dropLanded) {
             return null;
           }
           if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
             this._rebuildUnitSpatialIndex(this.units);
           }
           const BATTLE_ACTIVE = SIMULATION_SCENES[this.scene].canSenseBoss(this);
-          const BOSS_TARGET = BATTLE_ACTIVE && this.boss?.active && areOpposingFactions(unit, this.boss) ? this.boss : null;
+          const BOSS_TARGET = BATTLE_ACTIVE && this.boss?.active && areOpposingFactions(unit2, this.boss) ? this.boss : null;
           let hasUnitEnemy = false;
           for (const [FACTION, COUNT] of this._liveFactionCounts) {
-            if (FACTION !== unit.faction && COUNT > 0) {
+            if (FACTION !== unit2.faction && COUNT > 0) {
               hasUnitEnemy = true;
               break;
             }
@@ -9134,8 +9134,8 @@
             if (!target || !Number.isFinite(target.x) || !Number.isFinite(target.y) || !Number.isFinite(target.radius)) {
               return;
             }
-            const DISTANCE = Math.hypot(unit.x - target.x, unit.y - target.y), ID = target.id || 0;
-            if (DISTANCE <= unit.perceptionRange + target.radius + 1e-9 && (DISTANCE < nearestDistance || DISTANCE === nearestDistance && ID < nearestId)) {
+            const DISTANCE = Math.hypot(unit2.x - target.x, unit2.y - target.y), ID = target.id || 0;
+            if (DISTANCE <= unit2.perceptionRange + target.radius + 1e-9 && (DISTANCE < nearestDistance || DISTANCE === nearestDistance && ID < nearestId)) {
               nearest = target;
               nearestDistance = DISTANCE;
               nearestId = ID;
@@ -9143,16 +9143,16 @@
           };
           CONSIDER(BOSS_TARGET);
           if (hasUnitEnemy) {
-            const EXTENT = Math.max(0, unit.perceptionRange + CONFIG.unit.maxRadius + 1e-9);
+            const EXTENT = Math.max(0, unit2.perceptionRange + CONFIG.unit.maxRadius + 1e-9);
             this.unitSpatial.queryAABB(
-              unit.x - EXTENT,
-              unit.y - EXTENT,
-              unit.x + EXTENT,
-              unit.y + EXTENT,
+              unit2.x - EXTENT,
+              unit2.y - EXTENT,
+              unit2.x + EXTENT,
+              unit2.y + EXTENT,
               this._unitCandidates
             );
             for (const CANDIDATE of this._unitCandidates) {
-              if (CANDIDATE !== unit && this._unitIsActive(CANDIDATE) && CANDIDATE.hp > 0 && CANDIDATE.dropLanded && areOpposingFactions(unit, CANDIDATE)) {
+              if (CANDIDATE !== unit2 && this._unitIsActive(CANDIDATE) && CANDIDATE.hp > 0 && CANDIDATE.dropLanded && areOpposingFactions(unit2, CANDIDATE)) {
                 CONSIDER(CANDIDATE);
               }
             }
@@ -9177,16 +9177,16 @@
           this.addUnit(U);
           return U;
         }
-        addUnit(unit, options) {
-          if (!Number.isSafeInteger(unit.generation) || unit.generation <= 0) {
-            unit.generation = ++this.entityGenerationSerial;
+        addUnit(unit2, options) {
+          if (!Number.isSafeInteger(unit2.generation) || unit2.generation <= 0) {
+            unit2.generation = ++this.entityGenerationSerial;
           } else {
-            this.entityGenerationSerial = Math.max(this.entityGenerationSerial, unit.generation);
+            this.entityGenerationSerial = Math.max(this.entityGenerationSerial, unit2.generation);
           }
-          return this.unitCollection.add(unit, options);
+          return this.unitCollection.add(unit2, options);
         }
-        removeUnit(unit, options) {
-          return this.unitCollection.remove(unit, options);
+        removeUnit(unit2, options) {
+          return this.unitCollection.remove(unit2, options);
         }
         replaceUnitGroup(materials, result, complete, preserveMergeTask = null) {
           if (!Number.isSafeInteger(result.generation) || result.generation <= 0) {
@@ -9248,8 +9248,8 @@
             this.events.shift();
           }
         }
-        isWorker(unit) {
-          return this._workerIds.has(unit.id);
+        isWorker(unit2) {
+          return this._workerIds.has(unit2.id);
         }
         // The grain piles of the farm plot on screen.
         get piles() {
@@ -9262,11 +9262,11 @@
         settleOffline(seconds) {
           return applyOffline(this, CONFIG, seconds);
         }
-        workOrder(unit) {
-          return workOrder(this, unit);
+        workOrder(unit2) {
+          return workOrder(this, unit2);
         }
-        canBreedNow(unit) {
-          return unit.breedingEligible !== false && !this._workerIds.has(unit.id);
+        canBreedNow(unit2) {
+          return unit2.breedingEligible !== false && !this._workerIds.has(unit2.id);
         }
         // The share of the farm that makes food instead of breeding, in basis points.
         setWorkBasisPoints(basisPoints) {
@@ -9419,19 +9419,19 @@
           return true;
         }
         // One unit's walk to the tower door while the march lasts.
-        _marchUnit(unit) {
-          if (unit.hp <= 0 || unit.isBattleOnlySummon) {
+        _marchUnit(unit2) {
+          if (unit2.hp <= 0 || unit2.isBattleOnlySummon) {
             return;
           }
-          const GATE = this.towerGate, SPREAD = unit.id * 7 % 11 - 5;
-          this.steer(unit, GATE.x + SPREAD * 0.25, GATE.y, 0, CONFIG.farm.tower.marchSpeed);
+          const GATE = this.towerGate, SPREAD = unit2.id * 7 % 11 - 5;
+          this.steer(unit2, GATE.x + SPREAD * 0.25, GATE.y, 0, CONFIG.farm.tower.marchSpeed);
         }
         // Where the tower door is: the middle of the back edge of the farm.
         get towerGate() {
           return { x: 0, y: CONFIG.farm.arena.radiusY };
         }
-        benchUnit(unit) {
-          this._benched.add(unit);
+        benchUnit(unit2) {
+          this._benched.add(unit2);
           this._benchRevision++;
           this._unitSpatialDirty = true;
         }
@@ -9504,9 +9504,9 @@
           T.doors = this._rollDoors();
           this.markProgressChanged();
         }
-        _wakeUnit(unit) {
-          unit.revive(STATS(unit.tier, unit.species).maxHp);
-          this.tower.sleepUntil.delete(unit.id);
+        _wakeUnit(unit2) {
+          unit2.revive(STATS(unit2.tier, unit2.species).maxHp);
+          this.tower.sleepUntil.delete(unit2.id);
         }
         chooseDoor(index) {
           const T = this.tower, DOOR = T.doors[index];
@@ -9629,7 +9629,7 @@
         _fieldUnits() {
           const CACHE = this._fieldCache;
           if (CACHE.revision !== this.unitCollection.revision || CACHE.bench !== this._benchRevision) {
-            CACHE.list = this.unitCollection.items.filter((unit) => !this._benched.has(unit));
+            CACHE.list = this.unitCollection.items.filter((unit2) => !this._benched.has(unit2));
             CACHE.revision = this.unitCollection.revision;
             CACHE.bench = this._benchRevision;
           }
@@ -9843,28 +9843,28 @@
           }
           return true;
         }
-        _isValidBreedReservation(unit, owner) {
+        _isValidBreedReservation(unit2, owner) {
           if (!owner?.startsWith("breed:")) {
             return false;
           }
-          const MATE = this._unitById.get(unit.mateId);
-          return !!(MATE && MATE.mateId === unit.id && this.unitCollection.reservationOwner(MATE) === owner && this.breedingReservationOwner(unit, MATE) === owner && this.canBreedPair(unit, MATE) && !this.senseEnemy(unit) && !this.senseEnemy(MATE));
+          const MATE = this._unitById.get(unit2.mateId);
+          return !!(MATE && MATE.mateId === unit2.id && this.unitCollection.reservationOwner(MATE) === owner && this.breedingReservationOwner(unit2, MATE) === owner && this.canBreedPair(unit2, MATE) && !this.senseEnemy(unit2) && !this.senseEnemy(MATE));
         }
-        releaseMate(unit) {
+        releaseMate(unit2) {
           if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
             this._rebuildUnitSpatialIndex(this.units);
           }
-          const MATE = this._unitById.get(unit.mateId);
-          if (unit.mateId && this.releaseActiveBreedReservation(
-            this.breedingReservationOwner(unit, this.unitCollection.unitById(unit.mateId))
+          const MATE = this._unitById.get(unit2.mateId);
+          if (unit2.mateId && this.releaseActiveBreedReservation(
+            this.breedingReservationOwner(unit2, this.unitCollection.unitById(unit2.mateId))
           )) {
             return true;
           }
-          unit.mateId = 0;
-          if (MATE && MATE.mateId === unit.id) {
+          unit2.mateId = 0;
+          if (MATE && MATE.mateId === unit2.id) {
             MATE.mateId = 0;
           }
-          const OWNER = this.unitCollection.reservationOwner(unit);
+          const OWNER = this.unitCollection.reservationOwner(unit2);
           if (OWNER?.startsWith("breed:")) {
             this.unitCollection.releaseReservations(OWNER);
           }
@@ -9909,48 +9909,48 @@
             }
           }
         }
-        findOrReserveMate(unit) {
+        findOrReserveMate(unit2) {
           const BATCH = !this._spatialStepActive;
           if (BATCH) {
             this._beginSpatialQueryBatch();
           }
           try {
-            if (this.scene !== "farm" || !unit.mature || !unit.fed || unit.cooldown > 0 || unit.hp <= 0 || this.senseEnemy(unit)) {
-              this.releaseMate(unit);
+            if (this.scene !== "farm" || !unit2.mature || !unit2.fed || unit2.cooldown > 0 || unit2.hp <= 0 || this.senseEnemy(unit2)) {
+              this.releaseMate(unit2);
               return null;
             }
             if (this.freeRoom() <= 0) {
-              this.releaseMate(unit);
+              this.releaseMate(unit2);
               return null;
             }
-            if (unit.mateId) {
-              const CURRENT = this._unitById.get(unit.mateId);
-              if (CURRENT && CURRENT.mateId === unit.id && this.canBreedPair(unit, CURRENT)) {
+            if (unit2.mateId) {
+              const CURRENT = this._unitById.get(unit2.mateId);
+              if (CURRENT && CURRENT.mateId === unit2.id && this.canBreedPair(unit2, CURRENT)) {
                 return CURRENT;
               }
-              this.releaseMate(unit);
+              this.releaseMate(unit2);
             }
-            if (this.simulationTick < (unit.nextMateSearchTick || 0)) {
+            if (this.simulationTick < (unit2.nextMateSearchTick || 0)) {
               return null;
             }
             const CANDIDATES = [];
-            for (const CANDIDATE of this.roster.residentsOfSpecies(unit.species)) {
-              if (CANDIDATE === unit || CANDIDATE.mateId || CANDIDATE.hp <= 0 || CANDIDATE.down > 0 || !CANDIDATE.mature || !CANDIDATE.fed || CANDIDATE.cooldown > 0 || !this.canBreedNow(CANDIDATE) || this.unitCollection.reservationOwner(CANDIDATE) || !this.canBreedPair(unit, CANDIDATE)) {
+            for (const CANDIDATE of this.roster.residentsOfSpecies(unit2.species)) {
+              if (CANDIDATE === unit2 || CANDIDATE.mateId || CANDIDATE.hp <= 0 || CANDIDATE.down > 0 || !CANDIDATE.mature || !CANDIDATE.fed || CANDIDATE.cooldown > 0 || !this.canBreedNow(CANDIDATE) || this.unitCollection.reservationOwner(CANDIDATE) || !this.canBreedPair(unit2, CANDIDATE)) {
                 continue;
               }
               CANDIDATES.push(CANDIDATE);
             }
             CANDIDATES.sort(
-              (a, b) => Math.hypot(a.x - unit.x, a.y - unit.y) - Math.hypot(b.x - unit.x, b.y - unit.y) || a.id - b.id
+              (a, b) => Math.hypot(a.x - unit2.x, a.y - unit2.y) - Math.hypot(b.x - unit2.x, b.y - unit2.y) || a.id - b.id
             );
             for (const MATE of CANDIDATES) {
-              if (!this.reserveActiveBreedPair(unit, MATE)) {
+              if (!this.reserveActiveBreedPair(unit2, MATE)) {
                 continue;
               }
-              unit.nextMateSearchTick = this.simulationTick + 10;
+              unit2.nextMateSearchTick = this.simulationTick + 10;
               return MATE;
             }
-            unit.nextMateSearchTick = this.simulationTick + 10;
+            unit2.nextMateSearchTick = this.simulationTick + 10;
             if (!CANDIDATES.length) {
               return null;
             }
@@ -9988,7 +9988,7 @@
             if (this._ownedSpeciesCounts[FIRST.species] - this._pendingMergeCost(FIRST.species, EXCLUDED_TASK) - MATERIAL_COUNT + 1 < 2) {
               return false;
             }
-            if (requireNoEnemy && materials.some((unit) => this.senseEnemy(unit))) {
+            if (requireNoEnemy && materials.some((unit2) => this.senseEnemy(unit2))) {
               return false;
             }
             if (requireContact) {
@@ -10116,7 +10116,7 @@
                   bestTier = tier;
                   bestDistance = distance;
                   bestAnchorId = ANCHOR.id;
-                  bestMaterialIds = MATERIALS.map((unit) => unit.id);
+                  bestMaterialIds = MATERIALS.map((unit2) => unit2.id);
                   bestSortedIds = [...SORTED_IDS];
                 }
               }
@@ -10181,10 +10181,10 @@
             return false;
           }
           const MATERIALS = DECISION.materials;
-          const MATERIAL_IDS = MATERIALS.map((unit) => unit.id), OWNER = MERGE_RESERVATION_OWNER(MATERIAL_IDS), CENTER_X = MATERIALS.reduce((sum, unit) => sum + unit.x, 0) / MATERIALS.length, CENTER_Y = MATERIALS.reduce((sum, unit) => sum + unit.y, 0) / MATERIALS.length, DURATION3 = CONFIG.farm.merge.animationSeconds, SEQUENCE_WINDOW = DURATION3 * 0.72, STEP = SEQUENCE_WINDOW / MATERIALS.length;
+          const MATERIAL_IDS = MATERIALS.map((unit2) => unit2.id), OWNER = MERGE_RESERVATION_OWNER(MATERIAL_IDS), CENTER_X = MATERIALS.reduce((sum, unit2) => sum + unit2.x, 0) / MATERIALS.length, CENTER_Y = MATERIALS.reduce((sum, unit2) => sum + unit2.y, 0) / MATERIALS.length, DURATION3 = CONFIG.farm.merge.animationSeconds, SEQUENCE_WINDOW = DURATION3 * 0.72, STEP = SEQUENCE_WINDOW / MATERIALS.length;
           const REPLACE_OWNERS = [
             ...new Set(
-              MATERIALS.map((unit) => this.unitCollection.reservationOwner(unit)).filter(
+              MATERIALS.map((unit2) => this.unitCollection.reservationOwner(unit2)).filter(
                 (owner) => owner?.startsWith("breed:")
               )
             )
@@ -10215,12 +10215,12 @@
           };
           this.mergeTasks.push(TASK);
           MATERIALS.forEach(
-            (unit, index) => this.effects.push({
+            (unit2, index) => this.effects.push({
               kind: "merge-material",
               taskKey: OWNER,
-              x: unit.x,
-              y: unit.y,
-              z: unit.z,
+              x: unit2.x,
+              y: unit2.y,
+              z: unit2.z,
               targetX: CENTER_X,
               targetY: CENTER_Y,
               targetZ: TASK.centerZ,
@@ -10354,7 +10354,7 @@
           })) {
             return false;
           }
-          const ORDERED = [...materials], FIRST = ORDERED[0], MATERIAL_IDS = ORDERED.map((unit) => unit.id), X = TASK.centerX, Y = TASK.centerY, Z = TASK.centerZ;
+          const ORDERED = [...materials], FIRST = ORDERED[0], MATERIAL_IDS = ORDERED.map((unit2) => unit2.id), X = TASK.centerX, Y = TASK.centerY, Z = TASK.centerZ;
           const RESULT = new UNIT(this.nextId, FIRST.species, FIRST.tier + 1, X, Y);
           RESULT.dropLanded = false;
           RESULT.meals = 1;
@@ -10382,10 +10382,10 @@
               TASK.duration = CONFIG.farm.merge.animationSeconds;
               this._markMergeTasksChanged();
               ORDERED.forEach(
-                (unit, index) => this.effects.push({
+                (unit2, index) => this.effects.push({
                   kind: "merge-material",
-                  x: unit.x,
-                  y: unit.y,
+                  x: unit2.x,
+                  y: unit2.y,
                   z: 0.2,
                   targetX: X,
                   targetY: Y,
@@ -10562,7 +10562,7 @@
             }
           }
           this.projectiles.length = projectileWrite;
-          this.unitCollection.removeWhere((unit) => unit.isBattleOnlySummon && unit.hp <= 0);
+          this.unitCollection.removeWhere((unit2) => unit2.isBattleOnlySummon && unit2.hp <= 0);
           UNITS.length = 0;
           this.unitCollection.releaseStepReferences();
           this._spatialStepActive = false;
@@ -10570,9 +10570,9 @@
           this._foodSpatialDirty = true;
           this.profiler?.end("worldPostStep", POST_STEP_START);
         }
-        updateUnitSpatial(unit) {
+        updateUnitSpatial(unit2) {
           const START = this.profiler?.start();
-          this.unitSpatial.update(unit);
+          this.unitSpatial.update(unit2);
           this.profiler?.end("spatial", START);
         }
         updateFoodSpatial(food) {
@@ -10669,35 +10669,35 @@
           this.resolveContacts(units, dt);
           this.profiler?.end("collision", COLLISION_START);
         }
-        updateUnitIntent(unit, dt, enemy, scene) {
+        updateUnitIntent(unit2, dt, enemy, scene) {
           if (this.farmBossEvent.phase === "marching") {
-            this._marchUnit(unit);
+            this._marchUnit(unit2);
             return;
           }
-          if (this.isMergeTaskMaterial(unit)) {
+          if (this.isMergeTaskMaterial(unit2)) {
             return;
           }
           if (enemy) {
-            this.battleUnit(unit, dt, enemy);
+            this.battleUnit(unit2, dt, enemy);
             return;
           }
-          if (unit.hp > 0 && hasFaction(unit, FACTION_CONFIG.PLAYER) && !unit.isBattleOnlySummon) {
-            const ACTIVE_ATTACK = unit.specialAbility && unit.specialAbility.phase !== "idle" ? unit.specialAbility : unit.ability;
+          if (unit2.hp > 0 && hasFaction(unit2, FACTION_CONFIG.PLAYER) && !unit2.isBattleOnlySummon) {
+            const ACTIVE_ATTACK = unit2.specialAbility && unit2.specialAbility.phase !== "idle" ? unit2.specialAbility : unit2.ability;
             if (ACTIVE_ATTACK.phase !== "idle") {
               if (ACTIVE_ATTACK.phase !== "recover") {
                 ACTIVE_ATTACK.interrupt();
               }
               ACTIVE_ATTACK.update(this, dt);
             }
-            this.farmUnit(unit, dt);
+            this.farmUnit(unit2, dt);
             return;
           }
-          scene.updateUnoccupied(this, unit, dt);
+          scene.updateUnoccupied(this, unit2, dt);
         }
-        clearPeaRecoveryBoost(unit) {
-          unit.peaRecoveryPending = false;
-          unit.peaRecoveryBoostExpiresAtTick = 0;
-          unit.peaRecoveryBoostMultiplier = 0;
+        clearPeaRecoveryBoost(unit2) {
+          unit2.peaRecoveryPending = false;
+          unit2.peaRecoveryBoostExpiresAtTick = 0;
+          unit2.peaRecoveryBoostMultiplier = 0;
         }
         resolvePeaRecoveryBoosts(units) {
           for (const UNIT_LOCAL of units) {
@@ -11161,18 +11161,18 @@
         _isCurrentGroundedFood(food) {
           return !!food && food.phase === "grounded" && this.foodSpatial.itemCells.has(food);
         }
-        _startFoodTargetSearch(unit) {
-          const GRID = this.foodSpatial, CX = GRID.cellX(unit.x), CY = GRID.cellY(unit.y);
+        _startFoodTargetSearch(unit2) {
+          const GRID = this.foodSpatial, CX = GRID.cellX(unit2.x), CY = GRID.cellY(unit2.y);
           if (CX < 0 || CY < 0 || CX >= GRID.cellCount || CY >= GRID.cellCount) {
             return null;
           }
           const STATE = {
-            key: `food-target:${unit.id}:${++this._foodSearchJobSequence}`,
-            unit,
+            key: `food-target:${unit2.id}:${++this._foodSearchJobSequence}`,
+            unit: unit2,
             snapshot: this._foodSearchSnapshot,
             revision: this._foodSearchSnapshot.revision,
-            x: unit.x,
-            y: unit.y,
+            x: unit2.x,
+            y: unit2.y,
             centerX: CX,
             centerY: CY,
             maxRing: Math.max(CX, CY, GRID.cellCount - 1 - CX, GRID.cellCount - 1 - CY),
@@ -11188,15 +11188,15 @@
             status: "searching",
             target: null
           };
-          this._foodSearchStates.set(unit, STATE);
+          this._foodSearchStates.set(unit2, STATE);
           this._foodSearchScheduler.enqueue({
             key: STATE.key,
             owner: this,
             priority: 1,
-            isValid: () => this.scene === "farm" && this._foodSearchStates.get(unit) === STATE && this._unitById.get(unit.id) === unit && unit.hp > 0 && !unit.fed,
+            isValid: () => this.scene === "farm" && this._foodSearchStates.get(unit2) === STATE && this._unitById.get(unit2.id) === unit2 && unit2.hp > 0 && !unit2.fed,
             step: ({ maxUnits }) => this._stepFoodTargetSearch(STATE, maxUnits),
             onComplete: ({ result }) => {
-              if (this._foodSearchStates.get(unit) !== STATE) {
+              if (this._foodSearchStates.get(unit2) !== STATE) {
                 return;
               }
               if (result && this._isCurrentGroundedFood(result)) {
@@ -11205,9 +11205,9 @@
                 return;
               }
               if (STATE.revision !== this._groundedFoodRevision) {
-                this._foodSearchStates.delete(unit);
-                if (this.scene === "farm" && this._unitById.get(unit.id) === unit && unit.hp > 0 && !unit.fed) {
-                  this._startFoodTargetSearch(unit);
+                this._foodSearchStates.delete(unit2);
+                if (this.scene === "farm" && this._unitById.get(unit2.id) === unit2 && unit2.hp > 0 && !unit2.fed) {
+                  this._startFoodTargetSearch(unit2);
                 }
                 return;
               }
@@ -11292,15 +11292,15 @@
             state.nearestOrder = ORDER;
           }
         }
-        requestGroundFoodTarget(unit) {
+        requestGroundFoodTarget(unit2) {
           if (!this._spatialStepActive) {
             this._rebuildFoodSpatialIndex();
           }
-          if (!unit || this.scene !== "farm" || unit.hp <= 0 || unit.fed || !this._groundedFoodCount) {
-            this._cancelFoodTargetSearch(unit);
+          if (!unit2 || this.scene !== "farm" || unit2.hp <= 0 || unit2.fed || !this._groundedFoodCount) {
+            this._cancelFoodTargetSearch(unit2);
             return null;
           }
-          const STATE = this._foodSearchStates.get(unit);
+          const STATE = this._foodSearchStates.get(unit2);
           if (STATE?.status === "ready" && this._isCurrentGroundedFood(STATE.target)) {
             return STATE.target;
           }
@@ -11311,9 +11311,9 @@
             return null;
           }
           if (STATE) {
-            this._cancelFoodTargetSearch(unit);
+            this._cancelFoodTargetSearch(unit2);
           }
-          return this._startFoodTargetSearch(unit);
+          return this._startFoodTargetSearch(unit2);
         }
         farmUnit(u, dt) {
           FARM_MODES.breed.update(this, u, dt);
@@ -11392,12 +11392,12 @@
           }
           (u.ability || CREATE_UNIT_ATTACK_CYCLE(u)).onBasicHit?.(this, target);
         }
-        attackTarget(unit, action) {
+        attackTarget(unit2, action) {
           if (action?.targetId === "boss" || !action?.targetId) {
-            return this.boss.generation === action?.targetGeneration && areOpposingFactions(unit, this.boss) ? this.boss : null;
+            return this.boss.generation === action?.targetGeneration && areOpposingFactions(unit2, this.boss) ? this.boss : null;
           }
           const TARGET = this._unitForId(action.targetId);
-          return TARGET?.generation === action.targetGeneration && TARGET.hp > 0 && areOpposingFactions(unit, TARGET) ? TARGET : null;
+          return TARGET?.generation === action.targetGeneration && TARGET.hp > 0 && areOpposingFactions(unit2, TARGET) ? TARGET : null;
         }
         createAttackContext(u, { attackMultiplier = null, attackKind = null, strikeIndex = null, area = false, criticalRoll = null } = {}) {
           const SPEC = abilityProfile(u.species), ATTACKER_STATS = resolveUnitStats(u);
@@ -11418,8 +11418,8 @@
             }
           };
         }
-        unitStatsFor(unit) {
-          return resolveUnitStats(unit);
+        unitStatsFor(unit2) {
+          return resolveUnitStats(unit2);
         }
         combatTargetDefense(target) {
           if (target !== this.boss) {
@@ -11828,8 +11828,8 @@
               Math.min(FROM.y, TO.y) - EXTENT,
               Math.max(FROM.x, TO.x) + EXTENT,
               Math.max(FROM.y, TO.y) + EXTENT,
-              (unit) => {
-                if (ARENA_GEOMETRY.sweep(FROM, TO, B_LOCAL.radius, B_LOCAL.height, unit)) {
+              (unit2) => {
+                if (ARENA_GEOMETRY.sweep(FROM, TO, B_LOCAL.radius, B_LOCAL.height, unit2)) {
                   score++;
                 }
               }
@@ -11883,8 +11883,8 @@
               CANDIDATE.point.y - EXTENT,
               CANDIDATE.point.x + EXTENT,
               CANDIDATE.point.y + EXTENT,
-              (unit) => {
-                if (Math.hypot(unit.x - CANDIDATE.point.x, unit.y - CANDIDATE.point.y) <= CONFIG_LOCAL.landingRadius + unit.radius) {
+              (unit2) => {
+                if (Math.hypot(unit2.x - CANDIDATE.point.x, unit2.y - CANDIDATE.point.y) <= CONFIG_LOCAL.landingRadius + unit2.radius) {
                   score++;
                 }
               },
@@ -11966,50 +11966,50 @@
           });
           return true;
         }
-        hitBossPatternUnit(unit, patternId, point2, normal = null) {
-          return this.mutateUnits(this._hitBossPatternUnit, unit, patternId, point2, normal);
+        hitBossPatternUnit(unit2, patternId, point2, normal = null) {
+          return this.mutateUnits(this._hitBossPatternUnit, unit2, patternId, point2, normal);
         }
-        _hitBossPatternUnit(unit, patternId, point2, normal = null) {
+        _hitBossPatternUnit(unit2, patternId, point2, normal = null) {
           const B_LOCAL = this.boss, ACTION = B_LOCAL.patternRuntime.active, CONFIG_LOCAL = BOSS_PATTERN_CONFIG[patternId];
-          if (!ACTION || !CONFIG_LOCAL || !hasFaction(unit, FACTION_CONFIG.PLAYER) || !areOpposingFactions(B_LOCAL, unit) || unit.hp <= 0 || !unit.dropLanded || ACTION.hitIds.has(unit.id) || ACTION.hitIds.size >= CONFIG_LOCAL.maxTargets) {
+          if (!ACTION || !CONFIG_LOCAL || !hasFaction(unit2, FACTION_CONFIG.PLAYER) || !areOpposingFactions(B_LOCAL, unit2) || unit2.hp <= 0 || !unit2.dropLanded || ACTION.hitIds.has(unit2.id) || ACTION.hitIds.size >= CONFIG_LOCAL.maxTargets) {
             return false;
           }
-          if (CONFIG_LOCAL.groundOnly && unit.z > 0.1) {
+          if (CONFIG_LOCAL.groundOnly && unit2.z > 0.1) {
             return false;
           }
-          ACTION.hitIds.add(unit.id);
-          const DX = normal?.x ?? unit.x - B_LOCAL.x, DY = normal?.y ?? unit.y - B_LOCAL.y, N = Math.hypot(DX, DY) || 1;
-          const GUARD = unit.ability.receiveGuard?.(this), KNOCKBACK_MULTIPLIER = GUARD?.receivedKnockbackMultiplier ?? 1;
-          unit.knock(
+          ACTION.hitIds.add(unit2.id);
+          const DX = normal?.x ?? unit2.x - B_LOCAL.x, DY = normal?.y ?? unit2.y - B_LOCAL.y, N = Math.hypot(DX, DY) || 1;
+          const GUARD = unit2.ability.receiveGuard?.(this), KNOCKBACK_MULTIPLIER = GUARD?.receivedKnockbackMultiplier ?? 1;
+          unit2.knock(
             DX / N,
             DY / N,
             CONFIG_LOCAL.knockback * KNOCKBACK_MULTIPLIER,
             CONFIG_LOCAL.lift * KNOCKBACK_MULTIPLIER,
             B_LOCAL
           );
-          if (!hasFaction(unit, FACTION_CONFIG.PLAYER) || !areOpposingFactions(B_LOCAL, unit)) {
+          if (!hasFaction(unit2, FACTION_CONFIG.PLAYER) || !areOpposingFactions(B_LOCAL, unit2)) {
             return false;
           }
-          const RECEIVED = applyDamageToTargets(null, [unit], {
-            armorForTarget: () => this.combatTargetDefense(unit).armor,
+          const RECEIVED = applyDamageToTargets(null, [unit2], {
+            armorForTarget: () => this.combatTargetDefense(unit2).armor,
             rawDamage: B_LOCAL.attackPower * CONFIG_LOCAL.damageMultiplier * (this.bossEnraged ? BOSS_ENRAGE.damageMultiplier : 1) * (GUARD?.receivedDamageMultiplier ?? 1),
             sourceKind: "enemy"
           });
-          this.onCombatResolved.emit({ damageTaken: RECEIVED.totalActualLoss, excluded: unit.isFormationClone });
-          this._syncUnitAliveCount(unit);
-          if (unit.hp === 0) {
-            unit.down = unit.isBattleOnlySummon ? 0 : CONFIG.unit.corpseRecoverySeconds;
-            this.handleUnitDeath(unit);
+          this.onCombatResolved.emit({ damageTaken: RECEIVED.totalActualLoss, excluded: unit2.isFormationClone });
+          this._syncUnitAliveCount(unit2);
+          if (unit2.hp === 0) {
+            unit2.down = unit2.isBattleOnlySummon ? 0 : CONFIG.unit.corpseRecoverySeconds;
+            this.handleUnitDeath(unit2);
           }
           this.metrics.directHits++;
           this.metrics[BOSS_BEHAVIORS.forId(patternId).hitMetric]++;
           this.combat("unit-hit", {
             attackKind: patternId,
             attackId: B_LOCAL.attackId,
-            unit: unit.id,
+            unit: unit2.id,
             x: point2.x,
             y: point2.y,
-            z: Math.max(0.15, unit.z + 0.25),
+            z: Math.max(0.15, unit2.z + 0.25),
             nx: DX / N,
             ny: DY / N,
             strength: CONFIG_LOCAL.damageMultiplier
@@ -12207,7 +12207,7 @@
               continue;
             }
             const BLOCKED = this.units.some(
-              (unit) => unit.hp > 0 && Math.hypot(unit.x - CANDIDATE.x, unit.y - CANDIDATE.y) < RADIUS + unit.radius + 0.08
+              (unit2) => unit2.hp > 0 && Math.hypot(unit2.x - CANDIDATE.x, unit2.y - CANDIDATE.y) < RADIUS + unit2.radius + 0.08
             ) || (action?.landingPoints || []).some(
               (point2) => Math.hypot(point2.x - CANDIDATE.x, point2.y - CANDIDATE.y) < RADIUS * 2 + 0.08
             );
@@ -12443,16 +12443,16 @@
     }
     return RESULT;
   }
-  function cohortValues(unit) {
+  function cohortValues(unit2) {
     return [
-      unit.species,
-      unit.tier,
-      unit.meals >= 1,
-      Math.max(0, unit.growthDuration - unit.growthElapsed),
-      unit.growthDuration,
-      unit.cooldown,
-      unit.cooldownDuration,
-      unit.hp <= 0 ? unit.down : 0
+      unit2.species,
+      unit2.tier,
+      unit2.meals >= 1,
+      Math.max(0, unit2.growthDuration - unit2.growthElapsed),
+      unit2.growthDuration,
+      unit2.cooldown,
+      unit2.cooldownDuration,
+      unit2.hp <= 0 ? unit2.down : 0
     ];
   }
   function captureFarmProgress(world) {
@@ -12847,7 +12847,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.17";
+      PRODUCT_VERSION = "0.30.18";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -13385,6 +13385,12 @@
   init_farm_model();
 
   // src/features/formation-skills/presentation-base.js
+  init_model_base();
+  var REFERENCE_RADIUS = T1_DIAMETER / 2;
+  var SCALE_EXPONENT = 0.7;
+  function bodyScale(radius) {
+    return Math.max(1, (Number.isFinite(radius) ? radius : REFERENCE_RADIUS) / REFERENCE_RADIUS) ** SCALE_EXPONENT;
+  }
   function stroke(renderer, points, color, width) {
     const C = renderer.ctx;
     C.beginPath();
@@ -13407,7 +13413,7 @@
     if (FADE <= 0) {
       return;
     }
-    const BODY_SCALE = Math.min(2.2, Math.max(0.6, radius / 0.3));
+    const BODY_SCALE = bodyScale(radius);
     const POINTS = [];
     for (let i = 0; i <= 9; i++) {
       POINTS.push([
@@ -13493,16 +13499,16 @@
   // src/features/formation-skills/giant/presentation.js
   var GiantPresentation = class extends FormationPresentation {
     draw(renderer, effect) {
-      const PULSE = 0.85 + Math.sin(effect.age * 5) * 0.15, RADIUS = Math.max(0.3, effect.radius || 0.3);
-      renderer.ring(effect.x, effect.y, RADIUS * 1.15 * PULSE, "#b3d875cc", 0.14);
-      renderer.ring(effect.x, effect.y, RADIUS * 1.42 * PULSE, "#e6f3b366", 0.08);
+      const PULSE = 0.85 + Math.sin(effect.age * 5) * 0.15, RADIUS = Math.max(0.3, effect.radius || 0.3), SCALE = bodyScale(effect.radius);
+      renderer.ring(effect.x, effect.y, RADIUS * 1.15 * PULSE, "#b3d875cc", 0.14 * SCALE);
+      renderer.ring(effect.x, effect.y, RADIUS * 1.42 * PULSE, "#e6f3b366", 0.08 * SCALE);
       for (let i = 0; i < 5; i++) {
         const A = i * Math.PI * 2 / 5 + effect.age, P = renderer.project(
           effect.x + Math.cos(A) * RADIUS * 1.25,
           effect.y + Math.sin(A) * RADIUS * 1.25,
           (effect.age * 1.3 + i * 0.4) % 2 * Math.max(1, RADIUS)
         );
-        renderer.ellipse(P.x, P.y, renderer.scale * 0.06, renderer.scale * 0.11, "#e2f7a9aa");
+        renderer.ellipse(P.x, P.y, renderer.scale * 0.06 * SCALE, renderer.scale * 0.11 * SCALE, "#e2f7a9aa");
       }
     }
   };
@@ -13510,17 +13516,8 @@
   // src/features/formation-skills/lightning/presentation.js
   var LightningPresentation = class extends FormationPresentation {
     draw(renderer, effect) {
-      const BODY_HEIGHT = Math.max(0.5, effect.bodyHeight || 0.7), BODY_RADIUS = Math.max(0.2, effect.bodyRadius || 0.3);
-      bolt(
-        renderer,
-        effect.x,
-        effect.y,
-        effect.z + BODY_HEIGHT,
-        BODY_HEIGHT * 3.4,
-        effect.age,
-        effect.id,
-        BODY_RADIUS
-      );
+      const BODY_HEIGHT = Math.max(0.5, effect.bodyHeight || 0.7), BODY_RADIUS = Math.max(0.2, effect.bodyRadius || 0.3), RISE = Math.min(BODY_HEIGHT * 3.4, BODY_HEIGHT + 2.4);
+      bolt(renderer, effect.x, effect.y, effect.z + BODY_HEIGHT, RISE, effect.age, effect.id, BODY_RADIUS);
       if (effect.age < 0.5) {
         burst(
           renderer,
@@ -13534,7 +13531,7 @@
         );
       }
       if (effect.age < 0.12) {
-        const SKY = renderer.project(effect.x, effect.y, effect.z + BODY_HEIGHT * 3.4), TOP = renderer.project(effect.x, effect.y, effect.z + BODY_HEIGHT);
+        const SKY = renderer.project(effect.x, effect.y, effect.z + BODY_HEIGHT + RISE), TOP = renderer.project(effect.x, effect.y, effect.z + BODY_HEIGHT);
         renderer.ellipse(
           TOP.x,
           TOP.y,
@@ -13554,75 +13551,134 @@
   };
 
   // src/features/formation-skills/meteor/presentation.js
+  var FALL_SECONDS = 0.75;
+  var BLAST_SECONDS = 0.5;
+  var METEOR = Object.freeze({
+    // Fall: starts this many radii up and this many radii to the side, then accelerates onto the target.
+    fallHeight: 5.5,
+    fallSideways: 1.7,
+    rock: 0.42,
+    glow: 0.85,
+    trailSteps: 9,
+    trailSpan: 0.22,
+    // Blast.
+    flash: 0.22,
+    scorch: 0.8,
+    plumes: 4,
+    debris: 10,
+    smoke: 4
+  });
+  var TRAIL_COLORS = Object.freeze(["255,244,200", "255,196,92", "255,128,48", "176,56,28"]);
+  function unit(index, salt) {
+    const VALUE = Math.sin(index * 127.1 + salt * 311.7) * 43758.5453;
+    return VALUE - Math.floor(VALUE);
+  }
+  function fallPosition(effect, progress) {
+    const REMAINING = 1 - progress * progress, R2 = effect.radius;
+    return { x: effect.x - R2 * METEOR.fallSideways * REMAINING, z: R2 * METEOR.fallHeight * REMAINING };
+  }
   var MeteorPresentation = class extends FormationPresentation {
-    constructor() {
-      super();
-      this.bodySize = 1.3;
-      this.tailWidth = 2;
-    }
     draw(renderer, effect) {
       const AGE = effect.age - effect.delay;
       if (AGE < 0) {
         return;
       }
-      const S = renderer.scale, R2 = effect.radius;
-      if (AGE < 0.75) {
-        const Q = AGE / 0.75, Z = 12 * (1 - Q * Q), P = renderer.project(effect.x, effect.y, Z), T = renderer.project(effect.x - 0.9, effect.y, Z + 2.8);
-        renderer.ring(effect.x, effect.y, R2 * (1.1 - Q * 0.25), `rgba(255,150,80,${0.35 + Q * 0.5})`, 0.12);
-        renderer.groundEllipse(effect.x, effect.y, R2 * 0.8, R2 * 0.8, `rgba(255,120,60,${Q * 0.25})`);
-        stroke(
-          renderer,
-          [
-            [effect.x - 0.9, effect.y, Z + 2.8],
-            [effect.x, effect.y, Z]
-          ],
-          "#ffb458aa",
-          this.tailWidth
-        );
-        renderer.ellipse(P.x, P.y, S * this.bodySize, S * this.bodySize * 1.2, "#824c3d", -0.25);
-        renderer.ellipse(P.x - S * 0.09, P.y - S * 0.08, S * 0.21, S * 0.24, "#efbc76", -0.25);
-        renderer.ellipse(T.x, T.y, S * 0.13, S * 0.2, "#ffe4a455");
+      if (AGE < FALL_SECONDS) {
+        this.drawFall(renderer, effect, AGE / FALL_SECONDS);
       } else {
-        const Q = Math.min(1, (AGE - 0.75) / 0.5);
-        renderer.groundEllipse(
-          effect.x,
-          effect.y,
-          R2 * (0.45 + Q * 0.55),
-          R2 * (0.45 + Q * 0.55),
-          `rgba(239,157,72,${(1 - Q) * 0.26})`
+        this.drawBlast(renderer, effect, Math.min(1, (AGE - FALL_SECONDS) / BLAST_SECONDS));
+      }
+    }
+    // The ground mark shows the real damage radius and closes in as the rock comes down.
+    drawTelegraph(renderer, effect, progress) {
+      const R2 = effect.radius;
+      renderer.groundEllipse(effect.x, effect.y, R2, R2, `rgba(255,120,60,${0.08 + progress * 0.2})`);
+      renderer.ring(effect.x, effect.y, R2, `rgba(255,150,80,${0.4 + progress * 0.5})`, R2 * 0.06);
+      renderer.ring(
+        effect.x,
+        effect.y,
+        R2 * (1.7 - progress * 1.2),
+        `rgba(255,214,150,${0.5 - progress * 0.3})`,
+        R2 * 0.03
+      );
+    }
+    drawFall(renderer, effect, progress) {
+      const R2 = effect.radius, S = renderer.scale;
+      this.drawTelegraph(renderer, effect, progress);
+      for (let step = METEOR.trailSteps; step >= 1; step--) {
+        const BEHIND = step / METEOR.trailSteps, AT2 = fallPosition(effect, Math.max(0, progress - BEHIND * METEOR.trailSpan)), POINT2 = renderer.project(AT2.x, effect.y, AT2.z), COLOR = TRAIL_COLORS[Math.min(TRAIL_COLORS.length - 1, Math.floor(BEHIND * TRAIL_COLORS.length))], SIZE = R2 * METEOR.rock * (1 - BEHIND * 0.7);
+        renderer.ellipse(POINT2.x, POINT2.y, S * SIZE, S * SIZE * 1.1, `rgba(${COLOR},${0.7 * (1 - BEHIND)})`);
+      }
+      const AT = fallPosition(effect, progress), P = renderer.project(AT.x, effect.y, AT.z), ROCK = R2 * METEOR.rock * S;
+      renderer.ellipse(P.x, P.y, ROCK * METEOR.glow * 2.6, ROCK * METEOR.glow * 2.6, "rgba(255,150,60,0.22)");
+      renderer.ellipse(P.x, P.y, ROCK * 1.6, ROCK * 1.6, "rgba(255,190,90,0.4)");
+      renderer.ellipse(P.x, P.y, ROCK, ROCK * 1.1, "#5a3426", progress * 6);
+      renderer.ellipse(P.x - ROCK * 0.22, P.y - ROCK * 0.2, ROCK * 0.62, ROCK * 0.6, "#c2602c", progress * 6);
+      renderer.ellipse(P.x - ROCK * 0.34, P.y - ROCK * 0.32, ROCK * 0.3, ROCK * 0.28, "#ffd98a");
+      renderer.groundEllipse(effect.x, effect.y, R2 * 0.35 * progress, R2 * 0.35 * progress, "rgba(20,12,8,0.25)");
+    }
+    drawBlast(renderer, effect, progress) {
+      const R2 = effect.radius, S = renderer.scale, OUT = 1 - (1 - progress) ** 3, FADE = 1 - progress, HOLD = 1 - progress * progress;
+      renderer.groundEllipse(
+        effect.x,
+        effect.y,
+        R2 * METEOR.scorch,
+        R2 * METEOR.scorch,
+        `rgba(28,16,10,${0.42 * (1 - progress * 0.5)})`
+      );
+      renderer.groundEllipse(
+        effect.x,
+        effect.y,
+        R2 * (0.4 + OUT * 0.6),
+        R2 * (0.4 + OUT * 0.6),
+        `rgba(239,157,72,${FADE * 0.3})`
+      );
+      renderer.ring(effect.x, effect.y, R2 * OUT, `rgba(255,215,138,${FADE})`, R2 * (0.24 * FADE + 0.02));
+      renderer.ring(effect.x, effect.y, R2 * OUT * 0.62, `rgba(255,255,255,${FADE})`, R2 * 0.07 * FADE);
+      if (progress < METEOR.flash) {
+        const T = 1 - progress / METEOR.flash, F = renderer.project(effect.x, effect.y, R2 * 0.35);
+        renderer.ellipse(F.x, F.y, S * R2 * 1.5, S * R2 * 1.05, `rgba(255,240,200,${0.8 * T})`);
+        renderer.ellipse(F.x, F.y, S * R2 * 0.8, S * R2 * 0.55, `rgba(255,255,255,${T})`);
+      }
+      for (let i = 0; i < METEOR.plumes; i++) {
+        const A = i / METEOR.plumes * Math.PI * 2 + unit(i, effect.id), REACH = R2 * 0.45 * OUT, P = renderer.project(
+          effect.x + Math.cos(A) * REACH,
+          effect.y + Math.sin(A) * REACH * 0.6,
+          R2 * (0.2 + progress * 1.1)
         );
-        renderer.ring(effect.x, effect.y, R2 * Q, `rgba(255,215,138,${1 - Q})`, 0.3 * (1 - Q) + 0.03);
-        renderer.ring(effect.x, effect.y, R2 * Q * 0.6, `rgba(255,255,255,${1 - Q})`, 0.15 * (1 - Q));
-        if (Q < 0.25) {
-          const F = renderer.project(effect.x, effect.y, 0.4);
-          renderer.ellipse(F.x, F.y, S * R2 * 0.9, S * R2 * 0.6, `rgba(255,236,190,${0.7 * (1 - Q / 0.25)})`);
-        }
-        for (let i = 0; i < 9; i++) {
-          const A = i * 2.39996, P = renderer.project(
-            effect.x + Math.cos(A) * R2 * Q,
-            effect.y + Math.sin(A) * R2 * Q,
-            Math.sin(Q * Math.PI) * 1.8
-          );
-          renderer.ellipse(P.x, P.y, S * 0.14 * (1 - Q), S * 0.1 * (1 - Q), `rgba(150,112,77,${1 - Q})`);
-        }
+        renderer.ellipse(P.x, P.y, S * R2 * 0.5 * HOLD, S * R2 * 0.75 * HOLD, `rgba(255,140,50,${HOLD * 0.85})`);
+        renderer.ellipse(P.x, P.y, S * R2 * 0.28 * HOLD, S * R2 * 0.46 * HOLD, `rgba(255,232,160,${HOLD * 0.95})`);
+      }
+      for (let i = 0; i < METEOR.smoke; i++) {
+        const A = i / METEOR.smoke * Math.PI * 2 + 0.7 + unit(i, effect.id + 3), P = renderer.project(
+          effect.x + Math.cos(A) * R2 * 0.5 * OUT,
+          effect.y + Math.sin(A) * R2 * 0.3 * OUT,
+          R2 * (0.3 + progress * 1.4)
+        );
+        renderer.ellipse(
+          P.x,
+          P.y,
+          S * R2 * (0.2 + progress * 0.3),
+          S * R2 * (0.16 + progress * 0.24),
+          `rgba(70,62,58,${FADE * 0.4})`
+        );
+      }
+      for (let i = 0; i < METEOR.debris; i++) {
+        const A = i * 2.39996 + effect.id, REACH = R2 * OUT * (0.35 + 0.65 * unit(i, effect.id)), LIFT = R2 * 1.5 * (0.4 + unit(i, effect.id + 1)) * Math.sin(progress * Math.PI), P = renderer.project(effect.x + Math.cos(A) * REACH, effect.y + Math.sin(A) * REACH * 0.7, LIFT);
+        renderer.ellipse(P.x, P.y, S * R2 * 0.11 * FADE, S * R2 * 0.085 * FADE, `rgba(120,80,52,${FADE})`, A);
       }
     }
   };
 
   // src/features/formation-skills/meteor-shower/presentation.js
   var MeteorShowerPresentation = class extends MeteorPresentation {
-    constructor() {
-      super();
-      this.bodySize = 0.6;
-      this.tailWidth = 0.8;
-    }
   };
 
   // src/features/formation-skills/copy/presentation.js
   var CopyPresentation = class extends FormationPresentation {
     draw(renderer, effect) {
       const Q = Math.min(1, effect.age / effect.duration);
-      renderer.ring(effect.x, effect.y, effect.radius, "#84c6e8dd", 0.12);
+      renderer.ring(effect.x, effect.y, effect.radius, "#84c6e8dd", 0.12 * bodyScale(effect.radius));
       renderer.groundEllipse(effect.x, effect.y, effect.radius, effect.radius, `rgba(120,196,235,${(1 - Q) * 0.3})`);
     }
   };
@@ -13652,7 +13708,8 @@
         if (UNIT3.hp <= 0 || UNIT3.faction !== "player" || UNIT3.hp >= UNIT3.maxHp) {
           continue;
         }
-        cloud(renderer, UNIT3.x, UNIT3.y, UNIT3.height + 1.6, 1.3, FADE * 0.7);
+        const SCALE = bodyScale(UNIT3.radius);
+        cloud(renderer, UNIT3.x, UNIT3.y, UNIT3.height + 1.6 * SCALE, 1.3 * SCALE, FADE * 0.7);
         for (let i = 0; i < 4; i++) {
           const Z = ((i * 0.6 - effect.age * 2) % 1.8 + 1.8) % 1.8;
           stroke(
@@ -13662,7 +13719,7 @@
               [UNIT3.x + (i - 1.5) * 0.18, UNIT3.y, Z]
             ],
             `rgba(136,216,188,${FADE * 0.8})`,
-            0.07
+            0.07 * SCALE
           );
         }
       }
@@ -13805,7 +13862,7 @@
         POINTS[1][0] = effect.x;
         POINTS[1][1] = effect.y;
         POINTS[1][2] = effect.beamTargetZ;
-        const BEAM = Math.max(1, BODY_RADIUS / 0.5);
+        const BEAM = bodyScale(effect.bodyRadius);
         stroke(renderer, POINTS, "#74f5db44", 0.33 * BEAM);
         stroke(renderer, POINTS, "#afffe6cc", 0.11 * BEAM);
         stroke(renderer, POINTS, "#f4fff3", 0.035 * BEAM);
@@ -13838,7 +13895,7 @@
   }
   var StormCloudPresentation = class extends FormationPresentation {
     draw(renderer, effect) {
-      const BODY_RADIUS = Math.max(0.2, (effect.bodyRadius || 0.3) * 0.55), BODY_SCALE = Math.max(1, BODY_RADIUS / 0.3), CLOUD_SIZE = BODY_RADIUS * 2.6, ENTER = Math.min(1, effect.age / 0.5), EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5, Z = effect.z + Math.sin(effect.age * 3) * Math.min(0.1, BODY_RADIUS * 0.12), SPREAD = (1 - ENTER + EXIT) * BODY_RADIUS * 2.6;
+      const BODY_RADIUS = Math.max(0.2, (effect.bodyRadius || 0.3) * 0.55), BODY_SCALE = bodyScale(effect.bodyRadius), CLOUD_SIZE = BODY_RADIUS * 2.6, ENTER = Math.min(1, effect.age / 0.5), EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5, Z = effect.z + Math.sin(effect.age * 3) * Math.min(0.1, BODY_RADIUS * 0.12), SPREAD = (1 - ENTER + EXIT) * BODY_RADIUS * 2.6;
       for (let index = 0; index < 3; index++) {
         const ANGLE = index * Math.PI * 2 / 3;
         cloud(
@@ -14562,16 +14619,16 @@
     victorious() {
       return false;
     }
-    unitMood(unit, joyEffects) {
-      if (unit.cooldown > 0 && unit.ability?.phase === "idle") {
+    unitMood(unit2, joyEffects) {
+      if (unit2.cooldown > 0 && unit2.ability?.phase === "idle") {
         return "neutral";
       }
       for (const EFFECT of joyEffects) {
-        if (Math.hypot(EFFECT.x - unit.x, EFFECT.y - unit.y) < 1.2) {
+        if (Math.hypot(EFFECT.x - unit2.x, EFFECT.y - unit2.y) < 1.2) {
           return "happy";
         }
       }
-      return unit.fed ? "neutral" : "hungry";
+      return unit2.fed ? "neutral" : "hungry";
     }
     collectJoy(world, joyEffects) {
       joyEffects.length = 0;
@@ -14718,8 +14775,8 @@
       super();
       this.id = FEATURE3.id;
     }
-    recoverMotion(unit) {
-      return unit.ability?.action?.path && unit.ability.elapsed < 0.12 ? "fire" : "recover";
+    recoverMotion(unit2) {
+      return unit2.ability?.action?.path && unit2.ability.elapsed < 0.12 ? "fire" : "recover";
     }
   };
 
@@ -14730,8 +14787,8 @@
       super();
       this.id = FEATURE4.id;
     }
-    activeMotion(unit) {
-      return unit.ability.peanutStrikeCount > 2 ? `fire-${unit.ability.peanutStrikeCount}` : "fire";
+    activeMotion(unit2) {
+      return unit2.ability.peanutStrikeCount > 2 ? `fire-${unit2.ability.peanutStrikeCount}` : "fire";
     }
   };
 
@@ -14740,23 +14797,23 @@
 
   // src/farm-indicators.js
   init_factions();
-  function farmBreedingCooldown(unit, world, defaultDuration = 10, result = {}) {
-    if (world?.scene !== "farm" || unit?.hp <= 0 || unit?.down > 0 || unit?.cooldown <= 0 || unit?.meals !== 0) {
+  function farmBreedingCooldown(unit2, world, defaultDuration = 10, result = {}) {
+    if (world?.scene !== "farm" || unit2?.hp <= 0 || unit2?.down > 0 || unit2?.cooldown <= 0 || unit2?.meals !== 0) {
       return null;
     }
-    const DURATION3 = unit.cooldownDuration || world.breedCooldownDuration?.() || defaultDuration;
-    const REMAINING = Math.max(0, unit.cooldown);
+    const DURATION3 = unit2.cooldownDuration || world.breedCooldownDuration?.() || defaultDuration;
+    const REMAINING = Math.max(0, unit2.cooldown);
     result.remaining = REMAINING;
     result.duration = DURATION3;
     result.progress = Math.max(0, Math.min(1, 1 - REMAINING / DURATION3));
     return result;
   }
-  function unitRestPresentation(unit, world, duration, result) {
-    if (unit.faction !== FACTION_CONFIG.PLAYER || unit.isBattleOnlySummon || unit.hp > 0) {
+  function unitRestPresentation(unit2, world, duration, result) {
+    if (unit2.faction !== FACTION_CONFIG.PLAYER || unit2.isBattleOnlySummon || unit2.hp > 0) {
       return null;
     }
-    const RECOVERING = world.scene === "farm" && unit.down > 0;
-    let elapsed = RECOVERING ? Math.max(0, duration - unit.down) : Infinity;
+    const RECOVERING = world.scene === "farm" && unit2.down > 0;
+    let elapsed = RECOVERING ? Math.max(0, duration - unit2.down) : Infinity;
     if (!RECOVERING) {
       for (let i = world.notices.length - 1; i >= 0; i--) {
         const EVENT = world.notices[i];
@@ -14767,15 +14824,15 @@
         if (AGE >= 0.5) {
           break;
         }
-        if (EVENT.kind === "unit-hit" && EVENT.unit === unit.id && AGE >= 0) {
+        if (EVENT.kind === "unit-hit" && EVENT.unit === unit2.id && AGE >= 0) {
           elapsed = AGE;
           break;
         }
       }
     }
-    result.phase = elapsed < 0.5 ? "defeat" : RECOVERING && unit.down <= 0.5 ? "wake" : "sleep";
-    result.elapsed = result.phase === "defeat" ? elapsed : result.phase === "wake" ? 0.5 - unit.down : RECOVERING ? elapsed - 0.5 : world.time;
-    result.progress = RECOVERING ? Math.max(0, Math.min(1, 1 - unit.down / duration)) : -1;
+    result.phase = elapsed < 0.5 ? "defeat" : RECOVERING && unit2.down <= 0.5 ? "wake" : "sleep";
+    result.elapsed = result.phase === "defeat" ? elapsed : result.phase === "wake" ? 0.5 - unit2.down : RECOVERING ? elapsed - 0.5 : world.time;
+    result.progress = RECOVERING ? Math.max(0, Math.min(1, 1 - unit2.down / duration)) : -1;
     return result;
   }
 
@@ -14785,8 +14842,8 @@
   var ATTACK_PRESENTATIONS = new Map(
     [new DualStrikePresentation(), new LobPresentation()].map((presentation) => [presentation.id, presentation])
   );
-  function unitAttackPresentation(unit) {
-    return ATTACK_PRESENTATIONS.get(UNIT_ABILITY_PROFILES[unit.species]?.kind) || DEFAULT_ATTACK;
+  function unitAttackPresentation(unit2) {
+    return ATTACK_PRESENTATIONS.get(UNIT_ABILITY_PROFILES[unit2.species]?.kind) || DEFAULT_ATTACK;
   }
   function workSwing(u, sim) {
     const SWING = sim.workSwingOf?.(u.id);
@@ -14987,7 +15044,7 @@
       } else if (player.currentClip !== MOTION_NAME) {
         player.play(MOTION_NAME, CLIP_START_AT_MS);
       }
-      const ORIGINAL = u.isFormationClone && sim.time - u.cloneBornAt < 0.5 ? sim.units.find((unit) => unit.id === u.cloneParentId) : null, EXPRESSION = unitExpression(ORIGINAL || u, sim, this.renderer.joyEffects, rest);
+      const ORIGINAL = u.isFormationClone && sim.time - u.cloneBornAt < 0.5 ? sim.units.find((unit2) => unit2.id === u.cloneParentId) : null, EXPRESSION = unitExpression(ORIGINAL || u, sim, this.renderer.joyEffects, rest);
       if (EXPRESSION !== player.currentExpression) {
         player.setExpression(EXPRESSION);
       }
@@ -18539,7 +18596,7 @@
       GENERATIONS.add(U.generation);
     }
     ASSERT2(
-      INTEGER2(raw.entityGenerationSerial, 1, 1e12) && raw.entityGenerationSerial >= raw.boss.generation && raw.units.every((unit) => unit.generation <= raw.entityGenerationSerial)
+      INTEGER2(raw.entityGenerationSerial, 1, 1e12) && raw.entityGenerationSerial >= raw.boss.generation && raw.units.every((unit2) => unit2.generation <= raw.entityGenerationSerial)
     );
     for (const F of raw.food) {
       ASSERT2(["flight", "bounce", "grounded"].includes(F.phase));
@@ -19400,7 +19457,7 @@
         { atMs: 1500, cmd: "merge" }
       ],
       step(world) {
-        if (world.units.some((unit) => unit.tier >= 2)) {
+        if (world.units.some((unit2) => unit2.tier >= 2)) {
           return "done";
         }
         return world.mergeTask ? "merging" : "start";
@@ -20128,7 +20185,7 @@
     if (personalGarden.farmBossEvent?.phase !== "idle") {
       return "이미 전투 중이에요.";
     }
-    if (!personalGarden.units.some((unit) => !unit.isBattleOnlySummon && unit.hp > 0)) {
+    if (!personalGarden.units.some((unit2) => !unit2.isBattleOnlySummon && unit2.hp > 0)) {
       return "싸울 유닛이 없어요. 유닛을 먼저 키워 주세요.";
     }
     return "";
@@ -21283,7 +21340,7 @@
   }
   window.addEventListener("popstate", route);
   function sync(display, now, notices) {
-    const W = active.world, FARM_EVENT = display.farmBossEvent, FARM_EVENT_ACTIVE = FARM_EVENT?.phase !== "idle", BATTLE_OUTCOME = FARM_EVENT?.outcome, HAS_READY_TROOPS = personalGarden ? personalGarden.units.some((unit) => unit.hp > 0 && unit.down <= 0) : false, REWARD_WORLD = personalGarden || W, PENDING_REWARD = REWARD_WORLD.bossRewardReceipts.find(
+    const W = active.world, FARM_EVENT = display.farmBossEvent, FARM_EVENT_ACTIVE = FARM_EVENT?.phase !== "idle", BATTLE_OUTCOME = FARM_EVENT?.outcome, HAS_READY_TROOPS = personalGarden ? personalGarden.units.some((unit2) => unit2.hp > 0 && unit2.down <= 0) : false, REWARD_WORLD = personalGarden || W, PENDING_REWARD = REWARD_WORLD.bossRewardReceipts.find(
       (reward) => ["calculating", "ready"].includes(reward.status) || reward.queuedCount > 0
     ), MERGE_STATUS = mergeAvailability(W, now);
     syncBossRewardDialog(REWARD_WORLD);
