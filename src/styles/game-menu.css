@@ -456,6 +456,10 @@
     color: var(--ui-ink);
     font-size: var(--ui-fs-4);
 }
+.breed-editor button:disabled {
+    background: var(--ui-disabled);
+    color: var(--ui-disabled-ink);
+}
 .breed-editor .flat-range {
     height: var(--ui-tap);
     touch-action: pan-y;

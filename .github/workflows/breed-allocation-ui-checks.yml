@@ -1,0 +1,30 @@
+name: Breeding allocation UI checks
+on:
+    pull_request:
+        paths:
+            - 'src/breed-allocation.js'
+            - 'tests/breed-allocation.e2e.mjs'
+            - '.github/workflows/breed-allocation-ui-checks.yml'
+permissions:
+    contents: read
+jobs:
+    browser:
+        runs-on: ubuntu-latest
+        timeout-minutes: 8
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+            - run: npm ci
+            - run: npx playwright install --with-deps chromium
+            - run: npm run build
+            - run: timeout 180s npm run test:breed-allocation
+            - run: timeout 180s npm test
+            - uses: actions/upload-artifact@v4
+              if: always()
+              with:
+                  name: breeding-allocation-ui
+                  path: tests/output/breed-allocation/
+                  if-no-files-found: ignore
