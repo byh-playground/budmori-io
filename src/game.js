@@ -7891,6 +7891,11 @@
             marchSeconds: 4.5,
             marchSpeed: 7,
             gateRadius: 1.8,
+            // Coming back from the tower, the troops drop out of the door one after another (ejectSeconds in all), each in a
+            // short arc (flightSeconds) from ejectHeight onto a spot of its own anywhere on the farm.
+            ejectSeconds: 1.8,
+            flightSeconds: 0.8,
+            ejectHeight: 4,
             battle: Object.freeze({ hp: 1, attack: 1, edge: 0, reward: 1 }),
             elite: Object.freeze({ hp: 1.6, attack: 1.25, edge: 0.25, reward: 2 }),
             mid: Object.freeze({ hp: 2.2, attack: 1.4, edge: 0.5, reward: BOSS_REWARD_SETTINGS.maxKindReward })
@@ -8856,6 +8861,7 @@
           this.cancelBreedPlans();
           this._activeBreedReservations = /* @__PURE__ */ new Map();
           this._benched = /* @__PURE__ */ new Set();
+          this._ejectQueue = [];
           this._benchRevision = 0;
           this._fieldCache = { revision: -1, bench: -1, list: [] };
           this._deployReadyTime = 0;
@@ -9697,6 +9703,7 @@
         }
         // Start a climb: the farm's units go up the tower floor by floor, from any floor up to the best one so far.
         startTower(startFloor = 1) {
+          this._flushEjected();
           if (this.scene !== "farm" || this.boss.active || this.farmBossEvent.phase !== "idle" || this.tower.active || !this.units.some((u) => !u.isBattleOnlySummon && u.hp > 0)) {
             return false;
           }
@@ -9737,23 +9744,57 @@
           this.insideTower = true;
           return this._beginFloor(this.tower.pendingKind);
         }
-        // Back out on the farm: the troops step out of the door and spread over the ground in front of it.
+        // Back out on the farm: the troops drop out of the tower door one after another and scatter over the whole farm. Each
+        // one is already resting on its landing spot (so a save taken now is sound) but stays in hand until its turn.
         _leaveTowerView() {
           this.insideTower = false;
-          const GATE = this.towerGate;
-          for (const UNIT_LOCAL of this.unitCollection.items) {
-            if (UNIT_LOCAL.isBattleOnlySummon) {
-              continue;
-            }
-            Object.assign(UNIT_LOCAL, {
-              x: GATE.x + (this.random() - 0.5) * 7,
-              y: GATE.y - 1.5 - this.random() * 3.5,
-              z: 0,
-              vx: 0,
-              vy: 0,
-              vz: 0
-            });
+          const SETTINGS = CONFIG.farm.tower, ARENA = CONFIG.farm.arena, UNITS = this.unitCollection.items.filter((unit2) => !unit2.isBattleOnlySummon);
+          for (let index = UNITS.length - 1; index > 0; index--) {
+            const OTHER = Math.floor(this.random() * (index + 1));
+            [UNITS[index], UNITS[OTHER]] = [UNITS[OTHER], UNITS[index]];
           }
+          this._ejectQueue = UNITS.map((unit2, index) => {
+            const AT = ARENA_GEOMETRY.clamp(
+              { x: (this.random() * 2 - 1) * (ARENA.radiusX - 2), y: (this.random() * 2 - 1) * (ARENA.radiusY - 2) },
+              "farm",
+              1
+            );
+            Object.assign(unit2, { x: AT.x, y: AT.y, z: 0, vx: 0, vy: 0, vz: 0 });
+            return { unit: unit2, at: this.time + index / UNITS.length * SETTINGS.ejectSeconds, target: AT };
+          });
+          this._benched = new Set(UNITS);
+          this._benchRevision++;
+          this._unitSpatialDirty = true;
+        }
+        // The next troop whose turn has come leaves the door in an arc that lands on its spot.
+        _releaseEjected() {
+          const SETTINGS = CONFIG.farm.tower, GATE = this.towerGate;
+          while (this._ejectQueue.length && this._ejectQueue[0].at <= this.time) {
+            const NEXT = this._ejectQueue.shift(), UNIT_LOCAL = NEXT.unit, TARGET = NEXT.target;
+            this._benched.delete(UNIT_LOCAL);
+            this._benchRevision++;
+            if (UNIT_LOCAL.hp > 0 && this.unitCollection.has(UNIT_LOCAL)) {
+              const X = GATE.x + (this.random() - 0.5) * 3, Y = GATE.y - 0.8, T = SETTINGS.flightSeconds;
+              Object.assign(UNIT_LOCAL, {
+                x: X,
+                y: Y,
+                z: SETTINGS.ejectHeight,
+                vx: (TARGET.x - X) / T,
+                vy: (TARGET.y - Y) / T,
+                vz: (0.5 * CONFIG.physics.gravity * T * T - SETTINGS.ejectHeight) / T,
+                dropLanded: false
+              });
+            }
+            this._unitSpatialDirty = true;
+          }
+        }
+        // Whoever is still in the door when something else begins is set down on its spot at once.
+        _flushEjected() {
+          for (const NEXT of this._ejectQueue) {
+            this._benched.delete(NEXT.unit);
+          }
+          this._ejectQueue.length = 0;
+          this._benchRevision++;
           this._unitSpatialDirty = true;
         }
         // The next floor: its kind is drawn (tower-run.js) and its doors are what that kind offers. A fight offers its bosses,
@@ -10744,6 +10785,7 @@
             }
           }
           this._rebuildUnitSpatialIndex(UNITS);
+          this._releaseEjected();
           this.formationSkills.update(dt);
           const SCENE = SIMULATION_SCENES[this.scene];
           SCENE.advanceClock(this, dt);
@@ -13137,7 +13179,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.25";
+      PRODUCT_VERSION = "0.30.26";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
