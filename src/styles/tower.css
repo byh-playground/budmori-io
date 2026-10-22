@@ -88,11 +88,15 @@
 .door--elite {
     border-color: var(--ui-gauge-enemy);
 }
-.door--rest {
+.door--skill {
     border-color: var(--ui-gauge-ally);
 }
-.door--boost {
+.door--rarity-1 {
+    border-color: var(--ui-gauge-ally);
+}
+.door--rarity-2 {
     border-color: var(--ui-focus);
+    box-shadow: 0 0 0 1px var(--ui-focus);
 }
 .door--mid {
     border-color: var(--ui-focus);

@@ -39,22 +39,38 @@ export const COMMON_UNIT_STAT_PROFILES = Object.freeze(
             }),
     ),
 );
-// One tower run's strengthening cards multiply every unit alike; the run sets them and the end of the run clears them.
-const RUN_BOOST = { attack: 1, hp: 1 };
+// One tower run's stat cards change every unit alike: {stat: {flat, pct}}. A stat is (base + flat) * (1 + pct); regen's
+// pct is a share of max HP per second. The run sets them and the end of the run clears them.
+const RUN_MODS = {};
+function withRunMods(stats) {
+    const OUT = { ...stats };
+    for (const [STAT, MOD] of Object.entries(RUN_MODS)) {
+        if (STAT !== 'regen') {
+            OUT[STAT] = (OUT[STAT] + MOD.flat) * (1 + MOD.pct);
+        }
+    }
+    OUT.maxHp = Math.round(OUT.maxHp);
+    if (RUN_MODS.regen) {
+        OUT.regen += RUN_MODS.regen.flat + OUT.maxHp * RUN_MODS.regen.pct;
+    }
+    return OUT;
+}
 function createBaseStats(tier, speciesProfile) {
-    let maxHp = TIER_HP * RUN_BOOST.hp;
-    let attackPower = TIER_ATTACK * RUN_BOOST.attack;
+    let maxHp = TIER_HP;
+    let attackPower = TIER_ATTACK;
     for (let resultTier = 2; resultTier <= tier; resultTier++) {
         const TRANSITION_MULTIPLIER = UNIT_GRADES[resultTier - 1].materialCost / 2;
         maxHp *= TIER_HP_SCALE * TRANSITION_MULTIPLIER;
         attackPower *= TIER_ATTACK_SCALE * TRANSITION_MULTIPLIER;
     }
-    return Object.freeze({
-        maxHp: Math.round(maxHp),
-        attackPower,
-        ...COMMON_UNIT_STAT_DEFAULTS,
-        ...speciesProfile,
-    });
+    return Object.freeze(
+        withRunMods({
+            maxHp,
+            attackPower,
+            ...COMMON_UNIT_STAT_DEFAULTS,
+            ...speciesProfile,
+        }),
+    );
 }
 
 // Only frozen definition inputs are cached. Unit state and caller overrides are
@@ -75,9 +91,11 @@ function fillBaseStats() {
     }
 }
 fillBaseStats();
-export function setRunStatBoost(attack = 1, hp = 1) {
-    RUN_BOOST.attack = attack;
-    RUN_BOOST.hp = hp;
+export function setRunStatMods(mods) {
+    for (const STAT of Object.keys(RUN_MODS)) {
+        delete RUN_MODS[STAT];
+    }
+    Object.assign(RUN_MODS, mods);
     fillBaseStats();
 }
 export function baseUnitStatsFor(tier, species) {

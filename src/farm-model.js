@@ -32,7 +32,7 @@ const EMPTY_FOOD_SEARCH_BUCKET = Object.freeze([]);
 import {
     baseUnitStatsFor,
     resolveUnitStats,
-    setRunStatBoost,
+    setRunStatMods,
     applyDamageToTargets,
     applyHealing,
     resolveStatusDuration,
@@ -52,8 +52,17 @@ import {
     advanceBossRewardCalculations,
     createBossRewardStreams,
 } from './boss-rewards.js';
+import {
+    TOWER_EVENTS,
+    advanceSince,
+    freshTowerRun,
+    rollCardOffers,
+    rollEventOffers,
+    rollFloorKind,
+    runStatModifiers,
+} from './tower-run.js';
 import { SPECIES_COUNT } from './species-catalog.js';
-import { createPlayerProgressionState, awardMasteryXp } from './player-progression.js';
+import { createPlayerProgressionState } from './player-progression.js';
 import { purchaseAbilityNode, resetPlayerProgression } from './ability-progression.js';
 import { composeUnitAttackCycles } from './unit-attack-capabilities.js';
 import { MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT, mergeMaterialCostForTier } from './unit-grades.js';
@@ -144,9 +153,6 @@ const CONFIG = Object.freeze({
             topFloor: 61,
             relicSlots: 3,
             relicMaxLevel: 5,
-            // A strengthening door gives one run-long multiplier to every unit (hp 1.2, attack 1.1); attackShare is how
-            // often the offer is the attack card.
-            boost: Object.freeze({ attack: 1.1, hp: 1.2, attackShare: 0.5 }),
             // The troops walk to the tower door at the back of the farm and go in; the door is where the fence opens.
             marchSeconds: 4.5,
             marchSpeed: 7,
@@ -1247,11 +1253,7 @@ const GARDEN = class Garden {
             active: false,
             floor: 0,
             kind: 'battle',
-            doors: [],
-            offer: '',
-            relics: new Map(),
-            boost: { attack: 1, hp: 1 },
-            boostOffer: 'attack',
+            ...freshTowerRun(),
             sleepUntil: new Map(),
             record: false,
         };
@@ -2091,11 +2093,7 @@ const GARDEN = class Garden {
             active: true,
             floor: FLOOR,
             kind: KIND,
-            doors: [],
-            offer: '',
-            relics: new Map(),
-            boost: { attack: 1, hp: 1 },
-            boostOffer: 'attack',
+            ...freshTowerRun(),
             sleepUntil: SLEEP,
             record: false,
         };
@@ -2146,33 +2144,39 @@ const GARDEN = class Garden {
         }
         this._unitSpatialDirty = true;
     }
-    // The next floor's doors: a mid-boss floor has only its boss; otherwise two of battle / elite / rest (rest only if someone sleeps).
+    // The next floor: its kind is drawn (tower-run.js) and its doors are what that kind offers. A fight offers its bosses,
+    // a strengthening floor offers cards, an event floor offers events.
     _rollDoors() {
-        const NEXT = this.tower.floor + 1;
-        if (NEXT % CONFIG.farm.tower.midBossEvery === 0) {
-            return ['mid'];
-        }
-        const POOL = ['battle', 'elite'];
-        if (this.tower.sleepUntil.size) {
-            POOL.push('rest');
-        }
-        // A relic door is a free floor: a new relic, or one more level of a relic already held.
-        const OFFERS = FORMATION_SKILL_DEFINITIONS.map(({ id }) => id).filter((id) => {
-            const LEVEL = this.tower.relics.get(id) || 0;
-            return LEVEL
-                ? LEVEL < CONFIG.farm.tower.relicMaxLevel
-                : this.tower.relics.size < CONFIG.farm.tower.relicSlots;
+        const T = this.tower,
+            FLOOR = T.floor + 1;
+        T.nextKind = rollFloorKind({
+            floor: FLOOR,
+            since: T.since,
+            random: () => this.random(),
+            midBossEvery: CONFIG.farm.tower.midBossEvery,
+            topFloor: CONFIG.farm.tower.topFloor,
         });
-        if (OFFERS.length) {
-            POOL.push('relic');
+        if (T.nextKind === 'mid') {
+            return [{ type: 'fight', kind: 'mid' }];
         }
-        POOL.push('boost');
-        while (POOL.length > 2) {
-            POOL.splice(Math.floor(this.random() * POOL.length), 1);
+        if (T.nextKind === 'battle') {
+            return [
+                { type: 'fight', kind: 'battle' },
+                { type: 'fight', kind: 'elite' },
+            ];
         }
-        this.tower.offer = POOL.includes('relic') ? OFFERS[Math.floor(this.random() * OFFERS.length)] : '';
-        this.tower.boostOffer = this.random() < CONFIG.farm.tower.boost.attackShare ? 'attack' : 'hp';
-        return POOL;
+        if (T.nextKind === 'event') {
+            return rollEventOffers({ world: this, random: () => this.random() });
+        }
+        return rollCardOffers({
+            floor: FLOOR,
+            cards: T.cards,
+            relics: T.relics,
+            skillIds: FORMATION_SKILL_DEFINITIONS.map(({ id }) => id),
+            relicSlots: CONFIG.farm.tower.relicSlots,
+            relicMaxLevel: CONFIG.farm.tower.relicMaxLevel,
+            random: () => this.random(),
+        });
     }
     // Between floors everybody waits in the hand; the fallen start sleeping for tier (max 3) floors.
     afterFloor() {
@@ -2205,47 +2209,34 @@ const GARDEN = class Garden {
             return false;
         }
         T.floor++;
+        T.since = advanceSince(T.since, T.nextKind);
         T.doors = [];
-        if (DOOR === 'rest') {
-            for (const U of this.unitCollection.items) {
-                if (T.sleepUntil.has(U.id)) {
-                    this._wakeUnit(U);
-                }
-            }
-            T.kind = 'rest';
-            T.doors = this._rollDoors();
-            this.combat('tower-rest', { floor: T.floor });
-            this.markProgressChanged();
-            return true;
+        if (DOOR.type === 'fight') {
+            return this._beginFloor(DOOR.kind);
         }
-        if (DOOR === 'relic') {
-            T.relics.set(T.offer, (T.relics.get(T.offer) || 0) + 1);
-            T.kind = 'relic';
-            T.doors = this._rollDoors();
-            this.combat('tower-relic', { floor: T.floor });
-            this.markProgressChanged();
-            return true;
+        if (DOOR.type === 'skill') {
+            T.relics.set(DOOR.id, (T.relics.get(DOOR.id) || 0) + 1);
+        } else if (DOOR.type === 'stat') {
+            T.cards.push({ id: DOOR.id, rarity: DOOR.rarity });
+            this._applyRunStats();
+        } else {
+            TOWER_EVENTS.find((event) => event.id === DOOR.id).apply(this);
         }
-        if (DOOR === 'boost') {
-            const BOOST = CONFIG.farm.tower.boost;
-            T.boost[T.boostOffer] *= BOOST[T.boostOffer];
-            this._applyRunBoost();
-            T.kind = 'boost';
-            T.doors = this._rollDoors();
-            this.combat('tower-boost', { floor: T.floor });
-            this.markProgressChanged();
-            return true;
-        }
-        return this._beginFloor(DOOR);
+        // A floor reached without a fight still counts as reached.
+        this.playerProgression.towerBest = Math.max(this.playerProgression.towerBest, T.floor);
+        T.kind = T.nextKind;
+        T.doors = this._rollDoors();
+        this.combat('tower-card', { floor: T.floor });
+        this.markProgressChanged();
+        return true;
     }
-    _clearRunBoost() {
-        this.tower.boost = { attack: 1, hp: 1 };
-        this._applyRunBoost();
+    _clearRunStats() {
+        this.tower.cards = [];
+        this._applyRunStats();
     }
-    // The run's strengthening cards change every unit's stats; hit points never stay above the new top.
-    _applyRunBoost() {
-        const BOOST = this.tower.boost;
-        setRunStatBoost(BOOST.attack, BOOST.hp);
+    // The run's stat cards change every unit's stats; hit points never stay above the new top.
+    _applyRunStats() {
+        setRunStatMods(runStatModifiers(this.tower.cards));
         for (const UNIT_LOCAL of this.unitCollection.items) {
             if (UNIT_LOCAL.hp > 0 && !UNIT_LOCAL.isFormationClone) {
                 UNIT_LOCAL.hp = Math.min(UNIT_LOCAL.hp, STATS(UNIT_LOCAL.tier, UNIT_LOCAL.species).maxHp);
@@ -2261,7 +2252,7 @@ const GARDEN = class Garden {
         return true;
     }
     _endTower() {
-        this._clearRunBoost();
+        this._clearRunStats();
         this.tower.active = false;
         this.tower.doors = [];
         this._benched.clear();
@@ -4753,7 +4744,7 @@ const GARDEN = class Garden {
         // A cleared floor keeps the hand for the next one; any other ending sends everyone back to the farm.
         const CLIMBING = outcome === 'victory' && this.tower.active && this.tower.floor < CONFIG.farm.tower.topFloor;
         if (!CLIMBING) {
-            this._clearRunBoost();
+            this._clearRunStats();
             this.tower.active = false;
             this.tower.doors = [];
             this._benched.clear();
@@ -4789,60 +4780,43 @@ const GARDEN = class Garden {
                 BEST = this.playerProgression.towerBest,
                 KIND = CONFIG.farm.tower[this.tower.floor ? this.tower.kind : 'battle'];
             this.tower.record = EVENT_STAGE > BEST;
-            // Only a floor higher than ever before pays out: the best floor decides the rewards.
-            if (EVENT_STAGE > BEST) {
+            if (this.tower.record) {
                 this.playerProgression.towerBest = EVENT_STAGE;
             }
-            // A species the farm does not have yet always pays out its first win, record floor or not.
-            const FIRST_CLEAR = !bossSpeciesOwned(this, this.boss.species),
-                SETTLEMENT =
-                    !this.tower.record && !FIRST_CLEAR
-                        ? null
-                        : settleBossKill(this, {
-                              encounterId: ENCOUNTER_ID,
-                              source: 'farm',
-                              stage: EVENT_STAGE,
-                              species: this.boss.species,
-                              tier: 1,
-                              x: this.boss.x,
-                              y: this.boss.y,
-                              firstClear: FIRST_CLEAR,
-                              rollBudget: STAGE_STATS.rollBudget * KIND.reward,
-                              xpAmount: STAGE_STATS.xp * KIND.reward,
-                          });
-            // Every win feeds the beaten species' mastery, and the XP grows with the floor.
-            const MASTERY =
-                SETTLEMENT ??
-                awardMasteryXp(
-                    this.playerProgression,
-                    `farm:${ENCOUNTER_ID}`,
-                    this.boss.species,
-                    STAGE_STATS.xp * KIND.reward,
-                );
-            if (!SETTLEMENT && MASTERY.awarded) {
-                this.playerProgression = MASTERY.state;
-            }
+            // Every win pays by its floor and kind; a floor higher than ever before pays double.
+            const REWARD_SCALE = KIND.reward * (this.tower.record ? BOSS_REWARD_SETTINGS.recordMultiplier : 1),
+                FIRST_CLEAR = !bossSpeciesOwned(this, this.boss.species),
+                SETTLEMENT = settleBossKill(this, {
+                    encounterId: ENCOUNTER_ID,
+                    source: 'farm',
+                    stage: EVENT_STAGE,
+                    species: this.boss.species,
+                    tier: 1,
+                    x: this.boss.x,
+                    y: this.boss.y,
+                    firstClear: FIRST_CLEAR,
+                    rollBudget: STAGE_STATS.rollBudget * REWARD_SCALE,
+                    xpAmount: STAGE_STATS.xp * REWARD_SCALE,
+                });
+            const REWARD = SETTLEMENT.receipt;
             this.combat('farm-boss-xp', {
                 encounterId: ENCOUNTER_ID,
                 species: this.boss.species,
-                xp: MASTERY.xpAwarded,
-                levelsGained: MASTERY.levelsGained,
-                pointsAwarded: MASTERY.pointsAwarded,
+                xp: SETTLEMENT.xpAwarded,
+                levelsGained: SETTLEMENT.levelsGained,
+                pointsAwarded: SETTLEMENT.pointsAwarded,
             });
-            if (SETTLEMENT) {
-                const REWARD = SETTLEMENT.receipt;
-                this.combat('farm-boss-reward', {
-                    acquired: REWARD.grantedCount > 0,
-                    pending: REWARD.status === 'pending',
-                    successCount: REWARD.successCount,
-                    grantedCount: REWARD.grantedCount,
-                    species: REWARD.species,
-                    tier: REWARD.tier,
-                    chance: REWARD.chance,
-                    roll: REWARD.roll,
-                    encounterId: ENCOUNTER_ID,
-                });
-            }
+            this.combat('farm-boss-reward', {
+                acquired: REWARD.grantedCount > 0,
+                pending: REWARD.status === 'pending',
+                successCount: REWARD.successCount,
+                grantedCount: REWARD.grantedCount,
+                species: REWARD.species,
+                tier: REWARD.tier,
+                chance: REWARD.chance,
+                roll: REWARD.roll,
+                encounterId: ENCOUNTER_ID,
+            });
         }
         this.markProgressChanged();
         this.combat(outcome === 'victory' ? 'farm-boss-victory' : 'farm-boss-defeat', {

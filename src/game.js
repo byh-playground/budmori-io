@@ -278,6 +278,136 @@
     }
   });
 
+  // src/tower-run.js
+  function freshTowerRun() {
+    return { doors: [], nextKind: "", cards: [], relics: /* @__PURE__ */ new Map(), since: { battle: 0, power: 1, event: 1 } };
+  }
+  function statCardText(card, rarity) {
+    const VALUE = card.values[rarity];
+    if (card.stat === "critChance" || card.stat === "lifesteal") {
+      return `+${Math.round(VALUE * 1e3) / 10}%p`;
+    }
+    if (card.stat === "regen" && card.mode === "pct") {
+      return `+${Math.round(VALUE * 1e4) / 100}% 체력/초`;
+    }
+    if (card.stat === "regen") {
+      return `+${VALUE}/초`;
+    }
+    return card.mode === "pct" ? `+${Math.round(VALUE * 100)}%` : `+${VALUE}`;
+  }
+  function statCard(id) {
+    return STAT_CARDS.find((card) => card.id === id);
+  }
+  function runStatModifiers(cards) {
+    const MODS = {};
+    for (const TAKEN of cards) {
+      const CARD = statCard(TAKEN.id);
+      MODS[CARD.stat] ??= { flat: 0, pct: 0 };
+      MODS[CARD.stat][CARD.mode] += CARD.values[TAKEN.rarity];
+    }
+    return MODS;
+  }
+  function cardStacks(cards, id) {
+    return cards.reduce((sum, card) => sum + (card.id === id ? 1 : 0), 0);
+  }
+  function weightedIndex(weights, random) {
+    const TOTAL = weights.reduce((sum, weight) => sum + weight, 0);
+    let rest = random() * TOTAL;
+    for (let index = 0; index < weights.length; index++) {
+      rest -= weights[index];
+      if (rest < 0 && weights[index] > 0) {
+        return index;
+      }
+    }
+    return weights.findLastIndex((weight) => weight > 0);
+  }
+  function rollFloorKind({ floor, since, random, midBossEvery, topFloor }) {
+    const SETTINGS = TOWER_RUN_SETTINGS;
+    if (floor % midBossEvery === 0) {
+      return "mid";
+    }
+    if (floor >= topFloor || since.battle >= SETTINGS.battleMaxGap) {
+      return "battle";
+    }
+    const KINDS = Object.keys(SETTINGS.floorBase);
+    return KINDS[weightedIndex(
+      KINDS.map(
+        (kind) => kind === "event" && !TOWER_EVENTS.length ? 0 : SETTINGS.floorBase[kind] * (1 + SETTINGS.gain * since[kind])
+      ),
+      random
+    )];
+  }
+  function advanceSince(since, kind) {
+    const CAME = kind === "mid" ? "battle" : kind;
+    return Object.fromEntries(Object.entries(since).map(([key, value]) => [key, key === CAME ? 0 : value + 1]));
+  }
+  function rollRarity(floor, random) {
+    const SETTINGS = TOWER_RUN_SETTINGS;
+    return weightedIndex(
+      SETTINGS.rarityBase.map(
+        (base, index) => Math.min(SETTINGS.rarityMax[index], base + SETTINGS.rarityPerFloor[index] * floor)
+      ),
+      random
+    );
+  }
+  function rollCardOffers({ floor, cards, relics, skillIds, relicSlots, relicMaxLevel, random }) {
+    const OFFERS = [], STATS2 = STAT_CARDS.filter((card) => cardStacks(cards, card.id) < TOWER_RUN_SETTINGS.cardCap);
+    if (STATS2.length) {
+      const CARD = STATS2[Math.floor(random() * STATS2.length)];
+      OFFERS.push({ type: "stat", id: CARD.id, rarity: rollRarity(floor, random) });
+    }
+    const SKILLS = skillIds.filter((id) => {
+      const LEVEL = relics.get(id) || 0;
+      return LEVEL ? LEVEL < relicMaxLevel : relics.size < relicSlots;
+    });
+    if (SKILLS.length) {
+      OFFERS.push({ type: "skill", id: SKILLS[Math.floor(random() * SKILLS.length)] });
+    }
+    return OFFERS;
+  }
+  function rollEventOffers({ world, random }) {
+    const POOL = TOWER_EVENTS.filter((event) => event.available(world)), OFFERS = [];
+    while (OFFERS.length < 3 && POOL.length) {
+      OFFERS.push({ type: "event", id: POOL.splice(Math.floor(random() * POOL.length), 1)[0].id });
+    }
+    return OFFERS;
+  }
+  var TOWER_RUN_SETTINGS, TOWER_EVENTS, RARITY_NAMES, STAT_CARDS;
+  var init_tower_run = __esm({
+    "src/tower-run.js"() {
+      TOWER_RUN_SETTINGS = Object.freeze({
+        // A floor kind's weight is `base * (1 + gain * floors since it last came)`, so one that stays away becomes likelier.
+        // Events weigh nothing while none are registered (TOWER_EVENTS below).
+        floorBase: Object.freeze({ battle: 1.5, power: 8, event: 1 }),
+        gain: 0.5,
+        // A fight is forced once this many floors have passed without one; the fixed mid boss counts as a fight.
+        battleMaxGap: 4,
+        // A card can be taken this many times in one climb, whatever its rarity.
+        cardCap: 10,
+        // Rarity weights at floor 0 and how much each floor adds, capped. Order: common, rare, epic.
+        rarityBase: Object.freeze([70, 25, 5]),
+        rarityPerFloor: Object.freeze([0, 0.25, 0.1]),
+        rarityMax: Object.freeze([70, 40, 15])
+      });
+      TOWER_EVENTS = Object.freeze([]);
+      RARITY_NAMES = Object.freeze(["일반", "희귀", "영웅"]);
+      STAT_CARDS = Object.freeze([
+        { id: "attack-pct", stat: "attackPower", mode: "pct", name: "공격력", values: [0.1, 0.16, 0.25] },
+        { id: "attack-flat", stat: "attackPower", mode: "flat", name: "공격력", values: [2, 3, 5] },
+        { id: "hp-pct", stat: "maxHp", mode: "pct", name: "체력", values: [0.12, 0.19, 0.3] },
+        { id: "hp-flat", stat: "maxHp", mode: "flat", name: "체력", values: [20, 32, 50] },
+        { id: "regen-pct", stat: "regen", mode: "pct", name: "재생", values: [5e-3, 8e-3, 0.0125] },
+        { id: "regen-flat", stat: "regen", mode: "flat", name: "재생", values: [1, 1.6, 2.5] },
+        { id: "armor-flat", stat: "armor", mode: "flat", name: "방어력", values: [10, 16, 25] },
+        { id: "attack-speed-pct", stat: "attackSpeed", mode: "pct", name: "공격 속도", values: [0.06, 0.1, 0.15] },
+        { id: "move-speed-pct", stat: "moveSpeed", mode: "pct", name: "이동 속도", values: [0.06, 0.1, 0.15] },
+        { id: "crit-chance-flat", stat: "critChance", mode: "flat", name: "치명타 확률", values: [0.05, 0.08, 0.12] },
+        { id: "crit-multiplier-flat", stat: "critMultiplier", mode: "flat", name: "치명타 피해", values: [0.2, 0.32, 0.5] },
+        { id: "lifesteal-flat", stat: "lifesteal", mode: "flat", name: "흡혈", values: [0.03, 0.05, 0.075] }
+      ]);
+    }
+  });
+
   // src/farm-offline.js
   function applyOffline(world, config, rawSeconds) {
     const OFFLINE = config.farm.offline, BREEDING = config.farm.breeding;
@@ -766,20 +896,35 @@
   });
 
   // src/unit-stats.js
+  function withRunMods(stats) {
+    const OUT = { ...stats };
+    for (const [STAT, MOD] of Object.entries(RUN_MODS)) {
+      if (STAT !== "regen") {
+        OUT[STAT] = (OUT[STAT] + MOD.flat) * (1 + MOD.pct);
+      }
+    }
+    OUT.maxHp = Math.round(OUT.maxHp);
+    if (RUN_MODS.regen) {
+      OUT.regen += RUN_MODS.regen.flat + OUT.maxHp * RUN_MODS.regen.pct;
+    }
+    return OUT;
+  }
   function createBaseStats(tier, speciesProfile) {
-    let maxHp = TIER_HP * RUN_BOOST.hp;
-    let attackPower = TIER_ATTACK * RUN_BOOST.attack;
+    let maxHp = TIER_HP;
+    let attackPower = TIER_ATTACK;
     for (let resultTier = 2; resultTier <= tier; resultTier++) {
       const TRANSITION_MULTIPLIER = UNIT_GRADES[resultTier - 1].materialCost / 2;
       maxHp *= TIER_HP_SCALE * TRANSITION_MULTIPLIER;
       attackPower *= TIER_ATTACK_SCALE * TRANSITION_MULTIPLIER;
     }
-    return Object.freeze({
-      maxHp: Math.round(maxHp),
-      attackPower,
-      ...COMMON_UNIT_STAT_DEFAULTS,
-      ...speciesProfile
-    });
+    return Object.freeze(
+      withRunMods({
+        maxHp,
+        attackPower,
+        ...COMMON_UNIT_STAT_DEFAULTS,
+        ...speciesProfile
+      })
+    );
   }
   function fillBaseStats() {
     BASE_STATS_BY_PROFILE.clear();
@@ -795,9 +940,11 @@
       );
     }
   }
-  function setRunStatBoost(attack = 1, hp = 1) {
-    RUN_BOOST.attack = attack;
-    RUN_BOOST.hp = hp;
+  function setRunStatMods(mods) {
+    for (const STAT of Object.keys(RUN_MODS)) {
+      delete RUN_MODS[STAT];
+    }
+    Object.assign(RUN_MODS, mods);
     fillBaseStats();
   }
   function baseUnitStatsFor(tier, species) {
@@ -935,7 +1082,7 @@
       target.hp = value;
     }
   }
-  var TIER_HP, TIER_HP_SCALE, TIER_ATTACK, TIER_ATTACK_SCALE, ARMOR_SCALE, COMMON_UNIT_STAT_DEFAULTS, COMMON_UNIT_STAT_PROFILES, RUN_BOOST, BASE_STATS_BY_PROFILE;
+  var TIER_HP, TIER_HP_SCALE, TIER_ATTACK, TIER_ATTACK_SCALE, ARMOR_SCALE, COMMON_UNIT_STAT_DEFAULTS, COMMON_UNIT_STAT_PROFILES, RUN_MODS, BASE_STATS_BY_PROFILE;
   var init_unit_stats = __esm({
     "src/unit-stats.js"() {
       init_unit_grades();
@@ -971,7 +1118,7 @@
           })
         )
       );
-      RUN_BOOST = { attack: 1, hp: 1 };
+      RUN_MODS = {};
       BASE_STATS_BY_PROFILE = /* @__PURE__ */ new Map();
       fillBaseStats();
     }
@@ -6874,7 +7021,7 @@
       pointsAwarded: RESULT.pointsAwarded
     };
   }
-  var FORMAT_PERCENT, FORMAT_COUNT, PRD_UNITS_PER_TICK, STREAM_DOMAINS, STREAM_SOURCE, MAX_KIND_REWARD, BOSS_REWARD_SETTINGS;
+  var FORMAT_PERCENT, FORMAT_COUNT, PRD_UNITS_PER_TICK, STREAM_DOMAINS, STREAM_SOURCE, MAX_KIND_REWARD, RECORD_MULTIPLIER, BOSS_REWARD_SETTINGS;
   var init_boss_rewards = __esm({
     "src/boss-rewards.js"() {
       init_player_progression();
@@ -6889,6 +7036,7 @@
       });
       STREAM_SOURCE = Object.freeze({ farm: "event" });
       MAX_KIND_REWARD = 3;
+      RECORD_MULTIPLIER = 2;
       BOSS_REWARD_SETTINGS = Object.freeze({
         acquisitionChance: 0.05,
         firstClearAcquisitionChance: 1,
@@ -6905,8 +7053,10 @@
         // Reward draws per stage: one more draw for each floor. A floor kind may multiply them by up to `maxKindReward`.
         stageRollStep: 1,
         maxKindReward: MAX_KIND_REWARD,
+        // A win on a floor higher than any before pays this many times over.
+        recordMultiplier: RECORD_MULTIPLIER,
         maxStage: FARM_BOSS_EVENT_MAX_STAGE,
-        maxRollCount: FARM_BOSS_EVENT_MAX_STAGE * MAX_KIND_REWARD,
+        maxRollCount: FARM_BOSS_EVENT_MAX_STAGE * MAX_KIND_REWARD * RECORD_MULTIPLIER,
         maxBoxCount: 100,
         prdUnitsPerTick: PRD_UNITS_PER_TICK,
         speciesWeights: BOSS_SPECIES_WEIGHTS
@@ -7571,6 +7721,7 @@
       init_unit_stats();
       init_unit_abilities();
       init_boss_rewards();
+      init_tower_run();
       init_species_catalog();
       init_player_progression();
       init_ability_progression();
@@ -7646,9 +7797,6 @@
             topFloor: 61,
             relicSlots: 3,
             relicMaxLevel: 5,
-            // A strengthening door gives one run-long multiplier to every unit (hp 1.2, attack 1.1); attackShare is how
-            // often the offer is the attack card.
-            boost: Object.freeze({ attack: 1.1, hp: 1.2, attackShare: 0.5 }),
             // The troops walk to the tower door at the back of the farm and go in; the door is where the fence opens.
             marchSeconds: 4.5,
             marchSpeed: 7,
@@ -8626,11 +8774,7 @@
             active: false,
             floor: 0,
             kind: "battle",
-            doors: [],
-            offer: "",
-            relics: /* @__PURE__ */ new Map(),
-            boost: { attack: 1, hp: 1 },
-            boostOffer: "attack",
+            ...freshTowerRun(),
             sleepUntil: /* @__PURE__ */ new Map(),
             record: false
           };
@@ -9403,11 +9547,7 @@
             active: true,
             floor: FLOOR,
             kind: KIND,
-            doors: [],
-            offer: "",
-            relics: /* @__PURE__ */ new Map(),
-            boost: { attack: 1, hp: 1 },
-            boostOffer: "attack",
+            ...freshTowerRun(),
             sleepUntil: SLEEP,
             record: false
           };
@@ -9456,30 +9596,38 @@
           }
           this._unitSpatialDirty = true;
         }
-        // The next floor's doors: a mid-boss floor has only its boss; otherwise two of battle / elite / rest (rest only if someone sleeps).
+        // The next floor: its kind is drawn (tower-run.js) and its doors are what that kind offers. A fight offers its bosses,
+        // a strengthening floor offers cards, an event floor offers events.
         _rollDoors() {
-          const NEXT = this.tower.floor + 1;
-          if (NEXT % CONFIG.farm.tower.midBossEvery === 0) {
-            return ["mid"];
-          }
-          const POOL = ["battle", "elite"];
-          if (this.tower.sleepUntil.size) {
-            POOL.push("rest");
-          }
-          const OFFERS = FORMATION_SKILL_DEFINITIONS.map(({ id }) => id).filter((id) => {
-            const LEVEL = this.tower.relics.get(id) || 0;
-            return LEVEL ? LEVEL < CONFIG.farm.tower.relicMaxLevel : this.tower.relics.size < CONFIG.farm.tower.relicSlots;
+          const T = this.tower, FLOOR = T.floor + 1;
+          T.nextKind = rollFloorKind({
+            floor: FLOOR,
+            since: T.since,
+            random: () => this.random(),
+            midBossEvery: CONFIG.farm.tower.midBossEvery,
+            topFloor: CONFIG.farm.tower.topFloor
           });
-          if (OFFERS.length) {
-            POOL.push("relic");
+          if (T.nextKind === "mid") {
+            return [{ type: "fight", kind: "mid" }];
           }
-          POOL.push("boost");
-          while (POOL.length > 2) {
-            POOL.splice(Math.floor(this.random() * POOL.length), 1);
+          if (T.nextKind === "battle") {
+            return [
+              { type: "fight", kind: "battle" },
+              { type: "fight", kind: "elite" }
+            ];
           }
-          this.tower.offer = POOL.includes("relic") ? OFFERS[Math.floor(this.random() * OFFERS.length)] : "";
-          this.tower.boostOffer = this.random() < CONFIG.farm.tower.boost.attackShare ? "attack" : "hp";
-          return POOL;
+          if (T.nextKind === "event") {
+            return rollEventOffers({ world: this, random: () => this.random() });
+          }
+          return rollCardOffers({
+            floor: FLOOR,
+            cards: T.cards,
+            relics: T.relics,
+            skillIds: FORMATION_SKILL_DEFINITIONS.map(({ id }) => id),
+            relicSlots: CONFIG.farm.tower.relicSlots,
+            relicMaxLevel: CONFIG.farm.tower.relicMaxLevel,
+            random: () => this.random()
+          });
         }
         // Between floors everybody waits in the hand; the fallen start sleeping for tier (max 3) floors.
         afterFloor() {
@@ -9511,47 +9659,33 @@
             return false;
           }
           T.floor++;
+          T.since = advanceSince(T.since, T.nextKind);
           T.doors = [];
-          if (DOOR === "rest") {
-            for (const U of this.unitCollection.items) {
-              if (T.sleepUntil.has(U.id)) {
-                this._wakeUnit(U);
-              }
-            }
-            T.kind = "rest";
-            T.doors = this._rollDoors();
-            this.combat("tower-rest", { floor: T.floor });
-            this.markProgressChanged();
-            return true;
+          if (DOOR.type === "fight") {
+            return this._beginFloor(DOOR.kind);
           }
-          if (DOOR === "relic") {
-            T.relics.set(T.offer, (T.relics.get(T.offer) || 0) + 1);
-            T.kind = "relic";
-            T.doors = this._rollDoors();
-            this.combat("tower-relic", { floor: T.floor });
-            this.markProgressChanged();
-            return true;
+          if (DOOR.type === "skill") {
+            T.relics.set(DOOR.id, (T.relics.get(DOOR.id) || 0) + 1);
+          } else if (DOOR.type === "stat") {
+            T.cards.push({ id: DOOR.id, rarity: DOOR.rarity });
+            this._applyRunStats();
+          } else {
+            TOWER_EVENTS.find((event) => event.id === DOOR.id).apply(this);
           }
-          if (DOOR === "boost") {
-            const BOOST = CONFIG.farm.tower.boost;
-            T.boost[T.boostOffer] *= BOOST[T.boostOffer];
-            this._applyRunBoost();
-            T.kind = "boost";
-            T.doors = this._rollDoors();
-            this.combat("tower-boost", { floor: T.floor });
-            this.markProgressChanged();
-            return true;
-          }
-          return this._beginFloor(DOOR);
+          this.playerProgression.towerBest = Math.max(this.playerProgression.towerBest, T.floor);
+          T.kind = T.nextKind;
+          T.doors = this._rollDoors();
+          this.combat("tower-card", { floor: T.floor });
+          this.markProgressChanged();
+          return true;
         }
-        _clearRunBoost() {
-          this.tower.boost = { attack: 1, hp: 1 };
-          this._applyRunBoost();
+        _clearRunStats() {
+          this.tower.cards = [];
+          this._applyRunStats();
         }
-        // The run's strengthening cards change every unit's stats; hit points never stay above the new top.
-        _applyRunBoost() {
-          const BOOST = this.tower.boost;
-          setRunStatBoost(BOOST.attack, BOOST.hp);
+        // The run's stat cards change every unit's stats; hit points never stay above the new top.
+        _applyRunStats() {
+          setRunStatMods(runStatModifiers(this.tower.cards));
           for (const UNIT_LOCAL of this.unitCollection.items) {
             if (UNIT_LOCAL.hp > 0 && !UNIT_LOCAL.isFormationClone) {
               UNIT_LOCAL.hp = Math.min(UNIT_LOCAL.hp, STATS(UNIT_LOCAL.tier, UNIT_LOCAL.species).maxHp);
@@ -9567,7 +9701,7 @@
           return true;
         }
         _endTower() {
-          this._clearRunBoost();
+          this._clearRunStats();
           this.tower.active = false;
           this.tower.doors = [];
           this._benched.clear();
@@ -11634,7 +11768,7 @@
           this.cleanupBattleSummons();
           const CLIMBING = outcome === "victory" && this.tower.active && this.tower.floor < CONFIG.farm.tower.topFloor;
           if (!CLIMBING) {
-            this._clearRunBoost();
+            this._clearRunStats();
             this.tower.active = false;
             this.tower.doors = [];
             this._benched.clear();
@@ -11667,10 +11801,10 @@
           if (outcome === "victory") {
             const EVENT_STAGE = this.boss.stage, STAGE_STATS = bossStageStats(EVENT_STAGE), BEST = this.playerProgression.towerBest, KIND = CONFIG.farm.tower[this.tower.floor ? this.tower.kind : "battle"];
             this.tower.record = EVENT_STAGE > BEST;
-            if (EVENT_STAGE > BEST) {
+            if (this.tower.record) {
               this.playerProgression.towerBest = EVENT_STAGE;
             }
-            const FIRST_CLEAR = !bossSpeciesOwned(this, this.boss.species), SETTLEMENT = !this.tower.record && !FIRST_CLEAR ? null : settleBossKill(this, {
+            const REWARD_SCALE = KIND.reward * (this.tower.record ? BOSS_REWARD_SETTINGS.recordMultiplier : 1), FIRST_CLEAR = !bossSpeciesOwned(this, this.boss.species), SETTLEMENT = settleBossKill(this, {
               encounterId: ENCOUNTER_ID,
               source: "farm",
               stage: EVENT_STAGE,
@@ -11679,39 +11813,28 @@
               x: this.boss.x,
               y: this.boss.y,
               firstClear: FIRST_CLEAR,
-              rollBudget: STAGE_STATS.rollBudget * KIND.reward,
-              xpAmount: STAGE_STATS.xp * KIND.reward
+              rollBudget: STAGE_STATS.rollBudget * REWARD_SCALE,
+              xpAmount: STAGE_STATS.xp * REWARD_SCALE
             });
-            const MASTERY = SETTLEMENT ?? awardMasteryXp(
-              this.playerProgression,
-              `farm:${ENCOUNTER_ID}`,
-              this.boss.species,
-              STAGE_STATS.xp * KIND.reward
-            );
-            if (!SETTLEMENT && MASTERY.awarded) {
-              this.playerProgression = MASTERY.state;
-            }
+            const REWARD2 = SETTLEMENT.receipt;
             this.combat("farm-boss-xp", {
               encounterId: ENCOUNTER_ID,
               species: this.boss.species,
-              xp: MASTERY.xpAwarded,
-              levelsGained: MASTERY.levelsGained,
-              pointsAwarded: MASTERY.pointsAwarded
+              xp: SETTLEMENT.xpAwarded,
+              levelsGained: SETTLEMENT.levelsGained,
+              pointsAwarded: SETTLEMENT.pointsAwarded
             });
-            if (SETTLEMENT) {
-              const REWARD2 = SETTLEMENT.receipt;
-              this.combat("farm-boss-reward", {
-                acquired: REWARD2.grantedCount > 0,
-                pending: REWARD2.status === "pending",
-                successCount: REWARD2.successCount,
-                grantedCount: REWARD2.grantedCount,
-                species: REWARD2.species,
-                tier: REWARD2.tier,
-                chance: REWARD2.chance,
-                roll: REWARD2.roll,
-                encounterId: ENCOUNTER_ID
-              });
-            }
+            this.combat("farm-boss-reward", {
+              acquired: REWARD2.grantedCount > 0,
+              pending: REWARD2.status === "pending",
+              successCount: REWARD2.successCount,
+              grantedCount: REWARD2.grantedCount,
+              species: REWARD2.species,
+              tier: REWARD2.tier,
+              chance: REWARD2.chance,
+              roll: REWARD2.roll,
+              encounterId: ENCOUNTER_ID
+            });
           }
           this.markProgressChanged();
           this.combat(outcome === "victory" ? "farm-boss-victory" : "farm-boss-defeat", {
@@ -12848,7 +12971,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.22";
+      PRODUCT_VERSION = "0.30.23";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -13383,6 +13506,7 @@
 
   // src/farm-app.js
   init_formation_skill_state();
+  init_tower_run();
   init_farm_model();
 
   // src/features/formation-skills/presentation-base.js
@@ -19482,7 +19606,7 @@
     Object.freeze({
       id: "tower",
       title: "보스와 탑",
-      rule: "탑 오르기를 누르면 보스가 떨어져요. 병력이 사방에서 자동으로 투입돼 싸우고, 이기면 문을 골라요. 이긴 보스 종의 숙련이 쌓여 능력 포인트가 돼요.",
+      rule: "탑 오르기를 누르면 보스가 떨어져요. 병력이 사방에서 자동으로 투입돼 싸우고, 이기면 다음 층의 선택지가 나와요. 강화 층에서 카드를 고르면 이번 도전 동안 병력이 강해져요. 이긴 보스 종의 숙련이 쌓여 능력 포인트가 돼요.",
       seed: 4104,
       rate: 4,
       durationMs: 6e4,
@@ -19499,8 +19623,8 @@
         }
       },
       timeline: [{ atMs: 100, cmd: "tower-start", args: { floor: 1 } }],
-      // The army drops in by itself; once the real win opens the doors, the demo picks the strengthening door
-      // after a beat, then ends.
+      // The army drops in by itself; once the real win opens the doors, the demo picks the first one after a beat,
+      // then ends.
       auto(world, timeMs, memo) {
         if (world.tower.floor > 1) {
           memo.doneAt ??= timeMs;
@@ -19510,15 +19634,12 @@
           memo.doorsAt ??= timeMs;
           if (timeMs - memo.doorsAt > 1200 && !memo.picked) {
             memo.picked = true;
-            return { door: "boost" };
+            return { pick: 0 };
           }
         }
         return null;
       },
       step(world) {
-        if (world.tower.boost.hp > 1 || world.tower.boost.attack > 1) {
-          return "boost";
-        }
         if (world.tower.floor > 1) {
           return "next";
         }
@@ -19543,9 +19664,8 @@
         drop: "보스가 떨어져요. 병력이 사방에서 들어와요",
         fight: "수십 마리가 자동으로 보스와 싸워요",
         win: "보스를 쓰러뜨렸어요",
-        doors: "이겼어요. 다음 문을 골라요",
-        boost: "강화를 골랐어요. 이번 도전 동안 모든 유닛이 강해져요",
-        next: "고른 문의 다음 층으로 올라가요"
+        doors: "이겼어요. 다음 층의 선택지를 골라요",
+        next: "고른 대로 다음 층이 이어져요. 강화 카드는 도전이 끝날 때까지 유지돼요"
       }
     })
   ]);
@@ -20965,20 +21085,38 @@
       event.preventDefault();
     }
   });
-  var FLOOR_KIND = { battle: "전투", elite: "정예", mid: "중간 보스", rest: "쉼터", relic: "유물", boost: "강화" };
+  var FLOOR_KIND = { battle: "전투", elite: "정예", mid: "중간 보스", power: "강화", event: "이벤트" };
   var DOOR_TEXT = {
     battle: "보스 한 마리",
     elite: "더 세지만 보상 ×2",
-    mid: "피할 수 없어요 · 보상 ×3",
-    rest: "잠든 병력을 모두 깨워요"
+    mid: "피할 수 없어요 · 보상 ×3"
   };
-  function boostDoorCard(tower, index) {
-    const ATTACK2 = tower.boostOffer === "attack", VALUE = CONFIG.farm.tower.boost[tower.boostOffer];
-    return `<button type="button" class="door door--boost" data-door="${index}"><b>${ATTACK2 ? "⚔ 공격 강화" : "♥ 체력 강화"}</b><small>이번 도전 동안 모든 유닛 ${ATTACK2 ? "공격" : "체력"} ×${VALUE}</small></button>`;
+  var NEXT_FLOOR_TEXT = {
+    battle: "전투 준비 · 싸울 상대를 고르세요",
+    mid: "중간 보스 · 피할 수 없어요",
+    power: "강화 · 카드 한 장을 고르세요",
+    event: "이벤트"
+  };
+  function statDoorCard(door, cards, index) {
+    const CARD = statCard(door.id);
+    return `<button type="button" class="door door--stat door--rarity-${door.rarity}" data-door="${index}"><b>${CARD.name} ${statCardText(CARD, door.rarity)}</b><small>${RARITY_NAMES[door.rarity]} · 모든 유닛 · ${cardStacks(cards, door.id)}/${TOWER_RUN_SETTINGS.cardCap}장</small></button>`;
   }
-  function relicDoorCard(tower, index) {
-    const ID = tower.offer, DEFINITION13 = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === ID), LEVEL = tower.relics.get(ID) || 0, VALUE = Math.round(formationUpgradeValue(DEFINITION13, LEVEL + 1) * 10) / 10, GAIN = LEVEL ? `Lv.${LEVEL} → ${LEVEL + 1}` : "새 유물";
-    return `<button type="button" class="door door--relic" data-door="${index}"><b>${RELIC_ICONS[ID]} ${DEFINITION13.name}</b><small>${GAIN} · ${DEFINITION13.description || ""}${LEVEL ? ` (→ ${VALUE}${DEFINITION13.upgradeUnit})` : ""}</small></button>`;
+  function skillDoorCard(tower, door, index) {
+    const DEFINITION13 = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === door.id), LEVEL = tower.relics.get(door.id) || 0, VALUE = Math.round(formationUpgradeValue(DEFINITION13, LEVEL + 1) * 10) / 10, GAIN = LEVEL ? `Lv.${LEVEL} → ${LEVEL + 1}` : "새 스킬";
+    return `<button type="button" class="door door--skill" data-door="${index}"><b>${RELIC_ICONS[door.id]} ${DEFINITION13.name}</b><small>${GAIN} · ${DEFINITION13.description || ""}${LEVEL ? ` (→ ${VALUE}${DEFINITION13.upgradeUnit})` : ""}</small></button>`;
+  }
+  function eventDoorCard(door, index) {
+    const EVENT = TOWER_EVENTS.find((item) => item.id === door.id);
+    return `<button type="button" class="door door--event" data-door="${index}"><b>${EVENT.name}</b><small>${EVENT.text}</small></button>`;
+  }
+  function doorCard(tower, door, index) {
+    if (door.type === "fight") {
+      return `<button type="button" class="door door--${door.kind}" data-door="${index}"><b>${FLOOR_KIND[door.kind]}</b><small>${DOOR_TEXT[door.kind]}</small></button>`;
+    }
+    if (door.type === "stat") {
+      return statDoorCard(door, tower.cards, index);
+    }
+    return door.type === "skill" ? skillDoorCard(tower, door, index) : eventDoorCard(door, index);
   }
   var bannerKey = "";
   var bannerTimer = 0;
@@ -20999,7 +21137,7 @@
     if (CLIMBING) {
       syncText("floorNow", `${T.floor}층 · ${FLOOR_KIND[T.kind]}`);
     }
-    const NEXT_BANNER = !CLIMBING ? "" : (T.kind === "rest" || T.kind === "relic" || T.kind === "boost") && T.doors.length ? `r${T.floor}` : event?.phase === "dropping" ? `e${event.encounterId}` : "";
+    const NEXT_BANNER = !CLIMBING ? "" : (T.kind === "power" || T.kind === "event") && T.doors.length ? `r${T.floor}` : event?.phase === "dropping" ? `e${event.encounterId}` : "";
     if (NEXT_BANNER && NEXT_BANNER !== bannerKey) {
       DOLLAR2("floorBannerNum").textContent = `${T.floor}층`;
       DOLLAR2("floorBannerKind").textContent = FLOOR_KIND[T.kind];
@@ -21016,22 +21154,13 @@
     const DOORS = CLIMBING && event?.phase === "idle" && T.doors.length > 0;
     syncFlag("towerDoors", "hidden", !DOORS);
     if (DOORS) {
-      const KEY2 = `${T.doors.join()}|${T.floor}|${SLEEPERS}|${T.offer}|${T.relics.size}|${T.boostOffer}|${T.boost.attack}|${T.boost.hp}`;
+      const KEY2 = `${JSON.stringify(T.doors)}|${T.floor}|${SLEEPERS}|${T.cards.length}|${T.relics.size}`;
       if (KEY2 !== doorKey) {
         doorKey = KEY2;
-        DOLLAR2("doorCards").innerHTML = T.doors.map(
-          (d, i) => d === "relic" ? relicDoorCard(T, i) : d === "boost" ? boostDoorCard(T, i) : `<button type="button" class="door door--${d}" data-door="${i}"><b>${FLOOR_KIND[d]}</b><small>${DOOR_TEXT[d]}</small></button>`
-        ).join("");
+        DOLLAR2("doorCards").innerHTML = T.doors.map((door, i) => doorCard(T, door, i)).join("");
       }
-      syncText(
-        "doorsTitle",
-        T.kind === "rest" ? `${T.floor}층 쉼터 · 잠든 병력이 모두 깼어요` : T.kind === "relic" ? `${T.floor}층 유물을 얻었어요` : T.kind === "boost" ? `${T.floor}층 강화를 받았어요` : `${T.floor}층 돌파!`
-      );
-      const BOOSTED = T.boost.attack > 1 || T.boost.hp > 1;
-      syncText(
-        "doorsNote",
-        `다음은 ${T.floor + 1}층 · 잠든 병력 ${SLEEPERS}마리${BOOSTED ? ` · 강화 공격 ×${T.boost.attack.toFixed(2)} 체력 ×${T.boost.hp.toFixed(2)}` : ""}`
-      );
+      syncText("doorsTitle", `${T.floor + 1}층 ${NEXT_FLOOR_TEXT[T.nextKind]}`);
+      syncText("doorsNote", `${T.floor}층 돌파 · 잠든 병력 ${SLEEPERS}마리 · 강화 카드 ${T.cards.length}장`);
     } else {
       doorKey = "";
     }
@@ -21527,8 +21656,8 @@
     run(event) {
       if (event.cmd) {
         active.queue(event.cmd, event.args);
-      } else if (event.door) {
-        active.queue("tower-door", { index: Math.max(0, active.world.tower.doors.indexOf(event.door)) });
+      } else if (event.pick !== void 0) {
+        active.queue("tower-door", { index: event.pick });
       } else if (event.finish) {
         active.world.finishFarmBossEvent(event.finish);
       }
