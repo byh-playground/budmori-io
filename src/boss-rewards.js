@@ -55,6 +55,7 @@ export function createBossRewardStreams(seed) {
 }
 
 const MAX_KIND_REWARD = 3;
+const RECORD_MULTIPLIER = 2;
 export const BOSS_REWARD_SETTINGS = Object.freeze({
     acquisitionChance: 0.05,
     firstClearAcquisitionChance: 1,
@@ -71,8 +72,10 @@ export const BOSS_REWARD_SETTINGS = Object.freeze({
     // Reward draws per stage: one more draw for each floor. A floor kind may multiply them by up to `maxKindReward`.
     stageRollStep: 1,
     maxKindReward: MAX_KIND_REWARD,
+    // A win on a floor higher than any before pays this many times over.
+    recordMultiplier: RECORD_MULTIPLIER,
     maxStage: FARM_BOSS_EVENT_MAX_STAGE,
-    maxRollCount: FARM_BOSS_EVENT_MAX_STAGE * MAX_KIND_REWARD,
+    maxRollCount: FARM_BOSS_EVENT_MAX_STAGE * MAX_KIND_REWARD * RECORD_MULTIPLIER,
     maxBoxCount: 100,
     prdUnitsPerTick: PRD_UNITS_PER_TICK,
     speciesWeights: BOSS_SPECIES_WEIGHTS,

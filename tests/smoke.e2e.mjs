@@ -6,6 +6,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bossStageStats } from '../src/boss-rewards.js';
+import { baseUnitStatsFor, setRunStatMods } from '../src/unit-stats.js';
+import { advanceSince, freshTowerRun, rollCardOffers, rollFloorKind, runStatModifiers } from '../src/tower-run.js';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     PORT = 8499,
@@ -371,43 +373,55 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
     );
     expect(ONE.sleepers === 1 && ONE.onField === 0, `sleep/hand ${JSON.stringify(ONE)}`);
     expect(ONE.panel && /^1층/.test(ONE.rail), `tower UI ${JSON.stringify(ONE)}`);
-    const REST = await WORLD(() => {
+    const CARD = await WORLD(() => {
         const W = BUDMORI.sim;
-        W.tower.doors = ['rest', 'battle'];
+        W.tower.nextKind = 'power';
+        W.tower.doors = [
+            { type: 'stat', id: 'attack-pct', rarity: 0 },
+            { type: 'skill', id: 'lightning' },
+        ];
         W.chooseDoor(0);
         return {
             floor: W.tower.floor,
-            sleepers: W.tower.sleepUntil.size,
             kind: W.tower.kind,
+            cards: W.tower.cards.length,
             doors: W.tower.doors.length,
+            best: W.playerProgression.towerBest,
         };
     });
+    // A strengthening floor is a floor: it counts as reached without a fight.
     expect(
-        REST.floor === 2 && REST.sleepers === 0 && REST.kind === 'rest' && REST.doors >= 1,
-        `rest ${JSON.stringify(REST)}`,
+        CARD.floor === 2 && CARD.kind === 'power' && CARD.cards === 1 && CARD.doors >= 1 && CARD.best === 2,
+        `stat card ${JSON.stringify(CARD)}`,
     );
-    const RELIC = await WORLD(() => {
+    const SKILL = await WORLD(() => {
         const W = BUDMORI.sim;
-        W.tower.doors = ['relic', 'battle'];
-        W.tower.offer = 'lightning';
+        W.tower.nextKind = 'power';
+        W.tower.doors = [{ type: 'skill', id: 'lightning' }];
         W.chooseDoor(0);
         const FIRST = W.tower.relics.get('lightning');
-        W.tower.doors = ['relic'];
-        W.tower.offer = 'lightning';
+        W.tower.nextKind = 'power';
+        W.tower.doors = [{ type: 'skill', id: 'lightning' }];
         W.chooseDoor(0);
         return { first: FIRST, second: W.tower.relics.get('lightning'), kind: W.tower.kind };
     });
-    expect(RELIC.first === 1 && RELIC.second === 2 && RELIC.kind === 'relic', `relic ${JSON.stringify(RELIC)}`);
+    expect(SKILL.first === 1 && SKILL.second === 2 && SKILL.kind === 'power', `skill card ${JSON.stringify(SKILL)}`);
     const MID = await WORLD(() => {
         const W = BUDMORI.sim;
         W.tower.floor = 4;
-        return W._rollDoors().join();
+        return {
+            doors: W._rollDoors()
+                .map((door) => door.kind)
+                .join(),
+            next: W.tower.nextKind,
+        };
     });
-    expect(MID === 'mid', `floor 5 doors: ${MID}`);
+    expect(MID.doors === 'mid' && MID.next === 'mid', `floor 5 doors: ${JSON.stringify(MID)}`);
     await WORLD(() => {
         const W = BUDMORI.sim;
         W.tower.floor = 2;
-        W.tower.doors = ['battle'];
+        W.tower.nextKind = 'battle';
+        W.tower.doors = [{ type: 'fight', kind: 'battle' }];
         W.chooseDoor(0);
     });
     await PAGE.waitForTimeout(3500);
@@ -423,7 +437,8 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
         floor: BUDMORI.sim.tower.floor,
         best: BUDMORI.sim.playerProgression.towerBest,
     }));
-    expect(THREE.floor === 3 && THREE.best === 3, `floor 3 ${JSON.stringify(THREE)}`);
+    // The test moved the floor back to 2 after the card floors had already raised the best to 4.
+    expect(THREE.floor === 3 && THREE.best === 4, `floor 3 ${JSON.stringify(THREE)}`);
     const LEFT = await WORLD(() => {
         const W = BUDMORI.sim;
         W.leaveTower();
@@ -535,36 +550,80 @@ await check(
         expect(R.reset === true && R.keptLevel === 3 && R.power === 0, `mastery reset ${JSON.stringify(R)}`);
     },
 );
-await check('a strengthening door multiplies every unit for the run and clears when it ends', async () => {
-    const R = await WORLD(() => {
-        const W = BUDMORI.sim;
-        for (let i = 0; i < 120 && W.farmBossEvent.phase !== 'idle'; i++) {
-            W.step(1 / 30);
+await check(
+    'stat cards are (base + flat) x (1 + pct) for every unit, and clearing them restores the base',
+    async () => {
+        const ATTACK = () => baseUnitStatsFor(1, 0).attackPower,
+            HP = () => baseUnitStatsFor(1, 0).maxHp,
+            BEFORE = [ATTACK(), HP()];
+        setRunStatMods(
+            runStatModifiers([
+                { id: 'attack-flat', rarity: 0 },
+                { id: 'attack-pct', rarity: 0 },
+                { id: 'attack-pct', rarity: 1 },
+                { id: 'regen-pct', rarity: 0 },
+                { id: 'armor-flat', rarity: 2 },
+            ]),
+        );
+        const DURING = baseUnitStatsFor(1, 0);
+        setRunStatMods({});
+        expect(
+            Math.abs(DURING.attackPower - (4 + 2) * (1 + 0.1 + 0.16)) < 1e-9 &&
+                DURING.armor === 25 &&
+                Math.abs(DURING.regen - 40 * 0.005) < 1e-9 &&
+                DURING.maxHp === 40,
+            JSON.stringify(DURING),
+        );
+        expect(ATTACK() === BEFORE[0] && HP() === BEFORE[1], 'cleared');
+    },
+);
+await check(
+    'the next floor kind is drawn by weight: about one fight in five, never a long gap, never an event',
+    async () => {
+        let seed = 7;
+        const RANDOM = () => {
+                seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+                return seed / 4294967296;
+            },
+            COUNT = { battle: 0, power: 0, event: 0, mid: 0 };
+        let since = freshTowerRun().since,
+            gap = 0,
+            worst = 0;
+        for (let floor = 2; floor < 20000; floor++) {
+            const KIND = rollFloorKind({ floor, since, random: RANDOM, midBossEvery: 5, topFloor: 1e9 });
+            COUNT[KIND]++;
+            since = advanceSince(since, KIND);
+            gap = KIND === 'battle' || KIND === 'mid' ? 0 : gap + 1;
+            worst = Math.max(worst, gap);
         }
-        const T = W.tower;
-        T.active = true;
-        T.floor = 1;
-        T.kind = 'battle';
-        T.doors = ['boost', 'battle'];
-        T.boostOffer = 'attack';
-        const FIRST = W.chooseDoor(0);
-        T.doors = ['boost'];
-        T.boostOffer = 'hp';
-        const SECOND = W.chooseDoor(0);
-        const DURING = { ...T.boost };
-        W.leaveTower();
-        return { first: FIRST, second: SECOND, during: DURING, after: { ...W.tower.boost } };
-    });
-    expect(
-        R.first &&
-            R.second &&
-            Math.abs(R.during.attack - 1.1) < 1e-9 &&
-            Math.abs(R.during.hp - 1.2) < 1e-9 &&
-            R.after.attack === 1 &&
-            R.after.hp === 1,
-        `boost ${JSON.stringify(R)}`,
-    );
+        const SHARE = COUNT.battle / (COUNT.battle + COUNT.power);
+        expect(
+            SHARE > 0.17 && SHARE < 0.25 && COUNT.event === 0 && worst <= 4,
+            JSON.stringify({ COUNT, SHARE, worst }),
+        );
+        expect(
+            rollFloorKind({ floor: 61, since, random: RANDOM, midBossEvery: 5, topFloor: 61 }) === 'battle',
+            'top floor',
+        );
+    },
+);
+await check('a card is offered at most ten times and passes on to the skill card', async () => {
+    const CARDS = Array.from({ length: 10 }, () => ({ id: 'attack-pct', rarity: 0 })),
+        OFFER = (cards) =>
+            rollCardOffers({
+                floor: 3,
+                cards,
+                relics: new Map(),
+                skillIds: ['lightning'],
+                relicSlots: 3,
+                relicMaxLevel: 5,
+                random: () => 0,
+            });
+    expect(OFFER([])[0].id === 'attack-pct', 'first card');
+    expect(OFFER(CARDS)[0].id !== 'attack-pct', 'capped card skipped');
+    expect(OFFER([])[1].type === 'skill', 'skill card');
 });
+
 await check('upgrade menu opens on the species abilities without the old stat tab', async () => {
     // The reward dialog can open late and cover the menu button, so close it by script first.
     await PAGE.waitForTimeout(1500);

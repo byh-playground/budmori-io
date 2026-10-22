@@ -62,7 +62,7 @@ export const HELP_SCENES = Object.freeze([
     Object.freeze({
         id: 'tower',
         title: '보스와 탑',
-        rule: '탑 오르기를 누르면 보스가 떨어져요. 병력이 사방에서 자동으로 투입돼 싸우고, 이기면 문을 골라요. 이긴 보스 종의 숙련이 쌓여 능력 포인트가 돼요.',
+        rule: '탑 오르기를 누르면 보스가 떨어져요. 병력이 사방에서 자동으로 투입돼 싸우고, 이기면 다음 층의 선택지가 나와요. 강화 층에서 카드를 고르면 이번 도전 동안 병력이 강해져요. 이긴 보스 종의 숙련이 쌓여 능력 포인트가 돼요.',
         seed: 4104,
         rate: 4,
         durationMs: 60000,
@@ -80,8 +80,8 @@ export const HELP_SCENES = Object.freeze([
             }
         },
         timeline: [{ atMs: 100, cmd: 'tower-start', args: { floor: 1 } }],
-        // The army drops in by itself; once the real win opens the doors, the demo picks the strengthening door
-        // after a beat, then ends.
+        // The army drops in by itself; once the real win opens the doors, the demo picks the first one after a beat,
+        // then ends.
         auto(world, timeMs, memo) {
             if (world.tower.floor > 1) {
                 memo.doneAt ??= timeMs;
@@ -91,15 +91,12 @@ export const HELP_SCENES = Object.freeze([
                 memo.doorsAt ??= timeMs;
                 if (timeMs - memo.doorsAt > 1200 && !memo.picked) {
                     memo.picked = true;
-                    return { door: 'boost' };
+                    return { pick: 0 };
                 }
             }
             return null;
         },
         step(world) {
-            if (world.tower.boost.hp > 1 || world.tower.boost.attack > 1) {
-                return 'boost';
-            }
             if (world.tower.floor > 1) {
                 return 'next';
             }
@@ -124,9 +121,8 @@ export const HELP_SCENES = Object.freeze([
             drop: '보스가 떨어져요. 병력이 사방에서 들어와요',
             fight: '수십 마리가 자동으로 보스와 싸워요',
             win: '보스를 쓰러뜨렸어요',
-            doors: '이겼어요. 다음 문을 골라요',
-            boost: '강화를 골랐어요. 이번 도전 동안 모든 유닛이 강해져요',
-            next: '고른 문의 다음 층으로 올라가요',
+            doors: '이겼어요. 다음 층의 선택지를 골라요',
+            next: '고른 대로 다음 층이 이어져요. 강화 카드는 도전이 끝날 때까지 유지돼요',
         },
     }),
 ]);

@@ -1,6 +1,7 @@
 import { PerformanceDiagnostics } from './performance-diagnostics.js';
 import { RelicDock, RELIC_ICONS } from './relic-dock.js';
 import { FORMATION_SKILL_DEFINITIONS, formationUpgradeValue } from './formation-skill-state.js';
+import { RARITY_NAMES, TOWER_EVENTS, TOWER_RUN_SETTINGS, cardStacks, statCard, statCardText } from './tower-run.js';
 import { Garden, CONFIG, ArenaGeometry, ATTACK_TYPES, Ballistics } from './farm-model.js';
 import { Diorama } from './farm-renderer.js';
 import { FarmSession, LOCAL_PROFILE } from './farm-session.js';
@@ -1481,25 +1482,41 @@ document.addEventListener('contextmenu', (event) => {
     }
 });
 // Compare with the actual DOM so event handlers and route changes remain authoritative.
-const FLOOR_KIND = { battle: '전투', elite: '정예', mid: '중간 보스', rest: '쉼터', relic: '유물', boost: '강화' };
+const FLOOR_KIND = { battle: '전투', elite: '정예', mid: '중간 보스', power: '강화', event: '이벤트' };
 const DOOR_TEXT = {
     battle: '보스 한 마리',
     elite: '더 세지만 보상 ×2',
     mid: '피할 수 없어요 · 보상 ×3',
-    rest: '잠든 병력을 모두 깨워요',
 };
-function boostDoorCard(tower, index) {
-    const ATTACK = tower.boostOffer === 'attack',
-        VALUE = CONFIG.farm.tower.boost[tower.boostOffer];
-    return `<button type="button" class="door door--boost" data-door="${index}"><b>${ATTACK ? '⚔ 공격 강화' : '♥ 체력 강화'}</b><small>이번 도전 동안 모든 유닛 ${ATTACK ? '공격' : '체력'} ×${VALUE}</small></button>`;
+const NEXT_FLOOR_TEXT = {
+    battle: '전투 준비 · 싸울 상대를 고르세요',
+    mid: '중간 보스 · 피할 수 없어요',
+    power: '강화 · 카드 한 장을 고르세요',
+    event: '이벤트',
+};
+function statDoorCard(door, cards, index) {
+    const CARD = statCard(door.id);
+    return `<button type="button" class="door door--stat door--rarity-${door.rarity}" data-door="${index}"><b>${CARD.name} ${statCardText(CARD, door.rarity)}</b><small>${RARITY_NAMES[door.rarity]} · 모든 유닛 · ${cardStacks(cards, door.id)}/${TOWER_RUN_SETTINGS.cardCap}장</small></button>`;
 }
-function relicDoorCard(tower, index) {
-    const ID = tower.offer,
-        DEFINITION = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === ID),
-        LEVEL = tower.relics.get(ID) || 0,
+function skillDoorCard(tower, door, index) {
+    const DEFINITION = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === door.id),
+        LEVEL = tower.relics.get(door.id) || 0,
         VALUE = Math.round(formationUpgradeValue(DEFINITION, LEVEL + 1) * 10) / 10,
-        GAIN = LEVEL ? `Lv.${LEVEL} → ${LEVEL + 1}` : '새 유물';
-    return `<button type="button" class="door door--relic" data-door="${index}"><b>${RELIC_ICONS[ID]} ${DEFINITION.name}</b><small>${GAIN} · ${DEFINITION.description || ''}${LEVEL ? ` (→ ${VALUE}${DEFINITION.upgradeUnit})` : ''}</small></button>`;
+        GAIN = LEVEL ? `Lv.${LEVEL} → ${LEVEL + 1}` : '새 스킬';
+    return `<button type="button" class="door door--skill" data-door="${index}"><b>${RELIC_ICONS[door.id]} ${DEFINITION.name}</b><small>${GAIN} · ${DEFINITION.description || ''}${LEVEL ? ` (→ ${VALUE}${DEFINITION.upgradeUnit})` : ''}</small></button>`;
+}
+function eventDoorCard(door, index) {
+    const EVENT = TOWER_EVENTS.find((item) => item.id === door.id);
+    return `<button type="button" class="door door--event" data-door="${index}"><b>${EVENT.name}</b><small>${EVENT.text}</small></button>`;
+}
+function doorCard(tower, door, index) {
+    if (door.type === 'fight') {
+        return `<button type="button" class="door door--${door.kind}" data-door="${index}"><b>${FLOOR_KIND[door.kind]}</b><small>${DOOR_TEXT[door.kind]}</small></button>`;
+    }
+    if (door.type === 'stat') {
+        return statDoorCard(door, tower.cards, index);
+    }
+    return door.type === 'skill' ? skillDoorCard(tower, door, index) : eventDoorCard(door, index);
 }
 let bannerKey = '';
 let bannerTimer = 0;
@@ -1526,7 +1543,7 @@ function syncTower(garden, home, event) {
     // A banner announces each new floor as the boss drops in, and the rest stop.
     const NEXT_BANNER = !CLIMBING
         ? ''
-        : (T.kind === 'rest' || T.kind === 'relic' || T.kind === 'boost') && T.doors.length
+        : (T.kind === 'power' || T.kind === 'event') && T.doors.length
           ? `r${T.floor}`
           : event?.phase === 'dropping'
             ? `e${event.encounterId}`
@@ -1547,34 +1564,13 @@ function syncTower(garden, home, event) {
     const DOORS = CLIMBING && event?.phase === 'idle' && T.doors.length > 0;
     syncFlag('towerDoors', 'hidden', !DOORS);
     if (DOORS) {
-        const KEY = `${T.doors.join()}|${T.floor}|${SLEEPERS}|${T.offer}|${T.relics.size}|${T.boostOffer}|${T.boost.attack}|${T.boost.hp}`;
+        const KEY = `${JSON.stringify(T.doors)}|${T.floor}|${SLEEPERS}|${T.cards.length}|${T.relics.size}`;
         if (KEY !== doorKey) {
             doorKey = KEY;
-            DOLLAR('doorCards').innerHTML = T.doors
-                .map((d, i) =>
-                    d === 'relic'
-                        ? relicDoorCard(T, i)
-                        : d === 'boost'
-                          ? boostDoorCard(T, i)
-                          : `<button type="button" class="door door--${d}" data-door="${i}"><b>${FLOOR_KIND[d]}</b><small>${DOOR_TEXT[d]}</small></button>`,
-                )
-                .join('');
+            DOLLAR('doorCards').innerHTML = T.doors.map((door, i) => doorCard(T, door, i)).join('');
         }
-        syncText(
-            'doorsTitle',
-            T.kind === 'rest'
-                ? `${T.floor}층 쉼터 · 잠든 병력이 모두 깼어요`
-                : T.kind === 'relic'
-                  ? `${T.floor}층 유물을 얻었어요`
-                  : T.kind === 'boost'
-                    ? `${T.floor}층 강화를 받았어요`
-                    : `${T.floor}층 돌파!`,
-        );
-        const BOOSTED = T.boost.attack > 1 || T.boost.hp > 1;
-        syncText(
-            'doorsNote',
-            `다음은 ${T.floor + 1}층 · 잠든 병력 ${SLEEPERS}마리${BOOSTED ? ` · 강화 공격 ×${T.boost.attack.toFixed(2)} 체력 ×${T.boost.hp.toFixed(2)}` : ''}`,
-        );
+        syncText('doorsTitle', `${T.floor + 1}층 ${NEXT_FLOOR_TEXT[T.nextKind]}`);
+        syncText('doorsNote', `${T.floor}층 돌파 · 잠든 병력 ${SLEEPERS}마리 · 강화 카드 ${T.cards.length}장`);
     } else {
         doorKey = '';
     }
@@ -2139,9 +2135,8 @@ const HELP = {
     run(event) {
         if (event.cmd) {
             active.queue(event.cmd, event.args);
-        } else if (event.door) {
-            // The doors are drawn from the seeded run: take the asked kind if it is offered, else the first.
-            active.queue('tower-door', { index: Math.max(0, active.world.tower.doors.indexOf(event.door)) });
+        } else if (event.pick !== undefined) {
+            active.queue('tower-door', { index: event.pick });
         } else if (event.finish) {
             // Cuts the demo fight short; the win that follows is the game's own path.
             active.world.finishFarmBossEvent(event.finish);

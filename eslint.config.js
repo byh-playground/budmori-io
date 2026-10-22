@@ -36,6 +36,7 @@ const MODEL_FILES = [
     'src/unit-attack-capabilities.js',
     'src/unit-combat-patterns.js',
     'src/unit-grades.js',
+    'src/tower-run.js',
     'src/unit-stats.js',
     'src/unit-collection.js',
     'src/signal.js',
