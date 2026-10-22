@@ -793,6 +793,81 @@ await check('a boss attack hits everyone it reaches: 35% each and 65% shared amo
     );
 });
 
+await check(
+    'boss sweeps start at the body: both arms sweep the whole circle, the fan sweeps its sector, nothing near the body is missed',
+    async () => {
+        const R = await WORLD(() => {
+            const W = BUDMORI.sim;
+            W._flushEjected();
+            for (const U of [...W.units]) {
+                W.removeUnit(U);
+            }
+            for (let i = 0; i < 12; i++) {
+                W.spawn(0, 1, i * 0.1, 0);
+            }
+            W.playerProgression.towerBest = 50;
+            W.startTower(1);
+            for (let i = 0; i < 40; i++) {
+                W.step(1 / 30);
+            }
+            W.finishMarch();
+            for (let i = 0; i < 10; i++) {
+                W.step(1 / 30);
+            }
+            const UNITS = W.unitCollection.items.filter((u) => !u.isBattleOnlySummon).slice(0, 8),
+                RUN = (id, aim, startAngle) => {
+                    W.boss.stun = 0;
+                    W.boss.hp = W.boss.maxHp ?? W.boss.hp;
+                    const RING = W.boss.radius + 0.6;
+                    UNITS.forEach((u, index) => {
+                        const A = (index * Math.PI) / 4;
+                        W._benched.delete(u);
+                        Object.assign(u, {
+                            x: W.boss.x + Math.cos(A) * RING,
+                            y: W.boss.y + Math.sin(A) * RING,
+                            z: 0,
+                            vx: 0,
+                            vy: 0,
+                            vz: 0,
+                            hp: 1e6,
+                            dropLanded: true,
+                        });
+                    });
+                    W._unitSpatialDirty = true;
+                    const ACTION = {
+                        id,
+                        aim,
+                        phase: 'active',
+                        phaseElapsed: 0,
+                        hitIds: new Set(),
+                        locked: true,
+                        startAngle,
+                    };
+                    W.boss.patternRuntime.active = ACTION;
+                    for (let i = 0; i < 50 && W.boss.patternRuntime.active === ACTION; i++) {
+                        W.step(1 / 30);
+                    }
+                    return UNITS.map((u) => ACTION.hitIds.has(u.id));
+                };
+            const SWEEP = RUN('attack.sweep-360', 0, -Math.PI / 2),
+                FAN = RUN('attack.fan-sweep', 0, undefined);
+            W.boss.patternRuntime.active = null;
+            W.retreatFromFight();
+            for (let i = 0; i < 60; i++) {
+                W.step(1 / 30);
+            }
+            W._flushEjected();
+            return { SWEEP, FAN };
+        });
+        expect(R.SWEEP.every(Boolean), `the sweep hits all 8 around the body ${JSON.stringify(R)}`);
+        // The fan covers 120 degrees round the aim: the units at 0 and +-45 degrees (indexes 0, 1, 7), not the rest.
+        expect(
+            R.FAN.map(Number).join('') === '11000001',
+            `the fan hits its own sector, from the body out ${JSON.stringify(R)}`,
+        );
+    },
+);
+
 await check('a boss hit volume is its drawn body: it differs per species and is never the old fixed box', async () => {
     const GOT = await WORLD(() =>
         Array.from({ length: 9 }, (_, species) => {
