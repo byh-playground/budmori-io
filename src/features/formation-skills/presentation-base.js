@@ -1,3 +1,11 @@
+import { T1_DIAMETER } from './model-base.js';
+// One size rule for every skill drawn against a body: widths and particle sizes tuned for a tier-1 body grow with the
+// drawn body radius, softened so a boss gets heavier marks without every line turning into a bar.
+const REFERENCE_RADIUS = T1_DIAMETER / 2,
+    SCALE_EXPONENT = 0.7;
+export function bodyScale(radius) {
+    return Math.max(1, (Number.isFinite(radius) ? radius : REFERENCE_RADIUS) / REFERENCE_RADIUS) ** SCALE_EXPONENT;
+}
 export function stroke(renderer, points, color, width) {
     const C = renderer.ctx;
     C.beginPath();
@@ -20,7 +28,7 @@ export function bolt(renderer, x, y, z, height, age, seed = 0, radius = 0.3) {
     if (FADE <= 0) {
         return;
     }
-    const BODY_SCALE = Math.min(2.2, Math.max(0.6, radius / 0.3));
+    const BODY_SCALE = bodyScale(radius);
     const POINTS = [];
     for (let i = 0; i <= 9; i++) {
         POINTS.push([

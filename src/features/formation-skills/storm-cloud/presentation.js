@@ -1,4 +1,4 @@
-import { FormationPresentation, cloud, stroke } from '../presentation-base.js';
+import { FormationPresentation, bodyScale, cloud, stroke } from '../presentation-base.js';
 const POINT_BUFFERS = new WeakMap();
 
 function pointBuffersFor(effect) {
@@ -23,7 +23,7 @@ function visualOffset(effect, index, salt) {
 export class StormCloudPresentation extends FormationPresentation {
     draw(renderer, effect) {
         const BODY_RADIUS = Math.max(0.2, (effect.bodyRadius || 0.3) * 0.55),
-            BODY_SCALE = Math.max(1, BODY_RADIUS / 0.3),
+            BODY_SCALE = bodyScale(effect.bodyRadius),
             CLOUD_SIZE = BODY_RADIUS * 2.6,
             ENTER = Math.min(1, effect.age / 0.5),
             EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5,
