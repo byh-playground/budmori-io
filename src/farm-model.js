@@ -75,6 +75,8 @@ import {
     BOSS_PATTERN_CONFIG,
     createBossPatternRuntime,
     chooseBossPattern,
+    bossAttackTotal,
+    BOSS_BASIC_ID,
     BOSS_ENRAGE,
     BOSS_PHASE_THRESHOLDS,
 } from './boss-patterns.js';
@@ -5254,11 +5256,44 @@ const GARDEN = class Garden {
             if (RUNTIME.cooldowns[ID] > 1e-9 || this.bossHpRatio > BOSS_PATTERN_CONFIG[ID].unlockHp) {
                 continue;
             }
-            if (BOSS_BEHAVIORS.forId(ID).eligible(this, targets, ALIVE_ADDS)) {
+            const BEHAVIOR = BOSS_BEHAVIORS.forId(ID);
+            if (BEHAVIOR.eligible(this, targets, ALIVE_ADDS) && this.bossAttackWorthIt(BEHAVIOR, targets)) {
                 ELIGIBLE.push(ID);
             }
         }
         return ELIGIBLE;
+    }
+    // An area attack is used only when it deals more in total than the basic attack's one strong hit.
+    bossAttackWorthIt(behavior, targets) {
+        if (behavior.id === BOSS_BASIC_ID) {
+            return true;
+        }
+        const HITS = behavior.expectedHits(this, targets);
+        return (
+            HITS === null ||
+            bossAttackTotal(behavior.config.damageMultiplier, HITS) >
+                bossAttackTotal(BOSS_PATTERN_CONFIG[BOSS_BASIC_ID].damageMultiplier, 1)
+        );
+    }
+    // Whether the unit's body touches the wedge from the boss out to `range` around bearing `aim`, `half` to each side.
+    bossWedgeContains(unit, range, aim, half) {
+        const DX = unit.x - this.boss.x,
+            DY = unit.y - this.boss.y,
+            D_LOCAL = Math.hypot(DX, DY);
+        if (D_LOCAL > range + unit.radius) {
+            return false;
+        }
+        const BEARING = Math.atan2(DY, DX),
+            OFFSET = Math.atan2(Math.sin(BEARING - aim), Math.cos(BEARING - aim)),
+            PAD = D_LOCAL <= unit.radius ? Math.PI : Math.asin(Math.min(1, unit.radius / Math.max(D_LOCAL, 1e-6)));
+        return Math.abs(OFFSET) <= half + PAD;
+    }
+    // The units on the ground within `range` of a point (their bodies counted), nearest the boss first.
+    bossGroundUnitsNear(x, y, range) {
+        const EXTENT = range + CONFIG.unit.maxRadius;
+        return this._nearestBossFirst(
+            this._collectBossTargets(x - EXTENT, y - EXTENT, x + EXTENT, y + EXTENT, this._bossHitCandidates, true),
+        ).filter((unit) => Math.hypot(unit.x - x, unit.y - y) <= range + unit.radius);
     }
     beginBossPattern(id, target) {
         const B_LOCAL = this.boss,
@@ -5410,7 +5445,7 @@ const GARDEN = class Garden {
     }
     // Everyone within `range` of the boss's middle (so from its body outwards, no gap) whose bearing lies in the wedge
     // from..to, widened by the unit's own size. A sweep calls it each tick with the wedge its arm crossed since the last.
-    resolveBossWedge(action, patternId, range, from, to) {
+    resolveBossWedge(action, patternId, range, from, to, limit = Infinity) {
         const B_LOCAL = this.boss,
             AIM = (from + to) / 2,
             HALF = (to - from) / 2;
@@ -5426,24 +5461,18 @@ const GARDEN = class Garden {
                 true,
             ),
         )) {
+            if (hits >= limit) {
+                break;
+            }
             if (action.hitIds.has(UNIT_LOCAL.id) || UNIT_LOCAL.z > 0.1) {
+                continue;
+            }
+            if (!this.bossWedgeContains(UNIT_LOCAL, range, AIM, HALF)) {
                 continue;
             }
             const DX = UNIT_LOCAL.x - B_LOCAL.x,
                 DY = UNIT_LOCAL.y - B_LOCAL.y,
-                D_LOCAL = Math.hypot(DX, DY);
-            if (D_LOCAL > range + UNIT_LOCAL.radius) {
-                continue;
-            }
-            const OFFSET = Math.atan2(Math.sin(Math.atan2(DY, DX) - AIM), Math.cos(Math.atan2(DY, DX) - AIM)),
-                PAD =
-                    D_LOCAL <= UNIT_LOCAL.radius
-                        ? Math.PI
-                        : Math.asin(Math.min(1, UNIT_LOCAL.radius / Math.max(D_LOCAL, 1e-6)));
-            if (Math.abs(OFFSET) > HALF + PAD) {
-                continue;
-            }
-            const N = D_LOCAL || 1;
+                N = Math.hypot(DX, DY) || 1;
             if (
                 this.hitBossPatternUnit(
                     UNIT_LOCAL,
