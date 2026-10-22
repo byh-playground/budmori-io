@@ -11,7 +11,13 @@ export class SlamBossPattern extends BossPattern {
         area.sector = this.config.sector;
     }
     activate(world, action) {
-        world.resolveBossSector(action, action.id, this.config.reach, this.config.sector);
+        world.resolveBossWedge(
+            action,
+            action.id,
+            this.config.reach,
+            action.aim - this.config.sector / 2,
+            action.aim + this.config.sector / 2,
+        );
         world.enterBossPatternRecovery(action);
         return;
     }

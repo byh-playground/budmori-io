@@ -4986,9 +4986,6 @@ const GARDEN = class Garden {
     bossAttackArea(unitRadius = 0) {
         return bossAttackArea(this.boss, unitRadius, this.scene);
     }
-    bossWeaponPoint(q = 0) {
-        return BOSS_BEHAVIORS.weaponPoint(this.boss, q);
-    }
     livingBossTargets() {
         return this.units
             .filter((u) => hasFaction(u, FACTION_CONFIG.PLAYER) && u.hp > 0 && u.dropLanded)
@@ -5403,10 +5400,12 @@ const GARDEN = class Garden {
             (a, b) => Math.hypot(a.x - B_LOCAL.x, a.y - B_LOCAL.y) - Math.hypot(b.x - B_LOCAL.x, b.y - B_LOCAL.y),
         );
     }
-    resolveBossSector(action, patternId, range, sector) {
+    // Everyone within `range` of the boss's middle (so from its body outwards, no gap) whose bearing lies in the wedge
+    // from..to, widened by the unit's own size. A sweep calls it each tick with the wedge its arm crossed since the last.
+    resolveBossWedge(action, patternId, range, from, to) {
         const B_LOCAL = this.boss,
-            AIM = action.aim,
-            HALF = sector / 2;
+            AIM = (from + to) / 2,
+            HALF = (to - from) / 2;
         let hits = 0;
         const EXTENT = range + CONFIG.unit.maxRadius;
         for (const UNIT_LOCAL of this._nearestBossFirst(
@@ -5457,49 +5456,6 @@ const GARDEN = class Garden {
         }
         return hits;
     }
-    resolveBossCircle(action, patternId, range) {
-        const B_LOCAL = this.boss;
-        let hits = 0;
-        const EXTENT = range + CONFIG.unit.maxRadius;
-        for (const UNIT_LOCAL of this._nearestBossFirst(
-            this._collectBossTargets(
-                B_LOCAL.x - EXTENT,
-                B_LOCAL.y - EXTENT,
-                B_LOCAL.x + EXTENT,
-                B_LOCAL.y + EXTENT,
-                this._bossHitCandidates,
-                true,
-            ),
-        )) {
-            if (action.hitIds.has(UNIT_LOCAL.id)) {
-                continue;
-            }
-            const DX = UNIT_LOCAL.x - B_LOCAL.x,
-                DY = UNIT_LOCAL.y - B_LOCAL.y,
-                D_LOCAL = Math.hypot(DX, DY);
-            if (D_LOCAL > range + UNIT_LOCAL.radius) {
-                continue;
-            }
-            if (
-                this.hitBossPatternUnit(
-                    UNIT_LOCAL,
-                    patternId,
-                    {
-                        x: B_LOCAL.x + (DX / (D_LOCAL || 1)) * Math.min(D_LOCAL, range),
-                        y: B_LOCAL.y + (DY / (D_LOCAL || 1)) * Math.min(D_LOCAL, range),
-                        z: 0,
-                    },
-                    {
-                        x: DX / (D_LOCAL || 1),
-                        y: DY / (D_LOCAL || 1),
-                    },
-                )
-            ) {
-                hits++;
-            }
-        }
-        return hits;
-    }
     sweepBossBody(old, patternId) {
         const B_LOCAL = this.boss,
             ACTION = B_LOCAL.patternRuntime.active,
@@ -5523,87 +5479,6 @@ const GARDEN = class Garden {
                     BOSS_BEHAVIORS.forId(patternId).sweepNormal(B_LOCAL),
                 );
             }
-        }
-    }
-    fanBossWeapon(action, q0, q1) {
-        const CONFIG_LOCAL = BOSS_PATTERN_CONFIG[action.id],
-            SPAN = CONFIG_LOCAL.sector,
-            FROM_ANGLE = action.aim - SPAN / 2 + SPAN * CLAMP(q0, 0, 1),
-            TO_ANGLE = action.aim - SPAN / 2 + SPAN * CLAMP(q1, 0, 1),
-            B_LOCAL = this.boss;
-        const FROM = {
-                x: B_LOCAL.x + Math.cos(FROM_ANGLE) * CONFIG_LOCAL.reach,
-                y: B_LOCAL.y + Math.sin(FROM_ANGLE) * CONFIG_LOCAL.reach,
-                z: 0.2,
-            },
-            TO = {
-                x: B_LOCAL.x + Math.cos(TO_ANGLE) * CONFIG_LOCAL.reach,
-                y: B_LOCAL.y + Math.sin(TO_ANGLE) * CONFIG_LOCAL.reach,
-                z: 0.2,
-            };
-        const EXTENT = CONFIG_LOCAL.reach + CONFIG_LOCAL.width + CONFIG.unit.maxRadius;
-        for (const UNIT_LOCAL of this._collectBossTargets(
-            B_LOCAL.x - EXTENT,
-            B_LOCAL.y - EXTENT,
-            B_LOCAL.x + EXTENT,
-            B_LOCAL.y + EXTENT,
-            this._bossHitCandidates,
-            true,
-        )) {
-            if (action.hitIds.has(UNIT_LOCAL.id)) {
-                continue;
-            }
-            const HIT = ARENA_GEOMETRY.sweep(FROM, TO, CONFIG_LOCAL.width, 1.4, UNIT_LOCAL);
-            if (HIT) {
-                const DX = UNIT_LOCAL.x - B_LOCAL.x,
-                    DY = UNIT_LOCAL.y - B_LOCAL.y,
-                    N = Math.hypot(DX, DY) || 1;
-                this.hitBossPatternUnit(UNIT_LOCAL, action.id, HIT, {
-                    x: DX / N,
-                    y: DY / N,
-                });
-            }
-        }
-    }
-    sweepBossWeapon(action, q0, q1) {
-        const CONFIG_LOCAL = BOSS_PATTERN_CONFIG[action.id],
-            START_ANGLE = action.startAngle ?? action.aim - Math.PI / 2,
-            FROM_ANGLE = START_ANGLE + Math.PI * 2 * CLAMP(q0, 0, 1),
-            TO_ANGLE = START_ANGLE + Math.PI * 2 * CLAMP(q1, 0, 1),
-            B_LOCAL = this.boss,
-            FROM = {
-                x: B_LOCAL.x + Math.cos(FROM_ANGLE) * CONFIG_LOCAL.reach,
-                y: B_LOCAL.y + Math.sin(FROM_ANGLE) * CONFIG_LOCAL.reach,
-                z: 0.2,
-            },
-            TO = {
-                x: B_LOCAL.x + Math.cos(TO_ANGLE) * CONFIG_LOCAL.reach,
-                y: B_LOCAL.y + Math.sin(TO_ANGLE) * CONFIG_LOCAL.reach,
-                z: 0.2,
-            },
-            EXTENT = CONFIG_LOCAL.reach + CONFIG_LOCAL.width + CONFIG.unit.maxRadius;
-        for (const UNIT_LOCAL of this._collectBossTargets(
-            B_LOCAL.x - EXTENT,
-            B_LOCAL.y - EXTENT,
-            B_LOCAL.x + EXTENT,
-            B_LOCAL.y + EXTENT,
-            this._bossHitCandidates,
-            true,
-        )) {
-            if (action.hitIds.has(UNIT_LOCAL.id)) {
-                continue;
-            }
-            const HIT = ARENA_GEOMETRY.sweep(FROM, TO, CONFIG_LOCAL.width, 1.4, UNIT_LOCAL);
-            if (!HIT) {
-                continue;
-            }
-            const DX = UNIT_LOCAL.x - B_LOCAL.x,
-                DY = UNIT_LOCAL.y - B_LOCAL.y,
-                N = Math.hypot(DX, DY) || 1;
-            this.hitBossPatternUnit(UNIT_LOCAL, action.id, HIT, {
-                x: DX / N,
-                y: DY / N,
-            });
         }
     }
     bossMouthPoint(released) {

@@ -1,4 +1,3 @@
-import { BossPattern } from './features/boss-patterns/model-base.js';
 import { SweepBossPattern } from './features/boss-patterns/sweep-360/model.js';
 import { SlamBossPattern } from './features/boss-patterns/front-slam/model.js';
 import { ChargeBossPattern } from './features/boss-patterns/charge/model.js';
@@ -24,7 +23,6 @@ export function createBossPatternBehaviors(dependencies) {
             ].map((pattern) => [pattern.feature.id, Object.freeze(pattern)]),
         ),
     );
-    const DEFAULT_PATTERN = Object.freeze(new BossPattern({ id: '', config: null }, DEPENDENCIES));
     class BossPatternPhase {
         update(_world, _action, _dt, _living) {
             /* Unknown phases stay unchanged. */
@@ -86,9 +84,6 @@ export function createBossPatternBehaviors(dependencies) {
     });
     const UNKNOWN_PHASE = new BossPatternPhase();
     return Object.freeze({
-        weaponPoint(boss, q) {
-            return (PATTERNS[boss.patternRuntime?.active?.id] || DEFAULT_PATTERN).weaponPoint(boss, q);
-        },
         forId(id) {
             return PATTERNS[id];
         },

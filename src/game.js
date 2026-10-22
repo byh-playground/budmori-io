@@ -5860,11 +5860,6 @@
         sweepNormal(_boss) {
           return null;
         }
-        weaponPoint(boss, q) {
-          const { CONFIG: CONFIG2, CLAMP: CLAMP3 } = this.dependencies;
-          const REACH = boss.radius - 0.25 + (CONFIG2.boss.sweepReach - boss.radius + 0.25) * Math.sin(Math.PI * CLAMP3(q, 0, 1));
-          return { x: boss.x + Math.cos(boss.angle) * REACH, y: boss.y + Math.sin(boss.angle) * REACH, z: boss.z + 0.2 };
-        }
       };
     }
   });
@@ -5926,9 +5921,8 @@
           windup: 1.05,
           active: 1.05,
           recover: 1.05,
-          cooldown: 10,
-          reach: 6.5,
-          width: 0.85,
+          cooldown: 16,
+          reach: 7.35,
           damageMultiplier: 2.5,
           knockback: 13,
           lift: 10.2,
@@ -5954,7 +5948,7 @@
           windup: 0.5,
           active: 6.6 / 5.3,
           recover: 0.75,
-          cooldown: 5,
+          cooldown: 12,
           reach: 6.6,
           speed: 5.3,
           damageMultiplier: 2,
@@ -5983,8 +5977,7 @@
           active: 0.8,
           recover: 1,
           cooldown: 5,
-          reach: 6.5,
-          width: 0.85,
+          reach: 7.35,
           sector: Math.PI * 2 / 3,
           damageMultiplier: 2,
           knockback: 13,
@@ -6032,12 +6025,11 @@
   });
 
   // src/features/boss-patterns/sweep-360/model.js
-  var TAU, SweepBossPattern;
+  var SweepBossPattern;
   var init_model23 = __esm({
     "src/features/boss-patterns/sweep-360/model.js"() {
       init_model_base5();
       init_definition21();
-      TAU = Math.PI * 2;
       SweepBossPattern = class extends BossPattern {
         constructor(dependencies) {
           super(FEATURE7, dependencies);
@@ -6045,8 +6037,7 @@
         }
         writeArea(_boss, action, _scene, pad, area) {
           area.kind = "sweep";
-          area.reach = this.config.reach;
-          area.width = this.config.width + pad;
+          area.reach = this.config.reach + pad;
           area.angle = action.startAngle ?? action.aim - Math.PI / 2;
         }
         activate(_world, action) {
@@ -6054,18 +6045,18 @@
         }
         updateActive(world, action, dt) {
           const Q0 = Math.max(0, (action.phaseElapsed - dt) / this.config.active), Q1 = Math.min(1, action.phaseElapsed / this.config.active);
-          world.sweepBossWeapon(action, Q0, Q1);
+          for (const ARM_START of [action.startAngle, action.startAngle + Math.PI]) {
+            world.resolveBossWedge(
+              action,
+              action.id,
+              this.config.reach,
+              ARM_START + Math.PI * Q0,
+              ARM_START + Math.PI * Q1
+            );
+          }
           if (action.phaseElapsed >= this.config.active - 1e-9) {
             world.enterBossPatternRecovery(action);
           }
-        }
-        weaponPoint(boss, q) {
-          const { CLAMP: CLAMP3 } = this.dependencies, ACTION = boss.patternRuntime?.active, AIM = ACTION?.aim ?? boss.patternAim ?? boss.angle, START_ANGLE = ACTION?.startAngle ?? AIM - Math.PI / 2, ANGLE = START_ANGLE + TAU * CLAMP3(q, 0, 1);
-          return {
-            x: boss.x + Math.cos(ANGLE) * this.config.reach,
-            y: boss.y + Math.sin(ANGLE) * this.config.reach,
-            z: (boss.z || 0) + 0.2
-          };
         }
         get hitMetric() {
           return "sweepHits";
@@ -6099,7 +6090,13 @@
           area.sector = this.config.sector;
         }
         activate(world, action) {
-          world.resolveBossSector(action, action.id, this.config.reach, this.config.sector);
+          world.resolveBossWedge(
+            action,
+            action.id,
+            this.config.reach,
+            action.aim - this.config.sector / 2,
+            action.aim + this.config.sector / 2
+          );
           world.enterBossPatternRecovery(action);
           return;
         }
@@ -6362,30 +6359,25 @@
           this.physicalActive = true;
         }
         writeArea(_boss, _action, _scene, pad, area) {
-          area.kind = "fan";
-          area.reach = this.config.reach;
-          area.width = this.config.width + pad;
+          area.kind = "sector";
+          area.reach = this.config.reach + pad;
           area.sector = this.config.sector;
         }
         updateActive(world, action, dt) {
-          const Q0 = Math.max(0, (action.phaseElapsed - dt) / this.config.active), Q1 = Math.min(1, action.phaseElapsed / this.config.active);
-          world.fanBossWeapon(action, Q0, Q1);
+          const Q0 = Math.max(0, (action.phaseElapsed - dt) / this.config.active), Q1 = Math.min(1, action.phaseElapsed / this.config.active), START = action.aim - this.config.sector / 2;
+          world.resolveBossWedge(
+            action,
+            action.id,
+            this.config.reach,
+            START + this.config.sector * Q0,
+            START + this.config.sector * Q1
+          );
           if (action.phaseElapsed >= this.config.active) {
             world.enterBossPatternRecovery(action);
           }
         }
         get hitMetric() {
           return "sweepHits";
-        }
-        weaponPoint(boss, q) {
-          const { CLAMP: CLAMP3 } = this.dependencies;
-          const ACTION = boss.patternRuntime.active;
-          const ANGLE = ACTION.aim - this.config.sector / 2 + this.config.sector * CLAMP3(q, 0, 1);
-          return {
-            x: boss.x + Math.cos(ANGLE) * this.config.reach,
-            y: boss.y + Math.sin(ANGLE) * this.config.reach,
-            z: boss.z + 0.2
-          };
         }
       };
     }
@@ -6465,7 +6457,6 @@
         ].map((pattern) => [pattern.feature.id, Object.freeze(pattern)])
       )
     );
-    const DEFAULT_PATTERN = Object.freeze(new BossPattern({ id: "", config: null }, DEPENDENCIES));
     class BossPatternPhase {
       update(_world, _action, _dt, _living) {
       }
@@ -6524,9 +6515,6 @@
     });
     const UNKNOWN_PHASE = new BossPatternPhase();
     return Object.freeze({
-      weaponPoint(boss, q) {
-        return (PATTERNS[boss.patternRuntime?.active?.id] || DEFAULT_PATTERN).weaponPoint(boss, q);
-      },
       forId(id) {
         return PATTERNS[id];
       },
@@ -6537,7 +6525,6 @@
   }
   var init_boss_pattern_behaviors = __esm({
     "src/boss-pattern-behaviors.js"() {
-      init_model_base5();
       init_model23();
       init_model24();
       init_model25();
@@ -12052,9 +12039,6 @@
         bossAttackArea(unitRadius = 0) {
           return bossAttackArea(this.boss, unitRadius, this.scene);
         }
-        bossWeaponPoint(q = 0) {
-          return BOSS_BEHAVIORS.weaponPoint(this.boss, q);
-        }
         livingBossTargets() {
           return this.units.filter((u) => hasFaction(u, FACTION_CONFIG.PLAYER) && u.hp > 0 && u.dropLanded).sort((a, b) => a.id - b.id);
         }
@@ -12374,8 +12358,10 @@
             (a, b) => Math.hypot(a.x - B_LOCAL.x, a.y - B_LOCAL.y) - Math.hypot(b.x - B_LOCAL.x, b.y - B_LOCAL.y)
           );
         }
-        resolveBossSector(action, patternId, range, sector) {
-          const B_LOCAL = this.boss, AIM = action.aim, HALF = sector / 2;
+        // Everyone within `range` of the boss's middle (so from its body outwards, no gap) whose bearing lies in the wedge
+        // from..to, widened by the unit's own size. A sweep calls it each tick with the wedge its arm crossed since the last.
+        resolveBossWedge(action, patternId, range, from, to) {
+          const B_LOCAL = this.boss, AIM = (from + to) / 2, HALF = (to - from) / 2;
           let hits = 0;
           const EXTENT = range + CONFIG.unit.maxRadius;
           for (const UNIT_LOCAL of this._nearestBossFirst(
@@ -12418,45 +12404,6 @@
           }
           return hits;
         }
-        resolveBossCircle(action, patternId, range) {
-          const B_LOCAL = this.boss;
-          let hits = 0;
-          const EXTENT = range + CONFIG.unit.maxRadius;
-          for (const UNIT_LOCAL of this._nearestBossFirst(
-            this._collectBossTargets(
-              B_LOCAL.x - EXTENT,
-              B_LOCAL.y - EXTENT,
-              B_LOCAL.x + EXTENT,
-              B_LOCAL.y + EXTENT,
-              this._bossHitCandidates,
-              true
-            )
-          )) {
-            if (action.hitIds.has(UNIT_LOCAL.id)) {
-              continue;
-            }
-            const DX = UNIT_LOCAL.x - B_LOCAL.x, DY = UNIT_LOCAL.y - B_LOCAL.y, D_LOCAL = Math.hypot(DX, DY);
-            if (D_LOCAL > range + UNIT_LOCAL.radius) {
-              continue;
-            }
-            if (this.hitBossPatternUnit(
-              UNIT_LOCAL,
-              patternId,
-              {
-                x: B_LOCAL.x + DX / (D_LOCAL || 1) * Math.min(D_LOCAL, range),
-                y: B_LOCAL.y + DY / (D_LOCAL || 1) * Math.min(D_LOCAL, range),
-                z: 0
-              },
-              {
-                x: DX / (D_LOCAL || 1),
-                y: DY / (D_LOCAL || 1)
-              }
-            )) {
-              hits++;
-            }
-          }
-          return hits;
-        }
         sweepBossBody(old, patternId) {
           const B_LOCAL = this.boss, ACTION = B_LOCAL.patternRuntime.active, EXTENT = B_LOCAL.radius + CONFIG.unit.maxRadius;
           for (const UNIT_LOCAL of this._collectBossTargets(
@@ -12478,71 +12425,6 @@
                 BOSS_BEHAVIORS.forId(patternId).sweepNormal(B_LOCAL)
               );
             }
-          }
-        }
-        fanBossWeapon(action, q0, q1) {
-          const CONFIG_LOCAL = BOSS_PATTERN_CONFIG[action.id], SPAN = CONFIG_LOCAL.sector, FROM_ANGLE = action.aim - SPAN / 2 + SPAN * CLAMP2(q0, 0, 1), TO_ANGLE = action.aim - SPAN / 2 + SPAN * CLAMP2(q1, 0, 1), B_LOCAL = this.boss;
-          const FROM = {
-            x: B_LOCAL.x + Math.cos(FROM_ANGLE) * CONFIG_LOCAL.reach,
-            y: B_LOCAL.y + Math.sin(FROM_ANGLE) * CONFIG_LOCAL.reach,
-            z: 0.2
-          }, TO = {
-            x: B_LOCAL.x + Math.cos(TO_ANGLE) * CONFIG_LOCAL.reach,
-            y: B_LOCAL.y + Math.sin(TO_ANGLE) * CONFIG_LOCAL.reach,
-            z: 0.2
-          };
-          const EXTENT = CONFIG_LOCAL.reach + CONFIG_LOCAL.width + CONFIG.unit.maxRadius;
-          for (const UNIT_LOCAL of this._collectBossTargets(
-            B_LOCAL.x - EXTENT,
-            B_LOCAL.y - EXTENT,
-            B_LOCAL.x + EXTENT,
-            B_LOCAL.y + EXTENT,
-            this._bossHitCandidates,
-            true
-          )) {
-            if (action.hitIds.has(UNIT_LOCAL.id)) {
-              continue;
-            }
-            const HIT = ARENA_GEOMETRY.sweep(FROM, TO, CONFIG_LOCAL.width, 1.4, UNIT_LOCAL);
-            if (HIT) {
-              const DX = UNIT_LOCAL.x - B_LOCAL.x, DY = UNIT_LOCAL.y - B_LOCAL.y, N = Math.hypot(DX, DY) || 1;
-              this.hitBossPatternUnit(UNIT_LOCAL, action.id, HIT, {
-                x: DX / N,
-                y: DY / N
-              });
-            }
-          }
-        }
-        sweepBossWeapon(action, q0, q1) {
-          const CONFIG_LOCAL = BOSS_PATTERN_CONFIG[action.id], START_ANGLE = action.startAngle ?? action.aim - Math.PI / 2, FROM_ANGLE = START_ANGLE + Math.PI * 2 * CLAMP2(q0, 0, 1), TO_ANGLE = START_ANGLE + Math.PI * 2 * CLAMP2(q1, 0, 1), B_LOCAL = this.boss, FROM = {
-            x: B_LOCAL.x + Math.cos(FROM_ANGLE) * CONFIG_LOCAL.reach,
-            y: B_LOCAL.y + Math.sin(FROM_ANGLE) * CONFIG_LOCAL.reach,
-            z: 0.2
-          }, TO = {
-            x: B_LOCAL.x + Math.cos(TO_ANGLE) * CONFIG_LOCAL.reach,
-            y: B_LOCAL.y + Math.sin(TO_ANGLE) * CONFIG_LOCAL.reach,
-            z: 0.2
-          }, EXTENT = CONFIG_LOCAL.reach + CONFIG_LOCAL.width + CONFIG.unit.maxRadius;
-          for (const UNIT_LOCAL of this._collectBossTargets(
-            B_LOCAL.x - EXTENT,
-            B_LOCAL.y - EXTENT,
-            B_LOCAL.x + EXTENT,
-            B_LOCAL.y + EXTENT,
-            this._bossHitCandidates,
-            true
-          )) {
-            if (action.hitIds.has(UNIT_LOCAL.id)) {
-              continue;
-            }
-            const HIT = ARENA_GEOMETRY.sweep(FROM, TO, CONFIG_LOCAL.width, 1.4, UNIT_LOCAL);
-            if (!HIT) {
-              continue;
-            }
-            const DX = UNIT_LOCAL.x - B_LOCAL.x, DY = UNIT_LOCAL.y - B_LOCAL.y, N = Math.hypot(DX, DY) || 1;
-            this.hitBossPatternUnit(UNIT_LOCAL, action.id, HIT, {
-              x: DX / N,
-              y: DY / N
-            });
           }
         }
         bossMouthPoint(released) {
@@ -13200,7 +13082,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.30";
+      PRODUCT_VERSION = "0.30.31";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -14345,7 +14227,7 @@
 
   // src/features/farm-modes/vfx-kit.js
   init_unit_grades();
-  var TAU2 = Math.PI * 2;
+  var TAU = Math.PI * 2;
   function clamp01(value) {
     return Math.max(0, Math.min(1, value));
   }
@@ -14430,7 +14312,7 @@
       if (P < 0.4) {
         const T = P / 0.4;
         for (let index = 0; index < BURST_COUNT; index++) {
-          const ANGLE = index * TAU2 / BURST_COUNT + 0.4, POINT2 = renderer.project(
+          const ANGLE = index * TAU / BURST_COUNT + 0.4, POINT2 = renderer.project(
             X + Math.cos(ANGLE) * easeOut(T) * 0.85,
             Y + Math.sin(ANGLE) * easeOut(T) * 0.7,
             Z * 0.5 + easeOut(T) * 0.35
@@ -14449,7 +14331,7 @@
         if (T <= 0 || T >= 1) {
           continue;
         }
-        const ANGLE = index * TAU2 / HEART_COUNT + 0.4, SWAY = Math.sin(T * TAU2 * 1.2 + index * 1.3) * 0.09, POINT2 = renderer.project(
+        const ANGLE = index * TAU / HEART_COUNT + 0.4, SWAY = Math.sin(T * TAU * 1.2 + index * 1.3) * 0.09, POINT2 = renderer.project(
           X + Math.cos(ANGLE) * 0.42 * easeOut(T) + SWAY,
           Y + Math.sin(ANGLE) * 0.3 * easeOut(T),
           Z + easeOut(T) * 1.25
@@ -14492,7 +14374,7 @@
   function drawOrbit(renderer, task, state, front) {
     const TIME = renderer.displayTimeMs * 42e-4, Z = task.centerZ + (front ? 0.32 : -0.16);
     for (let index = 0; index < ORBIT_COUNT; index++) {
-      const DIRECTION = index % 2 ? -1 : 1, BASE = TIME * DIRECTION + index * TAU2 / ORBIT_COUNT, SPREAD = 0.46 + 0.1 * Math.sin(index * 1.7) + state.bump * 0.12;
+      const DIRECTION = index % 2 ? -1 : 1, BASE = TIME * DIRECTION + index * TAU / ORBIT_COUNT, SPREAD = 0.46 + 0.1 * Math.sin(index * 1.7) + state.bump * 0.12;
       for (let trail = TRAIL_STEPS; trail >= 0; trail--) {
         const ANGLE = BASE - trail * 0.2 * DIRECTION, IS_FRONT = Math.sin(ANGLE) >= 0;
         if (IS_FRONT !== front) {
@@ -14529,7 +14411,7 @@
       R2 * 1.62,
       R2 * 0.99,
       0,
-      TAU2,
+      TAU,
       rgba(HOLE_RIM, 0.55 + 0.35 * STATE.bump),
       renderer.scale * 0.028
     );
@@ -14540,7 +14422,7 @@
         R2 * (1.7 + (1 - STATE.bump) * 1.1),
         R2 * (1.04 + (1 - STATE.bump) * 0.7),
         0,
-        TAU2,
+        TAU,
         rgba(CREAM, STATE.bump * 0.7),
         renderer.scale * 0.02
       );
@@ -14577,7 +14459,7 @@
         0.025
       );
       for (let index = 0; index < 8; index++) {
-        const ANGLE = TIME + index * TAU2 / 8, POINT2 = renderer.project(
+        const ANGLE = TIME + index * TAU / 8, POINT2 = renderer.project(
           TASK.centerX + Math.cos(ANGLE) * 0.56 * STATE.open,
           TASK.centerY + Math.sin(ANGLE) * 0.56 * STATE.open,
           0
@@ -14630,7 +14512,7 @@
       }
       const RAYS = 8, REACH = easeOut(P) * 1.5;
       for (let index = 0; index < RAYS; index++) {
-        const ANGLE = index * TAU2 / RAYS + P * 0.5, FROM = renderer.project(X + Math.cos(ANGLE) * REACH * 0.4, Y + Math.sin(ANGLE) * REACH * 0.4, Z - 0.5), TO = renderer.project(X + Math.cos(ANGLE) * REACH, Y + Math.sin(ANGLE) * REACH, Z - 0.5);
+        const ANGLE = index * TAU / RAYS + P * 0.5, FROM = renderer.project(X + Math.cos(ANGLE) * REACH * 0.4, Y + Math.sin(ANGLE) * REACH * 0.4, Z - 0.5), TO = renderer.project(X + Math.cos(ANGLE) * REACH, Y + Math.sin(ANGLE) * REACH, Z - 0.5);
         drawRay(
           renderer,
           FROM,
@@ -14641,7 +14523,7 @@
       }
       const SPARKLES = 6 + (effect.tier || 2) * 2;
       for (let index = 0; index < SPARKLES; index++) {
-        const SEED = Math.sin(index * 12.9898 + 4.1) * 43758.5453, JITTER = SEED - Math.floor(SEED), ANGLE = index * TAU2 / SPARKLES + JITTER * 0.8, DISTANCE = (0.35 + JITTER * 0.9) * easeOut(P), RISE = easeOut(P) * (0.5 + JITTER * 0.8) - P * P * 0.4, POINT2 = renderer.project(
+        const SEED = Math.sin(index * 12.9898 + 4.1) * 43758.5453, JITTER = SEED - Math.floor(SEED), ANGLE = index * TAU / SPARKLES + JITTER * 0.8, DISTANCE = (0.35 + JITTER * 0.9) * easeOut(P), RISE = easeOut(P) * (0.5 + JITTER * 0.8) - P * P * 0.4, POINT2 = renderer.project(
           X + Math.cos(ANGLE) * DISTANCE,
           Y + Math.sin(ANGLE) * DISTANCE * 0.8,
           Z - 0.3 + RISE
@@ -14696,7 +14578,7 @@
     C.lineWidth = Math.max(0.5, width);
     C.lineCap = "round";
     for (let index = 0; index < count; index++) {
-      const ANGLE = offset + index * TAU2 / count, FROM = renderer.project(x + Math.cos(ANGLE) * inner, y + Math.sin(ANGLE) * inner, 0.02), TO = renderer.project(x + Math.cos(ANGLE) * outer, y + Math.sin(ANGLE) * outer, 0.02);
+      const ANGLE = offset + index * TAU / count, FROM = renderer.project(x + Math.cos(ANGLE) * inner, y + Math.sin(ANGLE) * inner, 0.02), TO = renderer.project(x + Math.cos(ANGLE) * outer, y + Math.sin(ANGLE) * outer, 0.02);
       C.beginPath();
       C.moveTo(FROM.x, FROM.y);
       C.lineTo(TO.x, TO.y);
@@ -14716,7 +14598,7 @@
         if (T <= 0 || T >= 1) {
           continue;
         }
-        const ANGLE = index * TAU2 / 3 + 0.5, POINT2 = renderer.project(
+        const ANGLE = index * TAU / 3 + 0.5, POINT2 = renderer.project(
           effect.x + Math.cos(ANGLE) * 0.18 * T,
           effect.y + Math.sin(ANGLE) * 0.14 * T,
           0.15 + easeOut(T) * 0.7
@@ -14746,7 +14628,7 @@
       );
       renderer.ring(effect.x, effect.y, 0.1 + easeOut(T) * 0.5, rgba(FOOD, 0.85 * (1 - T)), 0.055 * (1 - T) + 0.01);
       for (let index = 0; index < 5; index++) {
-        const ANGLE = index * TAU2 / 5 + 0.3, REACH = easeOut(T) * (0.34 + index % 2 * 0.14), POINT2 = renderer.project(
+        const ANGLE = index * TAU / 5 + 0.3, REACH = easeOut(T) * (0.34 + index % 2 * 0.14), POINT2 = renderer.project(
           effect.x + Math.cos(ANGLE) * REACH,
           effect.y + Math.sin(ANGLE) * REACH * 0.8,
           0.06 + Math.sin(T * Math.PI) * (0.22 + index % 2 * 0.1)
@@ -14819,7 +14701,7 @@
         0.045 * (1 - P) + 0.01
       );
       for (let index = 0; index < 6; index++) {
-        const ANGLE = index * TAU2 / 6 + 0.4, REACH = easeOut(P) * 0.42;
+        const ANGLE = index * TAU / 6 + 0.4, REACH = easeOut(P) * 0.42;
         puff(
           renderer,
           effect.x + Math.cos(ANGLE) * REACH,
@@ -14843,7 +14725,7 @@
         0.035 * (1 - P) + 0.01
       );
       for (let index = 0; index < 4; index++) {
-        const T = clamp01(P / 0.7), ANGLE = index * TAU2 / 4 + 0.6, POINT2 = renderer.project(
+        const T = clamp01(P / 0.7), ANGLE = index * TAU / 4 + 0.6, POINT2 = renderer.project(
           effect.x + Math.cos(ANGLE) * easeOut(T) * 0.38,
           effect.y + Math.sin(ANGLE) * easeOut(T) * 0.3,
           Z + easeOut(T) * 0.65 - T * T * 0.2
@@ -14878,7 +14760,7 @@
       }
       C.lineCap = "round";
       for (let index = 0; index < COUNT; index++) {
-        const ANGLE = index * TAU2 / COUNT + index % 2 * 0.35, REACH = (BIG ? 2.1 : 1.3) * (0.55 + index % 3 * 0.22) * easeOut(P), LIFT = Math.sin(P * Math.PI) * (BIG ? 1.8 : 1.2) * (0.6 + index % 4 * 0.15), FROM = renderer.project(
+        const ANGLE = index * TAU / COUNT + index % 2 * 0.35, REACH = (BIG ? 2.1 : 1.3) * (0.55 + index % 3 * 0.22) * easeOut(P), LIFT = Math.sin(P * Math.PI) * (BIG ? 1.8 : 1.2) * (0.6 + index % 4 * 0.15), FROM = renderer.project(
           effect.x + Math.cos(ANGLE) * REACH,
           effect.y + Math.sin(ANGLE) * REACH * 0.7,
           0.5 + LIFT
@@ -15739,7 +15621,8 @@
   // src/features/boss-patterns/sweep-360/presentation.js
   init_definition21();
   init_farm_model();
-  var TAU3 = Math.PI * 2;
+  var HALF_TURN = Math.PI;
+  var ARM_INNER = 0.45;
   var CircleSweepPresentation = class extends BossAttackPresentation {
     constructor() {
       super(FEATURE7, "sweep", 0.14, 0.14);
@@ -15749,11 +15632,12 @@
       pose.arm("arm-left", -0.72);
       pose.arm("arm-right", 0.72);
     }
+    // Both arms swing together: each goes out further the nearer it is to the middle of its half turn.
     active(_boss, pose) {
-      const Q = pose.recoverImpact ? 1 : CLAMP2(pose.elapsed / Math.max(this.config.active, 1e-3), 0, 1), SWEEP = TAU3 * Q, ARM_SWAY = Math.sin(SWEEP) * 0.48;
-      pose.body.rotation = 0.06 * Math.sin(SWEEP);
-      pose.arm("arm-left", -0.72 - ARM_SWAY);
-      pose.arm("arm-right", 0.72 + ARM_SWAY);
+      const Q = pose.recoverImpact ? 1 : CLAMP2(pose.elapsed / Math.max(this.config.active, 1e-3), 0, 1), SWAY = Math.sin(HALF_TURN * Q) * 0.48;
+      pose.body.rotation = 0.06 * Math.sin(HALF_TURN * Q);
+      pose.arm("arm-left", -0.72 - SWAY);
+      pose.arm("arm-right", 0.72 + SWAY);
     }
     recover(boss, pose) {
       if (pose.recoverImpact) {
@@ -15762,25 +15646,40 @@
       }
       super.recover(boss, pose);
     }
+    // The whole disc is the danger; the two bright arcs are the halves the arms have swept so far.
     drawTelegraph(renderer, area) {
-      const CTX = renderer.ctx, ALPHA = CTX.globalAlpha, FADE = area.phase === "recover" ? Math.max(0, 1 - area.elapsed / 0.14) : 1, START = area.angle, END = START + Math.PI * 2 * CLAMP2(area.progress, 0, 1);
+      const FADE = area.phase === "recover" ? Math.max(0, 1 - area.elapsed / 0.14) : 1;
       if (!FADE) {
         return;
       }
+      super.drawTelegraph(renderer, area);
+      const CTX = renderer.ctx, ALPHA = CTX.globalAlpha, SWEPT = HALF_TURN * CLAMP2(area.progress, 0, 1);
       CTX.globalAlpha = ALPHA * FADE;
-      renderer.ring(area.x, area.y, area.reach + area.width, "#b46c45", area.active ? 0.05 : 0.09);
-      renderer.ring(area.x, area.y, area.reach - area.width, "#c59b7288", 0.045);
-      renderer.ring(area.x, area.y, area.reach + area.width + 0.12, "#dfad65", 0.14, START, END);
+      for (const START of [area.angle, area.angle + HALF_TURN]) {
+        renderer.ring(area.x, area.y, area.reach, "#dfad65", 0.14, START, START + SWEPT);
+      }
       CTX.globalAlpha = ALPHA;
     }
+    // Two arm strokes from near the body out to the reach, one per arm.
     drawWeapon(renderer, boss, _player, _matrix, _pose) {
       if (boss.patternPhase !== "active") {
         return;
       }
-      const Q = CLAMP2((boss.patternPhaseElapsed || 0) / Math.max(this.config.active, 1e-3), 0, 1), ANGLE = (boss.patternAim ?? boss.angle) - Math.PI / 2 + TAU3 * Q, TANGENT_X = -Math.sin(ANGLE) * this.config.width * 0.7, TANGENT_Y = Math.cos(ANGLE) * this.config.width * 0.7, RADIUS_X = Math.cos(ANGLE) * this.config.reach, RADIUS_Y = Math.sin(ANGLE) * this.config.reach, FROM = renderer.project(boss.x + RADIUS_X - TANGENT_X, boss.y + RADIUS_Y - TANGENT_Y, (boss.z || 0) + 0.2), TO = renderer.project(boss.x + RADIUS_X + TANGENT_X, boss.y + RADIUS_Y + TANGENT_Y, (boss.z || 0) + 0.2);
+      const Q = CLAMP2((boss.patternPhaseElapsed || 0) / Math.max(this.config.active, 1e-3), 0, 1), START = (boss.patternAim ?? boss.angle) - Math.PI / 2;
       renderer.ctx.flush();
-      renderer.line(FROM, TO, 0.2, "#68463299");
-      renderer.line(FROM, TO, 0.085, "#f0c77c");
+      for (const ARM_START of [START, START + HALF_TURN]) {
+        const ANGLE = ARM_START + HALF_TURN * Q, COS = Math.cos(ANGLE), SIN = Math.sin(ANGLE), FROM = renderer.project(
+          boss.x + COS * this.config.reach * ARM_INNER,
+          boss.y + SIN * this.config.reach * ARM_INNER,
+          (boss.z || 0) + 0.2
+        ), TO = renderer.project(
+          boss.x + COS * this.config.reach,
+          boss.y + SIN * this.config.reach,
+          (boss.z || 0) + 0.2
+        );
+        renderer.line(FROM, TO, 0.2, "#68463299");
+        renderer.line(FROM, TO, 0.085, "#f0c77c");
+      }
     }
   };
 
@@ -16087,7 +15986,7 @@
   init_farm_model();
 
   // src/attack-telegraph.js
-  var TAU4 = Math.PI * 2;
+  var TAU2 = Math.PI * 2;
   var ARC_STEP = Math.PI / 36;
   function point(out, count, x, y) {
     out[count * 2] = x;
@@ -16105,7 +16004,7 @@
   function bodyLandingContour(out, x, y, endX, endY, r, landingRadius) {
     const DX = endX - x, DY = endY - y, D = Math.hypot(DX, DY), ANGLE = Math.atan2(DY, DX), R2 = Math.max(r, landingRadius);
     if (D <= R2 - r + 1e-9) {
-      return arc(out, 0, endX, endY, R2, 0, TAU4);
+      return arc(out, 0, endX, endY, R2, 0, TAU2);
     }
     const JOIN = Math.sqrt(Math.max(0, R2 * R2 - r * r));
     let n = 0;
@@ -16116,7 +16015,7 @@
     } else {
       const CROSS = (r * r - R2 * R2 + D * D) / (2 * D), HEIGHT = Math.sqrt(Math.max(0, r * r - CROSS * CROSS));
       const SMALL = Math.atan2(HEIGHT, CROSS), LARGE = Math.atan2(HEIGHT, CROSS - D);
-      n = arc(out, n, x, y, r, ANGLE - SMALL, ANGLE + SMALL - TAU4);
+      n = arc(out, n, x, y, r, ANGLE - SMALL, ANGLE + SMALL - TAU2);
       n = arc(out, n, endX, endY, R2, ANGLE + LARGE, ANGLE - LARGE);
     }
     return n;
@@ -16124,9 +16023,7 @@
   function bossDangerContour(area, out) {
     let n = 0;
     if (area.kind === "sweep") {
-      const OUTER = area.reach + area.width, INNER = Math.max(0, area.reach - area.width);
-      n = arc(out, 0, area.x, area.y, OUTER, 0, TAU4);
-      return arc(out, n, area.x, area.y, INNER, TAU4, 0);
+      return arc(out, 0, area.x, area.y, area.reach, 0, TAU2);
     }
     if (area.kind === "sector") {
       n = point(out, n, area.x, area.y);
@@ -16138,21 +16035,6 @@
     if (area.kind === "leap") {
       return bodyLandingContour(out, area.x, area.y, area.targetX, area.targetY, area.width, area.reach);
     }
-    if (area.kind === "fan") {
-      const START = area.angle - area.sector / 2, END = area.angle + area.sector / 2, R_LOCAL = area.reach, W = area.width;
-      n = arc(out, n, area.x, area.y, R_LOCAL + W, START, END);
-      n = arc(out, n, area.x + Math.cos(END) * R_LOCAL, area.y + Math.sin(END) * R_LOCAL, W, END, END + Math.PI);
-      n = arc(out, n, area.x, area.y, Math.max(0, R_LOCAL - W), END, START);
-      return arc(
-        out,
-        n,
-        area.x + Math.cos(START) * R_LOCAL,
-        area.y + Math.sin(START) * R_LOCAL,
-        W,
-        START + Math.PI,
-        START + TAU4
-      );
-    }
     return 0;
   }
 
@@ -16160,7 +16042,7 @@
   var import_vector_sockets5 = __toESM(require_vector_sockets(), 1);
   init_farm_model();
   var { radiusX: RX, radiusY: RY } = CONFIG.farm.arena;
-  var TAU5 = Math.PI * 2;
+  var TAU3 = Math.PI * 2;
   var TIERS = [
     { r: 6.6, h: 7.5 },
     { r: 5.5, h: 7 },
@@ -16705,7 +16587,7 @@
       );
     }
     for (let k = 0; k < 8; k++) {
-      const A = k * TAU5 / 8, P0 = P.p(Math.cos(A) * 3.6, Math.sin(A) * 3.6), P1 = P.p(Math.cos(A) * 7, Math.sin(A) * 7);
+      const A = k * TAU3 / 8, P0 = P.p(Math.cos(A) * 3.6, Math.sin(A) * 3.6), P1 = P.p(Math.cos(A) * 7, Math.sin(A) * 7);
       C.strokeStyle = `rgba(${TINT.accent[0]},${TINT.accent[1]},${TINT.accent[2]},0.15)`;
       C.lineWidth = Math.max(1, 0.06 * S);
       C.beginPath();

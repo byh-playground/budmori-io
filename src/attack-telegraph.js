@@ -48,10 +48,7 @@ function bodyLandingContour(out, x, y, endX, endY, r, landingRadius) {
 export function bossDangerContour(area, out) {
     let n = 0;
     if (area.kind === 'sweep') {
-        const OUTER = area.reach + area.width,
-            INNER = Math.max(0, area.reach - area.width);
-        n = arc(out, 0, area.x, area.y, OUTER, 0, TAU);
-        return arc(out, n, area.x, area.y, INNER, TAU, 0);
+        return arc(out, 0, area.x, area.y, area.reach, 0, TAU);
     }
     if (area.kind === 'sector') {
         n = point(out, n, area.x, area.y);
@@ -62,24 +59,6 @@ export function bossDangerContour(area, out) {
     }
     if (area.kind === 'leap') {
         return bodyLandingContour(out, area.x, area.y, area.targetX, area.targetY, area.width, area.reach);
-    }
-    if (area.kind === 'fan') {
-        const START = area.angle - area.sector / 2,
-            END = area.angle + area.sector / 2,
-            R_LOCAL = area.reach,
-            W = area.width;
-        n = arc(out, n, area.x, area.y, R_LOCAL + W, START, END);
-        n = arc(out, n, area.x + Math.cos(END) * R_LOCAL, area.y + Math.sin(END) * R_LOCAL, W, END, END + Math.PI);
-        n = arc(out, n, area.x, area.y, Math.max(0, R_LOCAL - W), END, START);
-        return arc(
-            out,
-            n,
-            area.x + Math.cos(START) * R_LOCAL,
-            area.y + Math.sin(START) * R_LOCAL,
-            W,
-            START + Math.PI,
-            START + TAU,
-        );
     }
     return 0;
 }

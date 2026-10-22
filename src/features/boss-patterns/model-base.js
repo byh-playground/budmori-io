@@ -35,10 +35,4 @@ export class BossPattern {
     sweepNormal(_boss) {
         return null;
     }
-    weaponPoint(boss, q) {
-        const { CONFIG, CLAMP } = this.dependencies;
-        const REACH =
-            boss.radius - 0.25 + (CONFIG.boss.sweepReach - boss.radius + 0.25) * Math.sin(Math.PI * CLAMP(q, 0, 1));
-        return { x: boss.x + Math.cos(boss.angle) * REACH, y: boss.y + Math.sin(boss.angle) * REACH, z: boss.z + 0.2 };
-    }
 }
