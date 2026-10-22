@@ -739,63 +739,60 @@ await check('a full farm keeps queued rewards and the panel names their species'
     expect(GOT.CHIPS.join() === '3,5', `queue chips ${JSON.stringify(GOT)}`);
 });
 
-await check(
-    'a boss attack hits everyone it reaches: the first maxTargets in full, a crowd down to 35% each',
-    async () => {
-        const R = await WORLD(() => {
-            const W = BUDMORI.sim;
-            W._flushEjected();
-            for (const U of [...W.units]) {
-                W.removeUnit(U);
-            }
-            for (let i = 0; i < 20; i++) {
-                W.spawn(0, 1, i * 0.1, 0);
-            }
-            W.playerProgression.towerBest = 50;
-            W.startTower(1);
-            for (let i = 0; i < 40; i++) {
-                W.step(1 / 30);
-            }
-            W.finishMarch();
-            for (let i = 0; i < 10; i++) {
-                W.step(1 / 30);
-            }
-            const ID = 'attack.sweep-360',
-                MAX = BUDMORI.CONFIG.farm ? 5 : 5,
-                UNITS = W.unitCollection.items.filter((u) => !u.isBattleOnlySummon && u.hp > 0).slice(0, 12);
-            W.boss.patternRuntime.active = { id: ID, hitIds: new Set() };
-            const LOSS = UNITS.map((u) => {
-                u.hp = u.maxHp ?? u.hp;
-                u.z = 0;
-                u.dropLanded = true;
-                const BEFORE = u.hp;
-                W.hitBossPatternUnit(u, ID, { x: u.x, y: u.y });
-                return BEFORE - u.hp;
-            });
-            W.boss.patternRuntime.active = null;
-            W.retreatFromFight();
-            for (let i = 0; i < 60; i++) {
-                W.step(1 / 30);
-            }
-            W._flushEjected();
-            return { LOSS, MAX };
-        });
-        const FULL = R.LOSS[0];
-        expect(FULL > 0, `first unit is hurt ${JSON.stringify(R)}`);
-        expect(
-            R.LOSS.slice(0, R.MAX).every((x) => Math.abs(x - FULL) < 0.01 * FULL + 0.01),
-            `first ${R.MAX} take full damage ${JSON.stringify(R)}`,
-        );
-        expect(
-            R.LOSS.every((x) => x > 0),
-            `everyone is hurt ${JSON.stringify(R)}`,
-        );
-        expect(
-            R.LOSS[11] < FULL * (0.35 + 0.65 * (5 / 12) + 0.05) && R.LOSS[11] > FULL * 0.3,
-            `12th takes the shared share ${JSON.stringify(R)}`,
-        );
-    },
-);
+await check('a boss attack hits everyone it reaches: 35% each and 65% shared among those hit', async () => {
+    const R = await WORLD(() => {
+        const W = BUDMORI.sim;
+        W._flushEjected();
+        for (const U of [...W.units]) {
+            W.removeUnit(U);
+        }
+        for (let i = 0; i < 20; i++) {
+            W.spawn(0, 1, i * 0.1, 0);
+        }
+        W.playerProgression.towerBest = 50;
+        W.startTower(1);
+        for (let i = 0; i < 40; i++) {
+            W.step(1 / 30);
+        }
+        W.finishMarch();
+        for (let i = 0; i < 10; i++) {
+            W.step(1 / 30);
+        }
+        const ID = 'attack.sweep-360',
+            UNITS = W.unitCollection.items.filter((u) => !u.isBattleOnlySummon && u.hp > 0).slice(0, 12),
+            HIT = (units) => {
+                W.boss.patternRuntime.active = { id: ID, hitIds: new Set() };
+                const BEFORE = units.map((u) => {
+                    u.z = 0;
+                    u.dropLanded = true;
+                    u.hp = u.maxHp ?? u.hp;
+                    return u.hp;
+                });
+                for (const U of units) {
+                    W.hitBossPatternUnit(U, ID, { x: U.x, y: U.y });
+                }
+                W._settleBossHits();
+                return units.map((u, i) => BEFORE[i] - u.hp);
+            };
+        const ALONE = HIT(UNITS.slice(0, 1))[0],
+            CROWD = HIT(UNITS);
+        W.boss.patternRuntime.active = null;
+        W.retreatFromFight();
+        for (let i = 0; i < 60; i++) {
+            W.step(1 / 30);
+        }
+        W._flushEjected();
+        return { ALONE, CROWD };
+    });
+    expect(R.ALONE > 0, `a lone unit is hurt ${JSON.stringify(R)}`);
+    expect(R.CROWD.length === 12 && R.CROWD.every((x) => x > 0), `everyone is hurt ${JSON.stringify(R)}`);
+    // 12 hit: 35% + 65% / 12 = 40.4% of what a lone unit takes, the same for every one of them.
+    expect(
+        R.CROWD.every((x) => Math.abs(x - R.CROWD[0]) < 1e-6 && x < R.ALONE * 0.5 && x > R.ALONE * 0.3),
+        `crowd share ${JSON.stringify(R)}`,
+    );
+});
+
 await check('a boss hit volume is its drawn body: it differs per species and is never the old fixed box', async () => {
     const GOT = await WORLD(() =>
         Array.from({ length: 9 }, (_, species) => {
