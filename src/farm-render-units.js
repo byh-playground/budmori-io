@@ -6,9 +6,11 @@ import { DualStrikePresentation } from './features/unit-attacks/dual-strike/pres
 import { ATTACK_TYPES, CONFIG, clamp } from './farm-model.js';
 import { farmBreedingCooldown, unitRestPresentation } from './farm-indicators.js';
 import { scenePresentation } from './farm-render-scenes.js';
+import { PassiveMarksPresentation } from './tower-passive-presentations.js';
 
 const DEFAULT_ATTACK = new UnitAttackPresentation();
 const BARLEY_SHRED_PRESENTATION = new BarleyArmorShredPresentation();
+const PASSIVE_MARKS = new PassiveMarksPresentation();
 const ATTACK_PRESENTATIONS = new Map(
     [new DualStrikePresentation(), new LobPresentation()].map((presentation) => [presentation.id, presentation]),
 );
@@ -304,6 +306,7 @@ export class UnitPresentation {
         const POSE = this.drawUnit(u, sim, REST);
         this.drawUnitRingLayer(u, EFFECTS, 'front');
         this.drawSleepIndicator(REST, POSE);
+        PASSIVE_MARKS.drawUnit(this.renderer, u, sim.time);
         BARLEY_SHRED_PRESENTATION.drawStatus(this.renderer, u);
     }
 }

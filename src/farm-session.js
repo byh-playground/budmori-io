@@ -1,5 +1,6 @@
 import { Garden, bindPresentationClock } from './farm-model.js';
 import { baseUnitStatsFor } from './unit-stats.js';
+import { PASSIVE_SETTINGS } from './tower-run.js';
 import { BarleyArmorShredModel } from './features/abilities/barley-shred/model.js';
 const { PresentationRuntime: PRESENTATION_RUNTIME, RenderObject: RENDER_OBJECT } = globalThis.BloomGamekitInterpolation;
 const R = RENDER_OBJECT;
@@ -62,6 +63,10 @@ class UnitRender extends RENDER_OBJECT {
         cloneBornAt: R.STEP,
         barleyArmorShredTotal: R.STEP,
         barleyArmorShredLeft: R.STEP,
+        lastStandOn: R.STEP,
+        resolveOn: R.STEP,
+        vengeanceStacks: R.STEP,
+        openingLeft: R.LINEAR,
     });
     constructor() {
         super();
@@ -110,6 +115,21 @@ class UnitRender extends RENDER_OBJECT {
         this.cloneBornAt = u.cloneBornAt;
         this.barleyArmorShredTotal = BarleyArmorShredModel.total(u, world.simulationTick);
         this.barleyArmorShredLeft = BarleyArmorShredModel.remaining(u, world.simulationTick);
+        this.updatePassiveMarks(u, world);
+    }
+    // The tower's passive cards as flags the marks draw from: which condition each card is in for this unit right now.
+    updatePassiveMarks(u, world) {
+        const TOWER = world.tower,
+            TOTALS = TOWER.passives,
+            LIVE = TOWER.active && u.hp > 0 && !u.isBattleOnlySummon;
+        this.lastStandOn = LIVE && !!TOTALS['last-stand'] && u.hp <= this.maxHp * PASSIVE_SETTINGS.lastStandBelow;
+        this.resolveOn = LIVE && !!TOTALS.resolve && u.hp <= this.maxHp * PASSIVE_SETTINGS.resolveBelow;
+        this.vengeanceStacks =
+            LIVE && TOTALS.vengeance ? Math.min(TOWER.fallen, PASSIVE_SETTINGS.vengeanceMaxFallen) : 0;
+        this.openingLeft =
+            LIVE && TOTALS.opening && world.farmBossEvent.phase === 'fighting'
+                ? Math.max(0, PASSIVE_SETTINGS.openingSeconds - world.farmBossEvent.elapsed)
+                : 0;
     }
 }
 class BossRender extends RENDER_OBJECT {

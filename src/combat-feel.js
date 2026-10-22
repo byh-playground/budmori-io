@@ -1,6 +1,7 @@
 import { presentationEventTimeMs } from './farm-model.js';
 import { DamageNumberPresentation } from './damage-numbers.js';
 import { BarleyArmorShredPresentation } from './features/abilities/barley-shred/presentation.js';
+import { PASSIVE_PRESENTATION_EVENTS } from './tower-passive-presentations.js';
 const { ObjectPool: OBJECT_POOL } = globalThis.BloomGamekitObjectPool;
 const EMPTY_NOTICES = Object.freeze([]);
 // One place for the budget of a fight's feedback: how long an effect lives, how many may be alive, and when the
@@ -237,6 +238,7 @@ const COMBAT_EFFECT_PRESENTATIONS = new Map([
     ['unit-land', Object.freeze(new UnitLandingPresentation())],
     ['attack-launch', Object.freeze(new AttackLaunchPresentation())],
     ['boss-launch', Object.freeze(new BossLaunchPresentation())],
+    ...PASSIVE_PRESENTATION_EVENTS,
 ]);
 
 // FarmSession supplies newly signaled notice batches. Presentation never polls

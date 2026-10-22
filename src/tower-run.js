@@ -25,11 +25,87 @@ export const TOWER_EVENTS = Object.freeze([]);
 
 // A climb starts with nothing taken and the first floor already a fight.
 export function freshTowerRun() {
-    return { doors: [], nextKind: '', cards: [], relics: new Map(), since: { battle: 0, power: 1, event: 1 } };
+    return {
+        doors: [],
+        nextKind: '',
+        cards: [],
+        passives: {},
+        relics: new Map(),
+        since: { battle: 0, power: 1, event: 1 },
+        // This fight's: allies fallen so far and the units whose undying card is already spent.
+        fallen: 0,
+        undyingUsed: new Set(),
+    };
 }
 
-// Passive cards: conditional effects, added with their own definitions; the pool is empty until then.
-export const PASSIVE_CARDS = Object.freeze([]);
+// Passive cards: effects that need a condition. Each card adds `values[rarity]` to one total for the whole climb; the
+// totals (passiveTotals) are what the fight reads. Stacking, rarity and the ten-card cap are the same as stat cards.
+export const PASSIVE_SETTINGS = Object.freeze({
+    lastStandBelow: 0.5,
+    resolveBelow: 0.3,
+    openingSeconds: 10,
+    // A fallen ally adds to vengeance this many times at most.
+    vengeanceMaxFallen: 10,
+    // Healing of a fallen ally's neighbours reaches this far.
+    helperRadius: 7,
+    resolveMaxReduction: 0.8,
+    undyingMaxRestore: 0.9,
+});
+const PERCENT = (value) => `${Math.round(value * 1000) / 10}%`;
+export const PASSIVE_CARDS = Object.freeze([
+    {
+        id: 'last-stand',
+        name: '배수진',
+        values: [0.15, 0.24, 0.38],
+        text: (value) => `체력 50% 이하일 때 공격 +${PERCENT(value)}`,
+    },
+    {
+        id: 'resolve',
+        name: '불굴',
+        values: [0.15, 0.22, 0.32],
+        text: (value) => `체력 30% 이하일 때 받는 피해 -${PERCENT(value)}`,
+    },
+    {
+        id: 'vengeance',
+        name: '복수',
+        values: [0.03, 0.045, 0.07],
+        text: (value) => `아군이 쓰러질 때마다 공격 +${PERCENT(value)} (전투 동안, 최대 10회)`,
+    },
+    {
+        id: 'opening',
+        name: '선제 공격',
+        values: [0.4, 0.6, 0.9],
+        text: (value) => `전투 시작 후 ${PASSIVE_SETTINGS.openingSeconds}초간 공격 +${PERCENT(value)}`,
+    },
+    {
+        id: 'helper',
+        name: '도우미',
+        values: [0.05, 0.08, 0.12],
+        text: (value) => `아군이 쓰러지면 주변 아군을 최대 체력의 ${PERCENT(value)}만큼 회복`,
+    },
+    {
+        id: 'undying',
+        name: '불사',
+        values: [0.05, 0.15, 0.3],
+        text: (value) => `유닛마다 전투에 한 번, 쓰러질 피해를 견디고 체력 ${PERCENT(value)}로 남음`,
+    },
+]);
+
+export function passiveCard(id) {
+    return PASSIVE_CARDS.find((card) => card.id === id);
+}
+
+// The run's passive cards as one {id: total} table: the sum of the taken cards' values.
+export function passiveTotals(cards) {
+    const TOTALS = {};
+    for (const TAKEN of cards) {
+        const CARD = passiveCard(TAKEN.id);
+        if (CARD) {
+            TOTALS[CARD.id] = (TOTALS[CARD.id] || 0) + CARD.values[TAKEN.rarity];
+        }
+    }
+    return TOTALS;
+}
 
 export const RARITY_NAMES = Object.freeze(['일반', '희귀', '영웅']);
 
@@ -75,8 +151,10 @@ export function runStatModifiers(cards) {
     const MODS = {};
     for (const TAKEN of cards) {
         const CARD = statCard(TAKEN.id);
-        MODS[CARD.stat] ??= { flat: 0, pct: 0 };
-        MODS[CARD.stat][CARD.mode] += CARD.values[TAKEN.rarity];
+        if (CARD) {
+            MODS[CARD.stat] ??= { flat: 0, pct: 0 };
+            MODS[CARD.stat][CARD.mode] += CARD.values[TAKEN.rarity];
+        }
     }
     return MODS;
 }

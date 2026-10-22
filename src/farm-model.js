@@ -54,11 +54,13 @@ import {
 } from './boss-rewards.js';
 import {
     PASSIVE_CARDS,
+    PASSIVE_SETTINGS,
     TOWER_EVENTS,
     advanceSince,
     freshTowerRun,
     rollCardOffers,
     rollEventOffers,
+    passiveTotals,
     rollFloorKind,
     runStatModifiers,
 } from './tower-run.js';
@@ -1652,7 +1654,102 @@ const GARDEN = class Garden {
     processUnitDeath(unit) {
         return this.mutateUnits(this._processUnitDeath, unit);
     }
+    // The run's passive cards in a fight. A hit gains from the attacker's low health, the fight's first seconds and the
+    // allies fallen so far; a unit hurt while low takes less. All of it is zero outside a tower climb.
+    passiveDamageScale(source, sourceMaxHp, target, targetMaxHp) {
+        const TOWER = this.tower;
+        if (!TOWER.active) {
+            return 1;
+        }
+        const TOTALS = TOWER.passives,
+            SETTINGS = PASSIVE_SETTINGS;
+        let scale = 1;
+        if (hasFaction(source, FACTION_CONFIG.PLAYER)) {
+            scale +=
+                (source.hp <= sourceMaxHp * SETTINGS.lastStandBelow ? TOTALS['last-stand'] || 0 : 0) +
+                (this.farmBossEvent.elapsed <= SETTINGS.openingSeconds ? TOTALS.opening || 0 : 0) +
+                (TOTALS.vengeance || 0) * Math.min(TOWER.fallen, SETTINGS.vengeanceMaxFallen);
+        }
+        return scale * (target === this.boss ? 1 : this.passiveReceivedScale(target, targetMaxHp));
+    }
+    passiveReceivedScale(unit, maxHp = STATS(unit.tier, unit.species).maxHp) {
+        const TOWER = this.tower;
+        if (
+            !TOWER.active ||
+            !hasFaction(unit, FACTION_CONFIG.PLAYER) ||
+            unit.hp > maxHp * PASSIVE_SETTINGS.resolveBelow
+        ) {
+            return 1;
+        }
+        return 1 - Math.min(PASSIVE_SETTINGS.resolveMaxReduction, TOWER.passives.resolve || 0);
+    }
+    // A unit that took a killing blow holds on once per fight, at the card's share of its health.
+    passiveUndying(unit) {
+        const TOWER = this.tower,
+            RESTORE = TOWER.passives.undying;
+        if (
+            !TOWER.active ||
+            !RESTORE ||
+            unit.hp > 0 ||
+            !hasFaction(unit, FACTION_CONFIG.PLAYER) ||
+            unit.isBattleOnlySummon ||
+            TOWER.undyingUsed.has(unit.id)
+        ) {
+            return;
+        }
+        TOWER.undyingUsed.add(unit.id);
+        unit.hp = Math.max(
+            1,
+            STATS(unit.tier, unit.species).maxHp * Math.min(PASSIVE_SETTINGS.undyingMaxRestore, RESTORE),
+        );
+        this.combat('passive-undying', {
+            unit: unit.id,
+            x: unit.x,
+            y: unit.y,
+            z: unit.z,
+            radius: unit.radius,
+            height: unit.height,
+        });
+    }
+    // An ally falls: vengeance counts it and the helper card heals the ones standing near.
+    passiveAllyFell(unit) {
+        const TOWER = this.tower;
+        if (!TOWER.active || unit.isBattleOnlySummon || !hasFaction(unit, FACTION_CONFIG.PLAYER)) {
+            return;
+        }
+        TOWER.fallen++;
+        const HEAL = TOWER.passives.helper || 0,
+            VENGEANCE = TOWER.passives.vengeance || 0;
+        if (!HEAL && !VENGEANCE) {
+            return;
+        }
+        const NEAR = this.unitCollection.items
+            .filter(
+                (other) =>
+                    other !== unit &&
+                    other.hp > 0 &&
+                    !other.isBattleOnlySummon &&
+                    hasFaction(other, FACTION_CONFIG.PLAYER) &&
+                    Math.hypot(other.x - unit.x, other.y - unit.y) <= PASSIVE_SETTINGS.helperRadius,
+            )
+            .sort(
+                (a, b) =>
+                    Math.hypot(a.x - unit.x, a.y - unit.y) - Math.hypot(b.x - unit.x, b.y - unit.y) || a.id - b.id,
+            );
+        if (HEAL) {
+            for (const OTHER of NEAR) {
+                applyHealing(OTHER, STATS(OTHER.tier, OTHER.species).maxHp * HEAL);
+            }
+        }
+        const TARGETS = NEAR.slice(0, 6).map((other) => ({ x: other.x, y: other.y, z: other.z, height: other.height }));
+        for (const KIND of [HEAL && 'passive-helper', VENGEANCE && 'passive-vengeance']) {
+            if (KIND) {
+                this.combat(KIND, { x: unit.x, y: unit.y, z: unit.z, height: unit.height, targets: TARGETS });
+            }
+        }
+    }
     _processUnitDeath(unit) {
+        this.passiveAllyFell(unit);
         unit.ability.interrupt();
         unit.specialAbility?.interrupt();
         unit.ability.resetCombatEffects?.();
@@ -2218,7 +2315,7 @@ const GARDEN = class Garden {
         }
         if (DOOR.type === 'skill') {
             T.relics.set(DOOR.id, (T.relics.get(DOOR.id) || 0) + 1);
-        } else if (DOOR.type === 'stat') {
+        } else if (DOOR.type === 'stat' || DOOR.type === 'passive') {
             T.cards.push({ id: DOOR.id, rarity: DOOR.rarity });
             this._applyRunStats();
         } else {
@@ -2239,6 +2336,7 @@ const GARDEN = class Garden {
     // The run's stat cards change every unit's stats; hit points never stay above the new top.
     _applyRunStats() {
         setRunStatMods(runStatModifiers(this.tower.cards));
+        this.tower.passives = passiveTotals(this.tower.cards);
         for (const UNIT_LOCAL of this.unitCollection.items) {
             if (UNIT_LOCAL.hp > 0 && !UNIT_LOCAL.isFormationClone) {
                 UNIT_LOCAL.hp = Math.min(UNIT_LOCAL.hp, STATS(UNIT_LOCAL.tier, UNIT_LOCAL.species).maxHp);
@@ -2275,6 +2373,8 @@ const GARDEN = class Garden {
                 UNIT_LOCAL.hp = STATS(UNIT_LOCAL.tier, UNIT_LOCAL.species).maxHp;
             }
         }
+        T.fallen = 0;
+        T.undyingUsed = new Set();
         for (const UNIT_LOCAL of this.units) {
             if (!UNIT_LOCAL.isBattleOnlySummon) {
                 UNIT_LOCAL.splitUsedThisBattle = false;
@@ -4546,7 +4646,9 @@ const GARDEN = class Garden {
                 ATTACKER_STATS.attackPower *
                 (CONTEXT.attackPowerMultiplier ?? (SOURCE.giantUntil > this.time ? 3 : 1)) *
                 DAMAGE_MULTIPLIER,
-            RAW_DAMAGE = RAW_BASE_DAMAGE + (SOURCE.ability?.rawDamageBonus?.(this, action, KIND) || 0);
+            RAW_DAMAGE =
+                (RAW_BASE_DAMAGE + (SOURCE.ability?.rawDamageBonus?.(this, action, KIND) || 0)) *
+                this.passiveDamageScale(SOURCE, ATTACKER_STATS.maxHp, target, DEFENSE.maxHp);
         // The context belongs to one attack, so a mixed boss/unit area hit shares
         // one lazy roll while each target retains its own armor and actual HP loss.
         const DAMAGE = applyDamageToTargets(SOURCE, [target], {
@@ -4558,6 +4660,7 @@ const GARDEN = class Garden {
             roll: () => CONTEXT.criticalRoll ?? (CONTEXT.criticalRoll = this.random()),
         });
         if (!IS_BOSS) {
+            this.passiveUndying(target);
             const CRITICAL_RAW_DAMAGE =
                 RAW_DAMAGE *
                 (DAMAGE.critical ? (SOURCE_STAT_OVERRIDES.critMultiplier ?? ATTACKER_STATS.critMultiplier ?? 1) : 1);
@@ -5192,9 +5295,11 @@ const GARDEN = class Garden {
                 B_LOCAL.attackPower *
                 CONFIG_LOCAL.damageMultiplier *
                 (this.bossEnraged ? BOSS_ENRAGE.damageMultiplier : 1) *
-                (GUARD?.receivedDamageMultiplier ?? 1),
+                (GUARD?.receivedDamageMultiplier ?? 1) *
+                this.passiveReceivedScale(unit),
             sourceKind: 'enemy',
         });
+        this.passiveUndying(unit);
         this.onCombatResolved.emit({ damageTaken: RECEIVED.totalActualLoss, excluded: unit.isFormationClone });
         this._syncUnitAliveCount(unit);
         if (unit.hp === 0) {
