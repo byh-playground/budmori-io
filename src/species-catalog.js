@@ -5,54 +5,81 @@ export const SPECIES_CATALOG = Object.freeze([
         id: 0,
         name: '콩',
         asset: 'pea.svg',
+        // The colours of the limbs a boss of this species swings: body fill and outline.
+        limbFill: '#83ad47',
+        limbOutline: '#4a1c16',
         bossWeight: 1,
     }),
     Object.freeze({
         id: 1,
         name: '옥수수',
         asset: 'corn-kernel.svg',
+        // The colours of the limbs a boss of this species swings: body fill and outline.
+        limbFill: '#f7cd36',
+        limbOutline: '#4a1c16',
         bossWeight: 1,
     }),
     Object.freeze({
         id: 2,
         name: '팥',
         asset: 'kidney-bean.svg',
+        // The colours of the limbs a boss of this species swings: body fill and outline.
+        limbFill: '#d06a8f',
+        limbOutline: '#4b1a20',
         bossWeight: 1,
     }),
     Object.freeze({
         id: 3,
         name: '밤톨',
         asset: 'chestnut.svg',
+        // The colours of the limbs a boss of this species swings: body fill and outline.
+        limbFill: '#84472f',
+        limbOutline: '#2c201c',
         bossWeight: 1,
     }),
     Object.freeze({
         id: 4,
         name: '땅콩',
         asset: 'peanut.svg',
+        // The colours of the limbs a boss of this species swings: body fill and outline.
+        limbFill: '#c89d67',
+        limbOutline: '#3b241e',
         bossWeight: 1,
     }),
     Object.freeze({
         id: 5,
         name: '호두',
         asset: 'walnut.svg',
+        // The colours of the limbs a boss of this species swings: body fill and outline.
+        limbFill: '#a96c18',
+        limbOutline: '#431811',
         bossWeight: 1,
     }),
     Object.freeze({
         id: 6,
         name: '쌀',
         asset: 'rice.svg',
+        // The colours of the limbs a boss of this species swings: body fill and outline.
+        limbFill: '#f3efe4',
+        limbOutline: '#4b211b',
         bossWeight: 1,
     }),
     Object.freeze({
         id: 7,
         name: '밀',
         asset: 'wheat.svg',
+        // The colours of the limbs a boss of this species swings: body fill and outline.
+        limbFill: '#e4b247',
+        limbOutline: '#34271f',
         bossWeight: 1,
     }),
     Object.freeze({
         id: 8,
         name: '보리',
         asset: 'barley.svg',
+        // The colours of the limbs a boss of this species swings: body fill and outline.
+        limbFill: '#ddaa43',
+        limbOutline: '#4b211b',
         bossWeight: 1,
     }),
 ]);

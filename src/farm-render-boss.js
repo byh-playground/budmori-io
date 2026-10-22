@@ -185,6 +185,7 @@ export class BossPresentation {
                 x: MOUTH_SOCKET.x * S_LOCAL + MATRIX[4],
                 y: MOUTH_SOCKET.y * S_LOCAL + MATRIX[5],
             };
+        PRESENTATION.drawBehind(this.renderer, B);
         this.renderer.ctx.vector.flush();
         PLAYER.draw({
             projection: this.renderer.ctx.vector.projection,

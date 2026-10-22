@@ -106,6 +106,9 @@ export class BossAttackPresentation {
     drawRelease() {
         // Ordinary attacks have no mouth-release paint.
     }
+    drawBehind() {
+        // Ordinary attacks paint nothing behind the body.
+    }
     drawWeapon() {
         // Ordinary attacks have no articulated weapon pass.
     }
