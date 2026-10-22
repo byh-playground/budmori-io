@@ -261,16 +261,6 @@ function unitTorsoHeight(unit) {
     const BODY = unitBodyDefinition(unit.species);
     return ((BODY.bounds.bottom - BODY.bounds.top) * unitVectorScale(unit)) / WORLD_HEIGHT_PROJECTION;
 }
-// Where the authored torso lands on screen for a vector drawn with `scale` and its ground root at (x, y) pixels.
-// Status marks anchor to this, so they follow what is actually drawn for a pea and for a boss alike.
-function bodyScreenBox(species, scale, x, y) {
-    const BODY = unitBodyDefinition(species);
-    return {
-        x: x + ((BODY.bounds.left + BODY.bounds.right) / 2 - BODY.ground.x) * scale,
-        top: y - (BODY.ground.y - BODY.bounds.top) * scale,
-        width: (BODY.bounds.right - BODY.bounds.left) * scale,
-    };
-}
 function maximumUnitRadius(tier) {
     return Math.max(
         ...UNIT_BODIES.map((body) =>
@@ -307,7 +297,6 @@ module.exports = {
     bossBodyHeight,
     bossBodyRadius,
     unitTorsoHeight,
-    bodyScreenBox,
     maximumUnitRadius,
     unitDisplayScale,
     validateUnitBodySource,

@@ -8,6 +8,8 @@ import {
     unitVectorScale,
     unitBodyRadius,
     unitBodyHeight,
+    bossBodyHeight,
+    bossBodyRadius,
     unitTorsoHeight,
     maximumUnitRadius,
 } from './features/unit-body/definition.cjs';
@@ -708,6 +710,13 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
     }
     get height() {
         return unitBodyHeight(this) * this.giantScale;
+    }
+    // The drawn body every display rule reads; for a unit it is the hit volume itself.
+    get drawnRadius() {
+        return this.radius;
+    }
+    get drawnHeight() {
+        return this.height;
     }
     get bodyHeight() {
         return unitTorsoHeight(this) * this.giantScale;
@@ -2437,9 +2446,15 @@ const GARDEN = class Garden {
             faction: FACTION_CONFIG.ENEMY,
             z: 0,
             generation: ++this.entityGenerationSerial,
-            isBoss: true,
             radius: CONFIG.boss.radius,
             height: CONFIG.boss.height,
+            // radius/height are the hit volume; every display rule reads the drawn body below, as it does for a unit.
+            get drawnRadius() {
+                return bossBodyRadius(this);
+            },
+            get drawnHeight() {
+                return bossBodyHeight(this);
+            },
             hp: HP,
             maxHp: HP,
             species: CLAMP(species, 0, CONFIG.unit.speciesCount - 1),
@@ -4601,9 +4616,9 @@ const GARDEN = class Garden {
             buffed,
             critical: damage.critical,
             damage: damage.totalActualLoss,
-            x: this.boss.x + (DX / D_LOCAL) * this.boss.radius,
-            y: this.boss.y + (DY / D_LOCAL) * this.boss.radius,
-            z: CLAMP(point.z + 0.2, 0.2, this.boss.height),
+            x: this.boss.x + (DX / D_LOCAL) * this.boss.drawnRadius,
+            y: this.boss.y + (DY / D_LOCAL) * this.boss.drawnRadius,
+            z: CLAMP(point.z + 0.2, 0.2, this.boss.drawnHeight),
             nx: DX / D_LOCAL,
             ny: DY / D_LOCAL,
             strength,

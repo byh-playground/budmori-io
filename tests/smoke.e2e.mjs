@@ -649,17 +649,19 @@ await check('a full farm keeps queued rewards and the panel names their species'
     expect(GOT.CHIPS.join() === '3,5', `queue chips ${JSON.stringify(GOT)}`);
 });
 
-await check('effects and marks size against the drawn body, boss included', async () => {
-    const { createRequire: CREATE_REQUIRE } = await import('node:module'),
-        REQUIRE = CREATE_REQUIRE(import.meta.url),
-        BODY = REQUIRE('./../src/features/unit-body/definition.cjs'),
-        GOT = await WORLD(() => ({ radius: BUDMORI.CONFIG.boss.radius, height: BUDMORI.CONFIG.boss.height }));
-    for (let species = 0; species < 9; species++) {
-        const BOSS = { species, radius: GOT.radius },
-            HEIGHT = BODY.bossBodyHeight(BOSS),
-            BOX = BODY.bodyScreenBox(species, 1, 0, 100);
-        expect(HEIGHT > GOT.height * 1.5, `species ${species}: drawn boss ${HEIGHT} vs hit volume ${GOT.height}`);
-        expect(BODY.bossBodyRadius(BOSS) > 0 && BOX.top < 100 && BOX.width > 0, `species ${species} box ${BOX.top}`);
+await check('every display rule reads one drawn body: a unit and each boss species', async () => {
+    const GOT = await WORLD(() => {
+        const W = BUDMORI.sim,
+            BOSSES = Array.from({ length: 9 }, (_, species) => {
+                const BOSS = W.createBoss(species);
+                return { species, drawn: BOSS.drawnHeight, radius: BOSS.drawnRadius, hit: BOSS.height };
+            }),
+            UNIT = W.units.find((unit) => !unit.isBattleOnlySummon);
+        return { BOSSES, same: UNIT.drawnHeight === UNIT.height && UNIT.drawnRadius === UNIT.radius };
+    });
+    expect(GOT.same, 'a unit draws its hit volume');
+    for (const BOSS of GOT.BOSSES) {
+        expect(BOSS.drawn > BOSS.hit * 1.5 && BOSS.radius > 0, `species ${BOSS.species}: ${JSON.stringify(BOSS)}`);
     }
 });
 
