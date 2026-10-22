@@ -2037,7 +2037,11 @@ function sync(display, now, notices) {
         DOLLAR('startFloor').value = String(START_FLOOR);
     }
     paintRange(DOLLAR('startFloor'));
-    syncText('startFloorValue', `시작 ${START_FLOOR} / ${BEST_FLOOR}층`);
+    const START_BOOST = W.towerStartBoost(START_FLOOR);
+    syncText(
+        'startFloorValue',
+        `시작 ${START_FLOOR} / ${BEST_FLOOR}층${START_FLOOR > 1 ? ` · 강화 공격 ×${START_BOOST.attack.toFixed(2)} 체력 ×${START_BOOST.hp.toFixed(2)}` : ''}`,
+    );
     syncText('bossChallenge', '탑 오르기');
     syncFlag('bossChallenge', 'hidden', FARM_EVENT_ACTIVE || home);
     syncAttribute('bossChallenge', 'aria-disabled', String(raidStartBlockReason() !== ''));

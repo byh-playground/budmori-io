@@ -666,6 +666,21 @@ await check('a boss hit volume is its drawn body: it differs per species and is 
     expect(new Set(GOT.map((boss) => boss.height)).size > 4, `heights ${JSON.stringify(GOT)}`);
 });
 
+await check(
+    'starting the tower above floor 1 carries the strengthening doors the climb would have passed',
+    async () => {
+        const GOT = await WORLD(() => {
+            const W = BUDMORI.sim;
+            return [1, 4, 7, 10].map((floor) => W.towerStartBoost(floor));
+        });
+        const OK = (got, attack, hp) => Math.abs(got.attack - attack) < 1e-9 && Math.abs(got.hp - hp) < 1e-9;
+        expect(
+            OK(GOT[0], 1, 1) && OK(GOT[1], 1.1, 1) && OK(GOT[2], 1.1, 1.2) && OK(GOT[3], 1.21, 1.2),
+            JSON.stringify(GOT),
+        );
+    },
+);
+
 await check('no page errors', async () => {
     expect(ERRORS.length === 0, ERRORS.slice(0, 3).join(' | '));
 });

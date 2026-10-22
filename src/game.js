@@ -7642,7 +7642,7 @@
             relicMaxLevel: 5,
             // A strengthening door gives one run-long multiplier to every unit. It grows with the same steps as the boss
             // (hp 1.2, attack 1.1); attackShare is how often the offer is the attack card.
-            boost: Object.freeze({ attack: 1.1, hp: 1.2, attackShare: 0.5 }),
+            boost: Object.freeze({ attack: 1.1, hp: 1.2, attackShare: 0.5, startEvery: 3 }),
             // The troops walk to the tower door at the back of the farm and go in; the door is where the fence opens.
             marchSeconds: 4.5,
             marchSpeed: 7,
@@ -9400,7 +9400,7 @@
             doors: [],
             offer: "",
             relics: /* @__PURE__ */ new Map(),
-            boost: { attack: 1, hp: 1 },
+            boost: this.towerStartBoost(FLOOR),
             boostOffer: "attack",
             sleepUntil: SLEEP,
             record: false
@@ -9408,6 +9408,12 @@
           this.farmBossEvent = { ...this.farmBossEvent, phase: "marching", elapsed: 0, outcome: "fighting" };
           this.markProgressChanged();
           return true;
+        }
+        // Starting above floor 1 skips the strengthening doors the climb would have passed: one door per `startEvery`
+        // skipped floors, attack first then hp, so the first floor is no harder than the climb to it.
+        towerStartBoost(floor) {
+          const BOOST = CONFIG.farm.tower.boost, DOORS = Math.floor((floor - 1) / BOOST.startEvery);
+          return { attack: BOOST.attack ** Math.ceil(DOORS / 2), hp: BOOST.hp ** Math.floor(DOORS / 2) };
         }
         // One unit's walk to the tower door while the march lasts.
         _marchUnit(unit2) {
@@ -12842,7 +12848,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.21";
+      PRODUCT_VERSION = "0.30.22";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -21430,7 +21436,11 @@
       DOLLAR2("startFloor").value = String(START_FLOOR);
     }
     paintRange(DOLLAR2("startFloor"));
-    syncText("startFloorValue", `시작 ${START_FLOOR} / ${BEST_FLOOR}층`);
+    const START_BOOST = W.towerStartBoost(START_FLOOR);
+    syncText(
+      "startFloorValue",
+      `시작 ${START_FLOOR} / ${BEST_FLOOR}층${START_FLOOR > 1 ? ` · 강화 공격 ×${START_BOOST.attack.toFixed(2)} 체력 ×${START_BOOST.hp.toFixed(2)}` : ""}`
+    );
     syncText("bossChallenge", "탑 오르기");
     syncFlag("bossChallenge", "hidden", FARM_EVENT_ACTIVE || home);
     syncAttribute("bossChallenge", "aria-disabled", String(raidStartBlockReason() !== ""));
