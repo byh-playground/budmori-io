@@ -1508,14 +1508,6 @@
         const BODY2 = unitBodyDefinition3(unit2.species);
         return (BODY2.bounds.bottom - BODY2.bounds.top) * unitVectorScale2(unit2) / WORLD_HEIGHT_PROJECTION5;
       }
-      function bodyScreenBox3(species, scale, x, y) {
-        const BODY2 = unitBodyDefinition3(species);
-        return {
-          x: x + ((BODY2.bounds.left + BODY2.bounds.right) / 2 - BODY2.ground.x) * scale,
-          top: y - (BODY2.ground.y - BODY2.bounds.top) * scale,
-          width: (BODY2.bounds.right - BODY2.bounds.left) * scale
-        };
-      }
       function maximumUnitRadius2(tier) {
         return Math.max(
           ...UNIT_BODIES.map(
@@ -1551,7 +1543,6 @@
         bossBodyHeight: bossBodyHeight2,
         bossBodyRadius: bossBodyRadius2,
         unitTorsoHeight: unitTorsoHeight2,
-        bodyScreenBox: bodyScreenBox3,
         maximumUnitRadius: maximumUnitRadius2,
         unitDisplayScale: unitDisplayScale3,
         validateUnitBodySource
@@ -1561,7 +1552,7 @@
 
   // src/features/formation-skills/model-base.js
   function targetBodyDimensions(target) {
-    const BOSS2 = target?.isBoss === true, BODY_HEIGHT = BOSS2 ? (0, import_definition10.bossBodyHeight)(target) : Number.isFinite(target?.height) ? Math.max(0, target.height) : T1_DIAMETER * 1.7, BODY_RADIUS = BOSS2 ? (0, import_definition10.bossBodyRadius)(target) : Number.isFinite(target?.radius) ? Math.max(0, target.radius) : T1_DIAMETER * 0.5, BASE_Z = Number.isFinite(target?.z) ? target.z : 0;
+    const BODY_HEIGHT = Number.isFinite(target?.drawnHeight) ? Math.max(0, target.drawnHeight) : T1_DIAMETER * 1.7, BODY_RADIUS = Number.isFinite(target?.drawnRadius) ? Math.max(0, target.drawnRadius) : T1_DIAMETER * 0.5, BASE_Z = Number.isFinite(target?.z) ? target.z : 0;
     return {
       z: BASE_Z,
       bodyHeight: BODY_HEIGHT,
@@ -5059,17 +5050,17 @@
             renderer.line(FROM, TO, 0.055, `rgba(229,242,229,${ALPHA})`);
           }
         }
-        // A cracked shield and "-N" over the head of whatever is shredded. `box` is the drawn torso on screen
-        // ({x, top, width} in pixels), so the mark sits on the real head and scales with the real body, boss or pea.
-        drawStatus(renderer, target, box) {
+        // A cracked shield and "-N" over the head of whatever is shredded, placed and sized from its drawn body
+        // (`drawnHeight`, `drawnRadius`), the same numbers every skill effect uses.
+        drawStatus(renderer, target) {
           const AMOUNT = target.barleyArmorShredTotal || 0;
           if (target.hp <= 0 || AMOUNT <= 0) {
             return;
           }
-          const PIXEL = renderer.pixelRatio, HEIGHT = Math.max(
+          const PIXEL = renderer.pixelRatio, HEAD = renderer.project(target.x, target.y, (target.z || 0) + target.drawnHeight), BODY_WIDTH = 2 * target.drawnRadius * renderer.scale, HEIGHT = Math.max(
             STATUS.minHeight * PIXEL,
-            Math.min(STATUS.maxHeight * PIXEL, box.width * STATUS.bodyShare)
-          ), TEXT = `-${formatDamage(AMOUNT)}`, TEXT_WIDTH = textWidth(TEXT) * HEIGHT, GAP = HEIGHT * 0.25, SHIELD_WIDTH = HEIGHT * 0.9, LEFT = box.x - (SHIELD_WIDTH + GAP + TEXT_WIDTH) / 2, BASE = box.top - HEIGHT * 0.5, CX = LEFT + SHIELD_WIDTH / 2, LEFT_FRACTION = target.barleyArmorShredLeft ?? 1, FILL = "#d8e5d7", OUTLINE = "rgba(46,58,48,0.9)";
+            Math.min(STATUS.maxHeight * PIXEL, BODY_WIDTH * STATUS.bodyShare)
+          ), TEXT = `-${formatDamage(AMOUNT)}`, TEXT_WIDTH = textWidth(TEXT) * HEIGHT, GAP = HEIGHT * 0.25, SHIELD_WIDTH = HEIGHT * 0.9, LEFT = HEAD.x - (SHIELD_WIDTH + GAP + TEXT_WIDTH) / 2, BASE = HEAD.y - HEIGHT * 0.5, CX = LEFT + SHIELD_WIDTH / 2, LEFT_FRACTION = target.barleyArmorShredLeft ?? 1, FILL = "#d8e5d7", OUTLINE = "rgba(46,58,48,0.9)";
           const AT = ([x, y]) => ({ x: CX + x * SHIELD_WIDTH, y: BASE - y * HEIGHT });
           for (const STROKE of SHIELD_STROKES) {
             const POINTS = STROKE.map(AT);
@@ -8161,6 +8152,13 @@
         get height() {
           return (0, import_definition50.unitBodyHeight)(this) * this.giantScale;
         }
+        // The drawn body every display rule reads; for a unit it is the hit volume itself.
+        get drawnRadius() {
+          return this.radius;
+        }
+        get drawnHeight() {
+          return this.height;
+        }
         get bodyHeight() {
           return (0, import_definition50.unitTorsoHeight)(this) * this.giantScale;
         }
@@ -9723,9 +9721,15 @@
             faction: FACTION_CONFIG.ENEMY,
             z: 0,
             generation: ++this.entityGenerationSerial,
-            isBoss: true,
             radius: CONFIG.boss.radius,
             height: CONFIG.boss.height,
+            // radius/height are the hit volume; every display rule reads the drawn body below, as it does for a unit.
+            get drawnRadius() {
+              return (0, import_definition50.bossBodyRadius)(this);
+            },
+            get drawnHeight() {
+              return (0, import_definition50.bossBodyHeight)(this);
+            },
             hp: HP,
             maxHp: HP,
             species: CLAMP2(species, 0, CONFIG.unit.speciesCount - 1),
@@ -11506,9 +11510,9 @@
             buffed,
             critical: damage.critical,
             damage: damage.totalActualLoss,
-            x: this.boss.x + DX / D_LOCAL * this.boss.radius,
-            y: this.boss.y + DY / D_LOCAL * this.boss.radius,
-            z: CLAMP2(point2.z + 0.2, 0.2, this.boss.height),
+            x: this.boss.x + DX / D_LOCAL * this.boss.drawnRadius,
+            y: this.boss.y + DY / D_LOCAL * this.boss.drawnRadius,
+            z: CLAMP2(point2.z + 0.2, 0.2, this.boss.drawnHeight),
             nx: DX / D_LOCAL,
             ny: DY / D_LOCAL,
             strength
@@ -12847,7 +12851,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.19";
+      PRODUCT_VERSION = "0.30.20";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15100,12 +15104,7 @@
       const POSE = this.drawUnit(u, sim, REST);
       this.drawUnitRingLayer(u, EFFECTS, "front");
       this.drawSleepIndicator(REST, POSE);
-      const BODY2 = (0, import_definition59.unitBodyDefinition)(u.species);
-      BARLEY_SHRED_PRESENTATION.drawStatus(
-        this.renderer,
-        u,
-        (0, import_definition59.bodyScreenBox)(u.species, 2 * POSE.r / Math.max(BODY2.viewBox[2], BODY2.viewBox[3]), POSE.p.x, POSE.p.y)
-      );
+      BARLEY_SHRED_PRESENTATION.drawStatus(this.renderer, u);
     }
   };
 
@@ -15118,7 +15117,6 @@
   // src/farm-render-boss.js
   var import_vector_sockets4 = __toESM(require_vector_sockets(), 1);
   init_farm_model();
-  var import_definition66 = __toESM(require_definition(), 1);
 
   // src/features/boss-patterns/presentation-base.js
   init_farm_model();
@@ -15589,7 +15587,7 @@
       });
       PRESENTATION.drawRelease(this.renderer, B, POSE, MOUTH_SCREEN);
       PRESENTATION.drawWeapon(this.renderer, B, PLAYER, MATRIX, POSE, RECORD);
-      BARLEY_SHRED_PRESENTATION2.drawStatus(this.renderer, B, (0, import_definition66.bodyScreenBox)(SPECIES, S_LOCAL, P.x, P.y));
+      BARLEY_SHRED_PRESENTATION2.drawStatus(this.renderer, B);
     }
   };
 
@@ -16795,7 +16793,13 @@
       feel?.drawGround(this, this.displayTimeMs);
       const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2);
       if (BOSS_VISIBLE) {
-        this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, "#38472c33");
+        this.groundEllipse(
+          sim2.boss.x,
+          sim2.boss.y,
+          sim2.boss.drawnRadius * 1.05,
+          sim2.boss.drawnRadius * 0.75,
+          "#38472c33"
+        );
         if (SIDES) {
           this.ring(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, "#f0463c", 0.12);
         }
@@ -16900,8 +16904,8 @@
       }
       const RECOIL = feel?.boss(this.displayTimeMs);
       return {
-        radius: sim2.boss.radius,
-        height: sim2.boss.height,
+        radius: sim2.boss.drawnRadius,
+        height: sim2.boss.drawnHeight,
         scale: 3.4,
         shiftX: RECOIL?.x || 0,
         shiftY: RECOIL?.y || 0
@@ -17034,6 +17038,8 @@
       this.bodyScale = u.bodyScale;
       this.height = u.height;
       this.radius = u.radius;
+      this.drawnHeight = u.drawnHeight;
+      this.drawnRadius = u.drawnRadius;
       this.maxHp = u.isFormationClone ? 1 : baseUnitStatsFor(u.tier, u.species).maxHp;
       this.fed = u.fed;
       this.ownerId = u.ownerId;
@@ -17065,6 +17071,8 @@
       maxHp: R.STEP,
       radius: R.STEP,
       height: R.STEP,
+      drawnRadius: R.STEP,
+      drawnHeight: R.STEP,
       flash: R.LINEAR,
       species: R.STEP,
       patternId: R.STATE_KEY,
@@ -17103,6 +17111,8 @@
       this.maxHp = b.maxHp;
       this.radius = b.radius;
       this.height = b.height;
+      this.drawnHeight = b.drawnHeight;
+      this.drawnRadius = b.drawnRadius;
       this.flash = b.flash;
       this.species = b.species ?? 3;
       this.stage = b.stage ?? 0;
@@ -17166,6 +17176,8 @@
       tier: R.STEP,
       radius: R.STEP,
       height: R.STEP,
+      drawnRadius: R.STEP,
+      drawnHeight: R.STEP,
       projectileKind: R.STATE_KEY,
       shotIndex: R.STEP,
       fanIndex: R.STEP,

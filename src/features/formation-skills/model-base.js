@@ -1,19 +1,10 @@
-import { unitBodyRadius, bossBodyHeight, bossBodyRadius } from '../unit-body/definition.cjs';
+import { unitBodyRadius } from '../unit-body/definition.cjs';
 export const T1_DIAMETER = unitBodyRadius({ species: 0, tier: 1, growthElapsed: 1, growthDuration: 1 }) * 2;
 
-// The size effects are drawn against: the body as it is rendered, never the gameplay hit volume of a boss.
+// The size effects are drawn against: the drawn body, never a boss's hit volume.
 export function targetBodyDimensions(target) {
-    const BOSS = target?.isBoss === true,
-        BODY_HEIGHT = BOSS
-            ? bossBodyHeight(target)
-            : Number.isFinite(target?.height)
-              ? Math.max(0, target.height)
-              : T1_DIAMETER * 1.7,
-        BODY_RADIUS = BOSS
-            ? bossBodyRadius(target)
-            : Number.isFinite(target?.radius)
-              ? Math.max(0, target.radius)
-              : T1_DIAMETER * 0.5,
+    const BODY_HEIGHT = Number.isFinite(target?.drawnHeight) ? Math.max(0, target.drawnHeight) : T1_DIAMETER * 1.7,
+        BODY_RADIUS = Number.isFinite(target?.drawnRadius) ? Math.max(0, target.drawnRadius) : T1_DIAMETER * 0.5,
         BASE_Z = Number.isFinite(target?.z) ? target.z : 0;
     return {
         z: BASE_Z,

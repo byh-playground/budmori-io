@@ -652,7 +652,13 @@ const DIORAMA = class Diorama {
         feel?.drawGround(this, this.displayTimeMs);
         const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2);
         if (BOSS_VISIBLE) {
-            this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, '#38472c33');
+            this.groundEllipse(
+                sim2.boss.x,
+                sim2.boss.y,
+                sim2.boss.drawnRadius * 1.05,
+                sim2.boss.drawnRadius * 0.75,
+                '#38472c33',
+            );
             if (SIDES) {
                 this.ring(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, '#f0463c', 0.12);
             }
@@ -759,8 +765,8 @@ const DIORAMA = class Diorama {
         }
         const RECOIL = feel?.boss(this.displayTimeMs);
         return {
-            radius: sim2.boss.radius,
-            height: sim2.boss.height,
+            radius: sim2.boss.drawnRadius,
+            height: sim2.boss.drawnHeight,
             scale: 3.4,
             shiftX: RECOIL?.x || 0,
             shiftY: RECOIL?.y || 0,

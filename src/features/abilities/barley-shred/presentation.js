@@ -48,24 +48,26 @@ export class BarleyArmorShredPresentation {
             renderer.line(FROM, TO, 0.055, `rgba(229,242,229,${ALPHA})`);
         }
     }
-    // A cracked shield and "-N" over the head of whatever is shredded. `box` is the drawn torso on screen
-    // ({x, top, width} in pixels), so the mark sits on the real head and scales with the real body, boss or pea.
-    drawStatus(renderer, target, box) {
+    // A cracked shield and "-N" over the head of whatever is shredded, placed and sized from its drawn body
+    // (`drawnHeight`, `drawnRadius`), the same numbers every skill effect uses.
+    drawStatus(renderer, target) {
         const AMOUNT = target.barleyArmorShredTotal || 0;
         if (target.hp <= 0 || AMOUNT <= 0) {
             return;
         }
         const PIXEL = renderer.pixelRatio,
+            HEAD = renderer.project(target.x, target.y, (target.z || 0) + target.drawnHeight),
+            BODY_WIDTH = 2 * target.drawnRadius * renderer.scale,
             HEIGHT = Math.max(
                 STATUS.minHeight * PIXEL,
-                Math.min(STATUS.maxHeight * PIXEL, box.width * STATUS.bodyShare),
+                Math.min(STATUS.maxHeight * PIXEL, BODY_WIDTH * STATUS.bodyShare),
             ),
             TEXT = `-${formatDamage(AMOUNT)}`,
             TEXT_WIDTH = textWidth(TEXT) * HEIGHT,
             GAP = HEIGHT * 0.25,
             SHIELD_WIDTH = HEIGHT * 0.9,
-            LEFT = box.x - (SHIELD_WIDTH + GAP + TEXT_WIDTH) / 2,
-            BASE = box.top - HEIGHT * 0.5,
+            LEFT = HEAD.x - (SHIELD_WIDTH + GAP + TEXT_WIDTH) / 2,
+            BASE = HEAD.y - HEIGHT * 0.5,
             CX = LEFT + SHIELD_WIDTH / 2,
             LEFT_FRACTION = target.barleyArmorShredLeft ?? 1,
             FILL = '#d8e5d7',
