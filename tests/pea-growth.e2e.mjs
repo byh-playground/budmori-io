@@ -29,6 +29,7 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' },
     REPORT = [],
     ERRORS = [];
+let activePage = null;
 fs.mkdirSync(OUTPUT, { recursive: true });
 const SERVER = http.createServer((request, response) => {
     const FILE = path.resolve(ROOT, '.' + decodeURIComponent(request.url.split('?')[0]));
@@ -149,6 +150,7 @@ async function revealPreview(page, frame, mobile) {
             TOP = Math.max(0, SCROLL.y),
             BOTTOM = Math.min(VIEWPORT_SIZE.height, SCROLL.y + SCROLL.height),
             VISIBLE = Math.min(BOTTOM, BOX.y + BOX.height) - Math.max(TOP, BOX.y);
+        REPORT.push({ kind: 'preview-scroll-attempt', attempt, iframe: BOX, pane: SCROLL, visibleHeight: VISIBLE });
         if (VISIBLE >= BOX.height - 3) {
             assert.ok(VISIBLE >= 160, 'at least160px of actual preview canvas is visible');
             const CANVAS = await frame.locator('#world').boundingBox();
@@ -183,8 +185,9 @@ async function observeDrawnPea(page) {
             return false;
         }
         if (!PLAYER.__peaCaptureWrapped) {
-            const DRAW = PLAYER.draw;
-            PLAYER.draw = function (options) {
+            const DRAW = PLAYER.draw,
+                WRAPPER = Object.create(PLAYER);
+            const CAPTURE_DRAW = function (options) {
                 const DISPLAY = BUDMORI.runtime.presentationView?.units.find((unit) => unit.id === UNIT.id),
                     MATRIX = options.matrix,
                     [LEFT, TOP, WIDTH, HEIGHT] = BUDMORI.renderer.vectorAssets.get(0).compiled.viewBox,
@@ -221,9 +224,17 @@ async function observeDrawnPea(page) {
                           at: BUDMORI.renderer.displayTimeMs,
                       }
                     : null;
-                return DRAW.call(this, options);
+                return DRAW.call(PLAYER, options);
             };
-            PLAYER.__peaCaptureWrapped = true;
+            // Native players are frozen. A renderer-owned forwarding adapter observes
+            // the real submitted matrix without mutating that player or its animation.
+            Object.defineProperty(WRAPPER, 'draw', { value: CAPTURE_DRAW });
+            WRAPPER.__peaCaptureWrapped = true;
+            BUDMORI.renderer.vectorPlayerAssets.set(WRAPPER, BUDMORI.renderer.vectorPlayerAssets.get(PLAYER));
+            BUDMORI.renderer.vectorPlayers.set(UNIT.id, WRAPPER);
+            if (BUDMORI.renderer.vectorPlayers.get(UNIT.id).draw !== CAPTURE_DRAW) {
+                throw new Error('Draw observer was not installed');
+            }
         }
         return true;
     });
@@ -593,6 +604,7 @@ try {
                 deviceScaleFactor: 1,
             }),
             PAGE = await CONTEXT.newPage();
+        activePage = PAGE;
         PAGE.setDefaultTimeout(12000);
         PAGE.on('pageerror', (error) => ERRORS.push(String(error)));
         PAGE.on('console', (message) => {
@@ -797,6 +809,57 @@ try {
         );
         await CONTEXT.close();
     }
+} catch (error) {
+    if (activePage && !activePage.isClosed()) {
+        try {
+            await activePage.screenshot({ path: path.join(OUTPUT, `failure-${CASE}-${VIEWPORT}.png`) });
+            const FRAMES = [];
+            for (const FRAME of activePage.frames()) {
+                FRAMES.push(
+                    await FRAME.evaluate(() => {
+                        const UNIT = globalThis.BUDMORI?.sim?.units[0],
+                            DISPLAY = globalThis.BUDMORI?.runtime?.presentationView?.units[0],
+                            RECT = (selector) => {
+                                const ELEMENT = document.querySelector(selector);
+                                if (!ELEMENT) {
+                                    return null;
+                                }
+                                const BOX = ELEMENT.getBoundingClientRect();
+                                return {
+                                    x: BOX.x,
+                                    y: BOX.y,
+                                    width: BOX.width,
+                                    height: BOX.height,
+                                    scrollTop: ELEMENT.scrollTop,
+                                    scrollHeight: ELEMENT.scrollHeight,
+                                    overflowY: getComputedStyle(ELEMENT).overflowY,
+                                };
+                            };
+                        return {
+                            url: location.href,
+                            drawn: globalThis.__peaDraw || null,
+                            unit: UNIT
+                                ? { id: UNIT.id, phase: UNIT.ability.phase, pea: UNIT.ability.action?.peaAttack }
+                                : null,
+                            display: DISPLAY ? { id: DISPLAY.id, ability: { ...DISPLAY.ability } } : null,
+                            pane: RECT('#abilityPanel'),
+                            nodes: RECT('#abilityNodes'),
+                            iframe: RECT('.growth-evolution-preview iframe'),
+                            canvas: RECT('#world'),
+                        };
+                    }),
+                );
+            }
+            REPORT.push({ kind: 'failure-diagnostics', message: String(error), frames: FRAMES });
+        } catch (diagnosticError) {
+            REPORT.push({
+                kind: 'failure-diagnostics-error',
+                message: String(diagnosticError),
+                original: String(error),
+            });
+        }
+    }
+    throw error;
 } finally {
     fs.writeFileSync(
         path.join(OUTPUT, `report-${CASE}-${VIEWPORT}.json`),

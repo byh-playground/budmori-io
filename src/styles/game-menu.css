@@ -602,7 +602,7 @@ html.growth-preview-scene #bossbar {
         overflow: visible;
         flex: none;
     }
-    .growth-evolution-preview iframe {
+    #abilityPanel .growth-evolution-preview iframe {
         height: 180px;
     }
 }
