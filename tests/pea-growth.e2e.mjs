@@ -178,6 +178,48 @@ async function revealPreview(page, frame, mobile) {
     throw new Error('Actual scrolling could not expose the full preview canvas within the viewport');
 }
 
+// SwiftShader can render slower than a short rebound lasts. Observe the real
+// main-world action at most half a 20Hz tick per frame; never inject steps,
+// poses or contacts. Other user flows and benchmarks keep their normal clock.
+async function limitMainMotionObservationClock(page) {
+    await page.evaluate(() => {
+        const SESSION = BUDMORI.runtime;
+        if (!SESSION.__peaMotionClock) {
+            const CLOCK = {
+                    active: true,
+                    lastInput: null,
+                    current: null,
+                    maxInputDeltaMs: 0,
+                    maxForwardedDeltaMs: 0,
+                    frames: 0,
+                    advance(now) {
+                        if (this.lastInput === null) {
+                            this.current = now;
+                        } else if (now !== this.lastInput) {
+                            const DELTA = Math.max(0, now - this.lastInput),
+                                FORWARDED = this.active ? Math.min(25, DELTA) : DELTA;
+                            this.current += FORWARDED;
+                            if (this.active) {
+                                this.maxInputDeltaMs = Math.max(this.maxInputDeltaMs, DELTA);
+                                this.maxForwardedDeltaMs = Math.max(this.maxForwardedDeltaMs, FORWARDED);
+                                this.frames++;
+                            }
+                        }
+                        this.lastInput = now;
+                        return this.current;
+                    },
+                },
+                PULSE = SESSION.pulse;
+            SESSION.__peaMotionClock = CLOCK;
+            SESSION.pulse = function (now) {
+                return PULSE.call(this, CLOCK.advance(now));
+            };
+            SESSION.loop.resetTiming();
+        }
+        SESSION.__peaMotionClock.active = true;
+    });
+}
+
 async function observeDrawnPea(page) {
     await page.waitForFunction((body) => {
         const UNIT = globalThis.BUDMORI?.sim?.units[0],
@@ -189,8 +231,9 @@ async function observeDrawnPea(page) {
             const SESSION = BUDMORI.runtime,
                 PRESENT = SESSION.presentation;
             SESSION.presentation = function (now) {
-                globalThis.__peaInputClock = now;
-                return PRESENT.call(this, now);
+                const CLOCK = this.__peaMotionClock?.advance(now) ?? now;
+                globalThis.__peaInputClock = CLOCK;
+                return PRESENT.call(this, CLOCK);
             };
             SESSION.__peaClockObserver = true;
         }
@@ -255,6 +298,20 @@ async function observeDrawnPea(page) {
                     DRAWN = globalThis.__peaDraw,
                     ACTION = UNIT.ability.action?.peaAttack;
                 if (
+                    REQUEST?.actionId != null &&
+                    ACTION &&
+                    REQUEST.actionId !== ACTION.id &&
+                    !globalThis.__peaCaptureMiss
+                ) {
+                    globalThis.__peaCaptureMiss = {
+                        requestedActionId: REQUEST.actionId,
+                        observedActionId: ACTION.id,
+                        tick: BUDMORI.sim.simulationTick,
+                        request: { ...REQUEST },
+                        drawn: structuredClone(DRAWN),
+                    };
+                }
+                if (
                     REQUEST &&
                     !globalThis.__peaCaptured &&
                     ACTION?.form === REQUEST.tier &&
@@ -296,6 +353,9 @@ async function observeDrawnPea(page) {
 
 async function captureMotion(page, tier, label) {
     await observeDrawnPea(page);
+    if (label === 'main') {
+        await limitMainMotionObservationClock(page);
+    }
     const TRACE = [];
     const STAGES = [
         { phase: 'windup', stage: null },
@@ -308,6 +368,7 @@ async function captureMotion(page, tier, label) {
     await page.evaluate(
         (request) => {
             globalThis.__peaCaptured = null;
+            globalThis.__peaCaptureMiss = null;
             globalThis.__peaCaptureRequest = request;
         },
         { tier, ...STAGES[0], actionId },
@@ -392,7 +453,26 @@ async function captureMotion(page, tier, label) {
             'T6 actual draw is compressed after the fast contacts, not only relabeled',
         );
     }
-    REPORT.push({ kind: label, tier, trace: TRACE });
+    const OBSERVATION_CLOCK = await page.evaluate(() => {
+        const CLOCK = BUDMORI.runtime.__peaMotionClock;
+        if (!CLOCK) {
+            return { mode: 'production-help-clock' };
+        }
+        // Retain the clock origin, but stop limiting deltas after this capture.
+        CLOCK.active = false;
+        return {
+            mode: 'bounded-main-motion-observation',
+            maxDeltaMs: 25,
+            frames: CLOCK.frames,
+            maxInputDeltaMs: CLOCK.maxInputDeltaMs,
+            maxForwardedDeltaMs: CLOCK.maxForwardedDeltaMs,
+            limitation: 'Slowed actual model/render observation, not normal-speed or device performance evidence.',
+        };
+    });
+    if (label === 'main') {
+        assert.ok(OBSERVATION_CLOCK.maxForwardedDeltaMs <= 25);
+    }
+    REPORT.push({ kind: label, tier, trace: TRACE, observationClock: OBSERVATION_CLOCK });
 }
 
 async function preview(page, tier, mobile) {
@@ -900,6 +980,15 @@ try {
                             help: globalThis.__budmoriHelp?.snapshot() || null,
                             captureRequest: globalThis.__peaCaptureRequest || null,
                             captured: globalThis.__peaCaptured || null,
+                            missedAction: globalThis.__peaCaptureMiss || null,
+                            observationClock: globalThis.BUDMORI?.runtime?.__peaMotionClock
+                                ? {
+                                      active: BUDMORI.runtime.__peaMotionClock.active,
+                                      frames: BUDMORI.runtime.__peaMotionClock.frames,
+                                      maxInputDeltaMs: BUDMORI.runtime.__peaMotionClock.maxInputDeltaMs,
+                                      maxForwardedDeltaMs: BUDMORI.runtime.__peaMotionClock.maxForwardedDeltaMs,
+                                  }
+                                : null,
                             drawn: globalThis.__peaDraw || null,
                             unit: UNIT
                                 ? { id: UNIT.id, phase: UNIT.ability.phase, pea: UNIT.ability.action?.peaAttack }
