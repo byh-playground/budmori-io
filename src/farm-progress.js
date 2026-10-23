@@ -445,9 +445,11 @@ function position(index, count, seed, scale) {
     };
 }
 export function migrateFarmProgress(data) {
-    validateFarmProgress(data, { allowLegacy: true });
-    const NEXT = structuredClone(data);
-    NEXT.player = migrateAbilityProgressionState(NEXT.player);
+    // Species rollouts can migrate v4 to v4. Read only known entries before validating
+    // the resulting current-schema container; never mutate or write the source on failure.
+    const PLAYER = migrateAbilityProgressionState(data?.player),
+        NEXT = structuredClone(data);
+    NEXT.player = PLAYER;
     validateFarmProgress(NEXT);
     return NEXT;
 }

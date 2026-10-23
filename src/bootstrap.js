@@ -13,8 +13,11 @@ if (new URLSearchParams(location.search).has('help')) {
         },
     });
     document.documentElement.classList.add('help-scene');
-    if (/^corn-t[1-6]$/.test(new URLSearchParams(location.search).get('help'))) {
-        document.documentElement.classList.add('corn-preview-scene');
+    if (/^(corn|pea)-t[1-6]$/.test(new URLSearchParams(location.search).get('help'))) {
+        document.documentElement.classList.add(
+            'growth-preview-scene',
+            `${new URLSearchParams(location.search).get('help').split('-')[0]}-preview-scene`,
+        );
     }
 }
 let config = null;

@@ -37,6 +37,11 @@ class UnitRender extends RENDER_OBJECT {
         'ability.phase': R.STATE_KEY,
         'ability.elapsed': R.LINEAR,
         'ability.peanutStrikeCount': R.STEP,
+        'ability.peaForm': R.STEP,
+        'ability.peaSlot': R.STEP,
+        'ability.peaStage': R.STATE_KEY,
+        'ability.peaStageProgress': R.LINEAR,
+        'ability.peaWindupDuration': R.STEP,
         walnutGuarding: R.STEP,
         cooldown: R.LINEAR,
         cooldownDuration: R.STEP,
@@ -89,6 +94,15 @@ class UnitRender extends RENDER_OBJECT {
         this.ability.phase = u.ability.phase;
         this.ability.elapsed = u.ability.elapsed;
         this.ability.peanutStrikeCount = u.ability.action?.peanutStrikeCount || 2;
+        const PEA = u.ability.action?.peaAttack;
+        this.ability.peaForm = PEA?.form || 0;
+        this.ability.peaSlot = PEA?.slot || 0;
+        this.ability.peaStage = PEA?.stage || u.ability.phase;
+        this.ability.peaStageProgress =
+            PEA && u.ability.phase === 'active' && PEA.contactTick === null
+                ? Math.min(1, u.ability.elapsed / (u.ability.action.path?.duration || 0.12))
+                : PEA?.stageProgress || 0;
+        this.ability.peaWindupDuration = PEA?.windupSeconds || 0.28;
         this.walnutGuarding = !!u.ability.isGuarding?.(world.simulationTick);
         this.cooldown = u.cooldown;
         this.cooldownDuration = u.cooldownDuration;

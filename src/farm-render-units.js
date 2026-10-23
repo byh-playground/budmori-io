@@ -1,6 +1,7 @@
 import { unitBodyDefinition, unitDisplayScale } from './features/unit-body/definition.cjs';
 import { BarleyArmorShredPresentation } from './features/abilities/barley-shred/presentation.js';
 import { UnitAttackPresentation } from './features/unit-attacks/presentation-base.js';
+import { PeaAttackPresentation } from './features/unit-attacks/pea/presentation.js';
 import { LobPresentation } from './features/unit-attacks/lob/presentation.js';
 import { DualStrikePresentation } from './features/unit-attacks/dual-strike/presentation.js';
 import { ATTACK_TYPES, CONFIG, clamp } from './farm-model.js';
@@ -8,6 +9,7 @@ import { farmBreedingCooldown, unitRestPresentation } from './farm-indicators.js
 import { scenePresentation } from './farm-render-scenes.js';
 import { PassiveMarksPresentation } from './tower-passive-presentations.js';
 
+const PEA_ATTACK = new PeaAttackPresentation();
 const DEFAULT_ATTACK = new UnitAttackPresentation();
 const BARLEY_SHRED_PRESENTATION = new BarleyArmorShredPresentation();
 const PASSIVE_MARKS = new PassiveMarksPresentation();
@@ -15,6 +17,9 @@ const ATTACK_PRESENTATIONS = new Map(
     [new DualStrikePresentation(), new LobPresentation()].map((presentation) => [presentation.id, presentation]),
 );
 function unitAttackPresentation(unit) {
+    if (unit.species === 0 && unit.ability?.peaForm) {
+        return PEA_ATTACK;
+    }
     return ATTACK_PRESENTATIONS.get(ATTACK_TYPES[unit.species]?.kind) || DEFAULT_ATTACK;
 }
 
@@ -258,6 +263,9 @@ export class UnitPresentation {
             GROUND = unitBodyDefinition(u.species).ground,
             SCALE = (2 * r) / Math.max(WIDTH, HEIGHT);
         const MATRIX = [SCALE, 0, 0, SCALE, p.x - GROUND.x * SCALE, p.y - GROUND.y * SCALE];
+        if (!SWING && !rest && u.species === 0 && u.hp > 0 && u.stun <= 0 && u.dropLanded && u.z === 0) {
+            PEA_ATTACK.applyGroundedPose(MATRIX, u, GROUND);
+        }
         // Native vector players submit directly to MeshRenderer, so flush earlier 2D paint first.
         this.renderer.ctx.vector.flush();
         player.draw({

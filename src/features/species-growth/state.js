@@ -54,23 +54,21 @@ export function isValidGrowthInvestment(abilityId, investment) {
     );
 }
 
-// Only a completely validated legacy save may enter this one-way migration. The raw disk source is
-// backed up by FarmStorage before its first new-format write; this archive keeps the refunded choices.
+// Validate each known source entry before migration; a future or malformed tree is never
+// interpreted as a legacy investment. The full farm container is validated before anything is written.
 export function migrateAbilityProgressionState(state) {
-    if (state.schemaVersion === 4) {
-        if (!isValidMixedAbilityEntries(state)) {
-            throw new TypeError('Invalid ability progression');
-        }
-        return structuredClone(state);
-    }
-    if (!isValidLegacyAbilityProgressionState(state)) {
-        throw new TypeError('Invalid legacy ability progression');
+    if (
+        !(state?.schemaVersion === 3
+            ? isValidLegacyAbilityProgressionState(state)
+            : isValidMixedAbilityEntries(state, { allowLegacy: true }))
+    ) {
+        throw new TypeError('Invalid ability progression');
     }
     const NEXT = structuredClone(state);
     NEXT.schemaVersion = 4;
     for (const [ABILITY_ID, INVESTMENT] of Object.entries(state.abilities)) {
         const GROWTH = growthForAbility(ABILITY_ID);
-        if (GROWTH) {
+        if (GROWTH && !isGrowthInvestment(INVESTMENT)) {
             NEXT.abilities[ABILITY_ID] = {
                 treeVersion: SPECIES_TREE_VERSION,
                 ...GROWTH.migrateBuild(INVESTMENT),
@@ -81,7 +79,7 @@ export function migrateAbilityProgressionState(state) {
     return NEXT;
 }
 
-export function isValidMixedAbilityEntries(state) {
+export function isValidMixedAbilityEntries(state, { allowLegacy = false } = {}) {
     return !!(
         state &&
         typeof state === 'object' &&
@@ -92,7 +90,8 @@ export function isValidMixedAbilityEntries(state) {
         Object.keys(state.abilities).length === SPECIES_ABILITY_DEFINITIONS.length &&
         SPECIES_ABILITY_DEFINITIONS.every((definition) =>
             growthForAbility(definition.id)
-                ? isValidGrowthInvestment(definition.id, state.abilities[definition.id])
+                ? isValidGrowthInvestment(definition.id, state.abilities[definition.id]) ||
+                  (allowLegacy && isValidLegacyAbilityInvestment(definition, state.abilities[definition.id]))
                 : isValidLegacyAbilityInvestment(definition, state.abilities[definition.id]),
         )
     );

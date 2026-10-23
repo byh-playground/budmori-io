@@ -576,6 +576,6 @@ html.help-scene #hand {
     border-radius: var(--ui-r-s);
 }
 
-html.corn-preview-scene #bossbar {
+html.growth-preview-scene #bossbar {
     display: none;
 }

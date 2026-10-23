@@ -1,5 +1,5 @@
 import { captureFarmProgress, restoreFarmProgress, sameFarmProgress } from './farm-progress.js';
-import { decodeFarmSave, encodeFarmSave, validateSave, parseSave } from './farm-save-codec.js';
+import { decodeFarmSave, decodeFarmSaveRecord, encodeFarmSave, validateSave, parseSave } from './farm-save-codec.js';
 export { validateSave, parseSave };
 const KEY = 'bloom-weapon-cards-v4',
     SOURCE_BACKUP_KEY = `${KEY}:species-tree-source-v3`,
@@ -47,12 +47,13 @@ class FarmStorage {
             this.raw = localStorage.getItem(KEY);
             if (this.raw) {
                 try {
-                    this.savedProgress = decodeFarmSave(this.raw);
-                    if (JSON.parse(this.raw).progress.player.schemaVersion === 3) {
+                    const RECORD = decodeFarmSaveRecord(this.raw);
+                    this.savedProgress = RECORD.progress;
+                    if (RECORD.migrated) {
                         const { text: TEXT } = encodeFarmSave(null, this.savedProgress);
                         this.writeVerified(TEXT, this.raw, { source: this.raw });
                         this.raw = TEXT;
-                        this.notice = '옥수수 성장 트리를 적용했어요. 기존 투자와 원본 저장은 보존했어요.';
+                        this.notice = '출시된 병종의 성장 트리를 적용했어요. 기존 투자와 원본 저장은 보존했어요.';
                     }
                 } catch (error) {
                     this.incompatible = true;
@@ -178,9 +179,9 @@ class FarmStorage {
             if (!TEXT) {
                 throw Error('농장 저장을 찾지 못했어요. 다른 탭에서 새 농장을 시작했을 수 있어요.');
             }
-            const DATA = decodeFarmSave(TEXT);
+            const { progress: DATA, migrated: MIGRATED } = decodeFarmSaveRecord(TEXT);
             let normalized = TEXT;
-            if (JSON.parse(TEXT).progress.player.schemaVersion === 3) {
+            if (MIGRATED) {
                 normalized = encodeFarmSave(null, DATA).text;
                 this.writeVerified(normalized, TEXT, { source: TEXT });
             }
@@ -265,11 +266,11 @@ class FarmStorage {
         if (localStorage.getItem(KEY) !== this.raw) {
             throw Error('저장 내용이 다른 탭에서 바뀌었어요. 새로고침한 뒤 다시 불러와 주세요.');
         }
-        validateSave(text);
-        const WORLD = parseSave(text),
+        const { progress: PROGRESS, migrated: MIGRATED } = decodeFarmSaveRecord(text),
+            WORLD = restoreFarmProgress(PROGRESS),
             { data: DATA, text: NORMALIZED } = this.serializeCheckpoint(WORLD);
         this.writeVerified(NORMALIZED, this.raw, {
-            source: JSON.parse(text).progress.player.schemaVersion === 3 ? text : null,
+            source: MIGRATED ? text : null,
             imported: text,
         });
         this.raw = NORMALIZED;

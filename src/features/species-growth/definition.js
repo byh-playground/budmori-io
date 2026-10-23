@@ -4,7 +4,7 @@ export const SPECIES_MASTERY_CAP = 50;
 export const EVOLUTION_UNLOCK_LEVELS = Object.freeze([2, 6, 12, 20, 30]);
 
 // Rollout is explicit: a species is enabled only with its attack, effects, UI and save consumer.
-// Corn is the first released tree. Other species keep their legacy progression until their own release.
+// Corn and pea are released. Other species keep legacy progression until their own release.
 export const SPECIES_GROWTH_DEFINITIONS = Object.freeze(
     SPECIES_CATALOG.map(({ id }) =>
         createSpeciesGrowthDefinition(
@@ -15,7 +15,13 @@ export const SPECIES_GROWTH_DEFINITIONS = Object.freeze(
                       basic: ['직격 위력', '부착 폭발 위력', '공격 속도'],
                       specialty: ['연쇄 가열', '마무리 파열', '추가 알'],
                   }
-                : {},
+                : id === 0
+                  ? {
+                        available: true,
+                        basic: ['박치기 위력', '첫 재돌진 위력', '후딜 감소'],
+                        specialty: ['재접근 가속', '첫 충돌', '마지막 충돌'],
+                    }
+                  : {},
         ),
     ),
 );
