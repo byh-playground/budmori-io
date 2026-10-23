@@ -1,3 +1,4 @@
+import { targetBodyDimensions } from '../formation-skills/model-base.js';
 import { AttackAction, attackTargetKey, isAttackActionDTO } from './attack-action.js';
 import { speciesGrowthDefinition } from './definition.js';
 import { SpeciesGrowth } from './model.js';
@@ -182,12 +183,16 @@ export function launchCornAttack(world, unit, action) {
                 x: action.target.x - (DY / DISTANCE) * OFFSET,
                 y: action.target.y + (DX / DISTANCE) * OFFSET,
             },
+            TARGET = action.targetId === 'boss' ? world.boss : world._unitForId(action.targetId),
+            TARGET_BODY = targetBodyDimensions(TARGET),
+            SKY_SPREAD = RECORD.form === 6 ? (SHOT.slot - 1) * 3.4 : 0,
+            SKY_Z = TARGET_BODY.topZ + Math.max(4.8, TARGET_BODY.bodyHeight * 0.4) + SHOT.slot * 0.6,
             HEIGHT = RECORD.form >= 4 ? 0.7 : RECORD.form === 3 ? 0.45 : PROJECTILE.height;
         PROJECTILE.cornActionId = RECORD.id;
         PROJECTILE.cornSlot = SHOT.slot;
         PROJECTILE.cornForm = RECORD.form;
         PROJECTILE.path = {
-            from: METEOR ? { x: TO.x, y: TO.y, z: 6 + SHOT.slot * 0.35 } : { x: unit.x, y: unit.y, z: 0.45 },
+            from: METEOR ? { x: TO.x + SKY_SPREAD, y: TO.y, z: SKY_Z } : { x: unit.x, y: unit.y, z: 0.45 },
             to: TO,
             height: FORMS[RECORD.form].height,
             duration: SHOT.duration,

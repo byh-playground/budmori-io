@@ -1,3 +1,4 @@
+import { includeCornProjectileBounds } from './features/projectiles/corn/presentation.js';
 import { drawFormationEffects, includeFormationEffectBounds } from './formation-skill-presentations.js';
 import { scenePresentation } from './farm-render-scenes.js';
 import { FoodPresentation, ProjectilePresentation } from './farm-render-items.js';
@@ -524,6 +525,7 @@ const DIORAMA = class Diorama {
         }
         const BOUNDS = this.hallEffectBounds;
         includeFormationEffectBounds(world, BOUNDS);
+        includeCornProjectileBounds(world, BOUNDS);
         const LEFT = Math.min(-HALF_X, BOUNDS.left),
             RIGHT = Math.max(HALF_X, BOUNDS.right),
             FRAME_TOP = Math.max(TOP, BOUNDS.top),

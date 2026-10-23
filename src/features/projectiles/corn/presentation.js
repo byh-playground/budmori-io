@@ -1,5 +1,31 @@
-import { WORLD_HEIGHT_PROJECTION } from '../../../vector-sockets.cjs';
+import { WORLD_HEIGHT_PROJECTION, WORLD_DEPTH_PROJECTION } from '../../../vector-sockets.cjs';
 import { seedDisplayMultiplier } from '../seed/presentation.js';
+
+// Visual cob dimensions are deliberately independent of the physical hit filter.
+// Changing the artwork never changes collision radius/height, damage, or arrival clocks.
+function cornVisualHeight(form) {
+    return form >= 5 ? 3.8 : form === 4 ? 2.8 : 1.6;
+}
+
+export function includeCornProjectileBounds(world, bounds) {
+    for (const PROJECTILE of world.projectiles) {
+        if (!(PROJECTILE.cornForm >= 3)) {
+            continue;
+        }
+        const PATH = PROJECTILE.path,
+            SIZE = cornVisualHeight(PROJECTILE.cornForm),
+            SIDE = SIZE * 0.9 + 0.5,
+            SKY = Math.max(PATH.from.z, PATH.to.z) + PATH.height + SIZE * 2.1;
+        // Like storm-cloud bounds, reserve the complete path and trail for the floor,
+        // not the current sample. The camera therefore never pumps between missiles.
+        bounds.left = Math.min(bounds.left, PATH.from.x - SIDE, PATH.to.x - SIDE);
+        bounds.right = Math.max(bounds.right, PATH.from.x + SIDE, PATH.to.x + SIDE);
+        bounds.top = Math.max(
+            bounds.top,
+            Math.max(PATH.from.y, PATH.to.y) * WORLD_DEPTH_PROJECTION + SKY * WORLD_HEIGHT_PROJECTION + 1,
+        );
+    }
+}
 
 // Reuses the game's GameKit VectorContext primitives. Every position and flight clock
 // comes from the live projectile; presentation does not advance or predict combat.
@@ -31,8 +57,8 @@ export class CornProjectilePresentation {
 
     draw(renderer, projectile, point, tail) {
         const SCALE = seedDisplayMultiplier(renderer, projectile),
-            LENGTH = projectile.height * WORLD_HEIGHT_PROJECTION * SCALE,
-            WIDTH = Math.min(LENGTH * 0.38, projectile.radius * SCALE),
+            LENGTH = cornVisualHeight(projectile.cornForm) * WORLD_HEIGHT_PROJECTION * SCALE,
+            WIDTH = LENGTH * 0.28,
             CENTER = { x: point.x, y: point.y - LENGTH * 0.5 },
             TAIL = renderer.project(tail.x, tail.y, tail.z),
             DX = point.x - TAIL.x,

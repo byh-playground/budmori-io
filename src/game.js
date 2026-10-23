@@ -1507,7 +1507,7 @@
       var BOSS_VECTOR_DIAMETER = 220;
       var BOSS_VECTOR_RADIUS_SCALE = 1.16;
       var WORLD_HEIGHT_PROJECTION7 = 0.785;
-      var WORLD_DEPTH_PROJECTION5 = 0.62;
+      var WORLD_DEPTH_PROJECTION6 = 0.62;
       var BOSS_ART_RADIUS2 = 4.4;
       function bossVectorScale4() {
         return 2 * BOSS_ART_RADIUS2 * BOSS_VECTOR_RADIUS_SCALE / BOSS_VECTOR_DIAMETER;
@@ -1526,7 +1526,7 @@
         bossVectorScale: bossVectorScale4,
         socketWorldPoint: socketWorldPoint2,
         WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION7,
-        WORLD_DEPTH_PROJECTION: WORLD_DEPTH_PROJECTION5
+        WORLD_DEPTH_PROJECTION: WORLD_DEPTH_PROJECTION6
       };
     }
   });
@@ -3842,12 +3842,12 @@
         ...action.target,
         x: action.target.x - DY / DISTANCE * OFFSET,
         y: action.target.y + DX / DISTANCE * OFFSET
-      }, HEIGHT = RECORD.form >= 4 ? 0.7 : RECORD.form === 3 ? 0.45 : PROJECTILE2.height;
+      }, TARGET = action.targetId === "boss" ? world.boss : world._unitForId(action.targetId), TARGET_BODY = targetBodyDimensions(TARGET), SKY_SPREAD = RECORD.form === 6 ? (SHOT.slot - 1) * 3.4 : 0, SKY_Z = TARGET_BODY.topZ + Math.max(4.8, TARGET_BODY.bodyHeight * 0.4) + SHOT.slot * 0.6, HEIGHT = RECORD.form >= 4 ? 0.7 : RECORD.form === 3 ? 0.45 : PROJECTILE2.height;
       PROJECTILE2.cornActionId = RECORD.id;
       PROJECTILE2.cornSlot = SHOT.slot;
       PROJECTILE2.cornForm = RECORD.form;
       PROJECTILE2.path = {
-        from: METEOR2 ? { x: TO.x, y: TO.y, z: 6 + SHOT.slot * 0.35 } : { x: unit2.x, y: unit2.y, z: 0.45 },
+        from: METEOR2 ? { x: TO.x + SKY_SPREAD, y: TO.y, z: SKY_Z } : { x: unit2.x, y: unit2.y, z: 0.45 },
         to: TO,
         height: FORMS[RECORD.form].height,
         duration: SHOT.duration
@@ -3961,6 +3961,7 @@
   var CORN_MERGE_DPS_TARGET, CORN_ABILITY, FORMS;
   var init_corn_attack = __esm({
     "src/features/species-growth/corn-attack.js"() {
+      init_model_base();
       init_attack_action();
       init_definition12();
       init_model11();
@@ -14764,6 +14765,148 @@
   init_tower_run();
   init_farm_model();
 
+  // src/features/projectiles/corn/presentation.js
+  var import_vector_sockets4 = __toESM(require_vector_sockets(), 1);
+
+  // src/features/projectiles/seed/presentation.js
+  init_definition10();
+  var import_definition56 = __toESM(require_definition(), 1);
+  var import_vector_sockets3 = __toESM(require_vector_sockets(), 1);
+  function seedDisplayMultiplier(renderer, projectile) {
+    const BODY2 = (0, import_definition56.unitBodyDefinition)(projectile.species), OWNER_VECTOR_SCALE = projectile.height * import_vector_sockets3.WORLD_HEIGHT_PROJECTION / (FEATURE.bodyHeightFraction * (BODY2.bounds.bottom - BODY2.bounds.top)), DISPLAY_SCALE = (0, import_definition56.unitDisplayScale)(BODY2, OWNER_VECTOR_SCALE, renderer.scale, renderer.minimumUnitPixels());
+    return DISPLAY_SCALE / OWNER_VECTOR_SCALE;
+  }
+  var SeedProjectilePresentation = class {
+    constructor() {
+      this.id = FEATURE.id;
+    }
+    drawShadow(renderer, projectile) {
+      const RADIUS = projectile.radius * seedDisplayMultiplier(renderer, projectile) / renderer.scale;
+      renderer.groundEllipse(projectile.x, projectile.y, RADIUS, RADIUS * 5 / 7, "#55452433");
+    }
+    draw(renderer, projectile, point2, tail) {
+      const RADII = seedEllipseRadii(projectile), SCALE = seedDisplayMultiplier(renderer, projectile), HEIGHT = projectile.height * import_vector_sockets3.WORLD_HEIGHT_PROJECTION * SCALE, P = { x: point2.x, y: point2.y - HEIGHT * 0.5 }, TAIL = renderer.project(tail.x, tail.y, tail.z), X = RADII.x * SCALE, Y = RADII.y * SCALE;
+      TAIL.y -= HEIGHT * 0.5;
+      renderer.line(TAIL, P, RADII.y * 0.35 * SCALE / renderer.scale, "#ba964a80");
+      renderer.ellipse(P.x, P.y, X, Y, "#cfa957", FEATURE.rotation);
+      renderer.ellipse(P.x - Y * 0.15, P.y - Y * 0.25, Y * 0.25, Y * 0.4, "#fff0ae");
+    }
+  };
+
+  // src/features/projectiles/corn/presentation.js
+  function cornVisualHeight(form) {
+    return form >= 5 ? 3.8 : form === 4 ? 2.8 : 1.6;
+  }
+  function includeCornProjectileBounds(world, bounds) {
+    for (const PROJECTILE2 of world.projectiles) {
+      if (!(PROJECTILE2.cornForm >= 3)) {
+        continue;
+      }
+      const PATH2 = PROJECTILE2.path, SIZE = cornVisualHeight(PROJECTILE2.cornForm), SIDE = SIZE * 0.9 + 0.5, SKY = Math.max(PATH2.from.z, PATH2.to.z) + PATH2.height + SIZE * 2.1;
+      bounds.left = Math.min(bounds.left, PATH2.from.x - SIDE, PATH2.to.x - SIDE);
+      bounds.right = Math.max(bounds.right, PATH2.from.x + SIDE, PATH2.to.x + SIDE);
+      bounds.top = Math.max(
+        bounds.top,
+        Math.max(PATH2.from.y, PATH2.to.y) * import_vector_sockets4.WORLD_DEPTH_PROJECTION + SKY * import_vector_sockets4.WORLD_HEIGHT_PROJECTION + 1
+      );
+    }
+  }
+  var CornProjectilePresentation = class {
+    drawShadow(renderer, projectile) {
+      const SCALE = seedDisplayMultiplier(renderer, projectile), RADIUS = projectile.radius * SCALE / renderer.scale;
+      renderer.groundEllipse(projectile.x, projectile.y, RADIUS, RADIUS * 0.7, "#55452433");
+      if (projectile.cornForm < 5) {
+        return;
+      }
+      const TARGET = projectile.path.to, PROGRESS = Math.min(1, projectile.elapsed / projectile.path.duration), RING_RADIUS = Math.max(projectile.radius * 1.3, 0.2);
+      for (let quadrant = 0; quadrant < 4; quadrant++) {
+        const ANGLE = quadrant * Math.PI / 2;
+        renderer.ring(
+          TARGET.x,
+          TARGET.y,
+          RING_RADIUS,
+          `rgba(194,153,50,${0.3 + PROGRESS * 0.4})`,
+          0.025,
+          ANGLE,
+          ANGLE + Math.PI * 0.28
+        );
+      }
+    }
+    draw(renderer, projectile, point2, tail) {
+      const SCALE = seedDisplayMultiplier(renderer, projectile), LENGTH = cornVisualHeight(projectile.cornForm) * import_vector_sockets4.WORLD_HEIGHT_PROJECTION * SCALE, WIDTH = LENGTH * 0.28, CENTER = { x: point2.x, y: point2.y - LENGTH * 0.5 }, TAIL = renderer.project(tail.x, tail.y, tail.z), DX = point2.x - TAIL.x, DY = point2.y - TAIL.y, ANGLE = Math.abs(DX) + Math.abs(DY) > 1e-3 ? Math.atan2(DY, DX) - Math.PI / 2 : 0;
+      TAIL.y -= LENGTH * 0.5;
+      if (projectile.cornForm >= 5) {
+        drawMeteorTrail(renderer, CENTER, LENGTH, WIDTH, ANGLE, projectile.cornSlot);
+      } else {
+        renderer.line(TAIL, CENTER, WIDTH * 0.24 / renderer.scale, "#c79f4970");
+      }
+      drawCob(renderer, CENTER, LENGTH, WIDTH, ANGLE);
+    }
+  };
+  function drawCob(renderer, center, length, width, angle) {
+    const COS = Math.cos(angle), SIN = Math.sin(angle), POINT2 = (x, y) => ({ x: center.x + x * COS - y * SIN, y: center.y + x * SIN + y * COS });
+    drawLeaf(renderer, POINT2, width, length, -1);
+    drawLeaf(renderer, POINT2, width, length, 1);
+    renderer.ellipse(center.x, center.y, width, length * 0.49, "#775a23", angle);
+    renderer.ellipse(center.x, center.y, width * 0.88, length * 0.46, "#edb93d", angle);
+    for (let row = 0; row < 6; row++) {
+      const Y = -length * 0.33 + row * length * 0.64 / 5, ROW_WIDTH = width * (0.64 - Math.abs(row - 2.5) * 0.065);
+      for (let column = 0; column < 3; column++) {
+        const P = POINT2((column - 1) * ROW_WIDTH, Y);
+        renderer.ellipse(
+          P.x,
+          P.y,
+          width * 0.23,
+          length * 0.049,
+          column === 0 ? "#ffdf76" : column === 1 ? "#f9ce55" : "#dba12e",
+          angle
+        );
+      }
+    }
+    const LEAF = [
+      POINT2(-width * 0.5, -length * 0.27),
+      POINT2(0, -length * 0.65),
+      POINT2(width * 0.33, -length * 0.25),
+      POINT2(0, length * 0.13)
+    ];
+    fillPolygon(renderer.ctx, LEAF, "#799548");
+    renderer.line(POINT2(0, -length * 0.48), POINT2(0, length * 0.09), width * 0.11 / renderer.scale, "#b5c56f");
+  }
+  function drawLeaf(renderer, point2, width, length, side) {
+    const POINTS = [
+      point2(side * width * 0.35, -length * 0.18),
+      point2(side * width * 1.55, -length * 0.62),
+      point2(side * width * 1.38, -length * 0.03),
+      point2(side * width * 0.52, length * 0.24)
+    ];
+    fillPolygon(renderer.ctx, POINTS, side < 0 ? "#6c873b" : "#8fa653");
+  }
+  function drawMeteorTrail(renderer, center, length, width, angle, slot) {
+    const COS = Math.cos(angle), SIN = Math.sin(angle), DISTANCE = length * (0.8 + (slot || 0) * 0.1);
+    for (let index = -1; index <= 1; index++) {
+      const OFFSET = index * width * 0.6, START = { x: center.x + OFFSET * COS, y: center.y + OFFSET * SIN }, END = {
+        x: START.x + DISTANCE * SIN,
+        y: START.y - DISTANCE * COS
+      };
+      renderer.line(
+        END,
+        START,
+        width * (index === 0 ? 0.5 : 0.2) / renderer.scale,
+        index === 0 ? "#f4ca6570" : "#e6af4350"
+      );
+    }
+  }
+  function fillPolygon(context, points, color) {
+    context.fillStyle = color;
+    context.beginPath();
+    context.moveTo(points[0].x, points[0].y);
+    for (let index = 1; index < points.length; index++) {
+      context.lineTo(points[index].x, points[index].y);
+    }
+    context.closePath();
+    context.fill();
+  }
+
   // src/features/formation-skills/presentation-base.js
   init_model_base();
   var REFERENCE_RADIUS = T1_DIAMETER / 2;
@@ -15270,7 +15413,7 @@
   };
 
   // src/features/formation-skills/storm-cloud/presentation.js
-  var import_vector_sockets3 = __toESM(require_vector_sockets(), 1);
+  var import_vector_sockets5 = __toESM(require_vector_sockets(), 1);
   var POINT_BUFFERS = /* @__PURE__ */ new WeakMap();
   var CLOUD_SPREAD_DEPTH = 0.35;
   function pointBuffersFor(effect) {
@@ -15301,7 +15444,7 @@
       bounds.right = Math.max(bounds.right, effect.x + SIZE * 1.84 + 1);
       bounds.top = Math.max(
         bounds.top,
-        (effect.y + SIZE * CLOUD_SPREAD_DEPTH) * import_vector_sockets3.WORLD_DEPTH_PROJECTION + (Z + 0.1 + SIZE * 0.24) * import_vector_sockets3.WORLD_HEIGHT_PROJECTION + SIZE * 0.26 + 1
+        (effect.y + SIZE * CLOUD_SPREAD_DEPTH) * import_vector_sockets5.WORLD_DEPTH_PROJECTION + (Z + 0.1 + SIZE * 0.24) * import_vector_sockets5.WORLD_HEIGHT_PROJECTION + SIZE * 0.26 + 1
       );
     }
     draw(renderer, effect) {
@@ -16072,129 +16215,6 @@
       throw new Error("Missing scene presentation for " + scene);
     }
     return PRESENTATION;
-  }
-
-  // src/features/projectiles/seed/presentation.js
-  init_definition10();
-  var import_definition57 = __toESM(require_definition(), 1);
-  var import_vector_sockets4 = __toESM(require_vector_sockets(), 1);
-  function seedDisplayMultiplier(renderer, projectile) {
-    const BODY2 = (0, import_definition57.unitBodyDefinition)(projectile.species), OWNER_VECTOR_SCALE = projectile.height * import_vector_sockets4.WORLD_HEIGHT_PROJECTION / (FEATURE.bodyHeightFraction * (BODY2.bounds.bottom - BODY2.bounds.top)), DISPLAY_SCALE = (0, import_definition57.unitDisplayScale)(BODY2, OWNER_VECTOR_SCALE, renderer.scale, renderer.minimumUnitPixels());
-    return DISPLAY_SCALE / OWNER_VECTOR_SCALE;
-  }
-  var SeedProjectilePresentation = class {
-    constructor() {
-      this.id = FEATURE.id;
-    }
-    drawShadow(renderer, projectile) {
-      const RADIUS = projectile.radius * seedDisplayMultiplier(renderer, projectile) / renderer.scale;
-      renderer.groundEllipse(projectile.x, projectile.y, RADIUS, RADIUS * 5 / 7, "#55452433");
-    }
-    draw(renderer, projectile, point2, tail) {
-      const RADII = seedEllipseRadii(projectile), SCALE = seedDisplayMultiplier(renderer, projectile), HEIGHT = projectile.height * import_vector_sockets4.WORLD_HEIGHT_PROJECTION * SCALE, P = { x: point2.x, y: point2.y - HEIGHT * 0.5 }, TAIL = renderer.project(tail.x, tail.y, tail.z), X = RADII.x * SCALE, Y = RADII.y * SCALE;
-      TAIL.y -= HEIGHT * 0.5;
-      renderer.line(TAIL, P, RADII.y * 0.35 * SCALE / renderer.scale, "#ba964a80");
-      renderer.ellipse(P.x, P.y, X, Y, "#cfa957", FEATURE.rotation);
-      renderer.ellipse(P.x - Y * 0.15, P.y - Y * 0.25, Y * 0.25, Y * 0.4, "#fff0ae");
-    }
-  };
-
-  // src/features/projectiles/corn/presentation.js
-  var import_vector_sockets5 = __toESM(require_vector_sockets(), 1);
-  var CornProjectilePresentation = class {
-    drawShadow(renderer, projectile) {
-      const SCALE = seedDisplayMultiplier(renderer, projectile), RADIUS = projectile.radius * SCALE / renderer.scale;
-      renderer.groundEllipse(projectile.x, projectile.y, RADIUS, RADIUS * 0.7, "#55452433");
-      if (projectile.cornForm < 5) {
-        return;
-      }
-      const TARGET = projectile.path.to, PROGRESS = Math.min(1, projectile.elapsed / projectile.path.duration), RING_RADIUS = Math.max(projectile.radius * 1.3, 0.2);
-      for (let quadrant = 0; quadrant < 4; quadrant++) {
-        const ANGLE = quadrant * Math.PI / 2;
-        renderer.ring(
-          TARGET.x,
-          TARGET.y,
-          RING_RADIUS,
-          `rgba(194,153,50,${0.3 + PROGRESS * 0.4})`,
-          0.025,
-          ANGLE,
-          ANGLE + Math.PI * 0.28
-        );
-      }
-    }
-    draw(renderer, projectile, point2, tail) {
-      const SCALE = seedDisplayMultiplier(renderer, projectile), LENGTH = projectile.height * import_vector_sockets5.WORLD_HEIGHT_PROJECTION * SCALE, WIDTH = Math.min(LENGTH * 0.38, projectile.radius * SCALE), CENTER = { x: point2.x, y: point2.y - LENGTH * 0.5 }, TAIL = renderer.project(tail.x, tail.y, tail.z), DX = point2.x - TAIL.x, DY = point2.y - TAIL.y, ANGLE = Math.abs(DX) + Math.abs(DY) > 1e-3 ? Math.atan2(DY, DX) - Math.PI / 2 : 0;
-      TAIL.y -= LENGTH * 0.5;
-      if (projectile.cornForm >= 5) {
-        drawMeteorTrail(renderer, CENTER, LENGTH, WIDTH, ANGLE, projectile.cornSlot);
-      } else {
-        renderer.line(TAIL, CENTER, WIDTH * 0.24 / renderer.scale, "#c79f4970");
-      }
-      drawCob(renderer, CENTER, LENGTH, WIDTH, ANGLE);
-    }
-  };
-  function drawCob(renderer, center, length, width, angle) {
-    const COS = Math.cos(angle), SIN = Math.sin(angle), POINT2 = (x, y) => ({ x: center.x + x * COS - y * SIN, y: center.y + x * SIN + y * COS });
-    drawLeaf(renderer, POINT2, width, length, -1);
-    drawLeaf(renderer, POINT2, width, length, 1);
-    renderer.ellipse(center.x, center.y, width, length * 0.49, "#775a23", angle);
-    renderer.ellipse(center.x, center.y, width * 0.88, length * 0.46, "#edb93d", angle);
-    for (let row = 0; row < 6; row++) {
-      const Y = -length * 0.33 + row * length * 0.64 / 5, ROW_WIDTH = width * (0.64 - Math.abs(row - 2.5) * 0.065);
-      for (let column = 0; column < 3; column++) {
-        const P = POINT2((column - 1) * ROW_WIDTH, Y);
-        renderer.ellipse(
-          P.x,
-          P.y,
-          width * 0.23,
-          length * 0.049,
-          column === 0 ? "#ffdf76" : column === 1 ? "#f9ce55" : "#dba12e",
-          angle
-        );
-      }
-    }
-    const LEAF = [
-      POINT2(-width * 0.5, -length * 0.27),
-      POINT2(0, -length * 0.65),
-      POINT2(width * 0.33, -length * 0.25),
-      POINT2(0, length * 0.13)
-    ];
-    fillPolygon(renderer.ctx, LEAF, "#799548");
-    renderer.line(POINT2(0, -length * 0.48), POINT2(0, length * 0.09), width * 0.11 / renderer.scale, "#b5c56f");
-  }
-  function drawLeaf(renderer, point2, width, length, side) {
-    const POINTS = [
-      point2(side * width * 0.35, -length * 0.18),
-      point2(side * width * 1.55, -length * 0.62),
-      point2(side * width * 1.38, -length * 0.03),
-      point2(side * width * 0.52, length * 0.24)
-    ];
-    fillPolygon(renderer.ctx, POINTS, side < 0 ? "#6c873b" : "#8fa653");
-  }
-  function drawMeteorTrail(renderer, center, length, width, angle, slot) {
-    const COS = Math.cos(angle), SIN = Math.sin(angle), DISTANCE = length * (0.8 + (slot || 0) * 0.1);
-    for (let index = -1; index <= 1; index++) {
-      const OFFSET = index * width * 0.6, START = { x: center.x + OFFSET * COS, y: center.y + OFFSET * SIN }, END = {
-        x: START.x + DISTANCE * SIN,
-        y: START.y - DISTANCE * COS
-      };
-      renderer.line(
-        END,
-        START,
-        width * (index === 0 ? 0.5 : 0.2) / renderer.scale,
-        index === 0 ? "#f4ca6570" : "#e6af4350"
-      );
-    }
-  }
-  function fillPolygon(context, points, color) {
-    context.fillStyle = color;
-    context.beginPath();
-    context.moveTo(points[0].x, points[0].y);
-    for (let index = 1; index < points.length; index++) {
-      context.lineTo(points[index].x, points[index].y);
-    }
-    context.closePath();
-    context.fill();
   }
 
   // src/features/projectiles/spike/presentation.js
@@ -18333,6 +18353,7 @@
       }
       const BOUNDS = this.hallEffectBounds;
       includeFormationEffectBounds(world, BOUNDS);
+      includeCornProjectileBounds(world, BOUNDS);
       const LEFT = Math.min(-HALF_X, BOUNDS.left), RIGHT = Math.max(HALF_X, BOUNDS.right), FRAME_TOP = Math.max(TOP, BOUNDS.top), SCALE = Math.min(this.canvas.width / (RIGHT - LEFT), this.canvas.height / (FRAME_TOP - BOTTOM)), FIT = 2 * BASE[0] * SCALE / this.canvas.width;
       if (Math.abs(this.zoom - FIT) > 1e-6) {
         this.zoom = FIT;

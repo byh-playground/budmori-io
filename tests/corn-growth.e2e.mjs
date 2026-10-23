@@ -152,7 +152,13 @@ async function captureMainCombat(page, tier, mobile) {
     }
     await page.evaluate(async (selectedTier) => {
         const { helpSceneById: HELP_SCENE_BY_ID } = await import('./src/help-scenes.js');
-        HELP_SCENE_BY_ID(`corn-t${selectedTier}`).setup(BUDMORI.sim);
+        const WORLD = BUDMORI.sim;
+        HELP_SCENE_BY_ID(`corn-t${selectedTier}`).setup(WORLD);
+        // One fixed giant across tiers/viewports makes silhouette and camera comparisons meaningful.
+        WORLD.configureBossStage(1, 6);
+        Object.assign(WORLD.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
+        WORLD.units[0].x = -(WORLD.boss.radius + 4.1 + (selectedTier - 1) * 0.12);
+        WORLD._unitSpatialDirty = true;
     }, tier);
     const TRACE = [];
     for (const STAGE of ['flight', 'impact', 'explosion']) {
@@ -183,6 +189,21 @@ async function captureMainCombat(page, tier, mobile) {
             { timeout: 15000, polling: 'raf' },
         );
         await settleCapturedFrame(page);
+        if (STAGE === 'flight' && tier >= 5) {
+            assert.ok(
+                await page.evaluate(() =>
+                    BUDMORI.sim.projectiles.every((shot) => shot.path.from.z > BUDMORI.sim.boss.height + 4),
+                ),
+                'meteor paths start clearly above the actual giant body',
+            );
+            if (tier === 6) {
+                assert.equal(
+                    await page.evaluate(() => new Set(BUDMORI.sim.projectiles.map((shot) => shot.path.from.x)).size),
+                    3,
+                    'three distinct sky launch positions',
+                );
+            }
+        }
         TRACE.push(
             await page.evaluate(
                 (stage) => ({
@@ -193,6 +214,8 @@ async function captureMainCombat(page, tier, mobile) {
                         x: BUDMORI.sim.boss.x,
                         y: BUDMORI.sim.boss.y,
                         radius: BUDMORI.sim.boss.radius,
+                        height: BUDMORI.sim.boss.height,
+                        species: BUDMORI.sim.boss.species,
                         hp: BUDMORI.sim.boss.hp,
                     },
                     projectiles: BUDMORI.sim.projectiles.map((shot) => ({
@@ -233,6 +256,95 @@ async function captureMainCombat(page, tier, mobile) {
     );
     assert.ok(TRACE[2].boss.hp < TRACE[0].boss.hp, 'the actual battle damages its target');
     REPORT.push({ kind: 'main-farm-combat', viewport: mobile ? 'mobile' : 'desktop', tier, trace: TRACE });
+}
+
+async function captureCrowdedCombat(page, mobile) {
+    await page.reload();
+    await page.waitForFunction(() => globalThis.BUDMORI?.sim?.scene === 'farm');
+    if (await page.locator('#gameMenuPanel').isVisible()) {
+        await activate(page.locator('#gameMenuClose'), mobile);
+    }
+    const INITIAL = await page.evaluate(async () => {
+        const { helpSceneById: HELP_SCENE_BY_ID } = await import('./src/help-scenes.js');
+        const WORLD = BUDMORI.sim,
+            LIMIT = BUDMORI.CONFIG.farm.capacity.max;
+        HELP_SCENE_BY_ID('corn-t6').setup(WORLD);
+        WORLD.configureBossStage(1, 6);
+        Object.assign(WORLD.boss, { z: 0, hp: 1e10, maxHp: 1e10, stun: 0 });
+        for (let index = 1; index < LIMIT; index++) {
+            const SPECIES = index < 60 ? 1 : [0, 2, 3, 4, 5, 6, 7, 8][(index - 60) % 8],
+                ANGLE = index * 2.399963229728653,
+                DISTANCE = WORLD.boss.radius + 2.8 + (index % 4) * 0.5,
+                UNIT = WORLD.spawn(SPECIES, 6, Math.cos(ANGLE) * DISTANCE, Math.sin(ANGLE) * DISTANCE);
+            UNIT.growth = 3;
+            UNIT.growthElapsed = UNIT.growthDuration;
+            UNIT.z = 0;
+            UNIT.dropLanded = true;
+        }
+        WORLD._benched.clear();
+        WORLD._benchRevision++;
+        WORLD._unitSpatialDirty = true;
+        return { limit: LIMIT, count: WORLD.units.filter((unit) => !unit.isBattleOnlySummon).length };
+    });
+    assert.equal(INITIAL.limit, 200, 'fixture follows the actual product population limit');
+    assert.equal(INITIAL.count, INITIAL.limit, 'maximum mixed army really spawned');
+    let overlap = true;
+    try {
+        await page.waitForFunction(
+            () => {
+                const WORLD = BUDMORI.sim,
+                    READY =
+                        WORLD.boss.patternPhase === 'windup' &&
+                        WORLD.boss.patternRuntime?.active &&
+                        WORLD.projectiles.some((shot) => shot.cornForm >= 5);
+                if (READY) {
+                    BUDMORI.runtime.paused = true;
+                }
+                return !!READY;
+            },
+            null,
+            { timeout: 20000, polling: 'raf' },
+        );
+    } catch (error) {
+        if (error.name !== 'TimeoutError') {
+            throw error;
+        }
+        overlap = false;
+        await page.evaluate(() => {
+            BUDMORI.runtime.paused = true;
+        });
+    }
+    await settleCapturedFrame(page);
+    const STATE = await page.evaluate(() => ({
+        tick: BUDMORI.sim.simulationTick,
+        units: BUDMORI.sim.units.length,
+        living: BUDMORI.sim.units.filter((unit) => unit.hp > 0).length,
+        phase: BUDMORI.sim.boss.patternPhase,
+        pattern: BUDMORI.sim.boss.patternRuntime?.active?.id || null,
+        projectileCount: BUDMORI.sim.projectiles.length,
+        meteorCount: BUDMORI.sim.projectiles.filter((shot) => shot.cornForm >= 5).length,
+        renderDiagnostics: BUDMORI.presentationDiagnostics,
+    }));
+    await page.screenshot({
+        path: path.join(
+            OUTPUT,
+            `${mobile ? 'mobile' : 'desktop'}-main-crowded-${overlap ? 'windup-meteors' : 'no-overlap'}.png`,
+        ),
+    });
+    assert.equal(await page.evaluate(() => BUDMORI.sim.simulationTick), STATE.tick);
+    REPORT.push({
+        kind: 'maximum-mixed-combat',
+        viewport: mobile ? 'mobile' : 'desktop',
+        initial: INITIAL,
+        overlap,
+        state: STATE,
+    });
+    progress(
+        overlap
+            ? '200 mixed army: real boss windup and meteors captured'
+            : '200 mixed army: no windup/meteor overlap observed within 20s; current state captured',
+    );
+    await resumeCapturedFrame(page);
 }
 
 try {
@@ -278,6 +390,7 @@ try {
                 await captureMainCombat(PAGE, TIER, MOBILE);
                 progress(`main battle T${TIER} flight/impact/explosion captured`);
             }
+            await captureCrowdedCombat(PAGE, MOBILE);
             assert.deepEqual(ERRORS, []);
             progress('PASS main battle capture flow');
             await CONTEXT.close();
