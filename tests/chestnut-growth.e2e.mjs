@@ -848,9 +848,50 @@ async function capturePeanutSplit(page, mobile) {
         globalThis.__chestnutSplitOff = WORLD.onNotice.on((notice) => {
             if (notice.kind === 'peanut-split') {
                 globalThis.__chestnutSplitEvents.push(structuredClone(notice));
-                BUDMORI.runtime.paused = true;
             }
         });
+        // A newborn only enters presentation after the committed model tick is
+        // captured. Pausing inside its notice would freeze the older entity set.
+        // Forward the real native draw, then pause on the first frame that drew
+        // every actual child. Neither model timing nor the frozen player changes.
+        const PRESENTATION = BUDMORI.renderer.unitPresentation,
+            DRAW = PRESENTATION.draw;
+        globalThis.__chestnutSplitDraw = { frame: null, ids: [], children: [], complete: false };
+        PRESENTATION.draw = function (unit, view) {
+            const RESULT = DRAW.call(this, unit, view),
+                STATE = globalThis.__chestnutSplitDraw,
+                FRAME = BUDMORI.renderer.displayTimeMs;
+            if (STATE.frame !== FRAME) {
+                STATE.frame = FRAME;
+                STATE.ids = [];
+                STATE.children = [];
+            }
+            STATE.ids.push(unit.id);
+            const SOURCE = WORLD.units.find((child) => child.id === unit.id);
+            if (unit.isBattleOnlySummon && SOURCE) {
+                const ENTITY = BUDMORI.runtime.presentationAdapters.get(SOURCE);
+                STATE.children.push({
+                    id: unit.id,
+                    generation: SOURCE.generation,
+                    presentationId: ENTITY?.id,
+                    presentationGeneration: ENTITY?.generation,
+                    frame: FRAME,
+                });
+            }
+            const CHILDREN = WORLD.units.filter((child) => child.isBattleOnlySummon);
+            if (
+                globalThis.__chestnutSplitEvents.length > 0 &&
+                CHILDREN.length >= 2 &&
+                CHILDREN.every((child) => STATE.ids.includes(child.id))
+            ) {
+                STATE.complete = true;
+                BUDMORI.runtime.paused = true;
+            }
+            return RESULT;
+        };
+        globalThis.__chestnutSplitDrawOff = () => {
+            PRESENTATION.draw = DRAW;
+        };
         return {
             count: WORLD.units.length,
             tick: WORLD.simulationTick,
@@ -858,16 +899,18 @@ async function capturePeanutSplit(page, mobile) {
         };
     });
     assert.equal(INITIAL.count, 200);
-    await page.waitForFunction(() => globalThis.__chestnutSplitEvents.length > 0 && BUDMORI.runtime.paused);
+    await page.waitForFunction(() => globalThis.__chestnutSplitDraw.complete && BUDMORI.runtime.paused);
     await settleCapturedFrame(page);
     const SPLIT = await page.evaluate(() => ({
         tick: BUDMORI.sim.simulationTick,
         events: globalThis.__chestnutSplitEvents,
+        nativeDraw: globalThis.__chestnutSplitDraw,
         count: BUDMORI.sim.units.length,
         children: BUDMORI.sim.units
             .filter((unit) => unit.isBattleOnlySummon)
             .map((unit) => ({
                 id: unit.id,
+                generation: unit.generation,
                 tier: unit.tier,
                 species: unit.species,
                 parent: unit.battleSummonParentId,
@@ -903,6 +946,11 @@ async function capturePeanutSplit(page, mobile) {
         assert.equal(CHILD.breeding, false);
         assert.equal(CHILD.merge, false);
         assert.ok(SPLIT.actors.includes(CHILD.id), 'native renderer submits actual split child');
+        assert.ok(SPLIT.nativeDraw.ids.includes(CHILD.id), 'actual split child completed native draw in this frame');
+        const DRAW = SPLIT.nativeDraw.children.find((child) => child.id === CHILD.id);
+        assert.equal(DRAW.generation, CHILD.generation);
+        assert.match(DRAW.presentationId, /^unit:/);
+        assert.equal(DRAW.frame, SPLIT.nativeDraw.frame);
     }
     await assertCombatFraming(page);
     await page.screenshot({ path: path.join(OUTPUT, `${VIEWPORT}-mixed200-peanut-splits.png`) });
@@ -913,7 +961,10 @@ async function capturePeanutSplit(page, mobile) {
         initial: INITIAL,
         split: SPLIT,
     });
-    await page.evaluate(() => globalThis.__chestnutSplitOff());
+    await page.evaluate(() => {
+        globalThis.__chestnutSplitOff();
+        globalThis.__chestnutSplitDrawOff();
+    });
     await resumeCapturedFrame(page);
     await activate(page.locator('#fightRetreat'), mobile);
     await page.waitForFunction(() => BUDMORI.sim.scene === 'farm' && !BUDMORI.sim.tower.active);
