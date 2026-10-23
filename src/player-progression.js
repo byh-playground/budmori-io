@@ -1,8 +1,10 @@
 import {
     createAbilityProgressionState,
     isValidAbilityProgressionState,
+    isValidLegacyAbilityProgressionState,
     masteryXpForNextLevel,
 } from './ability-state.js';
+import { growthForAbility, growthBuildOf, isGrowthInvestment } from './features/species-growth/state.js';
 import { SPECIES_ABILITY_DEFINITIONS } from './ability-definitions.js';
 
 // Beating a boss feeds the mastery of its own species; the XP a kill pays grows with the floor.
@@ -43,7 +45,25 @@ export function awardMasteryXp(state, receiptKey, species, xpAmount = BOSS_KILL_
     if (state.processedBossKillReceipts.includes(receiptKey)) {
         return REJECT('duplicate-receipt');
     }
-    const MASTERY = state.abilities[DEFINITION.id];
+    const MASTERY = state.abilities[DEFINITION.id],
+        GROWTH = growthForAbility(DEFINITION.id);
+    if (GROWTH && isGrowthInvestment(MASTERY)) {
+        const RESULT = GROWTH.awardXp(growthBuildOf(MASTERY), xpAmount);
+        if (!RESULT.ok) {
+            return REJECT(RESULT.reason);
+        }
+        const NEXT = structuredClone(state);
+        NEXT.abilities[DEFINITION.id] = { ...NEXT.abilities[DEFINITION.id], ...RESULT.build };
+        NEXT.processedBossKillReceipts = [...state.processedBossKillReceipts, receiptKey].slice(-RECEIPT_MEMORY);
+        return {
+            state: NEXT,
+            awarded: true,
+            reason: null,
+            xpAwarded: xpAmount,
+            levelsGained: RESULT.levelsGained,
+            pointsAwarded: RESULT.pointsAwarded,
+        };
+    }
     let level = MASTERY.masteryLevel;
     let experience = MASTERY.masteryXp + xpAmount;
     let levelsGained = 0;
@@ -78,9 +98,13 @@ export function formatXpForDisplay(experience) {
         maximumFractionDigits: 1,
     }).format(VALUE);
 }
-export function isValidPlayerProgressionState(state) {
+export function isValidPlayerProgressionState(state, { allowLegacy = false } = {}) {
     return (
-        isValidAbilityProgressionState(state) &&
+        (isValidAbilityProgressionState(state) || (allowLegacy && isValidLegacyAbilityProgressionState(state))) &&
+        Object.keys(state).length === 4 &&
+        Object.keys(state).every((key) =>
+            ['schemaVersion', 'abilities', 'towerBest', 'processedBossKillReceipts'].includes(key),
+        ) &&
         Number.isSafeInteger(state.towerBest) &&
         state.towerBest >= 0 &&
         state.towerBest <= FARM_BOSS_EVENT_MAX_STAGE &&

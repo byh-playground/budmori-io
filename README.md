@@ -20,6 +20,7 @@ npm run build
 node scripts/gamekit-provenance.cjs
 npm test
 npm run test:breed-allocation
+npm run test:corn-growth
 ```
 
 정적 서버로 저장소 루트를 열면 실행됩니다. `index.html`, `src/bootstrap.js`, 빌드된 `src/game.js`가 제품 진입점입니다. 빌드는 농장 소스와 GameKit 컴파일 SVG를 번들로 만들고 바이트 수·SHA256·SRI manifest를 갱신합니다. GameKit은 `gamekit-lock.json`의 불변 CDN ESM을 검증 후 로드합니다.
@@ -28,7 +29,7 @@ npm run test:breed-allocation
 
 병력의 충돌 반경·높이와 표시 배율은 원본의 이름 있는 몸통 외곽선·지면 소켓을 공유합니다. 옥수수 낟알은 발사 순간 몸통 높이의 20%이며, 최소 표시 픽셀은 충돌 크기에 영향을 주지 않습니다. 측정 기준과 저장 호환성은 [몸 크기와 투사체 크기](docs/unit-body-dimensions.md)에 정리했습니다.
 
-기본 PR CI는 `npm ci`와 `npm run build`를 실행해 SVG 원본·제품 번들을 확인합니다. 빠른 피드백을 목표로 하며 1분 내외는 아직 측정하지 않은 목표입니다. 브라우저 스모크 테스트(`tests/smoke.e2e.mjs`)는 필요할 때 `npm test`로 실행하며, 게임 라이브러리를 `vendor/upstream`에서 받아 오프라인으로 돌고 약 70초 걸립니다. 번식 몫 UI 변경 PR은 별도 UI 시나리오와 기존 스모크도 검사하며, `npm run test:breed-allocation`으로 따로 실행할 수 있습니다. 모바일은 Chromium 터치 에뮬레이션이며 실제 기기 검증과 구분합니다.
+기본 PR CI는 `npm ci`와 `npm run build`를 실행해 SVG 원본·제품 번들을 확인합니다. 빠른 피드백을 목표로 하며 1분 내외는 아직 측정하지 않은 목표입니다. 브라우저 스모크 테스트(`tests/smoke.e2e.mjs`)는 필요할 때 `npm test`로 실행하며, 게임 라이브러리를 `vendor/upstream`에서 받아 오프라인으로 돌고 약 70초 걸립니다. 번식 몫 UI 변경 PR은 별도 UI 시나리오와 기존 스모크도 검사하며, `npm run test:breed-allocation`으로 따로 실행할 수 있습니다. 옥수수 성장 흐름은 `npm run test:corn-growth`로 구매·초기화·실제 형태 미리보기·저장 복원·런 잠금을 검증하고 `tests/output/corn-growth/`에 프레임과 보고서를 남깁니다. 각 브라우저 검증 명령은180초 이내로 실행합니다. 모바일은 Chromium 터치 에뮬레이션이며 실제 기기 검증과 구분합니다.
 
 ## 농장
 

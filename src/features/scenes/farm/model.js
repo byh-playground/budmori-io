@@ -10,7 +10,9 @@ export class FarmSimulationScene extends SimulationScene {
         this.battleCapacity = CONFIG.farm.capacity.battleUnits;
     }
     progressionFor(world, _unit) {
-        return world.playerProgression;
+        return world.tower.active && world.runProgressionSnapshot
+            ? world.runProgressionSnapshot
+            : world.playerProgression;
     }
     inBattle(world) {
         return world.farmBossEvent?.phase === 'fighting';

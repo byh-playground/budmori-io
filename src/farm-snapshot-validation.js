@@ -7,6 +7,8 @@ import { BOSS_PATTERN_IDS } from './boss-patterns.js';
 import { BOSS_REWARD_SETTINGS, bossStageStats } from './boss-rewards.js';
 import { FACTION_CONFIG, hasFaction } from './factions.js';
 import { FARM_SNAPSHOT_SHAPE as GARDEN_SHAPE, UNIT_SNAPSHOT_SHAPE as UNIT_SHAPE } from './farm-snapshot.js';
+import { attackTargetKey } from './features/species-growth/attack-action.js';
+import { isCornAttackRecord, cornKernelMultiplier } from './features/species-growth/corn-attack.js';
 import { CORN_ATTACHMENT_FEATURE } from './features/abilities/corn-attachment/definition.js';
 const INTEGER = (v, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(v) && v >= min && v <= max;
 const VALID_BATTLE_UNIT_ID = (id, bossSummonSerial) =>
@@ -21,7 +23,7 @@ function assertSnapshot(ok) {
 const ASSERT = assertSnapshot;
 const MAX_PEANUT_SPLIT_CHILDREN = 2;
 export { assertSnapshot };
-function finiteTree(v, depth = 0, key = '') {
+function finiteTree(v, depth = 0, key = '', progression = false) {
     ASSERT(depth < 18);
     if (typeof v === 'number') {
         const SAFE_COUNTERS = new Set([
@@ -40,31 +42,42 @@ function finiteTree(v, depth = 0, key = '') {
             'pendingTrials',
         ]);
         ASSERT(
-            SAFE_COUNTERS.has(key)
-                ? Number.isSafeInteger(v) && Math.abs(v) <= Number.MAX_SAFE_INTEGER
-                : Number.isFinite(v) && Math.abs(v) < 1e13,
+            progression && ['masteryLevel', 'masteryXp'].includes(key)
+                ? Number.isFinite(v) && v >= 0
+                : SAFE_COUNTERS.has(key)
+                  ? Number.isSafeInteger(v) && Math.abs(v) <= Number.MAX_SAFE_INTEGER
+                  : Number.isFinite(v) && Math.abs(v) < 1e13,
         );
     } else if (Array.isArray(v)) {
         const MAX =
             key === 'units'
                 ? CONFIG.battle.capacity.battleUnits
-                : key === 'projectiles'
+                : key === 'projectiles' || key === 'actions' || key === 'groups'
                   ? CONFIG.battle.capacity.projectiles
                   : key === 'bossRewardReceipts' || key === 'processedBossKillReceipts'
                     ? 100000
                     : 1024;
         ASSERT(v.length <= MAX);
-        v.forEach((x) => finiteTree(x, depth + 1));
+        v.forEach((x) => finiteTree(x, depth + 1, '', progression));
     } else if (v && typeof v === 'object') {
         for (const [K, X] of Object.entries(v)) {
             ASSERT(!['__proto__', 'constructor', 'prototype'].includes(K));
-            finiteTree(X, depth + 1, K);
+            finiteTree(
+                X,
+                depth + 1,
+                K,
+                progression || (depth === 0 && ['playerProgression', 'runProgressionSnapshot'].includes(K)),
+            );
         }
     } else {
         ASSERT(v === null || typeof v === 'boolean' || (typeof v === 'string' && v.length < 256));
     }
 }
 function shape(v, t, path = 'snapshot') {
+    if (path === 'snapshot.playerProgression' || path === 'snapshot.runProgressionSnapshot') {
+        validateProgression(v);
+        return;
+    }
     if (v === null || typeof v !== 'object' || Array.isArray(v)) {
         throw new TypeError(`Invalid farm snapshot object at ${path}.`);
     }
@@ -101,6 +114,36 @@ function shape(v, t, path = 'snapshot') {
             }
         }
     }
+}
+// The launched owner record is a view of the authoritative ledger, not a second mutable budget.
+function sameCheckpointValue(left, right) {
+    if (left === right) {
+        return true;
+    }
+    if (
+        !left ||
+        !right ||
+        typeof left !== 'object' ||
+        typeof right !== 'object' ||
+        Array.isArray(left) !== Array.isArray(right)
+    ) {
+        return false;
+    }
+    const KEYS = Object.keys(left);
+    return (
+        KEYS.length === Object.keys(right).length &&
+        KEYS.every((key) => Object.hasOwn(right, key) && sameCheckpointValue(left[key], right[key]))
+    );
+}
+function validateProgression(progression) {
+    ASSERT(
+        progression &&
+            Object.keys(progression).length === 4 &&
+            ['schemaVersion', 'abilities', 'towerBest', 'processedBossKillReceipts'].every((key) =>
+                Object.hasOwn(progression, key),
+            ) &&
+            isValidPlayerProgressionState(progression),
+    );
 }
 function validWheatCommandBuffs(buffs) {
     return (
@@ -144,6 +187,28 @@ export function validateSnapshot(raw) {
     );
     ASSERT(raw.scene === 'farm');
     ASSERT(Array.isArray(raw.mergeTasks) && raw.mergeTasks.length <= CONFIG.farm.capacity.battleUnits);
+    const CORN_ACTIONS = new Map();
+    ASSERT(
+        Array.isArray(raw.cornAttachments.actions) &&
+            raw.cornAttachments.actions.length <= CONFIG.battle.capacity.projectiles,
+    );
+    for (const RECORD of raw.cornAttachments.actions) {
+        ASSERT(
+            isCornAttackRecord(RECORD) &&
+                INTEGER(RECORD.id, 1, raw.attackSerial) &&
+                RECORD.launchTick <= raw.simulationTick &&
+                RECORD.attack.lastTick <= raw.simulationTick &&
+                !RECORD.attack.cancelled &&
+                (RECORD.firstAttachTick === null || RECORD.firstAttachTick <= raw.simulationTick) &&
+                !CORN_ACTIONS.has(RECORD.id),
+        );
+        const HIT_KEYS = new Set(RECORD.attack.hits.flat());
+        ASSERT(
+            Object.keys(RECORD.criticalRolls).length === HIT_KEYS.size &&
+                Object.keys(RECORD.criticalRolls).every((key) => HIT_KEYS.has(key)),
+        );
+        CORN_ACTIONS.set(RECORD.id, RECORD);
+    }
     const MERGE_TASK_UNIT_IDS = new Set(),
         PENDING_MERGE_COST = new Int32Array(CONFIG.unit.speciesCount);
     for (const T of raw.mergeTasks) {
@@ -239,7 +304,10 @@ export function validateSnapshot(raw) {
             raw.farmBossEvent.elapsed >= 0,
     );
     ASSERT(INTEGER(raw.nextBossEncounterId, 1, 1e12) && Array.isArray(raw.bossRewardReceipts));
-    ASSERT(isValidPlayerProgressionState(raw.playerProgression));
+    validateProgression(raw.playerProgression);
+    if (raw.runProgressionSnapshot !== null) {
+        validateProgression(raw.runProgressionSnapshot);
+    }
     ASSERT(Array.isArray(raw.food) && raw.food.length <= 140);
     const FARM_EVENT = raw.farmBossEvent;
     if (FARM_EVENT.phase === 'idle') {
@@ -688,6 +756,24 @@ export function validateSnapshot(raw) {
                     Number.isFinite(A.target.x) &&
                     Number.isFinite(A.target.y),
             );
+            if (A.cornAttack !== undefined) {
+                const CANONICAL = CORN_ACTIONS.get(A.id);
+                ASSERT(
+                    A.cornAttack.launchTick === null
+                        ? !CANONICAL &&
+                              Object.keys(A.cornAttack.criticalRolls).length === 0 &&
+                              A.cornAttack.firstAttachTick === null
+                        : CANONICAL && sameCheckpointValue(A.cornAttack, CANONICAL),
+                );
+                ASSERT(
+                    U.species === 1 &&
+                        isCornAttackRecord(A.cornAttack, { pending: true }) &&
+                        A.cornAttack.id === A.id &&
+                        A.cornAttack.owner === U.id &&
+                        A.cornAttack.ownerGeneration === U.generation &&
+                        A.cornAttack.tier === U.tier,
+                );
+            }
             if (hasUnitCapability(U.species, 'repeatedStrike')) {
                 ASSERT(
                     INTEGER(A.peanutStrikeCount, 2, 5) &&
@@ -774,7 +860,8 @@ export function validateSnapshot(raw) {
             ASSERT(Number.isFinite(F[K]));
         }
     }
-    const PROJECTILE_IDS = new Set();
+    const PROJECTILE_IDS = new Set(),
+        CORN_PROJECTILE_SLOTS = new Set();
     for (const P of raw.projectiles) {
         validatePath(P.path);
         ASSERT(INTEGER(P.id, 1, raw.projectileSerial) && !PROJECTILE_IDS.has(P.id));
@@ -786,6 +873,35 @@ export function validateSnapshot(raw) {
         ASSERT(
             P.targetId === undefined || P.targetId === 'boss' || VALID_BATTLE_UNIT_ID(P.targetId, raw.bossSummonSerial),
         );
+        if (P.cornActionId !== undefined) {
+            const RECORD = CORN_ACTIONS.get(P.cornActionId),
+                SHOT = RECORD?.shots[P.cornSlot];
+            const SLOT_KEY = `${P.cornActionId}:${P.cornSlot}`;
+            ASSERT(
+                RECORD &&
+                    SHOT &&
+                    !CORN_PROJECTILE_SLOTS.has(SLOT_KEY) &&
+                    P.species === 1 &&
+                    P.tier === RECORD.tier &&
+                    P.cornForm === RECORD.form &&
+                    INTEGER(P.cornSlot, 0, RECORD.shots.length - 1) &&
+                    P.shotIndex === P.cornSlot &&
+                    P.owner === RECORD.owner &&
+                    P.ownerGeneration === RECORD.ownerGeneration &&
+                    INTEGER(P.targetGeneration, 1, 1e12) &&
+                    P.faction === RECORD.source.faction &&
+                    P.ownerId === RECORD.source.ownerId &&
+                    P.attackMultiplier === RECORD.directMultiplier * SHOT.weight &&
+                    P.path.duration === SHOT.duration &&
+                    typeof P.hit === 'boolean' &&
+                    P.attackPayload?.damageMultiplier === P.attackMultiplier &&
+                    P.attackPayload.sourceDamageScale === RECORD.source.sourceDamageScale &&
+                    P.attackPayload.attackPowerMultiplier === RECORD.source.attackPowerMultiplier &&
+                    P.attackPayload.attackerStats?.attackPower === RECORD.source.attackerStats.attackPower,
+            );
+            CORN_PROJECTILE_SLOTS.add(SLOT_KEY);
+            continue;
+        }
         ASSERT(
             Object.values(FACTION_CONFIG).includes(P.faction) &&
                 typeof P.ownerId === 'string' &&
@@ -817,6 +933,7 @@ export function validateSnapshot(raw) {
         }
     }
     const ATTACHMENTS = new Set(),
+        CORN_GROUP_TARGETS = new Set(),
         CORN_DEFINITION = CORN_ATTACHMENT_FEATURE.definition;
     ASSERT(
         INTEGER(raw.cornAttachments.nextGroupId, 1, 1e12) &&
@@ -825,6 +942,41 @@ export function validateSnapshot(raw) {
             raw.cornAttachments.groups.length <= CONFIG.battle.capacity.projectiles,
     );
     for (const GROUP of raw.cornAttachments.groups) {
+        const RECORD = GROUP.cornActionId === undefined ? null : CORN_ACTIONS.get(GROUP.cornActionId);
+        ASSERT(GROUP.cornActionId === undefined || !!RECORD);
+        const KERNEL_INDICES = new Set(),
+            TARGET_KEY = attackTargetKey(GROUP.targetId, GROUP.targetGeneration),
+            GROUP_KEY = `${GROUP.cornActionId}:${TARGET_KEY}`;
+        let previousKernelIndex = -1;
+        if (RECORD) {
+            ASSERT(!CORN_GROUP_TARGETS.has(GROUP_KEY) && GROUP.firstAttachTick === RECORD.firstAttachTick);
+            CORN_GROUP_TARGETS.add(GROUP_KEY);
+            const PENDING = GROUP.attachments.filter((attachment) => attachment.status === 'attached');
+            const TARGET = GROUP.targetId === 'boss' ? raw.boss : UNITS_BY_ID.get(GROUP.targetId);
+            ASSERT(
+                GROUP.status !== 'cancelled' ||
+                    !TARGET ||
+                    TARGET.generation !== GROUP.targetGeneration ||
+                    TARGET.hp <= 0,
+            );
+            ASSERT(
+                (GROUP.status === 'collecting'
+                    ? raw.simulationTick < GROUP.closeAtTick &&
+                      GROUP.nextExplosionTick === null &&
+                      PENDING.length === GROUP.attachments.length
+                    : GROUP.status === 'exploding'
+                      ? raw.simulationTick >= GROUP.closeAtTick &&
+                        PENDING.length > 0 &&
+                        GROUP.nextExplosionTick === PENDING[0].explosionTick
+                      : PENDING.length === 0) &&
+                    GROUP.attachments.every((attachment) =>
+                        attachment.status === 'attached'
+                            ? attachment.explosionTick > raw.simulationTick &&
+                              attachment.fadeTicks === CORN_DEFINITION.fadeTicks
+                            : GROUP.status === 'cancelled' || attachment.explosionTick <= raw.simulationTick,
+                    ),
+            );
+        }
         ASSERT(
             INTEGER(GROUP.id, 1, raw.cornAttachments.nextGroupId - 1) &&
                 INTEGER(GROUP.targetGeneration, 1, 1e12) &&
@@ -841,6 +993,12 @@ export function validateSnapshot(raw) {
                 GROUP.attachments.length <= CONFIG.battle.capacity.projectiles,
         );
         for (const ATTACHMENT of GROUP.attachments) {
+            const SLOT = RECORD?.shots.findIndex(
+                (shot) =>
+                    ATTACHMENT.cornKernelIndex >= shot.kernelStart &&
+                    ATTACHMENT.cornKernelIndex < shot.kernelStart + shot.kernelCount,
+            );
+            const HIT_SLOT = SLOT === -1 ? RECORD.shots.length - 1 : SLOT;
             ASSERT(
                 INTEGER(ATTACHMENT.id, 1, raw.cornAttachments.nextAttachmentId - 1) &&
                     !ATTACHMENTS.has(ATTACHMENT.id) &&
@@ -850,9 +1008,25 @@ export function validateSnapshot(raw) {
                     INTEGER(ATTACHMENT.ownerId, 1, 1e12) &&
                     INTEGER(ATTACHMENT.ownerGeneration, 1, 1e12) &&
                     Number.isFinite(ATTACHMENT.damageMultiplier) &&
-                    ATTACHMENT.damageMultiplier >= 0.5 &&
-                    ATTACHMENT.damageMultiplier <= 1 &&
+                    (RECORD
+                        ? ATTACHMENT.cornActionId === GROUP.cornActionId &&
+                          INTEGER(ATTACHMENT.cornKernelIndex, 0, RECORD.terminalIndex) &&
+                          !KERNEL_INDICES.has(ATTACHMENT.cornKernelIndex) &&
+                          ATTACHMENT.cornKernelIndex > previousKernelIndex &&
+                          RECORD.attack.hits[HIT_SLOT]?.includes(TARGET_KEY) &&
+                          (ATTACHMENT.cornDamageScale === 1 || ATTACHMENT.cornDamageScale === 0.5) &&
+                          ATTACHMENT.damageMultiplier ===
+                              cornKernelMultiplier(RECORD, ATTACHMENT.cornKernelIndex) * ATTACHMENT.cornDamageScale &&
+                          ATTACHMENT.explosionTick ===
+                              RECORD.firstAttachTick +
+                                  CORN_DEFINITION.attachDelayTicks +
+                                  ATTACHMENT.cornKernelIndex * CORN_DEFINITION.explosionSpacingTicks &&
+                          ATTACHMENT.ownerId === RECORD.owner &&
+                          ATTACHMENT.ownerGeneration === RECORD.ownerGeneration
+                        : ATTACHMENT.damageMultiplier >= 0.5 && ATTACHMENT.damageMultiplier <= 1) &&
                     ['attached', 'fading', 'removed'].includes(ATTACHMENT.status) &&
+                    (!RECORD ||
+                        (ATTACHMENT.status === 'removed' ? ATTACHMENT.fadeTicks === 0 : ATTACHMENT.fadeTicks > 0)) &&
                     INTEGER(ATTACHMENT.fadeTicks, 0, CORN_DEFINITION.fadeTicks) &&
                     Number.isFinite(ATTACHMENT.angle) &&
                     Number.isFinite(ATTACHMENT.offsetX) &&
@@ -864,6 +1038,8 @@ export function validateSnapshot(raw) {
                     Object.values(FACTION_CONFIG).includes(ATTACHMENT.payload.faction),
             );
             ATTACHMENTS.add(ATTACHMENT.id);
+            KERNEL_INDICES.add(ATTACHMENT.cornKernelIndex);
+            previousKernelIndex = ATTACHMENT.cornKernelIndex;
         }
     }
     ASSERT(INTEGER(raw.projectileSerial, 0, 1e12) && INTEGER(raw.bossSummonSerial, 0, 1e12));

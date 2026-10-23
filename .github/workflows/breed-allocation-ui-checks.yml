@@ -1,20 +1,31 @@
-name: Breeding allocation UI checks
+name: Farm browser checks
 on:
     pull_request:
         paths:
             - 'index.html'
             - 'src/breed-allocation.js'
             - 'src/features/species-growth/**'
+            - 'src/features/projectiles/**'
+            - 'src/features/unit-attacks/lob/**'
+            - 'src/features/abilities/corn-attachment/**'
+            - 'src/ability-*.js'
+            - 'src/ability-tree.css'
+            - 'src/species-growth-presentation.js'
+            - 'src/help-scenes.js'
+            - 'src/farm-model.js'
+            - 'src/farm-session.js'
+            - 'src/farm-render-items.js'
             - 'src/farm-app.js'
             - 'src/styles/game-menu.css'
             - 'tests/breed-allocation.e2e.mjs'
+            - 'tests/corn-growth.e2e.mjs'
             - '.github/workflows/breed-allocation-ui-checks.yml'
 permissions:
     contents: read
 jobs:
     browser:
         runs-on: ubuntu-latest
-        timeout-minutes: 8
+        timeout-minutes: 15
         steps:
             - uses: actions/checkout@v4
             - uses: actions/setup-node@v4
@@ -25,10 +36,13 @@ jobs:
             - run: npx playwright install --with-deps chromium
             - run: npm run build
             - run: timeout 180s npm run test:breed-allocation
+            - run: timeout 180s npm run test:corn-growth
             - run: timeout 180s npm test
             - uses: actions/upload-artifact@v4
               if: always()
               with:
-                  name: breeding-allocation-ui
-                  path: tests/output/breed-allocation/
+                  name: farm-browser-evidence
+                  path: |
+                      tests/output/breed-allocation/
+                      tests/output/corn-growth/
                   if-no-files-found: ignore

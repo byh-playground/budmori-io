@@ -10,6 +10,7 @@ const MODEL_FILES = [
     'src/ability-catalog.js',
     'src/ability-progression.js',
     'src/ability-state.js',
+    'src/mastery.js',
     'src/boss-patterns.js',
     'src/boss-rewards.js',
     'src/factions.js',

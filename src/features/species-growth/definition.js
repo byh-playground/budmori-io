@@ -4,9 +4,20 @@ export const SPECIES_MASTERY_CAP = 50;
 export const EVOLUTION_UNLOCK_LEVELS = Object.freeze([2, 6, 12, 20, 30]);
 
 // Rollout is explicit: a species is enabled only with its attack, effects, UI and save consumer.
-// Stage zero deliberately leaves every species unavailable. These are research slots, not live abilities.
+// Corn is the first released tree. Other species keep their legacy progression until their own release.
 export const SPECIES_GROWTH_DEFINITIONS = Object.freeze(
-    SPECIES_CATALOG.map(({ id }) => createSpeciesGrowthDefinition(id)),
+    SPECIES_CATALOG.map(({ id }) =>
+        createSpeciesGrowthDefinition(
+            id,
+            id === 1
+                ? {
+                      available: true,
+                      basic: ['직격 위력', '부착 폭발 위력', '공격 속도'],
+                      specialty: ['연쇄 가열', '마무리 파열', '추가 알'],
+                  }
+                : {},
+        ),
+    ),
 );
 
 export function createSpeciesGrowthDefinition(species, { available = false, basic = [], specialty = [] } = {}) {

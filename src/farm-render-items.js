@@ -1,4 +1,5 @@
 import { SeedProjectilePresentation } from './features/projectiles/seed/presentation.js';
+import { CornProjectilePresentation } from './features/projectiles/corn/presentation.js';
 import { SpikeProjectilePresentation } from './features/projectiles/spike/presentation.js';
 import { projectileFeature } from './features/projectiles/definition.js';
 import { Ballistics } from './farm-model.js';
@@ -30,6 +31,8 @@ export class FoodPresentation {
     }
 }
 
+const CORN_PROJECTILE_PRESENTATION = new CornProjectilePresentation();
+
 const PROJECTILE_PRESENTATIONS = new Map(
     [new SeedProjectilePresentation(), new SpikeProjectilePresentation()].map((presentation) => [
         presentation.id,
@@ -48,7 +51,10 @@ export class ProjectilePresentation {
                 projectile.path,
                 Math.max(0, (projectile.elapsed - 0.04) / projectile.path.duration),
             );
-        const PRESENTATION = PROJECTILE_PRESENTATIONS.get(projectileFeature(projectile).id);
+        const PRESENTATION =
+            projectile.cornForm >= 3
+                ? CORN_PROJECTILE_PRESENTATION
+                : PROJECTILE_PRESENTATIONS.get(projectileFeature(projectile).id);
         PRESENTATION.drawShadow(RENDERER, projectile);
         PRESENTATION.draw(RENDERER, projectile, P, TAIL);
     }
