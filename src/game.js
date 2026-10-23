@@ -14802,7 +14802,7 @@
       if (!(PROJECTILE2.cornForm >= 3)) {
         continue;
       }
-      const PATH2 = PROJECTILE2.path, SIZE = cornVisualHeight(PROJECTILE2.cornForm), SIDE = SIZE * 0.9 + 0.5, SKY = Math.max(PATH2.from.z, PATH2.to.z) + PATH2.height + SIZE * 2.1;
+      const PATH2 = PROJECTILE2.path, SIZE = cornVisualHeight(PROJECTILE2.cornForm), SIDE = SIZE * 0.9 + 0.5, SKY = Math.max(PATH2.from.z, 0) + PATH2.height + SIZE * 2.1;
       bounds.left = Math.min(bounds.left, PATH2.from.x - SIDE, PATH2.to.x - SIDE);
       bounds.right = Math.max(bounds.right, PATH2.from.x + SIDE, PATH2.to.x + SIDE);
       bounds.top = Math.max(

@@ -162,7 +162,7 @@ async function assertCombatFraming(page) {
                         TOP = RENDERER.project(
                             0,
                             Math.max(PATH.from.y, PATH.to.y),
-                            Math.max(PATH.from.z, PATH.to.z) + PATH.height + SIZE * 2.1,
+                            Math.max(PATH.from.z, 0) + PATH.height + SIZE * 2.1,
                         );
                     return {
                         id: shot.id,
@@ -199,7 +199,16 @@ async function assertCombatFraming(page) {
             bounds: RENDERER.hallEffectBounds,
         };
     });
+    assert.ok(
+        [GEOMETRY.zoom, GEOMETRY.scale].every(Number.isFinite) &&
+            (!GEOMETRY.corn.length || Object.values(GEOMETRY.bounds).every(Number.isFinite)),
+        `finite accumulated camera bounds: ${JSON.stringify(GEOMETRY.bounds)}`,
+    );
     for (const CORN of GEOMETRY.corn) {
+        assert.ok(
+            [CORN.top, CORN.left, CORN.right].every(Number.isFinite),
+            `finite projected projectile bounds: ${JSON.stringify(CORN)}`,
+        );
         assert.ok(
             CORN.top >= -1 && CORN.left >= -1 && CORN.right <= GEOMETRY.canvasWidth + 1,
             `full projectile path, cob and tail fit: ${JSON.stringify({ corn: CORN, camera: GEOMETRY })}`,
@@ -221,6 +230,7 @@ async function assertCombatFraming(page) {
 
 async function captureMainCombat(page, tier, mobile) {
     // The main play session, not an iframe: reload gives each fixture a clean farm boundary.
+    // Runtime targeting and ability.begin/update launch shots; no target/path is injected.
     await page.reload();
     await page.waitForFunction(() => globalThis.BUDMORI?.sim?.scene === 'farm');
     if (await page.locator('#gameMenuPanel').isVisible()) {

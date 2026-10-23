@@ -12,10 +12,11 @@ export function includeCornProjectileBounds(world, bounds) {
         if (!(PROJECTILE.cornForm >= 3)) {
             continue;
         }
+        // Ballistics.sample lands at z=0; its target is an XY combat point, not a 3D endpoint.
         const PATH = PROJECTILE.path,
             SIZE = cornVisualHeight(PROJECTILE.cornForm),
             SIDE = SIZE * 0.9 + 0.5,
-            SKY = Math.max(PATH.from.z, PATH.to.z) + PATH.height + SIZE * 2.1;
+            SKY = Math.max(PATH.from.z, 0) + PATH.height + SIZE * 2.1;
         // Like storm-cloud bounds, reserve the complete path and trail for the floor,
         // not the current sample. The camera therefore never pumps between missiles.
         bounds.left = Math.min(bounds.left, PATH.from.x - SIDE, PATH.to.x - SIDE);
