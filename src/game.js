@@ -18324,6 +18324,12 @@
           this.towerShotUntil = now + 2600;
         }
       }
+      if (INSIDE) {
+        this.towerShotUntil = 0;
+        this.cameraReturning = false;
+        this.fitHall(sim2);
+        return;
+      }
       if (MARCHING || now < this.towerShotUntil) {
         const ZOOM_TARGET = this.aspect > 1.2 ? 0.55 : 0.8;
         this.zoom += (ZOOM_TARGET - this.zoom) * 0.07;
@@ -18339,9 +18345,6 @@
           this.resetZoom();
           this.cameraReturning = false;
         }
-      } else if (INSIDE) {
-        this.cameraReturning = false;
-        this.fitHall(sim2);
       }
     }
     // Inside the tower the whole hall is always in view: no panning or zooming, so tapping anywhere deploys.

@@ -150,6 +150,75 @@ async function preview(page, tier, mobile) {
     REPORT.push({ viewport: VIEWPORT, viewportSize: VIEWPORT_SIZE, tier, trace: TRACE });
 }
 
+async function assertCombatFraming(page) {
+    const GEOMETRY = await page.evaluate(() => {
+        const RENDERER = BUDMORI.renderer,
+            CORN = BUDMORI.sim.projectiles
+                .filter((shot) => shot.cornForm >= 3)
+                .map((shot) => {
+                    const SIZE = shot.cornForm >= 5 ? 3.8 : shot.cornForm === 4 ? 2.8 : 1.6,
+                        PATH = shot.path,
+                        SIDE = SIZE * 0.9 + 0.5,
+                        TOP = RENDERER.project(
+                            0,
+                            Math.max(PATH.from.y, PATH.to.y),
+                            Math.max(PATH.from.z, PATH.to.z) + PATH.height + SIZE * 2.1,
+                        );
+                    return {
+                        id: shot.id,
+                        left: RENDERER.project(Math.min(PATH.from.x, PATH.to.x) - SIDE, 0, 0).x,
+                        right: RENDERER.project(Math.max(PATH.from.x, PATH.to.x) + SIDE, 0, 0).x,
+                        top: TOP.y,
+                    };
+                }),
+            HUD = ['bossbar', 'allyHealthText', 'bossName', 'bossHealthText', 'bossHealthNote', 'fightRetreat'].map(
+                (id) => {
+                    const ELEMENT = document.getElementById(id),
+                        BOX = ELEMENT.getBoundingClientRect(),
+                        RANGE = document.createRange();
+                    RANGE.selectNodeContents(ELEMENT);
+                    const TEXT = RANGE.getBoundingClientRect();
+                    return {
+                        id,
+                        left: Math.min(BOX.left, TEXT.width ? TEXT.left : BOX.left),
+                        right: Math.max(BOX.right, TEXT.right),
+                        top: BOX.top,
+                        bottom: BOX.bottom,
+                    };
+                },
+            );
+        return {
+            width: innerWidth,
+            height: innerHeight,
+            canvasWidth: RENDERER.canvas.width,
+            corn: CORN,
+            hud: HUD,
+            zoom: RENDERER.zoom,
+            scale: RENDERER.scale,
+            pan: RENDERER.cameraPan,
+            bounds: RENDERER.hallEffectBounds,
+        };
+    });
+    for (const CORN of GEOMETRY.corn) {
+        assert.ok(
+            CORN.top >= -1 && CORN.left >= -1 && CORN.right <= GEOMETRY.canvasWidth + 1,
+            `full projectile path, cob and tail fit: ${JSON.stringify({ corn: CORN, camera: GEOMETRY })}`,
+        );
+    }
+    if (VIEWPORT === 'landscape') {
+        for (const ITEM of GEOMETRY.hud) {
+            assert.ok(
+                ITEM.left >= -1 &&
+                    ITEM.right <= GEOMETRY.width + 1 &&
+                    ITEM.top >= -1 &&
+                    ITEM.bottom <= GEOMETRY.height + 1,
+                `landscape HUD text and control fit: ${JSON.stringify(ITEM)}`,
+            );
+        }
+    }
+    return GEOMETRY;
+}
+
 async function captureMainCombat(page, tier, mobile) {
     // The main play session, not an iframe: reload gives each fixture a clean farm boundary.
     await page.reload();
@@ -247,6 +316,7 @@ async function captureMainCombat(page, tier, mobile) {
                 STAGE,
             ),
         );
+        TRACE.at(-1).framing = await assertCombatFraming(page);
         await page.screenshot({
             path: path.join(OUTPUT, `${VIEWPORT}-main-t${tier}-${STAGE}.png`),
         });
@@ -332,6 +402,7 @@ async function captureCrowdedCombat(page, mobile) {
         meteorCount: BUDMORI.sim.projectiles.filter((shot) => shot.cornForm >= 5).length,
         renderDiagnostics: BUDMORI.presentationDiagnostics,
     }));
+    STATE.framing = await assertCombatFraming(page);
     await page.screenshot({
         path: path.join(OUTPUT, `${VIEWPORT}-main-crowded-${overlap ? 'windup-meteors' : 'no-overlap'}.png`),
     });
