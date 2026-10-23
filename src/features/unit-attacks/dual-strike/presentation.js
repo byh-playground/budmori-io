@@ -18,4 +18,12 @@ export class DualStrikePresentation extends UnitAttackPresentation {
               ? `fire-${unit.ability.peanutStrikeCount}`
               : 'fire';
     }
+    clipElapsedMs(unit, motion) {
+        const FORM = unit.ability.peanutForm;
+        // These short cooperation clips share the actual action phase clock.
+        // A paused/reset frame clock must not advance a kernel into its next slot.
+        return FORM && (motion === `windup-t${FORM}` || motion === `fire-t${FORM}`)
+            ? unit.ability.elapsed * 1000
+            : null;
+    }
 }

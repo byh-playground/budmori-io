@@ -340,7 +340,7 @@ async function observeDrawnPeanut(page) {
                           }
                         : null;
                 globalThis.__peanutDraw = DATA;
-                if (ACTION && DATA) {
+                if (ACTION && DATA && ACTION.id === DATA.actionId) {
                     const ENVELOPE = (globalThis.__peanutMotionEnvelopes[ACTION.id] ??= {
                         ...DATA.bounds,
                         draws: 0,
@@ -355,9 +355,11 @@ async function observeDrawnPeanut(page) {
                     ENVELOPE.draws++;
                     if (DATA.phase === 'active') {
                         ENVELOPE.samples.push({
+                            actionId: DATA.actionId,
                             slot: DATA.slot,
                             stage: DATA.stage,
                             elapsed: DATA.elapsed,
+                            nativeTimeMs: DATA.nativeTimeMs,
                             left: {
                                 x: DATA.kernels.left.pose.x,
                                 y: DATA.kernels.left.pose.y,
@@ -414,6 +416,7 @@ async function captureMotion(page, tier, label) {
         await limitMainMotionObservationClock(page);
     }
     const TRACE = [],
+        CAPTURE = { kind: label, tier, trace: TRACE, observationClock: null },
         WEIGHTS = [
             [],
             [0.5, 0.5],
@@ -425,6 +428,8 @@ async function captureMotion(page, tier, label) {
         ][tier],
         STAGES = [{ phase: 'windup' }, ...WEIGHTS.map((_, slot) => ({ phase: 'active', slot })), { phase: 'recover' }];
     let actionId = null;
+    // Retain the real drawn poses even if a later trajectory assertion fails.
+    REPORT.push(CAPTURE);
     await page.evaluate(
         (request) => {
             globalThis.__peanutCaptured = null;
@@ -461,6 +466,12 @@ async function captureMotion(page, tier, label) {
         });
         assert.equal(STATE.drawn.phase, REQUEST.phase, 'native render retains captured phase');
         assert.equal(STATE.drawn.actionId, STATE.peanut.id, 'native pose belongs to the observed live action');
+        if (REQUEST.phase === 'windup' || REQUEST.phase === 'active') {
+            assert.ok(
+                Math.abs(STATE.drawn.nativeTimeMs - STATE.drawn.elapsed * 1000) < 1e-6,
+                'authored native clip uses the actual action phase clock, including paused frames',
+            );
+        }
         assert.equal(STATE.unitCount, 1, 'the two kernels remain one unit and one HP owner');
         assert.deepEqual(
             STATE.actors,
@@ -604,7 +615,7 @@ async function captureMotion(page, tier, label) {
     if (label === 'main') {
         assert.ok(OBSERVATION_CLOCK.maxForwardedDeltaMs <= 25);
     }
-    REPORT.push({ kind: label, tier, trace: TRACE, observationClock: OBSERVATION_CLOCK });
+    CAPTURE.observationClock = OBSERVATION_CLOCK;
 }
 
 async function preview(page, tier, mobile) {
@@ -910,6 +921,7 @@ async function capturePeanutSplit(page, mobile) {
 
 async function captureInterruptedCombo(page, mobile) {
     await setupCombat(page, 6, mobile);
+    await observeDrawnPeanut(page);
     // Subscribe to committed combat notices at normal speed. Only the ordinary pause
     // input changes; no clocks, attack state, movement, damage or model steps are replaced.
     await page.evaluate(() => {
@@ -964,12 +976,26 @@ async function captureInterruptedCombo(page, mobile) {
             (event) => event.kind === 'boss-hit' && event.attackId === globalThis.__peanutCheckpoint.action.id,
         ),
         numbers: BUDMORI.combatFeel.counts.numbers,
+        nativeSamples: structuredClone(
+            globalThis.__peanutMotionEnvelopes[globalThis.__peanutCheckpoint.action.id]?.samples || [],
+        ),
+        boundedClock: !!BUDMORI.runtime.__peanutMotionClock,
     }));
     assert.equal(AFTER.sameWorld, true);
     assert.equal(AFTER.sameAction, true);
     assert.equal(AFTER.hits.length, 5, 'Home→Continue completes exactly five collisions, not replayed first contact');
     assert.equal(new Set(AFTER.hits.map((event) => event.sequence)).size, 5);
     assert.equal(AFTER.numbers - BEFORE.numbers, 4, 'remaining four hits produce exactly four visible damage numbers');
+    assert.equal(AFTER.boundedClock, false, 'Home/Continue observes the unchanged normal production clock');
+    assert.ok(new Set(AFTER.nativeSamples.map((sample) => sample.elapsed)).size > 1, 'normal-speed native motion drew');
+    assert.ok(
+        AFTER.nativeSamples.every(
+            (sample) =>
+                sample.actionId === AFTER.hits[0].attackId &&
+                Math.abs(sample.nativeTimeMs - sample.elapsed * 1000) < 1e-6,
+        ),
+        'normal-speed Home/Continue retains the same action and native phase clock',
+    );
     await page.screenshot({ path: path.join(OUTPUT, `${VIEWPORT}-home-continue-combo.png`) });
     REPORT.push({ kind: 'home-continue-combo', before: BEFORE, after: AFTER });
     await page.evaluate(() => globalThis.__peanutContinuityOff());

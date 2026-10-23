@@ -248,7 +248,7 @@ export function resolvePeanutSlots(world, unit, action, elapsed, geometry) {
                     kind: DUAL_STRIKE_FEATURE.id,
                     strikeIndex: S.slot,
                     buffed: false,
-                    sourceStatOverrides: { ...SOURCE.attackerStats },
+                    sourceStatOverrides: SOURCE.attackerStats,
                     area: true,
                     criticalRoll: R.criticalRolls[KEY],
                     hitTargets: null,
@@ -263,8 +263,15 @@ export function resolvePeanutSlots(world, unit, action, elapsed, geometry) {
             stage: R.shots[S.slot].stage,
         });
     }
-    R.attack = A.toDTO();
-    RUNTIME.checkpoint = R.attack;
+    // The plan and start tick are immutable after launch. Keep their original
+    // transport copy and synchronize only consumed slots and mutable claims.
+    R.attack.nextSlot = A.nextSlot;
+    R.attack.lastTick = A.lastTick;
+    R.attack.cancelled = A.cancelled;
+    for (const S of READY) {
+        R.attack.hits[S.slot] = [...A.hits[S.slot]];
+    }
+    R.attack.claims = [...A.claims];
 }
 const EXACT = (v, keys) =>
     v &&

@@ -252,10 +252,13 @@ export class UnitPresentation {
         const METADATA = RECORD.compiled.metadata,
             SWING = rest ? null : workSwing(u, sim),
             MOTION_NAME = SWING?.name || unitMotion(u, sim, rest),
-            CLIP = METADATA.clips[MOTION_NAME] || METADATA.clips.idle;
-        const CLIP_START_AT_MS = rest
-            ? 0
-            : this.renderer.displayTimeMs - (SWING ? SWING.elapsed : motionElapsedMs(u, MOTION_NAME, CLIP));
+            CLIP = METADATA.clips[MOTION_NAME] || METADATA.clips.idle,
+            PHASE_TIME_MS = !rest && !SWING ? unitAttackPresentation(u).clipElapsedMs?.(u, MOTION_NAME) : null,
+            HAS_PHASE_CLOCK = Number.isFinite(PHASE_TIME_MS);
+        const CLIP_START_AT_MS =
+            rest || HAS_PHASE_CLOCK
+                ? 0
+                : this.renderer.displayTimeMs - (SWING ? SWING.elapsed : motionElapsedMs(u, MOTION_NAME, CLIP));
         if (!player) {
             player = RECORD.asset.createPlayer({
                 clip: MOTION_NAME,
@@ -274,7 +277,13 @@ export class UnitPresentation {
         if (EXPRESSION !== player.currentExpression) {
             player.setExpression(EXPRESSION);
         }
-        player.seek(rest ? rest.elapsed * 1000 : this.renderer.displayTimeMs);
+        player.seek(
+            HAS_PHASE_CLOCK
+                ? clamp(PHASE_TIME_MS, 0, CLIP.durationMs)
+                : rest
+                  ? rest.elapsed * 1000
+                  : this.renderer.displayTimeMs,
+        );
         const [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox,
             GROUND = unitBodyDefinition(u.species).ground,
             SCALE = (2 * r) / Math.max(WIDTH, HEIGHT);

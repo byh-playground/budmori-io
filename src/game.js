@@ -1870,7 +1870,7 @@
             kind: FEATURE.id,
             strikeIndex: S.slot,
             buffed: false,
-            sourceStatOverrides: { ...SOURCE.attackerStats },
+            sourceStatOverrides: SOURCE.attackerStats,
             area: true,
             criticalRoll: R2.criticalRolls[KEY2],
             hitTargets: null
@@ -1885,8 +1885,13 @@
         stage: R2.shots[S.slot].stage
       });
     }
-    R2.attack = A.toDTO();
-    RUNTIME.checkpoint = R2.attack;
+    R2.attack.nextSlot = A.nextSlot;
+    R2.attack.lastTick = A.lastTick;
+    R2.attack.cancelled = A.cancelled;
+    for (const S of READY) {
+      R2.attack.hits[S.slot] = [...A.hits[S.slot]];
+    }
+    R2.attack.claims = [...A.claims];
   }
   function isPeanutAttackRecord(r) {
     if (!EXACT(
@@ -17926,6 +17931,10 @@
     activeMotion(unit2) {
       return unit2.ability.peanutForm ? `fire-t${unit2.ability.peanutForm}` : unit2.ability.peanutStrikeCount > 2 ? `fire-${unit2.ability.peanutStrikeCount}` : "fire";
     }
+    clipElapsedMs(unit2, motion) {
+      const FORM = unit2.ability.peanutForm;
+      return FORM && (motion === `windup-t${FORM}` || motion === `fire-t${FORM}`) ? unit2.ability.elapsed * 1e3 : null;
+    }
   };
 
   // src/farm-render-units.js
@@ -18321,8 +18330,8 @@
         this.renderer.vectorPlayers.delete(u.id);
         player = null;
       }
-      const METADATA = RECORD.compiled.metadata, SWING = rest ? null : workSwing(u, sim), MOTION_NAME = SWING?.name || unitMotion(u, sim, rest), CLIP = METADATA.clips[MOTION_NAME] || METADATA.clips.idle;
-      const CLIP_START_AT_MS = rest ? 0 : this.renderer.displayTimeMs - (SWING ? SWING.elapsed : motionElapsedMs(u, MOTION_NAME, CLIP));
+      const METADATA = RECORD.compiled.metadata, SWING = rest ? null : workSwing(u, sim), MOTION_NAME = SWING?.name || unitMotion(u, sim, rest), CLIP = METADATA.clips[MOTION_NAME] || METADATA.clips.idle, PHASE_TIME_MS = !rest && !SWING ? unitAttackPresentation(u).clipElapsedMs?.(u, MOTION_NAME) : null, HAS_PHASE_CLOCK = Number.isFinite(PHASE_TIME_MS);
+      const CLIP_START_AT_MS = rest || HAS_PHASE_CLOCK ? 0 : this.renderer.displayTimeMs - (SWING ? SWING.elapsed : motionElapsedMs(u, MOTION_NAME, CLIP));
       if (!player) {
         player = RECORD.asset.createPlayer({
           clip: MOTION_NAME,
@@ -18337,7 +18346,9 @@
       if (EXPRESSION !== player.currentExpression) {
         player.setExpression(EXPRESSION);
       }
-      player.seek(rest ? rest.elapsed * 1e3 : this.renderer.displayTimeMs);
+      player.seek(
+        HAS_PHASE_CLOCK ? CLAMP2(PHASE_TIME_MS, 0, CLIP.durationMs) : rest ? rest.elapsed * 1e3 : this.renderer.displayTimeMs
+      );
       const [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox, GROUND = (0, import_definition63.unitBodyDefinition)(u.species).ground, SCALE = 2 * r / Math.max(WIDTH, HEIGHT);
       const MATRIX = [SCALE, 0, 0, SCALE, p.x - GROUND.x * SCALE, p.y - GROUND.y * SCALE];
       if (!SWING && !rest && u.species === 0 && u.hp > 0 && u.stun <= 0 && u.dropLanded && u.z === 0) {
