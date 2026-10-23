@@ -10,3 +10,5 @@ package-lock.json
 tests/fixtures/pea-0.32.0-redbean-legacy.json
 
 tests/fixtures/redbean-0.33.0-chestnut-legacy.json
+
+tests/fixtures/chestnut-0.34.0-peanut-legacy.json

@@ -94,7 +94,7 @@ const AUTHORED_BODIES = [
         species: 4,
         asset: 'assets/troops/peanut.svg',
         shapeId: 'peanut-pod-outline',
-        sourceSha256: '79c2dc3bdb2f576662fd620b8b1be8795a33399fdfe42e527e8e8eeaae782c84',
+        sourceSha256: '5cc6811a0045bee6282b5f3b32aabc2c1021824d9c147bd84a9464e7a84e3003',
         viewBox: [0.0, 0.0, 320.0, 300.0],
         bounds: {
             left: 101.3125,

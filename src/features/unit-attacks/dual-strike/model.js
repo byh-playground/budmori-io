@@ -1,3 +1,4 @@
+import { createPeanutAttack, launchPeanutAttack, resolvePeanutSlots } from '../../species-growth/peanut-attack.js';
 import { createPeanutStrikeSchedule, resolveStrikeMask, PEANUT_BASE_STRIKE } from '../../../unit-combat-patterns.js';
 
 export function createDualStrikeMixin(pathMotion, arenaGeometry) {
@@ -7,8 +8,28 @@ export function createDualStrikeMixin(pathMotion, arenaGeometry) {
             get strikeDuration() {
                 return this.spec.timing.active ?? PEANUT_BASE_STRIKE.activeSeconds;
             }
+            syncAttackSpeedMultiplier(tick) {
+                if (!this.action?.peanutAttack) {
+                    super.syncAttackSpeedMultiplier(tick);
+                }
+            }
+            attackRecoverySeconds(sim) {
+                return this.action?.peanutAttack?.recoverySeconds ?? super.attackRecoverySeconds(sim);
+            }
+            launchAttack(sim) {
+                if (this.action?.peanutAttack) {
+                    launchPeanutAttack(sim, this.action);
+                } else {
+                    super.launchAttack?.(sim);
+                }
+            }
             prepareAttack(sim) {
                 super.prepareAttack?.(sim);
+                const RECORD = createPeanutAttack(sim, this.owner, this.action, this.attackSpeedMultiplier(sim));
+                if (RECORD) {
+                    this.action.peanutAttack = RECORD;
+                    return;
+                }
                 const ASSAULT_LOCAL = this.strikeConfig?.(sim);
                 Object.assign(this.action, {
                     resolvedMask: 0,
@@ -39,6 +60,13 @@ export function createDualStrikeMixin(pathMotion, arenaGeometry) {
                 const A = this.action,
                     U = this.owner;
                 if (this.phase !== 'active' || !A?.path) {
+                    return;
+                }
+                if (A.peanutAttack) {
+                    resolvePeanutSlots(sim, U, A, this.elapsed, arenaGeometry);
+                    if (this.elapsed >= this.strikeDuration - 1e-9) {
+                        this.recover(sim, false);
+                    }
                     return;
                 }
                 const SCHEDULE = createPeanutStrikeSchedule({

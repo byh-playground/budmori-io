@@ -19,7 +19,7 @@ concurrency:
     cancel-in-progress: true
 jobs:
     paired-browser:
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-24.04
         timeout-minutes: 25
         steps:
             - uses: actions/checkout@v4
@@ -32,11 +32,22 @@ jobs:
               id: playwright-cache
               with:
                   path: ~/.cache/ms-playwright
-                  key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-            - if: steps.playwright-cache.outputs.cache-hit != 'true'
-              run: npx playwright install --with-deps chromium
-            - if: steps.playwright-cache.outputs.cache-hit == 'true'
-              run: npx playwright install-deps chromium
+                  key: playwright-ubuntu-24.04-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
+            - name: Install official Chromium OS dependencies (timed)
+              run: |
+                  mkdir -p tests/output/browser-setup
+                  echo "runner=${ImageOS} image=${ImageVersion} arch=$(uname -m) cache=${{ steps.playwright-cache.outputs.cache-hit }}" > tests/output/browser-setup/setup.txt
+                  echo "dependencies_start=$(date -u +%FT%TZ)" >> tests/output/browser-setup/setup.txt
+                  ./node_modules/.bin/playwright install-deps chromium
+                  echo "dependencies_end=$(date -u +%FT%TZ)" >> tests/output/browser-setup/setup.txt
+                  dpkg-query -W fonts-freefont-ttf fonts-ipafont-gothic fonts-wqy-zenhei libnss3 xvfb >> tests/output/browser-setup/setup.txt
+            - name: Install exact pinned Chromium (timed, including partial cache)
+              run: |
+                  echo "browser_start=$(date -u +%FT%TZ)" >> tests/output/browser-setup/setup.txt
+                  ./node_modules/.bin/playwright install chromium
+                  echo "browser_end=$(date -u +%FT%TZ)" >> tests/output/browser-setup/setup.txt
+                  node --input-type=module -e "import {chromium} from 'playwright'; import {execFileSync} from 'node:child_process'; console.log(execFileSync(chromium.executablePath(), ['--version'], {encoding:'utf8'}));" >> tests/output/browser-setup/setup.txt
+                  ./node_modules/.bin/playwright --version >> tests/output/browser-setup/setup.txt
             - run: npm run build
             - name: Archive the exact legacy baseline without changing the candidate
               env:
@@ -53,7 +64,9 @@ jobs:
               if: always()
               with:
                   name: redbean-version-performance
-                  path: tests/output/redbean-performance/
+                  path: |
+                      tests/output/redbean-performance/
+                      tests/output/browser-setup/
                   if-no-files-found: error
             - name: Remove the temporary legacy archive
               if: always()

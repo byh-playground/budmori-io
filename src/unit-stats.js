@@ -110,42 +110,56 @@ export function resolveUnitStats(unit, overrides) {
         MULTIPLIER = Number.isFinite(unit?.permanentStatMultiplier) ? Math.max(0, unit.permanentStatMultiplier) : 1;
     return {
         ...BASE,
-        maxHp: BASE.maxHp * MULTIPLIER * (unit?.growthMaxHpMultiplier ?? 1),
+        maxHp: BASE.maxHp * MULTIPLIER * growthHealthMultiplierFor(unit),
         attackPower: BASE.attackPower * MULTIPLIER,
         ...(unit?.isFormationClone ? { maxHp: 1 } : {}),
         ...overrides,
     };
 }
+function growthHealthMultiplierFor(unit) {
+    // Split children inherit only their spawn multiplier, never the parent's permanent tree.
+    return unit?.species === 4 && unit.isBattleOnlySummon ? 1 : (unit?.growthMaxHpMultiplier ?? 1);
+}
 // Legacy base-HP consumers retain their established semantics for all other species.
 export function unitMaxHpFor(unit) {
+    const SPLIT_MULTIPLIER =
+        unit.species === 4 && unit.isBattleOnlySummon && Number.isFinite(unit.permanentStatMultiplier)
+            ? Math.max(0, unit.permanentStatMultiplier)
+            : 1;
     return unit.isFormationClone
         ? 1
-        : baseUnitStatsFor(unit.tier, unit.species).maxHp * (unit.growthMaxHpMultiplier ?? 1);
+        : baseUnitStatsFor(unit.tier, unit.species).maxHp * growthHealthMultiplierFor(unit) * SPLIT_MULTIPLIER;
 }
 // Capture run growth on each body; independent worlds and later permanent XP cannot leak into it.
 export function applyRunGrowthHealth(unit, progression, { preserveRatio = false } = {}) {
-    if (
-        ((unit.species !== 2 && unit.species !== 3) || unit.faction !== 'player' || unit.isFormationClone) &&
-        (unit.growthMaxHpMultiplier ?? 1) === 1
-    ) {
+    const HAS_GROWTH_HEALTH =
+        (unit.species === 2 || unit.species === 3 || unit.species === 4) &&
+        unit.faction === 'player' &&
+        !unit.isFormationClone &&
+        !unit.isBattleOnlySummon;
+    if (!HAS_GROWTH_HEALTH && (unit.growthMaxHpMultiplier ?? 1) === 1) {
         return;
     }
     const PREVIOUS_MAX = unitMaxHpFor(unit),
-        BUILD = progression?.abilities?.[unit.species === 3 ? 'chestnut-target-thorns' : 'kidney-continuous-leap'];
+        ABILITY_ID =
+            unit.species === 4
+                ? 'peanut-death-split'
+                : unit.species === 3
+                  ? 'chestnut-target-thorns'
+                  : 'kidney-continuous-leap',
+        BUILD = progression?.abilities?.[ABILITY_ID];
     unit.growthMaxHpMultiplier =
-        (unit.species === 2 || unit.species === 3) &&
-        unit.faction === 'player' &&
-        !unit.isFormationClone &&
-        BUILD?.treeVersion === 1
-            ? 1 + 0.04 * (BUILD.nodeRanks['basic-2'] || 0)
-            : 1;
+        HAS_GROWTH_HEALTH && BUILD?.treeVersion === 1 ? 1 + 0.04 * (BUILD.nodeRanks['basic-2'] || 0) : 1;
     const NEXT_MAX = unitMaxHpFor(unit);
     if (unit.hp > 0) {
         unit.hp = preserveRatio ? Math.min(1, unit.hp / PREVIOUS_MAX) * NEXT_MAX : Math.min(unit.hp, NEXT_MAX);
     }
 }
 function combatStats(unit, overrides) {
-    return overrides === undefined && !unit?.isFormationClone && (unit?.growthMaxHpMultiplier ?? 1) === 1
+    return overrides === undefined &&
+        !unit?.isFormationClone &&
+        (unit?.permanentStatMultiplier ?? 1) === 1 &&
+        growthHealthMultiplierFor(unit) === 1
         ? baseUnitStatsFor(unit?.tier, unit?.species)
         : resolveUnitStats(unit, overrides);
 }

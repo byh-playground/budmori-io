@@ -71,7 +71,7 @@ function unitMotion(u, sim, rest) {
         return 'landing';
     }
     if (PHASE === 'windup') {
-        return 'windup';
+        return unitAttackPresentation(u).windupMotion?.(u) || 'windup';
     }
     if (PHASE === 'active') {
         return unitAttackPresentation(u).activeMotion(u);
@@ -85,7 +85,13 @@ function motionElapsedMs(u, name, clip) {
     if (name === 'idle' || name === 'walk' || name === 'airborne') {
         return ((u.seed || 0) * 80) % clip.durationMs;
     }
-    if (name === 'windup' || name === 'fire' || name.startsWith('fire-') || name === 'recover') {
+    if (
+        name === 'windup' ||
+        name.startsWith('windup-') ||
+        name === 'fire' ||
+        name.startsWith('fire-') ||
+        name === 'recover'
+    ) {
         return clamp((u.ability?.elapsed || 0) * 1000, 0, clip.durationMs);
     }
     if (name === 'hit') {

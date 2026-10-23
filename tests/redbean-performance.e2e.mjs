@@ -219,6 +219,16 @@ async function runScene(variant, viewport, round, origin) {
             ) {
                 throw new Error('Chestnut must be uninvested in both version fixtures');
             }
+            const PEANUT = WORLD.playerProgression.abilities['peanut-death-split'];
+            if (
+                build === 'base'
+                    ? PEANUT.powerLevel !== 0 ||
+                      PEANUT.treeVersion !== undefined ||
+                      Object.values(PEANUT.branchLevels || {}).some(Boolean)
+                    : PEANUT.treeVersion !== 1 || Object.keys(PEANUT.nodeRanks).length !== 0
+            ) {
+                throw new Error('Peanut must remain uninvested across its intended legacy-to-tree activation');
+            }
             for (let index = 0; index < 200; index++) {
                 const SPECIES = index < 60 ? 2 : [0, 1, 3, 4, 5, 6, 7, 8][(index - 60) % 8],
                     UNIT = WORLD.spawn(SPECIES, 6, 0, 0);
@@ -255,6 +265,12 @@ async function runScene(variant, viewport, round, origin) {
             OTHER_ABILITIES['chestnut-target-thorns'] = {
                 masteryLevel: CHESTNUT.masteryLevel,
                 masteryXp: CHESTNUT.masteryXp,
+                investedPoints: 0,
+            };
+            // Preserve the exact zero-investment semantics, not the intentionally changed tree representation.
+            OTHER_ABILITIES['peanut-death-split'] = {
+                masteryLevel: PEANUT.masteryLevel,
+                masteryXp: PEANUT.masteryXp,
                 investedPoints: 0,
             };
             return {

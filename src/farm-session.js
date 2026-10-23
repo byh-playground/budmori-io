@@ -37,6 +37,12 @@ class UnitRender extends RENDER_OBJECT {
         'ability.phase': R.STATE_KEY,
         'ability.elapsed': R.LINEAR,
         'ability.peanutStrikeCount': R.STEP,
+        'ability.peanutForm': R.STEP,
+        'ability.peanutActionId': R.STATE_KEY,
+        'ability.peanutSlot': R.STEP,
+        'ability.peanutStage': R.STATE_KEY,
+        'ability.peanutStageProgress': R.LINEAR,
+        'ability.peanutWindupDuration': R.STEP,
         'ability.chestnutForm': R.STEP,
         'ability.chestnutSlot': R.STEP,
         'ability.chestnutStage': R.STATE_KEY,
@@ -105,6 +111,28 @@ class UnitRender extends RENDER_OBJECT {
         this.ability.phase = u.ability.phase;
         this.ability.elapsed = u.ability.elapsed;
         this.ability.peanutStrikeCount = u.ability.action?.peanutStrikeCount || 2;
+        const PEANUT = u.ability.action?.peanutAttack,
+            PEANUT_TICK = u.ability.phase === 'active' ? u.ability.elapsed * 20 : 0,
+            PEANUT_INDEX =
+                PEANUT?.shots.findIndex(
+                    (shot, index, shots) => !shots[index + 1] || PEANUT_TICK < (shot.tick + shots[index + 1].tick) / 2,
+                ) ?? -1,
+            PEANUT_SHOT = PEANUT?.shots[Math.max(0, PEANUT_INDEX)],
+            PEANUT_START = PEANUT_INDEX > 0 ? (PEANUT.shots[PEANUT_INDEX - 1].tick + PEANUT_SHOT.tick) / 2 : 0,
+            PEANUT_END = PEANUT_SHOT
+                ? PEANUT.shots[PEANUT_INDEX + 1]
+                    ? (PEANUT_SHOT.tick + PEANUT.shots[PEANUT_INDEX + 1].tick) / 2
+                    : PEANUT.durationSeconds * 20
+                : 1;
+        this.ability.peanutForm = PEANUT?.form || 0;
+        this.ability.peanutActionId = PEANUT?.id || 0;
+        this.ability.peanutSlot = PEANUT_SHOT?.slot || 0;
+        this.ability.peanutStage = u.ability.phase === 'active' ? PEANUT_SHOT?.stage || 'active' : u.ability.phase;
+        this.ability.peanutStageProgress = Math.max(
+            0,
+            Math.min(1, (PEANUT_TICK - PEANUT_START) / (PEANUT_END - PEANUT_START)),
+        );
+        this.ability.peanutWindupDuration = PEANUT?.windupSeconds || 0.25;
         const CHESTNUT = u.ability.action?.chestnutAttack,
             CHESTNUT_TICK = u.ability.phase === 'recover' ? u.ability.elapsed * 20 : 0,
             CHESTNUT_SHOT = CHESTNUT?.shots.findLast((shot) => shot.tick <= CHESTNUT_TICK),

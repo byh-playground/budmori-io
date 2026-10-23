@@ -497,8 +497,9 @@ html.help-scene #hand {
     display: none !important;
 }
 
-/* Isolated chestnut attack previews frame the body, not the live battle HUD. */
-html.help-scene.chestnut-attack-preview #bossbar {
+/* Isolated chestnut and peanut attack previews frame the body, not the live battle HUD. */
+html.help-scene.chestnut-attack-preview #bossbar,
+html.help-scene.peanut-attack-preview #bossbar {
     display: none !important;
 }
 

@@ -15,7 +15,9 @@
         "test:corn-growth:case": "node tests/corn-growth.e2e.mjs",
         "test:pea-growth:case": "node tests/pea-growth.e2e.mjs",
         "test:redbean-growth:case": "node tests/redbean-growth.e2e.mjs",
-        "test:chestnut-growth:case": "node tests/chestnut-growth.e2e.mjs"
+        "test:chestnut-growth:case": "node tests/chestnut-growth.e2e.mjs",
+        "test:peanut-growth:case": "node tests/peanut-growth.e2e.mjs",
+        "test:peanut-performance": "node tests/peanut-performance.e2e.mjs"
     },
     "devDependencies": {
         "@eslint/js": "10.0.1",

@@ -36,7 +36,26 @@ const CHESTNUT_FORMS = Object.freeze([
     ['중앙 가시 찌르기', '부채 40% 뒤 굵은 중앙 가시 60%'],
     ['삼단 압축 가시', '전개 25% · 양 날개 수렴 30% · 중앙 마무리 45%'],
 ]);
+const PEANUT_FORMS = Object.freeze([
+    ['교대 툭툭', '두 알이 번갈아 50·50% 타격'],
+    ['좌우 시간차', '양쪽으로 벌려 45·55% 시간차 타격'],
+    ['삼연 교차', '좌→우→좌 교차 협공 · 30·30·40%'],
+    ['중앙 합쳐치기', '바깥 두 타 뒤 중앙 합체 · 25·25·50%'],
+    ['반원 조이기', '양쪽 반원 스윕 뒤 직선 닫기 · 20·20·30·30%'],
+    ['전개 스윕 찍기', '좌우 전개 · 엇갈린 스윕 · 중앙 찍기 · 15·15·20·20·30%'],
+]);
 const PRESENTATIONS = new Map([
+    [
+        'peanut-death-split',
+        {
+            key: 'peanut',
+            name: '땅콩',
+            title: '두 알 협공과 사망 분열',
+            forms: PEANUT_FORMS,
+            effect: peanutGrowthEffect,
+            note: '두 알은 한 본체·한 체력으로 협공해요. 주변 최대 4명에게 각 타격의 50% 피해를 주며 본체가 죽거나 기절하면 남은 협공은 취소돼요. 사망하면 T1 분열체 2마리가 생기며 부모의 성장과 진화를 다시 적용하지 않아요. 분열체는 재분열·영구 보유·번식·합성 없이 전투가 끝나면 사라져요.',
+        },
+    ],
     [
         'chestnut-target-thorns',
         {
@@ -243,6 +262,25 @@ function chestnutGrowthEffect(nodeId, rank) {
             return `가시 사거리·범위 +${rank * 4}%`;
         case 'specialty-3':
             return `평타 마지막 가시에 전체 직접 예산의 ${rank * 8}% 추가`;
+        default:
+            throw new RangeError(`Unknown growth effect: ${nodeId}`);
+    }
+}
+
+function peanutGrowthEffect(nodeId, rank) {
+    switch (nodeId) {
+        case 'basic-1':
+            return `생존 협공 피해 +${rank * 3}%`;
+        case 'basic-2':
+            return `최대 체력 +${rank * 4}% · 다음 런부터 적용`;
+        case 'basic-3':
+            return `공격 속도 +${rank * 2}% · 후딜에 적용`;
+        case 'specialty-1':
+            return `협공 사거리·범위 +${rank * 4}%`;
+        case 'specialty-2':
+            return `중앙 또는 마지막 타격에 전체 직접 예산의 ${rank * 8}% 추가`;
+        case 'specialty-3':
+            return `사망 T1 분열체 체력·공격력 ${100 + rank * 25}% · 한 번 적용`;
         default:
             throw new RangeError(`Unknown growth effect: ${nodeId}`);
     }

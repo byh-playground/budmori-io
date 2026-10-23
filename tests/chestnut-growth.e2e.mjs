@@ -1232,7 +1232,7 @@ try {
             WORLD.markProgressChanged();
             BUDMORI.storage.save(WORLD);
         });
-        await activate(PAGE.locator('[data-ability-species="4"]'), MOBILE);
+        await activate(PAGE.locator('[data-ability-species="5"]'), MOBILE);
         assert.equal(await PAGE.locator('[data-growth-tree]').count(), 0, 'unreleased species keeps its legacy tree');
         await activate(PAGE.locator('[data-ability-species="3"]'), MOBILE);
         assert.match(await PAGE.locator('[data-growth-wallet]').textContent(), /총\s*50P/);

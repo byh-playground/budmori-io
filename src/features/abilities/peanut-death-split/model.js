@@ -5,6 +5,13 @@ const ABILITY_ID = PEANUT_DEATH_SPLIT_FEATURE.definition.id;
 
 export class PeanutDeathSplitModel {
     static config(progression, tier) {
+        const BUILD = progression?.abilities?.[ABILITY_ID];
+        if (BUILD?.treeVersion === 1) {
+            return {
+                childCount: PEANUT_DEATH_SPLIT_FEATURE.definition.childCount,
+                statMultiplier: 1 + 0.25 * (BUILD.nodeRanks['specialty-3'] || 0),
+            };
+        }
         const EFFECT = getAbilityEffects(progression, ABILITY_ID, tier);
         if (!EFFECT) {
             return null;
