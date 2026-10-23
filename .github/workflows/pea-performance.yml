@@ -29,7 +29,7 @@ jobs:
                   cache: npm
             - run: npm ci
             - run: npx playwright install --with-deps chromium
-            - run: npm run build
+            - run: npm run check
             - name: Archive the exact deployed pea baseline without changing the candidate
               env:
                   BASE_COMMIT: 7b10214c2a1bdcf177581ca772da11dfcdf4b673

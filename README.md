@@ -1,5 +1,12 @@
 # budmori
 
+## 2026-10-24 · 브라우저 원본 ESM 직접 실행
+
+`index.html`은 `src/bootstrap.js`를 직접 실행하고, 게임은 `src/farm-app.js`와 상대 경로의 원본 ES 모듈을 로드합니다. 생성된 `src/game.js` IIFE가 실행 경로에 사용되지 않습니다. SVG 및 GameKit은 고정된 원본 manifest/SDK 해시 검사를 계속 사용하며, 변경되지 않은 `src/`·`assets/`를 Git 태그 그대로 게시합니다. CommonJS 소비자는 기존 Node 테스트를 위해 얇은 `.cjs` 호환 파일로 연결됩니다.
+
+Pages는 이미 `main /` 원본 파일을 게시합니다. `npm run check`는 정적 검사만 수행하며 `npm run build`는 호환 명령이지만 동일한 검사만 실행합니다. 변경 파일의 브라우저 회귀와 기존 저장 동작 검증은 별도로 기록합니다.
+
+
 농장에서 먹이를 뿌리고 번식·합체로 병력을 키워, 거대 보스에 도전하는 2.5D WebGL 게임입니다. 싱글 플레이 전용입니다. 메인 버전은 `src/version.js`에서 관리합니다.
 
 [공개 게임](https://byh-playground.github.io/budmori-io/)

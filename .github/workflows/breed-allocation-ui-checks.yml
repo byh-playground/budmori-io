@@ -61,7 +61,7 @@ jobs:
             - if: steps.playwright-cache.outputs.cache-hit == 'true'
               run: npx playwright install-deps chromium
             - id: build
-              run: npm run build
+              run: npm run check
             # Corn's existing landscape scenario is combat-only; its seven established cases remain.
             - if: ${{ !cancelled() && steps.build.outcome == 'success' && (matrix.species != 'corn' || matrix.viewport != 'landscape') }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- ui ${{ matrix.viewport }}
@@ -107,7 +107,7 @@ jobs:
             - if: steps.playwright-cache.outputs.cache-hit == 'true'
               run: npx playwright install-deps chromium
             - id: build
-              run: npm run build
+              run: npm run check
             - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
               run: timeout 180s npm run test:breed-allocation
             - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
