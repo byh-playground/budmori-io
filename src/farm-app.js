@@ -52,7 +52,6 @@ let panPointer = null;
 let handKey = '';
 let farmSortTransition = null;
 let farmPanelRevision = -1;
-let cornPreviewTimer = null;
 let bossRewardRevealTimer = null;
 let bossRewardCalculationTimer = null;
 let bossRewardDialogReceiptKey = null;
@@ -1143,8 +1142,6 @@ function drawFarmPanel() {
     }
 }
 function stopCornPreview() {
-    clearTimeout(cornPreviewTimer);
-    cornPreviewTimer = null;
     DOLLAR('abilityNodes').querySelector('.corn-evolution-preview')?.replaceChildren();
 }
 function mountCornPreview(tier) {
@@ -1158,17 +1155,7 @@ function mountCornPreview(tier) {
     FRAME.src = new URL(`?help=corn-t${tier}`, location.href).href.split('#')[0];
     HOST.replaceChildren(FRAME);
     DOLLAR('abilityNodes').querySelector('[data-corn-preview-caption]').textContent =
-        `T${tier} · 고정 훈련 표적 · 실제 공격 0.6배속`;
-    FRAME.onload = () => {
-        if (!FRAME.isConnected) {
-            return;
-        }
-        cornPreviewTimer = setTimeout(() => {
-            if (menuOpen && menuTab === 'abilities' && FRAME.isConnected) {
-                mountCornPreview(tier);
-            }
-        }, 16000);
-    };
+        `T${tier} · 실제 공격 0.6배속 · 같은 단계를 누르면 다시 재생`;
 }
 function drawAbilityTree() {
     stopCornPreview();
