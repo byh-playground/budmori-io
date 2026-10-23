@@ -125,15 +125,18 @@ export function unitMaxHpFor(unit) {
 // Capture run growth on each body; independent worlds and later permanent XP cannot leak into it.
 export function applyRunGrowthHealth(unit, progression, { preserveRatio = false } = {}) {
     if (
-        (unit.species !== 2 || unit.faction !== 'player' || unit.isFormationClone) &&
+        ((unit.species !== 2 && unit.species !== 3) || unit.faction !== 'player' || unit.isFormationClone) &&
         (unit.growthMaxHpMultiplier ?? 1) === 1
     ) {
         return;
     }
     const PREVIOUS_MAX = unitMaxHpFor(unit),
-        BUILD = progression?.abilities?.['kidney-continuous-leap'];
+        BUILD = progression?.abilities?.[unit.species === 3 ? 'chestnut-target-thorns' : 'kidney-continuous-leap'];
     unit.growthMaxHpMultiplier =
-        unit.species === 2 && unit.faction === 'player' && !unit.isFormationClone && BUILD?.treeVersion === 1
+        (unit.species === 2 || unit.species === 3) &&
+        unit.faction === 'player' &&
+        !unit.isFormationClone &&
+        BUILD?.treeVersion === 1
             ? 1 + 0.04 * (BUILD.nodeRanks['basic-2'] || 0)
             : 1;
     const NEXT_MAX = unitMaxHpFor(unit);

@@ -32,6 +32,12 @@ export function restore(raw) {
                     U.ability.action.cornAttack = RECORD;
                 }
             }
+            if (U.ability.action?.chestnutAttack?.launchTick !== null && U.ability.action?.chestnutAttack) {
+                const RECORD = G.chestnutAttacks.find((record) => record.id === U.ability.action.chestnutAttack.id);
+                if (RECORD) {
+                    U.ability.action.chestnutAttack = RECORD;
+                }
+            }
             const SPECIAL = CREATE_UNIT_SPECIAL_ABILITY(U);
             U.specialAbility = SPECIAL ? Object.assign(SPECIAL, structuredClone(data.specialAbility || {})) : null;
             return U;

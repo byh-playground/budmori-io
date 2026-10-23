@@ -101,7 +101,7 @@ const MANIFESTS = { base: manifest(ROOTS.base), candidate: manifest(ROOTS.candid
             maxMedianPairedP95Ratio: MAX_P95_RATIO,
             order: 'base/candidate, candidate/base, base/candidate per viewport',
             investmentDifference:
-                'Both: released pea mastery50 with evolution-2 through evolution-6 at rank1, zero basic/specialty ranks. Redbean remains uninvested on both sides; its intentional legacy-to-tree representation is canonicalized only in the initial fixture.',
+                'Both: released pea mastery50 with evolution-2 through evolution-6 at rank1, zero basic/specialty ranks. Redbean and chestnut remain uninvested on both sides; only their intentional legacy-to-tree representation is canonicalized in the initial fixture.',
             fixture:
                 'Real new-game session, startTower(1), finishMarch(), all 200 deployed in the same radial layout; normal runtime simulation, presentation, renderer and HUD remain active.',
             limitations: [
@@ -210,6 +210,16 @@ async function runScene(variant, viewport, round, origin) {
             ) {
                 throw new Error('Redbean fixture must retain zero investment across its intended activation');
             }
+            const CHESTNUT = WORLD.playerProgression.abilities['chestnut-target-thorns'];
+            if (
+                build === 'base'
+                    ? CHESTNUT.powerLevel !== 0 ||
+                      CHESTNUT.treeVersion !== undefined ||
+                      Object.values(CHESTNUT.branchLevels || {}).some(Boolean)
+                    : CHESTNUT.treeVersion !== 1 || Object.keys(CHESTNUT.nodeRanks).length !== 0
+            ) {
+                throw new Error('Chestnut must be uninvested in both version fixtures');
+            }
             for (let index = 0; index < 200; index++) {
                 const SPECIES = index < 60 ? 0 : 1 + ((index - 60) % 8),
                     UNIT = WORLD.spawn(SPECIES, 6, 0, 0);
@@ -241,6 +251,13 @@ async function runScene(variant, viewport, round, origin) {
                 DEBUG = GL.getExtension('WEBGL_debug_renderer_info'),
                 OTHER_ABILITIES = structuredClone(WORLD.runProgressionSnapshot.abilities);
             delete OTHER_ABILITIES['pea-recovery-boost'];
+            // Only the newly released, zero-investment representation changes here.
+            // All other species, ranks, XP, stats and the encounter remain exact.
+            OTHER_ABILITIES['chestnut-target-thorns'] = {
+                masteryLevel: CHESTNUT.masteryLevel,
+                masteryXp: CHESTNUT.masteryXp,
+                investedPoints: 0,
+            };
             OTHER_ABILITIES['kidney-continuous-leap'] = {
                 masteryLevel: REDBEAN.masteryLevel,
                 masteryXp: REDBEAN.masteryXp,

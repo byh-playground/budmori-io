@@ -1,3 +1,4 @@
+import { resolveChestnutImpact } from '../species-growth/chestnut-attack.js';
 import { cornActionFor } from '../species-growth/corn-attack.js';
 
 export class BallisticProjectile {
@@ -22,6 +23,9 @@ export class BallisticProjectile {
                 return;
             }
         }
+        if (projectile.chestnutActionId && world.simulationTick <= projectile.chestnutBornTick) {
+            return;
+        }
         const OLD = this.oldPoint;
         OLD.x = projectile.x;
         OLD.y = projectile.y;
@@ -31,6 +35,10 @@ export class BallisticProjectile {
             projectile,
             BALLISTICS.sample(projectile.path, projectile.elapsed / projectile.path.duration, this.motionPoint),
         );
+        if (projectile.chestnutActionId) {
+            resolveChestnutImpact(world, projectile, ARENA_GEOMETRY, OLD);
+            return;
+        }
         if (projectile.cornActionId) {
             if (projectile.elapsed + 1e-9 < projectile.path.duration) {
                 return;

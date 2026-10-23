@@ -8,3 +8,5 @@ assets/
 package-lock.json
 # Literal released encoder bytes are migration test input.
 tests/fixtures/pea-0.32.0-redbean-legacy.json
+
+tests/fixtures/redbean-0.33.0-chestnut-legacy.json

@@ -1,3 +1,8 @@
+import {
+    advanceChestnutAttacks,
+    tryChestnutPeriodic,
+    chestnutRange,
+} from './features/species-growth/chestnut-attack.js';
 import { applyOffline } from './farm-offline.js';
 import { assignWorkers, resetWork, stepWork, workOrder, workersBySpecies } from './farm-work.js';
 import { FormationSkills } from './formation-skills.js';
@@ -182,7 +187,9 @@ const CONFIG = Object.freeze({
     battle: Object.freeze({
         capacity: Object.freeze({
             battleUnits: BATTLE_MAX_UNITS * (1 + MAX_PEANUT_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS + 2000,
-            projectiles: BATTLE_MAX_UNITS * (1 + MAX_PEANUT_SPLIT_CHILDREN) * 4 + 40,
+            // At most three basic and three independent thorn slots per actor in flight;
+            // reserve two extra slots for mixed legacy projectile overlap.
+            projectiles: BATTLE_MAX_UNITS * (1 + MAX_PEANUT_SPLIT_CHILDREN) * 8 + 40,
         }),
         arena: WORLD_ARENA,
         dropHeight: 3,
@@ -522,6 +529,7 @@ class AttackCycle {
             (this.phase === 'windup' || this.phase === 'active') &&
             !this.action.cornAttack &&
             !this.action.redbeanAttack &&
+            !this.action.chestnutAttack &&
             !(sim.attackTarget(U, this.action)?.hp > 0)
         ) {
             this.interrupt();
@@ -1332,6 +1340,7 @@ const GARDEN = class Garden {
             revision: 0,
         };
         this.projectiles = [];
+        this.chestnutAttacks = [];
         this.cornAttachments = CornAttachmentModel.createManager();
         this.attackSerial = 0;
         this.projectileSerial = 0;
@@ -1872,6 +1881,7 @@ const GARDEN = class Garden {
         }
         this.unitCollection.removeWhere((unit) => unit.isBattleOnlySummon);
         this.projectiles = [];
+        this.chestnutAttacks = [];
         this.cornAttachments = CornAttachmentModel.createManager();
         return true;
     }
@@ -3640,6 +3650,7 @@ const GARDEN = class Garden {
         this.advancePhysics(dt, UNITS, SCENE);
         this.profiler?.end('physics', PHYSICS_START);
         CornAttachmentModel.advance(this);
+        advanceChestnutAttacks(this);
         const POST_STEP_START = this.profiler?.start();
         SCENE.resolveLifeContacts(this, UNITS);
         this.resolvePeaRecoveryBoosts(UNITS);
@@ -4888,6 +4899,7 @@ const GARDEN = class Garden {
             this.clearPeaRecoveryBoost(u);
             return;
         }
+        tryChestnutPeriodic(this, u, enemy);
         const ACTIVE_ATTACK = u.specialAbility && u.specialAbility.phase !== 'idle' ? u.specialAbility : u.ability;
         if (ACTIVE_ATTACK.update(this, dt) || u.stun > 0 || u.z > 0.1 || u.landingRecovery > 0) {
             return;
@@ -4907,7 +4919,8 @@ const GARDEN = class Garden {
         // Hold the current firing bearing. Ranged troops retreat from a boss that closes in;
         // they never follow a rotating slot through its body to reach the opposite side.
         const BEHAVIOR = unitCapabilityComposition(u.species),
-            STAND = B_LOCAL.radius + SPEC.range + (u.tier - 1) * 0.12,
+            STAND =
+                B_LOCAL.radius + (chestnutRange(this, u) ?? SPEC.range) + (u.species === 3 ? 0 : (u.tier - 1) * 0.12),
             MIN = STAND - 0.55,
             MAX = STAND + BEHAVIOR.outerRangeSlack;
         if (N > MAX || (BEHAVIOR.retreatWithinRange && N < MIN)) {
@@ -4974,6 +4987,7 @@ const GARDEN = class Garden {
             this.boss.patternRuntime.active = null;
         }
         this.projectiles = [];
+        this.chestnutAttacks = [];
         const ENCOUNTER_ID = this.farmBossEvent.encounterId;
         this.farmBossEvent = {
             phase: 'celebrating',

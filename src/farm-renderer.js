@@ -1,3 +1,4 @@
+import { sampleChestnutShards } from './features/projectiles/spike/presentation.js';
 import { unitBodyDefinition } from './features/unit-body/definition.cjs';
 import { includeCornProjectileBounds } from './features/projectiles/corn/presentation.js';
 import { drawFormationEffects, includeFormationEffectBounds } from './formation-skill-presentations.js';
@@ -472,7 +473,7 @@ const DIORAMA = class Diorama {
     // it stays there a moment when the troops come back out; inside, it rests on the hall.
     directCamera(sim2, now) {
         if (
-            [0, 2].includes(this.attackPreviewSpecies) &&
+            [0, 2, 3].includes(this.attackPreviewSpecies) &&
             sim2.units.length === 1 &&
             sim2.units[0].species === this.attackPreviewSpecies
         ) {
@@ -526,6 +527,10 @@ const DIORAMA = class Diorama {
     // Isolated pea help frames show the real contact and body, not the entire hall.
     // This flag is installed only by the help entry point, never for a live run.
     fitAttackPreview(world) {
+        if (this.attackPreviewSpecies === 3) {
+            this.fitChestnutPreview(world);
+            return;
+        }
         if (this.attackPreviewSpecies === 2) {
             this.fitJumpPreview(world);
             return;
@@ -545,6 +550,66 @@ const DIORAMA = class Diorama {
                 this.baseY() -
                 (this.canvas.height * 0.76) / this.scale -
                 FOCUS_Y * WORLD_DEPTH_PROJECTION;
+        this.panLimits.minX = Math.min(this.panLimits.minX, PAN_X);
+        this.panLimits.maxX = Math.max(this.panLimits.maxX, PAN_X);
+        this.panLimits.minY = Math.min(this.panLimits.minY, PAN_Y);
+        this.panLimits.maxY = Math.max(this.panLimits.maxY, PAN_Y);
+        this.setPan(PAN_X, PAN_Y);
+    }
+    fitChestnutPreview(world) {
+        const UNIT = world.units[0],
+            BODY = unitBodyDefinition(UNIT.species),
+            ART = UNIT.bodyScale * Math.max(BODY.viewBox[2], BODY.viewBox[3]),
+            BASE = this.scenePresentation.cameraView(this.aspect),
+            BOUNDS = {
+                left: UNIT.x - ART * 0.75,
+                right: UNIT.x + ART * 0.75,
+                top: UNIT.y * WORLD_DEPTH_PROJECTION + ART * 1.25,
+                bottom: UNIT.y * WORLD_DEPTH_PROJECTION - ART * 0.15,
+            },
+            PATH = {
+                height: 0,
+                from: { x: UNIT.x, y: UNIT.y, z: 0.35 },
+                to: { x: world.boss.x - world.boss.radius + 0.04, y: world.boss.y, z: 0.35 },
+            };
+        // Reserve all committed directions before any shot appears, including
+        // tip width and the full trail. The camera therefore never follows a shard.
+        const PROJECTILES = [
+            'thrust',
+            'cross-left',
+            'cross-right',
+            'fan',
+            'spread',
+            'converge',
+            'central',
+            'periodic',
+        ].map((stage) => ({ path: PATH, chestnutStage: stage }));
+        PROJECTILES.push(...world.projectiles.filter((p) => p.chestnutActionId));
+        for (const PROJECTILE of PROJECTILES) {
+            for (const Q of [0, 0.25, 0.5, 0.75, 1]) {
+                for (const SHARD of sampleChestnutShards(PROJECTILE, Q)) {
+                    const X = SHARD.x + Math.cos(SHARD.angle) * SHARD.length,
+                        Y =
+                            (SHARD.y + Math.sin(SHARD.angle) * SHARD.length) * WORLD_DEPTH_PROJECTION +
+                            SHARD.z * WORLD_HEIGHT_PROJECTION;
+                    BOUNDS.left = Math.min(BOUNDS.left, SHARD.x - 0.12, X - 0.12);
+                    BOUNDS.right = Math.max(BOUNDS.right, SHARD.x + 0.12, X + 0.12);
+                    BOUNDS.top = Math.max(BOUNDS.top, Y + 0.12);
+                    BOUNDS.bottom = Math.min(BOUNDS.bottom, Y - 0.12);
+                }
+            }
+        }
+        const PAD = 14 * this.pixelRatio,
+            SCALE = Math.min(
+                (108 * this.pixelRatio) / ART,
+                (this.canvas.width - 2 * PAD) / (BOUNDS.right - BOUNDS.left),
+                (this.canvas.height - 2 * PAD) / (BOUNDS.top - BOUNDS.bottom),
+            );
+        this.zoom = (2 * BASE[0] * SCALE) / this.canvas.width;
+        this.configure(this.scene, true);
+        const PAN_X = this.canvas.width / (2 * this.scale) - (BOUNDS.left + BOUNDS.right) / 2 - this.view[0],
+            PAN_Y =
+                this.view[1] - this.baseY() - this.canvas.height / (2 * this.scale) - (BOUNDS.top + BOUNDS.bottom) / 2;
         this.panLimits.minX = Math.min(this.panLimits.minX, PAN_X);
         this.panLimits.maxX = Math.max(this.panLimits.maxX, PAN_X);
         this.panLimits.minY = Math.min(this.panLimits.minY, PAN_Y);

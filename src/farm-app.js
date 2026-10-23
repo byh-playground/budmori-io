@@ -1147,11 +1147,17 @@ function stopGrowthPreview() {
 function mountGrowthPreview(species, tier) {
     stopGrowthPreview();
     const HOST = DOLLAR('abilityNodes').querySelector('.growth-evolution-preview');
-    if (!HOST || !['corn', 'pea', 'redbean'].includes(species) || !Number.isInteger(tier) || tier < 1 || tier > 6) {
+    if (
+        !HOST ||
+        !['corn', 'pea', 'redbean', 'chestnut'].includes(species) ||
+        !Number.isInteger(tier) ||
+        tier < 1 ||
+        tier > 6
+    ) {
         return;
     }
     const FRAME = document.createElement('iframe');
-    FRAME.title = `${{ pea: '콩', corn: '옥수수', redbean: '팥' }[species]} T${tier} 실제 공격 미리보기`;
+    FRAME.title = `${{ pea: '콩', corn: '옥수수', redbean: '팥', chestnut: '밤톨' }[species]} T${tier} 실제 공격 미리보기`;
     FRAME.src = new URL(`?help=${species}-t${tier}`, location.href).href.split('#')[0];
     HOST.replaceChildren(FRAME);
     for (const BUTTON of DOLLAR('abilityNodes').querySelectorAll('[data-growth-preview-tier]')) {
@@ -2156,7 +2162,13 @@ if (HELP.scene) {
     const SCENE = HELP.scene,
         WORLD = new Garden(SCENE.seed);
     SCENE.setup(WORLD);
-    RENDERER.attackPreviewSpecies = /^pea-t[1-6]$/.test(SCENE.id) ? 0 : /^redbean-t[1-6]$/.test(SCENE.id) ? 2 : null;
+    RENDERER.attackPreviewSpecies = /^pea-t[1-6]$/.test(SCENE.id)
+        ? 0
+        : /^redbean-t[1-6]$/.test(SCENE.id)
+          ? 2
+          : /^chestnut-t[1-6]$/.test(SCENE.id)
+            ? 3
+            : null;
     start(WORLD, false);
     active.paused = false;
     HELP.scenario = globalThis.BloomGamekitScenario.createScenario({
