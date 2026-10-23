@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bossStageStats } from '../src/boss-rewards.js';
+import { masteryPointsLeft } from '../src/ability-state.js';
 import { baseUnitStatsFor, setRunStatMods } from '../src/unit-stats.js';
 import { advanceSince, freshTowerRun, rollCardOffers, rollFloorKind, runStatModifiers } from '../src/tower-run.js';
 
@@ -542,7 +543,10 @@ await check(
             const OTHER = AFTER.find((row) => row[0] !== ID && !W.playerProgression.abilities[row[0]].nodeRanks)[0];
             W.leaveTower();
             W.playerProgression.abilities[ID].masteryLevel = 3;
-            const OWN = W.investAbilityNode(ID, 'power-1').ok;
+            const BEFORE_PURCHASE = JSON.parse(JSON.stringify(W.playerProgression.abilities[ID]));
+            const OWN_NODE = W.playerProgression.abilities[ID].nodeRanks ? 'basic-1' : 'power-1';
+            const OWN = W.investAbilityNode(ID, OWN_NODE).ok;
+            const AFTER_PURCHASE = JSON.parse(JSON.stringify(W.playerProgression.abilities[ID]));
             // Evolved species use the growth-tree node; legacy species retain power-1.
             const OTHER_NODE = W.playerProgression.abilities[OTHER].nodeRanks ? 'basic-1' : 'power-1';
             const OTHERS = W.investAbilityNode(OTHER, OTHER_NODE);
@@ -555,7 +559,10 @@ await check(
                 other: OTHERS.reason,
                 reset: RESET.ok,
                 keptLevel: KEPT.masteryLevel,
-                power: KEPT.powerLevel,
+                power: KEPT.nodeRanks ? KEPT.nodeRanks[OWN_NODE] || 0 : KEPT.powerLevel,
+                beforePurchase: BEFORE_PURCHASE,
+                afterPurchase: AFTER_PURCHASE,
+                afterReset: KEPT,
             };
         });
         expect(
@@ -563,6 +570,11 @@ await check(
             `mastery ${JSON.stringify(R)}`,
         );
         expect(R.reset === true && R.keptLevel === 3 && R.power === 0, `mastery reset ${JSON.stringify(R)}`);
+        expect(
+            masteryPointsLeft(R.beforePurchase) - masteryPointsLeft(R.afterPurchase) === 1 &&
+                masteryPointsLeft(R.afterReset) === masteryPointsLeft(R.beforePurchase),
+            `species-local purchase spends one point and reset refunds it ${JSON.stringify(R)}`,
+        );
     },
 );
 await check(

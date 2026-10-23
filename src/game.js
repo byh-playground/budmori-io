@@ -25315,6 +25315,7 @@
     const SCENE = HELP.scene, WORLD = new GARDEN(SCENE.seed);
     SCENE.setup(WORLD);
     RENDERER.attackPreviewSpecies = /^pea-t[1-6]$/.test(SCENE.id) ? 0 : /^redbean-t[1-6]$/.test(SCENE.id) ? 2 : /^chestnut-t[1-6]$/.test(SCENE.id) ? 3 : null;
+    document.documentElement.classList.toggle("chestnut-attack-preview", RENDERER.attackPreviewSpecies === 3);
     start(WORLD, false);
     active.paused = false;
     HELP.scenario = globalThis.BloomGamekitScenario.createScenario({

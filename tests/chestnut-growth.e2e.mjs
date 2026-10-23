@@ -7,6 +7,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { buildSync } from 'esbuild';
 import { unitBodyDefinition } from '../src/features/unit-body/definition.cjs';
 
 const CASE = process.argv[2] || 'ui',
@@ -32,10 +33,26 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     OUTPUT = path.join(ROOT, 'tests/output/chestnut-growth'),
     TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' },
     REPORT = [],
-    ERRORS = [];
+    ERRORS = [],
+    // The production sampler imports CommonJS-backed model dependencies. Serve
+    // that exact source through the same bundler used by the product, rather
+    // than asking Chromium to evaluate raw .cjs or copying its geometry here.
+    GEOMETRY_MODULE = buildSync({
+        entryPoints: [path.join(ROOT, 'src/features/projectiles/spike/presentation.js')],
+        bundle: true,
+        format: 'esm',
+        platform: 'browser',
+        write: false,
+        logLevel: 'silent',
+    }).outputFiles[0].contents;
 let activePage = null;
 fs.mkdirSync(OUTPUT, { recursive: true });
 const SERVER = http.createServer((request, response) => {
+    if (request.url.split('?')[0] === '/__test__/chestnut-presentation.js') {
+        response.setHeader('content-type', 'text/javascript');
+        response.end(GEOMETRY_MODULE);
+        return;
+    }
     const FILE = path.resolve(ROOT, '.' + decodeURIComponent(request.url.split('?')[0]));
     if (!FILE.startsWith(ROOT) || !fs.existsSync(FILE) || fs.statSync(FILE).isDirectory()) {
         response.writeHead(404).end();
@@ -414,7 +431,7 @@ async function observeDrawnChestnut(page) {
 
 async function assertProjectileFraming(page, projectile) {
     const GEOMETRY = await page.evaluate(async (drawn) => {
-        const { sampleChestnutShards: SAMPLE } = await import('./src/features/projectiles/spike/presentation.js'),
+        const { sampleChestnutShards: SAMPLE } = await import('/__test__/chestnut-presentation.js'),
             RENDERER = BUDMORI.renderer,
             SHOT = { path: drawn.path, chestnutStage: drawn.stage },
             PROJECT = (point) => RENDERER.project(point.x, point.y, point.z),
@@ -669,6 +686,11 @@ async function preview(page, tier, mobile) {
     // Start a fresh real scenario after scrolling, which can consume its nine-second budget.
     await FRAME.goto(FRAME.url());
     await FRAME.waitForFunction(() => globalThis.BUDMORI?.sim?.units[0]?.species === 3);
+    assert.equal(
+        await FRAME.locator('#bossbar').evaluate((element) => getComputedStyle(element).display),
+        'none',
+        'isolated attack preview hides its boss HUD so it cannot cover the actual body',
+    );
     // Frame has no screenshot method: capture its owner page while retaining frame-local timing.
     FRAME.screenshot = async (options) => {
         const CANVAS = await FRAME.locator('#world').boundingBox(),
@@ -723,8 +745,18 @@ async function assertCombatFraming(page) {
             POINT = RENDERER.project(UNIT.x, UNIT.y, UNIT.z),
             RATIO = RENDERER.pixelRatio,
             HUD = ['bossbar', 'allyHealthText', 'bossHealthText', 'fightRetreat'].map((id) => {
-                const BOX = document.getElementById(id).getBoundingClientRect();
-                return { id, x: BOX.x, y: BOX.y, right: BOX.right, bottom: BOX.bottom };
+                const ELEMENT = document.getElementById(id),
+                    BOX = ELEMENT.getBoundingClientRect(),
+                    STYLE = getComputedStyle(ELEMENT);
+                return {
+                    id,
+                    x: BOX.x,
+                    y: BOX.y,
+                    right: BOX.right,
+                    bottom: BOX.bottom,
+                    visible:
+                        STYLE.display !== 'none' && STYLE.visibility !== 'hidden' && BOX.width > 0 && BOX.height > 0,
+                };
             });
         return { x: POINT.x / RATIO, y: POINT.y / RATIO, width: innerWidth, height: innerHeight, hud: HUD };
     });
@@ -733,6 +765,7 @@ async function assertCombatFraming(page) {
         'attacking body stays in viewport',
     );
     for (const BOX of FRAME.hud) {
+        assert.equal(BOX.visible, true, `${BOX.id} remains visible in actual gameplay`);
         assert.ok(
             BOX.x >= -1 && BOX.right <= FRAME.width + 1 && BOX.y >= -1 && BOX.bottom <= FRAME.height + 1,
             `${BOX.id} readable in ${VIEWPORT}`,
@@ -843,9 +876,12 @@ async function capturePeanutSplit(page, mobile) {
                 breeding: unit.breedingEligible,
                 merge: unit.mergeEligible,
             })),
+        // Diorama releases actor.source after each native draw. The submitted
+        // actor ID is retained for the frame; filtering null sources would hide
+        // correctly rendered children rather than inspect them.
         actors: BUDMORI.renderer.actors
             .filter((actor) => actor.presentation === BUDMORI.renderer.unitPresentation)
-            .map((actor) => actor.source.id),
+            .map((actor) => actor.id),
     }));
     assert.ok(SPLIT.tick > INITIAL.tick, 'normal boss AI advanced before real split');
     assert.ok(SPLIT.children.length >= 2, 'actual boss damage triggered death-split children');

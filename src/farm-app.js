@@ -2169,6 +2169,7 @@ if (HELP.scene) {
           : /^chestnut-t[1-6]$/.test(SCENE.id)
             ? 3
             : null;
+    document.documentElement.classList.toggle('chestnut-attack-preview', RENDERER.attackPreviewSpecies === 3);
     start(WORLD, false);
     active.paused = false;
     HELP.scenario = globalThis.BloomGamekitScenario.createScenario({

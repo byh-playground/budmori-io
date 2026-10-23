@@ -497,6 +497,11 @@ html.help-scene #hand {
     display: none !important;
 }
 
+/* Isolated chestnut attack previews frame the body, not the live battle HUD. */
+html.help-scene.chestnut-attack-preview #bossbar {
+    display: none !important;
+}
+
 /* 도움말 카드: 실제 게임 데모 + 한 줄 캡션 + 규칙 한두 줄 */
 /* 크기는 스크립트가 정해요: 실제 화면 비율 그대로 줄여서 보여줘요. */
 .help-demo {
