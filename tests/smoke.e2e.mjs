@@ -541,7 +541,9 @@ await check(
             W.leaveTower();
             W.playerProgression.abilities[ID].masteryLevel = 3;
             const OWN = W.investAbilityNode(ID, 'power-1').ok;
-            const OTHERS = W.investAbilityNode(OTHER, 'power-1');
+            // Evolved species use the growth-tree node; legacy species retain power-1.
+            const OTHER_NODE = W.playerProgression.abilities[OTHER].nodeRanks ? 'basic-1' : 'power-1';
+            const OTHERS = W.investAbilityNode(OTHER, OTHER_NODE);
             const RESET = W.resetProgression({ type: 'abilities' });
             const KEPT = W.playerProgression.abilities[ID];
             return {

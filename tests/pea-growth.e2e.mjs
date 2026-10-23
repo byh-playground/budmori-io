@@ -83,7 +83,154 @@ async function resumeCapturedFrame(frame) {
     });
 }
 
+async function treeScrollPane(page) {
+    const SELECTOR = await page.evaluate(() =>
+        getComputedStyle(document.getElementById('abilityPanel')).overflowY === 'auto'
+            ? '#abilityPanel'
+            : '#abilityNodes',
+    );
+    return page.locator(SELECTOR);
+}
+
+async function swipeTree(page, upward = true, distance = Infinity) {
+    const PANE = await treeScrollPane(page),
+        GEOMETRY = await PANE.evaluate((element) => {
+            const BOX = element.getBoundingClientRect(),
+                TOP = Math.max(0, BOX.top),
+                BOTTOM = Math.min(innerHeight, BOX.bottom),
+                HEIGHT = BOTTOM - TOP,
+                INSET = Math.min(8, HEIGHT * 0.1),
+                X = Math.max(0, BOX.left) + 3;
+            return {
+                top: TOP,
+                bottom: BOTTOM,
+                height: HEIGHT,
+                x: X,
+                startY: BOTTOM - INSET,
+                endY: TOP + INSET,
+                hitInside: element.contains(document.elementFromPoint(X, BOTTOM - INSET)),
+                clientHeight: element.clientHeight,
+                scrollHeight: element.scrollHeight,
+                scrollTop: element.scrollTop,
+            };
+        }),
+        CDP = await page.context().newCDPSession(page);
+    assert.ok(GEOMETRY.height > 24, 'a visible scroll pane permits a touch gesture');
+    assert.equal(GEOMETRY.hitInside, true, 'swipe begins in the scroll pane gutter, outside embedded frames');
+    const START = upward ? GEOMETRY.startY : GEOMETRY.endY,
+        END = START + (upward ? -1 : 1) * Math.min(distance, GEOMETRY.startY - GEOMETRY.endY);
+    await CDP.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: GEOMETRY.x, y: START }] });
+    for (let step = 1; step <= 8; step++) {
+        await page.waitForTimeout(20);
+        await CDP.send('Input.dispatchTouchEvent', {
+            type: 'touchMove',
+            touchPoints: [{ x: GEOMETRY.x, y: START + ((END - START) * step) / 8 }],
+        });
+    }
+    await page.waitForTimeout(120);
+    await CDP.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await CDP.detach();
+    await page.waitForTimeout(120);
+    return GEOMETRY;
+}
+
+async function revealPreview(page, frame, mobile) {
+    const HOST = page.locator('.growth-evolution-preview iframe'),
+        PANE = await treeScrollPane(page);
+    if (!mobile) {
+        await HOST.scrollIntoViewIfNeeded();
+    }
+    const LIMIT = await PANE.evaluate(
+        (element) => Math.ceil(element.scrollHeight / Math.max(24, element.clientHeight * 0.6)) + 3,
+    );
+    for (let attempt = 0; attempt < LIMIT; attempt++) {
+        const BOX = await HOST.boundingBox(),
+            SCROLL = await PANE.boundingBox(),
+            TOP = Math.max(0, SCROLL.y),
+            BOTTOM = Math.min(VIEWPORT_SIZE.height, SCROLL.y + SCROLL.height),
+            VISIBLE = Math.min(BOTTOM, BOX.y + BOX.height) - Math.max(TOP, BOX.y);
+        if (VISIBLE >= BOX.height - 3) {
+            assert.ok(VISIBLE >= 160, 'at least160px of actual preview canvas is visible');
+            const CANVAS = await frame.locator('#world').boundingBox();
+            assert.ok(CANVAS && CANVAS.width > 100 && CANVAS.height >= 160, 'real canvas has readable dimensions');
+            REPORT.push({
+                kind: 'preview-access',
+                viewport: VIEWPORT,
+                iframe: BOX,
+                pane: SCROLL,
+                canvas: CANVAS,
+                visibleHeight: VISIBLE,
+            });
+            return;
+        }
+        if (mobile) {
+            const DELTA = BOX.y + BOX.height / 2 - (TOP + BOTTOM) / 2;
+            await swipeTree(page, DELTA > 0, Math.max(24, Math.abs(DELTA) + 12));
+        } else {
+            await page.mouse.move(SCROLL.x + 3, SCROLL.y + SCROLL.height / 2);
+            await page.mouse.wheel(0, BOX.y + BOX.height > BOTTOM ? 100 : -100);
+            await page.waitForTimeout(150);
+        }
+    }
+    throw new Error('Actual scrolling could not expose the full preview canvas within the viewport');
+}
+
+async function observeDrawnPea(page) {
+    await page.waitForFunction(() => {
+        const UNIT = globalThis.BUDMORI?.sim?.units[0],
+            PLAYER = UNIT && BUDMORI.renderer.vectorPlayers.get(UNIT.id);
+        if (!PLAYER) {
+            return false;
+        }
+        if (!PLAYER.__peaCaptureWrapped) {
+            const DRAW = PLAYER.draw;
+            PLAYER.draw = function (options) {
+                const DISPLAY = BUDMORI.runtime.presentationView?.units.find((unit) => unit.id === UNIT.id),
+                    MATRIX = options.matrix,
+                    [LEFT, TOP, WIDTH, HEIGHT] = BUDMORI.renderer.vectorAssets.get(0).compiled.viewBox,
+                    CORNERS = [
+                        [LEFT, TOP],
+                        [LEFT + WIDTH, TOP],
+                        [LEFT, TOP + HEIGHT],
+                        [LEFT + WIDTH, TOP + HEIGHT],
+                    ],
+                    XS = CORNERS.map(
+                        ([x, y]) => (MATRIX[0] * x + MATRIX[2] * y + MATRIX[4]) / BUDMORI.renderer.pixelRatio,
+                    ),
+                    YS = CORNERS.map(
+                        ([x, y]) => (MATRIX[1] * x + MATRIX[3] * y + MATRIX[5]) / BUDMORI.renderer.pixelRatio,
+                    );
+                globalThis.__peaDraw = DISPLAY
+                    ? {
+                          matrix: [...options.matrix],
+                          bounds: {
+                              left: Math.min(...XS),
+                              right: Math.max(...XS),
+                              top: Math.min(...YS),
+                              bottom: Math.max(...YS),
+                          },
+                          viewport: { width: innerWidth, height: innerHeight },
+                          phase: DISPLAY.ability.phase,
+                          elapsed: DISPLAY.ability.elapsed,
+                          form: DISPLAY.ability.peaForm,
+                          stage: DISPLAY.ability.peaStage,
+                          progress: DISPLAY.ability.peaStageProgress,
+                          x: DISPLAY.x,
+                          y: DISPLAY.y,
+                          z: DISPLAY.z,
+                          at: BUDMORI.renderer.displayTimeMs,
+                      }
+                    : null;
+                return DRAW.call(this, options);
+            };
+            PLAYER.__peaCaptureWrapped = true;
+        }
+        return true;
+    });
+}
+
 async function captureMotion(page, tier, label) {
+    await observeDrawnPea(page);
     const TRACE = [];
     const STAGES = [
         { phase: 'windup', stage: null },
@@ -95,15 +242,25 @@ async function captureMotion(page, tier, label) {
     for (const { phase: PHASE, stage: STAGE } of STAGES) {
         await page.waitForFunction(
             ({ tier: expected, phase, stage }) => {
-                const UNIT = globalThis.BUDMORI?.sim?.units[0];
-                if (UNIT?.ability.action?.peaAttack?.form !== expected || UNIT.ability.phase !== phase) {
+                const UNIT = globalThis.BUDMORI?.sim?.units[0],
+                    DRAWN = globalThis.__peaDraw;
+                if (
+                    UNIT?.ability.action?.peaAttack?.form !== expected ||
+                    DRAWN?.form !== expected ||
+                    DRAWN.phase !== phase
+                ) {
                     return false;
                 }
                 const PEA = UNIT.ability.action.peaAttack;
-                if (phase === 'windup' && UNIT.ability.elapsed < PEA.windupSeconds * 0.65) {
+                if (phase === 'windup' && DRAWN.elapsed < PEA.windupSeconds * 0.65) {
                     return false;
                 }
-                if (stage && (PEA.stage !== stage || PEA.contactTick === null || PEA.stageProgress <= 0)) {
+                if (
+                    stage &&
+                    (DRAWN.stage !== stage ||
+                        PEA.contactTick === null ||
+                        DRAWN.progress < (stage === 'charge' ? 0.45 : 0.25))
+                ) {
                     return false;
                 }
                 BUDMORI.runtime.paused = true;
@@ -122,6 +279,7 @@ async function captureMotion(page, tier, label) {
                 phase: UNIT.ability.phase,
                 elapsed: UNIT.ability.elapsed,
                 pea: structuredClone(PEA),
+                drawn: structuredClone(globalThis.__peaDraw),
                 x: UNIT.x,
                 y: UNIT.y,
                 z: UNIT.z,
@@ -136,6 +294,13 @@ async function captureMotion(page, tier, label) {
         assert.equal(STATE.unitCount, 1, 'one body, no clones');
         assert.equal(STATE.projectileCount, 0, 'no projectiles');
         assert.ok(STATE.distance >= STATE.bossRadius - 0.05, 'body stays outside boss center');
+        assert.ok(
+            STATE.drawn.bounds.left >= 0 &&
+                STATE.drawn.bounds.right <= STATE.drawn.viewport.width &&
+                STATE.drawn.bounds.top >= 0 &&
+                STATE.drawn.bounds.bottom <= STATE.drawn.viewport.height,
+            'complete drawn pea bounds are inside the actual canvas',
+        );
         TRACE.push(STATE);
         await page.screenshot({ path: path.join(OUTPUT, `${VIEWPORT}-${label}-t${tier}-${STAGE || PHASE}.png`) });
         assert.equal(await page.evaluate(() => BUDMORI.sim.simulationTick), STATE.tick, 'PNG matches paused trace');
@@ -143,6 +308,22 @@ async function captureMotion(page, tier, label) {
     }
     assert.ok(TRACE.at(-1).bossHp < TRACE[0].bossHp, 'real contact damages the training boss');
     assert.ok(TRACE.at(-1).tick > TRACE[0].tick, 'animation advances');
+    assert.equal(new Set(TRACE.map((state) => state.pea.id)).size, 1, 'sequential poses belong to one real attack');
+    if (tier === 3) {
+        assert.ok(Math.abs(TRACE[1].drawn.matrix[1]) > 0.01, 'T3 draw submission really rotates the body');
+    }
+    if (tier === 5) {
+        assert.ok(
+            Math.hypot(TRACE[1].drawn.x - TRACE[1].pea.contact.x, TRACE[1].drawn.y - TRACE[1].pea.contact.y) > 0.1,
+            'T5 rendered body visibly moves back from the contact point',
+        );
+    }
+    if (tier === 6) {
+        assert.ok(
+            TRACE[2].drawn.matrix[3] < TRACE[1].drawn.matrix[3] * 0.95,
+            'T6 actual draw is compressed after the fast contacts, not only relabeled',
+        );
+    }
     REPORT.push({ kind: label, tier, trace: TRACE });
 }
 
@@ -152,8 +333,22 @@ async function preview(page, tier, mobile) {
     const HANDLE = await page.locator('.pea-evolution-preview iframe').elementHandle(),
         FRAME = await HANDLE.contentFrame();
     await FRAME.waitForFunction(() => globalThis.BUDMORI?.sim?.units[0]?.species === 0);
+    await revealPreview(page, FRAME, mobile);
     // Frame has no screenshot method: capture its owner page while retaining frame-local timing.
-    FRAME.screenshot = (options) => page.screenshot(options);
+    FRAME.screenshot = async (options) => {
+        const CANVAS = await FRAME.locator('#world').boundingBox(),
+            PANE = await (await treeScrollPane(page)).boundingBox(),
+            DRAWN = await FRAME.evaluate(() => globalThis.__peaDraw),
+            BOUNDS = DRAWN.bounds;
+        assert.ok(
+            CANVAS.y + BOUNDS.top >= Math.max(0, PANE.y) &&
+                CANVAS.y + BOUNDS.bottom <= Math.min(VIEWPORT_SIZE.height, PANE.y + PANE.height) &&
+                CANVAS.x + BOUNDS.left >= 0 &&
+                CANVAS.x + BOUNDS.right <= VIEWPORT_SIZE.width,
+            'drawn actor is visible through owner-page clipping, not hidden below the pane',
+        );
+        await page.screenshot(options);
+    };
     await captureMotion(FRAME, tier, 'preview');
     assert.equal(
         await page.evaluate(() => JSON.stringify(BUDMORI.sim.playerProgression)),
@@ -457,6 +652,20 @@ try {
             await activate(PAGE.locator('[data-ability-species="1"]'), MOBILE);
             assert.equal(await PAGE.locator('.pea-evolution-preview iframe').count(), 0, 'tab change disposes preview');
             assert.deepEqual(ERRORS, []);
+            if (VIEWPORT === 'landscape') {
+                await activate(PAGE.locator('[data-corn-preview-tier="3"]'), MOBILE);
+                const HANDLE = await PAGE.locator('.corn-evolution-preview iframe').elementHandle(),
+                    FRAME = await HANDLE.contentFrame();
+                await FRAME.waitForFunction(() => globalThis.BUDMORI?.sim?.units[0]?.species === 1);
+                await revealPreview(PAGE, FRAME, MOBILE);
+                await PAGE.screenshot({ path: path.join(OUTPUT, 'landscape-corn-preview-access.png') });
+                await activate(PAGE.locator('[data-ability-species="0"]'), MOBILE);
+                assert.equal(
+                    await PAGE.locator('.corn-evolution-preview iframe').count(),
+                    0,
+                    'corn preview still disposes on tab change',
+                );
+            }
             progress('PASS isolated preview flow');
             await CONTEXT.close();
             continue;
@@ -495,26 +704,16 @@ try {
         assert.match(await PAGE.locator('[data-growth-wallet]').textContent(), /사용\s*12P/);
         assert.match(await PAGE.locator('[data-growth-form]').textContent(), /연구 형태 T6/);
         if (MOBILE) {
-            await PAGE.locator('#abilityNodes').evaluate((element) => {
+            const PANE = await treeScrollPane(PAGE);
+            await PANE.evaluate((element) => {
                 element.scrollTop = 0;
             });
-            const CDP = await CONTEXT.newCDPSession(PAGE),
-                BOX = await PAGE.locator('#abilityNodes').boundingBox(),
-                X = BOX.x + BOX.width * 0.7,
-                Y = Math.min(BOX.y + BOX.height - 30, VIEWPORT_SIZE.height - 30);
-            await CDP.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: X, y: Y }] });
-            for (const DELTA of [30, 80, 140, 210]) {
-                await CDP.send('Input.dispatchTouchEvent', {
-                    type: 'touchMove',
-                    touchPoints: [{ x: X, y: Y - DELTA }],
-                });
-            }
-            await CDP.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-            await PAGE.waitForTimeout(150);
-            assert.ok(
-                await PAGE.locator('#abilityNodes').evaluate((element) => element.scrollTop > 0),
-                'actual touch scroll',
-            );
+            await settleCapturedFrame(PAGE);
+            const GEOMETRY = await swipeTree(PAGE);
+            REPORT.push({ kind: 'touch-scroll-geometry', viewport: VIEWPORT, ...GEOMETRY });
+            const SCROLLED = await PANE.evaluate((element) => element.scrollTop);
+            REPORT.at(-1).afterScrollTop = SCROLLED;
+            assert.ok(SCROLLED > 0, 'actual touch scroll');
             assert.ok(
                 await PAGE.locator('#abilityNodes').evaluate((element) => element.scrollWidth <= element.clientWidth),
                 'no horizontal overflow in touch viewport',
