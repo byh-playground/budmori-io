@@ -1,5 +1,5 @@
 import { sampleChestnutShards } from './features/projectiles/spike/presentation.js';
-import { unitBodyDefinition } from './features/unit-body/definition.cjs';
+import { unitBodyDefinition } from './features/unit-body/definition.js';
 import { includeCornProjectileBounds } from './features/projectiles/corn/presentation.js';
 import { drawFormationEffects, includeFormationEffectBounds } from './formation-skill-presentations.js';
 import { scenePresentation } from './farm-render-scenes.js';
@@ -20,7 +20,7 @@ import {
     bossVectorScale,
     WORLD_HEIGHT_PROJECTION,
     WORLD_DEPTH_PROJECTION,
-} from './vector-sockets.cjs';
+} from './vector-sockets.js';
 import { bindBossSocketAsset, bossHandRig, unbindBossSocketAsset } from './boss-vector-sockets.js';
 import { BossPresentation, bossAttackPresentation } from './farm-render-boss.js';
 import { CONFIG, clamp, bossAttackArea } from './farm-model.js';

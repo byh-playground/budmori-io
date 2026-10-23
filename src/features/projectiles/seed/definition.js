@@ -1,4 +1,4 @@
-import { WORLD_HEIGHT_PROJECTION } from '../../../vector-sockets.cjs';
+import { WORLD_HEIGHT_PROJECTION } from '../../../vector-sockets.js';
 
 export const FEATURE = Object.freeze({
     id: 'seed',

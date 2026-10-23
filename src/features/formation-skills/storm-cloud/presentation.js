@@ -1,5 +1,5 @@
 import { FormationPresentation, bodyScale, cloud, stroke } from '../presentation-base.js';
-import { WORLD_HEIGHT_PROJECTION, WORLD_DEPTH_PROJECTION } from '../../../vector-sockets.cjs';
+import { WORLD_HEIGHT_PROJECTION, WORLD_DEPTH_PROJECTION } from '../../../vector-sockets.js';
 const POINT_BUFFERS = new WeakMap();
 const CLOUD_SPREAD_DEPTH = 0.35;
 
