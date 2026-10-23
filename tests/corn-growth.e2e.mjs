@@ -8,6 +8,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
+const CASE = process.argv[2] || 'ui',
+    VIEWPORT = process.argv[3] || 'desktop',
+    STARTED = Date.now();
+assert.ok(['ui', 'previews', 'battle'].includes(CASE), 'case must be ui, previews, or battle');
+assert.ok(['desktop', 'mobile'].includes(VIEWPORT), 'viewport must be desktop or mobile');
+function progress(step) {
+    console.log(`[corn ${CASE}/${VIEWPORT} +${((Date.now() - STARTED) / 1000).toFixed(1)}s] ${step}`);
+}
+
 const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     OUTPUT = path.join(ROOT, 'tests/output/corn-growth'),
     TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' },
@@ -57,18 +66,44 @@ async function purchase(page, id, mobile) {
         { id, before: BEFORE },
     );
 }
+async function settleCapturedFrame(frame) {
+    await frame.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+}
+async function resumeCapturedFrame(frame) {
+    await frame.evaluate(() => {
+        BUDMORI.runtime.loop.resetTiming();
+        BUDMORI.runtime.paused = false;
+    });
+}
+
 async function preview(page, tier, mobile) {
     const BEFORE = await page.evaluate(() => JSON.stringify(BUDMORI.sim.playerProgression));
     await activate(page.locator(`[data-corn-preview-tier="${tier}"]`), mobile);
     const HANDLE = await page.locator('.corn-evolution-preview iframe').elementHandle(),
         FRAME = await HANDLE.contentFrame();
-    await FRAME.waitForFunction(
-        (expected) => globalThis.BUDMORI?.sim?.projectiles?.some((shot) => shot.cornForm === expected),
-        tier,
-        { timeout: 18000 },
-    );
     const TRACE = [];
+    let projectileId = null;
     for (let index = 0; index < 3; index++) {
+        const MATCH = await FRAME.waitForFunction(
+            ({ expected, fraction, id }) => {
+                const SHOT = globalThis.BUDMORI?.sim?.projectiles?.find(
+                    (shot) =>
+                        shot.cornForm === expected &&
+                        (id === null || shot.id === id) &&
+                        shot.elapsed >= shot.path.duration * fraction &&
+                        shot.elapsed < shot.path.duration,
+                );
+                if (!SHOT) {
+                    return false;
+                }
+                BUDMORI.runtime.paused = true;
+                return SHOT.id;
+            },
+            { expected: tier, fraction: [0.1, 0.4, 0.7][index], id: projectileId },
+            { timeout: 18000, polling: 'raf' },
+        );
+        projectileId = await MATCH.jsonValue();
+        await settleCapturedFrame(FRAME);
         TRACE.push(
             await FRAME.evaluate(() => ({
                 tick: BUDMORI.sim.simulationTick,
@@ -86,7 +121,12 @@ async function preview(page, tier, mobile) {
         await page
             .locator('.corn-evolution-preview iframe')
             .screenshot({ path: path.join(OUTPUT, `${mobile ? 'mobile' : 'desktop'}-t${tier}-frame${index}.png`) });
-        await page.waitForTimeout(90);
+        assert.equal(
+            await FRAME.evaluate(() => BUDMORI.sim.simulationTick),
+            TRACE[index].tick,
+            'preview PNG and trace keep the same paused tick',
+        );
+        await resumeCapturedFrame(FRAME);
     }
     assert.ok(
         TRACE.some(
@@ -119,20 +159,30 @@ async function captureMainCombat(page, tier, mobile) {
         await page.waitForFunction(
             ({ tier: expected, stage }) => {
                 const WORLD = BUDMORI.sim;
-                if (stage === 'flight') {
-                    return WORLD.projectiles.some(
-                        (shot) => shot.cornForm === expected && shot.elapsed < shot.path.duration * 0.6,
-                    );
+                const READY =
+                    stage === 'flight'
+                        ? WORLD.projectiles.some(
+                              (shot) =>
+                                  shot.cornForm === expected &&
+                                  shot.elapsed >= shot.path.duration * 0.1 &&
+                                  shot.elapsed < shot.path.duration * 0.6,
+                          )
+                        : WORLD.cornAttachments.groups.some((group) =>
+                              group.attachments.some((attachment) =>
+                                  stage === 'explosion'
+                                      ? attachment.status === 'fading'
+                                      : attachment.status !== 'fading',
+                              ),
+                          );
+                if (READY) {
+                    BUDMORI.runtime.paused = true;
                 }
-                return WORLD.cornAttachments.groups.some((group) =>
-                    group.attachments.some((attachment) =>
-                        stage === 'explosion' ? attachment.status === 'fading' : attachment.status !== 'fading',
-                    ),
-                );
+                return READY;
             },
             { tier, stage: STAGE },
             { timeout: 15000, polling: 'raf' },
         );
+        await settleCapturedFrame(page);
         TRACE.push(
             await page.evaluate(
                 (stage) => ({
@@ -170,6 +220,12 @@ async function captureMainCombat(page, tier, mobile) {
         await page.screenshot({
             path: path.join(OUTPUT, `${mobile ? 'mobile' : 'desktop'}-main-t${tier}-${STAGE}.png`),
         });
+        assert.equal(
+            await page.evaluate(() => BUDMORI.sim.simulationTick),
+            TRACE.at(-1).tick,
+            'main battle PNG and trace keep the same paused tick',
+        );
+        await resumeCapturedFrame(page);
     }
     assert.ok(
         TRACE[1].tick > TRACE[0].tick && TRACE[2].tick > TRACE[1].tick,
@@ -180,7 +236,7 @@ async function captureMainCombat(page, tier, mobile) {
 }
 
 try {
-    for (const MOBILE of [false, true]) {
+    for (const MOBILE of [VIEWPORT === 'mobile']) {
         const CONTEXT = await BROWSER.newContext({
                 viewport: MOBILE ? { width: 390, height: 844 } : { width: 1100, height: 850 },
                 isMobile: MOBILE,
@@ -215,7 +271,37 @@ try {
         await PAGE.goto(GAME_URL);
         await PAGE.waitForFunction(() => globalThis.BUDMORI);
         await activate(PAGE.locator('#newGame'), MOBILE);
+        progress('new farm ready');
+        if (CASE === 'battle') {
+            for (const TIER of [1, 5, 6]) {
+                progress(`main battle T${TIER} start`);
+                await captureMainCombat(PAGE, TIER, MOBILE);
+                progress(`main battle T${TIER} flight/impact/explosion captured`);
+            }
+            assert.deepEqual(ERRORS, []);
+            progress('PASS main battle capture flow');
+            await CONTEXT.close();
+            continue;
+        }
         await openCorn(PAGE, MOBILE);
+        progress('corn tree open');
+        if (CASE === 'previews') {
+            for (const TIER of MOBILE ? [1, 5, 6] : [1, 2, 3, 4, 5, 6]) {
+                progress(`isolated preview T${TIER} start`);
+                await preview(PAGE, TIER, MOBILE);
+                progress(`isolated preview T${TIER} captured`);
+            }
+            await activate(PAGE.locator('[data-ability-species="0"]'), MOBILE);
+            assert.equal(
+                await PAGE.locator('.corn-evolution-preview iframe').count(),
+                0,
+                'tab change disposes preview',
+            );
+            assert.deepEqual(ERRORS, []);
+            progress('PASS isolated preview flow');
+            await CONTEXT.close();
+            continue;
+        }
         assert.equal(await PAGE.locator('[data-growth-node]').count(), 11);
         assert.match(await PAGE.locator('[data-growth-wallet]').textContent(), /총\s*1P/);
         assert.equal(await node(PAGE, 'evolution-2').getAttribute('aria-disabled'), 'true');
@@ -226,6 +312,7 @@ try {
         await PAGE.waitForFunction(
             () => document.querySelector('[data-growth-node="basic-1"] .growth-rank')?.textContent === '0/10',
         );
+        progress('Lv1 purchase, locks and reset verified');
         // Existing earned-save scenario: no investment is pre-applied. The player chooses it below.
         await PAGE.evaluate(() => {
             const WORLD = BUDMORI.sim,
@@ -276,9 +363,7 @@ try {
         }
         await PAGE.locator('[data-growth-wallet]').scrollIntoViewIfNeeded();
         await PAGE.screenshot({ path: path.join(OUTPUT, MOBILE ? 'mobile-tree.png' : 'desktop-tree.png') });
-        for (const TIER of MOBILE ? [1, 5, 6] : [1, 2, 3, 4, 5, 6]) {
-            await preview(PAGE, TIER, MOBILE);
-        }
+        progress('Lv50 evolution/specialty purchases and scrolling verified');
         await activate(PAGE.locator('[data-ability-species="0"]'), MOBILE);
         assert.equal(await PAGE.locator('.corn-evolution-preview iframe').count(), 0, 'tab change disposes preview');
         await activate(PAGE.locator('[data-ability-species="1"]'), MOBILE);
@@ -297,6 +382,7 @@ try {
             document.querySelector('[data-growth-wallet]')?.textContent.includes('사용 0P'),
         );
         assert.match(await PAGE.locator('.ability-tree__progress').textContent(), /125.*누적 XP/s);
+        progress('save/reload and free reset preserve mastery');
         await purchase(PAGE, 'basic-2', MOBILE);
         await activate(PAGE.locator('#gameMenuClose'), MOBILE);
         await activate(PAGE.locator('#bossChallenge'), MOBILE);
@@ -305,7 +391,9 @@ try {
         }
         await PAGE.waitForFunction(() => BUDMORI.sim.tower.active);
         for (const PHASE of ['marching', 'fighting']) {
+            progress(`waiting for ${PHASE}`);
             await PAGE.waitForFunction((phase) => BUDMORI.sim.farmBossEvent.phase === phase, PHASE);
+            progress(`${PHASE} Home→Continue start`);
             await PAGE.evaluate(() => {
                 globalThis.__cornRunBeforeHome = {
                     world: BUDMORI.sim,
@@ -345,17 +433,22 @@ try {
             false,
             'disk reload returns to farm, not a new run-resume feature',
         );
-        for (const TIER of [1, 5, 6]) {
-            await captureMainCombat(PAGE, TIER, MOBILE);
-        }
+        progress('Home/Continue, live-run locks and disk farm return verified');
         assert.deepEqual(ERRORS, []);
         console.log(
-            `PASS corn growth ${MOBILE ? 'mobile touch 390px' : 'desktop'}: locked Lv1, purchases, research, isolated real previews, scroll, reset, save/reload, live-run lock`,
+            `PASS corn growth ${MOBILE ? 'mobile touch 390px' : 'desktop'}: locked Lv1, purchases, research, scroll, reset, save/reload, live-run lock`,
         );
         await CONTEXT.close();
     }
 } finally {
-    fs.writeFileSync(path.join(OUTPUT, 'report.json'), JSON.stringify({ errors: ERRORS, previews: REPORT }, null, 2));
+    fs.writeFileSync(
+        path.join(OUTPUT, `report-${CASE}-${VIEWPORT}.json`),
+        JSON.stringify(
+            { case: CASE, viewport: VIEWPORT, elapsedMs: Date.now() - STARTED, errors: ERRORS, captures: REPORT },
+            null,
+            2,
+        ),
+    );
     await BROWSER.close();
     SERVER.close();
 }

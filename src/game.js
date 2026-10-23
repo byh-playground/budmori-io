@@ -22629,11 +22629,16 @@
     FRAME.src = new URL(`?help=corn-t${tier}`, location.href).href.split("#")[0];
     HOST.replaceChildren(FRAME);
     DOLLAR2("abilityNodes").querySelector("[data-corn-preview-caption]").textContent = `T${tier} · 고정 훈련 표적 · 실제 공격 0.6배속`;
-    cornPreviewTimer = setTimeout(() => {
-      if (menuOpen && menuTab === "abilities" && FRAME.isConnected) {
-        mountCornPreview(tier);
+    FRAME.onload = () => {
+      if (!FRAME.isConnected) {
+        return;
       }
-    }, 16e3);
+      cornPreviewTimer = setTimeout(() => {
+        if (menuOpen && menuTab === "abilities" && FRAME.isConnected) {
+          mountCornPreview(tier);
+        }
+      }, 16e3);
+    };
   }
   function drawAbilityTree() {
     stopCornPreview();
