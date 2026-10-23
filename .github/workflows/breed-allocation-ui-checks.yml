@@ -34,15 +34,26 @@ jobs:
                   cache: npm
             - run: npm ci
             - run: npx playwright install --with-deps chromium
-            - run: npm run build
-            - run: timeout 180s npm run test:breed-allocation
-            - run: timeout 180s npm run test:corn-growth:case -- ui desktop
-            - run: timeout 180s npm run test:corn-growth:case -- ui mobile
-            - run: timeout 180s npm run test:corn-growth:case -- previews desktop
-            - run: timeout 180s npm run test:corn-growth:case -- previews mobile
-            - run: timeout 180s npm run test:corn-growth:case -- battle desktop
-            - run: timeout 180s npm run test:corn-growth:case -- battle mobile
-            - run: timeout 180s npm test
+            - id: build
+              run: npm run build
+            - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+              run: timeout 180s npm run test:breed-allocation
+            - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+              run: timeout 180s npm run test:corn-growth:case -- ui desktop
+            - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+              run: timeout 180s npm run test:corn-growth:case -- ui mobile
+            - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+              run: timeout 180s npm run test:corn-growth:case -- previews desktop
+            - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+              run: timeout 180s npm run test:corn-growth:case -- previews mobile
+            - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+              run: timeout 180s npm run test:corn-growth:case -- battle desktop
+            - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+              run: timeout 180s npm run test:corn-growth:case -- battle mobile
+            - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+              run: timeout 180s npm run test:corn-growth:case -- battle landscape
+            - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+              run: timeout 180s npm test
             - uses: actions/upload-artifact@v4
               if: always()
               with:

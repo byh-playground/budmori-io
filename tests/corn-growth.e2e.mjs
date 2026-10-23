@@ -10,9 +10,16 @@ import { chromium } from 'playwright';
 
 const CASE = process.argv[2] || 'ui',
     VIEWPORT = process.argv[3] || 'desktop',
+    VIEWPORT_SIZE =
+        VIEWPORT === 'landscape'
+            ? { width: 844, height: 390 }
+            : VIEWPORT === 'mobile'
+              ? { width: 390, height: 844 }
+              : { width: 1100, height: 850 },
     STARTED = Date.now();
 assert.ok(['ui', 'previews', 'battle'].includes(CASE), 'case must be ui, previews, or battle');
-assert.ok(['desktop', 'mobile'].includes(VIEWPORT), 'viewport must be desktop or mobile');
+assert.ok(['desktop', 'mobile', 'landscape'].includes(VIEWPORT), 'viewport must be desktop, mobile, or landscape');
+assert.ok(VIEWPORT !== 'landscape' || CASE === 'battle', 'landscape is the focused combat readability flow');
 function progress(step) {
     console.log(`[corn ${CASE}/${VIEWPORT} +${((Date.now() - STARTED) / 1000).toFixed(1)}s] ${step}`);
 }
@@ -120,7 +127,7 @@ async function preview(page, tier, mobile) {
         );
         await page
             .locator('.corn-evolution-preview iframe')
-            .screenshot({ path: path.join(OUTPUT, `${mobile ? 'mobile' : 'desktop'}-t${tier}-frame${index}.png`) });
+            .screenshot({ path: path.join(OUTPUT, `${VIEWPORT}-t${tier}-frame${index}.png`) });
         assert.equal(
             await FRAME.evaluate(() => BUDMORI.sim.simulationTick),
             TRACE[index].tick,
@@ -140,7 +147,7 @@ async function preview(page, tier, mobile) {
         'isolated preview does not alter investment or XP',
     );
     assert.equal(await page.locator('.corn-evolution-preview iframe').count(), 1, 'one isolated preview at a time');
-    REPORT.push({ viewport: mobile ? 'mobile' : 'desktop', tier, trace: TRACE });
+    REPORT.push({ viewport: VIEWPORT, viewportSize: VIEWPORT_SIZE, tier, trace: TRACE });
 }
 
 async function captureMainCombat(page, tier, mobile) {
@@ -241,7 +248,7 @@ async function captureMainCombat(page, tier, mobile) {
             ),
         );
         await page.screenshot({
-            path: path.join(OUTPUT, `${mobile ? 'mobile' : 'desktop'}-main-t${tier}-${STAGE}.png`),
+            path: path.join(OUTPUT, `${VIEWPORT}-main-t${tier}-${STAGE}.png`),
         });
         assert.equal(
             await page.evaluate(() => BUDMORI.sim.simulationTick),
@@ -255,7 +262,7 @@ async function captureMainCombat(page, tier, mobile) {
         'main battle advances from flight through collision into the fuse explosion',
     );
     assert.ok(TRACE[2].boss.hp < TRACE[0].boss.hp, 'the actual battle damages its target');
-    REPORT.push({ kind: 'main-farm-combat', viewport: mobile ? 'mobile' : 'desktop', tier, trace: TRACE });
+    REPORT.push({ kind: 'main-farm-combat', viewport: VIEWPORT, viewportSize: VIEWPORT_SIZE, tier, trace: TRACE });
 }
 
 async function captureCrowdedCombat(page, mobile) {
@@ -326,15 +333,13 @@ async function captureCrowdedCombat(page, mobile) {
         renderDiagnostics: BUDMORI.presentationDiagnostics,
     }));
     await page.screenshot({
-        path: path.join(
-            OUTPUT,
-            `${mobile ? 'mobile' : 'desktop'}-main-crowded-${overlap ? 'windup-meteors' : 'no-overlap'}.png`,
-        ),
+        path: path.join(OUTPUT, `${VIEWPORT}-main-crowded-${overlap ? 'windup-meteors' : 'no-overlap'}.png`),
     });
     assert.equal(await page.evaluate(() => BUDMORI.sim.simulationTick), STATE.tick);
     REPORT.push({
         kind: 'maximum-mixed-combat',
-        viewport: mobile ? 'mobile' : 'desktop',
+        viewport: VIEWPORT,
+        viewportSize: VIEWPORT_SIZE,
         initial: INITIAL,
         overlap,
         state: STATE,
@@ -348,9 +353,9 @@ async function captureCrowdedCombat(page, mobile) {
 }
 
 try {
-    for (const MOBILE of [VIEWPORT === 'mobile']) {
+    for (const MOBILE of [VIEWPORT !== 'desktop']) {
         const CONTEXT = await BROWSER.newContext({
-                viewport: MOBILE ? { width: 390, height: 844 } : { width: 1100, height: 850 },
+                viewport: VIEWPORT_SIZE,
                 isMobile: MOBILE,
                 hasTouch: MOBILE,
                 deviceScaleFactor: 1,
@@ -475,7 +480,7 @@ try {
             );
         }
         await PAGE.locator('[data-growth-wallet]').scrollIntoViewIfNeeded();
-        await PAGE.screenshot({ path: path.join(OUTPUT, MOBILE ? 'mobile-tree.png' : 'desktop-tree.png') });
+        await PAGE.screenshot({ path: path.join(OUTPUT, `${VIEWPORT}-tree.png`) });
         progress('Lv50 evolution/specialty purchases and scrolling verified');
         await activate(PAGE.locator('[data-ability-species="0"]'), MOBILE);
         assert.equal(await PAGE.locator('.corn-evolution-preview iframe').count(), 0, 'tab change disposes preview');
@@ -557,7 +562,14 @@ try {
     fs.writeFileSync(
         path.join(OUTPUT, `report-${CASE}-${VIEWPORT}.json`),
         JSON.stringify(
-            { case: CASE, viewport: VIEWPORT, elapsedMs: Date.now() - STARTED, errors: ERRORS, captures: REPORT },
+            {
+                case: CASE,
+                viewport: VIEWPORT,
+                viewportSize: VIEWPORT_SIZE,
+                elapsedMs: Date.now() - STARTED,
+                errors: ERRORS,
+                captures: REPORT,
+            },
             null,
             2,
         ),
