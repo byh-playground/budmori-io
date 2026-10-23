@@ -1,3 +1,5 @@
+import { createChestnutAttackMixin } from './features/unit-attacks/chestnut/model.js';
+import { chestnutGrowthBuild } from './features/species-growth/chestnut-attack.js';
 import { createRedbeanAttackMixin } from './features/unit-attacks/redbean/model.js';
 import { redbeanGrowthBuild } from './features/species-growth/redbean-attack.js';
 import { createPeaAttackMixin } from './features/unit-attacks/pea/model.js';
@@ -261,7 +263,11 @@ export function composeUnitAttackCycles(cycle, { ArenaGeometry: arenaGeometry, B
             canBegin(sim) {
                 const U = this.owner,
                     CONFIG_LOCAL = ChestnutThornsModel.config(sim.abilityProgressionFor(U), U.tier);
-                return !!CONFIG_LOCAL && sim.simulationTick >= (U.chestnutNextThornTick || 0);
+                return (
+                    !chestnutGrowthBuild(sim.abilityProgressionFor(U)) &&
+                    !!CONFIG_LOCAL &&
+                    sim.simulationTick >= (U.chestnutNextThornTick || 0)
+                );
             }
             createAttackPath() {
                 this.action.path = null;
@@ -377,6 +383,7 @@ export function composeUnitAttackCycles(cycle, { ArenaGeometry: arenaGeometry, B
     const ATTACKS = {
         contact: CONTACT_ATTACK,
         pea: createPeaAttackMixin(CONTACT_ATTACK, arenaGeometry),
+        chestnut: createChestnutAttackMixin(CONTACT_ATTACK),
         redbean: createRedbeanAttackMixin(CONTACT_ATTACK, arenaGeometry),
         [LOB_FEATURE.modelKey]: PROJECTILE_ATTACK,
         [DUAL_STRIKE_FEATURE.modelKey]: REPEATED_STRIKE,

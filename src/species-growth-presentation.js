@@ -28,7 +28,26 @@ const REDBEAN_FORMS = Object.freeze([
     ['공중 회전 강하', '공중 회전 접촉 뒤 아래로 강하게 착지'],
     ['삼연 도약 강타', '낮은 찍기 · 측면 회전 접촉 · 높은 마무리 착지'],
 ]);
+const CHESTNUT_FORMS = Object.freeze([
+    ['짧은 가시 주먹', '짧은 가시를 정면으로 한 번 발사'],
+    ['좌우 엇찌르기', '좌우 가시가 교차하며 45·55% 타격'],
+    ['전면 가시 부채', '전방에 펼친 가시가 한 예산으로 타격'],
+    ['부채 수렴', '부채 전개 40% 뒤 고정 표적점으로 60% 수렴'],
+    ['중앙 가시 찌르기', '부채 40% 뒤 굵은 중앙 가시 60%'],
+    ['삼단 압축 가시', '전개 25% · 양 날개 수렴 30% · 중앙 마무리 45%'],
+]);
 const PRESENTATIONS = new Map([
+    [
+        'chestnut-target-thorns',
+        {
+            key: 'chestnut',
+            name: '밤톨',
+            title: '가시 전개와 집중',
+            forms: CHESTNUT_FORMS,
+            effect: chestnutGrowthEffect,
+            note: '전개와 수렴은 서로 다른 타격 예산을 써요. 범위 타격은 주 대상 100%, 주변 최대 4명에게 50%예요. 주기 가시는 평타와 별도로 3초마다 0.1초 간격으로 발사하며 총예산을 가시 수로 나눠요. 이미 발사한 가시는 본체가 사라져도 고정한 표적점까지 진행해요.',
+        },
+    ],
     [
         'kidney-continuous-leap',
         {
@@ -205,6 +224,25 @@ function redbeanGrowthEffect(nodeId, rank) {
             return `마지막 착지 후 ${Math.min(65, 20 + rank * 9)}% 확률로 후딜 0.1초`;
         case 'specialty-3':
             return `마지막 착지에 전체 직접 예산의 ${rank * 8}% 추가`;
+        default:
+            throw new RangeError(`Unknown growth effect: ${nodeId}`);
+    }
+}
+
+function chestnutGrowthEffect(nodeId, rank) {
+    switch (nodeId) {
+        case 'basic-1':
+            return `공격력 +${rank * 3}% · 평타와 주기 가시에 적용`;
+        case 'basic-2':
+            return `최대 체력 +${rank * 4}% · 다음 런부터 적용`;
+        case 'basic-3':
+            return `공격 속도 +${rank * 2}% · 주기 가시 간격 제외`;
+        case 'specialty-1':
+            return `주기 가시 ${1 + rank}개 · 총예산 ${100 + rank * 40}% 균등 분배`;
+        case 'specialty-2':
+            return `가시 사거리·범위 +${rank * 4}%`;
+        case 'specialty-3':
+            return `평타 마지막 가시에 전체 직접 예산의 ${rank * 8}% 추가`;
         default:
             throw new RangeError(`Unknown growth effect: ${nodeId}`);
     }

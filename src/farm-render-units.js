@@ -1,3 +1,4 @@
+import { ChestnutAttackPresentation } from './features/unit-attacks/chestnut/presentation.js';
 import { RedbeanAttackPresentation } from './features/unit-attacks/redbean/presentation.js';
 import { unitBodyDefinition, unitDisplayScale } from './features/unit-body/definition.cjs';
 import { BarleyArmorShredPresentation } from './features/abilities/barley-shred/presentation.js';
@@ -10,6 +11,7 @@ import { farmBreedingCooldown, unitRestPresentation } from './farm-indicators.js
 import { scenePresentation } from './farm-render-scenes.js';
 import { PassiveMarksPresentation } from './tower-passive-presentations.js';
 
+const CHESTNUT_ATTACK = new ChestnutAttackPresentation();
 const REDBEAN_ATTACK = new RedbeanAttackPresentation();
 const PEA_ATTACK = new PeaAttackPresentation();
 const DEFAULT_ATTACK = new UnitAttackPresentation();
@@ -19,6 +21,9 @@ const ATTACK_PRESENTATIONS = new Map(
     [new DualStrikePresentation(), new LobPresentation()].map((presentation) => [presentation.id, presentation]),
 );
 function unitAttackPresentation(unit) {
+    if (unit.species === 3 && unit.ability?.chestnutForm) {
+        return CHESTNUT_ATTACK;
+    }
     if (unit.species === 2 && unit.ability?.redbeanForm) {
         return REDBEAN_ATTACK;
     }
@@ -273,6 +278,9 @@ export class UnitPresentation {
         }
         if (!SWING && !rest && u.species === 2 && u.hp > 0 && u.stun <= 0 && u.dropLanded) {
             REDBEAN_ATTACK.applyPose(MATRIX, u, GROUND);
+        }
+        if (!SWING && !rest && u.species === 3 && u.hp > 0 && u.stun <= 0 && u.dropLanded) {
+            CHESTNUT_ATTACK.applyPose(MATRIX, u, GROUND);
         }
         // Native vector players submit directly to MeshRenderer, so flush earlier 2D paint first.
         this.renderer.ctx.vector.flush();

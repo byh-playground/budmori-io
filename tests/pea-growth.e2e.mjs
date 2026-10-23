@@ -605,22 +605,29 @@ async function sampleCrowdedFrames(page, mobile, researched) {
 
 async function captureInterruptedCombo(page, mobile) {
     await setupCombat(page, 6, mobile);
-    await page.waitForFunction(
-        () => {
-            const UNIT = BUDMORI.sim.units[0];
-            if (
-                UNIT.ability.phase !== 'active' ||
-                UNIT.ability.action?.peaAttack?.contactTick == null ||
-                BUDMORI.sim.simulationTick <= UNIT.ability.action.peaAttack.contactTick
-            ) {
-                return false;
+    // Observe committed hits before a slow RAF can batch multiple contacts. This is
+    // the ordinary pause input at normal speed, not a clock/model/pose override.
+    await page.evaluate(() => {
+        const WORLD = BUDMORI.sim;
+        globalThis.__peaContinuity = { actionId: null, hits: [], complete: false };
+        globalThis.__peaContinuityOff = WORLD.onNotice.on((notice) => {
+            const ACTION = WORLD.units[0].ability.action;
+            if (notice.kind !== 'boss-hit' || !ACTION?.peaAttack || notice.attackId !== ACTION.id) {
+                return;
             }
-            BUDMORI.runtime.paused = true;
-            return true;
-        },
-        null,
-        { polling: 'raf' },
-    );
+            const STATE = globalThis.__peaContinuity;
+            STATE.actionId ??= ACTION.id;
+            if (notice.attackId !== STATE.actionId) {
+                return;
+            }
+            STATE.hits.push(structuredClone(notice));
+            if (STATE.hits.length === 1 || STATE.hits.length === 3) {
+                BUDMORI.runtime.paused = true;
+                STATE.complete = STATE.hits.length === 3;
+            }
+        });
+    });
+    await page.waitForFunction(() => globalThis.__peaContinuity.hits.length === 1 && BUDMORI.runtime.paused);
     await settleCapturedFrame(page);
     const BEFORE = await page.evaluate(() => {
         globalThis.__peaCheckpoint = { world: BUDMORI.sim, action: BUDMORI.sim.units[0].ability.action };
@@ -640,17 +647,7 @@ async function captureInterruptedCombo(page, mobile) {
     await page.waitForTimeout(250);
     assert.equal(await page.evaluate(() => BUDMORI.sim.boss.hp), BEFORE.hp, 'Home pauses the combo');
     await activate(page.locator('#continueGame'), mobile);
-    await page.waitForFunction(
-        () => {
-            if (BUDMORI.sim.units[0].ability.phase !== 'recover' || BUDMORI.sim.units[0].ability.elapsed < 0.05) {
-                return false;
-            }
-            BUDMORI.runtime.paused = true;
-            return true;
-        },
-        null,
-        { polling: 'raf' },
-    );
+    await page.waitForFunction(() => globalThis.__peaContinuity.complete && BUDMORI.runtime.paused);
     await settleCapturedFrame(page);
     const AFTER = await page.evaluate(() => ({
         sameWorld: BUDMORI.sim === globalThis.__peaCheckpoint.world,
@@ -667,6 +664,7 @@ async function captureInterruptedCombo(page, mobile) {
     assert.equal(AFTER.numbers - BEFORE.numbers, 2, 'remaining two hits produce exactly two visible damage numbers');
     await page.screenshot({ path: path.join(OUTPUT, `${VIEWPORT}-home-continue-combo.png`) });
     REPORT.push({ kind: 'home-continue-combo', before: BEFORE, after: AFTER });
+    await page.evaluate(() => globalThis.__peaContinuityOff());
     await resumeCapturedFrame(page);
 }
 
@@ -843,7 +841,7 @@ try {
             WORLD.markProgressChanged();
             BUDMORI.storage.save(WORLD);
         });
-        await activate(PAGE.locator('[data-ability-species="3"]'), MOBILE);
+        await activate(PAGE.locator('[data-ability-species="4"]'), MOBILE);
         assert.equal(await PAGE.locator('[data-growth-tree]').count(), 0, 'unreleased species keeps its legacy tree');
         await activate(PAGE.locator('[data-ability-species="0"]'), MOBILE);
         assert.match(await PAGE.locator('[data-growth-wallet]').textContent(), /총\s*50P/);

@@ -498,6 +498,1505 @@
     }
   });
 
+  // src/features/species-growth/attack-action.js
+  function defineAttackAction({ durationTicks, strikes }) {
+    if (!Number.isSafeInteger(durationTicks) || durationTicks < 1 || !Array.isArray(strikes) || strikes.length < 1 || strikes.length > MAX_ACTION_STRIKES) {
+      throw new TypeError("An attack needs a finite duration and bounded strike slots");
+    }
+    let previousTick = -1;
+    let totalWeight = 0;
+    for (const STRIKE of strikes) {
+      if (!Number.isSafeInteger(STRIKE.tick) || STRIKE.tick < previousTick || STRIKE.tick < 0 || STRIKE.tick >= durationTicks || !Number.isFinite(STRIKE.weight) || STRIKE.weight <= 0) {
+        throw new TypeError("Invalid attack strike");
+      }
+      previousTick = STRIKE.tick;
+      totalWeight += STRIKE.weight;
+    }
+    if (Math.abs(totalWeight - 1) > 1e-9) {
+      throw new RangeError("Strike weights must share one whole attack damage budget");
+    }
+    return Object.freeze({
+      durationTicks,
+      strikes: Object.freeze(strikes.map(({ tick, weight }) => Object.freeze({ tick, weight })))
+    });
+  }
+  function attackTargetKey(targetId, generation) {
+    if (targetId !== "boss" && (!Number.isSafeInteger(targetId) || targetId < 0) || !Number.isSafeInteger(generation) || generation < 0) {
+      return null;
+    }
+    return JSON.stringify([targetId === "boss" ? "boss" : "unit", targetId, generation]);
+  }
+  function validHitKey(key) {
+    if (Number.isSafeInteger(key) && key >= 0) {
+      return true;
+    }
+    if (typeof key !== "string" || key.length > 100) {
+      return false;
+    }
+    try {
+      const PARTS = JSON.parse(key);
+      return Array.isArray(PARTS) && PARTS.length === 3 && PARTS[0] === (PARTS[1] === "boss" ? "boss" : "unit") && attackTargetKey(PARTS[1], PARTS[2]) === key;
+    } catch {
+      return false;
+    }
+  }
+  function isAttackActionDTO(dto) {
+    if (!dto || Object.keys(dto).sort().join(",") !== "cancelled,claims,hits,lastTick,nextSlot,plan,startTick,version" || dto.version !== 1) {
+      return false;
+    }
+    try {
+      if (Object.keys(dto.plan).sort().join(",") !== "durationTicks,strikes" || !dto.plan.strikes.every((strike) => Object.keys(strike).sort().join(",") === "tick,weight")) {
+        return false;
+      }
+      defineAttackAction(dto.plan);
+    } catch {
+      return false;
+    }
+    return Number.isSafeInteger(dto.startTick) && dto.startTick >= 0 && Number.isSafeInteger(dto.startTick + dto.plan.durationTicks) && Number.isSafeInteger(dto.nextSlot) && dto.nextSlot >= 0 && dto.nextSlot <= dto.plan.strikes.length && typeof dto.cancelled === "boolean" && Number.isSafeInteger(dto.lastTick) && dto.lastTick >= dto.startTick - 1 && (!dto.cancelled || dto.nextSlot === dto.plan.strikes.length) && (dto.cancelled || dto.nextSlot === dto.plan.strikes.filter((strike) => dto.startTick + strike.tick <= dto.lastTick).length) && Array.isArray(dto.hits) && dto.hits.length === dto.plan.strikes.length && dto.hits.every(
+      (hits, slot) => Array.isArray(hits) && hits.length <= 1024 && (slot < dto.nextSlot || hits.length === 0) && hits.every(validHitKey) && new Set(hits).size === hits.length
+    ) && Array.isArray(dto.claims) && dto.claims.length <= 64 && dto.claims.every((key) => typeof key === "string" && key.length > 0 && key.length <= 128) && new Set(dto.claims).size === dto.claims.length;
+  }
+  var MAX_ACTION_STRIKES, AttackAction;
+  var init_attack_action = __esm({
+    "src/features/species-growth/attack-action.js"() {
+      MAX_ACTION_STRIKES = 32;
+      AttackAction = class _AttackAction {
+        constructor(plan, startTick) {
+          if (!Number.isSafeInteger(startTick) || startTick < 0 || !Number.isSafeInteger(startTick + plan.durationTicks)) {
+            throw new RangeError("Invalid action start tick");
+          }
+          this.plan = defineAttackAction(plan);
+          this.startTick = startTick;
+          this.nextSlot = 0;
+          this.cancelled = false;
+          this.lastTick = startTick - 1;
+          this.hits = plan.strikes.map(() => /* @__PURE__ */ new Set());
+          this.claims = /* @__PURE__ */ new Set();
+        }
+        // Consume before returning, so retrying the same tick cannot emit the same strike twice.
+        // The owner decides whether launched projectiles survive cancellation; those have their own lifecycle.
+        advance(tick) {
+          if (!Number.isSafeInteger(tick) || tick < this.lastTick) {
+            throw new RangeError("Attack time must be monotonic simulation ticks");
+          }
+          this.lastTick = tick;
+          const READY = [];
+          if (this.cancelled) {
+            return READY;
+          }
+          while (this.nextSlot < this.plan.strikes.length) {
+            const STRIKE = this.plan.strikes[this.nextSlot];
+            if (tick < this.startTick + STRIKE.tick) {
+              break;
+            }
+            READY.push({ slot: this.nextSlot, weight: STRIKE.weight });
+            this.nextSlot += 1;
+          }
+          return READY;
+        }
+        claimHit(slot, targetId, generation = null) {
+          const KEY2 = generation === null ? targetId : attackTargetKey(targetId, generation);
+          if (this.cancelled || !Number.isInteger(slot) || slot < 0 || slot >= this.nextSlot || !validHitKey(KEY2) || this.hits[slot].has(KEY2)) {
+            return false;
+          }
+          this.hits[slot].add(KEY2);
+          return true;
+        }
+        // Named, once-per-action budgets, e.g. command, critical, RAW consumption, or extra attachment.
+        // A follow-up strike uses the same action and cannot create another copy of the budget.
+        claimOnce(key) {
+          if (this.cancelled || typeof key !== "string" || !key || key.length > 128 || this.claims.size >= 64 || this.claims.has(key)) {
+            return false;
+          }
+          this.claims.add(key);
+          return true;
+        }
+        toDTO() {
+          return {
+            version: 1,
+            plan: structuredClone(this.plan),
+            startTick: this.startTick,
+            nextSlot: this.nextSlot,
+            cancelled: this.cancelled,
+            lastTick: this.lastTick,
+            hits: this.hits.map((hits) => [...hits]),
+            claims: [...this.claims]
+          };
+        }
+        static fromDTO(dto) {
+          if (!isAttackActionDTO(dto)) {
+            throw new TypeError("Invalid attack action checkpoint");
+          }
+          const ACTION = new _AttackAction(dto.plan, dto.startTick);
+          ACTION.nextSlot = dto.nextSlot;
+          ACTION.cancelled = dto.cancelled;
+          ACTION.lastTick = dto.lastTick;
+          ACTION.hits = dto.hits.map((hits) => new Set(hits));
+          ACTION.claims = new Set(dto.claims);
+          return ACTION;
+        }
+        cancel() {
+          this.cancelled = true;
+          this.nextSlot = this.plan.strikes.length;
+          this.hits.forEach((hits) => hits.clear());
+          this.claims.clear();
+        }
+      };
+    }
+  });
+
+  // src/features/abilities/pea-recovery-boost.js
+  var PEA_RECOVERY_BOOST_FEATURE;
+  var init_pea_recovery_boost = __esm({
+    "src/features/abilities/pea-recovery-boost.js"() {
+      PEA_RECOVERY_BOOST_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "pea-recovery-boost",
+          species: 0,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "회복 기동",
+          description: "적 공격으로 강제 이동이 끝나면 2초 동안 이동 속도가 증가해요.",
+          powerValues: Object.freeze([0.25, 0.35, 0.55])
+        }),
+        model: Object.freeze({
+          durationTicks: 40,
+          multiplierForBonus(bonus) {
+            return 1 + bonus;
+          }
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/kidney-continuous-leap.js
+  var KIDNEY_CONTINUOUS_LEAP_FEATURE;
+  var init_kidney_continuous_leap = __esm({
+    "src/features/abilities/kidney-continuous-leap.js"() {
+      KIDNEY_CONTINUOUS_LEAP_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "kidney-continuous-leap",
+          species: 2,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "연속 도약",
+          description: "가까운 적에게도 준비되면 도약해요. 공중에서는 지면 휩쓸기를 피하고, 착지 시 확률적으로 재사용 대기를 초기화해요.",
+          powerValues: Object.freeze([0.2, 0.35, 0.5, 0.65])
+        }),
+        model: Object.freeze({
+          specialAttackProfile: Object.freeze({
+            kind: "leap",
+            timing: Object.freeze({ windup: 0.32, recovery: 0.9 }),
+            range: 2.5,
+            skillMultiplier: 1.3,
+            projectileCount: 0,
+            bounces: 0
+          }),
+          cooldownTicks: 60
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/chestnut-thorns/definition.js
+  var CHESTNUT_THORNS_FEATURE;
+  var init_definition10 = __esm({
+    "src/features/abilities/chestnut-thorns/definition.js"() {
+      CHESTNUT_THORNS_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "chestnut-target-thorns",
+          species: 3,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "대상 가시 연사",
+          description: "현재 공격 대상을 향해 3초마다 가시를 발사해요. 가시는 0.1초 간격으로 나가며 각각 공격력 100% 피해를 줘요.",
+          powerValues: Object.freeze([1, 2, 3]),
+          cooldownTicks: 60,
+          spacingTicks: 2,
+          attackProfile: Object.freeze({
+            kind: "chestnut-thorns",
+            timing: Object.freeze({ windup: 0, recovery: 0.2 }),
+            range: 1.45,
+            skillMultiplier: 1,
+            projectileCount: 0,
+            bounces: 0
+          })
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/peanut-death-split/definition.js
+  var PEANUT_DEATH_SPLIT_FEATURE;
+  var init_definition11 = __esm({
+    "src/features/abilities/peanut-death-split/definition.js"() {
+      PEANUT_DEATH_SPLIT_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "peanut-death-split",
+          species: 4,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "사망 분열",
+          description: "전투 중 사망하면 T1 분열체 2마리를 남겨요. 강화마다 분열체의 체력과 공격력이 각각 1.5배가 돼요.",
+          powerValues: Object.freeze([1, 1.5, 2.25]),
+          childCount: 2
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/walnut-raw-guard/definition.js
+  var WALNUT_RAW_GUARD_FEATURE;
+  var init_definition12 = __esm({
+    "src/features/abilities/walnut-raw-guard/definition.js"() {
+      WALNUT_RAW_GUARD_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "walnut-raw-guard",
+          species: 5,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "방어와 반격",
+          description: "5초마다 2초간 방어력 50을 얻어요. 방어 중 받은 RAW 피해를 모아 다음 망치에 100/150/225% 추가하며 공격력의 3배까지 적용해요.",
+          powerValues: Object.freeze([1, 1.5, 2.25]),
+          cooldownTicks: 100,
+          durationTicks: 40,
+          armorBonus: 50,
+          maxBonusAttackMultiples: 3
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/corn-attachment/definition.js
+  var CORN_ATTACHMENT_FEATURE;
+  var init_definition13 = __esm({
+    "src/features/abilities/corn-attachment/definition.js"() {
+      CORN_ATTACHMENT_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "corn-kernel-chain",
+          species: 1,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "부착 알갱이 연쇄 폭발",
+          description: "기본 공격 뒤 알갱이가 대상에 붙어요. 첫 부착 1초 후부터 부착 순서대로 0.1초 간격 폭발하며 알갱이마다 발사자 공격력의 50/75/100% 피해를 줘요.",
+          powerValues: Object.freeze([0.5, 0.75, 1]),
+          attachDelayTicks: 20,
+          explosionSpacingTicks: 2,
+          fadeTicks: 6
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/rice-low-health-harvest.js
+  var RICE_LOW_HEALTH_HARVEST_FEATURE;
+  var init_rice_low_health_harvest = __esm({
+    "src/features/abilities/rice-low-health-harvest.js"() {
+      RICE_LOW_HEALTH_HARVEST_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "rice-low-health-harvest",
+          species: 6,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "수확 낫",
+          description: "적이 체력을 잃을수록 쌀의 치명타 확률이 높아져요. 치명타 피해 배율은 공통 2배예요.",
+          rootTier: 1,
+          powerValues: Object.freeze([0.35, 0.55, 0.75])
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/wheat-command-crit.js
+  var WHEAT_COMMAND_CRIT_FEATURE;
+  var init_wheat_command_crit = __esm({
+    "src/features/abilities/wheat-command-crit.js"() {
+      WHEAT_COMMAND_CRIT_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "wheat-command-crit",
+          species: 7,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "밀의 전투 지휘",
+          description: "기본 공격을 발사할 때 35% 확률로 밀을 중심으로 범위 내 살아 있는 아군에게 3초 동안 공격 속도 효과를 줘요. 효과는 밀이나 오라 범위를 벗어나도 유지돼요.",
+          powerValues: Object.freeze([0.5, 0.75, 1.125]),
+          durationTicks: 60,
+          triggerChance: 0.35,
+          branches: Object.freeze({
+            range: Object.freeze({
+              name: "명령 반경",
+              values: Object.freeze([2, 3, 4.5])
+            })
+          })
+        })
+      });
+    }
+  });
+
+  // src/features/abilities/barley-armor-break.js
+  var BARLEY_ARMOR_BREAK_FEATURE;
+  var init_barley_armor_break = __esm({
+    "src/features/abilities/barley-armor-break.js"() {
+      BARLEY_ARMOR_BREAK_FEATURE = Object.freeze({
+        definition: Object.freeze({
+          id: "barley-armor-break",
+          species: 8,
+          availableByDefault: true,
+          minimumTier: 1,
+          name: "도리깨 갑주 파쇄",
+          description: "도리깨 기본 공격이 적중하면 방어도를 고정 수치만큼 낮춰요. 각 적중의 감소가 따로 만료돼요.",
+          rootTier: 1,
+          powerValues: Object.freeze([1, 2, 3]),
+          durationTicks: 60
+        })
+      });
+    }
+  });
+
+  // src/ability-definitions.js
+  var SPECIES_ABILITY_DEFINITIONS;
+  var init_ability_definitions = __esm({
+    "src/ability-definitions.js"() {
+      init_pea_recovery_boost();
+      init_kidney_continuous_leap();
+      init_definition10();
+      init_definition11();
+      init_definition12();
+      init_definition13();
+      init_rice_low_health_harvest();
+      init_wheat_command_crit();
+      init_barley_armor_break();
+      SPECIES_ABILITY_DEFINITIONS = Object.freeze([
+        PEA_RECOVERY_BOOST_FEATURE.definition,
+        KIDNEY_CONTINUOUS_LEAP_FEATURE.definition,
+        CHESTNUT_THORNS_FEATURE.definition,
+        PEANUT_DEATH_SPLIT_FEATURE.definition,
+        WALNUT_RAW_GUARD_FEATURE.definition,
+        CORN_ATTACHMENT_FEATURE.definition,
+        RICE_LOW_HEALTH_HARVEST_FEATURE.definition,
+        WHEAT_COMMAND_CRIT_FEATURE.definition,
+        BARLEY_ARMOR_BREAK_FEATURE.definition
+      ]);
+    }
+  });
+
+  // src/mastery.js
+  function masteryXpForNextLevel(level) {
+    if (!Number.isSafeInteger(level) || level < 1) {
+      throw new RangeError("mastery level must be a positive integer");
+    }
+    return MASTERY_FIRST_LEVEL_XP * MASTERY_LEVEL_XP_MULTIPLIER ** (level - 1);
+  }
+  var MASTERY_FIRST_LEVEL_XP, MASTERY_LEVEL_XP_MULTIPLIER;
+  var init_mastery = __esm({
+    "src/mastery.js"() {
+      MASTERY_FIRST_LEVEL_XP = 100;
+      MASTERY_LEVEL_XP_MULTIPLIER = 1.2;
+    }
+  });
+
+  // src/features/species-growth/legacy-state.js
+  function legacyInvestedPoints(investment) {
+    return investment.powerLevel + Object.values(investment.branchLevels || {}).reduce((total, level) => total + level, 0);
+  }
+  function isValidLegacyAbilityProgressionState(state) {
+    return !!(state && typeof state === "object" && state.schemaVersion === 3 && state.abilities && typeof state.abilities === "object" && !Array.isArray(state.abilities) && Object.keys(state.abilities).length === SPECIES_ABILITY_DEFINITIONS.length && SPECIES_ABILITY_DEFINITIONS.every(
+      (definition) => isValidLegacyAbilityInvestment(definition, state.abilities[definition.id])
+    ));
+  }
+  function isValidLegacyAbilityInvestment(definition, investment) {
+    if (!investment || typeof investment !== "object" || Array.isArray(investment) || !isNonNegativeInteger(investment.powerLevel) || investment.powerLevel > definition.powerValues.length - 1 || !Number.isSafeInteger(investment.masteryLevel) || investment.masteryLevel < 1 || !Number.isFinite(investment.masteryXp) || investment.masteryXp < 0 || investment.masteryXp >= masteryXpForNextLevel(investment.masteryLevel) || Object.keys(investment).some(
+      (key) => !["powerLevel", "branchLevels", "masteryLevel", "masteryXp"].includes(key)
+    )) {
+      return false;
+    }
+    const BRANCHES = definition.branches || {}, BRANCH_LEVELS = investment.branchLevels || {};
+    if (Object.keys(BRANCHES).length === 0 && Object.hasOwn(investment, "branchLevels") || Object.hasOwn(investment, "branchLevels") && (typeof investment.branchLevels !== "object" || !investment.branchLevels || Array.isArray(investment.branchLevels) || Object.keys(BRANCH_LEVELS).length !== Object.keys(BRANCHES).length || Object.keys(BRANCH_LEVELS).some((branchId) => !Object.hasOwn(BRANCHES, branchId)))) {
+      return false;
+    }
+    for (const [BRANCH_ID, BRANCH] of Object.entries(BRANCHES)) {
+      const LEVEL = BRANCH_LEVELS[BRANCH_ID] ?? 0;
+      if (!isNonNegativeInteger(LEVEL) || LEVEL > BRANCH.values.length - 1) {
+        return false;
+      }
+    }
+    return investment.masteryLevel - 1 - legacyInvestedPoints(investment) >= 0;
+  }
+  function isNonNegativeInteger(value) {
+    return Number.isSafeInteger(value) && value >= 0;
+  }
+  var init_legacy_state = __esm({
+    "src/features/species-growth/legacy-state.js"() {
+      init_ability_definitions();
+      init_mastery();
+    }
+  });
+
+  // src/species-catalog.js
+  function speciesById(id) {
+    return SPECIES_CATALOG.find((species) => species.id === id) || SPECIES_CATALOG[SPECIES_CATALOG.length - 1];
+  }
+  function giantSpeciesName(id) {
+    return `거대 ${speciesById(id).name}`;
+  }
+  function speciesRewardName(id) {
+    return `${speciesById(id).name} 종`;
+  }
+  var SPECIES_CATALOG, SPECIES_COUNT, BOSS_SPECIES_WEIGHTS;
+  var init_species_catalog = __esm({
+    "src/species-catalog.js"() {
+      SPECIES_CATALOG = Object.freeze([
+        Object.freeze({
+          id: 0,
+          name: "콩",
+          asset: "pea.svg",
+          // The colours of the floating hands a boss of this species swings: fill and outline.
+          limbFill: "#83ad47",
+          limbOutline: "#4a1c16",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 1,
+          name: "옥수수",
+          asset: "corn-kernel.svg",
+          // The colours of the floating hands a boss of this species swings: fill and outline.
+          limbFill: "#f7cd36",
+          limbOutline: "#4a1c16",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 2,
+          name: "팥",
+          asset: "kidney-bean.svg",
+          // The colours of the floating hands a boss of this species swings: fill and outline.
+          limbFill: "#d06a8f",
+          limbOutline: "#4b1a20",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 3,
+          name: "밤톨",
+          asset: "chestnut.svg",
+          // The colours of the floating hands a boss of this species swings: fill and outline.
+          limbFill: "#84472f",
+          limbOutline: "#2c201c",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 4,
+          name: "땅콩",
+          asset: "peanut.svg",
+          // The colours of the floating hands a boss of this species swings: fill and outline.
+          limbFill: "#c89d67",
+          limbOutline: "#3b241e",
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 5,
+          name: "호두",
+          asset: "walnut.svg",
+          // The colours of the floating hands a boss of this species swings: fill and outline.
+          limbFill: "#a96c18",
+          limbOutline: "#431811",
+          // The weapon this species' boss holds: it goes wherever that floating hand goes.
+          heldItem: Object.freeze({ part: "hammer", hand: "arm-right" }),
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 6,
+          name: "쌀",
+          asset: "rice.svg",
+          // The colours of the floating hands a boss of this species swings: fill and outline.
+          limbFill: "#f3efe4",
+          limbOutline: "#4b211b",
+          // The weapon this species' boss holds: it goes wherever that floating hand goes.
+          heldItem: Object.freeze({ part: "sickle", hand: "arm-right" }),
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 7,
+          name: "밀",
+          asset: "wheat.svg",
+          // The colours of the floating hands a boss of this species swings: fill and outline.
+          limbFill: "#e4b247",
+          limbOutline: "#34271f",
+          // The weapon this species' boss holds: it goes wherever that floating hand goes.
+          heldItem: Object.freeze({ part: "command-baton", hand: "arm-right" }),
+          bossWeight: 1
+        }),
+        Object.freeze({
+          id: 8,
+          name: "보리",
+          asset: "barley.svg",
+          // The colours of the floating hands a boss of this species swings: fill and outline.
+          limbFill: "#ddaa43",
+          limbOutline: "#4b211b",
+          bossWeight: 1
+        })
+      ]);
+      SPECIES_COUNT = SPECIES_CATALOG.length;
+      BOSS_SPECIES_WEIGHTS = Object.freeze(SPECIES_CATALOG.map((species) => species.bossWeight));
+    }
+  });
+
+  // src/features/species-growth/definition.js
+  function createSpeciesGrowthDefinition(species, { available = false, basic = [], specialty = [] } = {}) {
+    const NODES = [
+      ...EVOLUTION_UNLOCK_LEVELS.map((level, index) => ({
+        id: `evolution-${index + 2}`,
+        kind: "evolution",
+        tier: index + 2,
+        maxRank: 1,
+        pointCost: 2,
+        unlockLevels: [level],
+        prerequisite: index === 0 ? null : `evolution-${index + 1}`,
+        available
+      })),
+      ...["basic", "specialty"].flatMap(
+        (kind) => Array.from({ length: 3 }, (_, index) => ({
+          id: `${kind}-${index + 1}`,
+          kind,
+          name: (kind === "basic" ? basic : specialty)[index] || null,
+          maxRank: kind === "basic" ? 10 : 5,
+          pointCost: kind === "basic" ? 1 : 2,
+          unlockLevels: kind === "basic" ? Array.from({ length: 10 }, (_2, rank) => rank * 5 + 1) : Array.from({ length: 5 }, (_2, rank) => rank * 8 + 11),
+          prerequisite: null,
+          available
+        }))
+      )
+    ];
+    return Object.freeze({
+      species,
+      available,
+      nodes: Object.freeze(
+        NODES.map((node) => Object.freeze({ ...node, unlockLevels: Object.freeze(node.unlockLevels) }))
+      )
+    });
+  }
+  function speciesGrowthDefinition(species) {
+    return SPECIES_GROWTH_DEFINITIONS.find((definition) => definition.species === species) || null;
+  }
+  function growthTreeCapacity(definition) {
+    return definition.nodes.reduce((total, node) => total + node.maxRank * node.pointCost, 0);
+  }
+  var SPECIES_MASTERY_CAP, EVOLUTION_UNLOCK_LEVELS, SPECIES_GROWTH_DEFINITIONS;
+  var init_definition14 = __esm({
+    "src/features/species-growth/definition.js"() {
+      init_species_catalog();
+      SPECIES_MASTERY_CAP = 50;
+      EVOLUTION_UNLOCK_LEVELS = Object.freeze([2, 6, 12, 20, 30]);
+      SPECIES_GROWTH_DEFINITIONS = Object.freeze(
+        SPECIES_CATALOG.map(
+          ({ id }) => createSpeciesGrowthDefinition(
+            id,
+            id === 1 ? {
+              available: true,
+              basic: ["직격 위력", "부착 폭발 위력", "공격 속도"],
+              specialty: ["연쇄 가열", "마무리 파열", "추가 알"]
+            } : id === 0 ? {
+              available: true,
+              basic: ["박치기 위력", "첫 재돌진 위력", "후딜 감소"],
+              specialty: ["재접근 가속", "첫 충돌", "마지막 충돌"]
+            } : id === 2 ? {
+              available: true,
+              basic: ["도약 위력", "최대 체력", "공격 속도"],
+              specialty: ["착지 범위", "연속 도약", "마무리 착지"]
+            } : id === 3 ? {
+              available: true,
+              basic: ["가시 위력", "최대 체력", "공격 속도"],
+              specialty: ["주기 가시", "가시 사거리", "집중 마무리"]
+            } : {}
+          )
+        )
+      );
+    }
+  });
+
+  // src/features/species-growth/model.js
+  function validLegacyMastery(build) {
+    return build && Number.isSafeInteger(build.masteryLevel) && build.masteryLevel >= 1 && Number.isFinite(build.masteryXp) && build.masteryXp >= 0 && build.masteryXp < masteryXpForNextLevel(build.masteryLevel);
+  }
+  function growthLockReason(context) {
+    if (context.inCombat === true || context.runActive === true) {
+      return "combat-lock";
+    }
+    return context.location === "farm" ? null : "farm-only";
+  }
+  var SpeciesGrowth;
+  var init_model = __esm({
+    "src/features/species-growth/model.js"() {
+      init_mastery();
+      init_definition14();
+      SpeciesGrowth = class {
+        constructor(definition) {
+          this.definition = definition;
+          this.nodes = new Map(definition.nodes.map((node) => [node.id, node]));
+        }
+        createBuild() {
+          return { masteryLevel: 1, masteryXp: 0, nodeRanks: {} };
+        }
+        investedPoints(build) {
+          return Object.entries(build.nodeRanks).reduce(
+            (total, [id, rank]) => total + rank * (this.nodes.get(id)?.pointCost ?? NaN),
+            0
+          );
+        }
+        pointsLeft(build) {
+          return Math.min(SPECIES_MASTERY_CAP, build.masteryLevel) - this.investedPoints(build);
+        }
+        isValidBuild(build) {
+          if (!build || !Number.isSafeInteger(build.masteryLevel) || build.masteryLevel < 1 || build.masteryLevel > SPECIES_MASTERY_CAP || !Number.isFinite(build.masteryXp) || build.masteryXp < 0 || build.masteryLevel < SPECIES_MASTERY_CAP && build.masteryXp >= masteryXpForNextLevel(build.masteryLevel) || !build.nodeRanks || typeof build.nodeRanks !== "object" || Array.isArray(build.nodeRanks) || Object.keys(build).some((key) => !["masteryLevel", "masteryXp", "nodeRanks", "legacyMastery"].includes(key))) {
+            return false;
+          }
+          if (build.legacyMastery !== void 0 && !validLegacyMastery(build.legacyMastery)) {
+            return false;
+          }
+          for (const [ID, RANK] of Object.entries(build.nodeRanks)) {
+            const NODE = this.nodes.get(ID);
+            if (!NODE || !Number.isSafeInteger(RANK) || RANK < 0 || RANK > NODE.maxRank || RANK > 0 && (!this.definition.available || !NODE.available) || RANK > 0 && build.masteryLevel < NODE.unlockLevels[RANK - 1] || RANK > 0 && NODE.prerequisite && build.nodeRanks[NODE.prerequisite] !== 1) {
+              return false;
+            }
+          }
+          return this.pointsLeft(build) >= 0;
+        }
+        // Call only after validating the complete legacy save. No reward increment is persisted:
+        // entitlement is derived from level, so reloading cannot add the starting point again.
+        migrateBuild(legacy) {
+          if (!this.definition.available) {
+            return legacy;
+          }
+          if (Object.hasOwn(legacy, "nodeRanks")) {
+            if (!this.isValidBuild(legacy)) {
+              throw new TypeError("Invalid species growth build");
+            }
+            return structuredClone(legacy);
+          }
+          if (!validLegacyMastery(legacy)) {
+            throw new TypeError("Invalid legacy mastery");
+          }
+          const BUILD = {
+            masteryLevel: Math.min(SPECIES_MASTERY_CAP, legacy.masteryLevel),
+            masteryXp: legacy.masteryXp,
+            nodeRanks: {}
+          };
+          if (legacy.masteryLevel > SPECIES_MASTERY_CAP) {
+            BUILD.legacyMastery = { masteryLevel: legacy.masteryLevel, masteryXp: legacy.masteryXp };
+            BUILD.masteryXp = 0;
+          }
+          return BUILD;
+        }
+        awardXp(build, amount) {
+          if (!this.isValidBuild(build) || !Number.isFinite(amount) || amount < 0 || amount >= 1e13) {
+            return { ok: false, reason: "invalid-xp", build };
+          }
+          let experience = build.masteryXp + amount;
+          if (!Number.isFinite(experience)) {
+            return { ok: false, reason: "xp-overflow", build };
+          }
+          const ADDITION_ERROR = Math.abs(experience - build.masteryXp - amount), ROUNDING_TOLERANCE = Math.min(
+            2 * Number.EPSILON * Math.max(Math.abs(build.masteryXp), Math.abs(experience)),
+            amount * 1e-9
+          );
+          if (ADDITION_ERROR > ROUNDING_TOLERANCE || amount > 0 && experience === build.masteryXp) {
+            return { ok: false, reason: "xp-precision-loss", build };
+          }
+          let level = build.masteryLevel;
+          while (level < SPECIES_MASTERY_CAP && experience >= masteryXpForNextLevel(level)) {
+            experience -= masteryXpForNextLevel(level);
+            level += 1;
+          }
+          return {
+            ok: true,
+            build: { ...structuredClone(build), masteryLevel: level, masteryXp: experience },
+            levelsGained: level - build.masteryLevel,
+            pointsAwarded: level - build.masteryLevel
+          };
+        }
+        canPurchase(build, nodeId, context = {}) {
+          if (!this.definition.available) {
+            return { allowed: false, reason: "not-available" };
+          }
+          if (!this.isValidBuild(build)) {
+            return { allowed: false, reason: "invalid-state" };
+          }
+          const LOCK = growthLockReason(context);
+          if (LOCK) {
+            return { allowed: false, reason: LOCK };
+          }
+          const NODE = this.nodes.get(nodeId);
+          if (!NODE || !NODE.available) {
+            return { allowed: false, reason: NODE ? "not-available" : "unknown-node" };
+          }
+          const RANK = build.nodeRanks[nodeId] || 0;
+          if (RANK >= NODE.maxRank) {
+            return { allowed: false, reason: "max-rank" };
+          }
+          if (NODE.prerequisite && build.nodeRanks[NODE.prerequisite] !== 1) {
+            return { allowed: false, reason: "prerequisite-required" };
+          }
+          if (build.masteryLevel < NODE.unlockLevels[RANK]) {
+            return { allowed: false, reason: "mastery-required", requiredLevel: NODE.unlockLevels[RANK] };
+          }
+          if (this.pointsLeft(build) < NODE.pointCost) {
+            return { allowed: false, reason: "insufficient-points" };
+          }
+          return { allowed: true, reason: null, pointCost: NODE.pointCost };
+        }
+        purchase(build, nodeId, context = {}) {
+          const CHECK = this.canPurchase(build, nodeId, context);
+          if (!CHECK.allowed) {
+            return { ok: false, reason: CHECK.reason, build };
+          }
+          const NEXT = structuredClone(build);
+          NEXT.nodeRanks[nodeId] = (NEXT.nodeRanks[nodeId] || 0) + 1;
+          return { ok: true, build: NEXT, spent: CHECK.pointCost };
+        }
+        reset(build, context = {}) {
+          const REASON = !this.definition.available ? "not-available" : !this.isValidBuild(build) ? "invalid-state" : growthLockReason(context);
+          if (REASON) {
+            return { ok: false, reason: REASON, build };
+          }
+          return {
+            ok: true,
+            build: { ...structuredClone(build), nodeRanks: {} },
+            refunded: this.investedPoints(build)
+          };
+        }
+        // Research never gates merging. The physical grade, not mastery level, bounds the attack form.
+        attackTier(build, unitTier) {
+          if (!Number.isInteger(unitTier) || unitTier < 1 || unitTier > 6) {
+            throw new RangeError("Invalid unit tier");
+          }
+          if (!this.definition.available) {
+            return 1;
+          }
+          if (!this.isValidBuild(build)) {
+            throw new TypeError("Invalid species growth build");
+          }
+          let tier = 1;
+          for (const NODE of this.definition.nodes) {
+            if (NODE.kind === "evolution" && NODE.tier <= unitTier && build.nodeRanks[NODE.id] === 1) {
+              tier = Math.max(tier, NODE.tier);
+            }
+          }
+          return tier;
+        }
+      };
+    }
+  });
+
+  // src/features/species-growth/state.js
+  function growthForAbility(abilityId) {
+    return GROWTH_BY_ABILITY.get(abilityId) || null;
+  }
+  function isGrowthInvestment(investment) {
+    return investment?.treeVersion === SPECIES_TREE_VERSION;
+  }
+  function growthBuildOf(investment) {
+    return {
+      masteryLevel: investment.masteryLevel,
+      masteryXp: investment.masteryXp,
+      nodeRanks: investment.nodeRanks,
+      ...investment.legacyMastery ? { legacyMastery: investment.legacyMastery } : {}
+    };
+  }
+  function isValidGrowthInvestment(abilityId, investment) {
+    const GROWTH = growthForAbility(abilityId), DEFINITION13 = SPECIES_ABILITY_DEFINITIONS.find((definition) => definition.id === abilityId);
+    return !!(GROWTH && isGrowthInvestment(investment) && ["treeVersion", "masteryLevel", "masteryXp", "nodeRanks"].every((key) => Object.hasOwn(investment, key)) && Object.keys(investment).every(
+      (key) => ["treeVersion", "masteryLevel", "masteryXp", "nodeRanks", "legacyMastery", "legacyInvestment"].includes(
+        key
+      )
+    ) && GROWTH.isValidBuild(growthBuildOf(investment)) && (!Object.hasOwn(investment, "legacyMastery") || investment.legacyMastery && Object.keys(investment.legacyMastery).length === 2 && Object.hasOwn(investment.legacyMastery, "masteryLevel") && Object.hasOwn(investment.legacyMastery, "masteryXp")) && (!Object.hasOwn(investment, "legacyInvestment") || isValidLegacyAbilityInvestment(DEFINITION13, investment.legacyInvestment)));
+  }
+  function migrateAbilityProgressionState(state) {
+    if (!(state?.schemaVersion === 3 ? isValidLegacyAbilityProgressionState(state) : isValidMixedAbilityEntries(state, { allowLegacy: true }))) {
+      throw new TypeError("Invalid ability progression");
+    }
+    const NEXT = structuredClone(state);
+    NEXT.schemaVersion = 4;
+    for (const [ABILITY_ID9, INVESTMENT] of Object.entries(state.abilities)) {
+      const GROWTH = growthForAbility(ABILITY_ID9);
+      if (GROWTH && !isGrowthInvestment(INVESTMENT)) {
+        NEXT.abilities[ABILITY_ID9] = {
+          treeVersion: SPECIES_TREE_VERSION,
+          ...GROWTH.migrateBuild(INVESTMENT),
+          legacyInvestment: structuredClone(INVESTMENT)
+        };
+      }
+    }
+    return NEXT;
+  }
+  function isValidMixedAbilityEntries(state, { allowLegacy = false } = {}) {
+    return !!(state && typeof state === "object" && state.schemaVersion === 4 && state.abilities && typeof state.abilities === "object" && !Array.isArray(state.abilities) && Object.keys(state.abilities).length === SPECIES_ABILITY_DEFINITIONS.length && SPECIES_ABILITY_DEFINITIONS.every(
+      (definition) => growthForAbility(definition.id) ? isValidGrowthInvestment(definition.id, state.abilities[definition.id]) || allowLegacy && isValidLegacyAbilityInvestment(definition, state.abilities[definition.id]) : isValidLegacyAbilityInvestment(definition, state.abilities[definition.id])
+    ));
+  }
+  var SPECIES_TREE_VERSION, GROWTH_BY_ABILITY;
+  var init_state = __esm({
+    "src/features/species-growth/state.js"() {
+      init_ability_definitions();
+      init_legacy_state();
+      init_model();
+      init_definition14();
+      SPECIES_TREE_VERSION = 1;
+      GROWTH_BY_ABILITY = new Map(
+        SPECIES_ABILITY_DEFINITIONS.filter((definition) => speciesGrowthDefinition(definition.species)?.available).map(
+          (definition) => [definition.id, new SpeciesGrowth(speciesGrowthDefinition(definition.species))]
+        )
+      );
+    }
+  });
+
+  // src/unit-grades.js
+  function mergeMaterialCostForTier(resultTier) {
+    if (!Number.isInteger(resultTier) || resultTier < 2 || resultTier > MAX_UNIT_TIER) {
+      return 0;
+    }
+    return UNIT_GRADES[resultTier - 1].materialCost;
+  }
+  var UNIT_GRADES, MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT;
+  var init_unit_grades = __esm({
+    "src/unit-grades.js"() {
+      UNIT_GRADES = Object.freeze([
+        Object.freeze({
+          tier: 1,
+          name: "Common",
+          materialCost: 0,
+          outlineColor: "#d8d4bd"
+        }),
+        Object.freeze({
+          tier: 2,
+          name: "Uncommon",
+          materialCost: 2,
+          outlineColor: "#83ce76"
+        }),
+        Object.freeze({
+          tier: 3,
+          name: "Rare",
+          materialCost: 2,
+          outlineColor: "#78b9ff"
+        }),
+        Object.freeze({
+          tier: 4,
+          name: "Epic",
+          materialCost: 3,
+          outlineColor: "#bd8cff"
+        }),
+        Object.freeze({
+          tier: 5,
+          name: "Legendary",
+          materialCost: 4,
+          outlineColor: "#ffb354"
+        }),
+        Object.freeze({
+          tier: 6,
+          name: "Mythic",
+          materialCost: 5,
+          outlineColor: "#ff7086"
+        })
+      ]);
+      MAX_UNIT_TIER = UNIT_GRADES.length;
+      MAX_GRADE_MATERIAL_COUNT = Math.max(...UNIT_GRADES.map((grade) => grade.materialCost));
+    }
+  });
+
+  // src/unit-stats.js
+  function withRunMods(stats) {
+    const OUT = { ...stats };
+    for (const [STAT, MOD] of Object.entries(RUN_MODS)) {
+      if (STAT !== "regen") {
+        OUT[STAT] = (OUT[STAT] + MOD.flat) * (1 + MOD.pct);
+      }
+    }
+    OUT.maxHp = Math.round(OUT.maxHp);
+    if (RUN_MODS.regen) {
+      OUT.regen += RUN_MODS.regen.flat + OUT.maxHp * RUN_MODS.regen.pct;
+    }
+    return OUT;
+  }
+  function createBaseStats(tier, speciesProfile) {
+    let maxHp = TIER_HP;
+    let attackPower = TIER_ATTACK;
+    for (let resultTier = 2; resultTier <= tier; resultTier++) {
+      const TRANSITION_MULTIPLIER = UNIT_GRADES[resultTier - 1].materialCost / 2;
+      maxHp *= TIER_HP_SCALE * TRANSITION_MULTIPLIER;
+      attackPower *= TIER_ATTACK_SCALE * TRANSITION_MULTIPLIER;
+    }
+    return Object.freeze(
+      withRunMods({
+        maxHp,
+        attackPower,
+        ...COMMON_UNIT_STAT_DEFAULTS,
+        ...speciesProfile
+      })
+    );
+  }
+  function fillBaseStats() {
+    BASE_STATS_BY_PROFILE.clear();
+    for (const PROFILE of [COMMON_UNIT_STAT_DEFAULTS, ...COMMON_UNIT_STAT_PROFILES]) {
+      BASE_STATS_BY_PROFILE.set(
+        PROFILE,
+        Array.from(
+          {
+            length: MAX_UNIT_TIER
+          },
+          (_, index) => createBaseStats(index + 1, PROFILE)
+        )
+      );
+    }
+  }
+  function setRunStatMods(mods) {
+    for (const STAT of Object.keys(RUN_MODS)) {
+      delete RUN_MODS[STAT];
+    }
+    Object.assign(RUN_MODS, mods);
+    fillBaseStats();
+  }
+  function baseUnitStatsFor(tier, species) {
+    tier = Math.max(1, Math.min(MAX_UNIT_TIER, Number.isInteger(tier) ? tier : 1));
+    const PROFILE = COMMON_UNIT_STAT_PROFILES[species] || COMMON_UNIT_STAT_DEFAULTS;
+    return BASE_STATS_BY_PROFILE.get(PROFILE)?.[tier - 1] || createBaseStats(tier, PROFILE);
+  }
+  function resolveUnitStats(unit2, overrides) {
+    const BASE = baseUnitStatsFor(unit2?.tier, unit2?.species), MULTIPLIER = Number.isFinite(unit2?.permanentStatMultiplier) ? Math.max(0, unit2.permanentStatMultiplier) : 1;
+    return {
+      ...BASE,
+      maxHp: BASE.maxHp * MULTIPLIER * (unit2?.growthMaxHpMultiplier ?? 1),
+      attackPower: BASE.attackPower * MULTIPLIER,
+      ...unit2?.isFormationClone ? { maxHp: 1 } : {},
+      ...overrides
+    };
+  }
+  function unitMaxHpFor(unit2) {
+    return unit2.isFormationClone ? 1 : baseUnitStatsFor(unit2.tier, unit2.species).maxHp * (unit2.growthMaxHpMultiplier ?? 1);
+  }
+  function applyRunGrowthHealth(unit2, progression, { preserveRatio = false } = {}) {
+    if ((unit2.species !== 2 && unit2.species !== 3 || unit2.faction !== "player" || unit2.isFormationClone) && (unit2.growthMaxHpMultiplier ?? 1) === 1) {
+      return;
+    }
+    const PREVIOUS_MAX = unitMaxHpFor(unit2), BUILD = progression?.abilities?.[unit2.species === 3 ? "chestnut-target-thorns" : "kidney-continuous-leap"];
+    unit2.growthMaxHpMultiplier = (unit2.species === 2 || unit2.species === 3) && unit2.faction === "player" && !unit2.isFormationClone && BUILD?.treeVersion === 1 ? 1 + 0.04 * (BUILD.nodeRanks["basic-2"] || 0) : 1;
+    const NEXT_MAX = unitMaxHpFor(unit2);
+    if (unit2.hp > 0) {
+      unit2.hp = preserveRatio ? Math.min(1, unit2.hp / PREVIOUS_MAX) * NEXT_MAX : Math.min(unit2.hp, NEXT_MAX);
+    }
+  }
+  function combatStats(unit2, overrides) {
+    return overrides === void 0 && !unit2?.isFormationClone && (unit2?.growthMaxHpMultiplier ?? 1) === 1 ? baseUnitStatsFor(unit2?.tier, unit2?.species) : resolveUnitStats(unit2, overrides);
+  }
+  function resolveDamage(rawDamage, armor = 0, armorPenetration = 0, critical = false, critMultiplier = COMMON_UNIT_STAT_DEFAULTS.critMultiplier) {
+    const RAW = Number.isFinite(rawDamage) ? Math.max(0, rawDamage) : 0;
+    const PENETRATION = clamp(Number.isFinite(armorPenetration) ? armorPenetration : 0, 0, 1);
+    const EFFECTIVE_ARMOR = Math.max(0, Number.isFinite(armor) ? armor : 0) * (1 - PENETRATION);
+    const CRIT = critical ? Math.max(1, Number.isFinite(critMultiplier) ? critMultiplier : 1) : 1;
+    const MITIGATED = RAW * CRIT * ARMOR_SCALE / (ARMOR_SCALE + EFFECTIVE_ARMOR);
+    return {
+      rawDamage: RAW,
+      effectiveArmor: EFFECTIVE_ARMOR,
+      critical,
+      damage: MITIGATED
+    };
+  }
+  function resolveCritical(stats, roll = 1) {
+    const CHANCE = clamp(Number.isFinite(stats?.critChance) ? stats.critChance : 0, 0, 1);
+    return CHANCE > 0 && roll < CHANCE;
+  }
+  function scaleMoveSpeed(baseSpeed, unit2, overrides) {
+    return Math.max(0, Number.isFinite(baseSpeed) ? baseSpeed : 0) * Math.max(0, combatStats(unit2, overrides).moveSpeed);
+  }
+  function scaleAttackRecovery(baseRecovery, unit2, overrides) {
+    return Math.max(0, Number.isFinite(baseRecovery) ? baseRecovery : 0) / Math.max(0.05, combatStats(unit2, overrides).attackSpeed);
+  }
+  function scaleAttackArea(baseArea, unit2, overrides) {
+    return Math.max(0, Number.isFinite(baseArea) ? baseArea : 0) * Math.max(0, combatStats(unit2, overrides).attackArea);
+  }
+  function applyDamage(target, rawDamage, {
+    armor = 0,
+    armorPenetration = 0,
+    critical = false,
+    critMultiplier = COMMON_UNIT_STAT_DEFAULTS.critMultiplier
+  } = {}) {
+    if (!target || !Number.isFinite(target.hp)) {
+      return {
+        actualLoss: 0,
+        ...resolveDamage(rawDamage, armor, armorPenetration, critical, critMultiplier)
+      };
+    }
+    const RESOLVED = resolveDamage(rawDamage, armor, armorPenetration, critical, critMultiplier);
+    const ACTUAL_LOSS = Math.min(Math.max(0, target.hp), RESOLVED.damage);
+    setHealth(target, Math.max(0, target.hp - ACTUAL_LOSS));
+    return {
+      ...RESOLVED,
+      actualLoss: ACTUAL_LOSS
+    };
+  }
+  function applyHealing(target, amount, receiverStats = combatStats(target)) {
+    if (!target || !Number.isFinite(target.hp) || target.hp <= 0) {
+      return 0;
+    }
+    const MAX_HP = target.isFormationClone ? 1 : Number.isFinite(receiverStats?.maxHp) ? receiverStats.maxHp : 0;
+    const RECEIVED = Number.isFinite(receiverStats?.healingReceivedMultiplier) ? Math.max(0, receiverStats.healingReceivedMultiplier) : 1;
+    const REQUESTED = Number.isFinite(amount) ? Math.max(0, amount) * RECEIVED : 0;
+    const HEALED = Math.min(Math.max(0, MAX_HP - target.hp), REQUESTED);
+    setHealth(target, target.hp + HEALED);
+    return HEALED;
+  }
+  function applyDamageToTargets(source, targets, {
+    rawDamage,
+    area = false,
+    sourceKind = "direct",
+    sourceStatOverrides,
+    armorForTarget = (target) => combatStats(target).armor,
+    roll = () => 1
+  } = {}) {
+    const SOURCE_STATS = source ? combatStats(source, sourceStatOverrides) : null;
+    const CRITICAL = !!SOURCE_STATS && SOURCE_STATS.critChance > 0 && resolveCritical(SOURCE_STATS, roll());
+    const HITS = [];
+    let totalActualLoss = 0;
+    for (const TARGET of targets || []) {
+      const RESULT = applyDamage(TARGET, rawDamage, {
+        armor: armorForTarget(TARGET),
+        armorPenetration: SOURCE_STATS?.armorPenetration || 0,
+        critical: CRITICAL,
+        critMultiplier: SOURCE_STATS?.critMultiplier ?? COMMON_UNIT_STAT_DEFAULTS.critMultiplier
+      });
+      HITS.push(RESULT);
+      totalActualLoss += RESULT.actualLoss;
+    }
+    const BASE_RATE = sourceKind === "direct" ? SOURCE_STATS?.lifesteal || 0 : 0;
+    const HEAL_RATE = area ? BASE_RATE / 3 : BASE_RATE;
+    const HEALED = source && HEAL_RATE > 0 ? applyHealing(source, totalActualLoss * HEAL_RATE, SOURCE_STATS) : 0;
+    return {
+      hits: HITS,
+      totalActualLoss,
+      healed: HEALED,
+      critical: CRITICAL
+    };
+  }
+  function resolveStatusDuration(baseDuration, source, target, { sourceStatOverrides, targetStatOverrides } = {}) {
+    const SOURCE_STATS = source ? combatStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+    const TARGET_STATS = target ? combatStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+    const DURATION_SCALE = Number.isFinite(SOURCE_STATS.statusDuration) ? Math.max(0, SOURCE_STATS.statusDuration) : 1;
+    const RESISTANCE = clamp(Number.isFinite(TARGET_STATS.statusResistance) ? TARGET_STATS.statusResistance : 0, 0, 1);
+    return Math.max(0, Number.isFinite(baseDuration) ? baseDuration : 0) * DURATION_SCALE * (1 - RESISTANCE);
+  }
+  function resolveKnockback(basePower, source, target, { sourceStatOverrides, targetStatOverrides } = {}) {
+    const SOURCE_STATS = source ? combatStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+    const TARGET_STATS = target ? combatStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
+    const POWER = Number.isFinite(SOURCE_STATS.knockbackPower) ? Math.max(0, SOURCE_STATS.knockbackPower) : 1;
+    const RESISTANCE = clamp(
+      Number.isFinite(TARGET_STATS.knockbackResistance) ? TARGET_STATS.knockbackResistance : 0,
+      0,
+      1
+    );
+    return Math.max(0, Number.isFinite(basePower) ? basePower : 0) * POWER * (1 - RESISTANCE);
+  }
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+  function setHealth(target, value) {
+    if (typeof target.setHealth === "function") {
+      target.setHealth(value);
+    } else {
+      target.hp = value;
+    }
+  }
+  var TIER_HP, TIER_HP_SCALE, TIER_ATTACK, TIER_ATTACK_SCALE, ARMOR_SCALE, COMMON_UNIT_STAT_DEFAULTS, COMMON_UNIT_STAT_PROFILES, RUN_MODS, BASE_STATS_BY_PROFILE;
+  var init_unit_stats = __esm({
+    "src/unit-stats.js"() {
+      init_unit_grades();
+      init_species_catalog();
+      TIER_HP = 40;
+      TIER_HP_SCALE = 1.5;
+      TIER_ATTACK = 4;
+      TIER_ATTACK_SCALE = 1.2;
+      ARMOR_SCALE = 100;
+      COMMON_UNIT_STAT_DEFAULTS = Object.freeze({
+        armor: 0,
+        moveSpeed: 1,
+        attackSpeed: 1,
+        critChance: 0,
+        critMultiplier: 2,
+        armorPenetration: 0,
+        attackArea: 1,
+        lifesteal: 0,
+        regen: 0,
+        healingReceivedMultiplier: 1,
+        knockbackPower: 1,
+        knockbackResistance: 0,
+        statusDuration: 1,
+        statusResistance: 0
+      });
+      COMMON_UNIT_STAT_PROFILES = Object.freeze(
+        Array.from(
+          {
+            length: SPECIES_COUNT
+          },
+          () => Object.freeze({
+            ...COMMON_UNIT_STAT_DEFAULTS
+          })
+        )
+      );
+      RUN_MODS = {};
+      BASE_STATS_BY_PROFILE = /* @__PURE__ */ new Map();
+      fillBaseStats();
+    }
+  });
+
+  // src/factions.js
+  function hasFaction(actor, faction) {
+    return actor?.faction === faction;
+  }
+  function areOpposingFactions(a, b) {
+    return !!a && !!b && typeof a.faction === "string" && typeof b.faction === "string" && a.faction !== b.faction;
+  }
+  var FACTION_CONFIG;
+  var init_factions = __esm({
+    "src/factions.js"() {
+      FACTION_CONFIG = Object.freeze({
+        PLAYER: "player",
+        ENEMY: "enemy"
+      });
+    }
+  });
+
+  // src/features/species-growth/chestnut-attack.js
+  function chestnutGrowthBuild(progression) {
+    const ENTRY = progression?.abilities?.["chestnut-target-thorns"];
+    return ENTRY?.treeVersion === 1 ? growthBuildOf(ENTRY) : null;
+  }
+  function chestnutRange(world, unit2) {
+    if (unit2.species !== 3) {
+      return null;
+    }
+    const BUILD = chestnutGrowthBuild(world.abilityProgressionFor(unit2));
+    if (!BUILD) {
+      return null;
+    }
+    const FORM = growthForAbility("chestnut-target-thorns").attackTier(BUILD, unit2.tier);
+    return (FORM >= 3 ? 2 : 1.45) * (1 + 0.04 * (BUILD.nodeRanks["specialty-2"] || 0));
+  }
+  function chestnutBudgetMultiplier(tier, one, current) {
+    let materials = 1;
+    for (let grade = 2; grade <= tier; grade++) {
+      materials *= mergeMaterialCostForTier(grade);
+    }
+    return one > 0 && current > 0 && Number.isFinite(one + current) ? one * materials * 1.05 ** (tier - 1) / current : 1.75 ** (tier - 1);
+  }
+  function createChestnutAttack(world, unit2, action, commandSpeed = 1, periodic = false) {
+    const BUILD = chestnutGrowthBuild(world.abilityProgressionFor(unit2));
+    if (!BUILD || unit2.species !== 3) {
+      return null;
+    }
+    const R2 = BUILD.nodeRanks, FORM = growthForAbility("chestnut-target-thorns").attackTier(BUILD, unit2.tier);
+    const C = world.createAttackContext(unit2, { attackKind: "chestnut-spike", attackMultiplier: 1 });
+    const SPEED = Math.min(
+      4,
+      Math.max(0.05, C.attackerStats.attackSpeed * commandSpeed * (1 + 0.02 * (R2["basic-3"] || 0)))
+    );
+    const INPUTS = { one: baseUnitStatsFor(1, 3).attackPower, current: baseUnitStatsFor(unit2.tier, 3).attackPower };
+    const COUNT = periodic ? 1 + (R2["specialty-1"] || 0) : CHESTNUT_WEIGHTS[FORM].length;
+    return {
+      version: 1,
+      id: action.id,
+      owner: unit2.id,
+      ownerGeneration: unit2.generation,
+      tier: unit2.tier,
+      form: FORM,
+      periodic,
+      speed: SPEED,
+      windupSeconds: 0.28 / SPEED,
+      recoverySeconds: 0.65 / SPEED,
+      budgetInputs: INPUTS,
+      multiplier: chestnutBudgetMultiplier(unit2.tier, INPUTS.one, INPUTS.current) * (1 + 0.03 * (R2["basic-1"] || 0)),
+      ranks: {
+        power: R2["basic-1"] || 0,
+        periodic: R2["specialty-1"] || 0,
+        range: R2["specialty-2"] || 0,
+        finish: R2["specialty-3"] || 0
+      },
+      source: {
+        id: unit2.id,
+        generation: unit2.generation,
+        ownerId: unit2.ownerId,
+        faction: unit2.faction,
+        isFormationClone: !!unit2.isFormationClone,
+        species: 3,
+        tier: unit2.tier,
+        x: unit2.x,
+        y: unit2.y,
+        z: unit2.z || 0,
+        sourceKind: C.sourceKind,
+        attackerStats: structuredClone(C.attackerStats),
+        attackPowerMultiplier: C.attackPowerMultiplier,
+        sourceDamageScale: world.passiveDamageScale(unit2, C.attackerStats.maxHp, world.boss, world.boss.maxHp)
+      },
+      launchTick: null,
+      origin: null,
+      point: null,
+      targetId: action.targetId,
+      targetGeneration: action.targetGeneration,
+      shots: Array.from({ length: COUNT }, (_, index) => ({
+        slot: index,
+        tick: periodic ? index * 2 : Math.ceil(index * 3 / SPEED - 1e-9),
+        weight: periodic ? 1 / COUNT : CHESTNUT_WEIGHTS[FORM][index],
+        stage: periodic ? "periodic" : STAGES2[FORM][index]
+      })),
+      nextShot: 0,
+      completedSlots: Array(COUNT).fill(false),
+      cancelled: false,
+      attack: null,
+      criticalRolls: {}
+    };
+  }
+  function launchChestnutAttack(world, unit2, action) {
+    const R2 = action.chestnutAttack;
+    if (!R2 || R2.launchTick !== null) {
+      return false;
+    }
+    R2.launchTick = world.simulationTick;
+    R2.origin = { x: unit2.x, y: unit2.y, z: 0.35 };
+    const CANDIDATE = R2.targetId === "boss" ? world.boss : world._unitForId(R2.targetId);
+    const T = CANDIDATE?.generation === R2.targetGeneration ? CANDIDATE : null;
+    const DX = (T?.x ?? action.target.x) - unit2.x, DY = (T?.y ?? action.target.y) - unit2.y;
+    const DIST = Math.hypot(DX, DY) || 1;
+    const TRAVEL = T?.generation === R2.targetGeneration ? Math.max(0.1, DIST - T.radius + 0.04) : Math.hypot(action.target.x - unit2.x, action.target.y - unit2.y);
+    R2.point = { x: unit2.x + DX / DIST * TRAVEL, y: unit2.y + DY / DIST * TRAVEL, z: 0 };
+    R2.attack = new AttackAction(
+      { durationTicks: R2.shots.at(-1).tick + 20, strikes: R2.shots.map((s) => ({ tick: s.tick, weight: s.weight })) },
+      R2.launchTick
+    ).toDTO();
+    world.chestnutAttacks.push(R2);
+    emitChestnutShots(world, R2);
+    return true;
+  }
+  function emitChestnutShots(world, r) {
+    if (r.cancelled || r.nextShot === r.shots.length) {
+      return;
+    }
+    const OWNER = world._unitForId(r.owner);
+    if (!OWNER || OWNER.generation !== r.ownerGeneration || OWNER.hp <= 0 || OWNER.stun > 0 || OWNER.down > 0 || !r.periodic && OWNER.ability.action?.chestnutAttack !== r && r.nextShot < r.shots.length) {
+      r.cancelled = true;
+    }
+    if (r.cancelled || r.launchTick + r.shots[r.nextShot].tick > world.simulationTick) {
+      return;
+    }
+    const A = AttackAction.fromDTO(r.attack);
+    A.advance(world.simulationTick);
+    r.attack = A.toDTO();
+    while (!r.cancelled && r.nextShot < r.shots.length && r.launchTick + r.shots[r.nextShot].tick <= world.simulationTick) {
+      const S = r.shots[r.nextShot];
+      const DURATION3 = Math.max(0.1, 0.3 / (r.periodic ? 1 : r.speed));
+      const P = {
+        id: ++world.projectileSerial,
+        owner: r.owner,
+        ownerGeneration: r.ownerGeneration,
+        targetId: r.targetId,
+        targetGeneration: r.targetGeneration,
+        faction: r.source.faction,
+        ownerId: r.source.ownerId,
+        species: 3,
+        tier: r.tier,
+        isFormationClone: r.source.isFormationClone,
+        path: { from: { ...r.origin }, to: { ...r.point }, height: 0, duration: DURATION3 },
+        elapsed: 0,
+        ...r.origin,
+        radius: 0.12,
+        height: 0.5,
+        hit: false,
+        attackMultiplier: 1,
+        projectileKind: "chestnut-spike",
+        fanIndex: S.slot,
+        chestnutActionId: r.id,
+        chestnutSlot: S.slot,
+        chestnutForm: r.form,
+        chestnutStage: S.stage,
+        chestnutBornTick: world.simulationTick
+      };
+      world.projectiles.push(P);
+      r.nextShot++;
+    }
+  }
+  function advanceChestnutAttacks(world) {
+    for (const R2 of world.chestnutAttacks) {
+      emitChestnutShots(world, R2);
+    }
+    const LIVE = new Set(world.projectiles.filter((p) => !p.hit).map((p) => p.chestnutActionId));
+    world.chestnutAttacks = world.chestnutAttacks.filter(
+      (r) => !r.cancelled && r.nextShot < r.shots.length || LIVE.has(r.id) || world._unitForId(r.owner)?.ability.action?.chestnutAttack === r
+    );
+  }
+  function tryChestnutPeriodic(world, unit2, enemy) {
+    if (unit2.species !== 3 || !chestnutGrowthBuild(world.abilityProgressionFor(unit2)) || unit2.hp <= 0 || unit2.stun > 0 || unit2.down > 0 || !enemy || enemy.hp <= 0 || world.simulationTick < unit2.chestnutNextThornTick) {
+      return;
+    }
+    if (Math.hypot(unit2.x - enemy.x, unit2.y - enemy.y) > enemy.radius + chestnutRange(world, unit2) + 0.55) {
+      return;
+    }
+    const ACTION = {
+      id: ++world.attackSerial,
+      targetId: enemy === world.boss ? "boss" : enemy.id,
+      targetGeneration: enemy.generation,
+      target: { x: enemy.x, y: enemy.y, z: 0 }
+    };
+    ACTION.chestnutAttack = createChestnutAttack(world, unit2, ACTION, unit2.ability.attackSpeedMultiplier(world), true);
+    launchChestnutAttack(world, unit2, ACTION);
+    unit2.chestnutNextThornTick = world.simulationTick + 60;
+  }
+  function chestnutRecordFor(world, id) {
+    return world.chestnutAttacks.find((r) => r.id === id);
+  }
+  function resolveChestnutImpact(world, p, geometry, old) {
+    const R2 = chestnutRecordFor(world, p.chestnutActionId);
+    if (!R2) {
+      p.hit = true;
+      return;
+    }
+    if (world.simulationTick <= p.chestnutBornTick) {
+      return;
+    }
+    const AREA = !R2.periodic && ["fan", "spread", "converge"].includes(p.chestnutStage);
+    const PRIMARY = p.targetId === "boss" ? world.boss : world._unitForId(p.targetId);
+    const END = p.elapsed + 1e-9 >= p.path.duration;
+    const DIRECT = PRIMARY?.generation === p.targetGeneration && PRIMARY.hp > 0 && areOpposingFactions(R2.source, PRIMARY) ? geometry.sweep(old, p, p.radius, p.height, PRIMARY) : null;
+    if (!END && (!DIRECT || AREA)) {
+      return;
+    }
+    const A = AttackAction.fromDTO(R2.attack);
+    A.advance(world.simulationTick);
+    const TARGETS = AREA ? [PRIMARY, world.boss, ...world.units] : [DIRECT ? PRIMARY : null];
+    const SEEN = /* @__PURE__ */ new Set();
+    let secondary = 0;
+    for (const T of TARGETS) {
+      if (!T || T.hp <= 0 || !areOpposingFactions(R2.source, T)) {
+        continue;
+      }
+      const ID = T === world.boss ? "boss" : T.id, KEY2 = attackTargetKey(ID, T.generation);
+      if (SEEN.has(KEY2)) {
+        continue;
+      }
+      SEEN.add(KEY2);
+      const MAIN = ID === R2.targetId && T.generation === R2.targetGeneration;
+      if (!MAIN && (!AREA || secondary >= 4)) {
+        continue;
+      }
+      if (AREA) {
+        const FAN = ["fan", "spread"].includes(p.chestnutStage);
+        const DX = R2.point.x - R2.origin.x, DY = R2.point.y - R2.origin.y, LENGTH = Math.hypot(DX, DY) || 1;
+        const TX = T.x - R2.origin.x, TY = T.y - R2.origin.y;
+        const FORWARD = (TX * DX + TY * DY) / LENGTH, SIDE = Math.abs(TX * DY - TY * DX) / LENGTH;
+        const INSIDE = FAN ? FORWARD >= -T.radius && SIDE <= FORWARD + T.radius * Math.SQRT2 && Math.hypot(TX, TY) <= LENGTH + T.radius && (T.z || 0) <= 0.7 && (T.z || 0) + T.height >= 0 : geometry.overlaps({ ...R2.point, radius: 0.65 * (1 + 0.04 * R2.ranks.range), height: 0.7 }, T);
+        if (!INSIDE) {
+          continue;
+        }
+      }
+      if (!AREA && !DIRECT) {
+        continue;
+      }
+      if (!A.claimHit(p.chestnutSlot, ID, T.generation)) {
+        continue;
+      }
+      if (!MAIN) {
+        secondary++;
+      }
+      if (!Object.hasOwn(R2.criticalRolls, KEY2)) {
+        R2.criticalRolls[KEY2] = world.random();
+      }
+      const S = R2.shots[p.chestnutSlot], LAST = p.chestnutSlot === R2.shots.length - 1;
+      const WEIGHT = R2.periodic ? S.weight * (1 + 0.4 * R2.ranks.periodic) : S.weight + (LAST ? 0.08 * R2.ranks.finish : 0);
+      const SNAPSHOT = R2.source, CANDIDATE = world._unitForId(R2.owner), SOURCE = CANDIDATE?.generation === R2.ownerGeneration && CANDIDATE.hp > 0 ? CANDIDATE : SNAPSHOT, KIND = R2.periodic ? "chestnut-thorns" : "punch", FIRST = A.claimOnce("basic-proc");
+      world.damageCombatTarget(SOURCE, { id: R2.id, hit: false }, T, DIRECT || R2.point, {
+        attackKind: KIND,
+        suppressBasicProc: !FIRST || SOURCE === SNAPSHOT,
+        attackContext: {
+          source: SOURCE,
+          sourceKind: SNAPSHOT.sourceKind,
+          attackerStats: SNAPSHOT.attackerStats,
+          attackPowerMultiplier: SNAPSHOT.attackPowerMultiplier,
+          sourceDamageScale: SNAPSHOT.sourceDamageScale,
+          damageMultiplier: R2.multiplier * WEIGHT * (MAIN ? 1 : 0.5),
+          kind: KIND,
+          strikeIndex: S.slot,
+          buffed: false,
+          sourceStatOverrides: { ...SNAPSHOT.attackerStats },
+          area: AREA,
+          criticalRoll: R2.criticalRolls[KEY2],
+          hitTargets: null
+        }
+      });
+    }
+    R2.attack = A.toDTO();
+    R2.completedSlots[p.chestnutSlot] = true;
+    p.hit = true;
+  }
+  function exactKeys(value, keys2) {
+    return value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).sort().join(" ") === keys2.split(" ").sort().join(" ");
+  }
+  function isChestnutAttackRecord(r, { pending = false } = {}) {
+    if (!exactKeys(
+      r,
+      "version id owner ownerGeneration tier form periodic speed windupSeconds recoverySeconds budgetInputs multiplier ranks source launchTick origin point targetId targetGeneration shots nextShot completedSlots cancelled attack criticalRolls"
+    ) || r.version !== 1 || !Number.isSafeInteger(r.id) || r.id < 1 || !Number.isSafeInteger(r.owner) || r.owner < 1 || !Number.isSafeInteger(r.ownerGeneration) || r.ownerGeneration < 1 || !Number.isSafeInteger(r.targetGeneration) || r.targetGeneration < 1 || !attackTargetKey(r.targetId, r.targetGeneration) || !Number.isInteger(r.form) || r.form < 1 || r.form > 6 || !Number.isInteger(r.tier) || r.tier < r.form || r.tier > 6 || typeof r.periodic !== "boolean" || typeof r.cancelled !== "boolean" || !Number.isFinite(r.speed) || r.speed < 0.05 || r.speed > 4 || r.windupSeconds !== 0.28 / r.speed || r.recoverySeconds !== 0.65 / r.speed || !Number.isFinite(r.multiplier) || r.multiplier <= 0 || !Array.isArray(r.shots) || r.shots.length < 1 || r.shots.length > 6 || !Number.isInteger(r.nextShot) || r.nextShot < 0 || r.nextShot > r.shots.length) {
+      return false;
+    }
+    if (!exactKeys(r.ranks, "power periodic range finish") || !Object.entries(r.ranks).every(([k, v]) => Number.isInteger(v) && v >= 0 && v <= (k === "power" ? 10 : 5)) || !exactKeys(r.budgetInputs, "one current") || !Object.values(r.budgetInputs).every(Number.isFinite) || r.multiplier !== chestnutBudgetMultiplier(r.tier, r.budgetInputs.one, r.budgetInputs.current) * (1 + 0.03 * r.ranks.power)) {
+      return false;
+    }
+    const COUNT = r.periodic ? 1 + r.ranks.periodic : CHESTNUT_WEIGHTS[r.form].length;
+    if (r.shots.length !== COUNT || !r.shots.every(
+      (s, i) => exactKeys(s, "slot tick weight stage") && s.slot === i && s.tick === (r.periodic ? i * 2 : Math.ceil(i * 3 / r.speed - 1e-9)) && s.weight === (r.periodic ? 1 / COUNT : CHESTNUT_WEIGHTS[r.form][i]) && s.stage === (r.periodic ? "periodic" : STAGES2[r.form][i])
+    ) || !Array.isArray(r.completedSlots) || r.completedSlots.length !== COUNT || !r.completedSlots.every((v, i) => typeof v === "boolean" && (i < r.nextShot || !v))) {
+      return false;
+    }
+    const S = r.source;
+    if (!exactKeys(
+      S,
+      "id generation ownerId faction isFormationClone species tier x y z sourceKind attackerStats attackPowerMultiplier sourceDamageScale"
+    ) || S.id !== r.owner || S.generation !== r.ownerGeneration || S.species !== 3 || S.tier !== r.tier || typeof S.ownerId !== "string" || !["player", "enemy"].includes(S.faction) || !["direct", "enemy"].includes(S.sourceKind) || typeof S.isFormationClone !== "boolean" || !["x", "y", "z", "attackPowerMultiplier", "sourceDamageScale"].every((k) => Number.isFinite(S[k])) || S.sourceDamageScale < 0 || !exactKeys(S.attackerStats, ["maxHp", "attackPower", ...Object.keys(COMMON_UNIT_STAT_DEFAULTS)].join(" ")) || !Object.values(S.attackerStats).every(Number.isFinite) || !r.criticalRolls || typeof r.criticalRolls !== "object" || Array.isArray(r.criticalRolls)) {
+      return false;
+    }
+    if (r.launchTick === null) {
+      return pending && r.attack === null && r.origin === null && r.point === null && r.nextShot === 0 && !r.cancelled && Object.keys(r.criticalRolls).length === 0;
+    }
+    if (!Number.isSafeInteger(r.launchTick) || r.launchTick < 0 || !isAttackActionDTO(r.attack) || r.attack.startTick !== r.launchTick || r.attack.cancelled || r.nextShot > r.attack.nextSlot || r.attack.plan.durationTicks !== r.shots.at(-1).tick + 20 || r.attack.plan.strikes.length !== COUNT || !r.attack.plan.strikes.every((s, i) => s.tick === r.shots[i].tick && s.weight === r.shots[i].weight)) {
+      return false;
+    }
+    const KEYS = new Set(r.attack.hits.flat());
+    return r.attack.hits.every(
+      (h, i) => (i < r.nextShot || !h.length) && (!h.length || r.completedSlots[i]) && h.length <= (r.periodic || !["fan", "spread", "converge"].includes(r.shots[i].stage) ? 1 : 5)
+    ) && KEYS.size === Object.keys(r.criticalRolls).length && Object.entries(r.criticalRolls).every(
+      ([key, value]) => KEYS.has(key) && Number.isFinite(value) && value >= 0 && value < 1
+    ) && r.attack.claims.length === Number(KEYS.size > 0) && r.attack.claims.every((c) => c === "basic-proc") && [r.origin, r.point].every((p) => exactKeys(p, "x y z") && ["x", "y", "z"].every((k) => Number.isFinite(p[k])));
+  }
+  var CHESTNUT_WEIGHTS, STAGES2;
+  var init_chestnut_attack = __esm({
+    "src/features/species-growth/chestnut-attack.js"() {
+      init_attack_action();
+      init_state();
+      init_unit_stats();
+      init_unit_grades();
+      init_factions();
+      CHESTNUT_WEIGHTS = Object.freeze([
+        null,
+        [1],
+        [0.45, 0.55],
+        [1],
+        [0.4, 0.6],
+        [0.4, 0.6],
+        [0.25, 0.3, 0.45]
+      ]);
+      STAGES2 = [
+        null,
+        ["thrust"],
+        ["cross-left", "cross-right"],
+        ["fan"],
+        ["fan", "converge"],
+        ["fan", "central"],
+        ["spread", "converge", "central"]
+      ];
+    }
+  });
+
   // src/farm-offline.js
   function applyOffline(world, config, rawSeconds) {
     const OFFLINE = config.farm.offline, BREEDING = config.farm.breeding;
@@ -855,409 +2354,6 @@
       CHARGE_TIMEOUT = 1.6;
       RECOIL_SPEED = 5.5;
       STACKS_PER_FOOD = 5;
-    }
-  });
-
-  // src/unit-grades.js
-  function mergeMaterialCostForTier(resultTier) {
-    if (!Number.isInteger(resultTier) || resultTier < 2 || resultTier > MAX_UNIT_TIER) {
-      return 0;
-    }
-    return UNIT_GRADES[resultTier - 1].materialCost;
-  }
-  var UNIT_GRADES, MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT;
-  var init_unit_grades = __esm({
-    "src/unit-grades.js"() {
-      UNIT_GRADES = Object.freeze([
-        Object.freeze({
-          tier: 1,
-          name: "Common",
-          materialCost: 0,
-          outlineColor: "#d8d4bd"
-        }),
-        Object.freeze({
-          tier: 2,
-          name: "Uncommon",
-          materialCost: 2,
-          outlineColor: "#83ce76"
-        }),
-        Object.freeze({
-          tier: 3,
-          name: "Rare",
-          materialCost: 2,
-          outlineColor: "#78b9ff"
-        }),
-        Object.freeze({
-          tier: 4,
-          name: "Epic",
-          materialCost: 3,
-          outlineColor: "#bd8cff"
-        }),
-        Object.freeze({
-          tier: 5,
-          name: "Legendary",
-          materialCost: 4,
-          outlineColor: "#ffb354"
-        }),
-        Object.freeze({
-          tier: 6,
-          name: "Mythic",
-          materialCost: 5,
-          outlineColor: "#ff7086"
-        })
-      ]);
-      MAX_UNIT_TIER = UNIT_GRADES.length;
-      MAX_GRADE_MATERIAL_COUNT = Math.max(...UNIT_GRADES.map((grade) => grade.materialCost));
-    }
-  });
-
-  // src/species-catalog.js
-  function speciesById(id) {
-    return SPECIES_CATALOG.find((species) => species.id === id) || SPECIES_CATALOG[SPECIES_CATALOG.length - 1];
-  }
-  function giantSpeciesName(id) {
-    return `거대 ${speciesById(id).name}`;
-  }
-  function speciesRewardName(id) {
-    return `${speciesById(id).name} 종`;
-  }
-  var SPECIES_CATALOG, SPECIES_COUNT, BOSS_SPECIES_WEIGHTS;
-  var init_species_catalog = __esm({
-    "src/species-catalog.js"() {
-      SPECIES_CATALOG = Object.freeze([
-        Object.freeze({
-          id: 0,
-          name: "콩",
-          asset: "pea.svg",
-          // The colours of the floating hands a boss of this species swings: fill and outline.
-          limbFill: "#83ad47",
-          limbOutline: "#4a1c16",
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 1,
-          name: "옥수수",
-          asset: "corn-kernel.svg",
-          // The colours of the floating hands a boss of this species swings: fill and outline.
-          limbFill: "#f7cd36",
-          limbOutline: "#4a1c16",
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 2,
-          name: "팥",
-          asset: "kidney-bean.svg",
-          // The colours of the floating hands a boss of this species swings: fill and outline.
-          limbFill: "#d06a8f",
-          limbOutline: "#4b1a20",
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 3,
-          name: "밤톨",
-          asset: "chestnut.svg",
-          // The colours of the floating hands a boss of this species swings: fill and outline.
-          limbFill: "#84472f",
-          limbOutline: "#2c201c",
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 4,
-          name: "땅콩",
-          asset: "peanut.svg",
-          // The colours of the floating hands a boss of this species swings: fill and outline.
-          limbFill: "#c89d67",
-          limbOutline: "#3b241e",
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 5,
-          name: "호두",
-          asset: "walnut.svg",
-          // The colours of the floating hands a boss of this species swings: fill and outline.
-          limbFill: "#a96c18",
-          limbOutline: "#431811",
-          // The weapon this species' boss holds: it goes wherever that floating hand goes.
-          heldItem: Object.freeze({ part: "hammer", hand: "arm-right" }),
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 6,
-          name: "쌀",
-          asset: "rice.svg",
-          // The colours of the floating hands a boss of this species swings: fill and outline.
-          limbFill: "#f3efe4",
-          limbOutline: "#4b211b",
-          // The weapon this species' boss holds: it goes wherever that floating hand goes.
-          heldItem: Object.freeze({ part: "sickle", hand: "arm-right" }),
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 7,
-          name: "밀",
-          asset: "wheat.svg",
-          // The colours of the floating hands a boss of this species swings: fill and outline.
-          limbFill: "#e4b247",
-          limbOutline: "#34271f",
-          // The weapon this species' boss holds: it goes wherever that floating hand goes.
-          heldItem: Object.freeze({ part: "command-baton", hand: "arm-right" }),
-          bossWeight: 1
-        }),
-        Object.freeze({
-          id: 8,
-          name: "보리",
-          asset: "barley.svg",
-          // The colours of the floating hands a boss of this species swings: fill and outline.
-          limbFill: "#ddaa43",
-          limbOutline: "#4b211b",
-          bossWeight: 1
-        })
-      ]);
-      SPECIES_COUNT = SPECIES_CATALOG.length;
-      BOSS_SPECIES_WEIGHTS = Object.freeze(SPECIES_CATALOG.map((species) => species.bossWeight));
-    }
-  });
-
-  // src/unit-stats.js
-  function withRunMods(stats) {
-    const OUT = { ...stats };
-    for (const [STAT, MOD] of Object.entries(RUN_MODS)) {
-      if (STAT !== "regen") {
-        OUT[STAT] = (OUT[STAT] + MOD.flat) * (1 + MOD.pct);
-      }
-    }
-    OUT.maxHp = Math.round(OUT.maxHp);
-    if (RUN_MODS.regen) {
-      OUT.regen += RUN_MODS.regen.flat + OUT.maxHp * RUN_MODS.regen.pct;
-    }
-    return OUT;
-  }
-  function createBaseStats(tier, speciesProfile) {
-    let maxHp = TIER_HP;
-    let attackPower = TIER_ATTACK;
-    for (let resultTier = 2; resultTier <= tier; resultTier++) {
-      const TRANSITION_MULTIPLIER = UNIT_GRADES[resultTier - 1].materialCost / 2;
-      maxHp *= TIER_HP_SCALE * TRANSITION_MULTIPLIER;
-      attackPower *= TIER_ATTACK_SCALE * TRANSITION_MULTIPLIER;
-    }
-    return Object.freeze(
-      withRunMods({
-        maxHp,
-        attackPower,
-        ...COMMON_UNIT_STAT_DEFAULTS,
-        ...speciesProfile
-      })
-    );
-  }
-  function fillBaseStats() {
-    BASE_STATS_BY_PROFILE.clear();
-    for (const PROFILE of [COMMON_UNIT_STAT_DEFAULTS, ...COMMON_UNIT_STAT_PROFILES]) {
-      BASE_STATS_BY_PROFILE.set(
-        PROFILE,
-        Array.from(
-          {
-            length: MAX_UNIT_TIER
-          },
-          (_, index) => createBaseStats(index + 1, PROFILE)
-        )
-      );
-    }
-  }
-  function setRunStatMods(mods) {
-    for (const STAT of Object.keys(RUN_MODS)) {
-      delete RUN_MODS[STAT];
-    }
-    Object.assign(RUN_MODS, mods);
-    fillBaseStats();
-  }
-  function baseUnitStatsFor(tier, species) {
-    tier = Math.max(1, Math.min(MAX_UNIT_TIER, Number.isInteger(tier) ? tier : 1));
-    const PROFILE = COMMON_UNIT_STAT_PROFILES[species] || COMMON_UNIT_STAT_DEFAULTS;
-    return BASE_STATS_BY_PROFILE.get(PROFILE)?.[tier - 1] || createBaseStats(tier, PROFILE);
-  }
-  function resolveUnitStats(unit2, overrides) {
-    const BASE = baseUnitStatsFor(unit2?.tier, unit2?.species), MULTIPLIER = Number.isFinite(unit2?.permanentStatMultiplier) ? Math.max(0, unit2.permanentStatMultiplier) : 1;
-    return {
-      ...BASE,
-      maxHp: BASE.maxHp * MULTIPLIER * (unit2?.growthMaxHpMultiplier ?? 1),
-      attackPower: BASE.attackPower * MULTIPLIER,
-      ...unit2?.isFormationClone ? { maxHp: 1 } : {},
-      ...overrides
-    };
-  }
-  function unitMaxHpFor(unit2) {
-    return unit2.isFormationClone ? 1 : baseUnitStatsFor(unit2.tier, unit2.species).maxHp * (unit2.growthMaxHpMultiplier ?? 1);
-  }
-  function applyRunGrowthHealth(unit2, progression, { preserveRatio = false } = {}) {
-    if ((unit2.species !== 2 || unit2.faction !== "player" || unit2.isFormationClone) && (unit2.growthMaxHpMultiplier ?? 1) === 1) {
-      return;
-    }
-    const PREVIOUS_MAX = unitMaxHpFor(unit2), BUILD = progression?.abilities?.["kidney-continuous-leap"];
-    unit2.growthMaxHpMultiplier = unit2.species === 2 && unit2.faction === "player" && !unit2.isFormationClone && BUILD?.treeVersion === 1 ? 1 + 0.04 * (BUILD.nodeRanks["basic-2"] || 0) : 1;
-    const NEXT_MAX = unitMaxHpFor(unit2);
-    if (unit2.hp > 0) {
-      unit2.hp = preserveRatio ? Math.min(1, unit2.hp / PREVIOUS_MAX) * NEXT_MAX : Math.min(unit2.hp, NEXT_MAX);
-    }
-  }
-  function combatStats(unit2, overrides) {
-    return overrides === void 0 && !unit2?.isFormationClone && (unit2?.growthMaxHpMultiplier ?? 1) === 1 ? baseUnitStatsFor(unit2?.tier, unit2?.species) : resolveUnitStats(unit2, overrides);
-  }
-  function resolveDamage(rawDamage, armor = 0, armorPenetration = 0, critical = false, critMultiplier = COMMON_UNIT_STAT_DEFAULTS.critMultiplier) {
-    const RAW = Number.isFinite(rawDamage) ? Math.max(0, rawDamage) : 0;
-    const PENETRATION = clamp(Number.isFinite(armorPenetration) ? armorPenetration : 0, 0, 1);
-    const EFFECTIVE_ARMOR = Math.max(0, Number.isFinite(armor) ? armor : 0) * (1 - PENETRATION);
-    const CRIT = critical ? Math.max(1, Number.isFinite(critMultiplier) ? critMultiplier : 1) : 1;
-    const MITIGATED = RAW * CRIT * ARMOR_SCALE / (ARMOR_SCALE + EFFECTIVE_ARMOR);
-    return {
-      rawDamage: RAW,
-      effectiveArmor: EFFECTIVE_ARMOR,
-      critical,
-      damage: MITIGATED
-    };
-  }
-  function resolveCritical(stats, roll = 1) {
-    const CHANCE = clamp(Number.isFinite(stats?.critChance) ? stats.critChance : 0, 0, 1);
-    return CHANCE > 0 && roll < CHANCE;
-  }
-  function scaleMoveSpeed(baseSpeed, unit2, overrides) {
-    return Math.max(0, Number.isFinite(baseSpeed) ? baseSpeed : 0) * Math.max(0, combatStats(unit2, overrides).moveSpeed);
-  }
-  function scaleAttackRecovery(baseRecovery, unit2, overrides) {
-    return Math.max(0, Number.isFinite(baseRecovery) ? baseRecovery : 0) / Math.max(0.05, combatStats(unit2, overrides).attackSpeed);
-  }
-  function scaleAttackArea(baseArea, unit2, overrides) {
-    return Math.max(0, Number.isFinite(baseArea) ? baseArea : 0) * Math.max(0, combatStats(unit2, overrides).attackArea);
-  }
-  function applyDamage(target, rawDamage, {
-    armor = 0,
-    armorPenetration = 0,
-    critical = false,
-    critMultiplier = COMMON_UNIT_STAT_DEFAULTS.critMultiplier
-  } = {}) {
-    if (!target || !Number.isFinite(target.hp)) {
-      return {
-        actualLoss: 0,
-        ...resolveDamage(rawDamage, armor, armorPenetration, critical, critMultiplier)
-      };
-    }
-    const RESOLVED = resolveDamage(rawDamage, armor, armorPenetration, critical, critMultiplier);
-    const ACTUAL_LOSS = Math.min(Math.max(0, target.hp), RESOLVED.damage);
-    setHealth(target, Math.max(0, target.hp - ACTUAL_LOSS));
-    return {
-      ...RESOLVED,
-      actualLoss: ACTUAL_LOSS
-    };
-  }
-  function applyHealing(target, amount, receiverStats = combatStats(target)) {
-    if (!target || !Number.isFinite(target.hp) || target.hp <= 0) {
-      return 0;
-    }
-    const MAX_HP = target.isFormationClone ? 1 : Number.isFinite(receiverStats?.maxHp) ? receiverStats.maxHp : 0;
-    const RECEIVED = Number.isFinite(receiverStats?.healingReceivedMultiplier) ? Math.max(0, receiverStats.healingReceivedMultiplier) : 1;
-    const REQUESTED = Number.isFinite(amount) ? Math.max(0, amount) * RECEIVED : 0;
-    const HEALED = Math.min(Math.max(0, MAX_HP - target.hp), REQUESTED);
-    setHealth(target, target.hp + HEALED);
-    return HEALED;
-  }
-  function applyDamageToTargets(source, targets, {
-    rawDamage,
-    area = false,
-    sourceKind = "direct",
-    sourceStatOverrides,
-    armorForTarget = (target) => combatStats(target).armor,
-    roll = () => 1
-  } = {}) {
-    const SOURCE_STATS = source ? combatStats(source, sourceStatOverrides) : null;
-    const CRITICAL = !!SOURCE_STATS && SOURCE_STATS.critChance > 0 && resolveCritical(SOURCE_STATS, roll());
-    const HITS = [];
-    let totalActualLoss = 0;
-    for (const TARGET of targets || []) {
-      const RESULT = applyDamage(TARGET, rawDamage, {
-        armor: armorForTarget(TARGET),
-        armorPenetration: SOURCE_STATS?.armorPenetration || 0,
-        critical: CRITICAL,
-        critMultiplier: SOURCE_STATS?.critMultiplier ?? COMMON_UNIT_STAT_DEFAULTS.critMultiplier
-      });
-      HITS.push(RESULT);
-      totalActualLoss += RESULT.actualLoss;
-    }
-    const BASE_RATE = sourceKind === "direct" ? SOURCE_STATS?.lifesteal || 0 : 0;
-    const HEAL_RATE = area ? BASE_RATE / 3 : BASE_RATE;
-    const HEALED = source && HEAL_RATE > 0 ? applyHealing(source, totalActualLoss * HEAL_RATE, SOURCE_STATS) : 0;
-    return {
-      hits: HITS,
-      totalActualLoss,
-      healed: HEALED,
-      critical: CRITICAL
-    };
-  }
-  function resolveStatusDuration(baseDuration, source, target, { sourceStatOverrides, targetStatOverrides } = {}) {
-    const SOURCE_STATS = source ? combatStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
-    const TARGET_STATS = target ? combatStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
-    const DURATION_SCALE = Number.isFinite(SOURCE_STATS.statusDuration) ? Math.max(0, SOURCE_STATS.statusDuration) : 1;
-    const RESISTANCE = clamp(Number.isFinite(TARGET_STATS.statusResistance) ? TARGET_STATS.statusResistance : 0, 0, 1);
-    return Math.max(0, Number.isFinite(baseDuration) ? baseDuration : 0) * DURATION_SCALE * (1 - RESISTANCE);
-  }
-  function resolveKnockback(basePower, source, target, { sourceStatOverrides, targetStatOverrides } = {}) {
-    const SOURCE_STATS = source ? combatStats(source, sourceStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
-    const TARGET_STATS = target ? combatStats(target, targetStatOverrides) : COMMON_UNIT_STAT_DEFAULTS;
-    const POWER = Number.isFinite(SOURCE_STATS.knockbackPower) ? Math.max(0, SOURCE_STATS.knockbackPower) : 1;
-    const RESISTANCE = clamp(
-      Number.isFinite(TARGET_STATS.knockbackResistance) ? TARGET_STATS.knockbackResistance : 0,
-      0,
-      1
-    );
-    return Math.max(0, Number.isFinite(basePower) ? basePower : 0) * POWER * (1 - RESISTANCE);
-  }
-  function clamp(value, min, max) {
-    return Math.max(min, Math.min(max, value));
-  }
-  function setHealth(target, value) {
-    if (typeof target.setHealth === "function") {
-      target.setHealth(value);
-    } else {
-      target.hp = value;
-    }
-  }
-  var TIER_HP, TIER_HP_SCALE, TIER_ATTACK, TIER_ATTACK_SCALE, ARMOR_SCALE, COMMON_UNIT_STAT_DEFAULTS, COMMON_UNIT_STAT_PROFILES, RUN_MODS, BASE_STATS_BY_PROFILE;
-  var init_unit_stats = __esm({
-    "src/unit-stats.js"() {
-      init_unit_grades();
-      init_species_catalog();
-      TIER_HP = 40;
-      TIER_HP_SCALE = 1.5;
-      TIER_ATTACK = 4;
-      TIER_ATTACK_SCALE = 1.2;
-      ARMOR_SCALE = 100;
-      COMMON_UNIT_STAT_DEFAULTS = Object.freeze({
-        armor: 0,
-        moveSpeed: 1,
-        attackSpeed: 1,
-        critChance: 0,
-        critMultiplier: 2,
-        armorPenetration: 0,
-        attackArea: 1,
-        lifesteal: 0,
-        regen: 0,
-        healingReceivedMultiplier: 1,
-        knockbackPower: 1,
-        knockbackResistance: 0,
-        statusDuration: 1,
-        statusResistance: 0
-      });
-      COMMON_UNIT_STAT_PROFILES = Object.freeze(
-        Array.from(
-          {
-            length: SPECIES_COUNT
-          },
-          () => Object.freeze({
-            ...COMMON_UNIT_STAT_DEFAULTS
-          })
-        )
-      );
-      RUN_MODS = {};
-      BASE_STATS_BY_PROFILE = /* @__PURE__ */ new Map();
-      fillBaseStats();
     }
   });
 
@@ -1850,11 +2946,11 @@
     const BODY2 = targetBodyDimensions(target), MARGIN = Math.max(T1_DIAMETER * 0.12, BODY2.bodyHeight * 0.06);
     return BODY2.topZ + MARGIN;
   }
-  var import_definition10, T1_DIAMETER, FormationSkill, MeteorSkill, FlyingSkill;
+  var import_definition16, T1_DIAMETER, FormationSkill, MeteorSkill, FlyingSkill;
   var init_model_base = __esm({
     "src/features/formation-skills/model-base.js"() {
-      import_definition10 = __toESM(require_definition(), 1);
-      T1_DIAMETER = (0, import_definition10.unitBodyRadius)({ species: 0, tier: 1, growthElapsed: 1, growthDuration: 1 }) * 2;
+      import_definition16 = __toESM(require_definition(), 1);
+      T1_DIAMETER = (0, import_definition16.unitBodyRadius)({ species: 0, tier: 1, growthElapsed: 1, growthDuration: 1 }) * 2;
       FormationSkill = class {
         constructor(definition) {
           this.definition = definition;
@@ -1973,7 +3069,7 @@
 
   // src/features/formation-skills/giant/model.js
   var GiantSkill;
-  var init_model = __esm({
+  var init_model2 = __esm({
     "src/features/formation-skills/giant/model.js"() {
       init_definition();
       init_model_base();
@@ -2025,7 +3121,7 @@
 
   // src/features/formation-skills/lightning/model.js
   var LightningSkill;
-  var init_model2 = __esm({
+  var init_model3 = __esm({
     "src/features/formation-skills/lightning/model.js"() {
       init_definition2();
       init_model_base();
@@ -2056,7 +3152,7 @@
 
   // src/features/formation-skills/meteor/model.js
   var LargeMeteorSkill;
-  var init_model3 = __esm({
+  var init_model4 = __esm({
     "src/features/formation-skills/meteor/model.js"() {
       init_definition3();
       init_model_base();
@@ -2071,7 +3167,7 @@
 
   // src/features/formation-skills/meteor-shower/model.js
   var MeteorShowerSkill;
-  var init_model4 = __esm({
+  var init_model5 = __esm({
     "src/features/formation-skills/meteor-shower/model.js"() {
       init_definition4();
       init_model_base();
@@ -2097,7 +3193,7 @@
 
   // src/features/formation-skills/copy/model.js
   var CopySkill;
-  var init_model5 = __esm({
+  var init_model6 = __esm({
     "src/features/formation-skills/copy/model.js"() {
       init_definition5();
       init_model_base();
@@ -2133,7 +3229,7 @@
 
   // src/features/formation-skills/healing-rain/model.js
   var HealingRainSkill;
-  var init_model6 = __esm({
+  var init_model7 = __esm({
     "src/features/formation-skills/healing-rain/model.js"() {
       init_definition6();
       init_model_base();
@@ -2189,7 +3285,7 @@
 
   // src/features/formation-skills/hammer/model.js
   var HAMMER_IMPACT_TIME, HammerSkill;
-  var init_model7 = __esm({
+  var init_model8 = __esm({
     "src/features/formation-skills/hammer/model.js"() {
       init_definition7();
       init_model_base();
@@ -2243,7 +3339,7 @@
 
   // src/features/formation-skills/ufo/model.js
   var UfoSkill;
-  var init_model8 = __esm({
+  var init_model9 = __esm({
     "src/features/formation-skills/ufo/model.js"() {
       init_definition8();
       init_model_base();
@@ -2270,7 +3366,7 @@
 
   // src/features/formation-skills/storm-cloud/model.js
   var StormCloudSkill;
-  var init_model9 = __esm({
+  var init_model10 = __esm({
     "src/features/formation-skills/storm-cloud/model.js"() {
       init_definition9();
       init_model_base();
@@ -2292,7 +3388,6 @@
       init_formation_skill_state();
       init_unit_stats();
       init_spatial_grid();
-      init_model();
       init_model2();
       init_model3();
       init_model4();
@@ -2301,6 +3396,7 @@
       init_model7();
       init_model8();
       init_model9();
+      init_model10();
       MODELS = new Map(
         [
           new GiantSkill(),
@@ -2645,7 +3741,7 @@
     return { radius: RADII.y * HORIZONTAL_EXTENT, height: HEIGHT };
   }
   var import_vector_sockets, FEATURE, VERTICAL_EXTENT, HORIZONTAL_EXTENT;
-  var init_definition10 = __esm({
+  var init_definition15 = __esm({
     "src/features/projectiles/seed/definition.js"() {
       import_vector_sockets = __toESM(require_vector_sockets(), 1);
       FEATURE = Object.freeze({
@@ -3193,7 +4289,7 @@
 
   // src/features/scenes/farm/definition.js
   var FEATURE2;
-  var init_definition11 = __esm({
+  var init_definition16 = __esm({
     "src/features/scenes/farm/definition.js"() {
       FEATURE2 = Object.freeze({ id: "farm" });
     }
@@ -3201,11 +4297,11 @@
 
   // src/features/scenes/farm/model.js
   var FarmSimulationScene;
-  var init_model10 = __esm({
+  var init_model11 = __esm({
     "src/features/scenes/farm/model.js"() {
       init_model_base2();
       init_unit_stats();
-      init_definition11();
+      init_definition16();
       FarmSimulationScene = class extends SimulationScene {
         constructor(dependencies) {
           const { CONFIG: CONFIG2 } = dependencies;
@@ -3314,411 +4410,7 @@
   }
   var init_simulation_scenes = __esm({
     "src/simulation-scenes.js"() {
-      init_model10();
-    }
-  });
-
-  // src/features/species-growth/attack-action.js
-  function defineAttackAction({ durationTicks, strikes }) {
-    if (!Number.isSafeInteger(durationTicks) || durationTicks < 1 || !Array.isArray(strikes) || strikes.length < 1 || strikes.length > MAX_ACTION_STRIKES) {
-      throw new TypeError("An attack needs a finite duration and bounded strike slots");
-    }
-    let previousTick = -1;
-    let totalWeight = 0;
-    for (const STRIKE of strikes) {
-      if (!Number.isSafeInteger(STRIKE.tick) || STRIKE.tick < previousTick || STRIKE.tick < 0 || STRIKE.tick >= durationTicks || !Number.isFinite(STRIKE.weight) || STRIKE.weight <= 0) {
-        throw new TypeError("Invalid attack strike");
-      }
-      previousTick = STRIKE.tick;
-      totalWeight += STRIKE.weight;
-    }
-    if (Math.abs(totalWeight - 1) > 1e-9) {
-      throw new RangeError("Strike weights must share one whole attack damage budget");
-    }
-    return Object.freeze({
-      durationTicks,
-      strikes: Object.freeze(strikes.map(({ tick, weight }) => Object.freeze({ tick, weight })))
-    });
-  }
-  function attackTargetKey(targetId, generation) {
-    if (targetId !== "boss" && (!Number.isSafeInteger(targetId) || targetId < 0) || !Number.isSafeInteger(generation) || generation < 0) {
-      return null;
-    }
-    return JSON.stringify([targetId === "boss" ? "boss" : "unit", targetId, generation]);
-  }
-  function validHitKey(key) {
-    if (Number.isSafeInteger(key) && key >= 0) {
-      return true;
-    }
-    if (typeof key !== "string" || key.length > 100) {
-      return false;
-    }
-    try {
-      const PARTS = JSON.parse(key);
-      return Array.isArray(PARTS) && PARTS.length === 3 && PARTS[0] === (PARTS[1] === "boss" ? "boss" : "unit") && attackTargetKey(PARTS[1], PARTS[2]) === key;
-    } catch {
-      return false;
-    }
-  }
-  function isAttackActionDTO(dto) {
-    if (!dto || Object.keys(dto).sort().join(",") !== "cancelled,claims,hits,lastTick,nextSlot,plan,startTick,version" || dto.version !== 1) {
-      return false;
-    }
-    try {
-      if (Object.keys(dto.plan).sort().join(",") !== "durationTicks,strikes" || !dto.plan.strikes.every((strike) => Object.keys(strike).sort().join(",") === "tick,weight")) {
-        return false;
-      }
-      defineAttackAction(dto.plan);
-    } catch {
-      return false;
-    }
-    return Number.isSafeInteger(dto.startTick) && dto.startTick >= 0 && Number.isSafeInteger(dto.startTick + dto.plan.durationTicks) && Number.isSafeInteger(dto.nextSlot) && dto.nextSlot >= 0 && dto.nextSlot <= dto.plan.strikes.length && typeof dto.cancelled === "boolean" && Number.isSafeInteger(dto.lastTick) && dto.lastTick >= dto.startTick - 1 && (!dto.cancelled || dto.nextSlot === dto.plan.strikes.length) && (dto.cancelled || dto.nextSlot === dto.plan.strikes.filter((strike) => dto.startTick + strike.tick <= dto.lastTick).length) && Array.isArray(dto.hits) && dto.hits.length === dto.plan.strikes.length && dto.hits.every(
-      (hits, slot) => Array.isArray(hits) && hits.length <= 1024 && (slot < dto.nextSlot || hits.length === 0) && hits.every(validHitKey) && new Set(hits).size === hits.length
-    ) && Array.isArray(dto.claims) && dto.claims.length <= 64 && dto.claims.every((key) => typeof key === "string" && key.length > 0 && key.length <= 128) && new Set(dto.claims).size === dto.claims.length;
-  }
-  var MAX_ACTION_STRIKES, AttackAction;
-  var init_attack_action = __esm({
-    "src/features/species-growth/attack-action.js"() {
-      MAX_ACTION_STRIKES = 32;
-      AttackAction = class _AttackAction {
-        constructor(plan, startTick) {
-          if (!Number.isSafeInteger(startTick) || startTick < 0 || !Number.isSafeInteger(startTick + plan.durationTicks)) {
-            throw new RangeError("Invalid action start tick");
-          }
-          this.plan = defineAttackAction(plan);
-          this.startTick = startTick;
-          this.nextSlot = 0;
-          this.cancelled = false;
-          this.lastTick = startTick - 1;
-          this.hits = plan.strikes.map(() => /* @__PURE__ */ new Set());
-          this.claims = /* @__PURE__ */ new Set();
-        }
-        // Consume before returning, so retrying the same tick cannot emit the same strike twice.
-        // The owner decides whether launched projectiles survive cancellation; those have their own lifecycle.
-        advance(tick) {
-          if (!Number.isSafeInteger(tick) || tick < this.lastTick) {
-            throw new RangeError("Attack time must be monotonic simulation ticks");
-          }
-          this.lastTick = tick;
-          const READY = [];
-          if (this.cancelled) {
-            return READY;
-          }
-          while (this.nextSlot < this.plan.strikes.length) {
-            const STRIKE = this.plan.strikes[this.nextSlot];
-            if (tick < this.startTick + STRIKE.tick) {
-              break;
-            }
-            READY.push({ slot: this.nextSlot, weight: STRIKE.weight });
-            this.nextSlot += 1;
-          }
-          return READY;
-        }
-        claimHit(slot, targetId, generation = null) {
-          const KEY2 = generation === null ? targetId : attackTargetKey(targetId, generation);
-          if (this.cancelled || !Number.isInteger(slot) || slot < 0 || slot >= this.nextSlot || !validHitKey(KEY2) || this.hits[slot].has(KEY2)) {
-            return false;
-          }
-          this.hits[slot].add(KEY2);
-          return true;
-        }
-        // Named, once-per-action budgets, e.g. command, critical, RAW consumption, or extra attachment.
-        // A follow-up strike uses the same action and cannot create another copy of the budget.
-        claimOnce(key) {
-          if (this.cancelled || typeof key !== "string" || !key || key.length > 128 || this.claims.size >= 64 || this.claims.has(key)) {
-            return false;
-          }
-          this.claims.add(key);
-          return true;
-        }
-        toDTO() {
-          return {
-            version: 1,
-            plan: structuredClone(this.plan),
-            startTick: this.startTick,
-            nextSlot: this.nextSlot,
-            cancelled: this.cancelled,
-            lastTick: this.lastTick,
-            hits: this.hits.map((hits) => [...hits]),
-            claims: [...this.claims]
-          };
-        }
-        static fromDTO(dto) {
-          if (!isAttackActionDTO(dto)) {
-            throw new TypeError("Invalid attack action checkpoint");
-          }
-          const ACTION = new _AttackAction(dto.plan, dto.startTick);
-          ACTION.nextSlot = dto.nextSlot;
-          ACTION.cancelled = dto.cancelled;
-          ACTION.lastTick = dto.lastTick;
-          ACTION.hits = dto.hits.map((hits) => new Set(hits));
-          ACTION.claims = new Set(dto.claims);
-          return ACTION;
-        }
-        cancel() {
-          this.cancelled = true;
-          this.nextSlot = this.plan.strikes.length;
-          this.hits.forEach((hits) => hits.clear());
-          this.claims.clear();
-        }
-      };
-    }
-  });
-
-  // src/features/species-growth/definition.js
-  function createSpeciesGrowthDefinition(species, { available = false, basic = [], specialty = [] } = {}) {
-    const NODES = [
-      ...EVOLUTION_UNLOCK_LEVELS.map((level, index) => ({
-        id: `evolution-${index + 2}`,
-        kind: "evolution",
-        tier: index + 2,
-        maxRank: 1,
-        pointCost: 2,
-        unlockLevels: [level],
-        prerequisite: index === 0 ? null : `evolution-${index + 1}`,
-        available
-      })),
-      ...["basic", "specialty"].flatMap(
-        (kind) => Array.from({ length: 3 }, (_, index) => ({
-          id: `${kind}-${index + 1}`,
-          kind,
-          name: (kind === "basic" ? basic : specialty)[index] || null,
-          maxRank: kind === "basic" ? 10 : 5,
-          pointCost: kind === "basic" ? 1 : 2,
-          unlockLevels: kind === "basic" ? Array.from({ length: 10 }, (_2, rank) => rank * 5 + 1) : Array.from({ length: 5 }, (_2, rank) => rank * 8 + 11),
-          prerequisite: null,
-          available
-        }))
-      )
-    ];
-    return Object.freeze({
-      species,
-      available,
-      nodes: Object.freeze(
-        NODES.map((node) => Object.freeze({ ...node, unlockLevels: Object.freeze(node.unlockLevels) }))
-      )
-    });
-  }
-  function speciesGrowthDefinition(species) {
-    return SPECIES_GROWTH_DEFINITIONS.find((definition) => definition.species === species) || null;
-  }
-  function growthTreeCapacity(definition) {
-    return definition.nodes.reduce((total, node) => total + node.maxRank * node.pointCost, 0);
-  }
-  var SPECIES_MASTERY_CAP, EVOLUTION_UNLOCK_LEVELS, SPECIES_GROWTH_DEFINITIONS;
-  var init_definition12 = __esm({
-    "src/features/species-growth/definition.js"() {
-      init_species_catalog();
-      SPECIES_MASTERY_CAP = 50;
-      EVOLUTION_UNLOCK_LEVELS = Object.freeze([2, 6, 12, 20, 30]);
-      SPECIES_GROWTH_DEFINITIONS = Object.freeze(
-        SPECIES_CATALOG.map(
-          ({ id }) => createSpeciesGrowthDefinition(
-            id,
-            id === 1 ? {
-              available: true,
-              basic: ["직격 위력", "부착 폭발 위력", "공격 속도"],
-              specialty: ["연쇄 가열", "마무리 파열", "추가 알"]
-            } : id === 0 ? {
-              available: true,
-              basic: ["박치기 위력", "첫 재돌진 위력", "후딜 감소"],
-              specialty: ["재접근 가속", "첫 충돌", "마지막 충돌"]
-            } : id === 2 ? {
-              available: true,
-              basic: ["도약 위력", "최대 체력", "공격 속도"],
-              specialty: ["착지 범위", "연속 도약", "마무리 착지"]
-            } : {}
-          )
-        )
-      );
-    }
-  });
-
-  // src/mastery.js
-  function masteryXpForNextLevel(level) {
-    if (!Number.isSafeInteger(level) || level < 1) {
-      throw new RangeError("mastery level must be a positive integer");
-    }
-    return MASTERY_FIRST_LEVEL_XP * MASTERY_LEVEL_XP_MULTIPLIER ** (level - 1);
-  }
-  var MASTERY_FIRST_LEVEL_XP, MASTERY_LEVEL_XP_MULTIPLIER;
-  var init_mastery = __esm({
-    "src/mastery.js"() {
-      MASTERY_FIRST_LEVEL_XP = 100;
-      MASTERY_LEVEL_XP_MULTIPLIER = 1.2;
-    }
-  });
-
-  // src/features/species-growth/model.js
-  function validLegacyMastery(build) {
-    return build && Number.isSafeInteger(build.masteryLevel) && build.masteryLevel >= 1 && Number.isFinite(build.masteryXp) && build.masteryXp >= 0 && build.masteryXp < masteryXpForNextLevel(build.masteryLevel);
-  }
-  function growthLockReason(context) {
-    if (context.inCombat === true || context.runActive === true) {
-      return "combat-lock";
-    }
-    return context.location === "farm" ? null : "farm-only";
-  }
-  var SpeciesGrowth;
-  var init_model11 = __esm({
-    "src/features/species-growth/model.js"() {
-      init_mastery();
-      init_definition12();
-      SpeciesGrowth = class {
-        constructor(definition) {
-          this.definition = definition;
-          this.nodes = new Map(definition.nodes.map((node) => [node.id, node]));
-        }
-        createBuild() {
-          return { masteryLevel: 1, masteryXp: 0, nodeRanks: {} };
-        }
-        investedPoints(build) {
-          return Object.entries(build.nodeRanks).reduce(
-            (total, [id, rank]) => total + rank * (this.nodes.get(id)?.pointCost ?? NaN),
-            0
-          );
-        }
-        pointsLeft(build) {
-          return Math.min(SPECIES_MASTERY_CAP, build.masteryLevel) - this.investedPoints(build);
-        }
-        isValidBuild(build) {
-          if (!build || !Number.isSafeInteger(build.masteryLevel) || build.masteryLevel < 1 || build.masteryLevel > SPECIES_MASTERY_CAP || !Number.isFinite(build.masteryXp) || build.masteryXp < 0 || build.masteryLevel < SPECIES_MASTERY_CAP && build.masteryXp >= masteryXpForNextLevel(build.masteryLevel) || !build.nodeRanks || typeof build.nodeRanks !== "object" || Array.isArray(build.nodeRanks) || Object.keys(build).some((key) => !["masteryLevel", "masteryXp", "nodeRanks", "legacyMastery"].includes(key))) {
-            return false;
-          }
-          if (build.legacyMastery !== void 0 && !validLegacyMastery(build.legacyMastery)) {
-            return false;
-          }
-          for (const [ID, RANK] of Object.entries(build.nodeRanks)) {
-            const NODE = this.nodes.get(ID);
-            if (!NODE || !Number.isSafeInteger(RANK) || RANK < 0 || RANK > NODE.maxRank || RANK > 0 && (!this.definition.available || !NODE.available) || RANK > 0 && build.masteryLevel < NODE.unlockLevels[RANK - 1] || RANK > 0 && NODE.prerequisite && build.nodeRanks[NODE.prerequisite] !== 1) {
-              return false;
-            }
-          }
-          return this.pointsLeft(build) >= 0;
-        }
-        // Call only after validating the complete legacy save. No reward increment is persisted:
-        // entitlement is derived from level, so reloading cannot add the starting point again.
-        migrateBuild(legacy) {
-          if (!this.definition.available) {
-            return legacy;
-          }
-          if (Object.hasOwn(legacy, "nodeRanks")) {
-            if (!this.isValidBuild(legacy)) {
-              throw new TypeError("Invalid species growth build");
-            }
-            return structuredClone(legacy);
-          }
-          if (!validLegacyMastery(legacy)) {
-            throw new TypeError("Invalid legacy mastery");
-          }
-          const BUILD = {
-            masteryLevel: Math.min(SPECIES_MASTERY_CAP, legacy.masteryLevel),
-            masteryXp: legacy.masteryXp,
-            nodeRanks: {}
-          };
-          if (legacy.masteryLevel > SPECIES_MASTERY_CAP) {
-            BUILD.legacyMastery = { masteryLevel: legacy.masteryLevel, masteryXp: legacy.masteryXp };
-            BUILD.masteryXp = 0;
-          }
-          return BUILD;
-        }
-        awardXp(build, amount) {
-          if (!this.isValidBuild(build) || !Number.isFinite(amount) || amount < 0 || amount >= 1e13) {
-            return { ok: false, reason: "invalid-xp", build };
-          }
-          let experience = build.masteryXp + amount;
-          if (!Number.isFinite(experience)) {
-            return { ok: false, reason: "xp-overflow", build };
-          }
-          const ADDITION_ERROR = Math.abs(experience - build.masteryXp - amount), ROUNDING_TOLERANCE = Math.min(
-            2 * Number.EPSILON * Math.max(Math.abs(build.masteryXp), Math.abs(experience)),
-            amount * 1e-9
-          );
-          if (ADDITION_ERROR > ROUNDING_TOLERANCE || amount > 0 && experience === build.masteryXp) {
-            return { ok: false, reason: "xp-precision-loss", build };
-          }
-          let level = build.masteryLevel;
-          while (level < SPECIES_MASTERY_CAP && experience >= masteryXpForNextLevel(level)) {
-            experience -= masteryXpForNextLevel(level);
-            level += 1;
-          }
-          return {
-            ok: true,
-            build: { ...structuredClone(build), masteryLevel: level, masteryXp: experience },
-            levelsGained: level - build.masteryLevel,
-            pointsAwarded: level - build.masteryLevel
-          };
-        }
-        canPurchase(build, nodeId, context = {}) {
-          if (!this.definition.available) {
-            return { allowed: false, reason: "not-available" };
-          }
-          if (!this.isValidBuild(build)) {
-            return { allowed: false, reason: "invalid-state" };
-          }
-          const LOCK = growthLockReason(context);
-          if (LOCK) {
-            return { allowed: false, reason: LOCK };
-          }
-          const NODE = this.nodes.get(nodeId);
-          if (!NODE || !NODE.available) {
-            return { allowed: false, reason: NODE ? "not-available" : "unknown-node" };
-          }
-          const RANK = build.nodeRanks[nodeId] || 0;
-          if (RANK >= NODE.maxRank) {
-            return { allowed: false, reason: "max-rank" };
-          }
-          if (NODE.prerequisite && build.nodeRanks[NODE.prerequisite] !== 1) {
-            return { allowed: false, reason: "prerequisite-required" };
-          }
-          if (build.masteryLevel < NODE.unlockLevels[RANK]) {
-            return { allowed: false, reason: "mastery-required", requiredLevel: NODE.unlockLevels[RANK] };
-          }
-          if (this.pointsLeft(build) < NODE.pointCost) {
-            return { allowed: false, reason: "insufficient-points" };
-          }
-          return { allowed: true, reason: null, pointCost: NODE.pointCost };
-        }
-        purchase(build, nodeId, context = {}) {
-          const CHECK = this.canPurchase(build, nodeId, context);
-          if (!CHECK.allowed) {
-            return { ok: false, reason: CHECK.reason, build };
-          }
-          const NEXT = structuredClone(build);
-          NEXT.nodeRanks[nodeId] = (NEXT.nodeRanks[nodeId] || 0) + 1;
-          return { ok: true, build: NEXT, spent: CHECK.pointCost };
-        }
-        reset(build, context = {}) {
-          const REASON = !this.definition.available ? "not-available" : !this.isValidBuild(build) ? "invalid-state" : growthLockReason(context);
-          if (REASON) {
-            return { ok: false, reason: REASON, build };
-          }
-          return {
-            ok: true,
-            build: { ...structuredClone(build), nodeRanks: {} },
-            refunded: this.investedPoints(build)
-          };
-        }
-        // Research never gates merging. The physical grade, not mastery level, bounds the attack form.
-        attackTier(build, unitTier) {
-          if (!Number.isInteger(unitTier) || unitTier < 1 || unitTier > 6) {
-            throw new RangeError("Invalid unit tier");
-          }
-          if (!this.definition.available) {
-            return 1;
-          }
-          if (!this.isValidBuild(build)) {
-            throw new TypeError("Invalid species growth build");
-          }
-          let tier = 1;
-          for (const NODE of this.definition.nodes) {
-            if (NODE.kind === "evolution" && NODE.tier <= unitTier && build.nodeRanks[NODE.id] === 1) {
-              tier = Math.max(tier, NODE.tier);
-            }
-          }
-          return tier;
-        }
-      };
+      init_model11();
     }
   });
 
@@ -3919,19 +4611,19 @@
     return BASE * (1 + Math.min(0.02 * record.ranks.heating * index, 0.2)) + (index === record.terminalIndex ? record.attachmentMultiplier * 0.08 * record.ranks.finish : 0);
   }
   function isCornAttackRecord(record, { pending = false } = {}) {
-    if (!record || !exactKeys(
+    if (!record || !exactKeys2(
       record,
       "version id owner ownerGeneration tier form launchTick firstAttachTick speed budgetInputs windupSeconds recoverySeconds shots baseKernelCount extraKernel terminalIndex ranks directMultiplier attachmentMultiplier source attack criticalRolls"
-    ) || record.version !== 1 || !Number.isSafeInteger(record.id) || record.id < 1 || !Number.isInteger(record.form) || record.form < 1 || record.form > 6 || !Number.isInteger(record.tier) || record.tier < record.form || record.tier > 6 || !Number.isSafeInteger(record.owner) || record.owner < 1 || !Number.isSafeInteger(record.ownerGeneration) || record.ownerGeneration < 1 || !Number.isFinite(record.speed) || record.speed < 0.05 || record.speed > 1.63 / 0.35 || record.windupSeconds !== 0.38 / record.speed || record.recoverySeconds !== 1.25 / record.speed || typeof record.extraKernel !== "boolean" || !record.ranks || !exactKeys(record.ranks, "heating finish extra") || record.extraKernel && record.ranks.extra === 0 || !["heating", "finish", "extra"].every(
+    ) || record.version !== 1 || !Number.isSafeInteger(record.id) || record.id < 1 || !Number.isInteger(record.form) || record.form < 1 || record.form > 6 || !Number.isInteger(record.tier) || record.tier < record.form || record.tier > 6 || !Number.isSafeInteger(record.owner) || record.owner < 1 || !Number.isSafeInteger(record.ownerGeneration) || record.ownerGeneration < 1 || !Number.isFinite(record.speed) || record.speed < 0.05 || record.speed > 1.63 / 0.35 || record.windupSeconds !== 0.38 / record.speed || record.recoverySeconds !== 1.25 / record.speed || typeof record.extraKernel !== "boolean" || !record.ranks || !exactKeys2(record.ranks, "heating finish extra") || record.extraKernel && record.ranks.extra === 0 || !["heating", "finish", "extra"].every(
       (key) => Number.isInteger(record.ranks[key]) && record.ranks[key] >= 0 && record.ranks[key] <= 5
-    ) || !Number.isFinite(record.directMultiplier) || record.directMultiplier <= 0 || !Number.isFinite(record.attachmentMultiplier) || record.attachmentMultiplier <= 0 || !record.source || !exactKeys(
+    ) || !Number.isFinite(record.directMultiplier) || record.directMultiplier <= 0 || !Number.isFinite(record.attachmentMultiplier) || record.attachmentMultiplier <= 0 || !record.source || !exactKeys2(
       record.source,
       "id generation ownerId faction isFormationClone species tier hp x y z giantUntil sourceKind attackerStats attackPowerMultiplier sourceDamageScale buffed"
     ) || record.source.id !== record.owner || record.source.generation !== record.ownerGeneration || record.source.species !== 1 || record.source.tier !== record.tier || !["player", "enemy"].includes(record.source.faction) || typeof record.source.ownerId !== "string" || !["direct", "enemy"].includes(record.source.sourceKind) || !["hp", "x", "y", "z", "giantUntil"].every((key) => Number.isFinite(record.source[key])) || typeof record.source.isFormationClone !== "boolean" || typeof record.source.buffed !== "boolean" || !validCornStats(record.source.attackerStats) || !Number.isFinite(record.source.attackPowerMultiplier) || ![1, 3].includes(record.source.attackPowerMultiplier) || !Number.isFinite(record.source.sourceDamageScale) || record.source.sourceDamageScale < 0 || !record.criticalRolls || typeof record.criticalRolls !== "object" || Array.isArray(record.criticalRolls)) {
       return false;
     }
     const INPUTS = record.budgetInputs;
-    if (!exactKeys(
+    if (!exactKeys2(
       INPUTS,
       "tierOneAttack tierAttack gradeMultiplier permanentMultiplier directRank attachmentRank speedRank commandSpeed"
     ) || !["tierOneAttack", "tierAttack", "gradeMultiplier", "permanentMultiplier", "commandSpeed"].every(
@@ -3954,7 +4646,7 @@
     let kernelStart = 0;
     for (let slot = 0; slot < FORM.weights.length; slot++) {
       const SHOT = record.shots[slot];
-      if (!exactKeys(SHOT, "slot weight duration kernelStart kernelCount") || SHOT.slot !== slot || SHOT.weight !== FORM.weights[slot] || SHOT.duration !== FORM.times[slot] / record.speed || SHOT.kernelStart !== kernelStart || SHOT.kernelCount !== FORM.kernels[slot]) {
+      if (!exactKeys2(SHOT, "slot weight duration kernelStart kernelCount") || SHOT.slot !== slot || SHOT.weight !== FORM.weights[slot] || SHOT.duration !== FORM.times[slot] / record.speed || SHOT.kernelStart !== kernelStart || SHOT.kernelCount !== FORM.kernels[slot]) {
         return false;
       }
       kernelStart += SHOT.kernelCount;
@@ -3974,19 +4666,19 @@
       (strike, index) => strike.tick === Math.ceil(record.shots[index].duration * 20 - 1e-9) && strike.weight === record.shots[index].weight
     ));
   }
-  function exactKeys(value, keys2) {
+  function exactKeys2(value, keys2) {
     return value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).sort().join(" ") === keys2.split(" ").sort().join(" ");
   }
   function validCornStats(stats) {
-    return exactKeys(stats, ["maxHp", "attackPower", ...Object.keys(COMMON_UNIT_STAT_DEFAULTS)].join(" ")) && Object.values(stats).every((value) => Number.isFinite(value) && value >= 0) && stats.maxHp > 0;
+    return exactKeys2(stats, ["maxHp", "attackPower", ...Object.keys(COMMON_UNIT_STAT_DEFAULTS)].join(" ")) && Object.values(stats).every((value) => Number.isFinite(value) && value >= 0) && stats.maxHp > 0;
   }
   var CORN_MERGE_DPS_TARGET, CORN_ABILITY, FORMS;
   var init_corn_attack = __esm({
     "src/features/species-growth/corn-attack.js"() {
       init_model_base();
       init_attack_action();
-      init_definition12();
-      init_model11();
+      init_definition14();
+      init_model();
       init_unit_stats();
       init_unit_grades();
       CORN_MERGE_DPS_TARGET = 1.05;
@@ -4000,340 +4692,6 @@
         { weights: [1], times: [0.45], kernels: [6], height: 0 },
         { weights: [0.25, 0.3, 0.45], times: [0.35, 0.5, 0.65], kernels: [3, 3, 3], height: 0 }
       ]);
-    }
-  });
-
-  // src/features/abilities/pea-recovery-boost.js
-  var PEA_RECOVERY_BOOST_FEATURE;
-  var init_pea_recovery_boost = __esm({
-    "src/features/abilities/pea-recovery-boost.js"() {
-      PEA_RECOVERY_BOOST_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "pea-recovery-boost",
-          species: 0,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "회복 기동",
-          description: "적 공격으로 강제 이동이 끝나면 2초 동안 이동 속도가 증가해요.",
-          powerValues: Object.freeze([0.25, 0.35, 0.55])
-        }),
-        model: Object.freeze({
-          durationTicks: 40,
-          multiplierForBonus(bonus) {
-            return 1 + bonus;
-          }
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/kidney-continuous-leap.js
-  var KIDNEY_CONTINUOUS_LEAP_FEATURE;
-  var init_kidney_continuous_leap = __esm({
-    "src/features/abilities/kidney-continuous-leap.js"() {
-      KIDNEY_CONTINUOUS_LEAP_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "kidney-continuous-leap",
-          species: 2,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "연속 도약",
-          description: "가까운 적에게도 준비되면 도약해요. 공중에서는 지면 휩쓸기를 피하고, 착지 시 확률적으로 재사용 대기를 초기화해요.",
-          powerValues: Object.freeze([0.2, 0.35, 0.5, 0.65])
-        }),
-        model: Object.freeze({
-          specialAttackProfile: Object.freeze({
-            kind: "leap",
-            timing: Object.freeze({ windup: 0.32, recovery: 0.9 }),
-            range: 2.5,
-            skillMultiplier: 1.3,
-            projectileCount: 0,
-            bounces: 0
-          }),
-          cooldownTicks: 60
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/chestnut-thorns/definition.js
-  var CHESTNUT_THORNS_FEATURE;
-  var init_definition13 = __esm({
-    "src/features/abilities/chestnut-thorns/definition.js"() {
-      CHESTNUT_THORNS_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "chestnut-target-thorns",
-          species: 3,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "대상 가시 연사",
-          description: "현재 공격 대상을 향해 3초마다 가시를 발사해요. 가시는 0.1초 간격으로 나가며 각각 공격력 100% 피해를 줘요.",
-          powerValues: Object.freeze([1, 2, 3]),
-          cooldownTicks: 60,
-          spacingTicks: 2,
-          attackProfile: Object.freeze({
-            kind: "chestnut-thorns",
-            timing: Object.freeze({ windup: 0, recovery: 0.2 }),
-            range: 1.45,
-            skillMultiplier: 1,
-            projectileCount: 0,
-            bounces: 0
-          })
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/peanut-death-split/definition.js
-  var PEANUT_DEATH_SPLIT_FEATURE;
-  var init_definition14 = __esm({
-    "src/features/abilities/peanut-death-split/definition.js"() {
-      PEANUT_DEATH_SPLIT_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "peanut-death-split",
-          species: 4,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "사망 분열",
-          description: "전투 중 사망하면 T1 분열체 2마리를 남겨요. 강화마다 분열체의 체력과 공격력이 각각 1.5배가 돼요.",
-          powerValues: Object.freeze([1, 1.5, 2.25]),
-          childCount: 2
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/walnut-raw-guard/definition.js
-  var WALNUT_RAW_GUARD_FEATURE;
-  var init_definition15 = __esm({
-    "src/features/abilities/walnut-raw-guard/definition.js"() {
-      WALNUT_RAW_GUARD_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "walnut-raw-guard",
-          species: 5,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "방어와 반격",
-          description: "5초마다 2초간 방어력 50을 얻어요. 방어 중 받은 RAW 피해를 모아 다음 망치에 100/150/225% 추가하며 공격력의 3배까지 적용해요.",
-          powerValues: Object.freeze([1, 1.5, 2.25]),
-          cooldownTicks: 100,
-          durationTicks: 40,
-          armorBonus: 50,
-          maxBonusAttackMultiples: 3
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/corn-attachment/definition.js
-  var CORN_ATTACHMENT_FEATURE;
-  var init_definition16 = __esm({
-    "src/features/abilities/corn-attachment/definition.js"() {
-      CORN_ATTACHMENT_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "corn-kernel-chain",
-          species: 1,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "부착 알갱이 연쇄 폭발",
-          description: "기본 공격 뒤 알갱이가 대상에 붙어요. 첫 부착 1초 후부터 부착 순서대로 0.1초 간격 폭발하며 알갱이마다 발사자 공격력의 50/75/100% 피해를 줘요.",
-          powerValues: Object.freeze([0.5, 0.75, 1]),
-          attachDelayTicks: 20,
-          explosionSpacingTicks: 2,
-          fadeTicks: 6
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/rice-low-health-harvest.js
-  var RICE_LOW_HEALTH_HARVEST_FEATURE;
-  var init_rice_low_health_harvest = __esm({
-    "src/features/abilities/rice-low-health-harvest.js"() {
-      RICE_LOW_HEALTH_HARVEST_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "rice-low-health-harvest",
-          species: 6,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "수확 낫",
-          description: "적이 체력을 잃을수록 쌀의 치명타 확률이 높아져요. 치명타 피해 배율은 공통 2배예요.",
-          rootTier: 1,
-          powerValues: Object.freeze([0.35, 0.55, 0.75])
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/wheat-command-crit.js
-  var WHEAT_COMMAND_CRIT_FEATURE;
-  var init_wheat_command_crit = __esm({
-    "src/features/abilities/wheat-command-crit.js"() {
-      WHEAT_COMMAND_CRIT_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "wheat-command-crit",
-          species: 7,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "밀의 전투 지휘",
-          description: "기본 공격을 발사할 때 35% 확률로 밀을 중심으로 범위 내 살아 있는 아군에게 3초 동안 공격 속도 효과를 줘요. 효과는 밀이나 오라 범위를 벗어나도 유지돼요.",
-          powerValues: Object.freeze([0.5, 0.75, 1.125]),
-          durationTicks: 60,
-          triggerChance: 0.35,
-          branches: Object.freeze({
-            range: Object.freeze({
-              name: "명령 반경",
-              values: Object.freeze([2, 3, 4.5])
-            })
-          })
-        })
-      });
-    }
-  });
-
-  // src/features/abilities/barley-armor-break.js
-  var BARLEY_ARMOR_BREAK_FEATURE;
-  var init_barley_armor_break = __esm({
-    "src/features/abilities/barley-armor-break.js"() {
-      BARLEY_ARMOR_BREAK_FEATURE = Object.freeze({
-        definition: Object.freeze({
-          id: "barley-armor-break",
-          species: 8,
-          availableByDefault: true,
-          minimumTier: 1,
-          name: "도리깨 갑주 파쇄",
-          description: "도리깨 기본 공격이 적중하면 방어도를 고정 수치만큼 낮춰요. 각 적중의 감소가 따로 만료돼요.",
-          rootTier: 1,
-          powerValues: Object.freeze([1, 2, 3]),
-          durationTicks: 60
-        })
-      });
-    }
-  });
-
-  // src/ability-definitions.js
-  var SPECIES_ABILITY_DEFINITIONS;
-  var init_ability_definitions = __esm({
-    "src/ability-definitions.js"() {
-      init_pea_recovery_boost();
-      init_kidney_continuous_leap();
-      init_definition13();
-      init_definition14();
-      init_definition15();
-      init_definition16();
-      init_rice_low_health_harvest();
-      init_wheat_command_crit();
-      init_barley_armor_break();
-      SPECIES_ABILITY_DEFINITIONS = Object.freeze([
-        PEA_RECOVERY_BOOST_FEATURE.definition,
-        KIDNEY_CONTINUOUS_LEAP_FEATURE.definition,
-        CHESTNUT_THORNS_FEATURE.definition,
-        PEANUT_DEATH_SPLIT_FEATURE.definition,
-        WALNUT_RAW_GUARD_FEATURE.definition,
-        CORN_ATTACHMENT_FEATURE.definition,
-        RICE_LOW_HEALTH_HARVEST_FEATURE.definition,
-        WHEAT_COMMAND_CRIT_FEATURE.definition,
-        BARLEY_ARMOR_BREAK_FEATURE.definition
-      ]);
-    }
-  });
-
-  // src/features/species-growth/legacy-state.js
-  function legacyInvestedPoints(investment) {
-    return investment.powerLevel + Object.values(investment.branchLevels || {}).reduce((total, level) => total + level, 0);
-  }
-  function isValidLegacyAbilityProgressionState(state) {
-    return !!(state && typeof state === "object" && state.schemaVersion === 3 && state.abilities && typeof state.abilities === "object" && !Array.isArray(state.abilities) && Object.keys(state.abilities).length === SPECIES_ABILITY_DEFINITIONS.length && SPECIES_ABILITY_DEFINITIONS.every(
-      (definition) => isValidLegacyAbilityInvestment(definition, state.abilities[definition.id])
-    ));
-  }
-  function isValidLegacyAbilityInvestment(definition, investment) {
-    if (!investment || typeof investment !== "object" || Array.isArray(investment) || !isNonNegativeInteger(investment.powerLevel) || investment.powerLevel > definition.powerValues.length - 1 || !Number.isSafeInteger(investment.masteryLevel) || investment.masteryLevel < 1 || !Number.isFinite(investment.masteryXp) || investment.masteryXp < 0 || investment.masteryXp >= masteryXpForNextLevel(investment.masteryLevel) || Object.keys(investment).some(
-      (key) => !["powerLevel", "branchLevels", "masteryLevel", "masteryXp"].includes(key)
-    )) {
-      return false;
-    }
-    const BRANCHES = definition.branches || {}, BRANCH_LEVELS = investment.branchLevels || {};
-    if (Object.keys(BRANCHES).length === 0 && Object.hasOwn(investment, "branchLevels") || Object.hasOwn(investment, "branchLevels") && (typeof investment.branchLevels !== "object" || !investment.branchLevels || Array.isArray(investment.branchLevels) || Object.keys(BRANCH_LEVELS).length !== Object.keys(BRANCHES).length || Object.keys(BRANCH_LEVELS).some((branchId) => !Object.hasOwn(BRANCHES, branchId)))) {
-      return false;
-    }
-    for (const [BRANCH_ID, BRANCH] of Object.entries(BRANCHES)) {
-      const LEVEL = BRANCH_LEVELS[BRANCH_ID] ?? 0;
-      if (!isNonNegativeInteger(LEVEL) || LEVEL > BRANCH.values.length - 1) {
-        return false;
-      }
-    }
-    return investment.masteryLevel - 1 - legacyInvestedPoints(investment) >= 0;
-  }
-  function isNonNegativeInteger(value) {
-    return Number.isSafeInteger(value) && value >= 0;
-  }
-  var init_legacy_state = __esm({
-    "src/features/species-growth/legacy-state.js"() {
-      init_ability_definitions();
-      init_mastery();
-    }
-  });
-
-  // src/features/species-growth/state.js
-  function growthForAbility(abilityId) {
-    return GROWTH_BY_ABILITY.get(abilityId) || null;
-  }
-  function isGrowthInvestment(investment) {
-    return investment?.treeVersion === SPECIES_TREE_VERSION;
-  }
-  function growthBuildOf(investment) {
-    return {
-      masteryLevel: investment.masteryLevel,
-      masteryXp: investment.masteryXp,
-      nodeRanks: investment.nodeRanks,
-      ...investment.legacyMastery ? { legacyMastery: investment.legacyMastery } : {}
-    };
-  }
-  function isValidGrowthInvestment(abilityId, investment) {
-    const GROWTH = growthForAbility(abilityId), DEFINITION13 = SPECIES_ABILITY_DEFINITIONS.find((definition) => definition.id === abilityId);
-    return !!(GROWTH && isGrowthInvestment(investment) && ["treeVersion", "masteryLevel", "masteryXp", "nodeRanks"].every((key) => Object.hasOwn(investment, key)) && Object.keys(investment).every(
-      (key) => ["treeVersion", "masteryLevel", "masteryXp", "nodeRanks", "legacyMastery", "legacyInvestment"].includes(
-        key
-      )
-    ) && GROWTH.isValidBuild(growthBuildOf(investment)) && (!Object.hasOwn(investment, "legacyMastery") || investment.legacyMastery && Object.keys(investment.legacyMastery).length === 2 && Object.hasOwn(investment.legacyMastery, "masteryLevel") && Object.hasOwn(investment.legacyMastery, "masteryXp")) && (!Object.hasOwn(investment, "legacyInvestment") || isValidLegacyAbilityInvestment(DEFINITION13, investment.legacyInvestment)));
-  }
-  function migrateAbilityProgressionState(state) {
-    if (!(state?.schemaVersion === 3 ? isValidLegacyAbilityProgressionState(state) : isValidMixedAbilityEntries(state, { allowLegacy: true }))) {
-      throw new TypeError("Invalid ability progression");
-    }
-    const NEXT = structuredClone(state);
-    NEXT.schemaVersion = 4;
-    for (const [ABILITY_ID9, INVESTMENT] of Object.entries(state.abilities)) {
-      const GROWTH = growthForAbility(ABILITY_ID9);
-      if (GROWTH && !isGrowthInvestment(INVESTMENT)) {
-        NEXT.abilities[ABILITY_ID9] = {
-          treeVersion: SPECIES_TREE_VERSION,
-          ...GROWTH.migrateBuild(INVESTMENT),
-          legacyInvestment: structuredClone(INVESTMENT)
-        };
-      }
-    }
-    return NEXT;
-  }
-  function isValidMixedAbilityEntries(state, { allowLegacy = false } = {}) {
-    return !!(state && typeof state === "object" && state.schemaVersion === 4 && state.abilities && typeof state.abilities === "object" && !Array.isArray(state.abilities) && Object.keys(state.abilities).length === SPECIES_ABILITY_DEFINITIONS.length && SPECIES_ABILITY_DEFINITIONS.every(
-      (definition) => growthForAbility(definition.id) ? isValidGrowthInvestment(definition.id, state.abilities[definition.id]) || allowLegacy && isValidLegacyAbilityInvestment(definition, state.abilities[definition.id]) : isValidLegacyAbilityInvestment(definition, state.abilities[definition.id])
-    ));
-  }
-  var SPECIES_TREE_VERSION, GROWTH_BY_ABILITY;
-  var init_state = __esm({
-    "src/features/species-growth/state.js"() {
-      init_ability_definitions();
-      init_legacy_state();
-      init_model11();
-      init_definition12();
-      SPECIES_TREE_VERSION = 1;
-      GROWTH_BY_ABILITY = new Map(
-        SPECIES_ABILITY_DEFINITIONS.filter((definition) => speciesGrowthDefinition(definition.species)?.available).map(
-          (definition) => [definition.id, new SpeciesGrowth(speciesGrowthDefinition(definition.species))]
-        )
-      );
     }
   });
 
@@ -4823,7 +5181,7 @@
     "src/features/abilities/corn-attachment/model.js"() {
       init_corn_attack();
       init_ability_progression();
-      init_definition16();
+      init_definition13();
       DEFINITION10 = CORN_ATTACHMENT_FEATURE.definition;
       CornAttachmentModel = class {
         static projectileEffect(progression, tier) {
@@ -5116,6 +5474,7 @@
   var BallisticProjectile;
   var init_model_base3 = __esm({
     "src/features/projectiles/model-base.js"() {
+      init_chestnut_attack();
       init_corn_attack();
       BallisticProjectile = class {
         constructor(feature, dependencies) {
@@ -5138,6 +5497,9 @@
               return;
             }
           }
+          if (projectile.chestnutActionId && world.simulationTick <= projectile.chestnutBornTick) {
+            return;
+          }
           const OLD = this.oldPoint;
           OLD.x = projectile.x;
           OLD.y = projectile.y;
@@ -5147,6 +5509,10 @@
             projectile,
             BALLISTICS2.sample(projectile.path, projectile.elapsed / projectile.path.duration, this.motionPoint)
           );
+          if (projectile.chestnutActionId) {
+            resolveChestnutImpact(world, projectile, ARENA_GEOMETRY2, OLD);
+            return;
+          }
           if (projectile.cornActionId) {
             if (projectile.elapsed + 1e-9 < projectile.path.duration) {
               return;
@@ -5316,19 +5682,19 @@
     RECORD.attack = ATTACK2.toDTO();
   }
   function isPeaAttackRecord(record) {
-    if (!record || !exactKeys2(
+    if (!record || !exactKeys3(
       record,
       "version id owner ownerGeneration tier form slot launchTick contactTick comboTicks windupSeconds recoverySeconds stage stageProgress contact direction counter ranks budgetInputs directMultiplier source attack criticalRolls"
-    ) || record.version !== 1 || !Number.isSafeInteger(record.id) || record.id < 1 || !Number.isSafeInteger(record.owner) || record.owner < 1 || !Number.isSafeInteger(record.ownerGeneration) || record.ownerGeneration < 1 || !Number.isInteger(record.tier) || record.tier < 1 || record.tier > 6 || !Number.isInteger(record.form) || record.form < 1 || record.form > record.tier || record.comboTicks !== COMBO_TICKS[record.form] || record.windupSeconds !== 0.28 || !Number.isFinite(record.recoverySeconds) || record.recoverySeconds <= 0 || record.recoverySeconds > 100 || !Number.isFinite(record.directMultiplier) || record.directMultiplier < 0 || typeof record.counter !== "boolean" || !Number.isInteger(record.slot) || record.slot < 0 || record.slot >= PEA_WEIGHTS[record.form].length || !["contact", "rebound", "charge"].includes(record.stage) || !Number.isFinite(record.stageProgress) || record.stageProgress < 0 || record.stageProgress > 1 || !exactKeys2(record.ranks, "power counter recovery first last") || !["power", "counter", "recovery", "first", "last"].every(
+    ) || record.version !== 1 || !Number.isSafeInteger(record.id) || record.id < 1 || !Number.isSafeInteger(record.owner) || record.owner < 1 || !Number.isSafeInteger(record.ownerGeneration) || record.ownerGeneration < 1 || !Number.isInteger(record.tier) || record.tier < 1 || record.tier > 6 || !Number.isInteger(record.form) || record.form < 1 || record.form > record.tier || record.comboTicks !== COMBO_TICKS[record.form] || record.windupSeconds !== 0.28 || !Number.isFinite(record.recoverySeconds) || record.recoverySeconds <= 0 || record.recoverySeconds > 100 || !Number.isFinite(record.directMultiplier) || record.directMultiplier < 0 || typeof record.counter !== "boolean" || !Number.isInteger(record.slot) || record.slot < 0 || record.slot >= PEA_WEIGHTS[record.form].length || !["contact", "rebound", "charge"].includes(record.stage) || !Number.isFinite(record.stageProgress) || record.stageProgress < 0 || record.stageProgress > 1 || !exactKeys3(record.ranks, "power counter recovery first last") || !["power", "counter", "recovery", "first", "last"].every(
       (key) => Number.isInteger(record.ranks[key]) && record.ranks[key] >= 0 && record.ranks[key] <= (["first", "last"].includes(key) ? 5 : 10)
-    ) || !exactKeys2(record.source, "attackerStats attackPowerMultiplier sourceDamageScale sourceKind") || !exactKeys2(
+    ) || !exactKeys3(record.source, "attackerStats attackPowerMultiplier sourceDamageScale sourceKind") || !exactKeys3(
       record.source.attackerStats,
       ["maxHp", "attackPower", ...Object.keys(COMMON_UNIT_STAT_DEFAULTS)].join(" ")
     ) || !Object.values(record.source.attackerStats).every((value) => Number.isFinite(value) && value >= 0) || record.source.attackerStats.maxHp <= 0 || ![1, 3].includes(record.source.attackPowerMultiplier) || !Number.isFinite(record.source.sourceDamageScale) || record.source.sourceDamageScale < 0 || !["direct", "enemy"].includes(record.source.sourceKind) || !record.criticalRolls || !Object.values(record.criticalRolls).every((roll) => Number.isFinite(roll) && roll >= 0 && roll < 1)) {
       return false;
     }
     const INPUTS = record.budgetInputs;
-    if (!exactKeys2(INPUTS, "tierOneAttack tierAttack baseRecovery") || !Object.values(INPUTS).every(Number.isFinite) || INPUTS.baseRecovery <= 0 || record.recoverySeconds !== INPUTS.baseRecovery * (1 - 0.015 * record.ranks.recovery) || record.directMultiplier !== peaBudgetFromInputs(
+    if (!exactKeys3(INPUTS, "tierOneAttack tierAttack baseRecovery") || !Object.values(INPUTS).every(Number.isFinite) || INPUTS.baseRecovery <= 0 || record.recoverySeconds !== INPUTS.baseRecovery * (1 - 0.015 * record.ranks.recovery) || record.directMultiplier !== peaBudgetFromInputs(
       record.tier,
       record.form,
       record.recoverySeconds,
@@ -5352,7 +5718,7 @@
       (strike, index) => strike.weight === PEA_WEIGHTS[record.form][index] && strike.tick === PEA_SLOT_TICKS[record.form][index]
     ) && record.slot === Math.max(0, record.attack.nextSlot - 1) && record.contact && ["x", "y", "z"].every((key) => Number.isFinite(record.contact[key])) && record.contact.z === 0 && record.direction && ["x", "y"].every((key) => Number.isFinite(record.direction[key])) && Math.abs(Math.hypot(record.direction.x, record.direction.y) - 1) < 1e-9);
   }
-  function exactKeys2(value, keys2) {
+  function exactKeys3(value, keys2) {
     return value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).sort().join(" ") === keys2.split(" ").sort().join(" ");
   }
   var PEA_WEIGHTS, COMBO_TICKS, PEA_SLOT_TICKS, ABILITY_ID;
@@ -5426,7 +5792,7 @@
   var init_model15 = __esm({
     "src/features/abilities/chestnut-thorns/model.js"() {
       init_ability_progression();
-      init_definition13();
+      init_definition10();
       ABILITY_ID4 = CHESTNUT_THORNS_FEATURE.definition.id;
       ChestnutThornsModel = class {
         static config(progression, tier) {
@@ -5457,7 +5823,7 @@
   var init_model16 = __esm({
     "src/features/abilities/peanut-death-split/model.js"() {
       init_ability_progression();
-      init_definition14();
+      init_definition11();
       ABILITY_ID5 = PEANUT_DEATH_SPLIT_FEATURE.definition.id;
       PeanutDeathSplitModel = class {
         static config(progression, tier) {
@@ -5507,7 +5873,7 @@
   var init_model17 = __esm({
     "src/features/abilities/walnut-raw-guard/model.js"() {
       init_ability_progression();
-      init_definition15();
+      init_definition12();
       DEFINITION11 = WALNUT_RAW_GUARD_FEATURE.definition;
       WalnutRawGuardModel = class {
         static config(progression, tier) {
@@ -5641,7 +6007,7 @@
       init_definition17();
       init_definition18();
       init_kidney_continuous_leap();
-      init_definition13();
+      init_definition10();
       ATTACK_DEFAULTS = Object.freeze({
         timing: Object.freeze({
           windup: 0.28,
@@ -5707,7 +6073,7 @@
           aimAtCenter: true
         }),
         2: COMPOSITION("redbean", [], { specialAbility: "kidneyLeap" }),
-        3: COMPOSITION("contact", [], {
+        3: COMPOSITION("chestnut", [], {
           contactRecoil: true,
           specialAbility: "chestnutThorns"
         }),
@@ -6383,7 +6749,7 @@
         lifeMs = DAMAGE_NUMBER.lifeMs;
         // `reduced` keeps the number but drops the pop and the rise: the information stays, the motion goes.
         draw(renderer, event, progress, feel) {
-          if ([0, 2].includes(renderer.attackPreviewSpecies)) {
+          if ([0, 2, 3].includes(renderer.attackPreviewSpecies)) {
             return;
           }
           const STYLE = STYLES[event.critical ? "critical" : event.role], REDUCED = feel?.reduced === true, POP = Math.min(1, progress / DAMAGE_NUMBER.popFraction), ALPHA = Math.min(1, (1 - progress) / DAMAGE_NUMBER.fadeFraction), SCALE = (event.critical ? DAMAGE_NUMBER.criticalScale : 1) * (REDUCED ? 1 : 0.65 + 0.45 * Math.sin(POP * Math.PI * 0.5)), LIFT = REDUCED ? 0 : DAMAGE_NUMBER.rise * (1 - (1 - progress) ** 2), DRIFT = (event.sequence * 7919 % 11 - 5) * DAMAGE_NUMBER.spread, POINT2 = renderer.project(event.x + DRIFT, event.y, event.z + 0.5 + LIFT), TEXT = `${STYLE.prefix}${formatDamage(event.amount)}${STYLE.suffix}`, HEIGHT = DAMAGE_NUMBER.height * SCALE * renderer.scale;
@@ -6523,13 +6889,13 @@
       init_model13();
       init_kidney_continuous_leap();
       init_model14();
-      init_definition13();
+      init_definition10();
       init_model15();
-      init_definition14();
+      init_definition11();
       init_model16();
-      init_definition15();
+      init_definition12();
       init_model17();
-      init_definition16();
+      init_definition13();
       init_model12();
       init_rice_low_health_harvest();
       init_model18();
@@ -6669,7 +7035,7 @@
   var init_model21 = __esm({
     "src/features/projectiles/seed/model.js"() {
       init_damage_model();
-      init_definition10();
+      init_definition15();
       SeedProjectile = class extends DamageProjectile {
         constructor(dependencies) {
           super(FEATURE, dependencies);
@@ -6709,7 +7075,7 @@
   }
   var init_definition20 = __esm({
     "src/features/projectiles/definition.js"() {
-      init_definition10();
+      init_definition15();
       init_definition19();
     }
   });
@@ -6735,23 +7101,6 @@
       init_model21();
       init_model22();
       init_definition20();
-    }
-  });
-
-  // src/factions.js
-  function hasFaction(actor, faction) {
-    return actor?.faction === faction;
-  }
-  function areOpposingFactions(a, b) {
-    return !!a && !!b && typeof a.faction === "string" && typeof b.faction === "string" && a.faction !== b.faction;
-  }
-  var FACTION_CONFIG;
-  var init_factions = __esm({
-    "src/factions.js"() {
-      FACTION_CONFIG = Object.freeze({
-        PLAYER: "player",
-        ENEMY: "enemy"
-      });
     }
   });
 
@@ -8380,6 +8729,47 @@
     }
   });
 
+  // src/features/unit-attacks/chestnut/model.js
+  function createChestnutAttackMixin(contactAttack) {
+    return (base) => class extends contactAttack(base) {
+      prepareAttack(sim) {
+        super.prepareAttack?.(sim);
+        const R2 = createChestnutAttack(sim, this.owner, this.action, this.attackSpeedMultiplier(sim));
+        if (R2) {
+          this.action.chestnutAttack = R2;
+        }
+      }
+      attackWindupSeconds(sim) {
+        return this.action?.chestnutAttack?.windupSeconds ?? super.attackWindupSeconds?.(sim) ?? this.spec.timing.windup;
+      }
+      attackRecoverySeconds(sim) {
+        return this.action?.chestnutAttack?.recoverySeconds ?? super.attackRecoverySeconds(sim);
+      }
+      syncAttackSpeedMultiplier(tick) {
+        if (!this.action?.chestnutAttack) {
+          super.syncAttackSpeedMultiplier(tick);
+        }
+      }
+      resetCombatEffects() {
+        super.resetCombatEffects?.();
+        this.interrupt();
+      }
+      launchAttack(sim) {
+        if (this.action?.chestnutAttack) {
+          launchChestnutAttack(sim, this.owner, this.action);
+          this.recover(sim, false);
+        } else {
+          super.launchAttack?.(sim);
+        }
+      }
+    };
+  }
+  var init_model30 = __esm({
+    "src/features/unit-attacks/chestnut/model.js"() {
+      init_chestnut_attack();
+    }
+  });
+
   // src/features/species-growth/redbean-attack.js
   function redbeanGrowthBuild(progression) {
     const ENTRY = progression?.abilities?.["kidney-continuous-leap"];
@@ -8722,7 +9112,7 @@
       }
     };
   }
-  var init_model30 = __esm({
+  var init_model31 = __esm({
     "src/features/unit-attacks/redbean/model.js"() {
       init_redbean_attack();
     }
@@ -8839,7 +9229,7 @@
       }
     };
   }
-  var init_model31 = __esm({
+  var init_model32 = __esm({
     "src/features/unit-attacks/pea/model.js"() {
       init_pea_attack();
       init_attack_action();
@@ -8993,7 +9383,7 @@
     };
     return REPEATED_STRIKE;
   }
-  var init_model32 = __esm({
+  var init_model33 = __esm({
     "src/features/unit-attacks/dual-strike/model.js"() {
       init_unit_combat_patterns();
     }
@@ -9061,7 +9451,7 @@
     };
     return PROJECTILE_ATTACK;
   }
-  var init_model33 = __esm({
+  var init_model34 = __esm({
     "src/features/unit-attacks/lob/model.js"() {
       init_corn_attack();
     }
@@ -9265,7 +9655,7 @@
       }
       canBegin(sim) {
         const U = this.owner, CONFIG_LOCAL = ChestnutThornsModel.config(sim.abilityProgressionFor(U), U.tier);
-        return !!CONFIG_LOCAL && sim.simulationTick >= (U.chestnutNextThornTick || 0);
+        return !chestnutGrowthBuild(sim.abilityProgressionFor(U)) && !!CONFIG_LOCAL && sim.simulationTick >= (U.chestnutNextThornTick || 0);
       }
       createAttackPath() {
         this.action.path = null;
@@ -9373,6 +9763,7 @@
     const ATTACKS = {
       contact: CONTACT_ATTACK,
       pea: createPeaAttackMixin(CONTACT_ATTACK, arenaGeometry),
+      chestnut: createChestnutAttackMixin(CONTACT_ATTACK),
       redbean: createRedbeanAttackMixin(CONTACT_ATTACK, arenaGeometry),
       [FEATURE3.modelKey]: PROJECTILE_ATTACK,
       [FEATURE4.modelKey]: REPEATED_STRIKE
@@ -9421,11 +9812,13 @@
   var init_unit_attack_capabilities = __esm({
     "src/unit-attack-capabilities.js"() {
       init_model30();
-      init_redbean_attack();
+      init_chestnut_attack();
       init_model31();
+      init_redbean_attack();
       init_model32();
-      init_definition18();
       init_model33();
+      init_definition18();
+      init_model34();
       init_definition17();
       init_unit_abilities();
       init_unit_stats();
@@ -9511,13 +9904,14 @@
   var import_definition53, SEEDED_PRNG, CREATE_BUDGETED_SCHEDULER, EMPTY_FOOD_SEARCH_BUCKET, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, BREED_RESERVATION_OWNER, MERGE_RESERVATION_OWNER, FARM_MAX_UNITS, BATTLE_MAX_UNITS, MAX_PEANUT_SPLIT_CHILDREN, MAX_BOSS_SUMMONS, WORLD_ARENA, FARM_ARENA, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, FARM_BOSS_PHASES, PROJECTILE_BEHAVIORS, FARM_MODES, BOSS_BEHAVIORS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, CREATE_UNIT_SPECIAL_ABILITY, SIMULATION_SCENES, ATTACKING_BODY, UNIT, GARDEN;
   var init_farm_model = __esm({
     "src/farm-model.js"() {
+      init_chestnut_attack();
       init_farm_offline();
       init_farm_work();
       init_formation_skills();
       init_formation_skill_state();
       init_signal();
       import_definition53 = __toESM(require_definition(), 1);
-      init_definition10();
+      init_definition15();
       init_mutation_notifications();
       init_unit_collection();
       init_farm_roster();
@@ -9630,7 +10024,9 @@
         battle: Object.freeze({
           capacity: Object.freeze({
             battleUnits: BATTLE_MAX_UNITS * (1 + MAX_PEANUT_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS + 2e3,
-            projectiles: BATTLE_MAX_UNITS * (1 + MAX_PEANUT_SPLIT_CHILDREN) * 4 + 40
+            // At most three basic and three independent thorn slots per actor in flight;
+            // reserve two extra slots for mixed legacy projectile overlap.
+            projectiles: BATTLE_MAX_UNITS * (1 + MAX_PEANUT_SPLIT_CHILDREN) * 8 + 40
           }),
           arena: WORLD_ARENA,
           dropHeight: 3
@@ -9916,7 +10312,7 @@
             this.interrupt();
             return true;
           }
-          if (this.action && (this.phase === "windup" || this.phase === "active") && !this.action.cornAttack && !this.action.redbeanAttack && !(sim.attackTarget(U, this.action)?.hp > 0)) {
+          if (this.action && (this.phase === "windup" || this.phase === "active") && !this.action.cornAttack && !this.action.redbeanAttack && !this.action.chestnutAttack && !(sim.attackTarget(U, this.action)?.hp > 0)) {
             this.interrupt();
             return true;
           }
@@ -10653,6 +11049,7 @@
             revision: 0
           };
           this.projectiles = [];
+          this.chestnutAttacks = [];
           this.cornAttachments = CornAttachmentModel.createManager();
           this.attackSerial = 0;
           this.projectileSerial = 0;
@@ -11151,6 +11548,7 @@
           }
           this.unitCollection.removeWhere((unit2) => unit2.isBattleOnlySummon);
           this.projectiles = [];
+          this.chestnutAttacks = [];
           this.cornAttachments = CornAttachmentModel.createManager();
           return true;
         }
@@ -12643,6 +13041,7 @@
           this.advancePhysics(dt, UNITS, SCENE);
           this.profiler?.end("physics", PHYSICS_START);
           CornAttachmentModel.advance(this);
+          advanceChestnutAttacks(this);
           const POST_STEP_START = this.profiler?.start();
           SCENE.resolveLifeContacts(this, UNITS);
           this.resolvePeaRecoveryBoosts(UNITS);
@@ -13679,6 +14078,7 @@
             this.clearPeaRecoveryBoost(u);
             return;
           }
+          tryChestnutPeriodic(this, u, enemy);
           const ACTIVE_ATTACK = u.specialAbility && u.specialAbility.phase !== "idle" ? u.specialAbility : u.ability;
           if (ACTIVE_ATTACK.update(this, dt) || u.stun > 0 || u.z > 0.1 || u.landingRecovery > 0) {
             return;
@@ -13690,7 +14090,7 @@
             return;
           }
           const B_LOCAL = enemy, SPEC = abilityProfile(u.species), DX = u.x - B_LOCAL.x, DY = u.y - B_LOCAL.y, N = Math.hypot(DX, DY) || 1, TARGET_ID = enemy === this.boss ? "boss" : enemy.id;
-          const BEHAVIOR = unitCapabilityComposition(u.species), STAND = B_LOCAL.radius + SPEC.range + (u.tier - 1) * 0.12, MIN = STAND - 0.55, MAX = STAND + BEHAVIOR.outerRangeSlack;
+          const BEHAVIOR = unitCapabilityComposition(u.species), STAND = B_LOCAL.radius + (chestnutRange(this, u) ?? SPEC.range) + (u.species === 3 ? 0 : (u.tier - 1) * 0.12), MIN = STAND - 0.55, MAX = STAND + BEHAVIOR.outerRangeSlack;
           if (N > MAX || BEHAVIOR.retreatWithinRange && N < MIN) {
             const SLOT = ARENA_GEOMETRY.clamp(
               {
@@ -13749,6 +14149,7 @@
             this.boss.patternRuntime.active = null;
           }
           this.projectiles = [];
+          this.chestnutAttacks = [];
           const ENCOUNTER_ID = this.farmBossEvent.encounterId;
           this.farmBossEvent = {
             phase: "celebrating",
@@ -14869,7 +15270,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.33.0";
+      PRODUCT_VERSION = "0.34.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -14927,7 +15328,7 @@
       init_farm_progress();
       MAX_BYTES = 2 * 1024 * 1024;
       COMPATIBILITY_LOCAL = (version) => typeof version === "string" ? version.split(".").slice(0, 2).join(".") : "";
-      IS_READABLE_COMPATIBILITY = (version) => [COMPATIBILITY, "0.32", "0.31", "0.30"].includes(COMPATIBILITY_LOCAL(version));
+      IS_READABLE_COMPATIBILITY = (version) => [COMPATIBILITY, "0.33", "0.32", "0.31", "0.30"].includes(COMPATIBILITY_LOCAL(version));
     }
   });
 
@@ -15477,6 +15878,58 @@
   init_tower_run();
   init_farm_model();
 
+  // src/features/projectiles/spike/presentation.js
+  init_farm_model();
+  init_definition19();
+  function sampleChestnutShards(projectile, progress) {
+    const Q = Math.max(0, Math.min(1, progress)), P = projectile.path, CENTER = BALLISTICS.sample(P, Q), DX = P.to.x - P.from.x, DY = P.to.y - P.from.y, N = Math.hypot(DX, DY) || 1, STAGE = projectile.chestnutStage, OFFSETS = STAGE === "fan" || STAGE === "spread" ? [-1, -0.5, 0, 0.5, 1] : STAGE === "converge" ? [-1, 1] : [0], WIDTH = STAGE === "spread" ? 0.4 * N : STAGE === "fan" ? N : 0.6;
+    return OFFSETS.map((offset) => {
+      const CROSS = STAGE === "cross-left" ? -1 : STAGE === "cross-right" ? 1 : 0, SIDE = CROSS ? CROSS * 0.25 * (1 - 2 * Q) : offset * WIDTH * (STAGE === "converge" ? 1 - Q : Q), SIDE_VELOCITY = CROSS ? -CROSS * 0.5 : offset * WIDTH * (STAGE === "converge" ? -1 : 1);
+      return {
+        x: CENTER.x - DY / N * SIDE,
+        y: CENTER.y + DX / N * SIDE,
+        z: CENTER.z,
+        angle: Math.atan2(DY + DX / N * SIDE_VELOCITY, DX - DY / N * SIDE_VELOCITY),
+        width: STAGE === "central" ? 0.16 : 0.085,
+        length: STAGE === "central" ? 0.36 : 0.22
+      };
+    });
+  }
+  var SpikeProjectilePresentation = class {
+    constructor() {
+      this.id = FEATURE5.id;
+    }
+    drawShadow(renderer, projectile) {
+      renderer.groundEllipse(projectile.x, projectile.y, 0.14, 0.1, "#55452433");
+    }
+    draw(renderer, projectile, point2, tail) {
+      if (projectile.chestnutActionId) {
+        const HEADS = sampleChestnutShards(projectile, projectile.elapsed / projectile.path.duration), TAILS = sampleChestnutShards(projectile, (projectile.elapsed - 0.06) / projectile.path.duration);
+        HEADS.forEach((head, index) => {
+          const TIP2 = renderer.project(
+            head.x + Math.cos(head.angle) * head.length,
+            head.y + Math.sin(head.angle) * head.length,
+            head.z
+          ), P = renderer.project(head.x, head.y, head.z), T = TAILS[index];
+          renderer.line(renderer.project(T.x, T.y, T.z), P, 0.045, "#77924888");
+          renderer.line(P, TIP2, head.width, "#68883e");
+          renderer.ellipse(TIP2.x, TIP2.y, renderer.scale * 0.045, renderer.scale * 0.035, "#e0e9ac", head.angle);
+        });
+        return;
+      }
+      const ANGLE = Math.atan2(
+        projectile.path.to.y - projectile.path.from.y,
+        projectile.path.to.x - projectile.path.from.x
+      ), TIP = {
+        x: point2.x + Math.cos(ANGLE) * renderer.scale * 0.22,
+        y: point2.y - 0.62 * Math.sin(ANGLE) * renderer.scale * 0.22
+      };
+      renderer.line(renderer.project(tail.x, tail.y, tail.z), point2, 0.055, "#778f4c88");
+      renderer.line(point2, TIP, 0.105, "#79964e");
+      renderer.ellipse(TIP.x, TIP.y, renderer.scale * 0.045, renderer.scale * 0.035, "#d5df9d", ANGLE);
+    }
+  };
+
   // src/farm-renderer.js
   var import_definition69 = __toESM(require_definition(), 1);
 
@@ -15484,11 +15937,11 @@
   var import_vector_sockets4 = __toESM(require_vector_sockets(), 1);
 
   // src/features/projectiles/seed/presentation.js
-  init_definition10();
-  var import_definition56 = __toESM(require_definition(), 1);
+  init_definition15();
+  var import_definition57 = __toESM(require_definition(), 1);
   var import_vector_sockets3 = __toESM(require_vector_sockets(), 1);
   function seedDisplayMultiplier(renderer, projectile) {
-    const BODY2 = (0, import_definition56.unitBodyDefinition)(projectile.species), OWNER_VECTOR_SCALE = projectile.height * import_vector_sockets3.WORLD_HEIGHT_PROJECTION / (FEATURE.bodyHeightFraction * (BODY2.bounds.bottom - BODY2.bounds.top)), DISPLAY_SCALE = (0, import_definition56.unitDisplayScale)(BODY2, OWNER_VECTOR_SCALE, renderer.scale, renderer.minimumUnitPixels());
+    const BODY2 = (0, import_definition57.unitBodyDefinition)(projectile.species), OWNER_VECTOR_SCALE = projectile.height * import_vector_sockets3.WORLD_HEIGHT_PROJECTION / (FEATURE.bodyHeightFraction * (BODY2.bounds.bottom - BODY2.bounds.top)), DISPLAY_SCALE = (0, import_definition57.unitDisplayScale)(BODY2, OWNER_VECTOR_SCALE, renderer.scale, renderer.minimumUnitPixels());
     return DISPLAY_SCALE / OWNER_VECTOR_SCALE;
   }
   var SeedProjectilePresentation = class {
@@ -15974,7 +16427,7 @@
   };
 
   // src/features/formation-skills/hammer/presentation.js
-  init_model7();
+  init_model8();
   var HammerPresentation = class extends FormationPresentation {
     draw(renderer, effect) {
       const R2 = Math.max(0.2, (effect.bodyRadius || 0.3) * 0.55), H = Math.max(R2 * 2, effect.bodyHeight || R2 * 2), AGE = effect.age, RISE_END = 0.2, TOP = effect.z + H, HIGH = TOP + R2 * 3.4, AIM_Z = TOP + R2 * 0.15, S = renderer.scale, C = renderer.ctx;
@@ -16245,7 +16698,7 @@
   }
 
   // src/features/scenes/farm/presentation.js
-  init_definition11();
+  init_definition16();
 
   // src/features/farm-modes/vfx-kit.js
   init_unit_grades();
@@ -16932,27 +17385,6 @@
     return PRESENTATION;
   }
 
-  // src/features/projectiles/spike/presentation.js
-  init_definition19();
-  var SpikeProjectilePresentation = class {
-    constructor() {
-      this.id = FEATURE5.id;
-    }
-    drawShadow(renderer, projectile) {
-      renderer.groundEllipse(projectile.x, projectile.y, 0.14, 0.1, "#55452433");
-    }
-    draw(renderer, projectile, point2, tail) {
-      const F = projectile, P = point2, TAIL = tail;
-      const ANGLE = Math.atan2(F.path.to.y - F.path.from.y, F.path.to.x - F.path.from.x), TIP = {
-        x: P.x + Math.cos(ANGLE) * renderer.scale * 0.22,
-        y: P.y - 0.62 * Math.sin(ANGLE) * renderer.scale * 0.22
-      };
-      renderer.line(renderer.project(TAIL.x, TAIL.y, TAIL.z), P, 0.055, "#778f4c88");
-      renderer.line(P, TIP, 0.105, "#79964e");
-      renderer.ellipse(TIP.x, TIP.y, renderer.scale * 0.045, renderer.scale * 0.035, "#d5df9d", ANGLE);
-    }
-  };
-
   // src/farm-render-items.js
   init_definition20();
   init_farm_model();
@@ -17010,6 +17442,58 @@
     }
     recoverMotion() {
       return "recover";
+    }
+  };
+
+  // src/features/unit-attacks/chestnut/presentation.js
+  var ChestnutAttackPresentation = class extends UnitAttackPresentation {
+    applyPose(matrix, unit2, ground) {
+      const A = unit2.ability, FORM = A.chestnutForm, STAGE = A.chestnutStage, DIRECTION = Math.cos(unit2.angle || 0) >= 0 ? 1 : -1, Q = Math.max(0, Math.min(1, A.chestnutStageProgress || 0));
+      if (!FORM || !["windup", "active", "recover"].includes(A.phase)) {
+        return;
+      }
+      let squash, lean = 0;
+      if (A.phase === "windup") {
+        const WINDUP = Math.min(1, A.elapsed / A.chestnutWindupDuration);
+        squash = (FORM === 6 ? 0.28 : 0.16) * WINDUP;
+        lean = -0.12 * WINDUP;
+      } else {
+        const PULSE = Math.sin(Math.PI * Q);
+        switch (STAGE) {
+          case "cross-left":
+            lean = -0.3 * PULSE;
+            squash = -0.08 * PULSE;
+            break;
+          case "cross-right":
+            lean = 0.3 * PULSE;
+            squash = -0.08 * PULSE;
+            break;
+          case "fan":
+          case "spread":
+            squash = 0.18 * PULSE;
+            break;
+          case "converge":
+            squash = -0.18 * PULSE;
+            lean = 0.12 * PULSE;
+            break;
+          case "central":
+            squash = -0.24 * PULSE;
+            lean = 0.25 * PULSE;
+            break;
+          case "thrust":
+            lean = 0.16 * PULSE;
+            squash = -0.08 * PULSE;
+            break;
+          default:
+            squash = 0.06 * Math.max(0, 1 - A.elapsed / 0.65);
+        }
+      }
+      const SCALE = matrix[0], X = matrix[4] + ground.x * SCALE, Y = matrix[5] + ground.y * SCALE;
+      matrix[0] = SCALE * (1 + squash * 0.6);
+      matrix[2] = SCALE * lean * DIRECTION;
+      matrix[3] = SCALE * (1 - squash);
+      matrix[4] = X - ground.x * matrix[0] - ground.y * matrix[2];
+      matrix[5] = Y - ground.y * matrix[3];
     }
   };
 
@@ -17317,6 +17801,7 @@
   ]);
 
   // src/farm-render-units.js
+  var CHESTNUT_ATTACK = new ChestnutAttackPresentation();
   var REDBEAN_ATTACK = new RedbeanAttackPresentation();
   var PEA_ATTACK = new PeaAttackPresentation();
   var DEFAULT_ATTACK = new UnitAttackPresentation();
@@ -17326,6 +17811,9 @@
     [new DualStrikePresentation(), new LobPresentation()].map((presentation) => [presentation.id, presentation])
   );
   function unitAttackPresentation(unit2) {
+    if (unit2.species === 3 && unit2.ability?.chestnutForm) {
+      return CHESTNUT_ATTACK;
+    }
     if (unit2.species === 2 && unit2.ability?.redbeanForm) {
       return REDBEAN_ATTACK;
     }
@@ -17545,6 +18033,9 @@
       }
       if (!SWING && !rest && u.species === 2 && u.hp > 0 && u.stun <= 0 && u.dropLanded) {
         REDBEAN_ATTACK.applyPose(MATRIX, u, GROUND);
+      }
+      if (!SWING && !rest && u.species === 3 && u.hp > 0 && u.stun <= 0 && u.dropLanded) {
+        CHESTNUT_ATTACK.applyPose(MATRIX, u, GROUND);
       }
       this.renderer.ctx.vector.flush();
       player.draw({
@@ -19128,7 +19619,7 @@
     // The camera follows the climb: on the march it pulls back to show the tower and its door, and
     // it stays there a moment when the troops come back out; inside, it rests on the hall.
     directCamera(sim2, now) {
-      if ([0, 2].includes(this.attackPreviewSpecies) && sim2.units.length === 1 && sim2.units[0].species === this.attackPreviewSpecies) {
+      if ([0, 2, 3].includes(this.attackPreviewSpecies) && sim2.units.length === 1 && sim2.units[0].species === this.attackPreviewSpecies) {
         this.fitAttackPreview(sim2);
         return;
       }
@@ -19174,6 +19665,10 @@
     // Isolated pea help frames show the real contact and body, not the entire hall.
     // This flag is installed only by the help entry point, never for a live run.
     fitAttackPreview(world) {
+      if (this.attackPreviewSpecies === 3) {
+        this.fitChestnutPreview(world);
+        return;
+      }
       if (this.attackPreviewSpecies === 2) {
         this.fitJumpPreview(world);
         return;
@@ -19182,6 +19677,53 @@
       this.zoom = 2 * BASE[0] * SCALE / this.canvas.width;
       this.configure(this.scene, true);
       const PAN_X = this.canvas.width * 0.45 / this.scale - FOCUS_X - this.view[0], PAN_Y = this.view[1] - this.baseY() - this.canvas.height * 0.76 / this.scale - FOCUS_Y * import_vector_sockets9.WORLD_DEPTH_PROJECTION;
+      this.panLimits.minX = Math.min(this.panLimits.minX, PAN_X);
+      this.panLimits.maxX = Math.max(this.panLimits.maxX, PAN_X);
+      this.panLimits.minY = Math.min(this.panLimits.minY, PAN_Y);
+      this.panLimits.maxY = Math.max(this.panLimits.maxY, PAN_Y);
+      this.setPan(PAN_X, PAN_Y);
+    }
+    fitChestnutPreview(world) {
+      const UNIT3 = world.units[0], BODY2 = (0, import_definition69.unitBodyDefinition)(UNIT3.species), ART = UNIT3.bodyScale * Math.max(BODY2.viewBox[2], BODY2.viewBox[3]), BASE = this.scenePresentation.cameraView(this.aspect), BOUNDS = {
+        left: UNIT3.x - ART * 0.75,
+        right: UNIT3.x + ART * 0.75,
+        top: UNIT3.y * import_vector_sockets9.WORLD_DEPTH_PROJECTION + ART * 1.25,
+        bottom: UNIT3.y * import_vector_sockets9.WORLD_DEPTH_PROJECTION - ART * 0.15
+      }, PATH2 = {
+        height: 0,
+        from: { x: UNIT3.x, y: UNIT3.y, z: 0.35 },
+        to: { x: world.boss.x - world.boss.radius + 0.04, y: world.boss.y, z: 0.35 }
+      };
+      const PROJECTILES = [
+        "thrust",
+        "cross-left",
+        "cross-right",
+        "fan",
+        "spread",
+        "converge",
+        "central",
+        "periodic"
+      ].map((stage) => ({ path: PATH2, chestnutStage: stage }));
+      PROJECTILES.push(...world.projectiles.filter((p) => p.chestnutActionId));
+      for (const PROJECTILE2 of PROJECTILES) {
+        for (const Q of [0, 0.25, 0.5, 0.75, 1]) {
+          for (const SHARD of sampleChestnutShards(PROJECTILE2, Q)) {
+            const X = SHARD.x + Math.cos(SHARD.angle) * SHARD.length, Y = (SHARD.y + Math.sin(SHARD.angle) * SHARD.length) * import_vector_sockets9.WORLD_DEPTH_PROJECTION + SHARD.z * import_vector_sockets9.WORLD_HEIGHT_PROJECTION;
+            BOUNDS.left = Math.min(BOUNDS.left, SHARD.x - 0.12, X - 0.12);
+            BOUNDS.right = Math.max(BOUNDS.right, SHARD.x + 0.12, X + 0.12);
+            BOUNDS.top = Math.max(BOUNDS.top, Y + 0.12);
+            BOUNDS.bottom = Math.min(BOUNDS.bottom, Y - 0.12);
+          }
+        }
+      }
+      const PAD = 14 * this.pixelRatio, SCALE = Math.min(
+        108 * this.pixelRatio / ART,
+        (this.canvas.width - 2 * PAD) / (BOUNDS.right - BOUNDS.left),
+        (this.canvas.height - 2 * PAD) / (BOUNDS.top - BOUNDS.bottom)
+      );
+      this.zoom = 2 * BASE[0] * SCALE / this.canvas.width;
+      this.configure(this.scene, true);
+      const PAN_X = this.canvas.width / (2 * this.scale) - (BOUNDS.left + BOUNDS.right) / 2 - this.view[0], PAN_Y = this.view[1] - this.baseY() - this.canvas.height / (2 * this.scale) - (BOUNDS.top + BOUNDS.bottom) / 2;
       this.panLimits.minX = Math.min(this.panLimits.minX, PAN_X);
       this.panLimits.maxX = Math.max(this.panLimits.maxX, PAN_X);
       this.panLimits.minY = Math.min(this.panLimits.minY, PAN_Y);
@@ -19523,6 +20065,11 @@
       "ability.phase": R.STATE_KEY,
       "ability.elapsed": R.LINEAR,
       "ability.peanutStrikeCount": R.STEP,
+      "ability.chestnutForm": R.STEP,
+      "ability.chestnutSlot": R.STEP,
+      "ability.chestnutStage": R.STATE_KEY,
+      "ability.chestnutStageProgress": R.LINEAR,
+      "ability.chestnutWindupDuration": R.STEP,
       "ability.redbeanForm": R.STEP,
       "ability.redbeanSlot": R.STEP,
       "ability.redbeanLeg": R.STEP,
@@ -19586,6 +20133,12 @@
       this.ability.phase = u.ability.phase;
       this.ability.elapsed = u.ability.elapsed;
       this.ability.peanutStrikeCount = u.ability.action?.peanutStrikeCount || 2;
+      const CHESTNUT = u.ability.action?.chestnutAttack, CHESTNUT_TICK = u.ability.phase === "recover" ? u.ability.elapsed * 20 : 0, CHESTNUT_SHOT = CHESTNUT?.shots.findLast((shot) => shot.tick <= CHESTNUT_TICK), CHESTNUT_FLIGHT = Math.max(0.1, 0.3 / (CHESTNUT?.speed || 1));
+      this.ability.chestnutForm = CHESTNUT?.form || 0;
+      this.ability.chestnutSlot = CHESTNUT_SHOT?.slot || 0;
+      this.ability.chestnutStage = CHESTNUT && u.ability.phase === "recover" && CHESTNUT_TICK < (CHESTNUT_SHOT?.tick || 0) + CHESTNUT_FLIGHT * 20 ? CHESTNUT_SHOT?.stage || "thrust" : u.ability.phase;
+      this.ability.chestnutStageProgress = CHESTNUT_SHOT ? Math.max(0, Math.min(1, (CHESTNUT_TICK - CHESTNUT_SHOT.tick) / (CHESTNUT_FLIGHT * 20))) : 0;
+      this.ability.chestnutWindupDuration = CHESTNUT?.windupSeconds || 0.28;
       const REDBEAN = u.ability.action?.redbeanAttack;
       this.ability.redbeanForm = REDBEAN?.form || 0;
       this.ability.redbeanSlot = REDBEAN?.slot || 0;
@@ -19754,6 +20307,11 @@
       projectileKind: R.STATE_KEY,
       shotIndex: R.STEP,
       fanIndex: R.STEP,
+      chestnutActionId: R.STEP,
+      chestnutForm: R.STEP,
+      chestnutSlot: R.STEP,
+      chestnutStage: R.STATE_KEY,
+      chestnutBornTick: R.STEP,
       cornForm: R.STEP,
       cornSlot: R.STEP,
       "path.from.x": R.STEP,
@@ -19786,6 +20344,11 @@
       this.projectileKind = p.projectileKind || "";
       this.shotIndex = p.shotIndex || 0;
       this.fanIndex = p.fanIndex || 0;
+      this.chestnutActionId = p.chestnutActionId || 0;
+      this.chestnutForm = p.chestnutForm || 0;
+      this.chestnutSlot = p.chestnutSlot || 0;
+      this.chestnutStage = p.chestnutStage || "";
+      this.chestnutBornTick = p.chestnutBornTick || 0;
       this.cornForm = p.cornForm || 0;
       this.cornSlot = p.cornSlot || 0;
       this.path.from.x = p.path.from.x;
@@ -20419,6 +20982,7 @@
   init_farm_model();
 
   // src/farm-snapshot-validation.js
+  init_chestnut_attack();
   init_redbean_attack();
   init_pea_attack();
   init_formation_skill_state();
@@ -20580,6 +21144,7 @@
       revision: 0
     },
     projectiles: [],
+    chestnutAttacks: [],
     entityGenerationSerial: 2,
     cornAttachments: {
       nextGroupId: 1,
@@ -20705,7 +21270,8 @@
       thornConfig: JSON_PAYLOAD,
       cornAttack: CORN_ACTION,
       peaAttack: JSON_PAYLOAD,
-      redbeanAttack: JSON_PAYLOAD
+      redbeanAttack: JSON_PAYLOAD,
+      chestnutAttack: JSON_PAYLOAD
     }
   );
   var UNIT2 = shapeFields(UNIT_SNAPSHOT_SHAPE, {
@@ -20743,7 +21309,7 @@
   );
   var PROGRESSION = JSON_PAYLOAD;
   var PROJECTILE = FIELDS(
-    "isFormationClone id owner ownerGeneration targetId targetGeneration faction ownerId species tier elapsed x y z radius height hit attackMultiplier shotIndex projectileKind fanIndex cornActionId cornSlot cornForm",
+    "isFormationClone id owner ownerGeneration targetId targetGeneration faction ownerId species tier elapsed x y z radius height hit attackMultiplier shotIndex projectileKind fanIndex cornActionId cornSlot cornForm chestnutActionId chestnutSlot chestnutForm chestnutStage chestnutBornTick",
     {
       path: PATH,
       attackPayload: JSON_PAYLOAD,
@@ -20767,6 +21333,7 @@
     playerProgression: PROGRESSION,
     runProgressionSnapshot: PROGRESSION,
     projectiles: [PROJECTILE],
+    chestnutAttacks: [JSON_PAYLOAD],
     cornAttachments: FIELDS("nextGroupId nextAttachmentId", { groups: [CORN_GROUP], actions: [CORN_ACTION] }),
     bossRewardReceipts: [REWARD],
     bossRewardStreams: JSON_PAYLOAD,
@@ -20843,7 +21410,7 @@
   // src/farm-snapshot-validation.js
   init_attack_action();
   init_corn_attack();
-  init_definition16();
+  init_definition13();
   var INTEGER2 = (v, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(v) && v >= min && v <= max;
   var VALID_BATTLE_UNIT_ID = (id, bossSummonSerial) => INTEGER2(id, 1, CONFIG.farm.maxUnitId) || INTEGER2(id, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + bossSummonSerial);
   function assertSnapshot(ok) {
@@ -20875,7 +21442,7 @@
         progression && ["masteryLevel", "masteryXp"].includes(key) ? Number.isFinite(v) && v >= 0 : SAFE_COUNTERS.has(key) ? Number.isSafeInteger(v) && Math.abs(v) <= Number.MAX_SAFE_INTEGER : Number.isFinite(v) && Math.abs(v) < 1e13
       );
     } else if (Array.isArray(v)) {
-      const MAX = key === "units" ? CONFIG.battle.capacity.battleUnits : key === "projectiles" || key === "actions" || key === "groups" ? CONFIG.battle.capacity.projectiles : key === "bossRewardReceipts" || key === "processedBossKillReceipts" ? 1e5 : 1024;
+      const MAX = key === "units" ? CONFIG.battle.capacity.battleUnits : key === "projectiles" || key === "actions" || key === "groups" || key === "chestnutAttacks" ? CONFIG.battle.capacity.projectiles : key === "bossRewardReceipts" || key === "processedBossKillReceipts" ? 1e5 : 1024;
       ASSERT2(v.length <= MAX);
       v.forEach((x) => finiteTree(x, depth + 1, "", progression));
     } else if (v && typeof v === "object") {
@@ -20968,6 +21535,14 @@
     );
     ASSERT2(raw.scene === "farm");
     ASSERT2(Array.isArray(raw.mergeTasks) && raw.mergeTasks.length <= CONFIG.farm.capacity.battleUnits);
+    const CHESTNUT_ACTIONS = /* @__PURE__ */ new Map();
+    ASSERT2(Array.isArray(raw.chestnutAttacks) && raw.chestnutAttacks.length <= CONFIG.battle.capacity.projectiles);
+    for (const R2 of raw.chestnutAttacks) {
+      ASSERT2(
+        isChestnutAttackRecord(R2) && INTEGER2(R2.id, 1, raw.attackSerial) && R2.launchTick <= raw.simulationTick && R2.attack.lastTick <= raw.simulationTick && !CHESTNUT_ACTIONS.has(R2.id)
+      );
+      CHESTNUT_ACTIONS.set(R2.id, R2);
+    }
     const CORN_ACTIONS = /* @__PURE__ */ new Map();
     ASSERT2(
       Array.isArray(raw.cornAttachments.actions) && raw.cornAttachments.actions.length <= CONFIG.battle.capacity.projectiles
@@ -21136,7 +21711,7 @@
     for (const U of raw.units) {
       shape(U, UNIT_SNAPSHOT_SHAPE);
       ASSERT2(
-        Number.isFinite(U.growthElapsed) && U.growthElapsed >= 0 && Number.isFinite(U.growthDuration) && U.growthDuration > 0 && U.growthElapsed <= U.growthDuration + 1e-9 && Number.isFinite(U.cooldown) && U.cooldown >= 0 && Number.isFinite(U.cooldownDuration) && U.cooldownDuration >= U.cooldown - 1e-9 && U.cooldownDuration <= 1e5 && INTEGER2(U.mateId, 0, MATE_ID_LIMIT) && Number.isFinite(U.perceptionRange) && U.perceptionRange > 0 && U.perceptionRange <= 100 && Number.isFinite(U.down) && U.down >= 0 && U.down <= CONFIG.unit.corpseRecoverySeconds && INTEGER2(U.battleSummonEncounterId, 0, 1e12) && Number.isFinite(U.landingRecovery) && U.landingRecovery >= 0 && U.landingRecovery <= 0.25 + 1e-9 && INTEGER2(U.generation, 1, 1e12) && Number.isFinite(U.permanentStatMultiplier) && U.permanentStatMultiplier >= 1 && U.permanentStatMultiplier <= 2.25 && Number.isFinite(U.growthMaxHpMultiplier) && (U.growthMaxHpMultiplier === 1 || U.species === 2 && hasFaction(U, FACTION_CONFIG.PLAYER) && U.growthMaxHpMultiplier >= 1 && U.growthMaxHpMultiplier <= 1.4 && Math.abs(
+        Number.isFinite(U.growthElapsed) && U.growthElapsed >= 0 && Number.isFinite(U.growthDuration) && U.growthDuration > 0 && U.growthElapsed <= U.growthDuration + 1e-9 && Number.isFinite(U.cooldown) && U.cooldown >= 0 && Number.isFinite(U.cooldownDuration) && U.cooldownDuration >= U.cooldown - 1e-9 && U.cooldownDuration <= 1e5 && INTEGER2(U.mateId, 0, MATE_ID_LIMIT) && Number.isFinite(U.perceptionRange) && U.perceptionRange > 0 && U.perceptionRange <= 100 && Number.isFinite(U.down) && U.down >= 0 && U.down <= CONFIG.unit.corpseRecoverySeconds && INTEGER2(U.battleSummonEncounterId, 0, 1e12) && Number.isFinite(U.landingRecovery) && U.landingRecovery >= 0 && U.landingRecovery <= 0.25 + 1e-9 && INTEGER2(U.generation, 1, 1e12) && Number.isFinite(U.permanentStatMultiplier) && U.permanentStatMultiplier >= 1 && U.permanentStatMultiplier <= 2.25 && Number.isFinite(U.growthMaxHpMultiplier) && (U.growthMaxHpMultiplier === 1 || (U.species === 2 || U.species === 3) && hasFaction(U, FACTION_CONFIG.PLAYER) && U.growthMaxHpMultiplier >= 1 && U.growthMaxHpMultiplier <= 1.4 && Math.abs(
           (U.growthMaxHpMultiplier - 1) / 0.04 - Math.round((U.growthMaxHpMultiplier - 1) / 0.04)
         ) < 1e-9) && INTEGER2(U.walnutNextGuardTick, 0, 1e12) && INTEGER2(U.walnutGuardUntilTick, 0, 1e12) && Number.isFinite(U.walnutStoredRawDamage) && U.walnutStoredRawDamage >= 0 && Number.isFinite(U.wheatCommandUntil) && U.wheatCommandUntil >= 0 && U.wheatCommandUntil <= 1e12 && Number.isFinite(U.wheatCommandCritBonus) && U.wheatCommandCritBonus >= 0 && U.wheatCommandCritBonus <= 0.5 && Number.isFinite(U.barleyArmorBreakUntil) && U.barleyArmorBreakUntil >= 0 && U.barleyArmorBreakUntil <= 1e12 && Number.isFinite(U.barleyArmorBreakReduction) && U.barleyArmorBreakReduction >= 0 && U.barleyArmorBreakReduction <= 0.75 && INTEGER2(U.kidneyLeapReadyTick, 0, 1e12) && INTEGER2(U.kidneyLeapLastUseTick, 0, 1e12) && typeof U.peaRecoveryPending === "boolean" && INTEGER2(U.peaCounterExpiresAtTick, 0, 1e12) && typeof U.peaCounterPending === "boolean" && INTEGER2(U.peaRecoveryBoostExpiresAtTick, 0, 1e12) && Number.isFinite(U.peaRecoveryBoostMultiplier) && U.peaRecoveryBoostMultiplier >= 0 && U.peaRecoveryBoostMultiplier <= 2 && validWheatCommandBuffs(U.wheatCommandBuffs) && validBarleyArmorShredBuckets(U.barleyArmorShredBuckets)
       );
@@ -21229,6 +21804,12 @@
             U.species === 0 && isPeaAttackRecord(A.peaAttack) && A.peaAttack.id === A.id && A.peaAttack.owner === U.id && A.peaAttack.ownerGeneration === U.generation && A.peaAttack.tier === U.tier
           );
         }
+        if (A.chestnutAttack !== void 0) {
+          const R2 = A.chestnutAttack, C = CHESTNUT_ACTIONS.get(A.id);
+          ASSERT2(
+            U.species === 3 && isChestnutAttackRecord(R2, { pending: true }) && !R2.periodic && R2.id === A.id && R2.owner === U.id && R2.ownerGeneration === U.generation && R2.tier === U.tier && R2.targetId === A.targetId && R2.targetGeneration === A.targetGeneration && (R2.launchTick === null ? C === void 0 : C && sameCheckpointValue(R2, C))
+          );
+        }
         if (A.cornAttack !== void 0) {
           const CANONICAL = CORN_ACTIONS.get(A.id);
           ASSERT2(
@@ -21297,7 +21878,7 @@
         ASSERT2(Number.isFinite(F[K]));
       }
     }
-    const PROJECTILE_IDS = /* @__PURE__ */ new Set(), CORN_PROJECTILE_SLOTS = /* @__PURE__ */ new Set();
+    const PROJECTILE_IDS = /* @__PURE__ */ new Set(), CORN_PROJECTILE_SLOTS = /* @__PURE__ */ new Set(), CHESTNUT_PROJECTILE_SLOTS = /* @__PURE__ */ new Set();
     for (const P of raw.projectiles) {
       validatePath(P.path);
       ASSERT2(INTEGER2(P.id, 1, raw.projectileSerial) && !PROJECTILE_IDS.has(P.id));
@@ -21308,6 +21889,14 @@
       ASSERT2(
         P.targetId === void 0 || P.targetId === "boss" || VALID_BATTLE_UNIT_ID(P.targetId, raw.bossSummonSerial)
       );
+      if (P.chestnutActionId !== void 0) {
+        const R2 = CHESTNUT_ACTIONS.get(P.chestnutActionId), S = R2?.shots[P.chestnutSlot], K = `${P.chestnutActionId}:${P.chestnutSlot}`;
+        ASSERT2(
+          R2 && S && !CHESTNUT_PROJECTILE_SLOTS.has(K) && P.chestnutSlot < R2.nextShot && P.species === 3 && P.tier === R2.tier && P.chestnutForm === R2.form && P.chestnutStage === S.stage && P.owner === R2.owner && P.ownerGeneration === R2.ownerGeneration && P.targetId === R2.targetId && P.targetGeneration === R2.targetGeneration && P.faction === R2.source.faction && P.ownerId === R2.source.ownerId && P.isFormationClone === R2.source.isFormationClone && P.projectileKind === "chestnut-spike" && P.attackMultiplier === 1 && P.radius === 0.12 && P.height === 0.5 && P.path.height === 0 && P.path.duration === Math.max(0.1, 0.3 / (R2.periodic ? 1 : R2.speed)) && sameCheckpointValue(P.path.from, R2.origin) && sameCheckpointValue(P.path.to, R2.point) && INTEGER2(P.chestnutBornTick, R2.launchTick, raw.simulationTick) && P.chestnutBornTick === R2.launchTick + S.tick && typeof P.hit === "boolean" && P.hit === R2.completedSlots[P.chestnutSlot] && Number.isFinite(P.elapsed) && P.elapsed >= 0
+        );
+        CHESTNUT_PROJECTILE_SLOTS.add(K);
+        continue;
+      }
       if (P.cornActionId !== void 0) {
         const RECORD = CORN_ACTIONS.get(P.cornActionId), SHOT = RECORD?.shots[P.cornSlot];
         const SLOT_KEY = `${P.cornActionId}:${P.cornSlot}`;
@@ -21327,6 +21916,11 @@
         ASSERT2(
           P.species === 1 && Number.isFinite(P.cornPayload.attackerStats?.attackPower) && Number.isFinite(P.cornPayload.attackPowerMultiplier) && typeof P.cornPayload.ownerId === "string" && Object.values(FACTION_CONFIG).includes(P.cornPayload.faction)
         );
+      }
+    }
+    for (const R2 of CHESTNUT_ACTIONS.values()) {
+      for (let i = 0; i < R2.nextShot; i++) {
+        ASSERT2(R2.completedSlots[i] || CHESTNUT_PROJECTILE_SLOTS.has(`${R2.id}:${i}`));
       }
     }
     const ATTACHMENTS = /* @__PURE__ */ new Set(), CORN_GROUP_TARGETS = /* @__PURE__ */ new Set(), CORN_DEFINITION = CORN_ATTACHMENT_FEATURE.definition;
@@ -21444,6 +22038,12 @@
           const RECORD = G.cornAttachments.actions.find((action) => action.id === U.ability.action.cornAttack.id);
           if (RECORD) {
             U.ability.action.cornAttack = RECORD;
+          }
+        }
+        if (U.ability.action?.chestnutAttack?.launchTick !== null && U.ability.action?.chestnutAttack) {
+          const RECORD = G.chestnutAttacks.find((record) => record.id === U.ability.action.chestnutAttack.id);
+          if (RECORD) {
+            U.ability.action.chestnutAttack = RECORD;
           }
         }
         const SPECIAL = CREATE_UNIT_SPECIAL_ABILITY(U);
@@ -21972,7 +22572,7 @@
 
   // src/species-growth-presentation.js
   init_state();
-  init_definition12();
+  init_definition14();
   init_ability_state();
   init_species_catalog();
   init_player_progression();
@@ -22000,7 +22600,26 @@
     ["공중 회전 강하", "공중 회전 접촉 뒤 아래로 강하게 착지"],
     ["삼연 도약 강타", "낮은 찍기 · 측면 회전 접촉 · 높은 마무리 착지"]
   ]);
+  var CHESTNUT_FORMS = Object.freeze([
+    ["짧은 가시 주먹", "짧은 가시를 정면으로 한 번 발사"],
+    ["좌우 엇찌르기", "좌우 가시가 교차하며 45·55% 타격"],
+    ["전면 가시 부채", "전방에 펼친 가시가 한 예산으로 타격"],
+    ["부채 수렴", "부채 전개 40% 뒤 고정 표적점으로 60% 수렴"],
+    ["중앙 가시 찌르기", "부채 40% 뒤 굵은 중앙 가시 60%"],
+    ["삼단 압축 가시", "전개 25% · 양 날개 수렴 30% · 중앙 마무리 45%"]
+  ]);
   var PRESENTATIONS2 = /* @__PURE__ */ new Map([
+    [
+      "chestnut-target-thorns",
+      {
+        key: "chestnut",
+        name: "밤톨",
+        title: "가시 전개와 집중",
+        forms: CHESTNUT_FORMS,
+        effect: chestnutGrowthEffect,
+        note: "전개와 수렴은 서로 다른 타격 예산을 써요. 범위 타격은 주 대상 100%, 주변 최대 4명에게 50%예요. 주기 가시는 평타와 별도로 3초마다 0.1초 간격으로 발사하며 총예산을 가시 수로 나눠요. 이미 발사한 가시는 본체가 사라져도 고정한 표적점까지 진행해요."
+      }
+    ],
     [
       "kidney-continuous-leap",
       {
@@ -22138,6 +22757,24 @@
         return `마지막 착지 후 ${Math.min(65, 20 + rank * 9)}% 확률로 후딜 0.1초`;
       case "specialty-3":
         return `마지막 착지에 전체 직접 예산의 ${rank * 8}% 추가`;
+      default:
+        throw new RangeError(`Unknown growth effect: ${nodeId}`);
+    }
+  }
+  function chestnutGrowthEffect(nodeId, rank) {
+    switch (nodeId) {
+      case "basic-1":
+        return `공격력 +${rank * 3}% · 평타와 주기 가시에 적용`;
+      case "basic-2":
+        return `최대 체력 +${rank * 4}% · 다음 런부터 적용`;
+      case "basic-3":
+        return `공격 속도 +${rank * 2}% · 주기 가시 간격 제외`;
+      case "specialty-1":
+        return `주기 가시 ${1 + rank}개 · 총예산 ${100 + rank * 40}% 균등 분배`;
+      case "specialty-2":
+        return `가시 사거리·범위 +${rank * 4}%`;
+      case "specialty-3":
+        return `평타 마지막 가시에 전체 직접 예산의 ${rank * 8}% 추가`;
       default:
         throw new RangeError(`Unknown growth effect: ${nodeId}`);
     }
@@ -22475,9 +23112,13 @@
     })
   ]);
   function helpSceneById(id) {
-    return [...HELP_SCENES, ...CORN_PREVIEW_SCENES, ...PEA_PREVIEW_SCENES, ...REDBEAN_PREVIEW_SCENES].find(
-      (scene) => scene.id === id
-    ) ?? null;
+    return [
+      ...HELP_SCENES,
+      ...CORN_PREVIEW_SCENES,
+      ...PEA_PREVIEW_SCENES,
+      ...REDBEAN_PREVIEW_SCENES,
+      ...CHESTNUT_PREVIEW_SCENES
+    ].find((scene) => scene.id === id) ?? null;
   }
   var CORN_PREVIEW_SCENES = Object.freeze(
     Array.from({ length: 6 }, (_, index) => {
@@ -22612,6 +23253,51 @@
           prepare: "고정 훈련 표적 · 실제 도약 공격 준비",
           contact: "하나의 본체가 실제 높이로 도약하고 접촉·착지",
           recover: "마지막 착지 후 회복 · 성공해도 다음 준비와 비행은 유지"
+        }
+      });
+    })
+  );
+  var CHESTNUT_PREVIEW_SCENES = Object.freeze(
+    Array.from({ length: 6 }, (_, index) => {
+      const TIER = index + 1;
+      return Object.freeze({
+        id: `chestnut-t${TIER}`,
+        title: `밤톨 T${TIER} 공격 미리보기`,
+        seed: 731,
+        rate: 0.6,
+        durationMs: 9e3,
+        timeline: [],
+        setup(world) {
+          world.resetUnits();
+          world.setWorkBasisPoints(0);
+          const BUILD = world.playerProgression.abilities["chestnut-target-thorns"];
+          BUILD.masteryLevel = 50;
+          BUILD.nodeRanks = Object.fromEntries(
+            Array.from({ length: TIER - 1 }, (_value, tierIndex) => [`evolution-${tierIndex + 2}`, 1])
+          );
+          const UNIT3 = world.spawn(3, TIER, -7, 0);
+          UNIT3.growth = 3;
+          UNIT3.growthElapsed = UNIT3.growthDuration;
+          world.startTower(1);
+          world.finishMarch();
+          world._benched.clear();
+          world._benchRevision++;
+          Object.assign(world.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
+          world.farmBossEvent.phase = "fighting";
+          world.farmBossEvent.elapsed = 0;
+          UNIT3.x = -(world.boss.radius + (TIER >= 3 ? 2 : 1.45));
+          UNIT3.y = 0;
+          UNIT3.z = 0;
+          UNIT3.dropLanded = true;
+          world._unitSpatialDirty = true;
+        },
+        step(world) {
+          return world.projectiles.some((projectile) => projectile.chestnutActionId) ? "flight" : world.units[0]?.ability.phase === "recover" ? "recover" : "prepare";
+        },
+        steps: {
+          prepare: "고정 훈련 표적 · 실제 가시 공격 준비",
+          flight: "실제 가시의 전개·교차·수렴과 고정 영역 충돌",
+          recover: "평타 후 회복 · 별도 주기 가시는 3초마다 발사"
         }
       });
     })
@@ -23719,11 +24405,11 @@
   function mountGrowthPreview(species, tier) {
     stopGrowthPreview();
     const HOST = DOLLAR2("abilityNodes").querySelector(".growth-evolution-preview");
-    if (!HOST || !["corn", "pea", "redbean"].includes(species) || !Number.isInteger(tier) || tier < 1 || tier > 6) {
+    if (!HOST || !["corn", "pea", "redbean", "chestnut"].includes(species) || !Number.isInteger(tier) || tier < 1 || tier > 6) {
       return;
     }
     const FRAME = document.createElement("iframe");
-    FRAME.title = `${{ pea: "콩", corn: "옥수수", redbean: "팥" }[species]} T${tier} 실제 공격 미리보기`;
+    FRAME.title = `${{ pea: "콩", corn: "옥수수", redbean: "팥", chestnut: "밤톨" }[species]} T${tier} 실제 공격 미리보기`;
     FRAME.src = new URL(`?help=${species}-t${tier}`, location.href).href.split("#")[0];
     HOST.replaceChildren(FRAME);
     for (const BUTTON of DOLLAR2("abilityNodes").querySelectorAll("[data-growth-preview-tier]")) {
@@ -24628,7 +25314,8 @@
   if (HELP.scene) {
     const SCENE = HELP.scene, WORLD = new GARDEN(SCENE.seed);
     SCENE.setup(WORLD);
-    RENDERER.attackPreviewSpecies = /^pea-t[1-6]$/.test(SCENE.id) ? 0 : /^redbean-t[1-6]$/.test(SCENE.id) ? 2 : null;
+    RENDERER.attackPreviewSpecies = /^pea-t[1-6]$/.test(SCENE.id) ? 0 : /^redbean-t[1-6]$/.test(SCENE.id) ? 2 : /^chestnut-t[1-6]$/.test(SCENE.id) ? 3 : null;
+    document.documentElement.classList.toggle("chestnut-attack-preview", RENDERER.attackPreviewSpecies === 3);
     start(WORLD, false);
     active.paused = false;
     HELP.scenario = globalThis.BloomGamekitScenario.createScenario({

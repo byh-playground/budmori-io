@@ -37,6 +37,11 @@ class UnitRender extends RENDER_OBJECT {
         'ability.phase': R.STATE_KEY,
         'ability.elapsed': R.LINEAR,
         'ability.peanutStrikeCount': R.STEP,
+        'ability.chestnutForm': R.STEP,
+        'ability.chestnutSlot': R.STEP,
+        'ability.chestnutStage': R.STATE_KEY,
+        'ability.chestnutStageProgress': R.LINEAR,
+        'ability.chestnutWindupDuration': R.STEP,
         'ability.redbeanForm': R.STEP,
         'ability.redbeanSlot': R.STEP,
         'ability.redbeanLeg': R.STEP,
@@ -100,6 +105,22 @@ class UnitRender extends RENDER_OBJECT {
         this.ability.phase = u.ability.phase;
         this.ability.elapsed = u.ability.elapsed;
         this.ability.peanutStrikeCount = u.ability.action?.peanutStrikeCount || 2;
+        const CHESTNUT = u.ability.action?.chestnutAttack,
+            CHESTNUT_TICK = u.ability.phase === 'recover' ? u.ability.elapsed * 20 : 0,
+            CHESTNUT_SHOT = CHESTNUT?.shots.findLast((shot) => shot.tick <= CHESTNUT_TICK),
+            CHESTNUT_FLIGHT = Math.max(0.1, 0.3 / (CHESTNUT?.speed || 1));
+        this.ability.chestnutForm = CHESTNUT?.form || 0;
+        this.ability.chestnutSlot = CHESTNUT_SHOT?.slot || 0;
+        this.ability.chestnutStage =
+            CHESTNUT &&
+            u.ability.phase === 'recover' &&
+            CHESTNUT_TICK < (CHESTNUT_SHOT?.tick || 0) + CHESTNUT_FLIGHT * 20
+                ? CHESTNUT_SHOT?.stage || 'thrust'
+                : u.ability.phase;
+        this.ability.chestnutStageProgress = CHESTNUT_SHOT
+            ? Math.max(0, Math.min(1, (CHESTNUT_TICK - CHESTNUT_SHOT.tick) / (CHESTNUT_FLIGHT * 20)))
+            : 0;
+        this.ability.chestnutWindupDuration = CHESTNUT?.windupSeconds || 0.28;
         const REDBEAN = u.ability.action?.redbeanAttack;
         this.ability.redbeanForm = REDBEAN?.form || 0;
         this.ability.redbeanSlot = REDBEAN?.slot || 0;
@@ -282,6 +303,11 @@ class ProjectileRender extends RENDER_OBJECT {
         projectileKind: R.STATE_KEY,
         shotIndex: R.STEP,
         fanIndex: R.STEP,
+        chestnutActionId: R.STEP,
+        chestnutForm: R.STEP,
+        chestnutSlot: R.STEP,
+        chestnutStage: R.STATE_KEY,
+        chestnutBornTick: R.STEP,
         cornForm: R.STEP,
         cornSlot: R.STEP,
         'path.from.x': R.STEP,
@@ -314,6 +340,11 @@ class ProjectileRender extends RENDER_OBJECT {
         this.projectileKind = p.projectileKind || '';
         this.shotIndex = p.shotIndex || 0;
         this.fanIndex = p.fanIndex || 0;
+        this.chestnutActionId = p.chestnutActionId || 0;
+        this.chestnutForm = p.chestnutForm || 0;
+        this.chestnutSlot = p.chestnutSlot || 0;
+        this.chestnutStage = p.chestnutStage || '';
+        this.chestnutBornTick = p.chestnutBornTick || 0;
         this.cornForm = p.cornForm || 0;
         this.cornSlot = p.cornSlot || 0;
         this.path.from.x = p.path.from.x;

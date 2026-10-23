@@ -1,3 +1,4 @@
+import { isChestnutAttackRecord } from './features/species-growth/chestnut-attack.js';
 import { isRedbeanAttackRecord } from './features/species-growth/redbean-attack.js';
 import { isPeaAttackRecord } from './features/species-growth/pea-attack.js';
 import { isValidFormationRuntime } from './formation-skill-state.js';
@@ -54,7 +55,7 @@ function finiteTree(v, depth = 0, key = '', progression = false) {
         const MAX =
             key === 'units'
                 ? CONFIG.battle.capacity.battleUnits
-                : key === 'projectiles' || key === 'actions' || key === 'groups'
+                : key === 'projectiles' || key === 'actions' || key === 'groups' || key === 'chestnutAttacks'
                   ? CONFIG.battle.capacity.projectiles
                   : key === 'bossRewardReceipts' || key === 'processedBossKillReceipts'
                     ? 100000
@@ -189,6 +190,18 @@ export function validateSnapshot(raw) {
     );
     ASSERT(raw.scene === 'farm');
     ASSERT(Array.isArray(raw.mergeTasks) && raw.mergeTasks.length <= CONFIG.farm.capacity.battleUnits);
+    const CHESTNUT_ACTIONS = new Map();
+    ASSERT(Array.isArray(raw.chestnutAttacks) && raw.chestnutAttacks.length <= CONFIG.battle.capacity.projectiles);
+    for (const R of raw.chestnutAttacks) {
+        ASSERT(
+            isChestnutAttackRecord(R) &&
+                INTEGER(R.id, 1, raw.attackSerial) &&
+                R.launchTick <= raw.simulationTick &&
+                R.attack.lastTick <= raw.simulationTick &&
+                !CHESTNUT_ACTIONS.has(R.id),
+        );
+        CHESTNUT_ACTIONS.set(R.id, R);
+    }
     const CORN_ACTIONS = new Map();
     ASSERT(
         Array.isArray(raw.cornAttachments.actions) &&
@@ -567,7 +580,7 @@ export function validateSnapshot(raw) {
                 U.permanentStatMultiplier <= 2.25 &&
                 Number.isFinite(U.growthMaxHpMultiplier) &&
                 (U.growthMaxHpMultiplier === 1 ||
-                    (U.species === 2 &&
+                    ((U.species === 2 || U.species === 3) &&
                         hasFaction(U, FACTION_CONFIG.PLAYER) &&
                         U.growthMaxHpMultiplier >= 1 &&
                         U.growthMaxHpMultiplier <= 1.4 &&
@@ -789,6 +802,22 @@ export function validateSnapshot(raw) {
                         A.peaAttack.tier === U.tier,
                 );
             }
+            if (A.chestnutAttack !== undefined) {
+                const R = A.chestnutAttack,
+                    C = CHESTNUT_ACTIONS.get(A.id);
+                ASSERT(
+                    U.species === 3 &&
+                        isChestnutAttackRecord(R, { pending: true }) &&
+                        !R.periodic &&
+                        R.id === A.id &&
+                        R.owner === U.id &&
+                        R.ownerGeneration === U.generation &&
+                        R.tier === U.tier &&
+                        R.targetId === A.targetId &&
+                        R.targetGeneration === A.targetGeneration &&
+                        (R.launchTick === null ? C === undefined : C && sameCheckpointValue(R, C)),
+                );
+            }
             if (A.cornAttack !== undefined) {
                 const CANONICAL = CORN_ACTIONS.get(A.id);
                 ASSERT(
@@ -894,7 +923,8 @@ export function validateSnapshot(raw) {
         }
     }
     const PROJECTILE_IDS = new Set(),
-        CORN_PROJECTILE_SLOTS = new Set();
+        CORN_PROJECTILE_SLOTS = new Set(),
+        CHESTNUT_PROJECTILE_SLOTS = new Set();
     for (const P of raw.projectiles) {
         validatePath(P.path);
         ASSERT(INTEGER(P.id, 1, raw.projectileSerial) && !PROJECTILE_IDS.has(P.id));
@@ -906,6 +936,44 @@ export function validateSnapshot(raw) {
         ASSERT(
             P.targetId === undefined || P.targetId === 'boss' || VALID_BATTLE_UNIT_ID(P.targetId, raw.bossSummonSerial),
         );
+        if (P.chestnutActionId !== undefined) {
+            const R = CHESTNUT_ACTIONS.get(P.chestnutActionId),
+                S = R?.shots[P.chestnutSlot],
+                K = `${P.chestnutActionId}:${P.chestnutSlot}`;
+            ASSERT(
+                R &&
+                    S &&
+                    !CHESTNUT_PROJECTILE_SLOTS.has(K) &&
+                    P.chestnutSlot < R.nextShot &&
+                    P.species === 3 &&
+                    P.tier === R.tier &&
+                    P.chestnutForm === R.form &&
+                    P.chestnutStage === S.stage &&
+                    P.owner === R.owner &&
+                    P.ownerGeneration === R.ownerGeneration &&
+                    P.targetId === R.targetId &&
+                    P.targetGeneration === R.targetGeneration &&
+                    P.faction === R.source.faction &&
+                    P.ownerId === R.source.ownerId &&
+                    P.isFormationClone === R.source.isFormationClone &&
+                    P.projectileKind === 'chestnut-spike' &&
+                    P.attackMultiplier === 1 &&
+                    P.radius === 0.12 &&
+                    P.height === 0.5 &&
+                    P.path.height === 0 &&
+                    P.path.duration === Math.max(0.1, 0.3 / (R.periodic ? 1 : R.speed)) &&
+                    sameCheckpointValue(P.path.from, R.origin) &&
+                    sameCheckpointValue(P.path.to, R.point) &&
+                    INTEGER(P.chestnutBornTick, R.launchTick, raw.simulationTick) &&
+                    P.chestnutBornTick === R.launchTick + S.tick &&
+                    typeof P.hit === 'boolean' &&
+                    P.hit === R.completedSlots[P.chestnutSlot] &&
+                    Number.isFinite(P.elapsed) &&
+                    P.elapsed >= 0,
+            );
+            CHESTNUT_PROJECTILE_SLOTS.add(K);
+            continue;
+        }
         if (P.cornActionId !== undefined) {
             const RECORD = CORN_ACTIONS.get(P.cornActionId),
                 SHOT = RECORD?.shots[P.cornSlot];
@@ -963,6 +1031,11 @@ export function validateSnapshot(raw) {
                     typeof P.cornPayload.ownerId === 'string' &&
                     Object.values(FACTION_CONFIG).includes(P.cornPayload.faction),
             );
+        }
+    }
+    for (const R of CHESTNUT_ACTIONS.values()) {
+        for (let i = 0; i < R.nextShot; i++) {
+            ASSERT(R.completedSlots[i] || CHESTNUT_PROJECTILE_SLOTS.has(`${R.id}:${i}`));
         }
     }
     const ATTACHMENTS = new Set(),

@@ -4,7 +4,7 @@ export const SPECIES_MASTERY_CAP = 50;
 export const EVOLUTION_UNLOCK_LEVELS = Object.freeze([2, 6, 12, 20, 30]);
 
 // Rollout is explicit: a species is enabled only with its attack, effects, UI and save consumer.
-// Corn, pea and redbean are released. Other species keep legacy progression until their own release.
+// Corn, pea, redbean and chestnut are released. Other species keep legacy progression until their own release.
 export const SPECIES_GROWTH_DEFINITIONS = Object.freeze(
     SPECIES_CATALOG.map(({ id }) =>
         createSpeciesGrowthDefinition(
@@ -27,7 +27,13 @@ export const SPECIES_GROWTH_DEFINITIONS = Object.freeze(
                           basic: ['도약 위력', '최대 체력', '공격 속도'],
                           specialty: ['착지 범위', '연속 도약', '마무리 착지'],
                       }
-                    : {},
+                    : id === 3
+                      ? {
+                            available: true,
+                            basic: ['가시 위력', '최대 체력', '공격 속도'],
+                            specialty: ['주기 가시', '가시 사거리', '집중 마무리'],
+                        }
+                      : {},
         ),
     ),
 );

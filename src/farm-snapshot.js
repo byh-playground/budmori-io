@@ -150,6 +150,7 @@ export const FARM_SNAPSHOT_SHAPE = {
         revision: 0,
     },
     projectiles: [],
+    chestnutAttacks: [],
     entityGenerationSerial: 2,
     cornAttachments: {
         nextGroupId: 1,
@@ -284,6 +285,7 @@ const ATTACK = FIELDS(
         cornAttack: CORN_ACTION,
         peaAttack: JSON_PAYLOAD,
         redbeanAttack: JSON_PAYLOAD,
+        chestnutAttack: JSON_PAYLOAD,
     },
 );
 const UNIT = shapeFields(UNIT_SNAPSHOT_SHAPE, {
@@ -327,7 +329,7 @@ const REWARD = FIELDS(
 // Its semantic validator rejects unknown keys; do not trim archives using a default build.
 const PROGRESSION = JSON_PAYLOAD;
 const PROJECTILE = FIELDS(
-    'isFormationClone id owner ownerGeneration targetId targetGeneration faction ownerId species tier elapsed x y z radius height hit attackMultiplier shotIndex projectileKind fanIndex cornActionId cornSlot cornForm',
+    'isFormationClone id owner ownerGeneration targetId targetGeneration faction ownerId species tier elapsed x y z radius height hit attackMultiplier shotIndex projectileKind fanIndex cornActionId cornSlot cornForm chestnutActionId chestnutSlot chestnutForm chestnutStage chestnutBornTick',
     {
         path: PATH,
         attackPayload: JSON_PAYLOAD,
@@ -351,6 +353,7 @@ const SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
     playerProgression: PROGRESSION,
     runProgressionSnapshot: PROGRESSION,
     projectiles: [PROJECTILE],
+    chestnutAttacks: [JSON_PAYLOAD],
     cornAttachments: FIELDS('nextGroupId nextAttachmentId', { groups: [CORN_GROUP], actions: [CORN_ACTION] }),
     bossRewardReceipts: [REWARD],
     bossRewardStreams: JSON_PAYLOAD,
