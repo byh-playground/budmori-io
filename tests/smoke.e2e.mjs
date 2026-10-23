@@ -537,11 +537,15 @@ await check(
             const AFTER = JSON.parse(SNAP());
             const CHANGED = AFTER.filter((row, i) => row[1] !== BEFORE[i][1] || row[2] !== BEFORE[i][2]);
             const ID = CHANGED[0]?.[0];
-            const OTHER = AFTER.find((row) => row[0] !== ID)[0];
+            // Legacy species start with zero points. Newly activated trees grant their Lv1 point,
+            // so use another legacy species to test that this reward cannot fund its purchase.
+            const OTHER = AFTER.find((row) => row[0] !== ID && !W.playerProgression.abilities[row[0]].nodeRanks)[0];
             W.leaveTower();
             W.playerProgression.abilities[ID].masteryLevel = 3;
             const OWN = W.investAbilityNode(ID, 'power-1').ok;
-            const OTHERS = W.investAbilityNode(OTHER, 'power-1');
+            // Evolved species use the growth-tree node; legacy species retain power-1.
+            const OTHER_NODE = W.playerProgression.abilities[OTHER].nodeRanks ? 'basic-1' : 'power-1';
+            const OTHERS = W.investAbilityNode(OTHER, OTHER_NODE);
             const RESET = W.resetProgression({ type: 'abilities' });
             const KEPT = W.playerProgression.abilities[ID];
             return {

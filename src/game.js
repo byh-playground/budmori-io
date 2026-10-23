@@ -1744,7 +1744,7 @@
         birthScale: 0.5,
         vectorRadiusScale: 0.78
       });
-      function unitBodyDefinition3(species) {
+      function unitBodyDefinition4(species) {
         const BODY2 = UNIT_BODIES[species];
         if (!BODY2) {
           throw new RangeError("Missing authored unit body for species " + species);
@@ -1756,28 +1756,28 @@
         return (UNIT_BODY_CONFIG.baseSize + UNIT_BODY_CONFIG.sizePerTier * unit2.tier) * (UNIT_BODY_CONFIG.birthScale + (1 - UNIT_BODY_CONFIG.birthScale) * GROWTH);
       }
       function unitVectorScale2(unit2) {
-        const BODY2 = unitBodyDefinition3(unit2.species);
+        const BODY2 = unitBodyDefinition4(unit2.species);
         return unitVisualSize2(unit2) * 2 * UNIT_BODY_CONFIG.vectorRadiusScale / Math.max(BODY2.viewBox[2], BODY2.viewBox[3]);
       }
       function bodyRadiusAtScale(body, scale) {
         return Math.max(body.ground.x - body.bounds.left, body.bounds.right - body.ground.x) * scale;
       }
       function unitBodyRadius3(unit2) {
-        return bodyRadiusAtScale(unitBodyDefinition3(unit2.species), unitVectorScale2(unit2));
+        return bodyRadiusAtScale(unitBodyDefinition4(unit2.species), unitVectorScale2(unit2));
       }
       function unitBodyHeight2(unit2) {
-        const BODY2 = unitBodyDefinition3(unit2.species);
+        const BODY2 = unitBodyDefinition4(unit2.species);
         return (BODY2.ground.y - BODY2.bounds.top) * unitVectorScale2(unit2) / WORLD_HEIGHT_PROJECTION7;
       }
       function bossBodyHeight2(boss) {
-        const BODY2 = unitBodyDefinition3(boss.species);
+        const BODY2 = unitBodyDefinition4(boss.species);
         return (BODY2.ground.y - BODY2.bounds.top) * BOSS_VECTOR_SCALE() / WORLD_HEIGHT_PROJECTION7;
       }
       function bossBodyRadius2(boss) {
-        return bodyRadiusAtScale(unitBodyDefinition3(boss.species), BOSS_VECTOR_SCALE());
+        return bodyRadiusAtScale(unitBodyDefinition4(boss.species), BOSS_VECTOR_SCALE());
       }
       function unitTorsoHeight2(unit2) {
-        const BODY2 = unitBodyDefinition3(unit2.species);
+        const BODY2 = unitBodyDefinition4(unit2.species);
         return (BODY2.bounds.bottom - BODY2.bounds.top) * unitVectorScale2(unit2) / WORLD_HEIGHT_PROJECTION7;
       }
       function maximumUnitRadius2(tier) {
@@ -1799,7 +1799,7 @@
         );
       }
       function validateUnitBodySource(species, source) {
-        const BODY2 = unitBodyDefinition3(species);
+        const BODY2 = unitBodyDefinition4(species);
         if (source.sha256 !== BODY2.sourceSha256 || source.file !== BODY2.asset) {
           throw new Error("Authored unit body must be remeasured after SVG changes: " + BODY2.asset);
         }
@@ -1807,7 +1807,7 @@
       module.exports = {
         UNIT_BODIES,
         UNIT_BODY_CONFIG,
-        unitBodyDefinition: unitBodyDefinition3,
+        unitBodyDefinition: unitBodyDefinition4,
         unitVisualSize: unitVisualSize2,
         unitVectorScale: unitVectorScale2,
         unitBodyRadius: unitBodyRadius3,
@@ -3505,6 +3505,10 @@
               available: true,
               basic: ["직격 위력", "부착 폭발 위력", "공격 속도"],
               specialty: ["연쇄 가열", "마무리 파열", "추가 알"]
+            } : id === 0 ? {
+              available: true,
+              basic: ["박치기 위력", "첫 재돌진 위력", "후딜 감소"],
+              specialty: ["재접근 가속", "첫 충돌", "마지막 충돌"]
             } : {}
           )
         )
@@ -4277,21 +4281,15 @@
     ) && GROWTH.isValidBuild(growthBuildOf(investment)) && (!Object.hasOwn(investment, "legacyMastery") || investment.legacyMastery && Object.keys(investment.legacyMastery).length === 2 && Object.hasOwn(investment.legacyMastery, "masteryLevel") && Object.hasOwn(investment.legacyMastery, "masteryXp")) && (!Object.hasOwn(investment, "legacyInvestment") || isValidLegacyAbilityInvestment(DEFINITION13, investment.legacyInvestment)));
   }
   function migrateAbilityProgressionState(state) {
-    if (state.schemaVersion === 4) {
-      if (!isValidMixedAbilityEntries(state)) {
-        throw new TypeError("Invalid ability progression");
-      }
-      return structuredClone(state);
-    }
-    if (!isValidLegacyAbilityProgressionState(state)) {
-      throw new TypeError("Invalid legacy ability progression");
+    if (!(state?.schemaVersion === 3 ? isValidLegacyAbilityProgressionState(state) : isValidMixedAbilityEntries(state, { allowLegacy: true }))) {
+      throw new TypeError("Invalid ability progression");
     }
     const NEXT = structuredClone(state);
     NEXT.schemaVersion = 4;
-    for (const [ABILITY_ID8, INVESTMENT] of Object.entries(state.abilities)) {
-      const GROWTH = growthForAbility(ABILITY_ID8);
-      if (GROWTH) {
-        NEXT.abilities[ABILITY_ID8] = {
+    for (const [ABILITY_ID9, INVESTMENT] of Object.entries(state.abilities)) {
+      const GROWTH = growthForAbility(ABILITY_ID9);
+      if (GROWTH && !isGrowthInvestment(INVESTMENT)) {
+        NEXT.abilities[ABILITY_ID9] = {
           treeVersion: SPECIES_TREE_VERSION,
           ...GROWTH.migrateBuild(INVESTMENT),
           legacyInvestment: structuredClone(INVESTMENT)
@@ -4300,9 +4298,9 @@
     }
     return NEXT;
   }
-  function isValidMixedAbilityEntries(state) {
+  function isValidMixedAbilityEntries(state, { allowLegacy = false } = {}) {
     return !!(state && typeof state === "object" && state.schemaVersion === 4 && state.abilities && typeof state.abilities === "object" && !Array.isArray(state.abilities) && Object.keys(state.abilities).length === SPECIES_ABILITY_DEFINITIONS.length && SPECIES_ABILITY_DEFINITIONS.every(
-      (definition) => growthForAbility(definition.id) ? isValidGrowthInvestment(definition.id, state.abilities[definition.id]) : isValidLegacyAbilityInvestment(definition, state.abilities[definition.id])
+      (definition) => growthForAbility(definition.id) ? isValidGrowthInvestment(definition.id, state.abilities[definition.id]) || allowLegacy && isValidLegacyAbilityInvestment(definition, state.abilities[definition.id]) : isValidLegacyAbilityInvestment(definition, state.abilities[definition.id])
     ));
   }
   var SPECIES_TREE_VERSION, GROWTH_BY_ABILITY;
@@ -5165,16 +5163,209 @@
     }
   });
 
+  // src/features/species-growth/pea-attack.js
+  function peaGrowthBuild(progression) {
+    const INVESTMENT = progression?.abilities?.[ABILITY_ID];
+    return INVESTMENT?.treeVersion === 1 ? growthBuildOf(INVESTMENT) : null;
+  }
+  function peaMergeBudgetMultiplier(tier, form = 1, recoverySeconds = 0.65) {
+    return peaBudgetFromInputs(
+      tier,
+      form,
+      recoverySeconds,
+      baseUnitStatsFor(1, 0).attackPower,
+      baseUnitStatsFor(tier, 0).attackPower
+    );
+  }
+  function peaBudgetFromInputs(tier, form, recoverySeconds, one, current) {
+    const BASE_TICKS = 9 + Math.ceil(recoverySeconds * 20 - 1e-9);
+    let materials = 1;
+    for (let grade = 2; grade <= tier; grade++) {
+      materials *= mergeMaterialCostForTier(grade);
+    }
+    const GRADE = one > 0 && current > 0 && Number.isFinite(one + current) ? one / current * materials * 1.05 ** (tier - 1) : 1.75 ** (tier - 1);
+    return GRADE * (BASE_TICKS + COMBO_TICKS[form]) / BASE_TICKS;
+  }
+  function createPeaAttack(world, unit2, action, recoverySeconds) {
+    const BUILD = peaGrowthBuild(world.abilityProgressionFor(unit2)), GROWTH = growthForAbility(ABILITY_ID);
+    if (unit2.species !== 0 || !BUILD || !GROWTH) {
+      return null;
+    }
+    const RANKS = BUILD.nodeRanks, FORM = GROWTH.attackTier(BUILD, unit2.tier), RECOVERY = recoverySeconds * (1 - 0.015 * (RANKS["basic-3"] || 0)), CONTEXT = world.createAttackContext(unit2, { attackMultiplier: 1, attackKind: "ram" }), COUNTER = unit2.peaCounterExpiresAtTick > 0 && world.simulationTick <= unit2.peaCounterExpiresAtTick;
+    unit2.peaCounterExpiresAtTick = 0;
+    return {
+      version: 1,
+      id: action.id,
+      owner: unit2.id,
+      ownerGeneration: unit2.generation,
+      tier: unit2.tier,
+      form: FORM,
+      slot: 0,
+      launchTick: null,
+      contactTick: null,
+      comboTicks: COMBO_TICKS[FORM],
+      windupSeconds: 0.28,
+      recoverySeconds: RECOVERY,
+      stage: "contact",
+      stageProgress: 0,
+      contact: null,
+      direction: null,
+      counter: COUNTER,
+      ranks: {
+        power: RANKS["basic-1"] || 0,
+        counter: RANKS["basic-2"] || 0,
+        recovery: RANKS["basic-3"] || 0,
+        first: RANKS["specialty-2"] || 0,
+        last: RANKS["specialty-3"] || 0
+      },
+      budgetInputs: {
+        tierOneAttack: baseUnitStatsFor(1, 0).attackPower,
+        tierAttack: baseUnitStatsFor(unit2.tier, 0).attackPower,
+        baseRecovery: recoverySeconds
+      },
+      directMultiplier: peaMergeBudgetMultiplier(unit2.tier, FORM, RECOVERY) * (1 + 0.03 * (RANKS["basic-1"] || 0)) * (COUNTER ? 1 + 0.05 * (RANKS["basic-2"] || 0) : 1),
+      source: {
+        attackerStats: structuredClone(CONTEXT.attackerStats),
+        attackPowerMultiplier: CONTEXT.attackPowerMultiplier,
+        sourceDamageScale: world.passiveDamageScale(
+          unit2,
+          CONTEXT.attackerStats.maxHp,
+          world.boss,
+          world.boss.maxHp
+        ),
+        sourceKind: CONTEXT.sourceKind
+      },
+      attack: null,
+      criticalRolls: {}
+    };
+  }
+  function startPeaContacts(world, unit2, action, hit) {
+    const RECORD = action.peaAttack;
+    if (RECORD.contactTick !== null) {
+      return;
+    }
+    RECORD.contactTick = world.simulationTick;
+    RECORD.contact = { x: hit.x, y: hit.y, z: 0 };
+    RECORD.direction = { x: Math.cos(unit2.angle), y: Math.sin(unit2.angle) };
+    const WEIGHTS = PEA_WEIGHTS[RECORD.form];
+    RECORD.attack = new AttackAction(
+      {
+        durationTicks: RECORD.comboTicks + 1,
+        strikes: WEIGHTS.map((weight, slot) => ({
+          tick: PEA_SLOT_TICKS[RECORD.form][slot],
+          weight
+        }))
+      },
+      world.simulationTick
+    ).toDTO();
+  }
+  function resolvePeaContacts(world, unit2, action, target, hit) {
+    const RECORD = action.peaAttack, NEXT = RECORD.attack.plan.strikes[RECORD.attack.nextSlot];
+    if (!NEXT || world.simulationTick < RECORD.attack.startTick + NEXT.tick) {
+      return;
+    }
+    const ATTACK2 = AttackAction.fromDTO(RECORD.attack), READY = ATTACK2.advance(world.simulationTick);
+    for (const STRIKE of READY) {
+      RECORD.slot = STRIKE.slot;
+      if (!hit || !ATTACK2.claimHit(STRIKE.slot, target === world.boss ? "boss" : target.id, target.generation)) {
+        continue;
+      }
+      const KEY2 = attackTargetKey(target === world.boss ? "boss" : target.id, target.generation);
+      if (!Object.hasOwn(RECORD.criticalRolls, KEY2)) {
+        RECORD.criticalRolls[KEY2] = world.random();
+      }
+      const SOURCE = RECORD.source, WEIGHT = STRIKE.weight + (STRIKE.slot === 0 ? 0.08 * RECORD.ranks.first : 0) + (STRIKE.slot === PEA_WEIGHTS[RECORD.form].length - 1 ? 0.08 * RECORD.ranks.last : 0), PROC = ATTACK2.claimOnce("basic-proc");
+      world.damageCombatTarget(unit2, { id: action.id, hit: false }, target, hit, {
+        attackKind: "ram",
+        suppressBasicProc: !PROC,
+        attackContext: {
+          source: unit2,
+          sourceKind: SOURCE.sourceKind,
+          attackerStats: SOURCE.attackerStats,
+          damageMultiplier: RECORD.directMultiplier * WEIGHT,
+          attackPowerMultiplier: SOURCE.attackPowerMultiplier,
+          sourceDamageScale: SOURCE.sourceDamageScale,
+          kind: "ram",
+          strikeIndex: STRIKE.slot,
+          buffed: false,
+          sourceStatOverrides: { ...SOURCE.attackerStats },
+          area: false,
+          criticalRoll: RECORD.criticalRolls[KEY2],
+          hitTargets: null
+        }
+      });
+    }
+    RECORD.attack = ATTACK2.toDTO();
+  }
+  function isPeaAttackRecord(record) {
+    if (!record || !exactKeys2(
+      record,
+      "version id owner ownerGeneration tier form slot launchTick contactTick comboTicks windupSeconds recoverySeconds stage stageProgress contact direction counter ranks budgetInputs directMultiplier source attack criticalRolls"
+    ) || record.version !== 1 || !Number.isSafeInteger(record.id) || record.id < 1 || !Number.isSafeInteger(record.owner) || record.owner < 1 || !Number.isSafeInteger(record.ownerGeneration) || record.ownerGeneration < 1 || !Number.isInteger(record.tier) || record.tier < 1 || record.tier > 6 || !Number.isInteger(record.form) || record.form < 1 || record.form > record.tier || record.comboTicks !== COMBO_TICKS[record.form] || record.windupSeconds !== 0.28 || !Number.isFinite(record.recoverySeconds) || record.recoverySeconds <= 0 || record.recoverySeconds > 100 || !Number.isFinite(record.directMultiplier) || record.directMultiplier < 0 || typeof record.counter !== "boolean" || !Number.isInteger(record.slot) || record.slot < 0 || record.slot >= PEA_WEIGHTS[record.form].length || !["contact", "rebound", "charge"].includes(record.stage) || !Number.isFinite(record.stageProgress) || record.stageProgress < 0 || record.stageProgress > 1 || !exactKeys2(record.ranks, "power counter recovery first last") || !["power", "counter", "recovery", "first", "last"].every(
+      (key) => Number.isInteger(record.ranks[key]) && record.ranks[key] >= 0 && record.ranks[key] <= (["first", "last"].includes(key) ? 5 : 10)
+    ) || !exactKeys2(record.source, "attackerStats attackPowerMultiplier sourceDamageScale sourceKind") || !exactKeys2(
+      record.source.attackerStats,
+      ["maxHp", "attackPower", ...Object.keys(COMMON_UNIT_STAT_DEFAULTS)].join(" ")
+    ) || !Object.values(record.source.attackerStats).every((value) => Number.isFinite(value) && value >= 0) || record.source.attackerStats.maxHp <= 0 || ![1, 3].includes(record.source.attackPowerMultiplier) || !Number.isFinite(record.source.sourceDamageScale) || record.source.sourceDamageScale < 0 || !["direct", "enemy"].includes(record.source.sourceKind) || !record.criticalRolls || !Object.values(record.criticalRolls).every((roll) => Number.isFinite(roll) && roll >= 0 && roll < 1)) {
+      return false;
+    }
+    const INPUTS = record.budgetInputs;
+    if (!exactKeys2(INPUTS, "tierOneAttack tierAttack baseRecovery") || !Object.values(INPUTS).every(Number.isFinite) || INPUTS.baseRecovery <= 0 || record.recoverySeconds !== INPUTS.baseRecovery * (1 - 0.015 * record.ranks.recovery) || record.directMultiplier !== peaBudgetFromInputs(
+      record.tier,
+      record.form,
+      record.recoverySeconds,
+      INPUTS.tierOneAttack,
+      INPUTS.tierAttack
+    ) * (1 + 0.03 * record.ranks.power) * (record.counter ? 1 + 0.05 * record.ranks.counter : 1)) {
+      return false;
+    }
+    for (const KEY2 of Object.keys(record.criticalRolls)) {
+      let parts;
+      try {
+        parts = JSON.parse(KEY2);
+      } catch {
+        return false;
+      }
+      if (!Array.isArray(parts) || attackTargetKey(parts[1], parts[2]) !== KEY2) {
+        return false;
+      }
+    }
+    return (record.launchTick === null || Number.isSafeInteger(record.launchTick) && record.launchTick >= 0) && (record.contactTick === null ? record.attack === null && record.contact === null && record.direction === null && record.slot === 0 && Object.keys(record.criticalRolls).length === 0 : record.launchTick !== null && Number.isSafeInteger(record.contactTick) && record.contactTick >= record.launchTick && isAttackActionDTO(record.attack) && record.attack.startTick === record.contactTick && record.attack.plan.durationTicks === record.comboTicks + 1 && record.attack.plan.strikes.length === PEA_WEIGHTS[record.form].length && record.attack.plan.strikes.every(
+      (strike, index) => strike.weight === PEA_WEIGHTS[record.form][index] && strike.tick === PEA_SLOT_TICKS[record.form][index]
+    ) && record.slot === Math.max(0, record.attack.nextSlot - 1) && record.contact && ["x", "y", "z"].every((key) => Number.isFinite(record.contact[key])) && record.contact.z === 0 && record.direction && ["x", "y"].every((key) => Number.isFinite(record.direction[key])) && Math.abs(Math.hypot(record.direction.x, record.direction.y) - 1) < 1e-9);
+  }
+  function exactKeys2(value, keys2) {
+    return value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).sort().join(" ") === keys2.split(" ").sort().join(" ");
+  }
+  var PEA_WEIGHTS, COMBO_TICKS, PEA_SLOT_TICKS, ABILITY_ID;
+  var init_pea_attack = __esm({
+    "src/features/species-growth/pea-attack.js"() {
+      init_attack_action();
+      init_state();
+      init_unit_stats();
+      init_unit_grades();
+      PEA_WEIGHTS = Object.freeze([null, [1], [1], [0.45, 0.55], [1], [0.4, 0.6], [0.2, 0.25, 0.55]]);
+      COMBO_TICKS = [0, 0, 0, 4, 0, 6, 8];
+      PEA_SLOT_TICKS = Object.freeze([null, [0], [0], [0, 4], [0], [0, 6], [0, 3, 8]]);
+      ABILITY_ID = "pea-recovery-boost";
+    }
+  });
+
   // src/features/abilities/pea-recovery-boost/model.js
-  var ABILITY_ID, PeaRecoveryBoostModel;
+  var ABILITY_ID2, PeaRecoveryBoostModel;
   var init_model13 = __esm({
     "src/features/abilities/pea-recovery-boost/model.js"() {
+      init_pea_attack();
       init_ability_progression();
       init_pea_recovery_boost();
-      ABILITY_ID = PEA_RECOVERY_BOOST_FEATURE.definition.id;
+      ABILITY_ID2 = PEA_RECOVERY_BOOST_FEATURE.definition.id;
       PeaRecoveryBoostModel = class {
         static config(progression, tier) {
-          const EFFECT = getAbilityEffects(progression, ABILITY_ID, tier);
+          const BUILD = peaGrowthBuild(progression);
+          if (BUILD) {
+            return { durationTicks: 40, speedMultiplier: 1.25 + 0.06 * (BUILD.nodeRanks["specialty-1"] || 0) };
+          }
+          const EFFECT = getAbilityEffects(progression, ABILITY_ID2, tier);
           if (!EFFECT) {
             return null;
           }
@@ -5188,15 +5379,15 @@
   });
 
   // src/features/abilities/kidney-leap/model.js
-  var ABILITY_ID2, KidneyLeapModel;
+  var ABILITY_ID3, KidneyLeapModel;
   var init_model14 = __esm({
     "src/features/abilities/kidney-leap/model.js"() {
       init_ability_progression();
       init_kidney_continuous_leap();
-      ABILITY_ID2 = KIDNEY_CONTINUOUS_LEAP_FEATURE.definition.id;
+      ABILITY_ID3 = KIDNEY_CONTINUOUS_LEAP_FEATURE.definition.id;
       KidneyLeapModel = class {
         static config(progression, tier) {
-          const EFFECT = getAbilityEffects(progression, ABILITY_ID2, tier);
+          const EFFECT = getAbilityEffects(progression, ABILITY_ID3, tier);
           if (!EFFECT) {
             return null;
           }
@@ -5213,15 +5404,15 @@
   });
 
   // src/features/abilities/chestnut-thorns/model.js
-  var ABILITY_ID3, ChestnutThornsModel;
+  var ABILITY_ID4, ChestnutThornsModel;
   var init_model15 = __esm({
     "src/features/abilities/chestnut-thorns/model.js"() {
       init_ability_progression();
       init_definition13();
-      ABILITY_ID3 = CHESTNUT_THORNS_FEATURE.definition.id;
+      ABILITY_ID4 = CHESTNUT_THORNS_FEATURE.definition.id;
       ChestnutThornsModel = class {
         static config(progression, tier) {
-          const EFFECT = getAbilityEffects(progression, ABILITY_ID3, tier);
+          const EFFECT = getAbilityEffects(progression, ABILITY_ID4, tier);
           if (!EFFECT) {
             return null;
           }
@@ -5244,15 +5435,15 @@
   });
 
   // src/features/abilities/peanut-death-split/model.js
-  var ABILITY_ID4, PeanutDeathSplitModel;
+  var ABILITY_ID5, PeanutDeathSplitModel;
   var init_model16 = __esm({
     "src/features/abilities/peanut-death-split/model.js"() {
       init_ability_progression();
       init_definition14();
-      ABILITY_ID4 = PEANUT_DEATH_SPLIT_FEATURE.definition.id;
+      ABILITY_ID5 = PEANUT_DEATH_SPLIT_FEATURE.definition.id;
       PeanutDeathSplitModel = class {
         static config(progression, tier) {
-          const EFFECT = getAbilityEffects(progression, ABILITY_ID4, tier);
+          const EFFECT = getAbilityEffects(progression, ABILITY_ID5, tier);
           if (!EFFECT) {
             return null;
           }
@@ -5363,17 +5554,17 @@
   });
 
   // src/features/abilities/rice-critical/model.js
-  var ABILITY_ID5, RiceCriticalModel;
+  var ABILITY_ID6, RiceCriticalModel;
   var init_model18 = __esm({
     "src/features/abilities/rice-critical/model.js"() {
       init_ability_progression();
-      ABILITY_ID5 = "rice-low-health-harvest";
+      ABILITY_ID6 = "rice-low-health-harvest";
       RiceCriticalModel = class {
         static chanceBonus(progression, tier, currentHp, maxHp) {
           if (!Number.isFinite(currentHp) || currentHp <= 0 || !Number.isFinite(maxHp) || maxHp <= 0) {
             return 0;
           }
-          const EFFECT = getAbilityEffects(progression, ABILITY_ID5, tier);
+          const EFFECT = getAbilityEffects(progression, ABILITY_ID6, tier);
           if (!EFFECT) {
             return 0;
           }
@@ -5490,7 +5681,7 @@
         ...options
       });
       UNIT_CAPABILITY_COMPOSITIONS = Object.freeze({
-        0: COMPOSITION("contact", ["recoveryHaste"], {
+        0: COMPOSITION("pea", ["recoveryHaste"], {
           contactRecoil: true
         }),
         1: COMPOSITION(FEATURE3.modelKey, ["cornAttachment"], {
@@ -5576,17 +5767,17 @@
   });
 
   // src/features/abilities/wheat-command/model.js
-  var DEFINITION12, ABILITY_ID6, WheatCommandModel;
+  var DEFINITION12, ABILITY_ID7, WheatCommandModel;
   var init_model19 = __esm({
     "src/features/abilities/wheat-command/model.js"() {
       init_ability_progression();
       init_unit_abilities();
       init_wheat_command_crit();
       DEFINITION12 = WHEAT_COMMAND_CRIT_FEATURE.definition;
-      ABILITY_ID6 = DEFINITION12.id;
+      ABILITY_ID7 = DEFINITION12.id;
       WheatCommandModel = class {
         static config(progression, tier) {
-          const EFFECT = getAbilityEffects(progression, ABILITY_ID6, tier);
+          const EFFECT = getAbilityEffects(progression, ABILITY_ID7, tier);
           if (!EFFECT) {
             return null;
           }
@@ -5666,15 +5857,15 @@
   function createBarleyArmorShredBuckets() {
     return Array.from({ length: BARLEY_ARMOR_SHRED_BUCKETS }, () => ({ expiresAtTick: 0, amount: 0 }));
   }
-  var BARLEY_ARMOR_SHRED_BUCKETS, ABILITY_ID7, BarleyArmorShredModel;
+  var BARLEY_ARMOR_SHRED_BUCKETS, ABILITY_ID8, BarleyArmorShredModel;
   var init_model20 = __esm({
     "src/features/abilities/barley-shred/model.js"() {
       init_ability_progression();
       BARLEY_ARMOR_SHRED_BUCKETS = 60;
-      ABILITY_ID7 = "barley-armor-break";
+      ABILITY_ID8 = "barley-armor-break";
       BarleyArmorShredModel = class {
         static config(progression, tier) {
-          const EFFECT = getAbilityEffects(progression, ABILITY_ID7, tier);
+          const EFFECT = getAbilityEffects(progression, ABILITY_ID8, tier);
           if (!EFFECT) {
             return null;
           }
@@ -6174,6 +6365,9 @@
         lifeMs = DAMAGE_NUMBER.lifeMs;
         // `reduced` keeps the number but drops the pop and the rise: the information stays, the motion goes.
         draw(renderer, event, progress, feel) {
+          if (renderer.attackPreviewSpecies === 0) {
+            return;
+          }
           const STYLE = STYLES[event.critical ? "critical" : event.role], REDUCED = feel?.reduced === true, POP = Math.min(1, progress / DAMAGE_NUMBER.popFraction), ALPHA = Math.min(1, (1 - progress) / DAMAGE_NUMBER.fadeFraction), SCALE = (event.critical ? DAMAGE_NUMBER.criticalScale : 1) * (REDUCED ? 1 : 0.65 + 0.45 * Math.sin(POP * Math.PI * 0.5)), LIFT = REDUCED ? 0 : DAMAGE_NUMBER.rise * (1 - (1 - progress) ** 2), DRIFT = (event.sequence * 7919 % 11 - 5) * DAMAGE_NUMBER.spread, POINT2 = renderer.project(event.x + DRIFT, event.y, event.z + 0.5 + LIFT), TEXT = `${STYLE.prefix}${formatDamage(event.amount)}${STYLE.suffix}`, HEIGHT = DAMAGE_NUMBER.height * SCALE * renderer.scale;
           if (ALPHA <= 0) {
             return;
@@ -8168,6 +8362,125 @@
     }
   });
 
+  // src/features/unit-attacks/pea/model.js
+  function createPeaAttackMixin(contactAttack, geometry) {
+    return (base) => class extends contactAttack(base) {
+      resetCombatEffects() {
+        super.resetCombatEffects?.();
+        this.interrupt();
+      }
+      prepareAttack(sim) {
+        super.prepareAttack?.(sim);
+        const RECORD = createPeaAttack(sim, this.owner, this.action, super.attackRecoverySeconds(sim));
+        if (RECORD) {
+          this.action.peaAttack = RECORD;
+        }
+      }
+      attackRecoverySeconds(sim) {
+        return this.action?.peaAttack?.recoverySeconds ?? super.attackRecoverySeconds(sim);
+      }
+      syncAttackSpeedMultiplier(tick) {
+        if (!this.action?.peaAttack) {
+          super.syncAttackSpeedMultiplier(tick);
+        }
+      }
+      onLaunch(sim, action) {
+        super.onLaunch?.(sim, action);
+        if (action.peaAttack) {
+          action.peaAttack.launchTick = sim.simulationTick;
+        }
+      }
+      interrupt() {
+        const RECORD = this.action?.peaAttack;
+        if (RECORD?.attack) {
+          const ATTACK2 = AttackAction.fromDTO(RECORD.attack);
+          ATTACK2.cancel();
+          RECORD.attack = ATTACK2.toDTO();
+        }
+        super.interrupt();
+      }
+      integrate(dt) {
+        const RECORD = this.action?.peaAttack, U = this.owner;
+        if (!RECORD || RECORD.contactTick === null || this.phase !== "active") {
+          return super.integrate(dt);
+        }
+        if (U.stun > 0 || U.down > 0 || U.landingRecovery > 0) {
+          return false;
+        }
+        this.elapsed += dt;
+        const Q = Math.min(1, this.elapsed / (RECORD.comboTicks / 20)), SPLIT = RECORD.form === 6 ? 3 / 8 : 1, LEG_Q = Q === 1 ? 1 : Q < SPLIT ? Q / SPLIT : (Q - SPLIT) / (1 - SPLIT), DISTANCE = (RECORD.form === 3 ? 0.08 : 0.35) * Math.sin(Math.PI * LEG_Q), X = RECORD.contact.x - RECORD.direction.x * DISTANCE, Y = RECORD.contact.y - RECORD.direction.y * DISTANCE;
+        RECORD.stage = RECORD.form === 6 && Q >= SPLIT && LEG_Q < 0.65 ? "charge" : LEG_Q < 0.5 ? "rebound" : "contact";
+        RECORD.stageProgress = LEG_Q;
+        U.vx = (X - U.x) / dt;
+        U.vy = (Y - U.y) / dt;
+        U.vz = 0;
+        U.x = X;
+        U.y = Y;
+        U.z = 0;
+        U.flash = Math.max(0, U.flash - dt);
+        U.bounce = Math.max(0, U.bounce - dt);
+        return true;
+      }
+      afterMove(sim, old) {
+        const A = this.action, RECORD = A?.peaAttack, U = this.owner;
+        if (!RECORD) {
+          super.afterMove(sim, old);
+          return;
+        }
+        if (this.phase !== "active" || !A.path) {
+          return;
+        }
+        const TARGET = sim.attackTarget(U, A);
+        if (!TARGET || TARGET.hp <= 0) {
+          this.interrupt();
+          return;
+        }
+        const HIT = geometry.sweep(
+          old,
+          U,
+          scaleAttackArea(U.radius, U) + (RECORD.contactTick === null ? 0 : 1e-7),
+          U.height,
+          TARGET
+        );
+        if (RECORD.contactTick === null) {
+          if (!HIT) {
+            if (this.elapsed >= A.path.duration) {
+              U.z = U.vz = U.vx = U.vy = 0;
+              this.recover(sim, true);
+            }
+            return;
+          }
+          U.x = HIT.x;
+          U.y = HIT.y;
+          U.z = 0;
+          startPeaContacts(sim, U, A, HIT);
+          this.elapsed = 0;
+          resolvePeaContacts(sim, U, A, TARGET, HIT);
+          if (!RECORD.comboTicks) {
+            this.recover(sim, true);
+          }
+          return;
+        }
+        if (HIT && Math.hypot(U.x - TARGET.x, U.y - TARGET.y) < Math.hypot(old.x - TARGET.x, old.y - TARGET.y)) {
+          U.x = HIT.x;
+          U.y = HIT.y;
+          U.z = 0;
+        }
+        resolvePeaContacts(sim, U, A, TARGET, HIT);
+        if (sim.simulationTick >= RECORD.contactTick + RECORD.comboTicks) {
+          this.recover(sim, true);
+        }
+      }
+    };
+  }
+  var init_model30 = __esm({
+    "src/features/unit-attacks/pea/model.js"() {
+      init_pea_attack();
+      init_attack_action();
+      init_unit_stats();
+    }
+  });
+
   // src/unit-combat-patterns.js
   function createPeanutStrikeSchedule({
     strikeCount = PEANUT_BASE_STRIKE.count,
@@ -8314,7 +8627,7 @@
     };
     return REPEATED_STRIKE;
   }
-  var init_model30 = __esm({
+  var init_model31 = __esm({
     "src/features/unit-attacks/dual-strike/model.js"() {
       init_unit_combat_patterns();
     }
@@ -8382,7 +8695,7 @@
     };
     return PROJECTILE_ATTACK;
   }
-  var init_model31 = __esm({
+  var init_model32 = __esm({
     "src/features/unit-attacks/lob/model.js"() {
       init_corn_attack();
     }
@@ -8693,6 +9006,7 @@
     };
     const ATTACKS = {
       contact: CONTACT_ATTACK,
+      pea: createPeaAttackMixin(CONTACT_ATTACK, arenaGeometry),
       [FEATURE3.modelKey]: PROJECTILE_ATTACK,
       [FEATURE4.modelKey]: REPEATED_STRIKE
     };
@@ -8740,8 +9054,9 @@
   var init_unit_attack_capabilities = __esm({
     "src/unit-attack-capabilities.js"() {
       init_model30();
-      init_definition18();
       init_model31();
+      init_definition18();
+      init_model32();
       init_definition17();
       init_unit_abilities();
       init_unit_stats();
@@ -9293,6 +9608,10 @@
           super.knock(...args);
           if (SOURCE && areOpposingFactions(SOURCE, this) && hasFaction(SOURCE, FACTION_CONFIG.ENEMY)) {
             this.peaRecoveryPending = true;
+            if (this.species === 0) {
+              this.peaCounterPending = true;
+              this.peaCounterExpiresAtTick = 0;
+            }
           }
         }
         // A unit that is walking to a place keeps the speed it was told to walk at: drag is for bodies that are thrown.
@@ -9359,6 +9678,8 @@
             kidneyLeapReadyTick: 0,
             kidneyLeapLastUseTick: 0,
             peaRecoveryPending: false,
+            peaCounterExpiresAtTick: 0,
+            peaCounterPending: false,
             peaRecoveryBoostExpiresAtTick: 0,
             peaRecoveryBoostMultiplier: 0,
             walnutNextGuardTick: 0,
@@ -9416,6 +9737,8 @@
           this.ability = CREATE_UNIT_ATTACK_CYCLE(this);
           this.specialAbility = CREATE_UNIT_ATTACK_CYCLE.createSpecial(this);
           this.peaRecoveryPending = false;
+          this.peaCounterExpiresAtTick = 0;
+          this.peaCounterPending = false;
           this.peaRecoveryBoostExpiresAtTick = 0;
           this.peaRecoveryBoostMultiplier = 0;
           this.onRevived.emit({ unitId: this.id, x: this.x, y: this.y, hp: this.hp });
@@ -12089,6 +12412,8 @@
         }
         clearPeaRecoveryBoost(unit2) {
           unit2.peaRecoveryPending = false;
+          unit2.peaCounterExpiresAtTick = 0;
+          unit2.peaCounterPending = false;
           unit2.peaRecoveryBoostExpiresAtTick = 0;
           unit2.peaRecoveryBoostMultiplier = 0;
         }
@@ -12097,6 +12422,13 @@
             if (UNIT_LOCAL.hp <= 0) {
               this.clearPeaRecoveryBoost(UNIT_LOCAL);
               continue;
+            }
+            if (UNIT_LOCAL.peaCounterPending && UNIT_LOCAL.down <= 0 && UNIT_LOCAL.stun <= 0 && UNIT_LOCAL.z <= 0.1 && UNIT_LOCAL.landingRecovery <= 0 && UNIT_LOCAL.dropLanded) {
+              UNIT_LOCAL.peaCounterPending = false;
+              UNIT_LOCAL.peaCounterExpiresAtTick = this.simulationTick + 60;
+            }
+            if (UNIT_LOCAL.peaCounterExpiresAtTick < this.simulationTick) {
+              UNIT_LOCAL.peaCounterExpiresAtTick = 0;
             }
             if (UNIT_LOCAL.peaRecoveryBoostExpiresAtTick < this.simulationTick) {
               UNIT_LOCAL.peaRecoveryBoostExpiresAtTick = 0;
@@ -12877,8 +13209,10 @@
             hits: SOURCE.faction === "player" ? 1 : 0,
             critHits: SOURCE.faction === "player" && DAMAGE.critical ? 1 : 0
           });
-          this.applyGrainOnBasicHit(SOURCE, target, KIND);
-          SOURCE.ability?.afterSuccessfulAttack?.(this, action, target, DAMAGE);
+          if (!options.suppressBasicProc) {
+            this.applyGrainOnBasicHit(SOURCE, target, KIND);
+            SOURCE.ability?.afterSuccessfulAttack?.(this, action, target, DAMAGE);
+          }
           const STRENGTH = DAMAGE_MULTIPLIER * (DAMAGE.critical ? ATTACKER_STATS.critMultiplier : 1);
           if (IS_BOSS) {
             this.finishBossHit(SOURCE, action, point2, CONTEXT, DAMAGE, STRENGTH);
@@ -14039,9 +14373,8 @@
     };
   }
   function migrateFarmProgress(data) {
-    validateFarmProgress(data, { allowLegacy: true });
-    const NEXT = structuredClone(data);
-    NEXT.player = migrateAbilityProgressionState(NEXT.player);
+    const PLAYER = migrateAbilityProgressionState(data?.player), NEXT = structuredClone(data);
+    NEXT.player = PLAYER;
     validateFarmProgress(NEXT);
     return NEXT;
   }
@@ -14161,7 +14494,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.31.0";
+      PRODUCT_VERSION = "0.32.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -14179,12 +14512,16 @@
     }
     return PARSED;
   }
-  function decodeFarmSave(text) {
+  function decodeFarmSaveRecord(text) {
     const PARSED = readFarmSave(text);
     if (COMPATIBILITY_LOCAL(PARSED.productVersion) === "0.30" && PARSED.progress.player?.schemaVersion !== 3) {
       throw new TypeError("Invalid legacy farm schema. The original save was left unchanged.");
     }
-    return migrateFarmProgress(PARSED.progress);
+    const PROGRESS = migrateFarmProgress(PARSED.progress);
+    return { progress: PROGRESS, migrated: !sameFarmProgress(PARSED.progress, PROGRESS) };
+  }
+  function decodeFarmSave(text) {
+    return decodeFarmSaveRecord(text).progress;
   }
   function validateSave(text) {
     decodeFarmSave(text);
@@ -14215,7 +14552,7 @@
       init_farm_progress();
       MAX_BYTES = 2 * 1024 * 1024;
       COMPATIBILITY_LOCAL = (version) => typeof version === "string" ? version.split(".").slice(0, 2).join(".") : "";
-      IS_READABLE_COMPATIBILITY = (version) => [COMPATIBILITY, "0.30"].includes(COMPATIBILITY_LOCAL(version));
+      IS_READABLE_COMPATIBILITY = (version) => [COMPATIBILITY, "0.31", "0.30"].includes(COMPATIBILITY_LOCAL(version));
     }
   });
 
@@ -14277,12 +14614,13 @@
             this.raw = localStorage.getItem(KEY);
             if (this.raw) {
               try {
-                this.savedProgress = decodeFarmSave(this.raw);
-                if (JSON.parse(this.raw).progress.player.schemaVersion === 3) {
+                const RECORD = decodeFarmSaveRecord(this.raw);
+                this.savedProgress = RECORD.progress;
+                if (RECORD.migrated) {
                   const { text: TEXT } = encodeFarmSave(null, this.savedProgress);
                   this.writeVerified(TEXT, this.raw, { source: this.raw });
                   this.raw = TEXT;
-                  this.notice = "옥수수 성장 트리를 적용했어요. 기존 투자와 원본 저장은 보존했어요.";
+                  this.notice = "출시된 병종의 성장 트리를 적용했어요. 기존 투자와 원본 저장은 보존했어요.";
                 }
               } catch (error) {
                 this.incompatible = true;
@@ -14403,9 +14741,9 @@
             if (!TEXT) {
               throw Error("농장 저장을 찾지 못했어요. 다른 탭에서 새 농장을 시작했을 수 있어요.");
             }
-            const DATA = decodeFarmSave(TEXT);
+            const { progress: DATA, migrated: MIGRATED } = decodeFarmSaveRecord(TEXT);
             let normalized = TEXT;
-            if (JSON.parse(TEXT).progress.player.schemaVersion === 3) {
+            if (MIGRATED) {
               normalized = encodeFarmSave(null, DATA).text;
               this.writeVerified(normalized, TEXT, { source: TEXT });
             }
@@ -14490,10 +14828,9 @@
           if (localStorage.getItem(KEY) !== this.raw) {
             throw Error("저장 내용이 다른 탭에서 바뀌었어요. 새로고침한 뒤 다시 불러와 주세요.");
           }
-          validateSave(text);
-          const WORLD = parseSave(text), { data: DATA, text: NORMALIZED } = this.serializeCheckpoint(WORLD);
+          const { progress: PROGRESS, migrated: MIGRATED } = decodeFarmSaveRecord(text), WORLD = restoreFarmProgress(PROGRESS), { data: DATA, text: NORMALIZED } = this.serializeCheckpoint(WORLD);
           this.writeVerified(NORMALIZED, this.raw, {
-            source: JSON.parse(text).progress.player.schemaVersion === 3 ? text : null,
+            source: MIGRATED ? text : null,
             imported: text
           });
           this.raw = NORMALIZED;
@@ -14764,6 +15101,9 @@
   init_formation_skill_state();
   init_tower_run();
   init_farm_model();
+
+  // src/farm-renderer.js
+  var import_definition69 = __toESM(require_definition(), 1);
 
   // src/features/projectiles/corn/presentation.js
   var import_vector_sockets4 = __toESM(require_vector_sockets(), 1);
@@ -16302,6 +16642,48 @@
     }
   };
 
+  // src/features/unit-attacks/pea/presentation.js
+  var PeaAttackPresentation = class extends UnitAttackPresentation {
+    applyGroundedPose(matrix, unit2, ground) {
+      const ABILITY = unit2.ability, FORM = ABILITY.peaForm, PHASE = ABILITY.phase, STAGE = ABILITY.peaStage, PROGRESS = Math.max(0, Math.min(1, ABILITY.peaStageProgress || 0)), DIRECTION = Math.cos(unit2.angle || 0) >= 0 ? 1 : -1;
+      if (FORM < 2 || !["windup", "active", "recover"].includes(PHASE)) {
+        return;
+      }
+      let squash, lean;
+      if (PHASE === "windup") {
+        const WINDUP = Math.min(1, ABILITY.elapsed / (ABILITY.peaWindupDuration || 0.28));
+        squash = WINDUP * (FORM === 4 ? 0.42 : FORM === 2 ? 0.28 : 0.18);
+        lean = -DIRECTION * WINDUP * (FORM === 4 ? 0.2 : 0.08);
+      } else if (PHASE === "active") {
+        if (FORM === 3) {
+          lean = DIRECTION * Math.sin(PROGRESS * Math.PI) * (ABILITY.peaSlot % 2 ? -0.65 : 0.65);
+          squash = 0.12 * Math.sin(PROGRESS * Math.PI);
+        } else if (STAGE === "charge") {
+          squash = 0.42 * PROGRESS;
+          lean = -DIRECTION * 0.16 * PROGRESS;
+        } else if (STAGE === "rebound") {
+          squash = -0.12 * Math.sin(PROGRESS * Math.PI);
+          lean = -DIRECTION * 0.25 * Math.sin(PROGRESS * Math.PI);
+        } else {
+          squash = FORM === 4 ? -0.22 : FORM === 2 ? -0.16 : -0.1;
+          lean = DIRECTION * (FORM === 4 ? 0.32 : 0.18);
+        }
+      } else {
+        const SETTLE = Math.max(0, 1 - ABILITY.elapsed / 0.18);
+        squash = (FORM === 4 || FORM === 6 ? 0.25 : 0.12) * SETTLE;
+        lean = DIRECTION * 0.12 * SETTLE;
+      }
+      const SCALE = matrix[0], X = matrix[4] + ground.x * SCALE, Y = matrix[5] + ground.y * SCALE;
+      const ROTATION = FORM === 3 && PHASE === "active" ? lean : 0, COS = Math.cos(ROTATION), SIN = Math.sin(ROTATION), SCALE_X = SCALE * (1 + squash * 0.65), SCALE_Y = SCALE * (1 - squash);
+      matrix[0] = COS * SCALE_X;
+      matrix[1] = SIN * SCALE_X;
+      matrix[2] = ROTATION ? -SIN * SCALE_Y : SCALE * lean;
+      matrix[3] = COS * SCALE_Y;
+      matrix[4] = X - ground.x * matrix[0] - ground.y * matrix[2];
+      matrix[5] = Y - ground.x * matrix[1] - ground.y * matrix[3] - Math.abs(SIN) * ground.x * SCALE_X;
+    }
+  };
+
   // src/features/unit-attacks/lob/presentation.js
   init_definition17();
   var LobPresentation = class extends UnitAttackPresentation {
@@ -16511,6 +16893,7 @@
   ]);
 
   // src/farm-render-units.js
+  var PEA_ATTACK = new PeaAttackPresentation();
   var DEFAULT_ATTACK = new UnitAttackPresentation();
   var BARLEY_SHRED_PRESENTATION = new BarleyArmorShredPresentation();
   var PASSIVE_MARKS = new PassiveMarksPresentation();
@@ -16518,6 +16901,9 @@
     [new DualStrikePresentation(), new LobPresentation()].map((presentation) => [presentation.id, presentation])
   );
   function unitAttackPresentation(unit2) {
+    if (unit2.species === 0 && unit2.ability?.peaForm) {
+      return PEA_ATTACK;
+    }
     return ATTACK_PRESENTATIONS.get(UNIT_ABILITY_PROFILES[unit2.species]?.kind) || DEFAULT_ATTACK;
   }
   function workSwing(u, sim) {
@@ -16726,6 +17112,9 @@
       player.seek(rest ? rest.elapsed * 1e3 : this.renderer.displayTimeMs);
       const [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox, GROUND = (0, import_definition62.unitBodyDefinition)(u.species).ground, SCALE = 2 * r / Math.max(WIDTH, HEIGHT);
       const MATRIX = [SCALE, 0, 0, SCALE, p.x - GROUND.x * SCALE, p.y - GROUND.y * SCALE];
+      if (!SWING && !rest && u.species === 0 && u.hp > 0 && u.stun <= 0 && u.dropLanded && u.z === 0) {
+        PEA_ATTACK.applyGroundedPose(MATRIX, u, GROUND);
+      }
       this.renderer.ctx.vector.flush();
       player.draw({
         projection: this.renderer.ctx.vector.projection,
@@ -18308,6 +18697,10 @@
     // The camera follows the climb: on the march it pulls back to show the tower and its door, and
     // it stays there a moment when the troops come back out; inside, it rests on the hall.
     directCamera(sim2, now) {
+      if (this.attackPreviewSpecies === 0 && sim2.units.length === 1 && sim2.units[0].species === 0) {
+        this.fitAttackPreview(sim2);
+        return;
+      }
       const INSIDE = !!sim2.insideTower, KEY2 = INSIDE ? `in${sim2.tower?.floor}` : "out", MARCHING = sim2.farmBossEvent?.phase === "marching";
       if (this.sceneKey === void 0) {
         this.sceneKey = KEY2;
@@ -18346,6 +18739,19 @@
           this.cameraReturning = false;
         }
       }
+    }
+    // Isolated pea help frames show the real contact and body, not the entire hall.
+    // This flag is installed only by the help entry point, never for a live run.
+    fitAttackPreview(world) {
+      const UNIT3 = world.units[0], BODY2 = (0, import_definition69.unitBodyDefinition)(UNIT3.species), BASE = this.scenePresentation.cameraView(this.aspect), SCALE = 96 * this.pixelRatio / (UNIT3.bodyScale * Math.max(BODY2.viewBox[2], BODY2.viewBox[3])), FOCUS_X = world.boss.x - world.boss.radius - 0.8, FOCUS_Y = world.boss.y;
+      this.zoom = 2 * BASE[0] * SCALE / this.canvas.width;
+      this.configure(this.scene, true);
+      const PAN_X = this.canvas.width * 0.45 / this.scale - FOCUS_X - this.view[0], PAN_Y = this.view[1] - this.baseY() - this.canvas.height * 0.76 / this.scale - FOCUS_Y * import_vector_sockets9.WORLD_DEPTH_PROJECTION;
+      this.panLimits.minX = Math.min(this.panLimits.minX, PAN_X);
+      this.panLimits.maxX = Math.max(this.panLimits.maxX, PAN_X);
+      this.panLimits.minY = Math.min(this.panLimits.minY, PAN_Y);
+      this.panLimits.maxY = Math.max(this.panLimits.maxY, PAN_Y);
+      this.setPan(PAN_X, PAN_Y);
     }
     // Inside the tower the whole hall is always in view: no panning or zooming, so tapping anywhere deploys.
     fitHall(world) {
@@ -18668,6 +19074,11 @@
       "ability.phase": R.STATE_KEY,
       "ability.elapsed": R.LINEAR,
       "ability.peanutStrikeCount": R.STEP,
+      "ability.peaForm": R.STEP,
+      "ability.peaSlot": R.STEP,
+      "ability.peaStage": R.STATE_KEY,
+      "ability.peaStageProgress": R.LINEAR,
+      "ability.peaWindupDuration": R.STEP,
       walnutGuarding: R.STEP,
       cooldown: R.LINEAR,
       cooldownDuration: R.STEP,
@@ -18720,6 +19131,12 @@
       this.ability.phase = u.ability.phase;
       this.ability.elapsed = u.ability.elapsed;
       this.ability.peanutStrikeCount = u.ability.action?.peanutStrikeCount || 2;
+      const PEA = u.ability.action?.peaAttack;
+      this.ability.peaForm = PEA?.form || 0;
+      this.ability.peaSlot = PEA?.slot || 0;
+      this.ability.peaStage = PEA?.stage || u.ability.phase;
+      this.ability.peaStageProgress = PEA && u.ability.phase === "active" && PEA.contactTick === null ? Math.min(1, u.ability.elapsed / (u.ability.action.path?.duration || 0.12)) : PEA?.stageProgress || 0;
+      this.ability.peaWindupDuration = PEA?.windupSeconds || 0.28;
       this.walnutGuarding = !!u.ability.isGuarding?.(world.simulationTick);
       this.cooldown = u.cooldown;
       this.cooldownDuration = u.cooldownDuration;
@@ -19540,6 +19957,7 @@
   init_farm_model();
 
   // src/farm-snapshot-validation.js
+  init_pea_attack();
   init_formation_skill_state();
   init_farm_model();
   init_player_progression();
@@ -19572,6 +19990,8 @@
     kidneyLeapReadyTick: 0,
     kidneyLeapLastUseTick: 0,
     peaRecoveryPending: false,
+    peaCounterExpiresAtTick: 0,
+    peaCounterPending: false,
     peaRecoveryBoostExpiresAtTick: 0,
     peaRecoveryBoostMultiplier: 0,
     id: 1,
@@ -19819,7 +20239,8 @@
         effect: FIELDS("abilityId", { config: JSON_PAYLOAD })
       },
       thornConfig: JSON_PAYLOAD,
-      cornAttack: CORN_ACTION
+      cornAttack: CORN_ACTION,
+      peaAttack: JSON_PAYLOAD
     }
   );
   var UNIT2 = shapeFields(UNIT_SNAPSHOT_SHAPE, {
@@ -20250,7 +20671,7 @@
     for (const U of raw.units) {
       shape(U, UNIT_SNAPSHOT_SHAPE);
       ASSERT2(
-        Number.isFinite(U.growthElapsed) && U.growthElapsed >= 0 && Number.isFinite(U.growthDuration) && U.growthDuration > 0 && U.growthElapsed <= U.growthDuration + 1e-9 && Number.isFinite(U.cooldown) && U.cooldown >= 0 && Number.isFinite(U.cooldownDuration) && U.cooldownDuration >= U.cooldown - 1e-9 && U.cooldownDuration <= 1e5 && INTEGER2(U.mateId, 0, MATE_ID_LIMIT) && Number.isFinite(U.perceptionRange) && U.perceptionRange > 0 && U.perceptionRange <= 100 && Number.isFinite(U.down) && U.down >= 0 && U.down <= CONFIG.unit.corpseRecoverySeconds && INTEGER2(U.battleSummonEncounterId, 0, 1e12) && Number.isFinite(U.landingRecovery) && U.landingRecovery >= 0 && U.landingRecovery <= 0.25 + 1e-9 && INTEGER2(U.generation, 1, 1e12) && Number.isFinite(U.permanentStatMultiplier) && U.permanentStatMultiplier >= 1 && U.permanentStatMultiplier <= 2.25 && INTEGER2(U.walnutNextGuardTick, 0, 1e12) && INTEGER2(U.walnutGuardUntilTick, 0, 1e12) && Number.isFinite(U.walnutStoredRawDamage) && U.walnutStoredRawDamage >= 0 && Number.isFinite(U.wheatCommandUntil) && U.wheatCommandUntil >= 0 && U.wheatCommandUntil <= 1e12 && Number.isFinite(U.wheatCommandCritBonus) && U.wheatCommandCritBonus >= 0 && U.wheatCommandCritBonus <= 0.5 && Number.isFinite(U.barleyArmorBreakUntil) && U.barleyArmorBreakUntil >= 0 && U.barleyArmorBreakUntil <= 1e12 && Number.isFinite(U.barleyArmorBreakReduction) && U.barleyArmorBreakReduction >= 0 && U.barleyArmorBreakReduction <= 0.75 && INTEGER2(U.kidneyLeapReadyTick, 0, 1e12) && INTEGER2(U.kidneyLeapLastUseTick, 0, 1e12) && typeof U.peaRecoveryPending === "boolean" && INTEGER2(U.peaRecoveryBoostExpiresAtTick, 0, 1e12) && Number.isFinite(U.peaRecoveryBoostMultiplier) && U.peaRecoveryBoostMultiplier >= 0 && U.peaRecoveryBoostMultiplier <= 2 && validWheatCommandBuffs(U.wheatCommandBuffs) && validBarleyArmorShredBuckets(U.barleyArmorShredBuckets)
+        Number.isFinite(U.growthElapsed) && U.growthElapsed >= 0 && Number.isFinite(U.growthDuration) && U.growthDuration > 0 && U.growthElapsed <= U.growthDuration + 1e-9 && Number.isFinite(U.cooldown) && U.cooldown >= 0 && Number.isFinite(U.cooldownDuration) && U.cooldownDuration >= U.cooldown - 1e-9 && U.cooldownDuration <= 1e5 && INTEGER2(U.mateId, 0, MATE_ID_LIMIT) && Number.isFinite(U.perceptionRange) && U.perceptionRange > 0 && U.perceptionRange <= 100 && Number.isFinite(U.down) && U.down >= 0 && U.down <= CONFIG.unit.corpseRecoverySeconds && INTEGER2(U.battleSummonEncounterId, 0, 1e12) && Number.isFinite(U.landingRecovery) && U.landingRecovery >= 0 && U.landingRecovery <= 0.25 + 1e-9 && INTEGER2(U.generation, 1, 1e12) && Number.isFinite(U.permanentStatMultiplier) && U.permanentStatMultiplier >= 1 && U.permanentStatMultiplier <= 2.25 && INTEGER2(U.walnutNextGuardTick, 0, 1e12) && INTEGER2(U.walnutGuardUntilTick, 0, 1e12) && Number.isFinite(U.walnutStoredRawDamage) && U.walnutStoredRawDamage >= 0 && Number.isFinite(U.wheatCommandUntil) && U.wheatCommandUntil >= 0 && U.wheatCommandUntil <= 1e12 && Number.isFinite(U.wheatCommandCritBonus) && U.wheatCommandCritBonus >= 0 && U.wheatCommandCritBonus <= 0.5 && Number.isFinite(U.barleyArmorBreakUntil) && U.barleyArmorBreakUntil >= 0 && U.barleyArmorBreakUntil <= 1e12 && Number.isFinite(U.barleyArmorBreakReduction) && U.barleyArmorBreakReduction >= 0 && U.barleyArmorBreakReduction <= 0.75 && INTEGER2(U.kidneyLeapReadyTick, 0, 1e12) && INTEGER2(U.kidneyLeapLastUseTick, 0, 1e12) && typeof U.peaRecoveryPending === "boolean" && INTEGER2(U.peaCounterExpiresAtTick, 0, 1e12) && typeof U.peaCounterPending === "boolean" && INTEGER2(U.peaRecoveryBoostExpiresAtTick, 0, 1e12) && Number.isFinite(U.peaRecoveryBoostMultiplier) && U.peaRecoveryBoostMultiplier >= 0 && U.peaRecoveryBoostMultiplier <= 2 && validWheatCommandBuffs(U.wheatCommandBuffs) && validBarleyArmorShredBuckets(U.barleyArmorShredBuckets)
       );
       ASSERT2(
         INTEGER2(U.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER2(U.tier, 1, CONFIG.unit.maxTier) && ["idle", "windup", "active", "recover"].includes(U.ability.phase) && typeof U.ownerId === "string" && Number.isSafeInteger(U.farmId) && Object.values(FACTION_CONFIG).includes(U.faction) && typeof U.dropLanded === "boolean" && typeof U.isBattleOnlySummon === "boolean" && typeof U.splitUsedThisBattle === "boolean" && typeof U.deathSplitHandled === "boolean" && INTEGER2(U.battleSummonParentGeneration, 0, 1e12) && INTEGER2(U.chestnutNextThornTick, 0, 1e12)
@@ -20331,6 +20752,11 @@
         ASSERT2(
           INTEGER2(A.id, 1, raw.attackSerial) && INTEGER2(A.targetGeneration, 1, 1e12) && typeof A.hit === "boolean" && A.target && Number.isFinite(A.target.x) && Number.isFinite(A.target.y)
         );
+        if (A.peaAttack !== void 0) {
+          ASSERT2(
+            U.species === 0 && isPeaAttackRecord(A.peaAttack) && A.peaAttack.id === A.id && A.peaAttack.owner === U.id && A.peaAttack.ownerGeneration === U.generation && A.peaAttack.tier === U.tier
+          );
+        }
         if (A.cornAttack !== void 0) {
           const CANONICAL = CORN_ACTIONS.get(A.id);
           ASSERT2(
@@ -21086,6 +21512,38 @@
     ["옥수수 메테오", "상공에서 낙하하고 알 6개 연쇄"],
     ["삼연 메테오", "시차 낙하 3회 · 부착 총 9개"]
   ]);
+  var PEA_FORMS = Object.freeze([
+    ["밀착 박치기", "지상에서 한 번 밀착 충돌"],
+    ["탄성 박치기", "몸을 압축한 뒤 탄성 충돌"],
+    ["회전 연타", "앞면에서 회전하며 두 번 충돌"],
+    ["강압축 돌진", "강하게 압축한 뒤 직선 강충돌"],
+    ["반동 재돌진", "첫 충돌 뒤 짧게 뒤튕겨 다시 충돌"],
+    ["삼연 압축 충돌", "빠른 두 충돌 뒤 압축 마무리"]
+  ]);
+  var PRESENTATIONS2 = /* @__PURE__ */ new Map([
+    [
+      "corn-kernel-chain",
+      {
+        key: "corn",
+        name: "옥수수",
+        title: "포격과 연쇄 폭발",
+        forms: CORN_FORMS,
+        effect: cornGrowthEffect,
+        note: "기본 부착 총예산은 알 수로 나눠요. 추가 알과 마지막 폭발 보너스는 전체 부착 예산을 기준으로 별도 계산돼요. 첫 부착 1초 뒤부터 0.1초 간격으로 폭발해요."
+      }
+    ],
+    [
+      "pea-recovery-boost",
+      {
+        key: "pea",
+        name: "콩",
+        title: "탄성과 연속 박치기",
+        forms: PEA_FORMS,
+        effect: peaGrowthEffect,
+        note: "모든 충돌은 지상에서 이어져요. 적에게 밀린 뒤 회복하면 2초간 이동 속도가 증가해요. 재돌진 보너스는 강제 이동 종료 뒤 3초 안에 시작한 첫 공격 전체에 한 번 적용돼요. 자체 반동은 발동 조건이 아니에요. 첫·마지막 충돌 특화는 전체 직접 피해 예산 기준으로 더하며, 단타에는 두 보너스를 합산해요."
+      }
+    ]
+  ]);
   var GROWTH_REASON_LABELS = /* @__PURE__ */ new Map([
     ["not-available", "아직 미출시"],
     ["unknown-node", "사용할 수 없는 노드"],
@@ -21105,24 +21563,24 @@
     </div>`;
   }
   function renderGrowthCardMarkup(state, definition, context) {
-    const GROWTH = growthForAbility(definition.id), BUILD = growthBuildOf(state.abilities[definition.id]), ACTUAL_TIER = Math.max(1, Math.min(6, context.highestSpeciesTier?.[definition.species] || 1)), FORM_TIER = GROWTH.attackTier(BUILD, ACTUAL_TIER), EVOLUTION = GROWTH.definition.nodes.filter((node) => node.kind === "evolution"), SECTIONS = [
+    const GROWTH = growthForAbility(definition.id), PRESENTATION = PRESENTATIONS2.get(definition.id), BUILD = growthBuildOf(state.abilities[definition.id]), ACTUAL_TIER = Math.max(1, Math.min(6, context.highestSpeciesTier?.[definition.species] || 1)), FORM_TIER = GROWTH.attackTier(BUILD, ACTUAL_TIER), EVOLUTION = GROWTH.definition.nodes.filter((node) => node.kind === "evolution"), SECTIONS = [
       ["basic", "기본 성장", "각 1P · 10랭크"],
       ["specialty", "특화 성장", "각 2P · 5랭크"]
     ].map(
       ([kind, label, cost]) => `<section class="ability-branch growth-branch" aria-label="${label}"><h4>${label} <small>${cost}</small></h4><div class="ability-branch__nodes">${GROWTH.definition.nodes.filter((node) => node.kind === kind).map((node) => renderGrowthNode(GROWTH, BUILD, definition.id, node, context)).join("")}</div></section>`
     ).join("");
     return `<article class="ability-card growth-card" data-species="${definition.species}" data-ability="${definition.id}" data-growth-tree>
-      <header class="ability-card__header"><div><p class="ability-card__species">${speciesById(definition.species).name}</p><h3>포격과 연쇄 폭발</h3></div><span class="ability-card__grade">50P 선택 / 용량 ${growthTreeCapacity(GROWTH.definition)}P</span></header>
+      <header class="ability-card__header"><div><p class="ability-card__species">${speciesById(definition.species).name}</p><h3>${PRESENTATION.title}</h3></div><span class="ability-card__grade">50P 선택 / 용량 ${growthTreeCapacity(GROWTH.definition)}P</span></header>
       <p class="ability-card__description">진화는 공격 동작을, 기본·특화는 전투 성향을 바꿔요. 합성은 연구 없이도 가능하고 실제 등급만큼 공격력이 보정돼요.</p>
-      <p class="ability-card__current-effect" data-growth-form>보유 최고 합성 등급 T${ACTUAL_TIER} · 현재 연구 형태 T${FORM_TIER} (${CORN_FORMS[FORM_TIER - 1][0]})<br>연구해도 유닛의 실제 등급을 넘는 형태는 사용하지 않아요.</p>
-      <section class="ability-branch growth-evolution" aria-label="공격 진화"><h4>공격 진화 <small>각 2P · 앞 단계부터</small></h4><div class="growth-evolution__nodes"><div class="growth-evolution__root"><strong>T1 ${CORN_FORMS[0][0]}</strong><span>기본 해금 · 무료</span></div>${EVOLUTION.map((node) => renderGrowthNode(GROWTH, BUILD, definition.id, node, context)).join("")}</div></section>
-      <section class="growth-preview" aria-label="옥수수 공격 동작 미리보기"><h4>동작 미리보기</h4><div class="growth-preview__tiers">${CORN_FORMS.map((form, index) => `<button type="button" data-corn-preview-tier="${index + 1}" aria-pressed="false">T${index + 1} ${form[0]}</button>`).join("")}</div><div class="corn-evolution-preview" aria-label="선택한 옥수수 공격 시연"></div><p class="ability-tree__note" data-corn-preview-caption>단계를 누르면 같은 상황의 실제 공격을 재생해요. 농장과 투자는 변경되지 않아요.</p></section>
+      <p class="ability-card__current-effect" data-growth-form>보유 최고 합성 등급 T${ACTUAL_TIER} · 현재 연구 형태 T${FORM_TIER} (${PRESENTATION.forms[FORM_TIER - 1][0]})<br>연구해도 유닛의 실제 등급을 넘는 형태는 사용하지 않아요.</p>
+      <section class="ability-branch growth-evolution" aria-label="공격 진화"><h4>공격 진화 <small>각 2P · 앞 단계부터</small></h4><div class="growth-evolution__nodes"><div class="growth-evolution__root"><strong>T1 ${PRESENTATION.forms[0][0]}</strong><span>기본 해금 · 무료</span></div>${EVOLUTION.map((node) => renderGrowthNode(GROWTH, BUILD, definition.id, node, context)).join("")}</div></section>
+      <section class="growth-preview" aria-label="${PRESENTATION.name} 공격 동작 미리보기"><h4>동작 미리보기</h4><div class="growth-preview__tiers">${PRESENTATION.forms.map((form, index) => `<button type="button" data-growth-preview-species="${PRESENTATION.key}" data-growth-preview-tier="${index + 1}" data-${PRESENTATION.key}-preview-tier="${index + 1}" aria-pressed="false">T${index + 1} ${form[0]}</button>`).join("")}</div><div class="growth-evolution-preview ${PRESENTATION.key}-evolution-preview" aria-label="선택한 ${PRESENTATION.name} 공격 시연"></div><p class="ability-tree__note" data-growth-preview-caption data-${PRESENTATION.key}-preview-caption>단계를 누르면 같은 상황의 실제 공격을 재생해요. 농장과 투자는 변경되지 않아요.</p></section>
       <div class="ability-card__branches">${SECTIONS}</div>
-      <p class="ability-tree__note">기본 부착 총예산은 알 수로 나눠요. 추가 알과 마지막 폭발 보너스는 전체 부착 예산을 기준으로 별도 계산돼요. 첫 부착 1초 뒤부터 0.1초 간격으로 폭발해요.</p>
+      <p class="ability-tree__note">${PRESENTATION.note}</p>
     </article>`;
   }
   function renderGrowthNode(growth, build, abilityId, node, context) {
-    const RANK = build.nodeRanks[node.id] || 0, CHECK = growth.canPurchase(build, node.id, context), MAXED = RANK === node.maxRank, NEXT_RANK = Math.min(node.maxRank, RANK + 1), UNLOCK = node.unlockLevels[NEXT_RANK - 1], TITLE = node.kind === "evolution" ? `T${node.tier} ${CORN_FORMS[node.tier - 1][0]}` : node.name, HELP_ID = `ability-help-${abilityId}-${node.id}`, ATTR = `${abilityId}:${node.id.replace(/-(\d+)$/, ":$1")}`, REASON = CHECK.allowed ? "투자 가능" : growthReason(CHECK, node), EFFECT = node.kind === "evolution" ? CORN_FORMS[node.tier - 1][1] : growthEffect(node.id, RANK), NEXT_EFFECT = node.kind === "evolution" || MAXED ? "" : `다음: ${growthEffect(node.id, NEXT_RANK)}`, PREREQUISITE = node.prerequisite ? ` · 이전 T${node.tier - 1} ${build.nodeRanks[node.prerequisite] === 1 ? "충족" : "연구 필요"}` : "";
+    const PRESENTATION = PRESENTATIONS2.get(abilityId), RANK = build.nodeRanks[node.id] || 0, CHECK = growth.canPurchase(build, node.id, context), MAXED = RANK === node.maxRank, NEXT_RANK = Math.min(node.maxRank, RANK + 1), UNLOCK = node.unlockLevels[NEXT_RANK - 1], TITLE = node.kind === "evolution" ? `T${node.tier} ${PRESENTATION.forms[node.tier - 1][0]}` : node.name, HELP_ID = `ability-help-${abilityId}-${node.id}`, ATTR = `${abilityId}:${node.id.replace(/-(\d+)$/, ":$1")}`, REASON = CHECK.allowed ? "투자 가능" : growthReason(CHECK, node), EFFECT = node.kind === "evolution" ? PRESENTATION.forms[node.tier - 1][1] : PRESENTATION.effect(node.id, RANK), NEXT_EFFECT = node.kind === "evolution" || MAXED ? "" : `다음: ${PRESENTATION.effect(node.id, NEXT_RANK)}`, PREREQUISITE = node.prerequisite ? ` · 이전 T${node.tier - 1} ${build.nodeRanks[node.prerequisite] === 1 ? "충족" : "연구 필요"}` : "";
     return `<div class="ability-node ${RANK > 0 ? "is-purchased" : ""} ${CHECK.allowed ? "is-ready" : "is-locked"}" data-growth-node="${node.id}">
       <button type="button" class="ability-node__button" data-ability-node="${ATTR}" aria-describedby="${HELP_ID}" aria-disabled="${!CHECK.allowed}">
         <span class="ability-node__title">${TITLE} <span class="growth-rank">${RANK}/${node.maxRank}</span></span><span class="ability-node__effect">${EFFECT}</span><span class="ability-node__cost">${MAXED ? "완료" : `${node.pointCost}P`}</span>${NEXT_EFFECT ? `<span class="growth-next">${NEXT_EFFECT}</span>` : ""}
@@ -21139,7 +21597,7 @@
     }
     return GROWTH_REASON_LABELS.get(check.reason) || "잠김";
   }
-  function growthEffect(nodeId, rank) {
+  function cornGrowthEffect(nodeId, rank) {
     switch (nodeId) {
       case "basic-1":
         return `직격 피해 +${rank * 3}%`;
@@ -21153,6 +21611,24 @@
         return `마지막 예정 폭발에 총 부착 예산의 ${rank * 8}% 추가`;
       case "specialty-3":
         return `${rank * 8}% 확률 · 총 부착 예산 100%의 추가 알`;
+      default:
+        throw new RangeError(`Unknown growth effect: ${nodeId}`);
+    }
+  }
+  function peaGrowthEffect(nodeId, rank) {
+    switch (nodeId) {
+      case "basic-1":
+        return `모든 박치기 피해 +${rank * 3}%`;
+      case "basic-2":
+        return `적에게 밀린 뒤 첫 공격 전체 피해 +${rank * 5}%`;
+      case "basic-3":
+        return `공격 후딜 -${rank * 1.5}% (준비 시간 제외)`;
+      case "specialty-1":
+        return `적 강제 이동 회복 뒤 2초 이속 +${25 + rank * 6}%`;
+      case "specialty-2":
+        return `첫 충돌에 전체 직접 예산의 ${rank * 8}% 추가`;
+      case "specialty-3":
+        return `마지막 충돌에 전체 직접 예산의 ${rank * 8}% 추가`;
       default:
         throw new RangeError(`Unknown growth effect: ${nodeId}`);
     }
@@ -21490,7 +21966,7 @@
     })
   ]);
   function helpSceneById(id) {
-    return [...HELP_SCENES, ...CORN_PREVIEW_SCENES].find((scene) => scene.id === id) ?? null;
+    return [...HELP_SCENES, ...CORN_PREVIEW_SCENES, ...PEA_PREVIEW_SCENES].find((scene) => scene.id === id) ?? null;
   }
   var CORN_PREVIEW_SCENES = Object.freeze(
     Array.from({ length: 6 }, (_, index) => {
@@ -21535,6 +22011,51 @@
           prepare: "고정 훈련 표적 · 실제 공격 준비",
           flight: "실제 투사체의 비행과 충돌",
           explosion: "부착 1초 뒤부터 0.1초 간격의 연쇄 폭발"
+        }
+      });
+    })
+  );
+  var PEA_PREVIEW_SCENES = Object.freeze(
+    Array.from({ length: 6 }, (_, index) => {
+      const TIER = index + 1;
+      return Object.freeze({
+        id: `pea-t${TIER}`,
+        title: `콩 T${TIER} 공격 미리보기`,
+        seed: 731,
+        rate: 0.6,
+        durationMs: 9e3,
+        timeline: [],
+        setup(world) {
+          world.resetUnits();
+          world.setWorkBasisPoints(0);
+          const BUILD = world.playerProgression.abilities["pea-recovery-boost"];
+          BUILD.masteryLevel = 50;
+          BUILD.nodeRanks = Object.fromEntries(
+            Array.from({ length: TIER - 1 }, (_value, tierIndex) => [`evolution-${tierIndex + 2}`, 1])
+          );
+          const UNIT3 = world.spawn(0, TIER, -7, 0);
+          UNIT3.growth = 3;
+          UNIT3.growthElapsed = UNIT3.growthDuration;
+          world.startTower(1);
+          world.finishMarch();
+          world._benched.clear();
+          world._benchRevision++;
+          Object.assign(world.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
+          world.farmBossEvent.phase = "fighting";
+          world.farmBossEvent.elapsed = 0;
+          UNIT3.x = -(world.boss.radius + 1.45);
+          UNIT3.y = 0;
+          UNIT3.z = 0;
+          UNIT3.dropLanded = true;
+          world._unitSpatialDirty = true;
+        },
+        step(world) {
+          return world.units[0]?.ability.phase === "active" ? "contact" : world.units[0]?.ability.phase === "recover" ? "recover" : "prepare";
+        },
+        steps: {
+          prepare: "고정 훈련 표적 · 실제 지상 공격 준비",
+          contact: "본체의 실제 이동과 앞면 충돌 · 점프와 분신 없음",
+          recover: "충돌 후 회복 · 자체 반동은 재돌진 보너스를 만들지 않아요"
         }
       });
     })
@@ -22636,23 +23157,26 @@
       BUTTON.disabled = LOCKED;
     }
   }
-  function stopCornPreview() {
-    DOLLAR2("abilityNodes").querySelector(".corn-evolution-preview")?.replaceChildren();
+  function stopGrowthPreview() {
+    DOLLAR2("abilityNodes").querySelector(".growth-evolution-preview")?.replaceChildren();
   }
-  function mountCornPreview(tier) {
-    stopCornPreview();
-    const HOST = DOLLAR2("abilityNodes").querySelector(".corn-evolution-preview");
-    if (!HOST || !Number.isInteger(tier) || tier < 1 || tier > 6) {
+  function mountGrowthPreview(species, tier) {
+    stopGrowthPreview();
+    const HOST = DOLLAR2("abilityNodes").querySelector(".growth-evolution-preview");
+    if (!HOST || !["corn", "pea"].includes(species) || !Number.isInteger(tier) || tier < 1 || tier > 6) {
       return;
     }
     const FRAME = document.createElement("iframe");
-    FRAME.title = `옥수수 T${tier} 실제 공격 미리보기`;
-    FRAME.src = new URL(`?help=corn-t${tier}`, location.href).href.split("#")[0];
+    FRAME.title = `${species === "pea" ? "콩" : "옥수수"} T${tier} 실제 공격 미리보기`;
+    FRAME.src = new URL(`?help=${species}-t${tier}`, location.href).href.split("#")[0];
     HOST.replaceChildren(FRAME);
-    DOLLAR2("abilityNodes").querySelector("[data-corn-preview-caption]").textContent = `T${tier} · 실제 공격 0.6배속 · 같은 단계를 누르면 다시 재생`;
+    for (const BUTTON of DOLLAR2("abilityNodes").querySelectorAll("[data-growth-preview-tier]")) {
+      BUTTON.setAttribute("aria-pressed", String(Number(BUTTON.dataset.growthPreviewTier) === tier));
+    }
+    DOLLAR2("abilityNodes").querySelector("[data-growth-preview-caption]").textContent = `T${tier} · 실제 공격 0.6배속 · 같은 단계를 누르면 다시 재생`;
   }
   function drawAbilityTree() {
-    stopCornPreview();
+    stopGrowthPreview();
     const W = personalGarden || active.world, IN_COMBAT = W.farmBossEvent?.phase !== "idle" || W.tower.active;
     const SELECTED_SPECIES = Number(DOLLAR2("abilityPanel").dataset.selectedSpecies || 0);
     const MASTERY_DEFINITION = SPECIES_ABILITY_DEFINITIONS.find(
@@ -22701,7 +23225,7 @@
   };
   var ROUTE_MENU_TAB = (route2) => Object.keys(MENU_ROUTES).find((tab) => MENU_ROUTES[tab] === route2) || "play";
   function applyMenuTab(tab) {
-    stopCornPreview();
+    stopGrowthPreview();
     menuTab = tab;
     const UPGRADES = ["farms", "abilities"].includes(tab);
     DOLLAR2("gameMenuTabs").hidden = !UPGRADES;
@@ -22792,7 +23316,7 @@
       return;
     }
     menuOpen = false;
-    stopCornPreview();
+    stopGrowthPreview();
     HELP_PANEL.setVisible(false);
     DOLLAR2("gameMenuOverlay").hidden = true;
     for (const ID of ["gameMenu", "upgradeMenu", "helpMenu"]) {
@@ -22897,9 +23421,9 @@
     drawAbilityTree();
   };
   DOLLAR2("abilityNodes").onclick = (e) => {
-    const PREVIEW = e.target.closest("[data-corn-preview-tier]");
+    const PREVIEW = e.target.closest("[data-growth-preview-tier]");
     if (PREVIEW) {
-      mountCornPreview(Number(PREVIEW.dataset.cornPreviewTier));
+      mountGrowthPreview(PREVIEW.dataset.growthPreviewSpecies, Number(PREVIEW.dataset.growthPreviewTier));
       return;
     }
     const BUTTON = e.target.closest("button[data-ability-action],button[data-ability-node]");
@@ -22914,11 +23438,11 @@
         }
       });
     } else if (BUTTON.dataset.abilityNode) {
-      const [ABILITY_ID8, KIND, LEVEL] = BUTTON.dataset.abilityNode.split(":");
+      const [ABILITY_ID9, KIND, LEVEL] = BUTTON.dataset.abilityNode.split(":");
       const NODE_ID = KIND === "root" ? "root" : `${KIND}-${LEVEL}`;
       active.queue("progression-invest", {
         scope: "ability",
-        abilityId: ABILITY_ID8,
+        abilityId: ABILITY_ID9,
         nodeId: NODE_ID
       });
     }
@@ -23548,6 +24072,7 @@
   if (HELP.scene) {
     const SCENE = HELP.scene, WORLD = new GARDEN(SCENE.seed);
     SCENE.setup(WORLD);
+    RENDERER.attackPreviewSpecies = /^pea-t[1-6]$/.test(SCENE.id) ? 0 : null;
     start(WORLD, false);
     active.paused = false;
     HELP.scenario = globalThis.BloomGamekitScenario.createScenario({

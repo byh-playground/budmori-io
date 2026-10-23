@@ -576,6 +576,33 @@ html.help-scene #hand {
     border-radius: var(--ui-r-s);
 }
 
-html.corn-preview-scene #bossbar {
+html.growth-preview-scene #bossbar {
     display: none;
+}
+
+/* Short landscape windows must scroll the species heading with the tree.
+   Keeping both headings fixed left only a single text line for the actual content. */
+@media (max-height: 500px) and (min-width: 600px) {
+    .game-menu__header {
+        padding: 4px 8px;
+    }
+    .game-menu__tabs,
+    .progression-reset-actions {
+        padding-bottom: 4px;
+    }
+    #abilityPanel {
+        display: block;
+        overflow-y: auto;
+        padding: 4px;
+    }
+    #abilityPanel[hidden] {
+        display: none;
+    }
+    #abilityNodes {
+        overflow: visible;
+        flex: none;
+    }
+    #abilityPanel .growth-evolution-preview iframe {
+        height: 180px;
+    }
 }

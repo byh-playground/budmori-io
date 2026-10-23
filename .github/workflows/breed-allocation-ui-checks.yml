@@ -6,7 +6,7 @@ on:
             - 'src/breed-allocation.js'
             - 'src/features/species-growth/**'
             - 'src/features/projectiles/**'
-            - 'src/features/unit-attacks/lob/**'
+            - 'src/features/unit-attacks/**'
             - 'src/features/abilities/corn-attachment/**'
             - 'src/ability-*.js'
             - 'src/ability-tree.css'
@@ -15,17 +15,59 @@ on:
             - 'src/farm-model.js'
             - 'src/farm-session.js'
             - 'src/farm-render-items.js'
+            - 'src/farm-renderer.js'
+            - 'src/damage-numbers.js'
             - 'src/farm-app.js'
             - 'src/styles/game-menu.css'
             - 'tests/breed-allocation.e2e.mjs'
             - 'tests/corn-growth.e2e.mjs'
+            - 'tests/pea-*.mjs'
+            - 'tests/fixtures/pea-*.json'
+            - 'tests/fixtures/corn-0.31.0-pea-legacy.json'
+            - 'tests/smoke.e2e.mjs'
+            - 'src/farm-render-units.js'
+            - 'src/unit-attack-capabilities.js'
+            - 'src/unit-abilities.js'
             - '.github/workflows/breed-allocation-ui-checks.yml'
 permissions:
     contents: read
 jobs:
     browser:
         runs-on: ubuntu-latest
-        timeout-minutes: 25
+        timeout-minutes: 30
+        strategy:
+            fail-fast: false
+            matrix:
+                species: [corn, pea]
+                viewport: [desktop, mobile, landscape]
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+            - run: npm ci
+            - run: npx playwright install --with-deps chromium
+            - id: build
+              run: npm run build
+            # Corn's existing landscape scenario is combat-only; its seven established cases remain.
+            - if: ${{ !cancelled() && steps.build.outcome == 'success' && (matrix.species != 'corn' || matrix.viewport != 'landscape') }}
+              run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- ui ${{ matrix.viewport }}
+            - if: ${{ !cancelled() && steps.build.outcome == 'success' && (matrix.species != 'corn' || matrix.viewport != 'landscape') }}
+              run: timeout 300s npm run test:${{ matrix.species }}-growth:case -- previews ${{ matrix.viewport }}
+            - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+              run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- battle ${{ matrix.viewport }}
+            - if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.species == 'pea' }}
+              run: timeout 180s npm run test:pea-growth:case -- migration ${{ matrix.viewport }}
+            - uses: actions/upload-artifact@v4
+              if: always()
+              with:
+                  name: farm-browser-${{ matrix.species }}-${{ matrix.viewport }}
+                  path: tests/output/${{ matrix.species }}-growth/
+                  if-no-files-found: error
+    regression:
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
         steps:
             - uses: actions/checkout@v4
             - uses: actions/setup-node@v4
@@ -39,26 +81,10 @@ jobs:
             - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
               run: timeout 180s npm run test:breed-allocation
             - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-              run: timeout 180s npm run test:corn-growth:case -- ui desktop
-            - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-              run: timeout 180s npm run test:corn-growth:case -- ui mobile
-            - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-              run: timeout 180s npm run test:corn-growth:case -- previews desktop
-            - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-              run: timeout 180s npm run test:corn-growth:case -- previews mobile
-            - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-              run: timeout 180s npm run test:corn-growth:case -- battle desktop
-            - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-              run: timeout 180s npm run test:corn-growth:case -- battle mobile
-            - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-              run: timeout 180s npm run test:corn-growth:case -- battle landscape
-            - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
               run: timeout 180s npm test
             - uses: actions/upload-artifact@v4
               if: always()
               with:
-                  name: farm-browser-evidence
-                  path: |
-                      tests/output/breed-allocation/
-                      tests/output/corn-growth/
-                  if-no-files-found: ignore
+                  name: farm-browser-regression
+                  path: tests/output/breed-allocation/
+                  if-no-files-found: error

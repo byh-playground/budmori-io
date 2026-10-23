@@ -84,7 +84,7 @@ const COMPOSITION = (attack, traits = [], options = {}) =>
         ...options,
     });
 export const UNIT_CAPABILITY_COMPOSITIONS = Object.freeze({
-    0: COMPOSITION('contact', ['recoveryHaste'], {
+    0: COMPOSITION('pea', ['recoveryHaste'], {
         contactRecoil: true,
     }),
     1: COMPOSITION(LOB_FEATURE.modelKey, ['cornAttachment'], {

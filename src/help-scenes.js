@@ -128,7 +128,7 @@ export const HELP_SCENES = Object.freeze([
 ]);
 
 export function helpSceneById(id) {
-    return [...HELP_SCENES, ...CORN_PREVIEW_SCENES].find((scene) => scene.id === id) ?? null;
+    return [...HELP_SCENES, ...CORN_PREVIEW_SCENES, ...PEA_PREVIEW_SCENES].find((scene) => scene.id === id) ?? null;
 }
 
 // Research previews use the same isolated help-frame runtime, attack model and renderer as play.
@@ -180,6 +180,56 @@ const CORN_PREVIEW_SCENES = Object.freeze(
                 prepare: '고정 훈련 표적 · 실제 공격 준비',
                 flight: '실제 투사체의 비행과 충돌',
                 explosion: '부착 1초 뒤부터 0.1초 간격의 연쇄 폭발',
+            },
+        });
+    }),
+);
+
+const PEA_PREVIEW_SCENES = Object.freeze(
+    Array.from({ length: 6 }, (_, index) => {
+        const TIER = index + 1;
+        return Object.freeze({
+            id: `pea-t${TIER}`,
+            title: `콩 T${TIER} 공격 미리보기`,
+            seed: 731,
+            rate: 0.6,
+            durationMs: 9000,
+            timeline: [],
+            setup(world) {
+                world.resetUnits();
+                world.setWorkBasisPoints(0);
+                const BUILD = world.playerProgression.abilities['pea-recovery-boost'];
+                BUILD.masteryLevel = 50;
+                BUILD.nodeRanks = Object.fromEntries(
+                    Array.from({ length: TIER - 1 }, (_value, tierIndex) => [`evolution-${tierIndex + 2}`, 1]),
+                );
+                const UNIT = world.spawn(0, TIER, -7, 0);
+                UNIT.growth = 3;
+                UNIT.growthElapsed = UNIT.growthDuration;
+                world.startTower(1);
+                world.finishMarch();
+                world._benched.clear();
+                world._benchRevision++;
+                Object.assign(world.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
+                world.farmBossEvent.phase = 'fighting';
+                world.farmBossEvent.elapsed = 0;
+                UNIT.x = -(world.boss.radius + 1.45);
+                UNIT.y = 0;
+                UNIT.z = 0;
+                UNIT.dropLanded = true;
+                world._unitSpatialDirty = true;
+            },
+            step(world) {
+                return world.units[0]?.ability.phase === 'active'
+                    ? 'contact'
+                    : world.units[0]?.ability.phase === 'recover'
+                      ? 'recover'
+                      : 'prepare';
+            },
+            steps: {
+                prepare: '고정 훈련 표적 · 실제 지상 공격 준비',
+                contact: '본체의 실제 이동과 앞면 충돌 · 점프와 분신 없음',
+                recover: '충돌 후 회복 · 자체 반동은 재돌진 보너스를 만들지 않아요',
             },
         });
     }),

@@ -1,3 +1,4 @@
+import { isPeaAttackRecord } from './features/species-growth/pea-attack.js';
 import { isValidFormationRuntime } from './formation-skill-state.js';
 import { CONFIG } from './farm-model.js';
 import { isValidPlayerProgressionState } from './player-progression.js';
@@ -582,6 +583,8 @@ export function validateSnapshot(raw) {
                 INTEGER(U.kidneyLeapReadyTick, 0, 1e12) &&
                 INTEGER(U.kidneyLeapLastUseTick, 0, 1e12) &&
                 typeof U.peaRecoveryPending === 'boolean' &&
+                INTEGER(U.peaCounterExpiresAtTick, 0, 1e12) &&
+                typeof U.peaCounterPending === 'boolean' &&
                 INTEGER(U.peaRecoveryBoostExpiresAtTick, 0, 1e12) &&
                 Number.isFinite(U.peaRecoveryBoostMultiplier) &&
                 U.peaRecoveryBoostMultiplier >= 0 &&
@@ -756,6 +759,16 @@ export function validateSnapshot(raw) {
                     Number.isFinite(A.target.x) &&
                     Number.isFinite(A.target.y),
             );
+            if (A.peaAttack !== undefined) {
+                ASSERT(
+                    U.species === 0 &&
+                        isPeaAttackRecord(A.peaAttack) &&
+                        A.peaAttack.id === A.id &&
+                        A.peaAttack.owner === U.id &&
+                        A.peaAttack.ownerGeneration === U.generation &&
+                        A.peaAttack.tier === U.tier,
+                );
+            }
             if (A.cornAttack !== undefined) {
                 const CANONICAL = CORN_ACTIONS.get(A.id);
                 ASSERT(

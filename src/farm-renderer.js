@@ -1,3 +1,4 @@
+import { unitBodyDefinition } from './features/unit-body/definition.cjs';
 import { includeCornProjectileBounds } from './features/projectiles/corn/presentation.js';
 import { drawFormationEffects, includeFormationEffectBounds } from './formation-skill-presentations.js';
 import { scenePresentation } from './farm-render-scenes.js';
@@ -470,6 +471,10 @@ const DIORAMA = class Diorama {
     // The camera follows the climb: on the march it pulls back to show the tower and its door, and
     // it stays there a moment when the troops come back out; inside, it rests on the hall.
     directCamera(sim2, now) {
+        if (this.attackPreviewSpecies === 0 && sim2.units.length === 1 && sim2.units[0].species === 0) {
+            this.fitAttackPreview(sim2);
+            return;
+        }
         const INSIDE = !!sim2.insideTower,
             KEY = INSIDE ? `in${sim2.tower?.floor}` : 'out',
             MARCHING = sim2.farmBossEvent?.phase === 'marching';
@@ -513,6 +518,30 @@ const DIORAMA = class Diorama {
                 this.cameraReturning = false;
             }
         }
+    }
+    // Isolated pea help frames show the real contact and body, not the entire hall.
+    // This flag is installed only by the help entry point, never for a live run.
+    fitAttackPreview(world) {
+        const UNIT = world.units[0],
+            BODY = unitBodyDefinition(UNIT.species),
+            BASE = this.scenePresentation.cameraView(this.aspect),
+            // 96px full art keeps the authored torso above32px even at maximum compression.
+            SCALE = (96 * this.pixelRatio) / (UNIT.bodyScale * Math.max(BODY.viewBox[2], BODY.viewBox[3])),
+            FOCUS_X = world.boss.x - world.boss.radius - 0.8,
+            FOCUS_Y = world.boss.y;
+        this.zoom = (2 * BASE[0] * SCALE) / this.canvas.width;
+        this.configure(this.scene, true);
+        const PAN_X = (this.canvas.width * 0.45) / this.scale - FOCUS_X - this.view[0],
+            PAN_Y =
+                this.view[1] -
+                this.baseY() -
+                (this.canvas.height * 0.76) / this.scale -
+                FOCUS_Y * WORLD_DEPTH_PROJECTION;
+        this.panLimits.minX = Math.min(this.panLimits.minX, PAN_X);
+        this.panLimits.maxX = Math.max(this.panLimits.maxX, PAN_X);
+        this.panLimits.minY = Math.min(this.panLimits.minY, PAN_Y);
+        this.panLimits.maxY = Math.max(this.panLimits.maxY, PAN_Y);
+        this.setPan(PAN_X, PAN_Y);
     }
     // Inside the tower the whole hall is always in view: no panning or zooming, so tapping anywhere deploys.
     fitHall(world) {

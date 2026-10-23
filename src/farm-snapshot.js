@@ -22,6 +22,8 @@ export const UNIT_SNAPSHOT_SHAPE = {
     kidneyLeapReadyTick: 0,
     kidneyLeapLastUseTick: 0,
     peaRecoveryPending: false,
+    peaCounterExpiresAtTick: 0,
+    peaCounterPending: false,
     peaRecoveryBoostExpiresAtTick: 0,
     peaRecoveryBoostMultiplier: 0,
     id: 1,
@@ -279,6 +281,7 @@ const ATTACK = FIELDS(
         },
         thornConfig: JSON_PAYLOAD,
         cornAttack: CORN_ACTION,
+        peaAttack: JSON_PAYLOAD,
     },
 );
 const UNIT = shapeFields(UNIT_SNAPSHOT_SHAPE, {

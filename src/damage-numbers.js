@@ -223,6 +223,10 @@ export class DamageNumberPresentation {
     lifeMs = DAMAGE_NUMBER.lifeMs;
     // `reduced` keeps the number but drops the pop and the rise: the information stays, the motion goes.
     draw(renderer, event, progress, feel) {
+        // Isolated pea demonstrations keep the body readable; hits and their HUD totals remain real.
+        if (renderer.attackPreviewSpecies === 0) {
+            return;
+        }
         const STYLE = STYLES[event.critical ? 'critical' : event.role],
             REDUCED = feel?.reduced === true,
             POP = Math.min(1, progress / DAMAGE_NUMBER.popFraction),

@@ -581,6 +581,10 @@ const ATTACKING_BODY = (baseLocal) =>
             super.knock(...args);
             if (SOURCE && areOpposingFactions(SOURCE, this) && hasFaction(SOURCE, FACTION_CONFIG.ENEMY)) {
                 this.peaRecoveryPending = true;
+                if (this.species === 0) {
+                    this.peaCounterPending = true;
+                    this.peaCounterExpiresAtTick = 0;
+                }
             }
         }
         // A unit that is walking to a place keeps the speed it was told to walk at: drag is for bodies that are thrown.
@@ -648,6 +652,8 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
             kidneyLeapReadyTick: 0,
             kidneyLeapLastUseTick: 0,
             peaRecoveryPending: false,
+            peaCounterExpiresAtTick: 0,
+            peaCounterPending: false,
             peaRecoveryBoostExpiresAtTick: 0,
             peaRecoveryBoostMultiplier: 0,
             walnutNextGuardTick: 0,
@@ -705,6 +711,8 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         this.ability = CREATE_UNIT_ATTACK_CYCLE(this);
         this.specialAbility = CREATE_UNIT_ATTACK_CYCLE.createSpecial(this);
         this.peaRecoveryPending = false;
+        this.peaCounterExpiresAtTick = 0;
+        this.peaCounterPending = false;
         this.peaRecoveryBoostExpiresAtTick = 0;
         this.peaRecoveryBoostMultiplier = 0;
         this.onRevived.emit({ unitId: this.id, x: this.x, y: this.y, hp: this.hp });
@@ -3770,6 +3778,8 @@ const GARDEN = class Garden {
     }
     clearPeaRecoveryBoost(unit) {
         unit.peaRecoveryPending = false;
+        unit.peaCounterExpiresAtTick = 0;
+        unit.peaCounterPending = false;
         unit.peaRecoveryBoostExpiresAtTick = 0;
         unit.peaRecoveryBoostMultiplier = 0;
     }
@@ -3778,6 +3788,20 @@ const GARDEN = class Garden {
             if (UNIT_LOCAL.hp <= 0) {
                 this.clearPeaRecoveryBoost(UNIT_LOCAL);
                 continue;
+            }
+            if (
+                UNIT_LOCAL.peaCounterPending &&
+                UNIT_LOCAL.down <= 0 &&
+                UNIT_LOCAL.stun <= 0 &&
+                UNIT_LOCAL.z <= 0.1 &&
+                UNIT_LOCAL.landingRecovery <= 0 &&
+                UNIT_LOCAL.dropLanded
+            ) {
+                UNIT_LOCAL.peaCounterPending = false;
+                UNIT_LOCAL.peaCounterExpiresAtTick = this.simulationTick + 60;
+            }
+            if (UNIT_LOCAL.peaCounterExpiresAtTick < this.simulationTick) {
+                UNIT_LOCAL.peaCounterExpiresAtTick = 0;
             }
             if (UNIT_LOCAL.peaRecoveryBoostExpiresAtTick < this.simulationTick) {
                 UNIT_LOCAL.peaRecoveryBoostExpiresAtTick = 0;
@@ -4754,8 +4778,10 @@ const GARDEN = class Garden {
             hits: SOURCE.faction === 'player' ? 1 : 0,
             critHits: SOURCE.faction === 'player' && DAMAGE.critical ? 1 : 0,
         });
-        this.applyGrainOnBasicHit(SOURCE, target, KIND);
-        SOURCE.ability?.afterSuccessfulAttack?.(this, action, target, DAMAGE);
+        if (!options.suppressBasicProc) {
+            this.applyGrainOnBasicHit(SOURCE, target, KIND);
+            SOURCE.ability?.afterSuccessfulAttack?.(this, action, target, DAMAGE);
+        }
         const STRENGTH = DAMAGE_MULTIPLIER * (DAMAGE.critical ? ATTACKER_STATS.critMultiplier : 1);
         if (IS_BOSS) {
             this.finishBossHit(SOURCE, action, point, CONTEXT, DAMAGE, STRENGTH);

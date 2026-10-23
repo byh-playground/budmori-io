@@ -1,3 +1,4 @@
+import { createPeaAttackMixin } from './features/unit-attacks/pea/model.js';
 import { createDualStrikeMixin } from './features/unit-attacks/dual-strike/model.js';
 import { FEATURE as DUAL_STRIKE_FEATURE } from './features/unit-attacks/dual-strike/definition.js';
 import { createLobAttackMixin } from './features/unit-attacks/lob/model.js';
@@ -372,6 +373,7 @@ export function composeUnitAttackCycles(cycle, { ArenaGeometry: arenaGeometry, B
         };
     const ATTACKS = {
         contact: CONTACT_ATTACK,
+        pea: createPeaAttackMixin(CONTACT_ATTACK, arenaGeometry),
         [LOB_FEATURE.modelKey]: PROJECTILE_ATTACK,
         [DUAL_STRIKE_FEATURE.modelKey]: REPEATED_STRIKE,
     };
