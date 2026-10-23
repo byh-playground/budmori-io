@@ -98,6 +98,14 @@ export class SpeciesGrowth {
         if (!Number.isFinite(experience)) {
             return { ok: false, reason: 'xp-overflow', build };
         }
+        // Do not report a reward as accepted when floating-point spacing erased part of it.
+        // Preserve the original build; the receipt owner must not mark a rejected award as settled.
+        if (
+            Math.abs(experience - build.masteryXp - amount) > Number.EPSILON * Math.max(1, amount) * 4 ||
+            (amount > 0 && experience === build.masteryXp)
+        ) {
+            return { ok: false, reason: 'xp-precision-loss', build };
+        }
         let level = build.masteryLevel;
         while (level < SPECIES_MASTERY_CAP && experience >= masteryXpForNextLevel(level)) {
             experience -= masteryXpForNextLevel(level);
