@@ -110,14 +110,39 @@ export function resolveUnitStats(unit, overrides) {
         MULTIPLIER = Number.isFinite(unit?.permanentStatMultiplier) ? Math.max(0, unit.permanentStatMultiplier) : 1;
     return {
         ...BASE,
-        maxHp: BASE.maxHp * MULTIPLIER,
+        maxHp: BASE.maxHp * MULTIPLIER * (unit?.growthMaxHpMultiplier ?? 1),
         attackPower: BASE.attackPower * MULTIPLIER,
         ...(unit?.isFormationClone ? { maxHp: 1 } : {}),
         ...overrides,
     };
 }
+// Legacy base-HP consumers retain their established semantics for all other species.
+export function unitMaxHpFor(unit) {
+    return unit.isFormationClone
+        ? 1
+        : baseUnitStatsFor(unit.tier, unit.species).maxHp * (unit.growthMaxHpMultiplier ?? 1);
+}
+// Capture run growth on each body; independent worlds and later permanent XP cannot leak into it.
+export function applyRunGrowthHealth(unit, progression, { preserveRatio = false } = {}) {
+    if (
+        (unit.species !== 2 || unit.faction !== 'player' || unit.isFormationClone) &&
+        (unit.growthMaxHpMultiplier ?? 1) === 1
+    ) {
+        return;
+    }
+    const PREVIOUS_MAX = unitMaxHpFor(unit),
+        BUILD = progression?.abilities?.['kidney-continuous-leap'];
+    unit.growthMaxHpMultiplier =
+        unit.species === 2 && unit.faction === 'player' && !unit.isFormationClone && BUILD?.treeVersion === 1
+            ? 1 + 0.04 * (BUILD.nodeRanks['basic-2'] || 0)
+            : 1;
+    const NEXT_MAX = unitMaxHpFor(unit);
+    if (unit.hp > 0) {
+        unit.hp = preserveRatio ? Math.min(1, unit.hp / PREVIOUS_MAX) * NEXT_MAX : Math.min(unit.hp, NEXT_MAX);
+    }
+}
 function combatStats(unit, overrides) {
-    return overrides === undefined && !unit?.isFormationClone
+    return overrides === undefined && !unit?.isFormationClone && (unit?.growthMaxHpMultiplier ?? 1) === 1
         ? baseUnitStatsFor(unit?.tier, unit?.species)
         : resolveUnitStats(unit, overrides);
 }

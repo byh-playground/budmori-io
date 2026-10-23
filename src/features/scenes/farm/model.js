@@ -1,4 +1,5 @@
 import { SimulationScene } from '../model-base.js';
+import { unitMaxHpFor } from '../../../unit-stats.js';
 import { FEATURE } from './definition.js';
 
 export class FarmSimulationScene extends SimulationScene {
@@ -49,12 +50,11 @@ export class FarmSimulationScene extends SimulationScene {
         return true;
     }
     restoreUnit(world, unit) {
-        const { STATS } = this.dependencies;
         if (unit.down !== 0) {
             return;
         }
 
-        const MAX_HP = STATS(unit.tier, unit.species).maxHp;
+        const MAX_HP = unitMaxHpFor(unit);
         world.releaseMate(unit);
         unit.revive(MAX_HP);
     }

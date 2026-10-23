@@ -20,7 +20,26 @@ const PEA_FORMS = Object.freeze([
     ['반동 재돌진', '첫 충돌 뒤 짧게 뒤튕겨 다시 충돌'],
     ['삼연 압축 충돌', '빠른 두 충돌 뒤 압축 마무리'],
 ]);
+const REDBEAN_FORMS = Object.freeze([
+    ['낮은 도약', '낮게 뛰어 본체로 착지'],
+    ['앞구르기 착지', '앞으로 한 바퀴 돌아 작은 원형 착지'],
+    ['이중 착지', '첫 착지 뒤 재도약해 두 번째 착지'],
+    ['측면 교차 도약', '가까운 면 착지 뒤 옆으로 교차 착지'],
+    ['공중 회전 강하', '공중 회전 접촉 뒤 아래로 강하게 착지'],
+    ['삼연 도약 강타', '낮은 찍기 · 측면 회전 접촉 · 높은 마무리 착지'],
+]);
 const PRESENTATIONS = new Map([
+    [
+        'kidney-continuous-leap',
+        {
+            key: 'redbean',
+            name: '팥',
+            title: '도약과 연속 착지',
+            forms: REDBEAN_FORMS,
+            effect: redbeanGrowthEffect,
+            note: '하나의 본체가 실제로 도약하고 착지해요. 주변 피해는 각 타격의 50%이며 추가 4명까지 맞아요. 연속 도약은 마지막 착지에서 한 번만 추첨하며 성공하면 후딜만 0.1초로 줄어요. 다음 공격의 준비와 비행은 생략하지 않아요. 마무리 보너스는 전체 직접 피해 예산 기준으로 마지막 착지에 한 번 더해요.',
+        },
+    ],
     [
         'corn-kernel-chain',
         {
@@ -167,6 +186,25 @@ function peaGrowthEffect(nodeId, rank) {
             return `첫 충돌에 전체 직접 예산의 ${rank * 8}% 추가`;
         case 'specialty-3':
             return `마지막 충돌에 전체 직접 예산의 ${rank * 8}% 추가`;
+        default:
+            throw new RangeError(`Unknown growth effect: ${nodeId}`);
+    }
+}
+
+function redbeanGrowthEffect(nodeId, rank) {
+    switch (nodeId) {
+        case 'basic-1':
+            return `모든 도약 피해 +${rank * 3}%`;
+        case 'basic-2':
+            return `최대 체력 +${rank * 4}% · 다음 런부터 적용`;
+        case 'basic-3':
+            return `공격 속도 +${rank * 2}%`;
+        case 'specialty-1':
+            return `착지 반경 +${rank * 4}%`;
+        case 'specialty-2':
+            return `마지막 착지 후 ${Math.min(65, 20 + rank * 9)}% 확률로 후딜 0.1초`;
+        case 'specialty-3':
+            return `마지막 착지에 전체 직접 예산의 ${rank * 8}% 추가`;
         default:
             throw new RangeError(`Unknown growth effect: ${nodeId}`);
     }

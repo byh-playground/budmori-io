@@ -224,7 +224,7 @@ export class DamageNumberPresentation {
     // `reduced` keeps the number but drops the pop and the rise: the information stays, the motion goes.
     draw(renderer, event, progress, feel) {
         // Isolated pea demonstrations keep the body readable; hits and their HUD totals remain real.
-        if (renderer.attackPreviewSpecies === 0) {
+        if ([0, 2].includes(renderer.attackPreviewSpecies)) {
             return;
         }
         const STYLE = STYLES[event.critical ? 'critical' : event.role],

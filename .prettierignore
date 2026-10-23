@@ -6,3 +6,5 @@ tests/output/
 tests/*-report.json
 assets/
 package-lock.json
+# Literal released encoder bytes are migration test input.
+tests/fixtures/pea-0.32.0-redbean-legacy.json

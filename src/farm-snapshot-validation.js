@@ -1,3 +1,4 @@
+import { isRedbeanAttackRecord } from './features/species-growth/redbean-attack.js';
 import { isPeaAttackRecord } from './features/species-growth/pea-attack.js';
 import { isValidFormationRuntime } from './formation-skill-state.js';
 import { CONFIG } from './farm-model.js';
@@ -564,6 +565,15 @@ export function validateSnapshot(raw) {
                 Number.isFinite(U.permanentStatMultiplier) &&
                 U.permanentStatMultiplier >= 1 &&
                 U.permanentStatMultiplier <= 2.25 &&
+                Number.isFinite(U.growthMaxHpMultiplier) &&
+                (U.growthMaxHpMultiplier === 1 ||
+                    (U.species === 2 &&
+                        hasFaction(U, FACTION_CONFIG.PLAYER) &&
+                        U.growthMaxHpMultiplier >= 1 &&
+                        U.growthMaxHpMultiplier <= 1.4 &&
+                        Math.abs(
+                            (U.growthMaxHpMultiplier - 1) / 0.04 - Math.round((U.growthMaxHpMultiplier - 1) / 0.04),
+                        ) < 1e-9)) &&
                 INTEGER(U.walnutNextGuardTick, 0, 1e12) &&
                 INTEGER(U.walnutGuardUntilTick, 0, 1e12) &&
                 Number.isFinite(U.walnutStoredRawDamage) &&
@@ -759,6 +769,16 @@ export function validateSnapshot(raw) {
                     Number.isFinite(A.target.x) &&
                     Number.isFinite(A.target.y),
             );
+            if (A.redbeanAttack !== undefined) {
+                ASSERT(
+                    U.species === 2 &&
+                        isRedbeanAttackRecord(A.redbeanAttack) &&
+                        A.redbeanAttack.id === A.id &&
+                        A.redbeanAttack.owner === U.id &&
+                        A.redbeanAttack.ownerGeneration === U.generation &&
+                        A.redbeanAttack.tier === U.tier,
+                );
+            }
             if (A.peaAttack !== undefined) {
                 ASSERT(
                     U.species === 0 &&
