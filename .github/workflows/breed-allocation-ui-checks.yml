@@ -4,6 +4,7 @@ on:
         paths:
             - 'index.html'
             - 'src/breed-allocation.js'
+            - 'src/features/species-growth/**'
             - 'src/farm-app.js'
             - 'src/styles/game-menu.css'
             - 'tests/breed-allocation.e2e.mjs'

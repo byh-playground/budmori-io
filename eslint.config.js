@@ -17,6 +17,7 @@ const MODEL_FILES = [
     'src/farm-model.js',
     'src/formation-skills.js',
     'src/formation-skill-state.js',
+    'src/features/species-growth/*.js',
     'src/features/formation-skills/**/model*.js',
     'src/features/formation-skills/**/definition.js',
     'src/farm-progress.js',
