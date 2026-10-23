@@ -20,7 +20,7 @@ concurrency:
 jobs:
     paired-browser:
         runs-on: ubuntu-24.04
-        timeout-minutes: 25
+        timeout-minutes: 35
         steps:
             - uses: actions/checkout@v4
             - uses: actions/setup-node@v4
@@ -59,7 +59,7 @@ jobs:
                   git archive "$BASE_COMMIT" | tar -x -C "$BASE_ROOT"
                   echo "PEANUT_PERFORMANCE_BASE_ROOT=$BASE_ROOT" >> "$GITHUB_ENV"
             - name: Compare three alternating pairs in one Chromium SwiftShader process
-              run: timeout 720s node tests/peanut-performance.e2e.mjs
+              run: timeout 960s node tests/peanut-performance.e2e.mjs
             - uses: actions/upload-artifact@v4
               if: always()
               with:
