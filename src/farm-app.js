@@ -668,7 +668,7 @@ function say(text) {
     }, 4000);
 }
 function refreshStart() {
-    DOLLAR('continueGame').disabled = !STORAGE.hasWorld;
+    DOLLAR('continueGame').disabled = !hasMemoryRun() && !STORAGE.hasWorld;
     DOLLAR('exportSave').disabled = !STORAGE.raw;
     DOLLAR('saveNotice').textContent = STORAGE.error || STORAGE.notice;
 }
@@ -817,7 +817,23 @@ DOLLAR('deckCards').addEventListener('click', (e) => {
     }
     paintDeck();
 });
+function hasMemoryRun() {
+    return !!(personalGarden?.tower.active && active?.world === personalGarden && !active.closed);
+}
+function resumeMemoryRun(push = true) {
+    if (!hasMemoryRun()) {
+        return false;
+    }
+    // Home pauses this session; it is not a disk checkpoint or a new climb.
+    active.loop.resetTiming();
+    setHome(false, push);
+    markSeen();
+    return true;
+}
 DOLLAR('continueGame').onclick = () => {
+    if (resumeMemoryRun()) {
+        return;
+    }
     if (STORAGE.world) {
         start(restore(snapshot(STORAGE.world)), true, true);
     }
@@ -920,6 +936,10 @@ DOLLAR('cancelImport').onclick = () => {
     DOLLAR('importConfirm').hidden = true;
 };
 DOLLAR('confirmImport').onclick = () => {
+    if (active?.world?.tower.active) {
+        DOLLAR('saveNotice').textContent = '탑 도전을 끝내고 농장으로 돌아온 뒤 저장을 불러올 수 있어요.';
+        return;
+    }
     try {
         if (imported) {
             const WORLD = STORAGE.import(imported);
@@ -1121,9 +1141,26 @@ function drawFarmPanel() {
         BUTTON.disabled = LOCKED;
     }
 }
+function stopCornPreview() {
+    DOLLAR('abilityNodes').querySelector('.corn-evolution-preview')?.replaceChildren();
+}
+function mountCornPreview(tier) {
+    stopCornPreview();
+    const HOST = DOLLAR('abilityNodes').querySelector('.corn-evolution-preview');
+    if (!HOST || !Number.isInteger(tier) || tier < 1 || tier > 6) {
+        return;
+    }
+    const FRAME = document.createElement('iframe');
+    FRAME.title = `옥수수 T${tier} 실제 공격 미리보기`;
+    FRAME.src = new URL(`?help=corn-t${tier}`, location.href).href.split('#')[0];
+    HOST.replaceChildren(FRAME);
+    DOLLAR('abilityNodes').querySelector('[data-corn-preview-caption]').textContent =
+        `T${tier} · 실제 공격 0.6배속 · 같은 단계를 누르면 다시 재생`;
+}
 function drawAbilityTree() {
+    stopCornPreview();
     const W = personalGarden || active.world,
-        IN_COMBAT = W.farmBossEvent?.phase !== 'idle';
+        IN_COMBAT = W.farmBossEvent?.phase !== 'idle' || W.tower.active;
     const SELECTED_SPECIES = Number(DOLLAR('abilityPanel').dataset.selectedSpecies || 0);
     const MASTERY_DEFINITION = SPECIES_ABILITY_DEFINITIONS.find(
         (definition) => definition.species === SELECTED_SPECIES,
@@ -1138,6 +1175,7 @@ function drawAbilityTree() {
         highestSpeciesTier: W.highestSpeciesTiers(),
         location: active.world.scene,
         inCombat: IN_COMBAT,
+        runActive: W.tower.active,
         selectedSpecies: SELECTED_SPECIES,
     });
     renderProgressionResetActions();
@@ -1157,7 +1195,7 @@ function renderProgressionResetActions() {
         return;
     }
     const W = personalGarden || active.world,
-        IN_COMBAT = W.farmBossEvent?.phase !== 'idle',
+        IN_COMBAT = W.farmBossEvent?.phase !== 'idle' || W.tower.active,
         CONTEXT = { location: active.world.scene, inCombat: IN_COMBAT },
         SCOPE = currentProgressionResetScope(),
         CURRENT_CHECK = canResetPlayerProgression(W.playerProgression, SCOPE, CONTEXT),
@@ -1178,6 +1216,7 @@ const MENU_ROUTES = {
 };
 const ROUTE_MENU_TAB = (route) => Object.keys(MENU_ROUTES).find((tab) => MENU_ROUTES[tab] === route) || 'play';
 function applyMenuTab(tab) {
+    stopCornPreview();
     menuTab = tab;
     const UPGRADES = ['farms', 'abilities'].includes(tab);
     DOLLAR('gameMenuTabs').hidden = !UPGRADES;
@@ -1268,6 +1307,7 @@ function closeMenu(push = true) {
         return;
     }
     menuOpen = false;
+    stopCornPreview();
     HELP_PANEL.setVisible(false);
     DOLLAR('gameMenuOverlay').hidden = true;
     for (const ID of ['gameMenu', 'upgradeMenu', 'helpMenu']) {
@@ -1375,6 +1415,11 @@ DOLLAR('abilitySpeciesTabs').onclick = (e) => {
     drawAbilityTree();
 };
 DOLLAR('abilityNodes').onclick = (e) => {
+    const PREVIEW = e.target.closest('[data-corn-preview-tier]');
+    if (PREVIEW) {
+        mountCornPreview(Number(PREVIEW.dataset.cornPreviewTier));
+        return;
+    }
     const BUTTON = e.target.closest('button[data-ability-action],button[data-ability-node]');
     if (!BUTTON || BUTTON.getAttribute('aria-disabled') === 'true') {
         return;
@@ -1839,7 +1884,7 @@ function route() {
         setHome(true, false);
         return;
     }
-    if (home) {
+    if (home && !resumeMemoryRun(false)) {
         if (STORAGE.error && !STORAGE.hasWorld) {
             setHome(true, false);
             history.replaceState(null, '', '#/');

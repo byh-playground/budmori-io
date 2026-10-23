@@ -1,8 +1,13 @@
 import { PRODUCT_VERSION, COMPATIBILITY } from './version.js';
-import { captureFarmProgress, restoreFarmProgress, validateFarmProgress } from './farm-progress.js';
+import {
+    captureFarmProgress,
+    restoreFarmProgress,
+    validateFarmProgress,
+    migrateFarmProgress,
+} from './farm-progress.js';
 const MAX_BYTES = 2 * 1024 * 1024;
 const COMPATIBILITY_LOCAL = (version) => (typeof version === 'string' ? version.split('.').slice(0, 2).join('.') : '');
-const IS_READABLE_COMPATIBILITY = (version) => COMPATIBILITY_LOCAL(version) === COMPATIBILITY;
+const IS_READABLE_COMPATIBILITY = (version) => [COMPATIBILITY, '0.30'].includes(COMPATIBILITY_LOCAL(version));
 export { IS_READABLE_COMPATIBILITY as isReadableCompatibility };
 export function readFarmSave(text) {
     if (typeof text !== 'string' || text.length > MAX_BYTES) {
@@ -25,8 +30,10 @@ export function readFarmSave(text) {
 }
 export function decodeFarmSave(text) {
     const PARSED = readFarmSave(text);
-    validateFarmProgress(PARSED.progress);
-    return PARSED.progress;
+    if (COMPATIBILITY_LOCAL(PARSED.productVersion) === '0.30' && PARSED.progress.player?.schemaVersion !== 3) {
+        throw new TypeError('Invalid legacy farm schema. The original save was left unchanged.');
+    }
+    return migrateFarmProgress(PARSED.progress);
 }
 export function validateSave(text) {
     decodeFarmSave(text);

@@ -128,5 +128,59 @@ export const HELP_SCENES = Object.freeze([
 ]);
 
 export function helpSceneById(id) {
-    return HELP_SCENES.find((scene) => scene.id === id) ?? null;
+    return [...HELP_SCENES, ...CORN_PREVIEW_SCENES].find((scene) => scene.id === id) ?? null;
 }
+
+// Research previews use the same isolated help-frame runtime, attack model and renderer as play.
+// The target is a stationary training boss, not a second implementation of the attack animation.
+const CORN_PREVIEW_SCENES = Object.freeze(
+    Array.from({ length: 6 }, (_, index) => {
+        const TIER = index + 1;
+        return Object.freeze({
+            id: `corn-t${TIER}`,
+            title: `옥수수 T${TIER} 공격 미리보기`,
+            seed: 731,
+            rate: 0.6,
+            durationMs: 6500,
+            timeline: [],
+            setup(world) {
+                world.resetUnits();
+                world.setWorkBasisPoints(0);
+                const BUILD = world.playerProgression.abilities['corn-kernel-chain'];
+                BUILD.masteryLevel = 50;
+                BUILD.nodeRanks = Object.fromEntries(
+                    Array.from({ length: TIER - 1 }, (_value, tierIndex) => [`evolution-${tierIndex + 2}`, 1]),
+                );
+                const UNIT = world.spawn(1, TIER, -7, 0);
+                UNIT.growth = 3;
+                UNIT.growthElapsed = UNIT.growthDuration;
+                world.startTower(1);
+                world.finishMarch();
+                world._benched.clear();
+                world._benchRevision++;
+                Object.assign(world.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
+                world.farmBossEvent.phase = 'fighting';
+                world.farmBossEvent.elapsed = 0;
+                UNIT.x = -(world.boss.radius + 4.1 + (TIER - 1) * 0.12);
+                UNIT.y = 0;
+                UNIT.z = 0;
+                UNIT.dropLanded = true;
+                world._unitSpatialDirty = true;
+            },
+            step(world) {
+                return world.cornAttachments.groups.some((group) =>
+                    group.attachments.some((attachment) => attachment.status === 'fading'),
+                )
+                    ? 'explosion'
+                    : world.projectiles.length > 0
+                      ? 'flight'
+                      : 'prepare';
+            },
+            steps: {
+                prepare: '고정 훈련 표적 · 실제 공격 준비',
+                flight: '실제 투사체의 비행과 충돌',
+                explosion: '부착 1초 뒤부터 0.1초 간격의 연쇄 폭발',
+            },
+        });
+    }),
+);

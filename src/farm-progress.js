@@ -1,5 +1,6 @@
 import { Garden, Unit, CONFIG } from './farm-model.js';
 import { createPlayerProgressionState, isValidPlayerProgressionState } from './player-progression.js';
+import { migrateAbilityProgressionState } from './features/species-growth/state.js';
 import { BOSS_REWARD_SETTINGS } from './boss-rewards.js';
 const FAIL = () => {
     throw new TypeError('올바른 농장 진행 저장 데이터가 아니에요.');
@@ -20,20 +21,7 @@ function keys(value, required, optional = []) {
     ASSERT(Object.keys(value).every((key) => required.includes(key) || optional.includes(key)));
 }
 function copyPlayer(player) {
-    return {
-        schemaVersion: player.schemaVersion,
-        towerBest: player.towerBest,
-        abilities: Object.fromEntries(
-            Object.entries(player.abilities).map(([id, build]) => [
-                id,
-                {
-                    ...build,
-                    ...(build.branchLevels ? { branchLevels: { ...build.branchLevels } } : {}),
-                },
-            ]),
-        ),
-        processedBossKillReceipts: [...player.processedBossKillReceipts],
-    };
+    return structuredClone(player);
 }
 const REWARD_EXTRAS = [
     'x',
@@ -173,7 +161,7 @@ export function captureFarmProgress(world) {
         },
     };
 }
-export function validateFarmProgress(data) {
+export function validateFarmProgress(data, { allowLegacy = false } = {}) {
     keys(data, ['seed', 'rngState', 'nextId', 'player', 'roster', 'food', 'totals', 'ledger'], ['mode']);
     ASSERT(
         INTEGER(data.seed, 0, 0xffffffff) &&
@@ -185,15 +173,8 @@ export function validateFarmProgress(data) {
         DEFAULTS = createPlayerProgressionState();
     keys(PLAYER, Object.keys(DEFAULTS));
     keys(PLAYER.abilities, Object.keys(DEFAULTS.abilities));
-    for (const [ABILITY_ID, BUILD] of Object.entries(PLAYER.abilities)) {
-        const BRANCH_KEYS = Object.keys(DEFAULTS.abilities[ABILITY_ID].branchLevels || {});
-        keys(BUILD, ['powerLevel', 'masteryLevel', 'masteryXp'], BRANCH_KEYS.length ? ['branchLevels'] : []);
-        if (Object.hasOwn(BUILD, 'branchLevels')) {
-            keys(BUILD.branchLevels, BRANCH_KEYS);
-        }
-    }
     ASSERT(
-        isValidPlayerProgressionState(PLAYER) &&
+        isValidPlayerProgressionState(PLAYER, { allowLegacy }) &&
             Array.isArray(PLAYER.processedBossKillReceipts) &&
             PLAYER.processedBossKillReceipts.length <= 100000 &&
             PLAYER.processedBossKillReceipts.every(STRING),
@@ -463,8 +444,15 @@ function position(index, count, seed, scale) {
         y: Math.sin(ANGLE) * CONFIG.farm.arena.radiusY * RADIUS,
     };
 }
+export function migrateFarmProgress(data) {
+    validateFarmProgress(data, { allowLegacy: true });
+    const NEXT = structuredClone(data);
+    NEXT.player = migrateAbilityProgressionState(NEXT.player);
+    validateFarmProgress(NEXT);
+    return NEXT;
+}
 export function restoreFarmProgress(data) {
-    validateFarmProgress(data);
+    data = migrateFarmProgress(data);
     const WORLD = new Garden(data.seed);
     WORLD.resetUnits();
     WORLD.food = [];

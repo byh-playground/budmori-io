@@ -1,3 +1,4 @@
+import { includeCornProjectileBounds } from './features/projectiles/corn/presentation.js';
 import { drawFormationEffects, includeFormationEffectBounds } from './formation-skill-presentations.js';
 import { scenePresentation } from './farm-render-scenes.js';
 import { FoodPresentation, ProjectilePresentation } from './farm-render-items.js';
@@ -487,6 +488,14 @@ const DIORAMA = class Diorama {
                 this.towerShotUntil = now + 2600;
             }
         }
+        // An outside-tower transition must never override the hall's reserved sky.
+        // Entering the floor can happen while the previous exterior shot is still timed.
+        if (INSIDE) {
+            this.towerShotUntil = 0;
+            this.cameraReturning = false;
+            this.fitHall(sim2);
+            return;
+        }
         if (MARCHING || now < this.towerShotUntil) {
             const ZOOM_TARGET = this.aspect > 1.2 ? 0.55 : 0.8;
             this.zoom += (ZOOM_TARGET - this.zoom) * 0.07;
@@ -503,9 +512,6 @@ const DIORAMA = class Diorama {
                 this.resetZoom();
                 this.cameraReturning = false;
             }
-        } else if (INSIDE) {
-            this.cameraReturning = false;
-            this.fitHall(sim2);
         }
     }
     // Inside the tower the whole hall is always in view: no panning or zooming, so tapping anywhere deploys.
@@ -524,6 +530,7 @@ const DIORAMA = class Diorama {
         }
         const BOUNDS = this.hallEffectBounds;
         includeFormationEffectBounds(world, BOUNDS);
+        includeCornProjectileBounds(world, BOUNDS);
         const LEFT = Math.min(-HALF_X, BOUNDS.left),
             RIGHT = Math.max(HALF_X, BOUNDS.right),
             FRAME_TOP = Math.max(TOP, BOUNDS.top),

@@ -1,6 +1,7 @@
 import { SPECIES_ABILITY_DEFINITIONS } from './ability-definitions.js';
-import { isValidAbilityProgressionState, masteryPointsLeft } from './ability-state.js';
+import { isValidAbilityProgressionState, masteryPointsLeft, investedPointsOf } from './ability-state.js';
 import { isValidPlayerProgressionState } from './player-progression.js';
+import { growthForAbility, growthBuildOf, isGrowthInvestment } from './features/species-growth/state.js';
 
 // Progression rules are shared by simulation commands and UI queries.
 // This module never imports presentation code or reads the DOM.
@@ -70,11 +71,7 @@ export function getInvestedAbilityPointCount(state, speciesId = null) {
             : SPECIES_ABILITY_DEFINITIONS.filter((definition) => definition.species === speciesId);
     return DEFINITIONS.reduce((total, definition) => {
         const INVESTMENT = state.abilities[definition.id];
-        return (
-            total +
-            INVESTMENT.powerLevel +
-            Object.values(INVESTMENT.branchLevels || {}).reduce((branchTotal, level) => branchTotal + level, 0)
-        );
+        return total + investedPointsOf(INVESTMENT);
     }, 0);
 }
 export function canPurchaseAbilityNode(state, abilityId, nodeId, context = {}) {
@@ -99,6 +96,10 @@ export function canPurchaseAbilityNode(state, abilityId, nodeId, context = {}) {
         };
     }
     const INVESTMENT = state.abilities[abilityId];
+    const GROWTH = growthForAbility(abilityId);
+    if (GROWTH && isGrowthInvestment(INVESTMENT)) {
+        return GROWTH.canPurchase(growthBuildOf(INVESTMENT), nodeId, context);
+    }
     const NODE = parseNodeId(nodeId);
     if (!NODE || !['power', 'branch'].includes(NODE.kind)) {
         return {
@@ -155,8 +156,14 @@ export function purchaseAbilityNode(state, abilityId, nodeId, context = {}) {
             state,
         };
     }
-    const NODE = parseNodeId(nodeId);
+    const GROWTH = growthForAbility(abilityId);
     const NEXT = cloneState(state);
+    if (GROWTH && isGrowthInvestment(NEXT.abilities[abilityId])) {
+        const PURCHASE = GROWTH.purchase(growthBuildOf(NEXT.abilities[abilityId]), nodeId, context);
+        NEXT.abilities[abilityId] = { ...NEXT.abilities[abilityId], ...PURCHASE.build };
+        return { ok: true, reason: null, state: NEXT };
+    }
+    const NODE = parseNodeId(nodeId);
     if (NODE.kind === 'power') {
         NEXT.abilities[abilityId].powerLevel = NODE.level;
     } else {
@@ -292,6 +299,12 @@ function normalizeResetScope(scope) {
     return null;
 }
 export function getAbilityNodeStatus(state, definition, nodeId, context = {}) {
+    const GROWTH = growthForAbility(definition.id),
+        BUILD = state?.abilities?.[definition.id];
+    if (GROWTH && isGrowthInvestment(BUILD)) {
+        const CHECK = canPurchaseAbilityNode(state, definition.id, nodeId, context);
+        return { purchased: (BUILD.nodeRanks[nodeId] || 0) > 0, ready: CHECK.allowed, reason: CHECK.reason };
+    }
     const NODE = parseNodeId(nodeId);
     if (!NODE) {
         return {
@@ -334,30 +347,13 @@ function parseNodeId(nodeId) {
     };
 }
 function cloneState(state) {
-    return {
-        ...state,
-        abilities: Object.fromEntries(
-            Object.entries(state.abilities).map(([id, value]) => [
-                id,
-                {
-                    ...value,
-                    ...(DEFINITION_BY_ID.get(id)?.branches
-                        ? {
-                              branchLevels: Object.fromEntries(
-                                  Object.keys(DEFINITION_BY_ID.get(id).branches).map((branchId) => [
-                                      branchId,
-                                      value.branchLevels?.[branchId] || 0,
-                                  ]),
-                              ),
-                          }
-                        : {}),
-                },
-            ]),
-        ),
-    };
+    return structuredClone(state);
 }
 // A reset empties the points put in; the species keeps the mastery it earned.
 function emptyAbilityInvestment(definition, previous) {
+    if (growthForAbility(definition.id) && isGrowthInvestment(previous)) {
+        return { ...structuredClone(previous), nodeRanks: {} };
+    }
     return {
         masteryLevel: previous.masteryLevel,
         masteryXp: previous.masteryXp,
@@ -370,8 +366,8 @@ function emptyAbilityInvestment(definition, previous) {
     };
 }
 function progressionLockReason(context) {
-    if (context.location !== 'farm' || context.inCombat === true) {
-        return context.inCombat ? 'combat-lock' : 'farm-only';
+    if (context.location !== 'farm' || context.inCombat === true || context.runActive === true) {
+        return context.inCombat || context.runActive ? 'combat-lock' : 'farm-only';
     }
     return null;
 }

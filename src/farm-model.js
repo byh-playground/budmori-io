@@ -518,6 +518,7 @@ class AttackCycle {
         if (
             this.action &&
             (this.phase === 'windup' || this.phase === 'active') &&
+            !this.action.cornAttack &&
             !(sim.attackTarget(U, this.action)?.hp > 0)
         ) {
             this.interrupt();
@@ -535,8 +536,9 @@ class AttackCycle {
         if (this.phase === 'windup') {
             U.vx *= Math.exp(-dt * 18);
             U.vy *= Math.exp(-dt * 18);
-            if (this.elapsed >= this.spec.timing.windup) {
-                this.action.motionDelay = Math.max(0, dt - (this.elapsed - this.spec.timing.windup));
+            const WINDUP = this.attackWindupSeconds?.(sim) ?? this.spec.timing.windup;
+            if (this.elapsed >= WINDUP) {
+                this.action.motionDelay = Math.max(0, dt - (this.elapsed - WINDUP));
                 this.elapsed = 0;
                 this.phase = 'active';
                 this.createAttackPath();
@@ -1297,6 +1299,7 @@ const GARDEN = class Garden {
             farm: 0,
         };
         this.playerProgression = createPlayerProgressionState();
+        this.runProgressionSnapshot = null;
         this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
         // null: every species gives the same worker share. Otherwise the breeders are split between species by weight.
         this.breedWeights = null;
@@ -1479,7 +1482,7 @@ const GARDEN = class Garden {
         return TIERS;
     }
     investAbilityNode(abilityId, nodeId) {
-        const IN_COMBAT = this.farmBossEvent?.phase !== 'idle';
+        const IN_COMBAT = this.farmBossEvent?.phase !== 'idle' || this.tower.active;
         const RESULT = purchaseAbilityNode(this.playerProgression, abilityId, nodeId, {
             location: this.scene,
             inCombat: IN_COMBAT,
@@ -1492,7 +1495,7 @@ const GARDEN = class Garden {
         return RESULT;
     }
     resetProgression(scope) {
-        const IN_COMBAT = this.farmBossEvent?.phase !== 'idle';
+        const IN_COMBAT = this.farmBossEvent?.phase !== 'idle' || this.tower.active;
         const RESULT = resetPlayerProgression(this.playerProgression, scope, {
             location: this.scene,
             inCombat: IN_COMBAT,
@@ -2205,6 +2208,7 @@ const GARDEN = class Garden {
             KIND = FLOOR % CONFIG.farm.tower.midBossEvery === 0 ? 'mid' : 'battle';
         // Whoever is already down sleeps through the first floor.
         const SLEEP = new Map(this.units.filter((u) => !u.isBattleOnlySummon && u.hp <= 0).map((u) => [u.id, FLOOR]));
+        this.runProgressionSnapshot = structuredClone(this.playerProgression);
         this.tower = {
             pendingKind: KIND,
             active: true,
@@ -2415,6 +2419,7 @@ const GARDEN = class Garden {
     _endTower() {
         this._clearRunStats();
         this.tower.active = false;
+        this.runProgressionSnapshot = null;
         this.tower.doors = [];
         this._benched.clear();
         this._benchRevision++;
@@ -4708,9 +4713,12 @@ const GARDEN = class Garden {
                 ATTACKER_STATS.attackPower *
                 (CONTEXT.attackPowerMultiplier ?? (SOURCE.giantUntil > this.time ? 3 : 1)) *
                 DAMAGE_MULTIPLIER,
-            RAW_DAMAGE =
-                (RAW_BASE_DAMAGE + (SOURCE.ability?.rawDamageBonus?.(this, action, KIND) || 0)) *
-                this.passiveDamageScale(SOURCE, ATTACKER_STATS.maxHp, target, DEFENSE.maxHp);
+            RAW_DAMAGE = Number.isFinite(CONTEXT.sourceDamageScale)
+                ? RAW_BASE_DAMAGE *
+                  CONTEXT.sourceDamageScale *
+                  (IS_BOSS ? 1 : this.passiveReceivedScale(target, DEFENSE.maxHp))
+                : (RAW_BASE_DAMAGE + (SOURCE.ability?.rawDamageBonus?.(this, action, KIND) || 0)) *
+                  this.passiveDamageScale(SOURCE, ATTACKER_STATS.maxHp, target, DEFENSE.maxHp);
         // The context belongs to one attack, so a mixed boss/unit area hit shares
         // one lazy roll while each target retains its own armor and actual HP loss.
         const DAMAGE = applyDamageToTargets(SOURCE, [target], {
@@ -4734,7 +4742,14 @@ const GARDEN = class Garden {
         this.onCombatResolved.emit({
             excluded: SOURCE.isFormationClone,
             damageDealt:
-                SOURCE.faction === 'player' ? DAMAGE.totalActualLoss / (SOURCE.giantUntil > this.time ? 3 : 1) : 0,
+                SOURCE.faction === 'player'
+                    ? DAMAGE.totalActualLoss /
+                      (Number.isFinite(CONTEXT.sourceDamageScale)
+                          ? CONTEXT.attackPowerMultiplier
+                          : SOURCE.giantUntil > this.time
+                            ? 3
+                            : 1)
+                    : 0,
             damageTaken: target.faction === 'player' && !target.isFormationClone ? DAMAGE.totalActualLoss : 0,
             hits: SOURCE.faction === 'player' ? 1 : 0,
             critHits: SOURCE.faction === 'player' && DAMAGE.critical ? 1 : 0,
@@ -4913,6 +4928,7 @@ const GARDEN = class Garden {
         if (!CLIMBING) {
             this._clearRunStats();
             this.tower.active = false;
+            this.runProgressionSnapshot = null;
             this.tower.doors = [];
             this._benched.clear();
             this._benchRevision++;

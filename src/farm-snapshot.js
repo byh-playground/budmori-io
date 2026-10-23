@@ -1,5 +1,5 @@
 import { createFormationRuntime } from './formation-skill-state.js';
-import { createAbilityProgressionState } from './ability-state.js';
+import { createPlayerProgressionState } from './player-progression.js';
 // Internal current-schema checkpoint shapes. Disk writes use farm-progress.js;
 // runtime values are not exported as user saves.
 export const UNIT_SNAPSHOT_SHAPE = {
@@ -108,7 +108,6 @@ const PATTERN_VALUES = (value) =>
             'summon.mouth-t1',
         ].map((id) => [id, value]),
     );
-const ABILITY_INVESTMENTS = () => createAbilityProgressionState().abilities;
 export const FARM_SNAPSHOT_SHAPE = {
     seed: 731,
     notices: [],
@@ -140,12 +139,8 @@ export const FARM_SNAPSHOT_SHAPE = {
         farm: 0,
     },
     formationRuntime: createFormationRuntime(),
-    playerProgression: {
-        schemaVersion: 3,
-        abilities: ABILITY_INVESTMENTS(),
-        towerBest: 0,
-        processedBossKillReceipts: [],
-    },
+    playerProgression: createPlayerProgressionState(),
+    runProgressionSnapshot: null,
     starter: 0,
     foodTaps: {
         produced: 0,
@@ -157,6 +152,7 @@ export const FARM_SNAPSHOT_SHAPE = {
         nextGroupId: 1,
         nextAttachmentId: 1,
         groups: [],
+        actions: [],
     },
     attackSerial: 0,
     projectileSerial: 0,
@@ -255,6 +251,23 @@ const PATH = FIELDS('height duration', {
     to: POINT,
 });
 const JSON_PAYLOAD = Symbol('json-payload');
+const CORN_SOURCE = FIELDS(
+    'id generation ownerId faction isFormationClone species tier hp x y z giantUntil sourceKind attackPowerMultiplier sourceDamageScale buffed',
+    { attackerStats: JSON_PAYLOAD },
+);
+const CORN_ACTION = FIELDS(
+    'version id owner ownerGeneration tier form launchTick firstAttachTick speed windupSeconds recoverySeconds baseKernelCount extraKernel terminalIndex directMultiplier attachmentMultiplier',
+    {
+        shots: [FIELDS('slot weight duration kernelStart kernelCount')],
+        ranks: FIELDS('heating finish extra'),
+        budgetInputs: FIELDS(
+            'tierOneAttack tierAttack gradeMultiplier permanentMultiplier directRank attachmentRank speedRank commandSpeed',
+        ),
+        source: CORN_SOURCE,
+        attack: JSON_PAYLOAD,
+        criticalRolls: JSON_PAYLOAD,
+    },
+);
 const ATTACK = FIELDS(
     'id targetId targetGeneration hit resolvedMask hitMask peanutStrikeCount peanutAttackMultiplier peanutSpreadRadians leapDepartureCommitted leapCooldownResetApplied thornTargetId thornTargetGeneration thornShotsRemaining thornNextShotTick thornShotIndex',
     {
@@ -265,6 +278,7 @@ const ATTACK = FIELDS(
             effect: FIELDS('abilityId', { config: JSON_PAYLOAD }),
         },
         thornConfig: JSON_PAYLOAD,
+        cornAttack: CORN_ACTION,
     },
 );
 const UNIT = shapeFields(UNIT_SNAPSHOT_SHAPE, {
@@ -304,9 +318,11 @@ const REWARD = FIELDS(
 // Their APIs and settlement summaries accept extensible JSON records. Keep
 // that explicit open contract, including old keys, without opening entity,
 // ability or projectile field selection to future runtime caches.
-const PROGRESSION = shapeFields(FARM_SNAPSHOT_SHAPE.playerProgression, {});
+// Progression owns its mixed species schema, including optional migration archives.
+// Its semantic validator rejects unknown keys; do not trim archives using a default build.
+const PROGRESSION = JSON_PAYLOAD;
 const PROJECTILE = FIELDS(
-    'isFormationClone id owner ownerGeneration targetId targetGeneration faction ownerId species tier elapsed x y z radius height hit attackMultiplier shotIndex projectileKind fanIndex',
+    'isFormationClone id owner ownerGeneration targetId targetGeneration faction ownerId species tier elapsed x y z radius height hit attackMultiplier shotIndex projectileKind fanIndex cornActionId cornSlot cornForm',
     {
         path: PATH,
         attackPayload: JSON_PAYLOAD,
@@ -315,11 +331,11 @@ const PROJECTILE = FIELDS(
     },
 );
 const CORN_ATTACHMENT = FIELDS(
-    'id groupId targetId targetGeneration ownerId ownerGeneration damageMultiplier status fadeTicks angle offsetX offsetY',
+    'id groupId targetId targetGeneration ownerId ownerGeneration damageMultiplier status fadeTicks angle offsetX offsetY cornActionId cornKernelIndex explosionTick cornDamageScale',
     { payload: JSON_PAYLOAD },
 );
 const CORN_GROUP = FIELDS(
-    'id targetId targetGeneration targetX targetY targetZ firstAttachTick closeAtTick nextExplosionTick status',
+    'id targetId targetGeneration targetX targetY targetZ firstAttachTick closeAtTick nextExplosionTick status cornActionId',
     { attachments: [CORN_ATTACHMENT] },
 );
 const SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
@@ -328,8 +344,9 @@ const SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
     units: [UNIT],
     boss: BOSS,
     playerProgression: PROGRESSION,
+    runProgressionSnapshot: PROGRESSION,
     projectiles: [PROJECTILE],
-    cornAttachments: FIELDS('nextGroupId nextAttachmentId', { groups: [CORN_GROUP] }),
+    cornAttachments: FIELDS('nextGroupId nextAttachmentId', { groups: [CORN_GROUP], actions: [CORN_ACTION] }),
     bossRewardReceipts: [REWARD],
     bossRewardStreams: JSON_PAYLOAD,
     bossRewardInventory: [FIELDS('species tier count')],

@@ -1506,8 +1506,8 @@
       }
       var BOSS_VECTOR_DIAMETER = 220;
       var BOSS_VECTOR_RADIUS_SCALE = 1.16;
-      var WORLD_HEIGHT_PROJECTION6 = 0.785;
-      var WORLD_DEPTH_PROJECTION5 = 0.62;
+      var WORLD_HEIGHT_PROJECTION7 = 0.785;
+      var WORLD_DEPTH_PROJECTION6 = 0.62;
       var BOSS_ART_RADIUS2 = 4.4;
       function bossVectorScale4() {
         return 2 * BOSS_ART_RADIUS2 * BOSS_VECTOR_RADIUS_SCALE / BOSS_VECTOR_DIAMETER;
@@ -1517,7 +1517,7 @@
         return {
           x: boss.x + (socket.x - ground.x) * SCALE,
           y: boss.y,
-          z: (boss.z || 0) + (ground.y - socket.y) * SCALE / WORLD_HEIGHT_PROJECTION6
+          z: (boss.z || 0) + (ground.y - socket.y) * SCALE / WORLD_HEIGHT_PROJECTION7
         };
       }
       module.exports = {
@@ -1525,8 +1525,8 @@
         BOSS_ART_RADIUS: BOSS_ART_RADIUS2,
         bossVectorScale: bossVectorScale4,
         socketWorldPoint: socketWorldPoint2,
-        WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION6,
-        WORLD_DEPTH_PROJECTION: WORLD_DEPTH_PROJECTION5
+        WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION7,
+        WORLD_DEPTH_PROJECTION: WORLD_DEPTH_PROJECTION6
       };
     }
   });
@@ -1535,7 +1535,7 @@
   var require_definition = __commonJS({
     "src/features/unit-body/definition.cjs"(exports, module) {
       "use strict";
-      var { WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION6, bossVectorScale: BOSS_VECTOR_SCALE } = require_vector_sockets();
+      var { WORLD_HEIGHT_PROJECTION: WORLD_HEIGHT_PROJECTION7, bossVectorScale: BOSS_VECTOR_SCALE } = require_vector_sockets();
       var AUTHORED_BODIES = [
         {
           species: 0,
@@ -1767,18 +1767,18 @@
       }
       function unitBodyHeight2(unit2) {
         const BODY2 = unitBodyDefinition3(unit2.species);
-        return (BODY2.ground.y - BODY2.bounds.top) * unitVectorScale2(unit2) / WORLD_HEIGHT_PROJECTION6;
+        return (BODY2.ground.y - BODY2.bounds.top) * unitVectorScale2(unit2) / WORLD_HEIGHT_PROJECTION7;
       }
       function bossBodyHeight2(boss) {
         const BODY2 = unitBodyDefinition3(boss.species);
-        return (BODY2.ground.y - BODY2.bounds.top) * BOSS_VECTOR_SCALE() / WORLD_HEIGHT_PROJECTION6;
+        return (BODY2.ground.y - BODY2.bounds.top) * BOSS_VECTOR_SCALE() / WORLD_HEIGHT_PROJECTION7;
       }
       function bossBodyRadius2(boss) {
         return bodyRadiusAtScale(unitBodyDefinition3(boss.species), BOSS_VECTOR_SCALE());
       }
       function unitTorsoHeight2(unit2) {
         const BODY2 = unitBodyDefinition3(unit2.species);
-        return (BODY2.bounds.bottom - BODY2.bounds.top) * unitVectorScale2(unit2) / WORLD_HEIGHT_PROJECTION6;
+        return (BODY2.bounds.bottom - BODY2.bounds.top) * unitVectorScale2(unit2) / WORLD_HEIGHT_PROJECTION7;
       }
       function maximumUnitRadius2(tier) {
         return Math.max(
@@ -3200,7 +3200,7 @@
           this.battleCapacity = CONFIG2.farm.capacity.battleUnits;
         }
         progressionFor(world, _unit) {
-          return world.playerProgression;
+          return world.tower.active && world.runProgressionSnapshot ? world.runProgressionSnapshot : world.playerProgression;
         }
         inBattle(world) {
           return world.farmBossEvent?.phase === "fighting";
@@ -3304,38 +3304,680 @@
     }
   });
 
-  // src/features/projectiles/model-base.js
-  var BallisticProjectile;
-  var init_model_base3 = __esm({
-    "src/features/projectiles/model-base.js"() {
-      BallisticProjectile = class {
-        constructor(feature, dependencies) {
-          this.feature = feature;
-          this.dependencies = dependencies;
-          this.oldPoint = { x: 0, y: 0, z: 0 };
-          this.motionPoint = { x: 0, y: 0, z: 0 };
+  // src/features/species-growth/attack-action.js
+  function defineAttackAction({ durationTicks, strikes }) {
+    if (!Number.isSafeInteger(durationTicks) || durationTicks < 1 || !Array.isArray(strikes) || strikes.length < 1 || strikes.length > MAX_ACTION_STRIKES) {
+      throw new TypeError("An attack needs a finite duration and bounded strike slots");
+    }
+    let previousTick = -1;
+    let totalWeight = 0;
+    for (const STRIKE of strikes) {
+      if (!Number.isSafeInteger(STRIKE.tick) || STRIKE.tick < previousTick || STRIKE.tick < 0 || STRIKE.tick >= durationTicks || !Number.isFinite(STRIKE.weight) || STRIKE.weight <= 0) {
+        throw new TypeError("Invalid attack strike");
+      }
+      previousTick = STRIKE.tick;
+      totalWeight += STRIKE.weight;
+    }
+    if (Math.abs(totalWeight - 1) > 1e-9) {
+      throw new RangeError("Strike weights must share one whole attack damage budget");
+    }
+    return Object.freeze({
+      durationTicks,
+      strikes: Object.freeze(strikes.map(({ tick, weight }) => Object.freeze({ tick, weight })))
+    });
+  }
+  function attackTargetKey(targetId, generation) {
+    if (targetId !== "boss" && (!Number.isSafeInteger(targetId) || targetId < 0) || !Number.isSafeInteger(generation) || generation < 0) {
+      return null;
+    }
+    return JSON.stringify([targetId === "boss" ? "boss" : "unit", targetId, generation]);
+  }
+  function validHitKey(key) {
+    if (Number.isSafeInteger(key) && key >= 0) {
+      return true;
+    }
+    if (typeof key !== "string" || key.length > 100) {
+      return false;
+    }
+    try {
+      const PARTS = JSON.parse(key);
+      return Array.isArray(PARTS) && PARTS.length === 3 && PARTS[0] === (PARTS[1] === "boss" ? "boss" : "unit") && attackTargetKey(PARTS[1], PARTS[2]) === key;
+    } catch {
+      return false;
+    }
+  }
+  function isAttackActionDTO(dto) {
+    if (!dto || Object.keys(dto).sort().join(",") !== "cancelled,claims,hits,lastTick,nextSlot,plan,startTick,version" || dto.version !== 1) {
+      return false;
+    }
+    try {
+      if (Object.keys(dto.plan).sort().join(",") !== "durationTicks,strikes" || !dto.plan.strikes.every((strike) => Object.keys(strike).sort().join(",") === "tick,weight")) {
+        return false;
+      }
+      defineAttackAction(dto.plan);
+    } catch {
+      return false;
+    }
+    return Number.isSafeInteger(dto.startTick) && dto.startTick >= 0 && Number.isSafeInteger(dto.startTick + dto.plan.durationTicks) && Number.isSafeInteger(dto.nextSlot) && dto.nextSlot >= 0 && dto.nextSlot <= dto.plan.strikes.length && typeof dto.cancelled === "boolean" && Number.isSafeInteger(dto.lastTick) && dto.lastTick >= dto.startTick - 1 && (!dto.cancelled || dto.nextSlot === dto.plan.strikes.length) && (dto.cancelled || dto.nextSlot === dto.plan.strikes.filter((strike) => dto.startTick + strike.tick <= dto.lastTick).length) && Array.isArray(dto.hits) && dto.hits.length === dto.plan.strikes.length && dto.hits.every(
+      (hits, slot) => Array.isArray(hits) && hits.length <= 1024 && (slot < dto.nextSlot || hits.length === 0) && hits.every(validHitKey) && new Set(hits).size === hits.length
+    ) && Array.isArray(dto.claims) && dto.claims.length <= 64 && dto.claims.every((key) => typeof key === "string" && key.length > 0 && key.length <= 128) && new Set(dto.claims).size === dto.claims.length;
+  }
+  var MAX_ACTION_STRIKES, AttackAction;
+  var init_attack_action = __esm({
+    "src/features/species-growth/attack-action.js"() {
+      MAX_ACTION_STRIKES = 32;
+      AttackAction = class _AttackAction {
+        constructor(plan, startTick) {
+          if (!Number.isSafeInteger(startTick) || startTick < 0 || !Number.isSafeInteger(startTick + plan.durationTicks)) {
+            throw new RangeError("Invalid action start tick");
+          }
+          this.plan = defineAttackAction(plan);
+          this.startTick = startTick;
+          this.nextSlot = 0;
+          this.cancelled = false;
+          this.lastTick = startTick - 1;
+          this.hits = plan.strikes.map(() => /* @__PURE__ */ new Set());
+          this.claims = /* @__PURE__ */ new Set();
         }
-        advanceLifecycle(_world, _projectile, _dt) {
+        // Consume before returning, so retrying the same tick cannot emit the same strike twice.
+        // The owner decides whether launched projectiles survive cancellation; those have their own lifecycle.
+        advance(tick) {
+          if (!Number.isSafeInteger(tick) || tick < this.lastTick) {
+            throw new RangeError("Attack time must be monotonic simulation ticks");
+          }
+          this.lastTick = tick;
+          const READY = [];
+          if (this.cancelled) {
+            return READY;
+          }
+          while (this.nextSlot < this.plan.strikes.length) {
+            const STRIKE = this.plan.strikes[this.nextSlot];
+            if (tick < this.startTick + STRIKE.tick) {
+              break;
+            }
+            READY.push({ slot: this.nextSlot, weight: STRIKE.weight });
+            this.nextSlot += 1;
+          }
+          return READY;
         }
-        update(world, projectile, dt) {
-          const { Ballistics: BALLISTICS2, ArenaGeometry: ARENA_GEOMETRY2 } = this.dependencies;
-          const OLD = this.oldPoint;
-          OLD.x = projectile.x;
-          OLD.y = projectile.y;
-          OLD.z = projectile.z;
-          projectile.elapsed += dt;
-          Object.assign(
-            projectile,
-            BALLISTICS2.sample(projectile.path, projectile.elapsed / projectile.path.duration, this.motionPoint)
-          );
-          const CANDIDATE = projectile.targetId && projectile.targetId !== "boss" ? world._unitForId(projectile.targetId) : world.boss;
-          const TARGET = CANDIDATE && CANDIDATE.generation === projectile.targetGeneration && (CANDIDATE === world.boss || CANDIDATE.hp > 0) ? CANDIDATE : null;
-          const HIT = TARGET ? ARENA_GEOMETRY2.sweep(OLD, projectile, projectile.radius, projectile.height, TARGET) : null;
-          this.impact(world, projectile, TARGET, HIT);
+        claimHit(slot, targetId, generation = null) {
+          const KEY2 = generation === null ? targetId : attackTargetKey(targetId, generation);
+          if (this.cancelled || !Number.isInteger(slot) || slot < 0 || slot >= this.nextSlot || !validHitKey(KEY2) || this.hits[slot].has(KEY2)) {
+            return false;
+          }
+          this.hits[slot].add(KEY2);
+          return true;
         }
-        updateChain(_world, _projectile) {
+        // Named, once-per-action budgets, e.g. command, critical, RAW consumption, or extra attachment.
+        // A follow-up strike uses the same action and cannot create another copy of the budget.
+        claimOnce(key) {
+          if (this.cancelled || typeof key !== "string" || !key || key.length > 128 || this.claims.size >= 64 || this.claims.has(key)) {
+            return false;
+          }
+          this.claims.add(key);
+          return true;
+        }
+        toDTO() {
+          return {
+            version: 1,
+            plan: structuredClone(this.plan),
+            startTick: this.startTick,
+            nextSlot: this.nextSlot,
+            cancelled: this.cancelled,
+            lastTick: this.lastTick,
+            hits: this.hits.map((hits) => [...hits]),
+            claims: [...this.claims]
+          };
+        }
+        static fromDTO(dto) {
+          if (!isAttackActionDTO(dto)) {
+            throw new TypeError("Invalid attack action checkpoint");
+          }
+          const ACTION = new _AttackAction(dto.plan, dto.startTick);
+          ACTION.nextSlot = dto.nextSlot;
+          ACTION.cancelled = dto.cancelled;
+          ACTION.lastTick = dto.lastTick;
+          ACTION.hits = dto.hits.map((hits) => new Set(hits));
+          ACTION.claims = new Set(dto.claims);
+          return ACTION;
+        }
+        cancel() {
+          this.cancelled = true;
+          this.nextSlot = this.plan.strikes.length;
+          this.hits.forEach((hits) => hits.clear());
+          this.claims.clear();
         }
       };
+    }
+  });
+
+  // src/features/species-growth/definition.js
+  function createSpeciesGrowthDefinition(species, { available = false, basic = [], specialty = [] } = {}) {
+    const NODES = [
+      ...EVOLUTION_UNLOCK_LEVELS.map((level, index) => ({
+        id: `evolution-${index + 2}`,
+        kind: "evolution",
+        tier: index + 2,
+        maxRank: 1,
+        pointCost: 2,
+        unlockLevels: [level],
+        prerequisite: index === 0 ? null : `evolution-${index + 1}`,
+        available
+      })),
+      ...["basic", "specialty"].flatMap(
+        (kind) => Array.from({ length: 3 }, (_, index) => ({
+          id: `${kind}-${index + 1}`,
+          kind,
+          name: (kind === "basic" ? basic : specialty)[index] || null,
+          maxRank: kind === "basic" ? 10 : 5,
+          pointCost: kind === "basic" ? 1 : 2,
+          unlockLevels: kind === "basic" ? Array.from({ length: 10 }, (_2, rank) => rank * 5 + 1) : Array.from({ length: 5 }, (_2, rank) => rank * 8 + 11),
+          prerequisite: null,
+          available
+        }))
+      )
+    ];
+    return Object.freeze({
+      species,
+      available,
+      nodes: Object.freeze(
+        NODES.map((node) => Object.freeze({ ...node, unlockLevels: Object.freeze(node.unlockLevels) }))
+      )
+    });
+  }
+  function speciesGrowthDefinition(species) {
+    return SPECIES_GROWTH_DEFINITIONS.find((definition) => definition.species === species) || null;
+  }
+  function growthTreeCapacity(definition) {
+    return definition.nodes.reduce((total, node) => total + node.maxRank * node.pointCost, 0);
+  }
+  var SPECIES_MASTERY_CAP, EVOLUTION_UNLOCK_LEVELS, SPECIES_GROWTH_DEFINITIONS;
+  var init_definition12 = __esm({
+    "src/features/species-growth/definition.js"() {
+      init_species_catalog();
+      SPECIES_MASTERY_CAP = 50;
+      EVOLUTION_UNLOCK_LEVELS = Object.freeze([2, 6, 12, 20, 30]);
+      SPECIES_GROWTH_DEFINITIONS = Object.freeze(
+        SPECIES_CATALOG.map(
+          ({ id }) => createSpeciesGrowthDefinition(
+            id,
+            id === 1 ? {
+              available: true,
+              basic: ["직격 위력", "부착 폭발 위력", "공격 속도"],
+              specialty: ["연쇄 가열", "마무리 파열", "추가 알"]
+            } : {}
+          )
+        )
+      );
+    }
+  });
+
+  // src/mastery.js
+  function masteryXpForNextLevel(level) {
+    if (!Number.isSafeInteger(level) || level < 1) {
+      throw new RangeError("mastery level must be a positive integer");
+    }
+    return MASTERY_FIRST_LEVEL_XP * MASTERY_LEVEL_XP_MULTIPLIER ** (level - 1);
+  }
+  var MASTERY_FIRST_LEVEL_XP, MASTERY_LEVEL_XP_MULTIPLIER;
+  var init_mastery = __esm({
+    "src/mastery.js"() {
+      MASTERY_FIRST_LEVEL_XP = 100;
+      MASTERY_LEVEL_XP_MULTIPLIER = 1.2;
+    }
+  });
+
+  // src/features/species-growth/model.js
+  function validLegacyMastery(build) {
+    return build && Number.isSafeInteger(build.masteryLevel) && build.masteryLevel >= 1 && Number.isFinite(build.masteryXp) && build.masteryXp >= 0 && build.masteryXp < masteryXpForNextLevel(build.masteryLevel);
+  }
+  function growthLockReason(context) {
+    if (context.inCombat === true || context.runActive === true) {
+      return "combat-lock";
+    }
+    return context.location === "farm" ? null : "farm-only";
+  }
+  var SpeciesGrowth;
+  var init_model11 = __esm({
+    "src/features/species-growth/model.js"() {
+      init_mastery();
+      init_definition12();
+      SpeciesGrowth = class {
+        constructor(definition) {
+          this.definition = definition;
+          this.nodes = new Map(definition.nodes.map((node) => [node.id, node]));
+        }
+        createBuild() {
+          return { masteryLevel: 1, masteryXp: 0, nodeRanks: {} };
+        }
+        investedPoints(build) {
+          return Object.entries(build.nodeRanks).reduce(
+            (total, [id, rank]) => total + rank * (this.nodes.get(id)?.pointCost ?? NaN),
+            0
+          );
+        }
+        pointsLeft(build) {
+          return Math.min(SPECIES_MASTERY_CAP, build.masteryLevel) - this.investedPoints(build);
+        }
+        isValidBuild(build) {
+          if (!build || !Number.isSafeInteger(build.masteryLevel) || build.masteryLevel < 1 || build.masteryLevel > SPECIES_MASTERY_CAP || !Number.isFinite(build.masteryXp) || build.masteryXp < 0 || build.masteryLevel < SPECIES_MASTERY_CAP && build.masteryXp >= masteryXpForNextLevel(build.masteryLevel) || !build.nodeRanks || typeof build.nodeRanks !== "object" || Array.isArray(build.nodeRanks) || Object.keys(build).some((key) => !["masteryLevel", "masteryXp", "nodeRanks", "legacyMastery"].includes(key))) {
+            return false;
+          }
+          if (build.legacyMastery !== void 0 && !validLegacyMastery(build.legacyMastery)) {
+            return false;
+          }
+          for (const [ID, RANK] of Object.entries(build.nodeRanks)) {
+            const NODE = this.nodes.get(ID);
+            if (!NODE || !Number.isSafeInteger(RANK) || RANK < 0 || RANK > NODE.maxRank || RANK > 0 && (!this.definition.available || !NODE.available) || RANK > 0 && build.masteryLevel < NODE.unlockLevels[RANK - 1] || RANK > 0 && NODE.prerequisite && build.nodeRanks[NODE.prerequisite] !== 1) {
+              return false;
+            }
+          }
+          return this.pointsLeft(build) >= 0;
+        }
+        // Call only after validating the complete legacy save. No reward increment is persisted:
+        // entitlement is derived from level, so reloading cannot add the starting point again.
+        migrateBuild(legacy) {
+          if (!this.definition.available) {
+            return legacy;
+          }
+          if (Object.hasOwn(legacy, "nodeRanks")) {
+            if (!this.isValidBuild(legacy)) {
+              throw new TypeError("Invalid species growth build");
+            }
+            return structuredClone(legacy);
+          }
+          if (!validLegacyMastery(legacy)) {
+            throw new TypeError("Invalid legacy mastery");
+          }
+          const BUILD = {
+            masteryLevel: Math.min(SPECIES_MASTERY_CAP, legacy.masteryLevel),
+            masteryXp: legacy.masteryXp,
+            nodeRanks: {}
+          };
+          if (legacy.masteryLevel > SPECIES_MASTERY_CAP) {
+            BUILD.legacyMastery = { masteryLevel: legacy.masteryLevel, masteryXp: legacy.masteryXp };
+            BUILD.masteryXp = 0;
+          }
+          return BUILD;
+        }
+        awardXp(build, amount) {
+          if (!this.isValidBuild(build) || !Number.isFinite(amount) || amount < 0 || amount >= 1e13) {
+            return { ok: false, reason: "invalid-xp", build };
+          }
+          let experience = build.masteryXp + amount;
+          if (!Number.isFinite(experience)) {
+            return { ok: false, reason: "xp-overflow", build };
+          }
+          const ADDITION_ERROR = Math.abs(experience - build.masteryXp - amount), ROUNDING_TOLERANCE = Math.min(
+            2 * Number.EPSILON * Math.max(Math.abs(build.masteryXp), Math.abs(experience)),
+            amount * 1e-9
+          );
+          if (ADDITION_ERROR > ROUNDING_TOLERANCE || amount > 0 && experience === build.masteryXp) {
+            return { ok: false, reason: "xp-precision-loss", build };
+          }
+          let level = build.masteryLevel;
+          while (level < SPECIES_MASTERY_CAP && experience >= masteryXpForNextLevel(level)) {
+            experience -= masteryXpForNextLevel(level);
+            level += 1;
+          }
+          return {
+            ok: true,
+            build: { ...structuredClone(build), masteryLevel: level, masteryXp: experience },
+            levelsGained: level - build.masteryLevel,
+            pointsAwarded: level - build.masteryLevel
+          };
+        }
+        canPurchase(build, nodeId, context = {}) {
+          if (!this.definition.available) {
+            return { allowed: false, reason: "not-available" };
+          }
+          if (!this.isValidBuild(build)) {
+            return { allowed: false, reason: "invalid-state" };
+          }
+          const LOCK = growthLockReason(context);
+          if (LOCK) {
+            return { allowed: false, reason: LOCK };
+          }
+          const NODE = this.nodes.get(nodeId);
+          if (!NODE || !NODE.available) {
+            return { allowed: false, reason: NODE ? "not-available" : "unknown-node" };
+          }
+          const RANK = build.nodeRanks[nodeId] || 0;
+          if (RANK >= NODE.maxRank) {
+            return { allowed: false, reason: "max-rank" };
+          }
+          if (NODE.prerequisite && build.nodeRanks[NODE.prerequisite] !== 1) {
+            return { allowed: false, reason: "prerequisite-required" };
+          }
+          if (build.masteryLevel < NODE.unlockLevels[RANK]) {
+            return { allowed: false, reason: "mastery-required", requiredLevel: NODE.unlockLevels[RANK] };
+          }
+          if (this.pointsLeft(build) < NODE.pointCost) {
+            return { allowed: false, reason: "insufficient-points" };
+          }
+          return { allowed: true, reason: null, pointCost: NODE.pointCost };
+        }
+        purchase(build, nodeId, context = {}) {
+          const CHECK = this.canPurchase(build, nodeId, context);
+          if (!CHECK.allowed) {
+            return { ok: false, reason: CHECK.reason, build };
+          }
+          const NEXT = structuredClone(build);
+          NEXT.nodeRanks[nodeId] = (NEXT.nodeRanks[nodeId] || 0) + 1;
+          return { ok: true, build: NEXT, spent: CHECK.pointCost };
+        }
+        reset(build, context = {}) {
+          const REASON = !this.definition.available ? "not-available" : !this.isValidBuild(build) ? "invalid-state" : growthLockReason(context);
+          if (REASON) {
+            return { ok: false, reason: REASON, build };
+          }
+          return {
+            ok: true,
+            build: { ...structuredClone(build), nodeRanks: {} },
+            refunded: this.investedPoints(build)
+          };
+        }
+        // Research never gates merging. The physical grade, not mastery level, bounds the attack form.
+        attackTier(build, unitTier) {
+          if (!Number.isInteger(unitTier) || unitTier < 1 || unitTier > 6) {
+            throw new RangeError("Invalid unit tier");
+          }
+          if (!this.definition.available) {
+            return 1;
+          }
+          if (!this.isValidBuild(build)) {
+            throw new TypeError("Invalid species growth build");
+          }
+          let tier = 1;
+          for (const NODE of this.definition.nodes) {
+            if (NODE.kind === "evolution" && NODE.tier <= unitTier && build.nodeRanks[NODE.id] === 1) {
+              tier = Math.max(tier, NODE.tier);
+            }
+          }
+          return tier;
+        }
+      };
+    }
+  });
+
+  // src/features/species-growth/corn-attack.js
+  function cornMergeBudgetMultiplier(tier, species = 1) {
+    if (!Number.isInteger(tier) || tier < 1 || tier > 6) {
+      throw new RangeError("Invalid corn merge tier");
+    }
+    const TIER_ONE_ATTACK = baseUnitStatsFor(1, species).attackPower, TIER_ATTACK2 = baseUnitStatsFor(tier, species).attackPower;
+    return cornBudgetFromInputs(tier, TIER_ONE_ATTACK, TIER_ATTACK2);
+  }
+  function cornBudgetFromInputs(tier, tierOneAttack, tierAttack) {
+    if (tier === 1) {
+      return 1;
+    }
+    if (!Number.isFinite(tierOneAttack) || !Number.isFinite(tierAttack) || !(tierOneAttack > 0) || !(tierAttack > 0)) {
+      return (CORN_MERGE_DPS_TARGET / 0.6) ** (tier - 1);
+    }
+    let materials = 1;
+    for (let grade = 2; grade <= tier; grade++) {
+      materials *= mergeMaterialCostForTier(grade);
+    }
+    return tierOneAttack / tierAttack * materials * CORN_MERGE_DPS_TARGET ** (tier - 1);
+  }
+  function cornGrowthBuild(progression) {
+    const INVESTMENT = progression?.abilities?.[CORN_ABILITY];
+    if (INVESTMENT?.treeVersion !== 1 || !INVESTMENT.nodeRanks) {
+      return null;
+    }
+    return {
+      masteryLevel: INVESTMENT.masteryLevel,
+      masteryXp: INVESTMENT.masteryXp,
+      nodeRanks: INVESTMENT.nodeRanks,
+      ...INVESTMENT.legacyMastery ? { legacyMastery: INVESTMENT.legacyMastery } : {}
+    };
+  }
+  function createCornAttack(world, unit2, action, commandSpeed = 1) {
+    const BUILD = cornGrowthBuild(world.abilityProgressionFor(unit2));
+    if (unit2.species !== 1 || !BUILD) {
+      return null;
+    }
+    const GROWTH = new SpeciesGrowth(speciesGrowthDefinition(1)), FORM = GROWTH.attackTier(BUILD, unit2.tier), CONFIG2 = FORMS[FORM], CONTEXT = world.createAttackContext(unit2, { attackMultiplier: 1, attackKind: "lob" }), RANKS = BUILD.nodeRanks, SPEED = Math.min(
+      1.63 / 0.35,
+      Math.max(0.05, CONTEXT.attackerStats.attackSpeed * commandSpeed * (1 + 0.02 * (RANKS["basic-3"] || 0)))
+    ), GRADE = cornMergeBudgetMultiplier(unit2.tier, unit2.species), BASE_KERNELS = CONFIG2.kernels.reduce((total, count) => total + count, 0), EXTRA = (RANKS["specialty-3"] || 0) > 0 && world.random() < 0.08 * RANKS["specialty-3"];
+    let kernelStart = 0;
+    const SHOTS = CONFIG2.weights.map((weight, slot) => {
+      const SHOT = {
+        slot,
+        weight,
+        duration: CONFIG2.times[slot] / SPEED,
+        kernelStart,
+        kernelCount: CONFIG2.kernels[slot]
+      };
+      kernelStart += CONFIG2.kernels[slot];
+      return SHOT;
+    });
+    return {
+      version: 1,
+      id: action.id,
+      owner: unit2.id,
+      ownerGeneration: unit2.generation,
+      tier: unit2.tier,
+      form: FORM,
+      launchTick: null,
+      firstAttachTick: null,
+      speed: SPEED,
+      budgetInputs: {
+        tierOneAttack: baseUnitStatsFor(1, unit2.species).attackPower,
+        tierAttack: baseUnitStatsFor(unit2.tier, unit2.species).attackPower,
+        gradeMultiplier: GRADE,
+        permanentMultiplier: Number.isFinite(unit2.permanentStatMultiplier) ? Math.max(0, unit2.permanentStatMultiplier) : 1,
+        directRank: RANKS["basic-1"] || 0,
+        attachmentRank: RANKS["basic-2"] || 0,
+        speedRank: RANKS["basic-3"] || 0,
+        commandSpeed
+      },
+      windupSeconds: 0.38 / SPEED,
+      recoverySeconds: 1.25 / SPEED,
+      shots: SHOTS,
+      baseKernelCount: BASE_KERNELS,
+      extraKernel: EXTRA,
+      terminalIndex: BASE_KERNELS - 1 + Number(EXTRA),
+      ranks: {
+        heating: RANKS["specialty-1"] || 0,
+        finish: RANKS["specialty-2"] || 0,
+        extra: RANKS["specialty-3"] || 0
+      },
+      directMultiplier: 1.6 * GRADE * (1 + 0.03 * (RANKS["basic-1"] || 0)),
+      attachmentMultiplier: 0.5 * GRADE * (1 + 0.03 * (RANKS["basic-2"] || 0)),
+      source: {
+        id: unit2.id,
+        generation: unit2.generation,
+        ownerId: unit2.ownerId || "",
+        faction: unit2.faction,
+        isFormationClone: !!unit2.isFormationClone,
+        species: unit2.species,
+        tier: unit2.tier,
+        hp: unit2.hp,
+        x: unit2.x,
+        y: unit2.y,
+        z: unit2.z || 0,
+        giantUntil: unit2.giantUntil || 0,
+        sourceKind: CONTEXT.sourceKind,
+        attackerStats: structuredClone(CONTEXT.attackerStats),
+        attackPowerMultiplier: CONTEXT.attackPowerMultiplier,
+        sourceDamageScale: world.passiveDamageScale(
+          unit2,
+          CONTEXT.attackerStats.maxHp,
+          world.boss,
+          world.boss.maxHp
+        ),
+        buffed: CONTEXT.buffed
+      },
+      attack: null,
+      criticalRolls: {}
+    };
+  }
+  function launchCornAttack(world, unit2, action) {
+    const RECORD = action.cornAttack;
+    if (!RECORD || RECORD.launchTick !== null) {
+      return false;
+    }
+    RECORD.launchTick = world.simulationTick;
+    RECORD.attack = new AttackAction(
+      {
+        durationTicks: Math.ceil(RECORD.recoverySeconds * 20) + 1,
+        strikes: RECORD.shots.map((shot) => ({ tick: Math.ceil(shot.duration * 20 - 1e-9), weight: shot.weight }))
+      },
+      RECORD.launchTick
+    ).toDTO();
+    world.cornAttachments.actions ||= [];
+    world.cornAttachments.actions.push(RECORD);
+    for (const SHOT of RECORD.shots) {
+      const PROJECTILE2 = world.spawnLobProjectile(unit2, action, {
+        shotIndex: SHOT.slot,
+        attackMultiplier: RECORD.directMultiplier * SHOT.weight
+      });
+      if (!PROJECTILE2) {
+        continue;
+      }
+      const METEOR2 = RECORD.form >= 5, DX = action.target.x - unit2.x, DY = action.target.y - unit2.y, DISTANCE = Math.hypot(DX, DY) || 1, OFFSET = RECORD.form === 6 ? (SHOT.slot - 1) * 0.08 : 0, TO = {
+        ...action.target,
+        x: action.target.x - DY / DISTANCE * OFFSET,
+        y: action.target.y + DX / DISTANCE * OFFSET
+      }, TARGET = action.targetId === "boss" ? world.boss : world._unitForId(action.targetId), TARGET_BODY = targetBodyDimensions(TARGET), SKY_SPREAD = RECORD.form === 6 ? (SHOT.slot - 1) * 3.4 : 0, SKY_Z = TARGET_BODY.topZ + Math.max(4.8, TARGET_BODY.bodyHeight * 0.4) + SHOT.slot * 0.6, HEIGHT = RECORD.form >= 4 ? 0.7 : RECORD.form === 3 ? 0.45 : PROJECTILE2.height;
+      PROJECTILE2.cornActionId = RECORD.id;
+      PROJECTILE2.cornSlot = SHOT.slot;
+      PROJECTILE2.cornForm = RECORD.form;
+      PROJECTILE2.path = {
+        from: METEOR2 ? { x: TO.x + SKY_SPREAD, y: TO.y, z: SKY_Z } : { x: unit2.x, y: unit2.y, z: 0.45 },
+        to: TO,
+        height: FORMS[RECORD.form].height,
+        duration: SHOT.duration
+      };
+      PROJECTILE2.x = PROJECTILE2.path.from.x;
+      PROJECTILE2.y = PROJECTILE2.path.from.y;
+      PROJECTILE2.z = PROJECTILE2.path.from.z;
+      PROJECTILE2.height = HEIGHT;
+      PROJECTILE2.radius = RECORD.form >= 3 ? HEIGHT * 0.32 : PROJECTILE2.radius;
+      PROJECTILE2.attackPayload = cornAttackContext(RECORD, SHOT.weight, null);
+      delete PROJECTILE2.attackPayload.source;
+      PROJECTILE2.abilityEffect = null;
+      delete PROJECTILE2.cornPayload;
+    }
+    return true;
+  }
+  function cornActionFor(world, id) {
+    return world.cornAttachments?.actions?.find((action) => action.id === id) || null;
+  }
+  function cornCriticalRoll(world, record, target) {
+    const KEY2 = attackTargetKey(target === world.boss ? "boss" : target.id, target.generation);
+    if (!Object.hasOwn(record.criticalRolls, KEY2)) {
+      record.criticalRolls[KEY2] = world.random();
+    }
+    return record.criticalRolls[KEY2];
+  }
+  function cornAttackContext(record, weight, criticalRoll, multiplier = record.directMultiplier, world = null) {
+    const SOURCE = record.source, CANDIDATE = world?._unitForId(record.owner), LIVE_SOURCE = CANDIDATE?.generation === record.ownerGeneration ? CANDIDATE : null;
+    return {
+      source: LIVE_SOURCE || { ...SOURCE },
+      sourceKind: SOURCE.sourceKind,
+      attackerStats: structuredClone(SOURCE.attackerStats),
+      damageMultiplier: multiplier * weight,
+      attackPowerMultiplier: SOURCE.attackPowerMultiplier,
+      sourceDamageScale: SOURCE.sourceDamageScale,
+      kind: "lob",
+      strikeIndex: null,
+      buffed: SOURCE.buffed,
+      sourceStatOverrides: { ...SOURCE.attackerStats },
+      area: false,
+      criticalRoll,
+      hitTargets: null
+    };
+  }
+  function cornKernelMultiplier(record, index) {
+    const BASE = index < record.baseKernelCount ? record.attachmentMultiplier / record.baseKernelCount : record.attachmentMultiplier;
+    return BASE * (1 + Math.min(0.02 * record.ranks.heating * index, 0.2)) + (index === record.terminalIndex ? record.attachmentMultiplier * 0.08 * record.ranks.finish : 0);
+  }
+  function isCornAttackRecord(record, { pending = false } = {}) {
+    if (!record || !exactKeys(
+      record,
+      "version id owner ownerGeneration tier form launchTick firstAttachTick speed budgetInputs windupSeconds recoverySeconds shots baseKernelCount extraKernel terminalIndex ranks directMultiplier attachmentMultiplier source attack criticalRolls"
+    ) || record.version !== 1 || !Number.isSafeInteger(record.id) || record.id < 1 || !Number.isInteger(record.form) || record.form < 1 || record.form > 6 || !Number.isInteger(record.tier) || record.tier < record.form || record.tier > 6 || !Number.isSafeInteger(record.owner) || record.owner < 1 || !Number.isSafeInteger(record.ownerGeneration) || record.ownerGeneration < 1 || !Number.isFinite(record.speed) || record.speed < 0.05 || record.speed > 1.63 / 0.35 || record.windupSeconds !== 0.38 / record.speed || record.recoverySeconds !== 1.25 / record.speed || typeof record.extraKernel !== "boolean" || !record.ranks || !exactKeys(record.ranks, "heating finish extra") || record.extraKernel && record.ranks.extra === 0 || !["heating", "finish", "extra"].every(
+      (key) => Number.isInteger(record.ranks[key]) && record.ranks[key] >= 0 && record.ranks[key] <= 5
+    ) || !Number.isFinite(record.directMultiplier) || record.directMultiplier <= 0 || !Number.isFinite(record.attachmentMultiplier) || record.attachmentMultiplier <= 0 || !record.source || !exactKeys(
+      record.source,
+      "id generation ownerId faction isFormationClone species tier hp x y z giantUntil sourceKind attackerStats attackPowerMultiplier sourceDamageScale buffed"
+    ) || record.source.id !== record.owner || record.source.generation !== record.ownerGeneration || record.source.species !== 1 || record.source.tier !== record.tier || !["player", "enemy"].includes(record.source.faction) || typeof record.source.ownerId !== "string" || !["direct", "enemy"].includes(record.source.sourceKind) || !["hp", "x", "y", "z", "giantUntil"].every((key) => Number.isFinite(record.source[key])) || typeof record.source.isFormationClone !== "boolean" || typeof record.source.buffed !== "boolean" || !validCornStats(record.source.attackerStats) || !Number.isFinite(record.source.attackPowerMultiplier) || ![1, 3].includes(record.source.attackPowerMultiplier) || !Number.isFinite(record.source.sourceDamageScale) || record.source.sourceDamageScale < 0 || !record.criticalRolls || typeof record.criticalRolls !== "object" || Array.isArray(record.criticalRolls)) {
+      return false;
+    }
+    const INPUTS = record.budgetInputs;
+    if (!exactKeys(
+      INPUTS,
+      "tierOneAttack tierAttack gradeMultiplier permanentMultiplier directRank attachmentRank speedRank commandSpeed"
+    ) || !["tierOneAttack", "tierAttack", "gradeMultiplier", "permanentMultiplier", "commandSpeed"].every(
+      (key) => Number.isFinite(INPUTS[key]) && INPUTS[key] >= 0
+    ) || !(INPUTS.gradeMultiplier > 0) || !(INPUTS.commandSpeed > 0) || !["directRank", "attachmentRank", "speedRank"].every(
+      (key) => Number.isInteger(INPUTS[key]) && INPUTS[key] >= 0 && INPUTS[key] <= 10
+    ) || INPUTS.gradeMultiplier !== cornBudgetFromInputs(record.tier, INPUTS.tierOneAttack, INPUTS.tierAttack) || record.directMultiplier !== 1.6 * INPUTS.gradeMultiplier * (1 + 0.03 * INPUTS.directRank) || record.attachmentMultiplier !== 0.5 * INPUTS.gradeMultiplier * (1 + 0.03 * INPUTS.attachmentRank) || record.source.attackerStats.attackPower !== INPUTS.tierAttack * INPUTS.permanentMultiplier || record.speed !== Math.min(
+      1.63 / 0.35,
+      Math.max(
+        0.05,
+        record.source.attackerStats.attackSpeed * INPUTS.commandSpeed * (1 + 0.02 * INPUTS.speedRank)
+      )
+    )) {
+      return false;
+    }
+    const FORM = FORMS[record.form];
+    if (!Array.isArray(record.shots) || record.shots.length !== FORM.weights.length || record.baseKernelCount !== FORM.kernels.reduce((total, count) => total + count, 0) || record.terminalIndex !== record.baseKernelCount - 1 + Number(record.extraKernel)) {
+      return false;
+    }
+    let kernelStart = 0;
+    for (let slot = 0; slot < FORM.weights.length; slot++) {
+      const SHOT = record.shots[slot];
+      if (!exactKeys(SHOT, "slot weight duration kernelStart kernelCount") || SHOT.slot !== slot || SHOT.weight !== FORM.weights[slot] || SHOT.duration !== FORM.times[slot] / record.speed || SHOT.kernelStart !== kernelStart || SHOT.kernelCount !== FORM.kernels[slot]) {
+        return false;
+      }
+      kernelStart += SHOT.kernelCount;
+    }
+    for (const [KEY2, ROLL] of Object.entries(record.criticalRolls)) {
+      let target;
+      try {
+        target = JSON.parse(KEY2);
+      } catch {
+        return false;
+      }
+      if (!Array.isArray(target) || attackTargetKey(target[1], target[2]) !== KEY2 || !Number.isFinite(ROLL) || ROLL < 0 || ROLL >= 1) {
+        return false;
+      }
+    }
+    return (record.firstAttachTick === null || Number.isSafeInteger(record.firstAttachTick) && record.firstAttachTick >= 0) && (pending && record.launchTick === null && record.attack === null || Number.isSafeInteger(record.launchTick) && record.launchTick >= 0 && isAttackActionDTO(record.attack) && record.attack.startTick === record.launchTick && record.attack.plan.durationTicks === Math.ceil(record.recoverySeconds * 20) + 1 && record.attack.plan.strikes.length === record.shots.length && record.attack.plan.strikes.every(
+      (strike, index) => strike.tick === Math.ceil(record.shots[index].duration * 20 - 1e-9) && strike.weight === record.shots[index].weight
+    ));
+  }
+  function exactKeys(value, keys2) {
+    return value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).sort().join(" ") === keys2.split(" ").sort().join(" ");
+  }
+  function validCornStats(stats) {
+    return exactKeys(stats, ["maxHp", "attackPower", ...Object.keys(COMMON_UNIT_STAT_DEFAULTS)].join(" ")) && Object.values(stats).every((value) => Number.isFinite(value) && value >= 0) && stats.maxHp > 0;
+  }
+  var CORN_MERGE_DPS_TARGET, CORN_ABILITY, FORMS;
+  var init_corn_attack = __esm({
+    "src/features/species-growth/corn-attack.js"() {
+      init_model_base();
+      init_attack_action();
+      init_definition12();
+      init_model11();
+      init_unit_stats();
+      init_unit_grades();
+      CORN_MERGE_DPS_TARGET = 1.05;
+      CORN_ABILITY = "corn-kernel-chain";
+      FORMS = Object.freeze([
+        null,
+        { weights: [1], times: [0.45], kernels: [1], height: 1.2 },
+        { weights: [0.34, 0.33, 0.33], times: [0.35, 0.45, 0.55], kernels: [1, 1, 1], height: 1.4 },
+        { weights: [1], times: [0.45], kernels: [4], height: 1.6 },
+        { weights: [1], times: [0.45], kernels: [5], height: 3.2 },
+        { weights: [1], times: [0.45], kernels: [6], height: 0 },
+        { weights: [0.25, 0.3, 0.45], times: [0.35, 0.5, 0.65], kernels: [3, 3, 3], height: 0 }
+      ]);
     }
   });
 
@@ -3394,7 +4036,7 @@
 
   // src/features/abilities/chestnut-thorns/definition.js
   var CHESTNUT_THORNS_FEATURE;
-  var init_definition12 = __esm({
+  var init_definition13 = __esm({
     "src/features/abilities/chestnut-thorns/definition.js"() {
       CHESTNUT_THORNS_FEATURE = Object.freeze({
         definition: Object.freeze({
@@ -3422,7 +4064,7 @@
 
   // src/features/abilities/peanut-death-split/definition.js
   var PEANUT_DEATH_SPLIT_FEATURE;
-  var init_definition13 = __esm({
+  var init_definition14 = __esm({
     "src/features/abilities/peanut-death-split/definition.js"() {
       PEANUT_DEATH_SPLIT_FEATURE = Object.freeze({
         definition: Object.freeze({
@@ -3441,7 +4083,7 @@
 
   // src/features/abilities/walnut-raw-guard/definition.js
   var WALNUT_RAW_GUARD_FEATURE;
-  var init_definition14 = __esm({
+  var init_definition15 = __esm({
     "src/features/abilities/walnut-raw-guard/definition.js"() {
       WALNUT_RAW_GUARD_FEATURE = Object.freeze({
         definition: Object.freeze({
@@ -3463,7 +4105,7 @@
 
   // src/features/abilities/corn-attachment/definition.js
   var CORN_ATTACHMENT_FEATURE;
-  var init_definition15 = __esm({
+  var init_definition16 = __esm({
     "src/features/abilities/corn-attachment/definition.js"() {
       CORN_ATTACHMENT_FEATURE = Object.freeze({
         definition: Object.freeze({
@@ -3553,10 +4195,10 @@
     "src/ability-definitions.js"() {
       init_pea_recovery_boost();
       init_kidney_continuous_leap();
-      init_definition12();
       init_definition13();
       init_definition14();
       init_definition15();
+      init_definition16();
       init_rice_low_health_harvest();
       init_wheat_command_crit();
       init_barley_armor_break();
@@ -3574,18 +4216,121 @@
     }
   });
 
-  // src/ability-state.js
-  function masteryXpForNextLevel(level) {
-    if (!Number.isSafeInteger(level) || level < 1) {
-      throw new RangeError("mastery level must be a positive integer");
-    }
-    return MASTERY_FIRST_LEVEL_XP * MASTERY_LEVEL_XP_MULTIPLIER ** (level - 1);
-  }
-  function investedPointsOf(investment) {
+  // src/features/species-growth/legacy-state.js
+  function legacyInvestedPoints(investment) {
     return investment.powerLevel + Object.values(investment.branchLevels || {}).reduce((total, level) => total + level, 0);
   }
+  function isValidLegacyAbilityProgressionState(state) {
+    return !!(state && typeof state === "object" && state.schemaVersion === 3 && state.abilities && typeof state.abilities === "object" && !Array.isArray(state.abilities) && Object.keys(state.abilities).length === SPECIES_ABILITY_DEFINITIONS.length && SPECIES_ABILITY_DEFINITIONS.every(
+      (definition) => isValidLegacyAbilityInvestment(definition, state.abilities[definition.id])
+    ));
+  }
+  function isValidLegacyAbilityInvestment(definition, investment) {
+    if (!investment || typeof investment !== "object" || Array.isArray(investment) || !isNonNegativeInteger(investment.powerLevel) || investment.powerLevel > definition.powerValues.length - 1 || !Number.isSafeInteger(investment.masteryLevel) || investment.masteryLevel < 1 || !Number.isFinite(investment.masteryXp) || investment.masteryXp < 0 || investment.masteryXp >= masteryXpForNextLevel(investment.masteryLevel) || Object.keys(investment).some(
+      (key) => !["powerLevel", "branchLevels", "masteryLevel", "masteryXp"].includes(key)
+    )) {
+      return false;
+    }
+    const BRANCHES = definition.branches || {}, BRANCH_LEVELS = investment.branchLevels || {};
+    if (Object.keys(BRANCHES).length === 0 && Object.hasOwn(investment, "branchLevels") || Object.hasOwn(investment, "branchLevels") && (typeof investment.branchLevels !== "object" || !investment.branchLevels || Array.isArray(investment.branchLevels) || Object.keys(BRANCH_LEVELS).length !== Object.keys(BRANCHES).length || Object.keys(BRANCH_LEVELS).some((branchId) => !Object.hasOwn(BRANCHES, branchId)))) {
+      return false;
+    }
+    for (const [BRANCH_ID, BRANCH] of Object.entries(BRANCHES)) {
+      const LEVEL = BRANCH_LEVELS[BRANCH_ID] ?? 0;
+      if (!isNonNegativeInteger(LEVEL) || LEVEL > BRANCH.values.length - 1) {
+        return false;
+      }
+    }
+    return investment.masteryLevel - 1 - legacyInvestedPoints(investment) >= 0;
+  }
+  function isNonNegativeInteger(value) {
+    return Number.isSafeInteger(value) && value >= 0;
+  }
+  var init_legacy_state = __esm({
+    "src/features/species-growth/legacy-state.js"() {
+      init_ability_definitions();
+      init_mastery();
+    }
+  });
+
+  // src/features/species-growth/state.js
+  function growthForAbility(abilityId) {
+    return GROWTH_BY_ABILITY.get(abilityId) || null;
+  }
+  function isGrowthInvestment(investment) {
+    return investment?.treeVersion === SPECIES_TREE_VERSION;
+  }
+  function growthBuildOf(investment) {
+    return {
+      masteryLevel: investment.masteryLevel,
+      masteryXp: investment.masteryXp,
+      nodeRanks: investment.nodeRanks,
+      ...investment.legacyMastery ? { legacyMastery: investment.legacyMastery } : {}
+    };
+  }
+  function isValidGrowthInvestment(abilityId, investment) {
+    const GROWTH = growthForAbility(abilityId), DEFINITION13 = SPECIES_ABILITY_DEFINITIONS.find((definition) => definition.id === abilityId);
+    return !!(GROWTH && isGrowthInvestment(investment) && ["treeVersion", "masteryLevel", "masteryXp", "nodeRanks"].every((key) => Object.hasOwn(investment, key)) && Object.keys(investment).every(
+      (key) => ["treeVersion", "masteryLevel", "masteryXp", "nodeRanks", "legacyMastery", "legacyInvestment"].includes(
+        key
+      )
+    ) && GROWTH.isValidBuild(growthBuildOf(investment)) && (!Object.hasOwn(investment, "legacyMastery") || investment.legacyMastery && Object.keys(investment.legacyMastery).length === 2 && Object.hasOwn(investment.legacyMastery, "masteryLevel") && Object.hasOwn(investment.legacyMastery, "masteryXp")) && (!Object.hasOwn(investment, "legacyInvestment") || isValidLegacyAbilityInvestment(DEFINITION13, investment.legacyInvestment)));
+  }
+  function migrateAbilityProgressionState(state) {
+    if (state.schemaVersion === 4) {
+      if (!isValidMixedAbilityEntries(state)) {
+        throw new TypeError("Invalid ability progression");
+      }
+      return structuredClone(state);
+    }
+    if (!isValidLegacyAbilityProgressionState(state)) {
+      throw new TypeError("Invalid legacy ability progression");
+    }
+    const NEXT = structuredClone(state);
+    NEXT.schemaVersion = 4;
+    for (const [ABILITY_ID8, INVESTMENT] of Object.entries(state.abilities)) {
+      const GROWTH = growthForAbility(ABILITY_ID8);
+      if (GROWTH) {
+        NEXT.abilities[ABILITY_ID8] = {
+          treeVersion: SPECIES_TREE_VERSION,
+          ...GROWTH.migrateBuild(INVESTMENT),
+          legacyInvestment: structuredClone(INVESTMENT)
+        };
+      }
+    }
+    return NEXT;
+  }
+  function isValidMixedAbilityEntries(state) {
+    return !!(state && typeof state === "object" && state.schemaVersion === 4 && state.abilities && typeof state.abilities === "object" && !Array.isArray(state.abilities) && Object.keys(state.abilities).length === SPECIES_ABILITY_DEFINITIONS.length && SPECIES_ABILITY_DEFINITIONS.every(
+      (definition) => growthForAbility(definition.id) ? isValidGrowthInvestment(definition.id, state.abilities[definition.id]) : isValidLegacyAbilityInvestment(definition, state.abilities[definition.id])
+    ));
+  }
+  var SPECIES_TREE_VERSION, GROWTH_BY_ABILITY;
+  var init_state = __esm({
+    "src/features/species-growth/state.js"() {
+      init_ability_definitions();
+      init_legacy_state();
+      init_model11();
+      init_definition12();
+      SPECIES_TREE_VERSION = 1;
+      GROWTH_BY_ABILITY = new Map(
+        SPECIES_ABILITY_DEFINITIONS.filter((definition) => speciesGrowthDefinition(definition.species)?.available).map(
+          (definition) => [definition.id, new SpeciesGrowth(speciesGrowthDefinition(definition.species))]
+        )
+      );
+    }
+  });
+
+  // src/ability-state.js
+  function investedPointsOf(investment) {
+    if (isGrowthInvestment(investment)) {
+      const GROWTH = growthForAbility("corn-kernel-chain");
+      return GROWTH.investedPoints(growthBuildOf(investment));
+    }
+    return legacyInvestedPoints(investment);
+  }
   function masteryPointsLeft(investment) {
-    return investment.masteryLevel - 1 - investedPointsOf(investment);
+    return investment.masteryLevel - (isGrowthInvestment(investment) ? 0 : 1) - investedPointsOf(investment);
   }
   function createAbilityProgressionState() {
     return {
@@ -3593,7 +4338,10 @@
       abilities: Object.fromEntries(
         SPECIES_ABILITY_DEFINITIONS.map((definition) => [
           definition.id,
-          {
+          growthForAbility(definition.id) ? {
+            treeVersion: 1,
+            ...growthForAbility(definition.id).createBuild()
+          } : {
             powerLevel: 0,
             ...definition.branches ? {
               branchLevels: Object.fromEntries(
@@ -3608,54 +4356,17 @@
     };
   }
   function isValidAbilityProgressionState(state) {
-    if (!state || typeof state !== "object" || state.schemaVersion !== ABILITY_TREE_SCHEMA_VERSION) {
-      return false;
-    }
-    if (!state.abilities || typeof state.abilities !== "object") {
-      return false;
-    }
-    if (Object.keys(state.abilities).length !== SPECIES_ABILITY_DEFINITIONS.length) {
-      return false;
-    }
-    for (const DEFINITION13 of SPECIES_ABILITY_DEFINITIONS) {
-      const INVESTMENT = state.abilities[DEFINITION13.id];
-      if (!INVESTMENT || !isNonNegativeInteger(INVESTMENT.powerLevel)) {
-        return false;
-      }
-      if (INVESTMENT.powerLevel > DEFINITION13.powerValues.length - 1) {
-        return false;
-      }
-      if (!Number.isSafeInteger(INVESTMENT.masteryLevel) || INVESTMENT.masteryLevel < 1 || !Number.isFinite(INVESTMENT.masteryXp) || INVESTMENT.masteryXp < 0 || INVESTMENT.masteryXp >= masteryXpForNextLevel(INVESTMENT.masteryLevel)) {
-        return false;
-      }
-      const BRANCHES = DEFINITION13.branches || {}, BRANCH_LEVELS = INVESTMENT.branchLevels || {};
-      if (Object.keys(BRANCHES).length === 0 && Object.hasOwn(INVESTMENT, "branchLevels") || Object.hasOwn(INVESTMENT, "branchLevels") && (Object.keys(BRANCH_LEVELS).length !== Object.keys(BRANCHES).length || Object.keys(BRANCH_LEVELS).some((branchId) => !Object.hasOwn(BRANCHES, branchId)))) {
-        return false;
-      }
-      for (const [BRANCH_ID, BRANCH] of Object.entries(BRANCHES)) {
-        const LEVEL = BRANCH_LEVELS[BRANCH_ID] ?? 0;
-        if (!isNonNegativeInteger(LEVEL) || LEVEL > BRANCH.values.length - 1) {
-          return false;
-        }
-      }
-    }
-    if (SPECIES_ABILITY_DEFINITIONS.some((definition) => masteryPointsLeft(state.abilities[definition.id]) < 0)) {
-      return false;
-    }
-    return Object.keys(state.abilities).every(
-      (abilityId) => SPECIES_ABILITY_DEFINITIONS.some((definition) => definition.id === abilityId)
-    );
+    return isValidMixedAbilityEntries(state);
   }
-  function isNonNegativeInteger(value) {
-    return Number.isSafeInteger(value) && value >= 0;
-  }
-  var ABILITY_TREE_SCHEMA_VERSION, MASTERY_FIRST_LEVEL_XP, MASTERY_LEVEL_XP_MULTIPLIER;
+  var ABILITY_TREE_SCHEMA_VERSION;
   var init_ability_state = __esm({
     "src/ability-state.js"() {
       init_ability_definitions();
-      ABILITY_TREE_SCHEMA_VERSION = 3;
-      MASTERY_FIRST_LEVEL_XP = 100;
-      MASTERY_LEVEL_XP_MULTIPLIER = 1.2;
+      init_state();
+      init_mastery();
+      init_legacy_state();
+      init_legacy_state();
+      ABILITY_TREE_SCHEMA_VERSION = 4;
     }
   });
 
@@ -3692,7 +4403,24 @@
     if (state.processedBossKillReceipts.includes(receiptKey)) {
       return REJECT("duplicate-receipt");
     }
-    const MASTERY = state.abilities[DEFINITION13.id];
+    const MASTERY = state.abilities[DEFINITION13.id], GROWTH = growthForAbility(DEFINITION13.id);
+    if (GROWTH && isGrowthInvestment(MASTERY)) {
+      const RESULT = GROWTH.awardXp(growthBuildOf(MASTERY), xpAmount);
+      if (!RESULT.ok) {
+        return REJECT(RESULT.reason);
+      }
+      const NEXT = structuredClone(state);
+      NEXT.abilities[DEFINITION13.id] = { ...NEXT.abilities[DEFINITION13.id], ...RESULT.build };
+      NEXT.processedBossKillReceipts = [...state.processedBossKillReceipts, receiptKey].slice(-RECEIPT_MEMORY);
+      return {
+        state: NEXT,
+        awarded: true,
+        reason: null,
+        xpAwarded: xpAmount,
+        levelsGained: RESULT.levelsGained,
+        pointsAwarded: RESULT.pointsAwarded
+      };
+    }
     let level = MASTERY.masteryLevel;
     let experience = MASTERY.masteryXp + xpAmount;
     let levelsGained = 0;
@@ -3727,13 +4455,16 @@
       maximumFractionDigits: 1
     }).format(VALUE);
   }
-  function isValidPlayerProgressionState(state) {
-    return isValidAbilityProgressionState(state) && Number.isSafeInteger(state.towerBest) && state.towerBest >= 0 && state.towerBest <= FARM_BOSS_EVENT_MAX_STAGE && Array.isArray(state.processedBossKillReceipts) && state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) && new Set(state.processedBossKillReceipts).size === state.processedBossKillReceipts.length;
+  function isValidPlayerProgressionState(state, { allowLegacy = false } = {}) {
+    return (isValidAbilityProgressionState(state) || allowLegacy && isValidLegacyAbilityProgressionState(state)) && Object.keys(state).length === 4 && Object.keys(state).every(
+      (key) => ["schemaVersion", "abilities", "towerBest", "processedBossKillReceipts"].includes(key)
+    ) && Number.isSafeInteger(state.towerBest) && state.towerBest >= 0 && state.towerBest <= FARM_BOSS_EVENT_MAX_STAGE && Array.isArray(state.processedBossKillReceipts) && state.processedBossKillReceipts.every((key) => typeof key === "string" && key.length > 0) && new Set(state.processedBossKillReceipts).size === state.processedBossKillReceipts.length;
   }
   var BOSS_KILL_XP, FARM_BOSS_EVENT_MAX_STAGE, RECEIPT_MEMORY;
   var init_player_progression = __esm({
     "src/player-progression.js"() {
       init_ability_state();
+      init_state();
       init_ability_definitions();
       BOSS_KILL_XP = 20;
       FARM_BOSS_EVENT_MAX_STAGE = 61;
@@ -3799,7 +4530,7 @@
     const DEFINITIONS = speciesId === null ? SPECIES_ABILITY_DEFINITIONS : SPECIES_ABILITY_DEFINITIONS.filter((definition) => definition.species === speciesId);
     return DEFINITIONS.reduce((total, definition) => {
       const INVESTMENT = state.abilities[definition.id];
-      return total + INVESTMENT.powerLevel + Object.values(INVESTMENT.branchLevels || {}).reduce((branchTotal, level) => branchTotal + level, 0);
+      return total + investedPointsOf(INVESTMENT);
     }, 0);
   }
   function canPurchaseAbilityNode(state, abilityId, nodeId, context = {}) {
@@ -3824,6 +4555,10 @@
       };
     }
     const INVESTMENT = state.abilities[abilityId];
+    const GROWTH = growthForAbility(abilityId);
+    if (GROWTH && isGrowthInvestment(INVESTMENT)) {
+      return GROWTH.canPurchase(growthBuildOf(INVESTMENT), nodeId, context);
+    }
     const NODE = parseNodeId(nodeId);
     if (!NODE || !["power", "branch"].includes(NODE.kind)) {
       return {
@@ -3876,8 +4611,14 @@
         state
       };
     }
-    const NODE = parseNodeId(nodeId);
+    const GROWTH = growthForAbility(abilityId);
     const NEXT = cloneState(state);
+    if (GROWTH && isGrowthInvestment(NEXT.abilities[abilityId])) {
+      const PURCHASE = GROWTH.purchase(growthBuildOf(NEXT.abilities[abilityId]), nodeId, context);
+      NEXT.abilities[abilityId] = { ...NEXT.abilities[abilityId], ...PURCHASE.build };
+      return { ok: true, reason: null, state: NEXT };
+    }
+    const NODE = parseNodeId(nodeId);
     if (NODE.kind === "power") {
       NEXT.abilities[abilityId].powerLevel = NODE.level;
     } else {
@@ -3980,6 +4721,11 @@
     return null;
   }
   function getAbilityNodeStatus(state, definition, nodeId, context = {}) {
+    const GROWTH = growthForAbility(definition.id), BUILD = state?.abilities?.[definition.id];
+    if (GROWTH && isGrowthInvestment(BUILD)) {
+      const CHECK = canPurchaseAbilityNode(state, definition.id, nodeId, context);
+      return { purchased: (BUILD.nodeRanks[nodeId] || 0) > 0, ready: CHECK.allowed, reason: CHECK.reason };
+    }
     const NODE = parseNodeId(nodeId);
     if (!NODE) {
       return {
@@ -4022,27 +4768,12 @@
     };
   }
   function cloneState(state) {
-    return {
-      ...state,
-      abilities: Object.fromEntries(
-        Object.entries(state.abilities).map(([id, value]) => [
-          id,
-          {
-            ...value,
-            ...DEFINITION_BY_ID.get(id)?.branches ? {
-              branchLevels: Object.fromEntries(
-                Object.keys(DEFINITION_BY_ID.get(id).branches).map((branchId) => [
-                  branchId,
-                  value.branchLevels?.[branchId] || 0
-                ])
-              )
-            } : {}
-          }
-        ])
-      )
-    };
+    return structuredClone(state);
   }
   function emptyAbilityInvestment(definition, previous) {
+    if (growthForAbility(definition.id) && isGrowthInvestment(previous)) {
+      return { ...structuredClone(previous), nodeRanks: {} };
+    }
     return {
       masteryLevel: previous.masteryLevel,
       masteryXp: previous.masteryXp,
@@ -4053,8 +4784,8 @@
     };
   }
   function progressionLockReason(context) {
-    if (context.location !== "farm" || context.inCombat === true) {
-      return context.inCombat ? "combat-lock" : "farm-only";
+    if (context.location !== "farm" || context.inCombat === true || context.runActive === true) {
+      return context.inCombat || context.runActive ? "combat-lock" : "farm-only";
     }
     return null;
   }
@@ -4064,237 +4795,43 @@
       init_ability_definitions();
       init_ability_state();
       init_player_progression();
+      init_state();
       ABILITY_POINT_COST = 1;
       DEFINITION_BY_ID = new Map(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, definition]));
     }
   });
 
-  // src/features/abilities/pea-recovery-boost/model.js
-  var ABILITY_ID, PeaRecoveryBoostModel;
-  var init_model11 = __esm({
-    "src/features/abilities/pea-recovery-boost/model.js"() {
-      init_ability_progression();
-      init_pea_recovery_boost();
-      ABILITY_ID = PEA_RECOVERY_BOOST_FEATURE.definition.id;
-      PeaRecoveryBoostModel = class {
-        static config(progression, tier) {
-          const EFFECT = getAbilityEffects(progression, ABILITY_ID, tier);
-          if (!EFFECT) {
-            return null;
-          }
-          return {
-            durationTicks: PEA_RECOVERY_BOOST_FEATURE.model.durationTicks,
-            speedMultiplier: PEA_RECOVERY_BOOST_FEATURE.model.multiplierForBonus(EFFECT.value)
-          };
-        }
-      };
-    }
-  });
-
-  // src/features/abilities/kidney-leap/model.js
-  var ABILITY_ID2, KidneyLeapModel;
+  // src/features/abilities/corn-attachment/model.js
+  var DEFINITION10, CornAttachmentModel;
   var init_model12 = __esm({
-    "src/features/abilities/kidney-leap/model.js"() {
+    "src/features/abilities/corn-attachment/model.js"() {
+      init_corn_attack();
       init_ability_progression();
-      init_kidney_continuous_leap();
-      ABILITY_ID2 = KIDNEY_CONTINUOUS_LEAP_FEATURE.definition.id;
-      KidneyLeapModel = class {
-        static config(progression, tier) {
-          const EFFECT = getAbilityEffects(progression, ABILITY_ID2, tier);
-          if (!EFFECT) {
-            return null;
-          }
-          return {
-            cooldownResetChance: EFFECT.value,
-            cooldownTicks: KIDNEY_CONTINUOUS_LEAP_FEATURE.model.cooldownTicks
-          };
+      init_definition16();
+      DEFINITION10 = CORN_ATTACHMENT_FEATURE.definition;
+      CornAttachmentModel = class {
+        static projectileEffect(progression, tier) {
+          const CONFIG_LOCAL = this.config(progression, tier);
+          return CONFIG_LOCAL ? { abilityId: DEFINITION10.id, config: CONFIG_LOCAL } : null;
         }
-        static shouldResetCooldown(config, roll) {
-          return !!config && Number.isFinite(roll) && roll >= 0 && roll < config.cooldownResetChance;
-        }
-      };
-    }
-  });
-
-  // src/features/abilities/chestnut-thorns/model.js
-  var ABILITY_ID3, ChestnutThornsModel;
-  var init_model13 = __esm({
-    "src/features/abilities/chestnut-thorns/model.js"() {
-      init_ability_progression();
-      init_definition12();
-      ABILITY_ID3 = CHESTNUT_THORNS_FEATURE.definition.id;
-      ChestnutThornsModel = class {
-        static config(progression, tier) {
-          const EFFECT = getAbilityEffects(progression, ABILITY_ID3, tier);
-          if (!EFFECT) {
-            return null;
-          }
-          return {
-            projectileCount: EFFECT.value,
-            cooldownTicks: CHESTNUT_THORNS_FEATURE.definition.cooldownTicks,
-            spacingTicks: CHESTNUT_THORNS_FEATURE.definition.spacingTicks,
-            attackMultiplier: 1
-          };
-        }
-        static resolveTarget(world, targetId, generation) {
-          if (targetId === "boss") {
-            return world.boss?.generation === generation ? world.boss : null;
-          }
-          const TARGET = world._unitForId(targetId);
-          return TARGET?.generation === generation ? TARGET : null;
-        }
-      };
-    }
-  });
-
-  // src/features/abilities/peanut-death-split/model.js
-  var ABILITY_ID4, PeanutDeathSplitModel;
-  var init_model14 = __esm({
-    "src/features/abilities/peanut-death-split/model.js"() {
-      init_ability_progression();
-      init_definition13();
-      ABILITY_ID4 = PEANUT_DEATH_SPLIT_FEATURE.definition.id;
-      PeanutDeathSplitModel = class {
-        static config(progression, tier) {
-          const EFFECT = getAbilityEffects(progression, ABILITY_ID4, tier);
-          if (!EFFECT) {
-            return null;
-          }
-          return {
-            childCount: PEANUT_DEATH_SPLIT_FEATURE.definition.childCount,
-            statMultiplier: EFFECT.value
-          };
-        }
-        static descriptors({ unit: unit2, progression, inBattle = false } = {}) {
-          if (!inBattle || !unit2 || unit2.hp > 0 || unit2.isBattleOnlySummon || unit2.canSplit === false || unit2.splitUsedThisBattle === true) {
-            return [];
-          }
-          const CONFIG2 = this.config(progression, unit2.tier);
-          if (!CONFIG2) {
-            return [];
-          }
-          return Array.from({ length: CONFIG2.childCount }, () => ({
-            species: unit2.species,
-            tier: 1,
-            isBattleOnlySummon: true,
-            battleSummonKind: "peanut-death-split",
-            battleSummonParentId: unit2.id,
-            battleSummonParentGeneration: unit2.generation,
-            ownerId: unit2.ownerId || "",
-            farmId: unit2.farmId || 0,
-            faction: unit2.faction,
-            countsTowardPermanentRoster: false,
-            breedingEligible: false,
-            mergeEligible: false,
-            canSplit: false,
-            splitUsedThisBattle: true,
-            usesPersistentSleep: false,
-            lifetime: "until-death-or-battle-end",
-            permanentStatMultiplier: CONFIG2.statMultiplier
-          }));
-        }
-      };
-    }
-  });
-
-  // src/features/abilities/walnut-raw-guard/model.js
-  var DEFINITION10, WalnutRawGuardModel;
-  var init_model15 = __esm({
-    "src/features/abilities/walnut-raw-guard/model.js"() {
-      init_ability_progression();
-      init_definition14();
-      DEFINITION10 = WALNUT_RAW_GUARD_FEATURE.definition;
-      WalnutRawGuardModel = class {
         static config(progression, tier) {
           const EFFECT = getAbilityEffects(progression, DEFINITION10.id, tier);
           if (!EFFECT) {
             return null;
           }
           return {
-            rawDamageMultiplier: EFFECT.value,
-            cooldownTicks: DEFINITION10.cooldownTicks,
-            durationTicks: DEFINITION10.durationTicks,
-            armorBonus: DEFINITION10.armorBonus,
-            maxBonusAttackMultiples: DEFINITION10.maxBonusAttackMultiples
-          };
-        }
-        static canStart(unit2, tick, config) {
-          return !!(config && unit2?.hp > 0 && Number.isSafeInteger(tick) && tick >= (unit2.walnutNextGuardTick || 0) && !(unit2.walnutStoredRawDamage > 0));
-        }
-        static start(unit2, tick, config) {
-          if (!this.canStart(unit2, tick, config)) {
-            return false;
-          }
-          unit2.walnutNextGuardTick = tick + config.cooldownTicks;
-          unit2.walnutGuardUntilTick = tick + config.durationTicks;
-          return true;
-        }
-        static isGuarding(unit2, tick) {
-          return !!(unit2?.hp > 0 && unit2.walnutGuardUntilTick > tick);
-        }
-        static armorBonus(unit2, tick, config) {
-          return config && this.isGuarding(unit2, tick) ? config.armorBonus : 0;
-        }
-        static accumulate(unit2, rawDamage, tick, config) {
-          if (!config || !this.isGuarding(unit2, tick) || !Number.isFinite(rawDamage) || rawDamage <= 0) {
-            return false;
-          }
-          unit2.walnutStoredRawDamage = (unit2.walnutStoredRawDamage || 0) + rawDamage;
-          return true;
-        }
-        static nextHammerBonus(unit2, attackPower, config) {
-          if (!config || !Number.isFinite(unit2?.walnutStoredRawDamage) || unit2.walnutStoredRawDamage <= 0) {
-            return 0;
-          }
-          return Math.min(
-            unit2.walnutStoredRawDamage * config.rawDamageMultiplier,
-            attackPower * config.maxBonusAttackMultiples
-          );
-        }
-        static consume(unit2) {
-          const CONSUMED = Number.isFinite(unit2?.walnutStoredRawDamage) && unit2.walnutStoredRawDamage > 0;
-          if (unit2) {
-            unit2.walnutStoredRawDamage = 0;
-          }
-          return CONSUMED;
-        }
-        static clear(unit2) {
-          unit2.walnutGuardUntilTick = 0;
-          unit2.walnutStoredRawDamage = 0;
-        }
-      };
-    }
-  });
-
-  // src/features/abilities/corn-attachment/model.js
-  var DEFINITION11, CornAttachmentModel;
-  var init_model16 = __esm({
-    "src/features/abilities/corn-attachment/model.js"() {
-      init_ability_progression();
-      init_definition15();
-      DEFINITION11 = CORN_ATTACHMENT_FEATURE.definition;
-      CornAttachmentModel = class {
-        static projectileEffect(progression, tier) {
-          const CONFIG_LOCAL = this.config(progression, tier);
-          return CONFIG_LOCAL ? { abilityId: DEFINITION11.id, config: CONFIG_LOCAL } : null;
-        }
-        static config(progression, tier) {
-          const EFFECT = getAbilityEffects(progression, DEFINITION11.id, tier);
-          if (!EFFECT) {
-            return null;
-          }
-          return {
             damageMultiplier: EFFECT.value,
-            attachDelayTicks: DEFINITION11.attachDelayTicks,
-            explosionSpacingTicks: DEFINITION11.explosionSpacingTicks,
-            fadeTicks: DEFINITION11.fadeTicks
+            attachDelayTicks: DEFINITION10.attachDelayTicks,
+            explosionSpacingTicks: DEFINITION10.explosionSpacingTicks,
+            fadeTicks: DEFINITION10.fadeTicks
           };
         }
         static createManager() {
           return {
             nextGroupId: 1,
             nextAttachmentId: 1,
-            groups: []
+            groups: [],
+            actions: []
           };
         }
         static attach(world, target, projectile, config) {
@@ -4303,7 +4840,7 @@
           }
           const TICK = world.simulationTick, TARGET_ID = target === world.boss ? "boss" : target.id, TARGET_GENERATION = target.generation, MANAGER = world.cornAttachments || (world.cornAttachments = this.createManager());
           let group = [...MANAGER.groups].reverse().find(
-            (group2) => group2.targetId === TARGET_ID && group2.targetGeneration === TARGET_GENERATION && group2.status === "collecting" && TICK < group2.closeAtTick
+            (group2) => !group2.cornActionId && group2.targetId === TARGET_ID && group2.targetGeneration === TARGET_GENERATION && group2.status === "collecting" && TICK < group2.closeAtTick
           );
           if (!group) {
             group = {
@@ -4339,6 +4876,60 @@
           group.attachments.push(ATTACHMENT);
           return ATTACHMENT;
         }
+        static attachEvolved(world, target, projectile, record, damageScale = 1) {
+          const MANAGER = world.cornAttachments, TARGET_ID = target === world.boss ? "boss" : target.id, SHOT = record.shots[projectile.cornSlot];
+          if (record.firstAttachTick === null) {
+            record.firstAttachTick = world.simulationTick;
+          }
+          let group = MANAGER.groups.find(
+            (entry) => entry.cornActionId === record.id && entry.targetId === TARGET_ID && entry.targetGeneration === target.generation
+          );
+          if (!group) {
+            group = {
+              id: MANAGER.nextGroupId++,
+              cornActionId: record.id,
+              targetId: TARGET_ID,
+              targetGeneration: target.generation,
+              targetX: target.x,
+              targetY: target.y,
+              targetZ: target.z || 0,
+              firstAttachTick: record.firstAttachTick,
+              closeAtTick: record.firstAttachTick + DEFINITION10.attachDelayTicks,
+              nextExplosionTick: null,
+              status: "collecting",
+              attachments: []
+            };
+            MANAGER.groups.push(group);
+          }
+          const INDICES = Array.from({ length: SHOT.kernelCount }, (_, index) => SHOT.kernelStart + index);
+          if (record.extraKernel && projectile.cornSlot === record.shots.length - 1) {
+            INDICES.push(record.baseKernelCount);
+          }
+          for (const INDEX of INDICES) {
+            const ANGLE = (INDEX + 1) * 2.399963229728653 % (Math.PI * 2);
+            group.attachments.push({
+              id: MANAGER.nextAttachmentId++,
+              groupId: group.id,
+              cornActionId: record.id,
+              cornKernelIndex: INDEX,
+              cornDamageScale: damageScale,
+              explosionTick: group.closeAtTick + INDEX * DEFINITION10.explosionSpacingTicks,
+              targetId: TARGET_ID,
+              targetGeneration: target.generation,
+              ownerId: record.owner,
+              ownerGeneration: record.ownerGeneration,
+              payload: structuredClone(record.source),
+              damageMultiplier: cornKernelMultiplier(record, INDEX) * damageScale,
+              status: "attached",
+              fadeTicks: DEFINITION10.fadeTicks,
+              angle: ANGLE,
+              offsetX: Math.cos(ANGLE) * 0.18,
+              offsetY: Math.sin(ANGLE) * 0.12
+            });
+          }
+          group.attachments.sort((a, b) => a.cornKernelIndex - b.cornKernelIndex);
+          return group;
+        }
         static onProjectileHit(world, target, projectile, config) {
           if (!target || target.hp <= 0) {
             return null;
@@ -4369,12 +4960,27 @@
               GROUP.status = "exploding";
               GROUP.nextExplosionTick = GROUP.closeAtTick;
             }
-            if (GROUP.status === "exploding" && TICK >= GROUP.nextExplosionTick) {
+            if (GROUP.cornActionId && GROUP.status === "exploding") {
+              for (const ATTACHMENT of GROUP.attachments) {
+                if (ATTACHMENT.status !== "attached" || ATTACHMENT.explosionTick > TICK) {
+                  continue;
+                }
+                if (TARGET.hp > 0) {
+                  this.explodeEvolved(world, TARGET, ATTACHMENT);
+                }
+                ATTACHMENT.status = "fading";
+              }
+              const NEXT = GROUP.attachments.find((entry) => entry.status === "attached");
+              GROUP.nextExplosionTick = NEXT?.explosionTick ?? GROUP.nextExplosionTick;
+              if (!NEXT) {
+                GROUP.status = "complete";
+              }
+            } else if (GROUP.status === "exploding" && TICK >= GROUP.nextExplosionTick) {
               const ATTACHMENT = GROUP.attachments.find((entry) => entry.status === "attached");
               if (ATTACHMENT) {
                 this.explode(world, TARGET, ATTACHMENT);
                 ATTACHMENT.status = "fading";
-                GROUP.nextExplosionTick += DEFINITION11.explosionSpacingTicks;
+                GROUP.nextExplosionTick += DEFINITION10.explosionSpacingTicks;
               } else {
                 GROUP.status = "complete";
               }
@@ -4391,6 +4997,14 @@
           MANAGER.groups = MANAGER.groups.filter(
             (group) => group.attachments.some((entry) => entry.status !== "removed")
           );
+          if (MANAGER.actions?.length) {
+            const REFERENCED = /* @__PURE__ */ new Set([
+              ...world.projectiles.filter((projectile) => !projectile.hit).map((projectile) => projectile.cornActionId),
+              ...MANAGER.groups.map((group) => group.cornActionId),
+              ...world.units.map((unit2) => unit2.ability?.action?.cornAttack?.id)
+            ]);
+            MANAGER.actions = MANAGER.actions.filter((action) => REFERENCED.has(action.id));
+          }
         }
         static resolveTarget(world, targetId, generation) {
           if (targetId === "boss") {
@@ -4398,6 +5012,36 @@
           }
           const TARGET = world._unitForId(targetId);
           return TARGET?.generation === generation ? TARGET : null;
+        }
+        static explodeEvolved(world, target, attachment) {
+          const RECORD = cornActionFor(world, attachment.cornActionId);
+          if (!RECORD) {
+            return;
+          }
+          const CONTEXT = cornAttackContext(
+            RECORD,
+            1,
+            cornCriticalRoll(world, RECORD, target),
+            attachment.damageMultiplier,
+            world
+          ), ACTION = { id: RECORD.id, hit: false };
+          CONTEXT.kind = "corn-attachment-explosion";
+          CONTEXT.area = RECORD.form >= 4;
+          CONTEXT.strikeIndex = attachment.cornKernelIndex;
+          world.damageCombatTarget(
+            CONTEXT.source,
+            ACTION,
+            target,
+            { x: target.x, y: target.y, z: target.z || 0 },
+            { attackContext: CONTEXT, disableGrainEffects: true }
+          );
+          world.combat("corn-attachment-explosion", {
+            sourceUnit: RECORD.owner,
+            targetUnit: target === world.boss ? "boss" : target.id,
+            x: target.x,
+            y: target.y,
+            multiplier: attachment.damageMultiplier
+          });
         }
         static explode(world, target, attachment) {
           const PAYLOAD = attachment.payload;
@@ -4452,9 +5096,275 @@
     }
   });
 
+  // src/features/projectiles/model-base.js
+  var BallisticProjectile;
+  var init_model_base3 = __esm({
+    "src/features/projectiles/model-base.js"() {
+      init_corn_attack();
+      BallisticProjectile = class {
+        constructor(feature, dependencies) {
+          this.feature = feature;
+          this.dependencies = dependencies;
+          this.oldPoint = { x: 0, y: 0, z: 0 };
+          this.motionPoint = { x: 0, y: 0, z: 0 };
+        }
+        advanceLifecycle(_world, _projectile, _dt) {
+        }
+        update(world, projectile, dt) {
+          const { Ballistics: BALLISTICS2, ArenaGeometry: ARENA_GEOMETRY2 } = this.dependencies;
+          if (projectile.cornActionId) {
+            const ACTION = cornActionFor(world, projectile.cornActionId);
+            if (!ACTION) {
+              projectile.hit = true;
+              return;
+            }
+            if (world.simulationTick <= ACTION.launchTick) {
+              return;
+            }
+          }
+          const OLD = this.oldPoint;
+          OLD.x = projectile.x;
+          OLD.y = projectile.y;
+          OLD.z = projectile.z;
+          projectile.elapsed += dt;
+          Object.assign(
+            projectile,
+            BALLISTICS2.sample(projectile.path, projectile.elapsed / projectile.path.duration, this.motionPoint)
+          );
+          if (projectile.cornActionId) {
+            if (projectile.elapsed + 1e-9 < projectile.path.duration) {
+              return;
+            }
+            projectile.elapsed = projectile.path.duration;
+            const AREA = projectile.cornForm >= 4, TARGETS = [world.boss, ...world.units], ELIGIBLE = (target) => target && target.hp > 0 && target.faction !== projectile.faction && (target !== world.boss || projectile.faction === "player") && (target.z || 0) <= projectile.height && (target.z || 0) + target.height >= 0 && Math.hypot(target.x - projectile.path.to.x, target.y - projectile.path.to.y) <= target.radius + (AREA ? 0.8 : projectile.radius), PRIMARY = projectile.targetId === "boss" ? world.boss : world._unitForId(projectile.targetId), TARGET2 = PRIMARY?.generation === projectile.targetGeneration && ELIGIBLE(PRIMARY) ? PRIMARY : TARGETS.find(ELIGIBLE), HITS = TARGET2 ? [
+              TARGET2,
+              ...AREA ? TARGETS.filter((entry) => entry !== TARGET2 && ELIGIBLE(entry)).slice(0, 4) : []
+            ] : [];
+            if (!HITS.length) {
+              this.impact(world, projectile, null, null);
+            }
+            for (let index = 0; index < HITS.length; index++) {
+              this.impact(
+                world,
+                projectile,
+                HITS[index],
+                { x: projectile.x, y: projectile.y, z: projectile.z },
+                { scale: index === 0 ? 1 : 0.5, area: AREA }
+              );
+            }
+            return;
+          }
+          const CANDIDATE = projectile.targetId && projectile.targetId !== "boss" ? world._unitForId(projectile.targetId) : world.boss;
+          const TARGET = CANDIDATE && CANDIDATE.generation === projectile.targetGeneration && (CANDIDATE === world.boss || CANDIDATE.hp > 0) ? CANDIDATE : null;
+          const HIT = TARGET ? ARENA_GEOMETRY2.sweep(OLD, projectile, projectile.radius, projectile.height, TARGET) : null;
+          this.impact(world, projectile, TARGET, HIT);
+        }
+        updateChain(_world, _projectile) {
+        }
+      };
+    }
+  });
+
+  // src/features/abilities/pea-recovery-boost/model.js
+  var ABILITY_ID, PeaRecoveryBoostModel;
+  var init_model13 = __esm({
+    "src/features/abilities/pea-recovery-boost/model.js"() {
+      init_ability_progression();
+      init_pea_recovery_boost();
+      ABILITY_ID = PEA_RECOVERY_BOOST_FEATURE.definition.id;
+      PeaRecoveryBoostModel = class {
+        static config(progression, tier) {
+          const EFFECT = getAbilityEffects(progression, ABILITY_ID, tier);
+          if (!EFFECT) {
+            return null;
+          }
+          return {
+            durationTicks: PEA_RECOVERY_BOOST_FEATURE.model.durationTicks,
+            speedMultiplier: PEA_RECOVERY_BOOST_FEATURE.model.multiplierForBonus(EFFECT.value)
+          };
+        }
+      };
+    }
+  });
+
+  // src/features/abilities/kidney-leap/model.js
+  var ABILITY_ID2, KidneyLeapModel;
+  var init_model14 = __esm({
+    "src/features/abilities/kidney-leap/model.js"() {
+      init_ability_progression();
+      init_kidney_continuous_leap();
+      ABILITY_ID2 = KIDNEY_CONTINUOUS_LEAP_FEATURE.definition.id;
+      KidneyLeapModel = class {
+        static config(progression, tier) {
+          const EFFECT = getAbilityEffects(progression, ABILITY_ID2, tier);
+          if (!EFFECT) {
+            return null;
+          }
+          return {
+            cooldownResetChance: EFFECT.value,
+            cooldownTicks: KIDNEY_CONTINUOUS_LEAP_FEATURE.model.cooldownTicks
+          };
+        }
+        static shouldResetCooldown(config, roll) {
+          return !!config && Number.isFinite(roll) && roll >= 0 && roll < config.cooldownResetChance;
+        }
+      };
+    }
+  });
+
+  // src/features/abilities/chestnut-thorns/model.js
+  var ABILITY_ID3, ChestnutThornsModel;
+  var init_model15 = __esm({
+    "src/features/abilities/chestnut-thorns/model.js"() {
+      init_ability_progression();
+      init_definition13();
+      ABILITY_ID3 = CHESTNUT_THORNS_FEATURE.definition.id;
+      ChestnutThornsModel = class {
+        static config(progression, tier) {
+          const EFFECT = getAbilityEffects(progression, ABILITY_ID3, tier);
+          if (!EFFECT) {
+            return null;
+          }
+          return {
+            projectileCount: EFFECT.value,
+            cooldownTicks: CHESTNUT_THORNS_FEATURE.definition.cooldownTicks,
+            spacingTicks: CHESTNUT_THORNS_FEATURE.definition.spacingTicks,
+            attackMultiplier: 1
+          };
+        }
+        static resolveTarget(world, targetId, generation) {
+          if (targetId === "boss") {
+            return world.boss?.generation === generation ? world.boss : null;
+          }
+          const TARGET = world._unitForId(targetId);
+          return TARGET?.generation === generation ? TARGET : null;
+        }
+      };
+    }
+  });
+
+  // src/features/abilities/peanut-death-split/model.js
+  var ABILITY_ID4, PeanutDeathSplitModel;
+  var init_model16 = __esm({
+    "src/features/abilities/peanut-death-split/model.js"() {
+      init_ability_progression();
+      init_definition14();
+      ABILITY_ID4 = PEANUT_DEATH_SPLIT_FEATURE.definition.id;
+      PeanutDeathSplitModel = class {
+        static config(progression, tier) {
+          const EFFECT = getAbilityEffects(progression, ABILITY_ID4, tier);
+          if (!EFFECT) {
+            return null;
+          }
+          return {
+            childCount: PEANUT_DEATH_SPLIT_FEATURE.definition.childCount,
+            statMultiplier: EFFECT.value
+          };
+        }
+        static descriptors({ unit: unit2, progression, inBattle = false } = {}) {
+          if (!inBattle || !unit2 || unit2.hp > 0 || unit2.isBattleOnlySummon || unit2.canSplit === false || unit2.splitUsedThisBattle === true) {
+            return [];
+          }
+          const CONFIG2 = this.config(progression, unit2.tier);
+          if (!CONFIG2) {
+            return [];
+          }
+          return Array.from({ length: CONFIG2.childCount }, () => ({
+            species: unit2.species,
+            tier: 1,
+            isBattleOnlySummon: true,
+            battleSummonKind: "peanut-death-split",
+            battleSummonParentId: unit2.id,
+            battleSummonParentGeneration: unit2.generation,
+            ownerId: unit2.ownerId || "",
+            farmId: unit2.farmId || 0,
+            faction: unit2.faction,
+            countsTowardPermanentRoster: false,
+            breedingEligible: false,
+            mergeEligible: false,
+            canSplit: false,
+            splitUsedThisBattle: true,
+            usesPersistentSleep: false,
+            lifetime: "until-death-or-battle-end",
+            permanentStatMultiplier: CONFIG2.statMultiplier
+          }));
+        }
+      };
+    }
+  });
+
+  // src/features/abilities/walnut-raw-guard/model.js
+  var DEFINITION11, WalnutRawGuardModel;
+  var init_model17 = __esm({
+    "src/features/abilities/walnut-raw-guard/model.js"() {
+      init_ability_progression();
+      init_definition15();
+      DEFINITION11 = WALNUT_RAW_GUARD_FEATURE.definition;
+      WalnutRawGuardModel = class {
+        static config(progression, tier) {
+          const EFFECT = getAbilityEffects(progression, DEFINITION11.id, tier);
+          if (!EFFECT) {
+            return null;
+          }
+          return {
+            rawDamageMultiplier: EFFECT.value,
+            cooldownTicks: DEFINITION11.cooldownTicks,
+            durationTicks: DEFINITION11.durationTicks,
+            armorBonus: DEFINITION11.armorBonus,
+            maxBonusAttackMultiples: DEFINITION11.maxBonusAttackMultiples
+          };
+        }
+        static canStart(unit2, tick, config) {
+          return !!(config && unit2?.hp > 0 && Number.isSafeInteger(tick) && tick >= (unit2.walnutNextGuardTick || 0) && !(unit2.walnutStoredRawDamage > 0));
+        }
+        static start(unit2, tick, config) {
+          if (!this.canStart(unit2, tick, config)) {
+            return false;
+          }
+          unit2.walnutNextGuardTick = tick + config.cooldownTicks;
+          unit2.walnutGuardUntilTick = tick + config.durationTicks;
+          return true;
+        }
+        static isGuarding(unit2, tick) {
+          return !!(unit2?.hp > 0 && unit2.walnutGuardUntilTick > tick);
+        }
+        static armorBonus(unit2, tick, config) {
+          return config && this.isGuarding(unit2, tick) ? config.armorBonus : 0;
+        }
+        static accumulate(unit2, rawDamage, tick, config) {
+          if (!config || !this.isGuarding(unit2, tick) || !Number.isFinite(rawDamage) || rawDamage <= 0) {
+            return false;
+          }
+          unit2.walnutStoredRawDamage = (unit2.walnutStoredRawDamage || 0) + rawDamage;
+          return true;
+        }
+        static nextHammerBonus(unit2, attackPower, config) {
+          if (!config || !Number.isFinite(unit2?.walnutStoredRawDamage) || unit2.walnutStoredRawDamage <= 0) {
+            return 0;
+          }
+          return Math.min(
+            unit2.walnutStoredRawDamage * config.rawDamageMultiplier,
+            attackPower * config.maxBonusAttackMultiples
+          );
+        }
+        static consume(unit2) {
+          const CONSUMED = Number.isFinite(unit2?.walnutStoredRawDamage) && unit2.walnutStoredRawDamage > 0;
+          if (unit2) {
+            unit2.walnutStoredRawDamage = 0;
+          }
+          return CONSUMED;
+        }
+        static clear(unit2) {
+          unit2.walnutGuardUntilTick = 0;
+          unit2.walnutStoredRawDamage = 0;
+        }
+      };
+    }
+  });
+
   // src/features/abilities/rice-critical/model.js
   var ABILITY_ID5, RiceCriticalModel;
-  var init_model17 = __esm({
+  var init_model18 = __esm({
     "src/features/abilities/rice-critical/model.js"() {
       init_ability_progression();
       ABILITY_ID5 = "rice-low-health-harvest";
@@ -4476,7 +5386,7 @@
 
   // src/features/unit-attacks/lob/definition.js
   var FEATURE3;
-  var init_definition16 = __esm({
+  var init_definition17 = __esm({
     "src/features/unit-attacks/lob/definition.js"() {
       FEATURE3 = Object.freeze({ id: "lob", modelKey: "projectile" });
     }
@@ -4484,7 +5394,7 @@
 
   // src/features/unit-attacks/dual-strike/definition.js
   var FEATURE4;
-  var init_definition17 = __esm({
+  var init_definition18 = __esm({
     "src/features/unit-attacks/dual-strike/definition.js"() {
       FEATURE4 = Object.freeze({ id: "peanut-dual-strike", modelKey: "repeatedStrike" });
     }
@@ -4519,10 +5429,10 @@
   var ATTACK_DEFAULTS, UNIT_ABILITY_PROFILES, COMPOSITION, UNIT_CAPABILITY_COMPOSITIONS, UNIT_SPECIAL_ABILITY_COMPOSITIONS, CAPABILITY_SPECIES, NO_SPECIES;
   var init_unit_abilities = __esm({
     "src/unit-abilities.js"() {
-      init_definition16();
       init_definition17();
+      init_definition18();
       init_kidney_continuous_leap();
-      init_definition12();
+      init_definition13();
       ATTACK_DEFAULTS = Object.freeze({
         timing: Object.freeze({
           windup: 0.28,
@@ -4667,7 +5577,7 @@
 
   // src/features/abilities/wheat-command/model.js
   var DEFINITION12, ABILITY_ID6, WheatCommandModel;
-  var init_model18 = __esm({
+  var init_model19 = __esm({
     "src/features/abilities/wheat-command/model.js"() {
       init_ability_progression();
       init_unit_abilities();
@@ -4757,7 +5667,7 @@
     return Array.from({ length: BARLEY_ARMOR_SHRED_BUCKETS }, () => ({ expiresAtTick: 0, amount: 0 }));
   }
   var BARLEY_ARMOR_SHRED_BUCKETS, ABILITY_ID7, BarleyArmorShredModel;
-  var init_model19 = __esm({
+  var init_model20 = __esm({
     "src/features/abilities/barley-shred/model.js"() {
       init_ability_progression();
       BARLEY_ARMOR_SHRED_BUCKETS = 60;
@@ -5398,23 +6308,23 @@
     "src/ability-catalog.js"() {
       init_ability_definitions();
       init_pea_recovery_boost();
-      init_model11();
-      init_kidney_continuous_leap();
-      init_model12();
-      init_definition12();
       init_model13();
-      init_definition13();
+      init_kidney_continuous_leap();
       init_model14();
-      init_definition14();
+      init_definition13();
       init_model15();
-      init_definition15();
+      init_definition14();
       init_model16();
-      init_rice_low_health_harvest();
+      init_definition15();
       init_model17();
-      init_wheat_command_crit();
+      init_definition16();
+      init_model12();
+      init_rice_low_health_harvest();
       init_model18();
-      init_barley_armor_break();
+      init_wheat_command_crit();
       init_model19();
+      init_barley_armor_break();
+      init_model20();
       init_ability_presentations();
       ABILITY_MODELS = Object.freeze([
         [PEA_RECOVERY_BOOST_FEATURE, PeaRecoveryBoostModel],
@@ -5446,6 +6356,9 @@
   var DamageProjectile;
   var init_damage_model = __esm({
     "src/features/projectiles/damage-model.js"() {
+      init_attack_action();
+      init_corn_attack();
+      init_model12();
       init_model_base3();
       init_ability_catalog();
       DamageProjectile = class extends BallisticProjectile {
@@ -5453,7 +6366,45 @@
           super(feature, dependencies);
           this.landingEffect = feature.landingEffect;
         }
-        impact(world, projectile, target, hit) {
+        impact(world, projectile, target, hit, { scale = 1, area = false } = {}) {
+          if (projectile.cornActionId) {
+            const RECORD = cornActionFor(world, projectile.cornActionId);
+            if (RECORD) {
+              const ACTION = AttackAction.fromDTO(RECORD.attack);
+              ACTION.advance(world.simulationTick);
+              const CLAIMED = hit && ACTION.claimHit(projectile.cornSlot, target === world.boss ? "boss" : target.id, target.generation);
+              RECORD.attack = ACTION.toDTO();
+              if (CLAIMED) {
+                const CONTEXT = cornAttackContext(
+                  RECORD,
+                  RECORD.shots[projectile.cornSlot].weight * scale,
+                  cornCriticalRoll(world, RECORD, target),
+                  RECORD.directMultiplier,
+                  world
+                );
+                CONTEXT.strikeIndex = projectile.cornSlot;
+                CONTEXT.area = area;
+                const DID_HIT = world.damageCombatTarget(
+                  CONTEXT.source,
+                  { id: RECORD.id, hit: false },
+                  target,
+                  hit,
+                  {
+                    attackKind: "lob",
+                    attackContext: CONTEXT
+                  }
+                );
+                if (DID_HIT && target.hp > 0) {
+                  CornAttachmentModel.attachEvolved(world, target, projectile, RECORD, scale);
+                }
+              }
+            }
+            projectile.hit = true;
+            if (!hit) {
+              world.emit(this.landingEffect, projectile.x, projectile.y);
+            }
+            return;
+          }
           if (hit) {
             Object.assign(projectile, { x: hit.x, y: hit.y, z: hit.z });
             const SOURCE = world._unitForId(projectile.owner), LIVE_OWNER = SOURCE?.generation === projectile.ownerGeneration ? SOURCE : null, IMPACT_UNIT = LIVE_OWNER || {
@@ -5503,7 +6454,7 @@
 
   // src/features/projectiles/seed/model.js
   var SeedProjectile;
-  var init_model20 = __esm({
+  var init_model21 = __esm({
     "src/features/projectiles/seed/model.js"() {
       init_damage_model();
       init_definition10();
@@ -5517,7 +6468,7 @@
 
   // src/features/projectiles/spike/definition.js
   var FEATURE5;
-  var init_definition18 = __esm({
+  var init_definition19 = __esm({
     "src/features/projectiles/spike/definition.js"() {
       FEATURE5 = Object.freeze({ id: "spike", landingEffect: "spike-land" });
     }
@@ -5525,10 +6476,10 @@
 
   // src/features/projectiles/spike/model.js
   var SpikeProjectile;
-  var init_model21 = __esm({
+  var init_model22 = __esm({
     "src/features/projectiles/spike/model.js"() {
       init_damage_model();
-      init_definition18();
+      init_definition19();
       SpikeProjectile = class extends DamageProjectile {
         constructor(dependencies) {
           super(FEATURE5, dependencies);
@@ -5544,10 +6495,10 @@
   function projectileFlightFeature(projectile) {
     return projectile.projectileKind === "chestnut-spike" ? FEATURE5 : FEATURE;
   }
-  var init_definition19 = __esm({
+  var init_definition20 = __esm({
     "src/features/projectiles/definition.js"() {
       init_definition10();
-      init_definition18();
+      init_definition19();
     }
   });
 
@@ -5569,9 +6520,9 @@
   }
   var init_projectile_behaviors = __esm({
     "src/projectile-behaviors.js"() {
-      init_model20();
       init_model21();
-      init_definition19();
+      init_model22();
+      init_definition20();
     }
   });
 
@@ -5766,7 +6717,7 @@
 
   // src/features/farm-modes/breed/definition.js
   var FEATURE6;
-  var init_definition20 = __esm({
+  var init_definition21 = __esm({
     "src/features/farm-modes/breed/definition.js"() {
       FEATURE6 = Object.freeze({ id: "breed" });
     }
@@ -5774,10 +6725,10 @@
 
   // src/features/farm-modes/breed/model.js
   var BreedFarmMode;
-  var init_model22 = __esm({
+  var init_model23 = __esm({
     "src/features/farm-modes/breed/model.js"() {
       init_model_base4();
-      init_definition20();
+      init_definition21();
       init_unit_stats();
       BreedFarmMode = class extends FarmMode {
         constructor(config) {
@@ -5855,7 +6806,7 @@
   }
   var init_farm_mode_behaviors = __esm({
     "src/farm-mode-behaviors.js"() {
-      init_model22();
+      init_model23();
     }
   });
 
@@ -6063,7 +7014,7 @@
 
   // src/features/boss-patterns/sweep-360/definition.js
   var FEATURE7;
-  var init_definition21 = __esm({
+  var init_definition22 = __esm({
     "src/features/boss-patterns/sweep-360/definition.js"() {
       init_boss_patterns();
       FEATURE7 = Object.freeze({ id: "attack.sweep-360", config: BOSS_PATTERN_CONFIG["attack.sweep-360"] });
@@ -6072,10 +7023,10 @@
 
   // src/features/boss-patterns/sweep-360/model.js
   var SWEEP_HAND_STARTS, SweepBossPattern;
-  var init_model23 = __esm({
+  var init_model24 = __esm({
     "src/features/boss-patterns/sweep-360/model.js"() {
       init_model_base5();
-      init_definition21();
+      init_definition22();
       SWEEP_HAND_STARTS = Object.freeze({ "arm-left": Math.PI, "arm-right": 0 });
       SweepBossPattern = class extends BossPattern {
         constructor(dependencies) {
@@ -6114,7 +7065,7 @@
 
   // src/features/boss-patterns/front-slam/definition.js
   var FEATURE8;
-  var init_definition22 = __esm({
+  var init_definition23 = __esm({
     "src/features/boss-patterns/front-slam/definition.js"() {
       init_boss_patterns();
       FEATURE8 = Object.freeze({ id: "attack.front-slam", config: BOSS_PATTERN_CONFIG["attack.front-slam"] });
@@ -6123,10 +7074,10 @@
 
   // src/features/boss-patterns/front-slam/model.js
   var SlamBossPattern;
-  var init_model24 = __esm({
+  var init_model25 = __esm({
     "src/features/boss-patterns/front-slam/model.js"() {
       init_model_base5();
-      init_definition22();
+      init_definition23();
       SlamBossPattern = class extends BossPattern {
         constructor(dependencies) {
           super(FEATURE8, dependencies);
@@ -6154,7 +7105,7 @@
 
   // src/features/boss-patterns/charge/definition.js
   var FEATURE9;
-  var init_definition23 = __esm({
+  var init_definition24 = __esm({
     "src/features/boss-patterns/charge/definition.js"() {
       init_boss_patterns();
       FEATURE9 = Object.freeze({ id: "attack.charge", config: BOSS_PATTERN_CONFIG["attack.charge"] });
@@ -6163,10 +7114,10 @@
 
   // src/features/boss-patterns/charge/model.js
   var ChargeBossPattern;
-  var init_model25 = __esm({
+  var init_model26 = __esm({
     "src/features/boss-patterns/charge/model.js"() {
       init_model_base5();
-      init_definition23();
+      init_definition24();
       ChargeBossPattern = class extends BossPattern {
         constructor(dependencies) {
           super(FEATURE9, dependencies);
@@ -6248,7 +7199,7 @@
 
   // src/features/boss-patterns/leap-slam/definition.js
   var FEATURE10;
-  var init_definition24 = __esm({
+  var init_definition25 = __esm({
     "src/features/boss-patterns/leap-slam/definition.js"() {
       init_boss_patterns();
       FEATURE10 = Object.freeze({ id: "attack.leap-slam", config: BOSS_PATTERN_CONFIG["attack.leap-slam"] });
@@ -6257,10 +7208,10 @@
 
   // src/features/boss-patterns/leap-slam/model.js
   var LeapBossPattern;
-  var init_model26 = __esm({
+  var init_model27 = __esm({
     "src/features/boss-patterns/leap-slam/model.js"() {
       init_model_base5();
-      init_definition24();
+      init_definition25();
       LeapBossPattern = class extends BossPattern {
         constructor(dependencies) {
           super(FEATURE10, dependencies);
@@ -6400,7 +7351,7 @@
 
   // src/features/boss-patterns/fan-sweep/definition.js
   var FEATURE11;
-  var init_definition25 = __esm({
+  var init_definition26 = __esm({
     "src/features/boss-patterns/fan-sweep/definition.js"() {
       init_boss_patterns();
       FEATURE11 = Object.freeze({ id: "attack.fan-sweep", config: BOSS_PATTERN_CONFIG["attack.fan-sweep"] });
@@ -6409,10 +7360,10 @@
 
   // src/features/boss-patterns/fan-sweep/model.js
   var FanBossPattern;
-  var init_model27 = __esm({
+  var init_model28 = __esm({
     "src/features/boss-patterns/fan-sweep/model.js"() {
       init_model_base5();
-      init_definition25();
+      init_definition26();
       FanBossPattern = class extends BossPattern {
         constructor(dependencies) {
           super(FEATURE11, dependencies);
@@ -6449,7 +7400,7 @@
 
   // src/features/boss-patterns/mouth-summon/definition.js
   var FEATURE12;
-  var init_definition26 = __esm({
+  var init_definition27 = __esm({
     "src/features/boss-patterns/mouth-summon/definition.js"() {
       init_boss_patterns();
       FEATURE12 = Object.freeze({ id: "summon.mouth-t1", config: BOSS_PATTERN_CONFIG["summon.mouth-t1"] });
@@ -6458,10 +7409,10 @@
 
   // src/features/boss-patterns/mouth-summon/model.js
   var MouthSummonBossPattern;
-  var init_model28 = __esm({
+  var init_model29 = __esm({
     "src/features/boss-patterns/mouth-summon/model.js"() {
       init_model_base5();
-      init_definition26();
+      init_definition27();
       init_factions();
       MouthSummonBossPattern = class extends BossPattern {
         constructor(dependencies) {
@@ -6589,12 +7540,12 @@
   }
   var init_boss_pattern_behaviors = __esm({
     "src/boss-pattern-behaviors.js"() {
-      init_model23();
       init_model24();
       init_model25();
       init_model26();
       init_model27();
       init_model28();
+      init_model29();
       init_boss_patterns();
     }
   });
@@ -7363,7 +8314,7 @@
     };
     return REPEATED_STRIKE;
   }
-  var init_model29 = __esm({
+  var init_model30 = __esm({
     "src/features/unit-attacks/dual-strike/model.js"() {
       init_unit_combat_patterns();
     }
@@ -7373,6 +8324,24 @@
   function createLobAttackMixin(pathMotion) {
     const PATH_MOTION = pathMotion;
     const PROJECTILE_ATTACK = (base) => class extends PATH_MOTION(base) {
+      prepareAttack(sim) {
+        super.prepareAttack?.(sim);
+        const RECORD = createCornAttack(sim, this.owner, this.action, this.attackSpeedMultiplier(sim));
+        if (RECORD) {
+          this.action.cornAttack = RECORD;
+        }
+      }
+      attackWindupSeconds(sim) {
+        return this.action?.cornAttack?.windupSeconds ?? super.attackWindupSeconds?.(sim) ?? this.spec.timing.windup;
+      }
+      attackRecoverySeconds(sim) {
+        return this.action?.cornAttack?.recoverySeconds ?? super.attackRecoverySeconds(sim);
+      }
+      syncAttackSpeedMultiplier(tick) {
+        if (!this.action?.cornAttack) {
+          super.syncAttackSpeedMultiplier(tick);
+        }
+      }
       projectileShots() {
         return [
           {
@@ -7384,6 +8353,11 @@
       }
       launchAttack(sim) {
         super.launchAttack?.(sim);
+        if (this.action?.cornAttack) {
+          launchCornAttack(sim, this.owner, this.action);
+          this.recover(sim, true);
+          return;
+        }
         const U = this.owner, A = this.action, PROJECTILE_EFFECT = this.projectileEffect?.(sim) || null, SHOTS = this.projectileShots(sim);
         A.pendingShots = SHOTS.slice(1);
         A.projectileAbility = {
@@ -7408,8 +8382,9 @@
     };
     return PROJECTILE_ATTACK;
   }
-  var init_model30 = __esm({
+  var init_model31 = __esm({
     "src/features/unit-attacks/lob/model.js"() {
+      init_corn_attack();
     }
   });
 
@@ -7764,21 +8739,21 @@
   }
   var init_unit_attack_capabilities = __esm({
     "src/unit-attack-capabilities.js"() {
-      init_model29();
-      init_definition17();
       init_model30();
-      init_definition16();
+      init_definition18();
+      init_model31();
+      init_definition17();
       init_unit_abilities();
       init_unit_stats();
-      init_model17();
       init_model18();
       init_model19();
-      init_model11();
-      init_model12();
+      init_model20();
       init_model13();
       init_model14();
       init_model15();
       init_model16();
+      init_model17();
+      init_model12();
     }
   });
 
@@ -7849,7 +8824,7 @@
     }
     return true;
   }
-  var import_definition50, SEEDED_PRNG, CREATE_BUDGETED_SCHEDULER, EMPTY_FOOD_SEARCH_BUCKET, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, BREED_RESERVATION_OWNER, MERGE_RESERVATION_OWNER, FARM_MAX_UNITS, BATTLE_MAX_UNITS, MAX_PEANUT_SPLIT_CHILDREN, MAX_BOSS_SUMMONS, WORLD_ARENA, FARM_ARENA, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, FARM_BOSS_PHASES, PROJECTILE_BEHAVIORS, FARM_MODES, BOSS_BEHAVIORS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, CREATE_UNIT_SPECIAL_ABILITY, SIMULATION_SCENES, ATTACKING_BODY, UNIT, GARDEN;
+  var import_definition53, SEEDED_PRNG, CREATE_BUDGETED_SCHEDULER, EMPTY_FOOD_SEARCH_BUCKET, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, BREED_RESERVATION_OWNER, MERGE_RESERVATION_OWNER, FARM_MAX_UNITS, BATTLE_MAX_UNITS, MAX_PEANUT_SPLIT_CHILDREN, MAX_BOSS_SUMMONS, WORLD_ARENA, FARM_ARENA, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, FARM_BOSS_PHASES, PROJECTILE_BEHAVIORS, FARM_MODES, BOSS_BEHAVIORS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, CREATE_UNIT_SPECIAL_ABILITY, SIMULATION_SCENES, ATTACKING_BODY, UNIT, GARDEN;
   var init_farm_model = __esm({
     "src/farm-model.js"() {
       init_farm_offline();
@@ -7857,7 +8832,7 @@
       init_formation_skills();
       init_formation_skill_state();
       init_signal();
-      import_definition50 = __toESM(require_definition(), 1);
+      import_definition53 = __toESM(require_definition(), 1);
       init_definition10();
       init_mutation_notifications();
       init_unit_collection();
@@ -7868,9 +8843,9 @@
       init_farm_mode_behaviors();
       init_boss_pattern_behaviors();
       init_boss_vector_sockets();
-      init_model18();
       init_model19();
-      init_model16();
+      init_model20();
+      init_model12();
       init_unit_stats();
       init_unit_abilities();
       init_boss_rewards();
@@ -7979,7 +8954,7 @@
         unit: Object.freeze({
           speciesCount: SPECIES_COUNT,
           maxTier: MAX_UNIT_TIER,
-          maxRadius: (0, import_definition50.maximumUnitRadius)(MAX_UNIT_TIER),
+          maxRadius: (0, import_definition53.maximumUnitRadius)(MAX_UNIT_TIER),
           perceptionRange: 18,
           corpseRecoverySeconds: 60
         }),
@@ -8257,7 +9232,7 @@
             this.interrupt();
             return true;
           }
-          if (this.action && (this.phase === "windup" || this.phase === "active") && !(sim.attackTarget(U, this.action)?.hp > 0)) {
+          if (this.action && (this.phase === "windup" || this.phase === "active") && !this.action.cornAttack && !(sim.attackTarget(U, this.action)?.hp > 0)) {
             this.interrupt();
             return true;
           }
@@ -8273,8 +9248,9 @@
           if (this.phase === "windup") {
             U.vx *= Math.exp(-dt * 18);
             U.vy *= Math.exp(-dt * 18);
-            if (this.elapsed >= this.spec.timing.windup) {
-              this.action.motionDelay = Math.max(0, dt - (this.elapsed - this.spec.timing.windup));
+            const WINDUP = this.attackWindupSeconds?.(sim) ?? this.spec.timing.windup;
+            if (this.elapsed >= WINDUP) {
+              this.action.motionDelay = Math.max(0, dt - (this.elapsed - WINDUP));
               this.elapsed = 0;
               this.phase = "active";
               this.createAttackPath();
@@ -8455,7 +9431,7 @@
           return this.giantUntil > (this._world?.time ?? 0) ? 3 : 1;
         }
         get radius() {
-          return (0, import_definition50.unitBodyRadius)(this) * this.giantScale;
+          return (0, import_definition53.unitBodyRadius)(this) * this.giantScale;
         }
         get mature() {
           return this.growthElapsed >= this.growthDuration - 1e-9;
@@ -8464,16 +9440,16 @@
           return this.meals >= 1;
         }
         get size() {
-          return (0, import_definition50.unitVisualSize)(this) * this.giantScale;
+          return (0, import_definition53.unitVisualSize)(this) * this.giantScale;
         }
         get bodyScale() {
-          return (0, import_definition50.unitVectorScale)(this) * this.giantScale;
+          return (0, import_definition53.unitVectorScale)(this) * this.giantScale;
         }
         get height() {
-          return (0, import_definition50.unitBodyHeight)(this) * this.giantScale;
+          return (0, import_definition53.unitBodyHeight)(this) * this.giantScale;
         }
         get bodyHeight() {
-          return (0, import_definition50.unitTorsoHeight)(this) * this.giantScale;
+          return (0, import_definition53.unitTorsoHeight)(this) * this.giantScale;
         }
       };
       GARDEN = class Garden {
@@ -8965,6 +9941,7 @@
             farm: 0
           };
           this.playerProgression = createPlayerProgressionState();
+          this.runProgressionSnapshot = null;
           this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
           this.breedWeights = null;
           this.deployOrder = Array.from({ length: CONFIG.unit.speciesCount }, (_, species) => species);
@@ -9138,7 +10115,7 @@
           return TIERS2;
         }
         investAbilityNode(abilityId, nodeId) {
-          const IN_COMBAT = this.farmBossEvent?.phase !== "idle";
+          const IN_COMBAT = this.farmBossEvent?.phase !== "idle" || this.tower.active;
           const RESULT = purchaseAbilityNode(this.playerProgression, abilityId, nodeId, {
             location: this.scene,
             inCombat: IN_COMBAT,
@@ -9151,7 +10128,7 @@
           return RESULT;
         }
         resetProgression(scope) {
-          const IN_COMBAT = this.farmBossEvent?.phase !== "idle";
+          const IN_COMBAT = this.farmBossEvent?.phase !== "idle" || this.tower.active;
           const RESULT = resetPlayerProgression(this.playerProgression, scope, {
             location: this.scene,
             inCombat: IN_COMBAT
@@ -9781,6 +10758,7 @@
           }
           const FLOOR = Math.min(Math.max(1, Math.floor(startFloor) || 1), Math.max(1, this.playerProgression.towerBest)), KIND = FLOOR % CONFIG.farm.tower.midBossEvery === 0 ? "mid" : "battle";
           const SLEEP = new Map(this.units.filter((u) => !u.isBattleOnlySummon && u.hp <= 0).map((u) => [u.id, FLOOR]));
+          this.runProgressionSnapshot = structuredClone(this.playerProgression);
           this.tower = {
             pendingKind: KIND,
             active: true,
@@ -9979,6 +10957,7 @@
         _endTower() {
           this._clearRunStats();
           this.tower.active = false;
+          this.runProgressionSnapshot = null;
           this.tower.doors = [];
           this._benched.clear();
           this._benchRevision++;
@@ -10134,10 +11113,10 @@
             generation: ++this.entityGenerationSerial,
             // The hit volume is the drawn body of the species, exactly as for a unit.
             get radius() {
-              return (0, import_definition50.bossBodyRadius)(this);
+              return (0, import_definition53.bossBodyRadius)(this);
             },
             get height() {
-              return (0, import_definition50.bossBodyHeight)(this);
+              return (0, import_definition53.bossBodyHeight)(this);
             },
             hp: HP,
             maxHp: HP,
@@ -11874,7 +12853,7 @@
             ...CONTEXT.sourceStatOverrides,
             critChance: CLAMP2(ATTACKER_STATS.critChance + CRITICAL_BONUS, 0, 1)
           };
-          const RAW_BASE_DAMAGE = ATTACKER_STATS.attackPower * (CONTEXT.attackPowerMultiplier ?? (SOURCE.giantUntil > this.time ? 3 : 1)) * DAMAGE_MULTIPLIER, RAW_DAMAGE = (RAW_BASE_DAMAGE + (SOURCE.ability?.rawDamageBonus?.(this, action, KIND) || 0)) * this.passiveDamageScale(SOURCE, ATTACKER_STATS.maxHp, target, DEFENSE.maxHp);
+          const RAW_BASE_DAMAGE = ATTACKER_STATS.attackPower * (CONTEXT.attackPowerMultiplier ?? (SOURCE.giantUntil > this.time ? 3 : 1)) * DAMAGE_MULTIPLIER, RAW_DAMAGE = Number.isFinite(CONTEXT.sourceDamageScale) ? RAW_BASE_DAMAGE * CONTEXT.sourceDamageScale * (IS_BOSS ? 1 : this.passiveReceivedScale(target, DEFENSE.maxHp)) : (RAW_BASE_DAMAGE + (SOURCE.ability?.rawDamageBonus?.(this, action, KIND) || 0)) * this.passiveDamageScale(SOURCE, ATTACKER_STATS.maxHp, target, DEFENSE.maxHp);
           const DAMAGE = applyDamageToTargets(SOURCE, [target], {
             rawDamage: RAW_DAMAGE,
             area: CONTEXT.area,
@@ -11893,7 +12872,7 @@
           }
           this.onCombatResolved.emit({
             excluded: SOURCE.isFormationClone,
-            damageDealt: SOURCE.faction === "player" ? DAMAGE.totalActualLoss / (SOURCE.giantUntil > this.time ? 3 : 1) : 0,
+            damageDealt: SOURCE.faction === "player" ? DAMAGE.totalActualLoss / (Number.isFinite(CONTEXT.sourceDamageScale) ? CONTEXT.attackPowerMultiplier : SOURCE.giantUntil > this.time ? 3 : 1) : 0,
             damageTaken: target.faction === "player" && !target.isFormationClone ? DAMAGE.totalActualLoss : 0,
             hits: SOURCE.faction === "player" ? 1 : 0,
             critHits: SOURCE.faction === "player" && DAMAGE.critical ? 1 : 0
@@ -12050,6 +13029,7 @@
           if (!CLIMBING) {
             this._clearRunStats();
             this.tower.active = false;
+            this.runProgressionSnapshot = null;
             this.tower.doors = [];
             this._benched.clear();
             this._benchRevision++;
@@ -12542,7 +13522,7 @@
           return bossMouthWorldPoint(this.boss, released);
         }
         bossSummonLanding(angle, action = null) {
-          const B_LOCAL = this.boss, SCENE = this.scene, RADIUS = (0, import_definition50.unitBodyRadius)({ species: B_LOCAL.species, tier: 1, growthElapsed: 1, growthDuration: 1 });
+          const B_LOCAL = this.boss, SCENE = this.scene, RADIUS = (0, import_definition53.unitBodyRadius)({ species: B_LOCAL.species, tier: 1, growthElapsed: 1, growthDuration: 1 });
           for (let i = 0; i < 16; i++) {
             const OFFSET = i === 0 ? 0 : (i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI / 8, A_LOCAL = angle + OFFSET, CANDIDATE = {
               x: B_LOCAL.x + Math.cos(A_LOCAL) * BOSS_PATTERN_CONFIG["summon.mouth-t1"].landingRadius,
@@ -12764,20 +13744,7 @@
     ASSERT(Object.keys(value).every((key) => required.includes(key) || optional.includes(key)));
   }
   function copyPlayer(player) {
-    return {
-      schemaVersion: player.schemaVersion,
-      towerBest: player.towerBest,
-      abilities: Object.fromEntries(
-        Object.entries(player.abilities).map(([id, build]) => [
-          id,
-          {
-            ...build,
-            ...build.branchLevels ? { branchLevels: { ...build.branchLevels } } : {}
-          }
-        ])
-      ),
-      processedBossKillReceipts: [...player.processedBossKillReceipts]
-    };
+    return structuredClone(player);
   }
   function pendingReward(reward) {
     const RESULT = {};
@@ -12881,7 +13848,7 @@
       }
     };
   }
-  function validateFarmProgress(data) {
+  function validateFarmProgress(data, { allowLegacy = false } = {}) {
     keys(data, ["seed", "rngState", "nextId", "player", "roster", "food", "totals", "ledger"], ["mode"]);
     ASSERT(
       INTEGER(data.seed, 0, 4294967295) && INTEGER(data.rngState, 0, 4294967295) && INTEGER(data.nextId, 1, CONFIG.farm.maxUnitId + 1) && (data.mode === void 0 || ["breed", "merge"].includes(data.mode))
@@ -12889,15 +13856,8 @@
     const PLAYER = data.player, DEFAULTS = createPlayerProgressionState();
     keys(PLAYER, Object.keys(DEFAULTS));
     keys(PLAYER.abilities, Object.keys(DEFAULTS.abilities));
-    for (const [ABILITY_ID8, BUILD] of Object.entries(PLAYER.abilities)) {
-      const BRANCH_KEYS = Object.keys(DEFAULTS.abilities[ABILITY_ID8].branchLevels || {});
-      keys(BUILD, ["powerLevel", "masteryLevel", "masteryXp"], BRANCH_KEYS.length ? ["branchLevels"] : []);
-      if (Object.hasOwn(BUILD, "branchLevels")) {
-        keys(BUILD.branchLevels, BRANCH_KEYS);
-      }
-    }
     ASSERT(
-      isValidPlayerProgressionState(PLAYER) && Array.isArray(PLAYER.processedBossKillReceipts) && PLAYER.processedBossKillReceipts.length <= 1e5 && PLAYER.processedBossKillReceipts.every(STRING)
+      isValidPlayerProgressionState(PLAYER, { allowLegacy }) && Array.isArray(PLAYER.processedBossKillReceipts) && PLAYER.processedBossKillReceipts.length <= 1e5 && PLAYER.processedBossKillReceipts.every(STRING)
     );
     ASSERT(Array.isArray(data.roster));
     const COHORTS = /* @__PURE__ */ new Set(), RESIDENT_IDS = /* @__PURE__ */ new Set();
@@ -13078,8 +14038,15 @@
       y: Math.sin(ANGLE) * CONFIG.farm.arena.radiusY * RADIUS
     };
   }
+  function migrateFarmProgress(data) {
+    validateFarmProgress(data, { allowLegacy: true });
+    const NEXT = structuredClone(data);
+    NEXT.player = migrateAbilityProgressionState(NEXT.player);
+    validateFarmProgress(NEXT);
+    return NEXT;
+  }
   function restoreFarmProgress(data) {
-    validateFarmProgress(data);
+    data = migrateFarmProgress(data);
     const WORLD = new GARDEN(data.seed);
     WORLD.resetUnits();
     WORLD.food = [];
@@ -13148,6 +14115,7 @@
     "src/farm-progress.js"() {
       init_farm_model();
       init_player_progression();
+      init_state();
       init_boss_rewards();
       FAIL = () => {
         throw new TypeError("올바른 농장 진행 저장 데이터가 아니에요.");
@@ -13193,7 +14161,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.30.41";
+      PRODUCT_VERSION = "0.31.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -13213,8 +14181,10 @@
   }
   function decodeFarmSave(text) {
     const PARSED = readFarmSave(text);
-    validateFarmProgress(PARSED.progress);
-    return PARSED.progress;
+    if (COMPATIBILITY_LOCAL(PARSED.productVersion) === "0.30" && PARSED.progress.player?.schemaVersion !== 3) {
+      throw new TypeError("Invalid legacy farm schema. The original save was left unchanged.");
+    }
+    return migrateFarmProgress(PARSED.progress);
   }
   function validateSave(text) {
     decodeFarmSave(text);
@@ -13245,7 +14215,7 @@
       init_farm_progress();
       MAX_BYTES = 2 * 1024 * 1024;
       COMPATIBILITY_LOCAL = (version) => typeof version === "string" ? version.split(".").slice(0, 2).join(".") : "";
-      IS_READABLE_COMPATIBILITY = (version) => COMPATIBILITY_LOCAL(version) === COMPATIBILITY;
+      IS_READABLE_COMPATIBILITY = (version) => [COMPATIBILITY, "0.30"].includes(COMPATIBILITY_LOCAL(version));
     }
   });
 
@@ -13274,18 +14244,25 @@
     const LABEL = SAVE_FAILURE_LABELS[operation] || "저장 처리";
     return `${LABEL} 단계에서 오류가 발생했어요. 기존 저장은 보존했어요. 저장 내보내기로 보관한 뒤 진단 정보를 복사해 주세요.`;
   }
-  var KEY, SAVE_FAILURE_LABELS, FarmStorage;
+  var KEY, SOURCE_BACKUP_KEY, PRIOR_SOURCE_BACKUP_KEY, LAST_GOOD_KEY, IMPORT_SOURCE_KEY, UNREADABLE_SOURCE_KEY, SAVE_FAILURE_LABELS, FarmStorage;
   var init_farm_storage = __esm({
     "src/farm-storage.js"() {
       init_farm_progress();
       init_farm_save_codec();
       KEY = "bloom-weapon-cards-v4";
+      SOURCE_BACKUP_KEY = `${KEY}:species-tree-source-v3`;
+      PRIOR_SOURCE_BACKUP_KEY = `${KEY}:species-tree-prior-source-v3`;
+      LAST_GOOD_KEY = `${KEY}:last-known-good`;
+      IMPORT_SOURCE_KEY = `${KEY}:import-source`;
+      UNREADABLE_SOURCE_KEY = `${KEY}:unreadable-source`;
       SAVE_FAILURE_LABELS = Object.freeze({
         "storage-read": "브라우저 저장소 읽기",
         "progress-capture": "농장 진행 데이터 수집",
         "progress-compare": "농장 진행 데이터 비교",
         "progress-validate-encode": "저장 데이터 검증·인코딩",
-        "storage-write": "브라우저 저장소 쓰기"
+        "storage-write": "브라우저 저장소 쓰기",
+        "storage-backup": "원본 저장 백업",
+        "storage-verify": "저장 읽기 검증"
       });
       FarmStorage = class {
         constructor() {
@@ -13301,12 +14278,19 @@
             if (this.raw) {
               try {
                 this.savedProgress = decodeFarmSave(this.raw);
+                if (JSON.parse(this.raw).progress.player.schemaVersion === 3) {
+                  const { text: TEXT } = encodeFarmSave(null, this.savedProgress);
+                  this.writeVerified(TEXT, this.raw, { source: this.raw });
+                  this.raw = TEXT;
+                  this.notice = "옥수수 성장 트리를 적용했어요. 기존 투자와 원본 저장은 보존했어요.";
+                }
               } catch (error) {
                 this.incompatible = true;
+                this.savedProgress = null;
                 this.error = error.message;
               }
             }
-            this.writable = true;
+            this.writable = !this.incompatible;
           } catch (error) {
             this.error = error.message;
           }
@@ -13320,34 +14304,76 @@
         get hasWorld() {
           return !!(this._world || this.savedProgress);
         }
-        initializeIncompatible(world) {
-          if (!this.incompatible || !world) {
-            return false;
-          }
-          try {
-            if (localStorage.getItem(KEY) !== this.raw) {
-              if (this.refresh() && this.hasWorld) {
-                return true;
-              }
-              throw Error("The saved farm changed in another tab. Refresh before starting a new farm.");
-            }
-            const { data: DATA, text: TEXT } = this.serializeCheckpoint(world);
-            localStorage.setItem(KEY, TEXT);
-            this.raw = TEXT;
-            this.savedProgress = DATA;
-            this._world = world;
-            this.incompatible = false;
-            this.error = "";
-            this.notice = "An incompatible prelaunch save was reset to the current farm format.";
-            this.writable = true;
-            return true;
-          } catch (error) {
-            this._world = world;
-            this.savedProgress = null;
-            this.error = error.message || "Could not save the fresh farm.";
-            this.notice = "A fresh farm is available in memory, but browser storage is not writable.";
+        // Unreadable data is never a fresh-farm request. In particular, a future schema or a failed
+        // migration must not flow through the old prelaunch reset and erase the user's source save.
+        initializeIncompatible(_world) {
+          if (this.incompatible) {
             this.writable = false;
-            return false;
+            this.notice = "저장 형식을 읽지 못해 원본을 보존했어요. 저장 내보내기로 보관해 주세요.";
+          }
+          return false;
+        }
+        writeVerified(text, original, { source = null, imported: imported2 = null } = {}) {
+          if (localStorage.getItem(KEY) !== original) {
+            throw Error("저장 내용이 다른 탭에서 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요.");
+          }
+          if (source !== null) {
+            const PREVIOUS_SOURCE = localStorage.getItem(SOURCE_BACKUP_KEY);
+            if (PREVIOUS_SOURCE !== source) {
+              if (PREVIOUS_SOURCE !== null) {
+                localStorage.setItem(PRIOR_SOURCE_BACKUP_KEY, PREVIOUS_SOURCE);
+                if (localStorage.getItem(PRIOR_SOURCE_BACKUP_KEY) !== PREVIOUS_SOURCE) {
+                  throw Error("이전 원본 백업을 확인하지 못했어요. 저장을 변경하지 않았어요.");
+                }
+              }
+              localStorage.setItem(SOURCE_BACKUP_KEY, source);
+              if (localStorage.getItem(SOURCE_BACKUP_KEY) !== source) {
+                throw Error("원본 저장 백업을 확인하지 못했어요. 저장을 변경하지 않았어요.");
+              }
+            }
+          }
+          if (imported2 !== null) {
+            localStorage.setItem(IMPORT_SOURCE_KEY, imported2);
+            if (localStorage.getItem(IMPORT_SOURCE_KEY) !== imported2) {
+              throw Error("가져올 원본 백업을 확인하지 못했어요. 저장을 변경하지 않았어요.");
+            }
+          }
+          if (original !== null) {
+            const BACKUP_KEY = this.incompatible ? UNREADABLE_SOURCE_KEY : LAST_GOOD_KEY;
+            localStorage.setItem(BACKUP_KEY, original);
+            if (localStorage.getItem(BACKUP_KEY) !== original) {
+              throw Error("기존 저장 백업을 확인하지 못했어요. 저장을 변경하지 않았어요.");
+            }
+          }
+          if (localStorage.getItem(KEY) !== original) {
+            throw Error("다른 탭에서 저장을 변경했어요. 원본을 덮어쓰지 않았어요.");
+          }
+          let written = false;
+          try {
+            localStorage.setItem(KEY, text);
+            written = true;
+            const VERIFIED = localStorage.getItem(KEY);
+            if (VERIFIED !== text) {
+              throw Error("저장 내용을 다시 읽어 확인하지 못했어요.");
+            }
+            decodeFarmSave(VERIFIED);
+          } catch (error) {
+            if (written) {
+              try {
+                const CURRENT = localStorage.getItem(KEY);
+                if (CURRENT === text) {
+                  if (original === null) {
+                    localStorage.removeItem(KEY);
+                  } else {
+                    localStorage.setItem(KEY, original);
+                  }
+                }
+              } catch (rollbackError) {
+                reportSaveFailure(rollbackError, "storage-verify");
+              }
+            }
+            this.writable = false;
+            throw error;
           }
         }
         set world(value) {
@@ -13378,7 +14404,12 @@
               throw Error("농장 저장을 찾지 못했어요. 다른 탭에서 새 농장을 시작했을 수 있어요.");
             }
             const DATA = decodeFarmSave(TEXT);
-            this.raw = TEXT;
+            let normalized = TEXT;
+            if (JSON.parse(TEXT).progress.player.schemaVersion === 3) {
+              normalized = encodeFarmSave(null, DATA).text;
+              this.writeVerified(normalized, TEXT, { source: TEXT });
+            }
+            this.raw = normalized;
             this.savedProgress = DATA;
             this._world = null;
             this.incompatible = false;
@@ -13429,7 +14460,7 @@
             operation = "storage-write";
             const IO_START = this.profiler?.start();
             try {
-              localStorage.setItem(KEY, TEXT);
+              this.writeVerified(TEXT, this.raw);
             } finally {
               this.profiler?.end("saveIO", IO_START);
             }
@@ -13451,7 +14482,7 @@
           this.writable = true;
           const SAVED = this.save(world);
           if (!SAVED) {
-            this.writable = WRITABLE;
+            this.writable = WRITABLE && this.writable;
           }
           return SAVED;
         }
@@ -13461,7 +14492,10 @@
           }
           validateSave(text);
           const WORLD = parseSave(text), { data: DATA, text: NORMALIZED } = this.serializeCheckpoint(WORLD);
-          localStorage.setItem(KEY, NORMALIZED);
+          this.writeVerified(NORMALIZED, this.raw, {
+            source: JSON.parse(text).progress.player.schemaVersion === 3 ? text : null,
+            imported: text
+          });
           this.raw = NORMALIZED;
           this.savedProgress = DATA;
           this._world = WORLD;
@@ -13730,6 +14764,148 @@
   init_formation_skill_state();
   init_tower_run();
   init_farm_model();
+
+  // src/features/projectiles/corn/presentation.js
+  var import_vector_sockets4 = __toESM(require_vector_sockets(), 1);
+
+  // src/features/projectiles/seed/presentation.js
+  init_definition10();
+  var import_definition56 = __toESM(require_definition(), 1);
+  var import_vector_sockets3 = __toESM(require_vector_sockets(), 1);
+  function seedDisplayMultiplier(renderer, projectile) {
+    const BODY2 = (0, import_definition56.unitBodyDefinition)(projectile.species), OWNER_VECTOR_SCALE = projectile.height * import_vector_sockets3.WORLD_HEIGHT_PROJECTION / (FEATURE.bodyHeightFraction * (BODY2.bounds.bottom - BODY2.bounds.top)), DISPLAY_SCALE = (0, import_definition56.unitDisplayScale)(BODY2, OWNER_VECTOR_SCALE, renderer.scale, renderer.minimumUnitPixels());
+    return DISPLAY_SCALE / OWNER_VECTOR_SCALE;
+  }
+  var SeedProjectilePresentation = class {
+    constructor() {
+      this.id = FEATURE.id;
+    }
+    drawShadow(renderer, projectile) {
+      const RADIUS = projectile.radius * seedDisplayMultiplier(renderer, projectile) / renderer.scale;
+      renderer.groundEllipse(projectile.x, projectile.y, RADIUS, RADIUS * 5 / 7, "#55452433");
+    }
+    draw(renderer, projectile, point2, tail) {
+      const RADII = seedEllipseRadii(projectile), SCALE = seedDisplayMultiplier(renderer, projectile), HEIGHT = projectile.height * import_vector_sockets3.WORLD_HEIGHT_PROJECTION * SCALE, P = { x: point2.x, y: point2.y - HEIGHT * 0.5 }, TAIL = renderer.project(tail.x, tail.y, tail.z), X = RADII.x * SCALE, Y = RADII.y * SCALE;
+      TAIL.y -= HEIGHT * 0.5;
+      renderer.line(TAIL, P, RADII.y * 0.35 * SCALE / renderer.scale, "#ba964a80");
+      renderer.ellipse(P.x, P.y, X, Y, "#cfa957", FEATURE.rotation);
+      renderer.ellipse(P.x - Y * 0.15, P.y - Y * 0.25, Y * 0.25, Y * 0.4, "#fff0ae");
+    }
+  };
+
+  // src/features/projectiles/corn/presentation.js
+  function cornVisualHeight(form) {
+    return form >= 5 ? 3.8 : form === 4 ? 2.8 : 1.6;
+  }
+  function includeCornProjectileBounds(world, bounds) {
+    for (const PROJECTILE2 of world.projectiles) {
+      if (!(PROJECTILE2.cornForm >= 3)) {
+        continue;
+      }
+      const PATH2 = PROJECTILE2.path, SIZE = cornVisualHeight(PROJECTILE2.cornForm), SIDE = SIZE * 0.9 + 0.5, SKY = Math.max(PATH2.from.z, 0) + PATH2.height + SIZE * 2.1;
+      bounds.left = Math.min(bounds.left, PATH2.from.x - SIDE, PATH2.to.x - SIDE);
+      bounds.right = Math.max(bounds.right, PATH2.from.x + SIDE, PATH2.to.x + SIDE);
+      bounds.top = Math.max(
+        bounds.top,
+        Math.max(PATH2.from.y, PATH2.to.y) * import_vector_sockets4.WORLD_DEPTH_PROJECTION + SKY * import_vector_sockets4.WORLD_HEIGHT_PROJECTION + 1
+      );
+    }
+  }
+  var CornProjectilePresentation = class {
+    drawShadow(renderer, projectile) {
+      const SCALE = seedDisplayMultiplier(renderer, projectile), RADIUS = projectile.radius * SCALE / renderer.scale;
+      renderer.groundEllipse(projectile.x, projectile.y, RADIUS, RADIUS * 0.7, "#55452433");
+      if (projectile.cornForm < 5) {
+        return;
+      }
+      const TARGET = projectile.path.to, PROGRESS = Math.min(1, projectile.elapsed / projectile.path.duration), RING_RADIUS = Math.max(projectile.radius * 1.3, 0.2);
+      for (let quadrant = 0; quadrant < 4; quadrant++) {
+        const ANGLE = quadrant * Math.PI / 2;
+        renderer.ring(
+          TARGET.x,
+          TARGET.y,
+          RING_RADIUS,
+          `rgba(194,153,50,${0.3 + PROGRESS * 0.4})`,
+          0.025,
+          ANGLE,
+          ANGLE + Math.PI * 0.28
+        );
+      }
+    }
+    draw(renderer, projectile, point2, tail) {
+      const SCALE = seedDisplayMultiplier(renderer, projectile), LENGTH = cornVisualHeight(projectile.cornForm) * import_vector_sockets4.WORLD_HEIGHT_PROJECTION * SCALE, WIDTH = LENGTH * 0.28, CENTER = { x: point2.x, y: point2.y - LENGTH * 0.5 }, TAIL = renderer.project(tail.x, tail.y, tail.z), DX = point2.x - TAIL.x, DY = point2.y - TAIL.y, ANGLE = Math.abs(DX) + Math.abs(DY) > 1e-3 ? Math.atan2(DY, DX) - Math.PI / 2 : 0;
+      TAIL.y -= LENGTH * 0.5;
+      if (projectile.cornForm >= 5) {
+        drawMeteorTrail(renderer, CENTER, LENGTH, WIDTH, ANGLE, projectile.cornSlot);
+      } else {
+        renderer.line(TAIL, CENTER, WIDTH * 0.24 / renderer.scale, "#c79f4970");
+      }
+      drawCob(renderer, CENTER, LENGTH, WIDTH, ANGLE);
+    }
+  };
+  function drawCob(renderer, center, length, width, angle) {
+    const COS = Math.cos(angle), SIN = Math.sin(angle), POINT2 = (x, y) => ({ x: center.x + x * COS - y * SIN, y: center.y + x * SIN + y * COS });
+    drawLeaf(renderer, POINT2, width, length, -1);
+    drawLeaf(renderer, POINT2, width, length, 1);
+    renderer.ellipse(center.x, center.y, width, length * 0.49, "#775a23", angle);
+    renderer.ellipse(center.x, center.y, width * 0.88, length * 0.46, "#edb93d", angle);
+    for (let row = 0; row < 6; row++) {
+      const Y = -length * 0.33 + row * length * 0.64 / 5, ROW_WIDTH = width * (0.64 - Math.abs(row - 2.5) * 0.065);
+      for (let column = 0; column < 3; column++) {
+        const P = POINT2((column - 1) * ROW_WIDTH, Y);
+        renderer.ellipse(
+          P.x,
+          P.y,
+          width * 0.23,
+          length * 0.049,
+          column === 0 ? "#ffdf76" : column === 1 ? "#f9ce55" : "#dba12e",
+          angle
+        );
+      }
+    }
+    const LEAF = [
+      POINT2(-width * 0.5, -length * 0.27),
+      POINT2(0, -length * 0.65),
+      POINT2(width * 0.33, -length * 0.25),
+      POINT2(0, length * 0.13)
+    ];
+    fillPolygon(renderer.ctx, LEAF, "#799548");
+    renderer.line(POINT2(0, -length * 0.48), POINT2(0, length * 0.09), width * 0.11 / renderer.scale, "#b5c56f");
+  }
+  function drawLeaf(renderer, point2, width, length, side) {
+    const POINTS = [
+      point2(side * width * 0.35, -length * 0.18),
+      point2(side * width * 1.55, -length * 0.62),
+      point2(side * width * 1.38, -length * 0.03),
+      point2(side * width * 0.52, length * 0.24)
+    ];
+    fillPolygon(renderer.ctx, POINTS, side < 0 ? "#6c873b" : "#8fa653");
+  }
+  function drawMeteorTrail(renderer, center, length, width, angle, slot) {
+    const COS = Math.cos(angle), SIN = Math.sin(angle), DISTANCE = length * (0.8 + (slot || 0) * 0.1);
+    for (let index = -1; index <= 1; index++) {
+      const OFFSET = index * width * 0.6, START = { x: center.x + OFFSET * COS, y: center.y + OFFSET * SIN }, END = {
+        x: START.x + DISTANCE * SIN,
+        y: START.y - DISTANCE * COS
+      };
+      renderer.line(
+        END,
+        START,
+        width * (index === 0 ? 0.5 : 0.2) / renderer.scale,
+        index === 0 ? "#f4ca6570" : "#e6af4350"
+      );
+    }
+  }
+  function fillPolygon(context, points, color) {
+    context.fillStyle = color;
+    context.beginPath();
+    context.moveTo(points[0].x, points[0].y);
+    for (let index = 1; index < points.length; index++) {
+      context.lineTo(points[index].x, points[index].y);
+    }
+    context.closePath();
+    context.fill();
+  }
 
   // src/features/formation-skills/presentation-base.js
   init_model_base();
@@ -14237,7 +15413,7 @@
   };
 
   // src/features/formation-skills/storm-cloud/presentation.js
-  var import_vector_sockets3 = __toESM(require_vector_sockets(), 1);
+  var import_vector_sockets5 = __toESM(require_vector_sockets(), 1);
   var POINT_BUFFERS = /* @__PURE__ */ new WeakMap();
   var CLOUD_SPREAD_DEPTH = 0.35;
   function pointBuffersFor(effect) {
@@ -14268,7 +15444,7 @@
       bounds.right = Math.max(bounds.right, effect.x + SIZE * 1.84 + 1);
       bounds.top = Math.max(
         bounds.top,
-        (effect.y + SIZE * CLOUD_SPREAD_DEPTH) * import_vector_sockets3.WORLD_DEPTH_PROJECTION + (Z + 0.1 + SIZE * 0.24) * import_vector_sockets3.WORLD_HEIGHT_PROJECTION + SIZE * 0.26 + 1
+        (effect.y + SIZE * CLOUD_SPREAD_DEPTH) * import_vector_sockets5.WORLD_DEPTH_PROJECTION + (Z + 0.1 + SIZE * 0.24) * import_vector_sockets5.WORLD_HEIGHT_PROJECTION + SIZE * 0.26 + 1
       );
     }
     draw(renderer, effect) {
@@ -15041,33 +16217,8 @@
     return PRESENTATION;
   }
 
-  // src/features/projectiles/seed/presentation.js
-  init_definition10();
-  var import_definition54 = __toESM(require_definition(), 1);
-  var import_vector_sockets4 = __toESM(require_vector_sockets(), 1);
-  function seedDisplayMultiplier(renderer, projectile) {
-    const BODY2 = (0, import_definition54.unitBodyDefinition)(projectile.species), OWNER_VECTOR_SCALE = projectile.height * import_vector_sockets4.WORLD_HEIGHT_PROJECTION / (FEATURE.bodyHeightFraction * (BODY2.bounds.bottom - BODY2.bounds.top)), DISPLAY_SCALE = (0, import_definition54.unitDisplayScale)(BODY2, OWNER_VECTOR_SCALE, renderer.scale, renderer.minimumUnitPixels());
-    return DISPLAY_SCALE / OWNER_VECTOR_SCALE;
-  }
-  var SeedProjectilePresentation = class {
-    constructor() {
-      this.id = FEATURE.id;
-    }
-    drawShadow(renderer, projectile) {
-      const RADIUS = projectile.radius * seedDisplayMultiplier(renderer, projectile) / renderer.scale;
-      renderer.groundEllipse(projectile.x, projectile.y, RADIUS, RADIUS * 5 / 7, "#55452433");
-    }
-    draw(renderer, projectile, point2, tail) {
-      const RADII = seedEllipseRadii(projectile), SCALE = seedDisplayMultiplier(renderer, projectile), HEIGHT = projectile.height * import_vector_sockets4.WORLD_HEIGHT_PROJECTION * SCALE, P = { x: point2.x, y: point2.y - HEIGHT * 0.5 }, TAIL = renderer.project(tail.x, tail.y, tail.z), X = RADII.x * SCALE, Y = RADII.y * SCALE;
-      TAIL.y -= HEIGHT * 0.5;
-      renderer.line(TAIL, P, RADII.y * 0.35 * SCALE / renderer.scale, "#ba964a80");
-      renderer.ellipse(P.x, P.y, X, Y, "#cfa957", FEATURE.rotation);
-      renderer.ellipse(P.x - Y * 0.15, P.y - Y * 0.25, Y * 0.25, Y * 0.4, "#fff0ae");
-    }
-  };
-
   // src/features/projectiles/spike/presentation.js
-  init_definition18();
+  init_definition19();
   var SpikeProjectilePresentation = class {
     constructor() {
       this.id = FEATURE5.id;
@@ -15088,7 +16239,7 @@
   };
 
   // src/farm-render-items.js
-  init_definition19();
+  init_definition20();
   init_farm_model();
   var FoodPresentation = class {
     constructor(renderer) {
@@ -15115,6 +16266,7 @@
       );
     }
   };
+  var CORN_PROJECTILE_PRESENTATION = new CornProjectilePresentation();
   var PROJECTILE_PRESENTATIONS = new Map(
     [new SeedProjectilePresentation(), new SpikeProjectilePresentation()].map((presentation) => [
       presentation.id,
@@ -15130,14 +16282,14 @@
         projectile.path,
         Math.max(0, (projectile.elapsed - 0.04) / projectile.path.duration)
       );
-      const PRESENTATION = PROJECTILE_PRESENTATIONS.get(projectileFeature(projectile).id);
+      const PRESENTATION = projectile.cornForm >= 3 ? CORN_PROJECTILE_PRESENTATION : PROJECTILE_PRESENTATIONS.get(projectileFeature(projectile).id);
       PRESENTATION.drawShadow(RENDERER2, projectile);
       PRESENTATION.draw(RENDERER2, projectile, P, TAIL);
     }
   };
 
   // src/farm-render-units.js
-  var import_definition59 = __toESM(require_definition(), 1);
+  var import_definition62 = __toESM(require_definition(), 1);
   init_presentation9();
 
   // src/features/unit-attacks/presentation-base.js
@@ -15151,7 +16303,7 @@
   };
 
   // src/features/unit-attacks/lob/presentation.js
-  init_definition16();
+  init_definition17();
   var LobPresentation = class extends UnitAttackPresentation {
     constructor() {
       super();
@@ -15163,7 +16315,7 @@
   };
 
   // src/features/unit-attacks/dual-strike/presentation.js
-  init_definition17();
+  init_definition18();
   var DualStrikePresentation = class extends UnitAttackPresentation {
     constructor() {
       super();
@@ -15572,7 +16724,7 @@
         player.setExpression(EXPRESSION);
       }
       player.seek(rest ? rest.elapsed * 1e3 : this.renderer.displayTimeMs);
-      const [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox, GROUND = (0, import_definition59.unitBodyDefinition)(u.species).ground, SCALE = 2 * r / Math.max(WIDTH, HEIGHT);
+      const [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox, GROUND = (0, import_definition62.unitBodyDefinition)(u.species).ground, SCALE = 2 * r / Math.max(WIDTH, HEIGHT);
       const MATRIX = [SCALE, 0, 0, SCALE, p.x - GROUND.x * SCALE, p.y - GROUND.y * SCALE];
       this.renderer.ctx.vector.flush();
       player.draw({
@@ -15589,7 +16741,7 @@
         u.y,
         u.z + BOB
       );
-      const BODY2 = (0, import_definition59.unitBodyDefinition)(u.species), GIANT_SCALE = u.giantUntil > sim.time ? 3 : 1, SCALE = (0, import_definition59.unitDisplayScale)(
+      const BODY2 = (0, import_definition62.unitBodyDefinition)(u.species), GIANT_SCALE = u.giantUntil > sim.time ? 3 : 1, SCALE = (0, import_definition62.unitDisplayScale)(
         BODY2,
         u.bodyScale,
         this.renderer.scale,
@@ -15616,11 +16768,11 @@
   // src/farm-renderer.js
   init_unit_grades();
   init_presentation6();
-  var import_vector_sockets8 = __toESM(require_vector_sockets(), 1);
+  var import_vector_sockets9 = __toESM(require_vector_sockets(), 1);
   init_boss_vector_sockets();
 
   // src/farm-render-boss.js
-  var import_vector_sockets6 = __toESM(require_vector_sockets(), 1);
+  var import_vector_sockets7 = __toESM(require_vector_sockets(), 1);
   init_species_catalog();
   init_farm_model();
 
@@ -15749,7 +16901,7 @@
   };
 
   // src/features/boss-patterns/front-slam/presentation.js
-  init_definition22();
+  init_definition23();
   var FrontSlamPresentation = class extends BossAttackPresentation {
     constructor() {
       super(FEATURE8, "strike", 0.18, 0.14);
@@ -15764,10 +16916,10 @@
   };
 
   // src/features/boss-patterns/sweep-360/presentation.js
-  init_definition21();
-  init_model23();
+  init_definition22();
+  init_model24();
   init_farm_model();
-  var import_vector_sockets5 = __toESM(require_vector_sockets(), 1);
+  var import_vector_sockets6 = __toESM(require_vector_sockets(), 1);
   var HALF_TURN = Math.PI;
   var EASE = (t) => t * t * (3 - 2 * t);
   var HAND_FOLD_SECONDS = 0.4;
@@ -15777,7 +16929,7 @@
     }
     // Where a hand is after the given share of its half turn: on the ellipse the reach circle makes on screen.
     orbit(pose, key, turn) {
-      const ANGLE = SWEEP_HAND_STARTS[key] + HALF_TURN * turn, R2 = this.config.reach - pose.rig.radius, DEPTH = import_vector_sockets5.WORLD_DEPTH_PROJECTION;
+      const ANGLE = SWEEP_HAND_STARTS[key] + HALF_TURN * turn, R2 = this.config.reach - pose.rig.radius, DEPTH = import_vector_sockets6.WORLD_DEPTH_PROJECTION;
       return {
         x: R2 * Math.cos(ANGLE),
         y: -DEPTH * R2 * Math.sin(ANGLE)
@@ -15825,7 +16977,7 @@
   };
 
   // src/features/boss-patterns/charge/presentation.js
-  init_definition23();
+  init_definition24();
   var ChargePresentation = class extends BossAttackPresentation {
     constructor() {
       super(FEATURE9, "walk");
@@ -15859,7 +17011,7 @@
   };
 
   // src/features/boss-patterns/leap-slam/presentation.js
-  init_definition24();
+  init_definition25();
   init_farm_model();
   var LeapSlamPresentation = class extends BossAttackPresentation {
     constructor() {
@@ -15911,7 +17063,7 @@
   };
 
   // src/features/boss-patterns/fan-sweep/presentation.js
-  init_definition25();
+  init_definition26();
   init_farm_model();
   var FanSweepPresentation = class extends BossAttackPresentation {
     constructor() {
@@ -15945,7 +17097,7 @@
   };
 
   // src/features/boss-patterns/mouth-summon/presentation.js
-  init_definition26();
+  init_definition27();
   init_boss_vector_sockets();
   var MouthSummonPresentation = class extends BossAttackPresentation {
     constructor() {
@@ -16093,7 +17245,7 @@
         PLAYER.setExpression(SAFE_EXPRESSION);
       }
       PRESENTATION.seek(PLAYER, this.renderer.displayTimeMs);
-      const S_LOCAL = this.renderer.scale * (0, import_vector_sockets6.bossVectorScale)(), GROUND = RECORD.anchors.ground, MATRIX = [S_LOCAL, 0, 0, S_LOCAL, P.x - GROUND.x * S_LOCAL, P.y - GROUND.y * S_LOCAL];
+      const S_LOCAL = this.renderer.scale * (0, import_vector_sockets7.bossVectorScale)(), GROUND = RECORD.anchors.ground, MATRIX = [S_LOCAL, 0, 0, S_LOCAL, P.x - GROUND.x * S_LOCAL, P.y - GROUND.y * S_LOCAL];
       const DEFEAT_BOUNCE = EVENT?.phase === "celebrating" && EVENT.outcome === "defeat" ? Math.max(0, Math.sin(EVENT.elapsed * Math.PI * 2 / CONFIG.farm.bossEvent.celebrationSeconds * 2)) : 0;
       const FADE = EVENT?.phase === "fading" ? CLAMP2(1 - EVENT.elapsed / CONFIG.farm.bossEvent.fadeSeconds, 0, 1) : 1;
       const PARTS = RECORD.parts, POSE = PRESENTATION.pose(B, PARTS, this.bossAttackPose, RECORD.hands);
@@ -16105,7 +17257,7 @@
         scaleY: POSE.body.scaleY * (1 - (K.squash || 0)) * (1 + 0.06 * DEFEAT_BOUNCE),
         opacity: FADE
       });
-      const TO_SVG = 1 / (0, import_vector_sockets6.bossVectorScale)(), HELD = speciesById(SPECIES).heldItem;
+      const TO_SVG = 1 / (0, import_vector_sockets7.bossVectorScale)(), HELD = speciesById(SPECIES).heldItem;
       for (const [PART, HAND] of Object.entries(POSE.hands)) {
         const AT = { x: HAND.x * TO_SVG, y: HAND.y * TO_SVG + POSE.body.y };
         PLAYER.setBasePose(PART, AT);
@@ -16189,7 +17341,7 @@
   }
 
   // src/farm-scenery.js
-  var import_vector_sockets7 = __toESM(require_vector_sockets(), 1);
+  var import_vector_sockets8 = __toESM(require_vector_sockets(), 1);
   init_farm_model();
   var { radiusX: RX, radiusY: RY } = CONFIG.farm.arena;
   var TAU3 = Math.PI * 2;
@@ -16336,9 +17488,9 @@
     C.lineCap = "round";
     C.beginPath();
     C.moveTo(B.x, B.y);
-    C.lineTo(B.x, B.y - 1.9 * S * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * 1.3);
+    C.lineTo(B.x, B.y - 1.9 * S * import_vector_sockets8.WORLD_HEIGHT_PROJECTION * 1.3);
     C.stroke();
-    const TOP = B.y - 2.9 * S * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * 1.3, DARK = tree.shade > 0.5 ? "#5f8c58" : "#67955c", LIGHT = tree.shade > 0.5 ? "#86b36d" : "#8dbb72";
+    const TOP = B.y - 2.9 * S * import_vector_sockets8.WORLD_HEIGHT_PROJECTION * 1.3, DARK = tree.shade > 0.5 ? "#5f8c58" : "#67955c", LIGHT = tree.shade > 0.5 ? "#86b36d" : "#8dbb72";
     paint.r.ellipse(B.x, TOP + 0.35 * S, 1.65 * S, 1.25 * S, DARK);
     paint.r.ellipse(B.x - 0.55 * S, TOP + 0.05 * S, 1.15 * S, 0.95 * S, DARK);
     paint.r.ellipse(B.x + 0.6 * S, TOP + 0.1 * S, 1.1 * S, 0.9 * S, DARK);
@@ -16385,7 +17537,7 @@
       }
       if (i > 0) {
         for (const T of [-0.55, 0, 0.55]) {
-          const WX = T * TIER_R * 0.98, WY = TOWER_Y - TIER_R * Math.sqrt(1 - T * T) * 0.98, BASE = paint.p(WX, WY, z + TIER_H * 0.32), WW = 0.42 * S * Math.sqrt(1 - T * T) + 1, WH = TIER_H * 0.4 * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S;
+          const WX = T * TIER_R * 0.98, WY = TOWER_Y - TIER_R * Math.sqrt(1 - T * T) * 0.98, BASE = paint.p(WX, WY, z + TIER_H * 0.32), WW = 0.42 * S * Math.sqrt(1 - T * T) + 1, WH = TIER_H * 0.4 * import_vector_sockets8.WORLD_HEIGHT_PROJECTION * S;
           C.fillStyle = "#4b4358";
           C.fillRect(BASE.x - WW - 1, BASE.y - WH - WW, WW * 2 + 2, WH + WW);
           C.fillStyle = glow > 0 ? "#ffe3a1" : "#f3cf86";
@@ -16429,7 +17581,7 @@
     drawDoor(paint, glow);
   }
   function drawDoor(paint, glow) {
-    const S = paint.s, C = paint.c, BASE = paint.p(0, RY + 0.05, 0), W = 1.7 * S, H = 3.6 * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S;
+    const S = paint.s, C = paint.c, BASE = paint.p(0, RY + 0.05, 0), W = 1.7 * S, H = 3.6 * import_vector_sockets8.WORLD_HEIGHT_PROJECTION * S;
     paint.r.ellipse(BASE.x, BASE.y + 0.1 * S, 2.6 * S, 0.9 * S, "#b3ab97");
     paint.r.ellipse(BASE.x, BASE.y, 2.1 * S, 0.7 * S, "#c4bda9");
     C.fillStyle = "#5a4f6c";
@@ -16492,7 +17644,7 @@
             continue;
           }
           for (const RZ of [0.45, 0.9]) {
-            const DZ = RZ * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S - PASS * 0.05 * S;
+            const DZ = RZ * import_vector_sockets8.WORLD_HEIGHT_PROJECTION * S - PASS * 0.05 * S;
             C.moveTo(A.x, A.y - DZ);
             C.lineTo(B.x, B.y - DZ);
           }
@@ -16513,7 +17665,7 @@
             continue;
           }
           C.moveTo(A.x + PASS * -0.03 * S, A.y);
-          C.lineTo(A.x + PASS * -0.03 * S, A.y - POST_Z * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S);
+          C.lineTo(A.x + PASS * -0.03 * S, A.y - POST_Z * import_vector_sockets8.WORLD_HEIGHT_PROJECTION * S);
         }
       }
       C.stroke();
@@ -16524,9 +17676,9 @@
       C.lineWidth = 0.38 * S;
       C.beginPath();
       C.moveTo(A.x, A.y);
-      C.lineTo(A.x, A.y - 1.8 * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S);
+      C.lineTo(A.x, A.y - 1.8 * import_vector_sockets8.WORLD_HEIGHT_PROJECTION * S);
       C.stroke();
-      paint.r.ellipse(A.x, A.y - 1.8 * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S, 0.3 * S, 0.22 * S, "#8f6c45");
+      paint.r.ellipse(A.x, A.y - 1.8 * import_vector_sockets8.WORLD_HEIGHT_PROJECTION * S, 0.3 * S, 0.22 * S, "#8f6c45");
     }
   }
   function drawFarmGrounds(renderer, world) {
@@ -16610,14 +17762,14 @@
   }
   function drawHallWall(paint, tint, sky, now) {
     const S = paint.s, C = paint.c, Z = HALL_WALL_HEIGHT, X0 = -RX - 2, X1 = RX + 2;
-    const A = paint.p(X0, RY, 0), B = paint.p(X1, RY, 0), TOP = Z * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S;
+    const A = paint.p(X0, RY, 0), B = paint.p(X1, RY, 0), TOP = Z * import_vector_sockets8.WORLD_HEIGHT_PROJECTION * S;
     C.fillStyle = rgb(tint.wall);
     C.fillRect(A.x, A.y - TOP, B.x - A.x, TOP);
     C.strokeStyle = "rgba(0,0,0,0.16)";
     C.lineWidth = Math.max(1, 0.04 * S);
     C.beginPath();
     for (let z = 1; z < Z; z++) {
-      const Y = A.y - z * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S;
+      const Y = A.y - z * import_vector_sockets8.WORLD_HEIGHT_PROJECTION * S;
       C.moveTo(A.x, Y);
       C.lineTo(B.x, Y);
     }
@@ -16628,7 +17780,7 @@
       if (!paint.visible(BASE, 160)) {
         continue;
       }
-      const WW = 1.5 * S, WB = BASE.y - 2.6 * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S, WT = BASE.y - 7 * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S;
+      const WW = 1.5 * S, WB = BASE.y - 2.6 * import_vector_sockets8.WORLD_HEIGHT_PROJECTION * S, WT = BASE.y - 7 * import_vector_sockets8.WORLD_HEIGHT_PROJECTION * S;
       C.fillStyle = rgb(tint.floor, 0.9);
       C.fillRect(BASE.x - WW - 0.25 * S, WT - WW, WW * 2 + 0.5 * S, WB - WT + WW);
       paint.r.ellipse(BASE.x, WT, WW + 0.25 * S, WW + 0.2 * S, rgb(tint.floor, 0.9));
@@ -16661,11 +17813,11 @@
         C.fillStyle = rgb(mix(tint.wall, [0, 0, 0], 0.25));
         C.fillRect(
           TX - 0.35 * S,
-          BASE.y - 6 * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S,
+          BASE.y - 6 * import_vector_sockets8.WORLD_HEIGHT_PROJECTION * S,
           0.7 * S,
-          6 * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S
+          6 * import_vector_sockets8.WORLD_HEIGHT_PROJECTION * S
         );
-        const TY = BASE.y - 3.6 * import_vector_sockets7.WORLD_HEIGHT_PROJECTION * S;
+        const TY = BASE.y - 3.6 * import_vector_sockets8.WORLD_HEIGHT_PROJECTION * S;
         paint.r.ellipse(
           TX,
           TY,
@@ -16837,7 +17989,7 @@
         this.vectorAssets.set(Number(SPECIES), {
           compiled: COMPILED,
           asset: CREATE_VECTOR_ASSET(this.meshes, COMPILED),
-          anchors: (0, import_vector_sockets8.readVectorSockets)(COMPILED, `species ${SPECIES}, ${COMPILED.sourcePath}`),
+          anchors: (0, import_vector_sockets9.readVectorSockets)(COMPILED, `species ${SPECIES}, ${COMPILED.sourcePath}`),
           parts: new Set(COMPILED.metadata.parts.map((part) => part.id))
         });
       }
@@ -16910,14 +18062,14 @@
     project(x, y, z = 0) {
       return {
         x: (x + this.offset[0] + this.view[0] + (this.shakeX || 0)) * this.scale,
-        y: (this.view[1] - (import_vector_sockets8.WORLD_DEPTH_PROJECTION * y + import_vector_sockets8.WORLD_HEIGHT_PROJECTION * z + this.offset[1])) * this.scale
+        y: (this.view[1] - (import_vector_sockets9.WORLD_DEPTH_PROJECTION * y + import_vector_sockets9.WORLD_HEIGHT_PROJECTION * z + this.offset[1])) * this.scale
       };
     }
     screenToWorld(clientX, clientY) {
       const R2 = this.canvas.getBoundingClientRect(), PX = (clientX - R2.left) * this.pixelRatio, PY = (clientY - R2.top) * this.pixelRatio;
       return {
         x: PX / this.scale - this.offset[0] - this.view[0],
-        y: (this.view[1] - PY / this.scale - this.offset[1]) / import_vector_sockets8.WORLD_DEPTH_PROJECTION
+        y: (this.view[1] - PY / this.scale - this.offset[1]) / import_vector_sockets9.WORLD_DEPTH_PROJECTION
       };
     }
     // The smallest a unit is drawn, in pixels. Zoomed out it shrinks with the view instead of staying full size.
@@ -16948,10 +18100,10 @@
       const BOUNDS = {
         left: -RX2 - 1.3,
         right: RX2 + 1.3,
-        bottom: -(RY2 + 1.3) * import_vector_sockets8.WORLD_DEPTH_PROJECTION,
-        top: (RY2 + 1.3) * import_vector_sockets8.WORLD_DEPTH_PROJECTION
+        bottom: -(RY2 + 1.3) * import_vector_sockets9.WORLD_DEPTH_PROJECTION,
+        top: (RY2 + 1.3) * import_vector_sockets9.WORLD_DEPTH_PROJECTION
       };
-      const BOSS_SCALE = (0, import_vector_sockets8.bossVectorScale)(), BOSS_X = RX2 - import_vector_sockets8.BOSS_ART_RADIUS, BOSS_Y = (RY2 - import_vector_sockets8.BOSS_ART_RADIUS) * import_vector_sockets8.WORLD_DEPTH_PROJECTION;
+      const BOSS_SCALE = (0, import_vector_sockets9.bossVectorScale)(), BOSS_X = RX2 - import_vector_sockets9.BOSS_ART_RADIUS, BOSS_Y = (RY2 - import_vector_sockets9.BOSS_ART_RADIUS) * import_vector_sockets9.WORLD_DEPTH_PROJECTION;
       const INCLUDE_BOSS = (record) => {
         const [X, Y, W, H] = record.compiled.viewBox, G = record.anchors.ground;
         BOUNDS.left = Math.min(BOUNDS.left, -BOSS_X - (G.x - X) * BOSS_SCALE);
@@ -16959,7 +18111,7 @@
         BOUNDS.bottom = Math.min(BOUNDS.bottom, -BOSS_Y - (Y + H - G.y) * BOSS_SCALE);
         BOUNDS.top = Math.max(
           BOUNDS.top,
-          BOSS_Y + (G.y - Y) * BOSS_SCALE + CONFIG.battle.dropHeight * import_vector_sockets8.WORLD_HEIGHT_PROJECTION
+          BOSS_Y + (G.y - Y) * BOSS_SCALE + CONFIG.battle.dropHeight * import_vector_sockets9.WORLD_HEIGHT_PROJECTION
         );
       };
       for (const RECORD of this.bossAssets.values()) {
@@ -17069,7 +18221,7 @@
       const S = this.scale, OX = this.offset[0] + this.view[0], OY = this.view[1] - this.offset[1], ALPHA = C.globalAlpha;
       C.beginPath();
       for (let i = 0; i < COUNT; i++) {
-        const X = (POINTS[i * 2] + OX) * S, Y = (OY - import_vector_sockets8.WORLD_DEPTH_PROJECTION * POINTS[i * 2 + 1]) * S;
+        const X = (POINTS[i * 2] + OX) * S, Y = (OY - import_vector_sockets9.WORLD_DEPTH_PROJECTION * POINTS[i * 2 + 1]) * S;
         if (i === 0) {
           C.moveTo(X, Y);
         } else {
@@ -17172,11 +18324,17 @@
           this.towerShotUntil = now + 2600;
         }
       }
+      if (INSIDE) {
+        this.towerShotUntil = 0;
+        this.cameraReturning = false;
+        this.fitHall(sim2);
+        return;
+      }
       if (MARCHING || now < this.towerShotUntil) {
         const ZOOM_TARGET = this.aspect > 1.2 ? 0.55 : 0.8;
         this.zoom += (ZOOM_TARGET - this.zoom) * 0.07;
         this.configure(this.scene, true);
-        const BASE_Y = this.baseY(), TARGET_Y = -0.2 * this.view[1] - import_vector_sockets8.WORLD_DEPTH_PROJECTION * CONFIG.farm.arena.radiusY - BASE_Y;
+        const BASE_Y = this.baseY(), TARGET_Y = -0.2 * this.view[1] - import_vector_sockets9.WORLD_DEPTH_PROJECTION * CONFIG.farm.arena.radiusY - BASE_Y;
         this.setPan(this.pan.x * 0.9, this.pan.y + (TARGET_Y - this.pan.y) * 0.07);
         this.cameraReturning = true;
       } else if (this.cameraReturning && !INSIDE) {
@@ -17187,20 +18345,18 @@
           this.resetZoom();
           this.cameraReturning = false;
         }
-      } else if (INSIDE) {
-        this.cameraReturning = false;
-        this.fitHall(sim2);
       }
     }
     // Inside the tower the whole hall is always in view: no panning or zooming, so tapping anywhere deploys.
     fitHall(world) {
-      const { radiusX: RX2, radiusY: RY2 } = CONFIG.farm.arena, BASE = this.scenePresentation.cameraView(this.aspect), HALL_FIT = Math.min(BASE[0] / (RX2 + 1), BASE[1] / (RY2 * import_vector_sockets8.WORLD_DEPTH_PROJECTION + 3.5)), HALF_X = BASE[0] / HALL_FIT, HALL_SCALE = this.canvas.width / (2 * HALF_X), TOP = BASE[1] / HALL_FIT - this.baseY(), BOTTOM = TOP - this.canvas.height / HALL_SCALE;
+      const { radiusX: RX2, radiusY: RY2 } = CONFIG.farm.arena, BASE = this.scenePresentation.cameraView(this.aspect), HALL_FIT = Math.min(BASE[0] / (RX2 + 1), BASE[1] / (RY2 * import_vector_sockets9.WORLD_DEPTH_PROJECTION + 3.5)), HALF_X = BASE[0] / HALL_FIT, HALL_SCALE = this.canvas.width / (2 * HALF_X), TOP = BASE[1] / HALL_FIT - this.baseY(), BOTTOM = TOP - this.canvas.height / HALL_SCALE;
       if (this.hallFramingKey !== this.sceneKey) {
         this.hallFramingKey = this.sceneKey;
         this.hallEffectBounds = { left: Infinity, right: -Infinity, top: -Infinity };
       }
       const BOUNDS = this.hallEffectBounds;
       includeFormationEffectBounds(world, BOUNDS);
+      includeCornProjectileBounds(world, BOUNDS);
       const LEFT = Math.min(-HALF_X, BOUNDS.left), RIGHT = Math.max(HALF_X, BOUNDS.right), FRAME_TOP = Math.max(TOP, BOUNDS.top), SCALE = Math.min(this.canvas.width / (RIGHT - LEFT), this.canvas.height / (FRAME_TOP - BOTTOM)), FIT = 2 * BASE[0] * SCALE / this.canvas.width;
       if (Math.abs(this.zoom - FIT) > 1e-6) {
         this.zoom = FIT;
@@ -17479,7 +18635,7 @@
   init_farm_model();
   init_unit_stats();
   init_tower_run();
-  init_model19();
+  init_model20();
   var { PresentationRuntime: PRESENTATION_RUNTIME, RenderObject: RENDER_OBJECT } = globalThis.BloomGamekitInterpolation;
   var R = RENDER_OBJECT;
   var PRESENTATION_STEP_MS = 50;
@@ -17719,6 +18875,8 @@
       projectileKind: R.STATE_KEY,
       shotIndex: R.STEP,
       fanIndex: R.STEP,
+      cornForm: R.STEP,
+      cornSlot: R.STEP,
       "path.from.x": R.STEP,
       "path.from.y": R.STEP,
       "path.from.z": R.STEP,
@@ -17749,6 +18907,8 @@
       this.projectileKind = p.projectileKind || "";
       this.shotIndex = p.shotIndex || 0;
       this.fanIndex = p.fanIndex || 0;
+      this.cornForm = p.cornForm || 0;
+      this.cornSlot = p.cornSlot || 0;
       this.path.from.x = p.path.from.x;
       this.path.from.y = p.path.from.y;
       this.path.from.z = p.path.from.z;
@@ -18391,7 +19551,7 @@
 
   // src/farm-snapshot.js
   init_formation_skill_state();
-  init_ability_state();
+  init_player_progression();
   var UNIT_SNAPSHOT_SHAPE = {
     x: 0,
     y: 0,
@@ -18497,7 +19657,6 @@
       "summon.mouth-t1"
     ].map((id) => [id, value])
   );
-  var ABILITY_INVESTMENTS = () => createAbilityProgressionState().abilities;
   var FARM_SNAPSHOT_SHAPE = {
     seed: 731,
     notices: [],
@@ -18529,12 +19688,8 @@
       farm: 0
     },
     formationRuntime: createFormationRuntime(),
-    playerProgression: {
-      schemaVersion: 3,
-      abilities: ABILITY_INVESTMENTS(),
-      towerBest: 0,
-      processedBossKillReceipts: []
-    },
+    playerProgression: createPlayerProgressionState(),
+    runProgressionSnapshot: null,
     starter: 0,
     foodTaps: {
       produced: 0,
@@ -18545,7 +19700,8 @@
     cornAttachments: {
       nextGroupId: 1,
       nextAttachmentId: 1,
-      groups: []
+      groups: [],
+      actions: []
     },
     attackSerial: 0,
     projectileSerial: 0,
@@ -18636,6 +19792,23 @@
     to: POINT
   });
   var JSON_PAYLOAD = /* @__PURE__ */ Symbol("json-payload");
+  var CORN_SOURCE = FIELDS(
+    "id generation ownerId faction isFormationClone species tier hp x y z giantUntil sourceKind attackPowerMultiplier sourceDamageScale buffed",
+    { attackerStats: JSON_PAYLOAD }
+  );
+  var CORN_ACTION = FIELDS(
+    "version id owner ownerGeneration tier form launchTick firstAttachTick speed windupSeconds recoverySeconds baseKernelCount extraKernel terminalIndex directMultiplier attachmentMultiplier",
+    {
+      shots: [FIELDS("slot weight duration kernelStart kernelCount")],
+      ranks: FIELDS("heating finish extra"),
+      budgetInputs: FIELDS(
+        "tierOneAttack tierAttack gradeMultiplier permanentMultiplier directRank attachmentRank speedRank commandSpeed"
+      ),
+      source: CORN_SOURCE,
+      attack: JSON_PAYLOAD,
+      criticalRolls: JSON_PAYLOAD
+    }
+  );
   var ATTACK = FIELDS(
     "id targetId targetGeneration hit resolvedMask hitMask peanutStrikeCount peanutAttackMultiplier peanutSpreadRadians leapDepartureCommitted leapCooldownResetApplied thornTargetId thornTargetGeneration thornShotsRemaining thornNextShotTick thornShotIndex",
     {
@@ -18645,7 +19818,8 @@
       projectileAbility: {
         effect: FIELDS("abilityId", { config: JSON_PAYLOAD })
       },
-      thornConfig: JSON_PAYLOAD
+      thornConfig: JSON_PAYLOAD,
+      cornAttack: CORN_ACTION
     }
   );
   var UNIT2 = shapeFields(UNIT_SNAPSHOT_SHAPE, {
@@ -18681,9 +19855,9 @@
       calculation: JSON_PAYLOAD
     }
   );
-  var PROGRESSION = shapeFields(FARM_SNAPSHOT_SHAPE.playerProgression, {});
+  var PROGRESSION = JSON_PAYLOAD;
   var PROJECTILE = FIELDS(
-    "isFormationClone id owner ownerGeneration targetId targetGeneration faction ownerId species tier elapsed x y z radius height hit attackMultiplier shotIndex projectileKind fanIndex",
+    "isFormationClone id owner ownerGeneration targetId targetGeneration faction ownerId species tier elapsed x y z radius height hit attackMultiplier shotIndex projectileKind fanIndex cornActionId cornSlot cornForm",
     {
       path: PATH,
       attackPayload: JSON_PAYLOAD,
@@ -18692,11 +19866,11 @@
     }
   );
   var CORN_ATTACHMENT = FIELDS(
-    "id groupId targetId targetGeneration ownerId ownerGeneration damageMultiplier status fadeTicks angle offsetX offsetY",
+    "id groupId targetId targetGeneration ownerId ownerGeneration damageMultiplier status fadeTicks angle offsetX offsetY cornActionId cornKernelIndex explosionTick cornDamageScale",
     { payload: JSON_PAYLOAD }
   );
   var CORN_GROUP = FIELDS(
-    "id targetId targetGeneration targetX targetY targetZ firstAttachTick closeAtTick nextExplosionTick status",
+    "id targetId targetGeneration targetX targetY targetZ firstAttachTick closeAtTick nextExplosionTick status cornActionId",
     { attachments: [CORN_ATTACHMENT] }
   );
   var SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
@@ -18705,8 +19879,9 @@
     units: [UNIT2],
     boss: BOSS,
     playerProgression: PROGRESSION,
+    runProgressionSnapshot: PROGRESSION,
     projectiles: [PROJECTILE],
-    cornAttachments: FIELDS("nextGroupId nextAttachmentId", { groups: [CORN_GROUP] }),
+    cornAttachments: FIELDS("nextGroupId nextAttachmentId", { groups: [CORN_GROUP], actions: [CORN_ACTION] }),
     bossRewardReceipts: [REWARD],
     bossRewardStreams: JSON_PAYLOAD,
     bossRewardInventory: [FIELDS("species tier count")],
@@ -18780,7 +19955,9 @@
   }
 
   // src/farm-snapshot-validation.js
-  init_definition15();
+  init_attack_action();
+  init_corn_attack();
+  init_definition16();
   var INTEGER2 = (v, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(v) && v >= min && v <= max;
   var VALID_BATTLE_UNIT_ID = (id, bossSummonSerial) => INTEGER2(id, 1, CONFIG.farm.maxUnitId) || INTEGER2(id, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + bossSummonSerial);
   function assertSnapshot(ok) {
@@ -18790,7 +19967,7 @@
   }
   var ASSERT2 = assertSnapshot;
   var MAX_PEANUT_SPLIT_CHILDREN2 = 2;
-  function finiteTree(v, depth = 0, key = "") {
+  function finiteTree(v, depth = 0, key = "", progression = false) {
     ASSERT2(depth < 18);
     if (typeof v === "number") {
       const SAFE_COUNTERS = /* @__PURE__ */ new Set([
@@ -18809,22 +19986,31 @@
         "pendingTrials"
       ]);
       ASSERT2(
-        SAFE_COUNTERS.has(key) ? Number.isSafeInteger(v) && Math.abs(v) <= Number.MAX_SAFE_INTEGER : Number.isFinite(v) && Math.abs(v) < 1e13
+        progression && ["masteryLevel", "masteryXp"].includes(key) ? Number.isFinite(v) && v >= 0 : SAFE_COUNTERS.has(key) ? Number.isSafeInteger(v) && Math.abs(v) <= Number.MAX_SAFE_INTEGER : Number.isFinite(v) && Math.abs(v) < 1e13
       );
     } else if (Array.isArray(v)) {
-      const MAX = key === "units" ? CONFIG.battle.capacity.battleUnits : key === "projectiles" ? CONFIG.battle.capacity.projectiles : key === "bossRewardReceipts" || key === "processedBossKillReceipts" ? 1e5 : 1024;
+      const MAX = key === "units" ? CONFIG.battle.capacity.battleUnits : key === "projectiles" || key === "actions" || key === "groups" ? CONFIG.battle.capacity.projectiles : key === "bossRewardReceipts" || key === "processedBossKillReceipts" ? 1e5 : 1024;
       ASSERT2(v.length <= MAX);
-      v.forEach((x) => finiteTree(x, depth + 1));
+      v.forEach((x) => finiteTree(x, depth + 1, "", progression));
     } else if (v && typeof v === "object") {
       for (const [K, X] of Object.entries(v)) {
         ASSERT2(!["__proto__", "constructor", "prototype"].includes(K));
-        finiteTree(X, depth + 1, K);
+        finiteTree(
+          X,
+          depth + 1,
+          K,
+          progression || depth === 0 && ["playerProgression", "runProgressionSnapshot"].includes(K)
+        );
       }
     } else {
       ASSERT2(v === null || typeof v === "boolean" || typeof v === "string" && v.length < 256);
     }
   }
   function shape(v, t, path = "snapshot") {
+    if (path === "snapshot.playerProgression" || path === "snapshot.runProgressionSnapshot") {
+      validateProgression(v);
+      return;
+    }
     if (v === null || typeof v !== "object" || Array.isArray(v)) {
       throw new TypeError(`Invalid farm snapshot object at ${path}.`);
     }
@@ -18860,6 +20046,23 @@
       }
     }
   }
+  function sameCheckpointValue(left, right) {
+    if (left === right) {
+      return true;
+    }
+    if (!left || !right || typeof left !== "object" || typeof right !== "object" || Array.isArray(left) !== Array.isArray(right)) {
+      return false;
+    }
+    const KEYS = Object.keys(left);
+    return KEYS.length === Object.keys(right).length && KEYS.every((key) => Object.hasOwn(right, key) && sameCheckpointValue(left[key], right[key]));
+  }
+  function validateProgression(progression) {
+    ASSERT2(
+      progression && Object.keys(progression).length === 4 && ["schemaVersion", "abilities", "towerBest", "processedBossKillReceipts"].every(
+        (key) => Object.hasOwn(progression, key)
+      ) && isValidPlayerProgressionState(progression)
+    );
+  }
   function validWheatCommandBuffs(buffs) {
     return Array.isArray(buffs) && buffs.length <= 3 && buffs.every(
       (buff) => buff && Number.isSafeInteger(buff.level) && buff.level >= 0 && buff.level <= 2 && INTEGER2(buff.expiresAtTick, 1, 1e12)
@@ -18879,6 +20082,20 @@
     );
     ASSERT2(raw.scene === "farm");
     ASSERT2(Array.isArray(raw.mergeTasks) && raw.mergeTasks.length <= CONFIG.farm.capacity.battleUnits);
+    const CORN_ACTIONS = /* @__PURE__ */ new Map();
+    ASSERT2(
+      Array.isArray(raw.cornAttachments.actions) && raw.cornAttachments.actions.length <= CONFIG.battle.capacity.projectiles
+    );
+    for (const RECORD of raw.cornAttachments.actions) {
+      ASSERT2(
+        isCornAttackRecord(RECORD) && INTEGER2(RECORD.id, 1, raw.attackSerial) && RECORD.launchTick <= raw.simulationTick && RECORD.attack.lastTick <= raw.simulationTick && !RECORD.attack.cancelled && (RECORD.firstAttachTick === null || RECORD.firstAttachTick <= raw.simulationTick) && !CORN_ACTIONS.has(RECORD.id)
+      );
+      const HIT_KEYS = new Set(RECORD.attack.hits.flat());
+      ASSERT2(
+        Object.keys(RECORD.criticalRolls).length === HIT_KEYS.size && Object.keys(RECORD.criticalRolls).every((key) => HIT_KEYS.has(key))
+      );
+      CORN_ACTIONS.set(RECORD.id, RECORD);
+    }
     const MERGE_TASK_UNIT_IDS = /* @__PURE__ */ new Set(), PENDING_MERGE_COST = new Int32Array(CONFIG.unit.speciesCount);
     for (const T of raw.mergeTasks) {
       ASSERT2(
@@ -18916,7 +20133,10 @@
       raw.farmBossEvent && ["idle", "dropping", "fighting", "celebrating", "fading"].includes(raw.farmBossEvent.phase) && ["idle", "fighting", "victory", "defeat"].includes(raw.farmBossEvent.outcome) && Number.isFinite(raw.farmBossEvent.elapsed) && raw.farmBossEvent.elapsed >= 0
     );
     ASSERT2(INTEGER2(raw.nextBossEncounterId, 1, 1e12) && Array.isArray(raw.bossRewardReceipts));
-    ASSERT2(isValidPlayerProgressionState(raw.playerProgression));
+    validateProgression(raw.playerProgression);
+    if (raw.runProgressionSnapshot !== null) {
+      validateProgression(raw.runProgressionSnapshot);
+    }
     ASSERT2(Array.isArray(raw.food) && raw.food.length <= 140);
     const FARM_EVENT = raw.farmBossEvent;
     if (FARM_EVENT.phase === "idle") {
@@ -19111,6 +20331,15 @@
         ASSERT2(
           INTEGER2(A.id, 1, raw.attackSerial) && INTEGER2(A.targetGeneration, 1, 1e12) && typeof A.hit === "boolean" && A.target && Number.isFinite(A.target.x) && Number.isFinite(A.target.y)
         );
+        if (A.cornAttack !== void 0) {
+          const CANONICAL = CORN_ACTIONS.get(A.id);
+          ASSERT2(
+            A.cornAttack.launchTick === null ? !CANONICAL && Object.keys(A.cornAttack.criticalRolls).length === 0 && A.cornAttack.firstAttachTick === null : CANONICAL && sameCheckpointValue(A.cornAttack, CANONICAL)
+          );
+          ASSERT2(
+            U.species === 1 && isCornAttackRecord(A.cornAttack, { pending: true }) && A.cornAttack.id === A.id && A.cornAttack.owner === U.id && A.cornAttack.ownerGeneration === U.generation && A.cornAttack.tier === U.tier
+          );
+        }
         if (hasUnitCapability(U.species, "repeatedStrike")) {
           ASSERT2(
             INTEGER2(A.peanutStrikeCount, 2, 5) && Number.isFinite(A.peanutAttackMultiplier) && A.peanutAttackMultiplier > 0 && A.peanutAttackMultiplier <= 10 && Number.isFinite(A.peanutSpreadRadians) && A.peanutSpreadRadians >= 0 && A.peanutSpreadRadians <= Math.PI / 6
@@ -19170,7 +20399,7 @@
         ASSERT2(Number.isFinite(F[K]));
       }
     }
-    const PROJECTILE_IDS = /* @__PURE__ */ new Set();
+    const PROJECTILE_IDS = /* @__PURE__ */ new Set(), CORN_PROJECTILE_SLOTS = /* @__PURE__ */ new Set();
     for (const P of raw.projectiles) {
       validatePath(P.path);
       ASSERT2(INTEGER2(P.id, 1, raw.projectileSerial) && !PROJECTILE_IDS.has(P.id));
@@ -19181,6 +20410,15 @@
       ASSERT2(
         P.targetId === void 0 || P.targetId === "boss" || VALID_BATTLE_UNIT_ID(P.targetId, raw.bossSummonSerial)
       );
+      if (P.cornActionId !== void 0) {
+        const RECORD = CORN_ACTIONS.get(P.cornActionId), SHOT = RECORD?.shots[P.cornSlot];
+        const SLOT_KEY = `${P.cornActionId}:${P.cornSlot}`;
+        ASSERT2(
+          RECORD && SHOT && !CORN_PROJECTILE_SLOTS.has(SLOT_KEY) && P.species === 1 && P.tier === RECORD.tier && P.cornForm === RECORD.form && INTEGER2(P.cornSlot, 0, RECORD.shots.length - 1) && P.shotIndex === P.cornSlot && P.owner === RECORD.owner && P.ownerGeneration === RECORD.ownerGeneration && INTEGER2(P.targetGeneration, 1, 1e12) && P.faction === RECORD.source.faction && P.ownerId === RECORD.source.ownerId && P.attackMultiplier === RECORD.directMultiplier * SHOT.weight && P.path.duration === SHOT.duration && typeof P.hit === "boolean" && P.attackPayload?.damageMultiplier === P.attackMultiplier && P.attackPayload.sourceDamageScale === RECORD.source.sourceDamageScale && P.attackPayload.attackPowerMultiplier === RECORD.source.attackPowerMultiplier && P.attackPayload.attackerStats?.attackPower === RECORD.source.attackerStats.attackPower
+        );
+        CORN_PROJECTILE_SLOTS.add(SLOT_KEY);
+        continue;
+      }
       ASSERT2(
         Object.values(FACTION_CONFIG).includes(P.faction) && typeof P.ownerId === "string" && INTEGER2(P.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER2(P.tier, 1, CONFIG.unit.maxTier) && typeof P.hit === "boolean" && Number.isFinite(P.attackMultiplier) && P.attackMultiplier > 0 && P.attackMultiplier <= 10 && INTEGER2(P.shotIndex, 0, 4)
       );
@@ -19193,19 +20431,43 @@
         );
       }
     }
-    const ATTACHMENTS = /* @__PURE__ */ new Set(), CORN_DEFINITION = CORN_ATTACHMENT_FEATURE.definition;
+    const ATTACHMENTS = /* @__PURE__ */ new Set(), CORN_GROUP_TARGETS = /* @__PURE__ */ new Set(), CORN_DEFINITION = CORN_ATTACHMENT_FEATURE.definition;
     ASSERT2(
       INTEGER2(raw.cornAttachments.nextGroupId, 1, 1e12) && INTEGER2(raw.cornAttachments.nextAttachmentId, 1, 1e12) && Array.isArray(raw.cornAttachments.groups) && raw.cornAttachments.groups.length <= CONFIG.battle.capacity.projectiles
     );
     for (const GROUP of raw.cornAttachments.groups) {
+      const RECORD = GROUP.cornActionId === void 0 ? null : CORN_ACTIONS.get(GROUP.cornActionId);
+      ASSERT2(GROUP.cornActionId === void 0 || !!RECORD);
+      const KERNEL_INDICES = /* @__PURE__ */ new Set(), TARGET_KEY = attackTargetKey(GROUP.targetId, GROUP.targetGeneration), GROUP_KEY = `${GROUP.cornActionId}:${TARGET_KEY}`;
+      let previousKernelIndex = -1;
+      if (RECORD) {
+        ASSERT2(!CORN_GROUP_TARGETS.has(GROUP_KEY) && GROUP.firstAttachTick === RECORD.firstAttachTick);
+        CORN_GROUP_TARGETS.add(GROUP_KEY);
+        const PENDING = GROUP.attachments.filter((attachment) => attachment.status === "attached");
+        const TARGET = GROUP.targetId === "boss" ? raw.boss : UNITS_BY_ID.get(GROUP.targetId);
+        ASSERT2(
+          GROUP.status !== "cancelled" || !TARGET || TARGET.generation !== GROUP.targetGeneration || TARGET.hp <= 0
+        );
+        ASSERT2(
+          (GROUP.status === "collecting" ? raw.simulationTick < GROUP.closeAtTick && GROUP.nextExplosionTick === null && PENDING.length === GROUP.attachments.length : GROUP.status === "exploding" ? raw.simulationTick >= GROUP.closeAtTick && PENDING.length > 0 && GROUP.nextExplosionTick === PENDING[0].explosionTick : PENDING.length === 0) && GROUP.attachments.every(
+            (attachment) => attachment.status === "attached" ? attachment.explosionTick > raw.simulationTick && attachment.fadeTicks === CORN_DEFINITION.fadeTicks : GROUP.status === "cancelled" || attachment.explosionTick <= raw.simulationTick
+          )
+        );
+      }
       ASSERT2(
         INTEGER2(GROUP.id, 1, raw.cornAttachments.nextGroupId - 1) && INTEGER2(GROUP.targetGeneration, 1, 1e12) && (GROUP.targetId === "boss" || VALID_BATTLE_UNIT_ID(GROUP.targetId, raw.bossSummonSerial)) && ["collecting", "exploding", "complete", "cancelled"].includes(GROUP.status) && Number.isFinite(GROUP.targetX) && Number.isFinite(GROUP.targetY) && Number.isFinite(GROUP.targetZ) && INTEGER2(GROUP.firstAttachTick, 0, raw.simulationTick) && GROUP.closeAtTick === GROUP.firstAttachTick + CORN_DEFINITION.attachDelayTicks && (GROUP.nextExplosionTick === null || INTEGER2(GROUP.nextExplosionTick, 0, 1e12)) && Array.isArray(GROUP.attachments) && GROUP.attachments.length > 0 && GROUP.attachments.length <= CONFIG.battle.capacity.projectiles
       );
       for (const ATTACHMENT of GROUP.attachments) {
+        const SLOT = RECORD?.shots.findIndex(
+          (shot) => ATTACHMENT.cornKernelIndex >= shot.kernelStart && ATTACHMENT.cornKernelIndex < shot.kernelStart + shot.kernelCount
+        );
+        const HIT_SLOT = SLOT === -1 ? RECORD.shots.length - 1 : SLOT;
         ASSERT2(
-          INTEGER2(ATTACHMENT.id, 1, raw.cornAttachments.nextAttachmentId - 1) && !ATTACHMENTS.has(ATTACHMENT.id) && ATTACHMENT.groupId === GROUP.id && ATTACHMENT.targetId === GROUP.targetId && ATTACHMENT.targetGeneration === GROUP.targetGeneration && INTEGER2(ATTACHMENT.ownerId, 1, 1e12) && INTEGER2(ATTACHMENT.ownerGeneration, 1, 1e12) && Number.isFinite(ATTACHMENT.damageMultiplier) && ATTACHMENT.damageMultiplier >= 0.5 && ATTACHMENT.damageMultiplier <= 1 && ["attached", "fading", "removed"].includes(ATTACHMENT.status) && INTEGER2(ATTACHMENT.fadeTicks, 0, CORN_DEFINITION.fadeTicks) && Number.isFinite(ATTACHMENT.angle) && Number.isFinite(ATTACHMENT.offsetX) && Number.isFinite(ATTACHMENT.offsetY) && ATTACHMENT.payload && Number.isFinite(ATTACHMENT.payload.attackerStats?.attackPower) && Number.isFinite(ATTACHMENT.payload.attackPowerMultiplier) && typeof ATTACHMENT.payload.ownerId === "string" && Object.values(FACTION_CONFIG).includes(ATTACHMENT.payload.faction)
+          INTEGER2(ATTACHMENT.id, 1, raw.cornAttachments.nextAttachmentId - 1) && !ATTACHMENTS.has(ATTACHMENT.id) && ATTACHMENT.groupId === GROUP.id && ATTACHMENT.targetId === GROUP.targetId && ATTACHMENT.targetGeneration === GROUP.targetGeneration && INTEGER2(ATTACHMENT.ownerId, 1, 1e12) && INTEGER2(ATTACHMENT.ownerGeneration, 1, 1e12) && Number.isFinite(ATTACHMENT.damageMultiplier) && (RECORD ? ATTACHMENT.cornActionId === GROUP.cornActionId && INTEGER2(ATTACHMENT.cornKernelIndex, 0, RECORD.terminalIndex) && !KERNEL_INDICES.has(ATTACHMENT.cornKernelIndex) && ATTACHMENT.cornKernelIndex > previousKernelIndex && RECORD.attack.hits[HIT_SLOT]?.includes(TARGET_KEY) && (ATTACHMENT.cornDamageScale === 1 || ATTACHMENT.cornDamageScale === 0.5) && ATTACHMENT.damageMultiplier === cornKernelMultiplier(RECORD, ATTACHMENT.cornKernelIndex) * ATTACHMENT.cornDamageScale && ATTACHMENT.explosionTick === RECORD.firstAttachTick + CORN_DEFINITION.attachDelayTicks + ATTACHMENT.cornKernelIndex * CORN_DEFINITION.explosionSpacingTicks && ATTACHMENT.ownerId === RECORD.owner && ATTACHMENT.ownerGeneration === RECORD.ownerGeneration : ATTACHMENT.damageMultiplier >= 0.5 && ATTACHMENT.damageMultiplier <= 1) && ["attached", "fading", "removed"].includes(ATTACHMENT.status) && (!RECORD || (ATTACHMENT.status === "removed" ? ATTACHMENT.fadeTicks === 0 : ATTACHMENT.fadeTicks > 0)) && INTEGER2(ATTACHMENT.fadeTicks, 0, CORN_DEFINITION.fadeTicks) && Number.isFinite(ATTACHMENT.angle) && Number.isFinite(ATTACHMENT.offsetX) && Number.isFinite(ATTACHMENT.offsetY) && ATTACHMENT.payload && Number.isFinite(ATTACHMENT.payload.attackerStats?.attackPower) && Number.isFinite(ATTACHMENT.payload.attackPowerMultiplier) && typeof ATTACHMENT.payload.ownerId === "string" && Object.values(FACTION_CONFIG).includes(ATTACHMENT.payload.faction)
         );
         ATTACHMENTS.add(ATTACHMENT.id);
+        KERNEL_INDICES.add(ATTACHMENT.cornKernelIndex);
+        previousKernelIndex = ATTACHMENT.cornKernelIndex;
       }
     }
     ASSERT2(INTEGER2(raw.projectileSerial, 0, 1e12) && INTEGER2(raw.bossSummonSerial, 0, 1e12));
@@ -19280,6 +20542,12 @@
       UNIT_DATA.map((data) => {
         const U = Object.assign(new UNIT(data.id, data.species, data.tier, data.x, data.y), structuredClone(data));
         U.ability = Object.assign(CREATE_UNIT_ATTACK_CYCLE(U), structuredClone(data.ability));
+        if (U.ability.action?.cornAttack?.launchTick !== null && U.ability.action?.cornAttack) {
+          const RECORD = G.cornAttachments.actions.find((action) => action.id === U.ability.action.cornAttack.id);
+          if (RECORD) {
+            U.ability.action.cornAttack = RECORD;
+          }
+        }
         const SPECIAL = CREATE_UNIT_SPECIAL_ABILITY(U);
         U.specialAbility = SPECIAL ? Object.assign(SPECIAL, structuredClone(data.specialAbility || {})) : null;
         return U;
@@ -19802,6 +21070,95 @@
   init_ability_state();
   init_unit_abilities();
   init_player_progression();
+  init_state();
+
+  // src/species-growth-presentation.js
+  init_state();
+  init_definition12();
+  init_ability_state();
+  init_species_catalog();
+  init_player_progression();
+  var CORN_FORMS = Object.freeze([
+    ["알갱이 부착", "알 1개가 붙고 폭발"],
+    ["세 알 투척", "3개 알이 시간차로 적중"],
+    ["통옥수수", "통옥수수가 꽂히고 알 4개 연쇄"],
+    ["대왕옥수수", "큰 포물선 직격과 알 5개 연쇄"],
+    ["옥수수 메테오", "상공에서 낙하하고 알 6개 연쇄"],
+    ["삼연 메테오", "시차 낙하 3회 · 부착 총 9개"]
+  ]);
+  var GROWTH_REASON_LABELS = /* @__PURE__ */ new Map([
+    ["not-available", "아직 미출시"],
+    ["unknown-node", "사용할 수 없는 노드"],
+    ["invalid-state", "성장 데이터를 확인해 주세요"],
+    ["combat-lock", "런 종료 후 농장에서 투자 가능"],
+    ["farm-only", "농장에서 투자 가능"],
+    ["max-rank", "최대 랭크"],
+    ["insufficient-points", "숙련 포인트 부족"]
+  ]);
+  function renderGrowthMasteryMarkup(investment, definition) {
+    const GROWTH = growthForAbility(definition.id), BUILD = growthBuildOf(investment), SPENT = GROWTH.investedPoints(BUILD), CAPPED = BUILD.masteryLevel === SPECIES_MASTERY_CAP, NEXT = CAPPED ? null : masteryXpForNextLevel(BUILD.masteryLevel), NAME = speciesById(definition.species).name;
+    return `<div class="ability-tree__progress" aria-live="polite">
+      <div><strong>${NAME} 숙련 Lv. ${BUILD.masteryLevel} / ${SPECIES_MASTERY_CAP}</strong><span>${formatXpForDisplay(BUILD.masteryXp)}${CAPPED ? " 누적 XP · 레벨 상한" : ` / ${formatXpForDisplay(NEXT)} XP`}</span></div>
+      ${CAPPED ? '<p class="ability-tree__note">숙련은 최대예요. 이후 XP는 보존되며 포인트는 추가 지급되지 않아요.</p>' : `<progress max="${NEXT}" value="${BUILD.masteryXp}" aria-label="${NAME} 다음 숙련까지 경험치"></progress>`}
+      ${investment.legacyInvestment ? `<p class="ability-tree__note" data-growth-refund>기존 투자 ${investedPointsOf(investment.legacyInvestment)}P 환급 완료 · 현재 미투자 ${GROWTH.pointsLeft(BUILD)}P. 환급분은 새 숙련 포인트 예산에 포함되어 있으며 별도 보너스로 더해지지 않아요.</p>` : ""}
+      <div class="growth-wallet" data-growth-wallet><span>총 <strong>${BUILD.masteryLevel}P</strong></span><span>사용 <strong>${SPENT}P</strong></span><span>남음 <strong>${GROWTH.pointsLeft(BUILD)}P</strong></span></div>
+    </div>`;
+  }
+  function renderGrowthCardMarkup(state, definition, context) {
+    const GROWTH = growthForAbility(definition.id), BUILD = growthBuildOf(state.abilities[definition.id]), ACTUAL_TIER = Math.max(1, Math.min(6, context.highestSpeciesTier?.[definition.species] || 1)), FORM_TIER = GROWTH.attackTier(BUILD, ACTUAL_TIER), EVOLUTION = GROWTH.definition.nodes.filter((node) => node.kind === "evolution"), SECTIONS = [
+      ["basic", "기본 성장", "각 1P · 10랭크"],
+      ["specialty", "특화 성장", "각 2P · 5랭크"]
+    ].map(
+      ([kind, label, cost]) => `<section class="ability-branch growth-branch" aria-label="${label}"><h4>${label} <small>${cost}</small></h4><div class="ability-branch__nodes">${GROWTH.definition.nodes.filter((node) => node.kind === kind).map((node) => renderGrowthNode(GROWTH, BUILD, definition.id, node, context)).join("")}</div></section>`
+    ).join("");
+    return `<article class="ability-card growth-card" data-species="${definition.species}" data-ability="${definition.id}" data-growth-tree>
+      <header class="ability-card__header"><div><p class="ability-card__species">${speciesById(definition.species).name}</p><h3>포격과 연쇄 폭발</h3></div><span class="ability-card__grade">50P 선택 / 용량 ${growthTreeCapacity(GROWTH.definition)}P</span></header>
+      <p class="ability-card__description">진화는 공격 동작을, 기본·특화는 전투 성향을 바꿔요. 합성은 연구 없이도 가능하고 실제 등급만큼 공격력이 보정돼요.</p>
+      <p class="ability-card__current-effect" data-growth-form>보유 최고 합성 등급 T${ACTUAL_TIER} · 현재 연구 형태 T${FORM_TIER} (${CORN_FORMS[FORM_TIER - 1][0]})<br>연구해도 유닛의 실제 등급을 넘는 형태는 사용하지 않아요.</p>
+      <section class="ability-branch growth-evolution" aria-label="공격 진화"><h4>공격 진화 <small>각 2P · 앞 단계부터</small></h4><div class="growth-evolution__nodes"><div class="growth-evolution__root"><strong>T1 ${CORN_FORMS[0][0]}</strong><span>기본 해금 · 무료</span></div>${EVOLUTION.map((node) => renderGrowthNode(GROWTH, BUILD, definition.id, node, context)).join("")}</div></section>
+      <section class="growth-preview" aria-label="옥수수 공격 동작 미리보기"><h4>동작 미리보기</h4><div class="growth-preview__tiers">${CORN_FORMS.map((form, index) => `<button type="button" data-corn-preview-tier="${index + 1}" aria-pressed="false">T${index + 1} ${form[0]}</button>`).join("")}</div><div class="corn-evolution-preview" aria-label="선택한 옥수수 공격 시연"></div><p class="ability-tree__note" data-corn-preview-caption>단계를 누르면 같은 상황의 실제 공격을 재생해요. 농장과 투자는 변경되지 않아요.</p></section>
+      <div class="ability-card__branches">${SECTIONS}</div>
+      <p class="ability-tree__note">기본 부착 총예산은 알 수로 나눠요. 추가 알과 마지막 폭발 보너스는 전체 부착 예산을 기준으로 별도 계산돼요. 첫 부착 1초 뒤부터 0.1초 간격으로 폭발해요.</p>
+    </article>`;
+  }
+  function renderGrowthNode(growth, build, abilityId, node, context) {
+    const RANK = build.nodeRanks[node.id] || 0, CHECK = growth.canPurchase(build, node.id, context), MAXED = RANK === node.maxRank, NEXT_RANK = Math.min(node.maxRank, RANK + 1), UNLOCK = node.unlockLevels[NEXT_RANK - 1], TITLE = node.kind === "evolution" ? `T${node.tier} ${CORN_FORMS[node.tier - 1][0]}` : node.name, HELP_ID = `ability-help-${abilityId}-${node.id}`, ATTR = `${abilityId}:${node.id.replace(/-(\d+)$/, ":$1")}`, REASON = CHECK.allowed ? "투자 가능" : growthReason(CHECK, node), EFFECT = node.kind === "evolution" ? CORN_FORMS[node.tier - 1][1] : growthEffect(node.id, RANK), NEXT_EFFECT = node.kind === "evolution" || MAXED ? "" : `다음: ${growthEffect(node.id, NEXT_RANK)}`, PREREQUISITE = node.prerequisite ? ` · 이전 T${node.tier - 1} ${build.nodeRanks[node.prerequisite] === 1 ? "충족" : "연구 필요"}` : "";
+    return `<div class="ability-node ${RANK > 0 ? "is-purchased" : ""} ${CHECK.allowed ? "is-ready" : "is-locked"}" data-growth-node="${node.id}">
+      <button type="button" class="ability-node__button" data-ability-node="${ATTR}" aria-describedby="${HELP_ID}" aria-disabled="${!CHECK.allowed}">
+        <span class="ability-node__title">${TITLE} <span class="growth-rank">${RANK}/${node.maxRank}</span></span><span class="ability-node__effect">${EFFECT}</span><span class="ability-node__cost">${MAXED ? "완료" : `${node.pointCost}P`}</span>${NEXT_EFFECT ? `<span class="growth-next">${NEXT_EFFECT}</span>` : ""}
+      </button>
+      <span class="ability-node__status" id="${HELP_ID}">${REASON} · 숙련 Lv.${UNLOCK}${PREREQUISITE}</span>
+    </div>`;
+  }
+  function growthReason(check, node) {
+    if (check.reason === "mastery-required") {
+      return `숙련 Lv.${check.requiredLevel} 필요`;
+    }
+    if (check.reason === "prerequisite-required") {
+      return `이전 T${node.tier - 1} 미연구`;
+    }
+    return GROWTH_REASON_LABELS.get(check.reason) || "잠김";
+  }
+  function growthEffect(nodeId, rank) {
+    switch (nodeId) {
+      case "basic-1":
+        return `직격 피해 +${rank * 3}%`;
+      case "basic-2":
+        return `부착 폭발 피해 +${rank * 3}%`;
+      case "basic-3":
+        return `공격 속도 +${rank * 2}%`;
+      case "specialty-1":
+        return `뒤 순서마다 +${rank * 2}% · 최대 +20%`;
+      case "specialty-2":
+        return `마지막 예정 폭발에 총 부착 예산의 ${rank * 8}% 추가`;
+      case "specialty-3":
+        return `${rank * 8}% 확률 · 총 부착 예산 100%의 추가 알`;
+      default:
+        throw new RangeError(`Unknown growth effect: ${nodeId}`);
+    }
+  }
+
+  // src/ability-tree.js
   init_ability_progression();
   var DEFAULT_ABILITY_PRESENTATION = {
     label(_definition, _value, level) {
@@ -19832,7 +21189,7 @@
       (species) => `<button type="button" data-ability-species="${species.id}" aria-pressed="${species.id === selectedSpecies}">${species.name}</button>`
     ).join("");
   }
-  function renderAbilityTreeMarkup(state, { highestSpeciesTier = {}, location: location2 = "farm", inCombat = false, selectedSpecies = null } = {}) {
+  function renderAbilityTreeMarkup(state, { highestSpeciesTier = {}, location: location2 = "farm", inCombat = false, runActive = false, selectedSpecies = null } = {}) {
     if (!isValidAbilityProgressionState(state)) {
       throw new TypeError("Cannot render invalid ability progression state");
     }
@@ -19840,7 +21197,8 @@
     const CONTEXT = {
       highestSpeciesTier,
       location: location2,
-      inCombat
+      inCombat,
+      runActive
     };
     const RESET_CHECK = canResetAbilityProgression(
       state,
@@ -19848,11 +21206,13 @@
       Number.isInteger(selectedSpecies) ? selectedSpecies : null
     );
     const VISIBLE_DEFINITIONS = Number.isInteger(selectedSpecies) ? SPECIES_ABILITY_DEFINITIONS.filter((definition) => definition.species === selectedSpecies) : SPECIES_ABILITY_DEFINITIONS;
-    const CARDS = VISIBLE_DEFINITIONS.map((definition) => renderAbilityCard(state, definition, CONTEXT)).join("") || `<p class="ability-tree__note" role="status">이 병종은 기본 공격으로 전투에 참여해요. 전용 특수 능력 트리는 아직 추가되지 않았어요.</p>`;
+    const CARDS = VISIBLE_DEFINITIONS.map(
+      (definition) => isGrowthInvestment(state.abilities[definition.id]) ? renderGrowthCardMarkup(state, definition, CONTEXT) : renderAbilityCard(state, definition, CONTEXT)
+    ).join("") || `<p class="ability-tree__note" role="status">이 병종은 기본 공격으로 전투에 참여해요. 전용 특수 능력 트리는 아직 추가되지 않았어요.</p>`;
     const FOCUS = Number.isInteger(selectedSpecies) ? SPECIES_ABILITY_DEFINITIONS.find((definition) => definition.species === selectedSpecies) : null, POINTS = FOCUS ? getAbilityPointsLeft(state, FOCUS.id) : SPECIES_ABILITY_DEFINITIONS.reduce(
       (total, definition) => total + getAbilityPointsLeft(state, definition.id),
       0
-    ), LEVEL_MARKUP = FOCUS ? renderMasteryMarkup(state.abilities[FOCUS.id], speciesById(FOCUS.species).name) : "", DEFAULTS_NOTE = "모든 일반 병종의 대표 능력은 Common(T1)부터 무료로 적용돼요. 이 종의 보스를 잡을수록 숙련이 올라 능력을 강화할 포인트가 생겨요.";
+    ), LEVEL_MARKUP = FOCUS ? isGrowthInvestment(state.abilities[FOCUS.id]) ? renderGrowthMasteryMarkup(state.abilities[FOCUS.id], FOCUS) : renderMasteryMarkup(state.abilities[FOCUS.id], speciesById(FOCUS.species).name) : "", DEFAULTS_NOTE = "모든 일반 병종의 대표 능력은 Common(T1)부터 무료로 적용돼요. 이 종의 보스를 잡을수록 숙련이 올라 능력을 강화할 포인트가 생겨요.";
     return `<section class="ability-tree" aria-labelledby="ability-tree-title">
     <header class="ability-tree__header">
       <div><p class="ability-tree__eyebrow">농장 성장</p><h2 id="ability-tree-title">병종 특성</h2></div>
@@ -19861,7 +21221,7 @@
     <p class="ability-tree__note">${DEFAULTS_NOTE}</p>
     ${LEVEL_MARKUP}
     <div class="ability-tree__actions">
-      <p class="ability-tree__lock-note" role="status">${inCombat ? "전투 중에는 투자와 초기화가 잠겨요." : location2 !== "farm" ? "농장에서 투자하거나 초기화할 수 있어요." : "농장에서 무료로 초기화할 수 있어요."}</p>
+      <p class="ability-tree__lock-note" role="status">${inCombat || runActive ? "진행 중인 런에서는 투자와 초기화가 잠겨요." : location2 !== "farm" ? "농장에서 투자하거나 초기화할 수 있어요." : "농장에서 무료로 초기화할 수 있어요."}</p>
       <button type="button" class="ability-tree__reset" data-ability-action="reset" aria-describedby="ability-tree-reset-help" aria-disabled="${!RESET_CHECK.allowed}">무료 초기화</button>
       <span class="ability-tree__action-help" id="ability-tree-reset-help">${resetReasonLabel(RESET_CHECK.reason, INVESTED)}</span>
     </div>
@@ -19970,7 +21330,7 @@
     return NODE_REASON_LABELS.get(reason)?.(definition) ?? (context.location === "farm" ? "사용할 수 없는 노드예요." : "농장에서 사용할 수 있어요.");
   }
   function resetReasonLabel(reason, invested) {
-    return RESET_REASON_LABELS.get(reason) ?? `투자 ${invested}개를 무료로 돌려받아요.`;
+    return RESET_REASON_LABELS.get(reason) ?? `투자한 ${invested}포인트를 무료로 돌려받아요.`;
   }
 
   // src/farm-app.js
@@ -20130,8 +21490,55 @@
     })
   ]);
   function helpSceneById(id) {
-    return HELP_SCENES.find((scene) => scene.id === id) ?? null;
+    return [...HELP_SCENES, ...CORN_PREVIEW_SCENES].find((scene) => scene.id === id) ?? null;
   }
+  var CORN_PREVIEW_SCENES = Object.freeze(
+    Array.from({ length: 6 }, (_, index) => {
+      const TIER = index + 1;
+      return Object.freeze({
+        id: `corn-t${TIER}`,
+        title: `옥수수 T${TIER} 공격 미리보기`,
+        seed: 731,
+        rate: 0.6,
+        durationMs: 6500,
+        timeline: [],
+        setup(world) {
+          world.resetUnits();
+          world.setWorkBasisPoints(0);
+          const BUILD = world.playerProgression.abilities["corn-kernel-chain"];
+          BUILD.masteryLevel = 50;
+          BUILD.nodeRanks = Object.fromEntries(
+            Array.from({ length: TIER - 1 }, (_value, tierIndex) => [`evolution-${tierIndex + 2}`, 1])
+          );
+          const UNIT3 = world.spawn(1, TIER, -7, 0);
+          UNIT3.growth = 3;
+          UNIT3.growthElapsed = UNIT3.growthDuration;
+          world.startTower(1);
+          world.finishMarch();
+          world._benched.clear();
+          world._benchRevision++;
+          Object.assign(world.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
+          world.farmBossEvent.phase = "fighting";
+          world.farmBossEvent.elapsed = 0;
+          UNIT3.x = -(world.boss.radius + 4.1 + (TIER - 1) * 0.12);
+          UNIT3.y = 0;
+          UNIT3.z = 0;
+          UNIT3.dropLanded = true;
+          world._unitSpatialDirty = true;
+        },
+        step(world) {
+          return world.cornAttachments.groups.some(
+            (group) => group.attachments.some((attachment) => attachment.status === "fading")
+          ) ? "explosion" : world.projectiles.length > 0 ? "flight" : "prepare";
+        },
+        steps: {
+          prepare: "고정 훈련 표적 · 실제 공격 준비",
+          flight: "실제 투사체의 비행과 충돌",
+          explosion: "부착 1초 뒤부터 0.1초 간격의 연쇄 폭발"
+        }
+      });
+    })
+  );
 
   // src/help-panel.js
   var LOAD_TIMEOUT_MS = 15e3;
@@ -20791,7 +22198,7 @@
     }, 4e3);
   }
   function refreshStart() {
-    DOLLAR2("continueGame").disabled = !STORAGE.hasWorld;
+    DOLLAR2("continueGame").disabled = !hasMemoryRun() && !STORAGE.hasWorld;
     DOLLAR2("exportSave").disabled = !STORAGE.raw;
     DOLLAR2("saveNotice").textContent = STORAGE.error || STORAGE.notice;
   }
@@ -20932,7 +22339,22 @@
     }
     paintDeck();
   });
+  function hasMemoryRun() {
+    return !!(personalGarden?.tower.active && active?.world === personalGarden && !active.closed);
+  }
+  function resumeMemoryRun(push = true) {
+    if (!hasMemoryRun()) {
+      return false;
+    }
+    active.loop.resetTiming();
+    setHome(false, push);
+    markSeen();
+    return true;
+  }
   DOLLAR2("continueGame").onclick = () => {
+    if (resumeMemoryRun()) {
+      return;
+    }
     if (STORAGE.world) {
       start(restore(snapshot(STORAGE.world)), true, true);
     }
@@ -21032,6 +22454,10 @@
     DOLLAR2("importConfirm").hidden = true;
   };
   DOLLAR2("confirmImport").onclick = () => {
+    if (active?.world?.tower.active) {
+      DOLLAR2("saveNotice").textContent = "탑 도전을 끝내고 농장으로 돌아온 뒤 저장을 불러올 수 있어요.";
+      return;
+    }
     try {
       if (imported) {
         const WORLD = STORAGE.import(imported);
@@ -21210,8 +22636,24 @@
       BUTTON.disabled = LOCKED;
     }
   }
+  function stopCornPreview() {
+    DOLLAR2("abilityNodes").querySelector(".corn-evolution-preview")?.replaceChildren();
+  }
+  function mountCornPreview(tier) {
+    stopCornPreview();
+    const HOST = DOLLAR2("abilityNodes").querySelector(".corn-evolution-preview");
+    if (!HOST || !Number.isInteger(tier) || tier < 1 || tier > 6) {
+      return;
+    }
+    const FRAME = document.createElement("iframe");
+    FRAME.title = `옥수수 T${tier} 실제 공격 미리보기`;
+    FRAME.src = new URL(`?help=corn-t${tier}`, location.href).href.split("#")[0];
+    HOST.replaceChildren(FRAME);
+    DOLLAR2("abilityNodes").querySelector("[data-corn-preview-caption]").textContent = `T${tier} · 실제 공격 0.6배속 · 같은 단계를 누르면 다시 재생`;
+  }
   function drawAbilityTree() {
-    const W = personalGarden || active.world, IN_COMBAT = W.farmBossEvent?.phase !== "idle";
+    stopCornPreview();
+    const W = personalGarden || active.world, IN_COMBAT = W.farmBossEvent?.phase !== "idle" || W.tower.active;
     const SELECTED_SPECIES = Number(DOLLAR2("abilityPanel").dataset.selectedSpecies || 0);
     const MASTERY_DEFINITION = SPECIES_ABILITY_DEFINITIONS.find(
       (definition) => definition.species === SELECTED_SPECIES
@@ -21226,6 +22668,7 @@
       highestSpeciesTier: W.highestSpeciesTiers(),
       location: active.world.scene,
       inCombat: IN_COMBAT,
+      runActive: W.tower.active,
       selectedSpecies: SELECTED_SPECIES
     });
     renderProgressionResetActions();
@@ -21242,7 +22685,7 @@
       HOST.hidden = true;
       return;
     }
-    const W = personalGarden || active.world, IN_COMBAT = W.farmBossEvent?.phase !== "idle", CONTEXT = { location: active.world.scene, inCombat: IN_COMBAT }, SCOPE = currentProgressionResetScope(), CURRENT_CHECK = canResetPlayerProgression(W.playerProgression, SCOPE, CONTEXT), ALL_CHECK = canResetPlayerProgression(W.playerProgression, { type: "all" }, CONTEXT), LABEL = "이 종 특성 초기화";
+    const W = personalGarden || active.world, IN_COMBAT = W.farmBossEvent?.phase !== "idle" || W.tower.active, CONTEXT = { location: active.world.scene, inCombat: IN_COMBAT }, SCOPE = currentProgressionResetScope(), CURRENT_CHECK = canResetPlayerProgression(W.playerProgression, SCOPE, CONTEXT), ALL_CHECK = canResetPlayerProgression(W.playerProgression, { type: "all" }, CONTEXT), LABEL = "이 종 특성 초기화";
     HOST.hidden = false;
     CURRENT.hidden = menuTab === "abilities";
     CURRENT.disabled = !CURRENT_CHECK.allowed;
@@ -21258,6 +22701,7 @@
   };
   var ROUTE_MENU_TAB = (route2) => Object.keys(MENU_ROUTES).find((tab) => MENU_ROUTES[tab] === route2) || "play";
   function applyMenuTab(tab) {
+    stopCornPreview();
     menuTab = tab;
     const UPGRADES = ["farms", "abilities"].includes(tab);
     DOLLAR2("gameMenuTabs").hidden = !UPGRADES;
@@ -21348,6 +22792,7 @@
       return;
     }
     menuOpen = false;
+    stopCornPreview();
     HELP_PANEL.setVisible(false);
     DOLLAR2("gameMenuOverlay").hidden = true;
     for (const ID of ["gameMenu", "upgradeMenu", "helpMenu"]) {
@@ -21452,6 +22897,11 @@
     drawAbilityTree();
   };
   DOLLAR2("abilityNodes").onclick = (e) => {
+    const PREVIEW = e.target.closest("[data-corn-preview-tier]");
+    if (PREVIEW) {
+      mountCornPreview(Number(PREVIEW.dataset.cornPreviewTier));
+      return;
+    }
     const BUTTON = e.target.closest("button[data-ability-action],button[data-ability-node]");
     if (!BUTTON || BUTTON.getAttribute("aria-disabled") === "true") {
       return;
@@ -21883,7 +23333,7 @@
       setHome(true, false);
       return;
     }
-    if (home) {
+    if (home && !resumeMemoryRun(false)) {
       if (STORAGE.error && !STORAGE.hasWorld) {
         setHome(true, false);
         history.replaceState(null, "", "#/");

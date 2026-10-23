@@ -10,7 +10,9 @@
         "format": "prettier --write .",
         "format:check": "prettier --check .",
         "lint": "eslint . --max-warnings 0",
-        "test:breed-allocation": "node tests/breed-allocation.e2e.mjs"
+        "test:breed-allocation": "node tests/breed-allocation.e2e.mjs",
+        "test:corn-growth": "for scenario in ui previews battle; do for viewport in desktop mobile; do timeout 180s node tests/corn-growth.e2e.mjs \"$scenario\" \"$viewport\" || exit $?; done; done; timeout 180s node tests/corn-growth.e2e.mjs battle landscape",
+        "test:corn-growth:case": "node tests/corn-growth.e2e.mjs"
     },
     "devDependencies": {
         "@eslint/js": "10.0.1",

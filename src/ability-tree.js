@@ -3,6 +3,8 @@ import { SPECIES_CATALOG, speciesById } from './species-catalog.js';
 import { isValidAbilityProgressionState, masteryXpForNextLevel } from './ability-state.js';
 import { abilityProfile } from './unit-abilities.js';
 import { formatXpForDisplay } from './player-progression.js';
+import { isGrowthInvestment } from './features/species-growth/state.js';
+import { renderGrowthCardMarkup, renderGrowthMasteryMarkup } from './species-growth-presentation.js';
 import {
     canResetAbilityProgression,
     getAbilityNodeStatus,
@@ -44,7 +46,7 @@ export function renderAbilitySpeciesTabsMarkup(selectedSpecies = 0) {
 }
 export function renderAbilityTreeMarkup(
     state,
-    { highestSpeciesTier = {}, location = 'farm', inCombat = false, selectedSpecies = null } = {},
+    { highestSpeciesTier = {}, location = 'farm', inCombat = false, runActive = false, selectedSpecies = null } = {},
 ) {
     if (!isValidAbilityProgressionState(state)) {
         throw new TypeError('Cannot render invalid ability progression state');
@@ -54,6 +56,7 @@ export function renderAbilityTreeMarkup(
         highestSpeciesTier,
         location,
         inCombat,
+        runActive,
     };
     const RESET_CHECK = canResetAbilityProgression(
         state,
@@ -64,7 +67,11 @@ export function renderAbilityTreeMarkup(
         ? SPECIES_ABILITY_DEFINITIONS.filter((definition) => definition.species === selectedSpecies)
         : SPECIES_ABILITY_DEFINITIONS;
     const CARDS =
-        VISIBLE_DEFINITIONS.map((definition) => renderAbilityCard(state, definition, CONTEXT)).join('') ||
+        VISIBLE_DEFINITIONS.map((definition) =>
+            isGrowthInvestment(state.abilities[definition.id])
+                ? renderGrowthCardMarkup(state, definition, CONTEXT)
+                : renderAbilityCard(state, definition, CONTEXT),
+        ).join('') ||
         `<p class="ability-tree__note" role="status">이 병종은 기본 공격으로 전투에 참여해요. 전용 특수 능력 트리는 아직 추가되지 않았어요.</p>`;
     const FOCUS = Number.isInteger(selectedSpecies)
             ? SPECIES_ABILITY_DEFINITIONS.find((definition) => definition.species === selectedSpecies)
@@ -75,7 +82,11 @@ export function renderAbilityTreeMarkup(
                   (total, definition) => total + getAbilityPointsLeft(state, definition.id),
                   0,
               ),
-        LEVEL_MARKUP = FOCUS ? renderMasteryMarkup(state.abilities[FOCUS.id], speciesById(FOCUS.species).name) : '',
+        LEVEL_MARKUP = FOCUS
+            ? isGrowthInvestment(state.abilities[FOCUS.id])
+                ? renderGrowthMasteryMarkup(state.abilities[FOCUS.id], FOCUS)
+                : renderMasteryMarkup(state.abilities[FOCUS.id], speciesById(FOCUS.species).name)
+            : '',
         DEFAULTS_NOTE =
             '모든 일반 병종의 대표 능력은 Common(T1)부터 무료로 적용돼요. 이 종의 보스를 잡을수록 숙련이 올라 능력을 강화할 포인트가 생겨요.';
     return `<section class="ability-tree" aria-labelledby="ability-tree-title">
@@ -86,7 +97,7 @@ export function renderAbilityTreeMarkup(
     <p class="ability-tree__note">${DEFAULTS_NOTE}</p>
     ${LEVEL_MARKUP}
     <div class="ability-tree__actions">
-      <p class="ability-tree__lock-note" role="status">${inCombat ? '전투 중에는 투자와 초기화가 잠겨요.' : location !== 'farm' ? '농장에서 투자하거나 초기화할 수 있어요.' : '농장에서 무료로 초기화할 수 있어요.'}</p>
+      <p class="ability-tree__lock-note" role="status">${inCombat || runActive ? '진행 중인 런에서는 투자와 초기화가 잠겨요.' : location !== 'farm' ? '농장에서 투자하거나 초기화할 수 있어요.' : '농장에서 무료로 초기화할 수 있어요.'}</p>
       <button type="button" class="ability-tree__reset" data-ability-action="reset" aria-describedby="ability-tree-reset-help" aria-disabled="${!RESET_CHECK.allowed}">무료 초기화</button>
       <span class="ability-tree__action-help" id="ability-tree-reset-help">${resetReasonLabel(RESET_CHECK.reason, INVESTED)}</span>
     </div>
@@ -256,5 +267,5 @@ function nodeReasonLabel(reason, definition, context) {
     );
 }
 function resetReasonLabel(reason, invested) {
-    return RESET_REASON_LABELS.get(reason) ?? `투자 ${invested}개를 무료로 돌려받아요.`;
+    return RESET_REASON_LABELS.get(reason) ?? `투자한 ${invested}포인트를 무료로 돌려받아요.`;
 }

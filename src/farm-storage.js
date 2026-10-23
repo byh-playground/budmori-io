@@ -2,12 +2,19 @@ import { captureFarmProgress, restoreFarmProgress, sameFarmProgress } from './fa
 import { decodeFarmSave, encodeFarmSave, validateSave, parseSave } from './farm-save-codec.js';
 export { validateSave, parseSave };
 const KEY = 'bloom-weapon-cards-v4',
+    SOURCE_BACKUP_KEY = `${KEY}:species-tree-source-v3`,
+    PRIOR_SOURCE_BACKUP_KEY = `${KEY}:species-tree-prior-source-v3`,
+    LAST_GOOD_KEY = `${KEY}:last-known-good`,
+    IMPORT_SOURCE_KEY = `${KEY}:import-source`,
+    UNREADABLE_SOURCE_KEY = `${KEY}:unreadable-source`,
     SAVE_FAILURE_LABELS = Object.freeze({
         'storage-read': '브라우저 저장소 읽기',
         'progress-capture': '농장 진행 데이터 수집',
         'progress-compare': '농장 진행 데이터 비교',
         'progress-validate-encode': '저장 데이터 검증·인코딩',
         'storage-write': '브라우저 저장소 쓰기',
+        'storage-backup': '원본 저장 백업',
+        'storage-verify': '저장 읽기 검증',
     });
 function reportSaveFailure(error, operation) {
     try {
@@ -41,12 +48,19 @@ class FarmStorage {
             if (this.raw) {
                 try {
                     this.savedProgress = decodeFarmSave(this.raw);
+                    if (JSON.parse(this.raw).progress.player.schemaVersion === 3) {
+                        const { text: TEXT } = encodeFarmSave(null, this.savedProgress);
+                        this.writeVerified(TEXT, this.raw, { source: this.raw });
+                        this.raw = TEXT;
+                        this.notice = '옥수수 성장 트리를 적용했어요. 기존 투자와 원본 저장은 보존했어요.';
+                    }
                 } catch (error) {
                     this.incompatible = true;
+                    this.savedProgress = null;
                     this.error = error.message;
                 }
             }
-            this.writable = true;
+            this.writable = !this.incompatible;
         } catch (error) {
             this.error = error.message;
         }
@@ -60,34 +74,81 @@ class FarmStorage {
     get hasWorld() {
         return !!(this._world || this.savedProgress);
     }
-    initializeIncompatible(world) {
-        if (!this.incompatible || !world) {
-            return false;
-        }
-        try {
-            if (localStorage.getItem(KEY) !== this.raw) {
-                if (this.refresh() && this.hasWorld) {
-                    return true;
-                }
-                throw Error('The saved farm changed in another tab. Refresh before starting a new farm.');
-            }
-            const { data: DATA, text: TEXT } = this.serializeCheckpoint(world);
-            localStorage.setItem(KEY, TEXT);
-            this.raw = TEXT;
-            this.savedProgress = DATA;
-            this._world = world;
-            this.incompatible = false;
-            this.error = '';
-            this.notice = 'An incompatible prelaunch save was reset to the current farm format.';
-            this.writable = true;
-            return true;
-        } catch (error) {
-            this._world = world;
-            this.savedProgress = null;
-            this.error = error.message || 'Could not save the fresh farm.';
-            this.notice = 'A fresh farm is available in memory, but browser storage is not writable.';
+    // Unreadable data is never a fresh-farm request. In particular, a future schema or a failed
+    // migration must not flow through the old prelaunch reset and erase the user's source save.
+    initializeIncompatible(_world) {
+        if (this.incompatible) {
             this.writable = false;
-            return false;
+            this.notice = '저장 형식을 읽지 못해 원본을 보존했어요. 저장 내보내기로 보관해 주세요.';
+        }
+        return false;
+    }
+    writeVerified(text, original, { source = null, imported = null } = {}) {
+        if (localStorage.getItem(KEY) !== original) {
+            throw Error('저장 내용이 다른 탭에서 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요.');
+        }
+        if (source !== null) {
+            const PREVIOUS_SOURCE = localStorage.getItem(SOURCE_BACKUP_KEY);
+            if (PREVIOUS_SOURCE !== source) {
+                // Two bounded migration backups, separate from the rolling autosave backup.
+                // A later legacy import must preserve its own source, not just the first migration.
+                if (PREVIOUS_SOURCE !== null) {
+                    localStorage.setItem(PRIOR_SOURCE_BACKUP_KEY, PREVIOUS_SOURCE);
+                    if (localStorage.getItem(PRIOR_SOURCE_BACKUP_KEY) !== PREVIOUS_SOURCE) {
+                        throw Error('이전 원본 백업을 확인하지 못했어요. 저장을 변경하지 않았어요.');
+                    }
+                }
+                localStorage.setItem(SOURCE_BACKUP_KEY, source);
+                if (localStorage.getItem(SOURCE_BACKUP_KEY) !== source) {
+                    throw Error('원본 저장 백업을 확인하지 못했어요. 저장을 변경하지 않았어요.');
+                }
+            }
+        }
+        if (imported !== null) {
+            localStorage.setItem(IMPORT_SOURCE_KEY, imported);
+            if (localStorage.getItem(IMPORT_SOURCE_KEY) !== imported) {
+                throw Error('가져올 원본 백업을 확인하지 못했어요. 저장을 변경하지 않았어요.');
+            }
+        }
+        if (original !== null) {
+            const BACKUP_KEY = this.incompatible ? UNREADABLE_SOURCE_KEY : LAST_GOOD_KEY;
+            localStorage.setItem(BACKUP_KEY, original);
+            if (localStorage.getItem(BACKUP_KEY) !== original) {
+                throw Error('기존 저장 백업을 확인하지 못했어요. 저장을 변경하지 않았어요.');
+            }
+        }
+        // Recheck after backup I/O, before the only primary-key write.
+        if (localStorage.getItem(KEY) !== original) {
+            throw Error('다른 탭에서 저장을 변경했어요. 원본을 덮어쓰지 않았어요.');
+        }
+        let written = false;
+        try {
+            localStorage.setItem(KEY, text);
+            written = true;
+            const VERIFIED = localStorage.getItem(KEY);
+            if (VERIFIED !== text) {
+                throw Error('저장 내용을 다시 읽어 확인하지 못했어요.');
+            }
+            decodeFarmSave(VERIFIED);
+        } catch (error) {
+            if (written) {
+                // setItem is atomic. Restore the exact original bytes if verification failed;
+                // a verified backup remains available even if the browser refuses this rollback.
+                try {
+                    const CURRENT = localStorage.getItem(KEY);
+                    if (CURRENT === text) {
+                        if (original === null) {
+                            localStorage.removeItem(KEY);
+                        } else {
+                            localStorage.setItem(KEY, original);
+                        }
+                    }
+                } catch (rollbackError) {
+                    reportSaveFailure(rollbackError, 'storage-verify');
+                }
+            }
+            this.writable = false;
+            throw error;
         }
     }
     set world(value) {
@@ -118,7 +179,12 @@ class FarmStorage {
                 throw Error('농장 저장을 찾지 못했어요. 다른 탭에서 새 농장을 시작했을 수 있어요.');
             }
             const DATA = decodeFarmSave(TEXT);
-            this.raw = TEXT;
+            let normalized = TEXT;
+            if (JSON.parse(TEXT).progress.player.schemaVersion === 3) {
+                normalized = encodeFarmSave(null, DATA).text;
+                this.writeVerified(normalized, TEXT, { source: TEXT });
+            }
+            this.raw = normalized;
             this.savedProgress = DATA;
             this._world = null;
             this.incompatible = false;
@@ -169,7 +235,7 @@ class FarmStorage {
             operation = 'storage-write';
             const IO_START = this.profiler?.start();
             try {
-                localStorage.setItem(KEY, TEXT);
+                this.writeVerified(TEXT, this.raw);
             } finally {
                 this.profiler?.end('saveIO', IO_START);
             }
@@ -191,7 +257,7 @@ class FarmStorage {
         this.writable = true;
         const SAVED = this.save(world);
         if (!SAVED) {
-            this.writable = WRITABLE;
+            this.writable = WRITABLE && this.writable;
         }
         return SAVED;
     }
@@ -202,7 +268,10 @@ class FarmStorage {
         validateSave(text);
         const WORLD = parseSave(text),
             { data: DATA, text: NORMALIZED } = this.serializeCheckpoint(WORLD);
-        localStorage.setItem(KEY, NORMALIZED);
+        this.writeVerified(NORMALIZED, this.raw, {
+            source: JSON.parse(text).progress.player.schemaVersion === 3 ? text : null,
+            imported: text,
+        });
         this.raw = NORMALIZED;
         this.savedProgress = DATA;
         this._world = WORLD;

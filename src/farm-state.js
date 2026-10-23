@@ -26,6 +26,12 @@ export function restore(raw) {
         UNIT_DATA.map((data) => {
             const U = Object.assign(new Unit(data.id, data.species, data.tier, data.x, data.y), structuredClone(data));
             U.ability = Object.assign(createUnitAttackCycle(U), structuredClone(data.ability));
+            if (U.ability.action?.cornAttack?.launchTick !== null && U.ability.action?.cornAttack) {
+                const RECORD = G.cornAttachments.actions.find((action) => action.id === U.ability.action.cornAttack.id);
+                if (RECORD) {
+                    U.ability.action.cornAttack = RECORD;
+                }
+            }
             const SPECIAL = CREATE_UNIT_SPECIAL_ABILITY(U);
             U.specialAbility = SPECIAL ? Object.assign(SPECIAL, structuredClone(data.specialAbility || {})) : null;
             return U;

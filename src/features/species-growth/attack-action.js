@@ -77,30 +77,63 @@ export class AttackAction {
         return READY;
     }
 
-    claimHit(slot, targetId) {
+    claimHit(slot, targetId, generation = null) {
+        const KEY = generation === null ? targetId : attackTargetKey(targetId, generation);
         if (
             this.cancelled ||
             !Number.isInteger(slot) ||
             slot < 0 ||
             slot >= this.nextSlot ||
-            !Number.isSafeInteger(targetId) ||
-            targetId < 0 ||
-            this.hits[slot].has(targetId)
+            !validHitKey(KEY) ||
+            this.hits[slot].has(KEY)
         ) {
             return false;
         }
-        this.hits[slot].add(targetId);
+        this.hits[slot].add(KEY);
         return true;
     }
 
     // Named, once-per-action budgets, e.g. command, critical, RAW consumption, or extra attachment.
     // A follow-up strike uses the same action and cannot create another copy of the budget.
     claimOnce(key) {
-        if (this.cancelled || typeof key !== 'string' || !key || this.claims.has(key)) {
+        if (
+            this.cancelled ||
+            typeof key !== 'string' ||
+            !key ||
+            key.length > 128 ||
+            this.claims.size >= 64 ||
+            this.claims.has(key)
+        ) {
             return false;
         }
         this.claims.add(key);
         return true;
+    }
+
+    toDTO() {
+        return {
+            version: 1,
+            plan: structuredClone(this.plan),
+            startTick: this.startTick,
+            nextSlot: this.nextSlot,
+            cancelled: this.cancelled,
+            lastTick: this.lastTick,
+            hits: this.hits.map((hits) => [...hits]),
+            claims: [...this.claims],
+        };
+    }
+
+    static fromDTO(dto) {
+        if (!isAttackActionDTO(dto)) {
+            throw new TypeError('Invalid attack action checkpoint');
+        }
+        const ACTION = new AttackAction(dto.plan, dto.startTick);
+        ACTION.nextSlot = dto.nextSlot;
+        ACTION.cancelled = dto.cancelled;
+        ACTION.lastTick = dto.lastTick;
+        ACTION.hits = dto.hits.map((hits) => new Set(hits));
+        ACTION.claims = new Set(dto.claims);
+        return ACTION;
     }
 
     cancel() {
@@ -109,4 +142,85 @@ export class AttackAction {
         this.hits.forEach((hits) => hits.clear());
         this.claims.clear();
     }
+}
+
+// Type and generation are part of identity; a new boss encounter cannot reuse old hit/critical claims.
+export function attackTargetKey(targetId, generation) {
+    if (
+        (targetId !== 'boss' && (!Number.isSafeInteger(targetId) || targetId < 0)) ||
+        !Number.isSafeInteger(generation) ||
+        generation < 0
+    ) {
+        return null;
+    }
+    return JSON.stringify([targetId === 'boss' ? 'boss' : 'unit', targetId, generation]);
+}
+
+function validHitKey(key) {
+    if (Number.isSafeInteger(key) && key >= 0) {
+        return true;
+    }
+    if (typeof key !== 'string' || key.length > 100) {
+        return false;
+    }
+    try {
+        const PARTS = JSON.parse(key);
+        return (
+            Array.isArray(PARTS) &&
+            PARTS.length === 3 &&
+            PARTS[0] === (PARTS[1] === 'boss' ? 'boss' : 'unit') &&
+            attackTargetKey(PARTS[1], PARTS[2]) === key
+        );
+    } catch {
+        return false;
+    }
+}
+
+export function isAttackActionDTO(dto) {
+    if (
+        !dto ||
+        Object.keys(dto).sort().join(',') !== 'cancelled,claims,hits,lastTick,nextSlot,plan,startTick,version' ||
+        dto.version !== 1
+    ) {
+        return false;
+    }
+    try {
+        if (
+            Object.keys(dto.plan).sort().join(',') !== 'durationTicks,strikes' ||
+            !dto.plan.strikes.every((strike) => Object.keys(strike).sort().join(',') === 'tick,weight')
+        ) {
+            return false;
+        }
+        defineAttackAction(dto.plan);
+    } catch {
+        return false;
+    }
+    return (
+        Number.isSafeInteger(dto.startTick) &&
+        dto.startTick >= 0 &&
+        Number.isSafeInteger(dto.startTick + dto.plan.durationTicks) &&
+        Number.isSafeInteger(dto.nextSlot) &&
+        dto.nextSlot >= 0 &&
+        dto.nextSlot <= dto.plan.strikes.length &&
+        typeof dto.cancelled === 'boolean' &&
+        Number.isSafeInteger(dto.lastTick) &&
+        dto.lastTick >= dto.startTick - 1 &&
+        (!dto.cancelled || dto.nextSlot === dto.plan.strikes.length) &&
+        (dto.cancelled ||
+            dto.nextSlot === dto.plan.strikes.filter((strike) => dto.startTick + strike.tick <= dto.lastTick).length) &&
+        Array.isArray(dto.hits) &&
+        dto.hits.length === dto.plan.strikes.length &&
+        dto.hits.every(
+            (hits, slot) =>
+                Array.isArray(hits) &&
+                hits.length <= 1024 &&
+                (slot < dto.nextSlot || hits.length === 0) &&
+                hits.every(validHitKey) &&
+                new Set(hits).size === hits.length,
+        ) &&
+        Array.isArray(dto.claims) &&
+        dto.claims.length <= 64 &&
+        dto.claims.every((key) => typeof key === 'string' && key.length > 0 && key.length <= 128) &&
+        new Set(dto.claims).size === dto.claims.length
+    );
 }

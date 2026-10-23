@@ -1,3 +1,9 @@
+import {
+    cornActionFor,
+    cornAttackContext,
+    cornCriticalRoll,
+    cornKernelMultiplier,
+} from '../../species-growth/corn-attack.js';
 import { getAbilityEffects } from '../../../ability-progression.js';
 import { CORN_ATTACHMENT_FEATURE } from './definition.js';
 
@@ -25,6 +31,7 @@ export class CornAttachmentModel {
             nextGroupId: 1,
             nextAttachmentId: 1,
             groups: [],
+            actions: [],
         };
     }
     static attach(world, target, projectile, config) {
@@ -39,6 +46,7 @@ export class CornAttachmentModel {
             .reverse()
             .find(
                 (group) =>
+                    !group.cornActionId &&
                     group.targetId === TARGET_ID &&
                     group.targetGeneration === TARGET_GENERATION &&
                     group.status === 'collecting' &&
@@ -79,6 +87,65 @@ export class CornAttachmentModel {
         group.attachments.push(ATTACHMENT);
         return ATTACHMENT;
     }
+    static attachEvolved(world, target, projectile, record, damageScale = 1) {
+        const MANAGER = world.cornAttachments,
+            TARGET_ID = target === world.boss ? 'boss' : target.id,
+            SHOT = record.shots[projectile.cornSlot];
+        if (record.firstAttachTick === null) {
+            record.firstAttachTick = world.simulationTick;
+        }
+        let group = MANAGER.groups.find(
+            (entry) =>
+                entry.cornActionId === record.id &&
+                entry.targetId === TARGET_ID &&
+                entry.targetGeneration === target.generation,
+        );
+        if (!group) {
+            group = {
+                id: MANAGER.nextGroupId++,
+                cornActionId: record.id,
+                targetId: TARGET_ID,
+                targetGeneration: target.generation,
+                targetX: target.x,
+                targetY: target.y,
+                targetZ: target.z || 0,
+                firstAttachTick: record.firstAttachTick,
+                closeAtTick: record.firstAttachTick + DEFINITION.attachDelayTicks,
+                nextExplosionTick: null,
+                status: 'collecting',
+                attachments: [],
+            };
+            MANAGER.groups.push(group);
+        }
+        const INDICES = Array.from({ length: SHOT.kernelCount }, (_, index) => SHOT.kernelStart + index);
+        if (record.extraKernel && projectile.cornSlot === record.shots.length - 1) {
+            INDICES.push(record.baseKernelCount);
+        }
+        for (const INDEX of INDICES) {
+            const ANGLE = ((INDEX + 1) * 2.399963229728653) % (Math.PI * 2);
+            group.attachments.push({
+                id: MANAGER.nextAttachmentId++,
+                groupId: group.id,
+                cornActionId: record.id,
+                cornKernelIndex: INDEX,
+                cornDamageScale: damageScale,
+                explosionTick: group.closeAtTick + INDEX * DEFINITION.explosionSpacingTicks,
+                targetId: TARGET_ID,
+                targetGeneration: target.generation,
+                ownerId: record.owner,
+                ownerGeneration: record.ownerGeneration,
+                payload: structuredClone(record.source),
+                damageMultiplier: cornKernelMultiplier(record, INDEX) * damageScale,
+                status: 'attached',
+                fadeTicks: DEFINITION.fadeTicks,
+                angle: ANGLE,
+                offsetX: Math.cos(ANGLE) * 0.18,
+                offsetY: Math.sin(ANGLE) * 0.12,
+            });
+        }
+        group.attachments.sort((a, b) => a.cornKernelIndex - b.cornKernelIndex);
+        return group;
+    }
     static onProjectileHit(world, target, projectile, config) {
         if (!target || target.hp <= 0) {
             return null;
@@ -109,7 +176,22 @@ export class CornAttachmentModel {
                 GROUP.status = 'exploding';
                 GROUP.nextExplosionTick = GROUP.closeAtTick;
             }
-            if (GROUP.status === 'exploding' && TICK >= GROUP.nextExplosionTick) {
+            if (GROUP.cornActionId && GROUP.status === 'exploding') {
+                for (const ATTACHMENT of GROUP.attachments) {
+                    if (ATTACHMENT.status !== 'attached' || ATTACHMENT.explosionTick > TICK) {
+                        continue;
+                    }
+                    if (TARGET.hp > 0) {
+                        this.explodeEvolved(world, TARGET, ATTACHMENT);
+                    }
+                    ATTACHMENT.status = 'fading';
+                }
+                const NEXT = GROUP.attachments.find((entry) => entry.status === 'attached');
+                GROUP.nextExplosionTick = NEXT?.explosionTick ?? GROUP.nextExplosionTick;
+                if (!NEXT) {
+                    GROUP.status = 'complete';
+                }
+            } else if (GROUP.status === 'exploding' && TICK >= GROUP.nextExplosionTick) {
                 const ATTACHMENT = GROUP.attachments.find((entry) => entry.status === 'attached');
                 if (ATTACHMENT) {
                     this.explode(world, TARGET, ATTACHMENT);
@@ -131,6 +213,16 @@ export class CornAttachmentModel {
         MANAGER.groups = MANAGER.groups.filter((group) =>
             group.attachments.some((entry) => entry.status !== 'removed'),
         );
+        if (MANAGER.actions?.length) {
+            const REFERENCED = new Set([
+                ...world.projectiles
+                    .filter((projectile) => !projectile.hit)
+                    .map((projectile) => projectile.cornActionId),
+                ...MANAGER.groups.map((group) => group.cornActionId),
+                ...world.units.map((unit) => unit.ability?.action?.cornAttack?.id),
+            ]);
+            MANAGER.actions = MANAGER.actions.filter((action) => REFERENCED.has(action.id));
+        }
     }
     static resolveTarget(world, targetId, generation) {
         if (targetId === 'boss') {
@@ -138,6 +230,37 @@ export class CornAttachmentModel {
         }
         const TARGET = world._unitForId(targetId);
         return TARGET?.generation === generation ? TARGET : null;
+    }
+    static explodeEvolved(world, target, attachment) {
+        const RECORD = cornActionFor(world, attachment.cornActionId);
+        if (!RECORD) {
+            return;
+        }
+        const CONTEXT = cornAttackContext(
+                RECORD,
+                1,
+                cornCriticalRoll(world, RECORD, target),
+                attachment.damageMultiplier,
+                world,
+            ),
+            ACTION = { id: RECORD.id, hit: false };
+        CONTEXT.kind = 'corn-attachment-explosion';
+        CONTEXT.area = RECORD.form >= 4;
+        CONTEXT.strikeIndex = attachment.cornKernelIndex;
+        world.damageCombatTarget(
+            CONTEXT.source,
+            ACTION,
+            target,
+            { x: target.x, y: target.y, z: target.z || 0 },
+            { attackContext: CONTEXT, disableGrainEffects: true },
+        );
+        world.combat('corn-attachment-explosion', {
+            sourceUnit: RECORD.owner,
+            targetUnit: target === world.boss ? 'boss' : target.id,
+            x: target.x,
+            y: target.y,
+            multiplier: attachment.damageMultiplier,
+        });
     }
     static explode(world, target, attachment) {
         const PAYLOAD = attachment.payload;

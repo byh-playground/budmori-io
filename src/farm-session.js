@@ -255,6 +255,8 @@ class ProjectileRender extends RENDER_OBJECT {
         projectileKind: R.STATE_KEY,
         shotIndex: R.STEP,
         fanIndex: R.STEP,
+        cornForm: R.STEP,
+        cornSlot: R.STEP,
         'path.from.x': R.STEP,
         'path.from.y': R.STEP,
         'path.from.z': R.STEP,
@@ -285,6 +287,8 @@ class ProjectileRender extends RENDER_OBJECT {
         this.projectileKind = p.projectileKind || '';
         this.shotIndex = p.shotIndex || 0;
         this.fanIndex = p.fanIndex || 0;
+        this.cornForm = p.cornForm || 0;
+        this.cornSlot = p.cornSlot || 0;
         this.path.from.x = p.path.from.x;
         this.path.from.y = p.path.from.y;
         this.path.from.z = p.path.from.z;

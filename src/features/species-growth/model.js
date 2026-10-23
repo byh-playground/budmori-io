@@ -1,4 +1,4 @@
-import { masteryXpForNextLevel } from '../../ability-state.js';
+import { masteryXpForNextLevel } from '../../mastery.js';
 import { SPECIES_MASTERY_CAP } from './definition.js';
 
 // Activated builds replace legacy investments, rather than running both trees at once.
@@ -98,12 +98,15 @@ export class SpeciesGrowth {
         if (!Number.isFinite(experience)) {
             return { ok: false, reason: 'xp-overflow', build };
         }
-        // Do not report a reward as accepted when floating-point spacing erased part of it.
-        // Preserve the original build; the receipt owner must not mark a rejected award as settled.
-        if (
-            Math.abs(experience - build.masteryXp - amount) > Number.EPSILON * Math.max(1, amount) * 4 ||
-            (amount > 0 && experience === build.masteryXp)
-        ) {
+        // Ordinary addition rounds at the scale of the accumulated XP, not the reward. Allow
+        // that rounding, but never accept an erased reward or an error above one billionth
+        // of the reward itself. A rejected award leaves both the build and its receipt untouched.
+        const ADDITION_ERROR = Math.abs(experience - build.masteryXp - amount),
+            ROUNDING_TOLERANCE = Math.min(
+                2 * Number.EPSILON * Math.max(Math.abs(build.masteryXp), Math.abs(experience)),
+                amount * 1e-9,
+            );
+        if (ADDITION_ERROR > ROUNDING_TOLERANCE || (amount > 0 && experience === build.masteryXp)) {
             return { ok: false, reason: 'xp-precision-loss', build };
         }
         let level = build.masteryLevel;
