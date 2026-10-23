@@ -1744,7 +1744,7 @@
         birthScale: 0.5,
         vectorRadiusScale: 0.78
       });
-      function unitBodyDefinition3(species) {
+      function unitBodyDefinition4(species) {
         const BODY2 = UNIT_BODIES[species];
         if (!BODY2) {
           throw new RangeError("Missing authored unit body for species " + species);
@@ -1756,28 +1756,28 @@
         return (UNIT_BODY_CONFIG.baseSize + UNIT_BODY_CONFIG.sizePerTier * unit2.tier) * (UNIT_BODY_CONFIG.birthScale + (1 - UNIT_BODY_CONFIG.birthScale) * GROWTH);
       }
       function unitVectorScale2(unit2) {
-        const BODY2 = unitBodyDefinition3(unit2.species);
+        const BODY2 = unitBodyDefinition4(unit2.species);
         return unitVisualSize2(unit2) * 2 * UNIT_BODY_CONFIG.vectorRadiusScale / Math.max(BODY2.viewBox[2], BODY2.viewBox[3]);
       }
       function bodyRadiusAtScale(body, scale) {
         return Math.max(body.ground.x - body.bounds.left, body.bounds.right - body.ground.x) * scale;
       }
       function unitBodyRadius3(unit2) {
-        return bodyRadiusAtScale(unitBodyDefinition3(unit2.species), unitVectorScale2(unit2));
+        return bodyRadiusAtScale(unitBodyDefinition4(unit2.species), unitVectorScale2(unit2));
       }
       function unitBodyHeight2(unit2) {
-        const BODY2 = unitBodyDefinition3(unit2.species);
+        const BODY2 = unitBodyDefinition4(unit2.species);
         return (BODY2.ground.y - BODY2.bounds.top) * unitVectorScale2(unit2) / WORLD_HEIGHT_PROJECTION7;
       }
       function bossBodyHeight2(boss) {
-        const BODY2 = unitBodyDefinition3(boss.species);
+        const BODY2 = unitBodyDefinition4(boss.species);
         return (BODY2.ground.y - BODY2.bounds.top) * BOSS_VECTOR_SCALE() / WORLD_HEIGHT_PROJECTION7;
       }
       function bossBodyRadius2(boss) {
-        return bodyRadiusAtScale(unitBodyDefinition3(boss.species), BOSS_VECTOR_SCALE());
+        return bodyRadiusAtScale(unitBodyDefinition4(boss.species), BOSS_VECTOR_SCALE());
       }
       function unitTorsoHeight2(unit2) {
-        const BODY2 = unitBodyDefinition3(unit2.species);
+        const BODY2 = unitBodyDefinition4(unit2.species);
         return (BODY2.bounds.bottom - BODY2.bounds.top) * unitVectorScale2(unit2) / WORLD_HEIGHT_PROJECTION7;
       }
       function maximumUnitRadius2(tier) {
@@ -1799,7 +1799,7 @@
         );
       }
       function validateUnitBodySource(species, source) {
-        const BODY2 = unitBodyDefinition3(species);
+        const BODY2 = unitBodyDefinition4(species);
         if (source.sha256 !== BODY2.sourceSha256 || source.file !== BODY2.asset) {
           throw new Error("Authored unit body must be remeasured after SVG changes: " + BODY2.asset);
         }
@@ -1807,7 +1807,7 @@
       module.exports = {
         UNIT_BODIES,
         UNIT_BODY_CONFIG,
-        unitBodyDefinition: unitBodyDefinition3,
+        unitBodyDefinition: unitBodyDefinition4,
         unitVisualSize: unitVisualSize2,
         unitVectorScale: unitVectorScale2,
         unitBodyRadius: unitBodyRadius3,
@@ -15099,6 +15099,9 @@
   init_tower_run();
   init_farm_model();
 
+  // src/farm-renderer.js
+  var import_definition69 = __toESM(require_definition(), 1);
+
   // src/features/projectiles/corn/presentation.js
   var import_vector_sockets4 = __toESM(require_vector_sockets(), 1);
 
@@ -18691,6 +18694,10 @@
     // The camera follows the climb: on the march it pulls back to show the tower and its door, and
     // it stays there a moment when the troops come back out; inside, it rests on the hall.
     directCamera(sim2, now) {
+      if (this.attackPreviewSpecies === 0 && sim2.units.length === 1 && sim2.units[0].species === 0) {
+        this.fitAttackPreview(sim2);
+        return;
+      }
       const INSIDE = !!sim2.insideTower, KEY2 = INSIDE ? `in${sim2.tower?.floor}` : "out", MARCHING = sim2.farmBossEvent?.phase === "marching";
       if (this.sceneKey === void 0) {
         this.sceneKey = KEY2;
@@ -18729,6 +18736,19 @@
           this.cameraReturning = false;
         }
       }
+    }
+    // Isolated pea help frames show the real contact and body, not the entire hall.
+    // This flag is installed only by the help entry point, never for a live run.
+    fitAttackPreview(world) {
+      const UNIT3 = world.units[0], BODY2 = (0, import_definition69.unitBodyDefinition)(UNIT3.species), BASE = this.scenePresentation.cameraView(this.aspect), SCALE = 96 * this.pixelRatio / (UNIT3.bodyScale * Math.max(BODY2.viewBox[2], BODY2.viewBox[3])), FOCUS_X = world.boss.x - world.boss.radius - 0.8, FOCUS_Y = world.boss.y;
+      this.zoom = 2 * BASE[0] * SCALE / this.canvas.width;
+      this.configure(this.scene, true);
+      const PAN_X = this.canvas.width * 0.45 / this.scale - FOCUS_X - this.view[0], PAN_Y = this.view[1] - this.baseY() - this.canvas.height * 0.76 / this.scale - FOCUS_Y * import_vector_sockets9.WORLD_DEPTH_PROJECTION;
+      this.panLimits.minX = Math.min(this.panLimits.minX, PAN_X);
+      this.panLimits.maxX = Math.max(this.panLimits.maxX, PAN_X);
+      this.panLimits.minY = Math.min(this.panLimits.minY, PAN_Y);
+      this.panLimits.maxY = Math.max(this.panLimits.maxY, PAN_Y);
+      this.setPan(PAN_X, PAN_Y);
     }
     // Inside the tower the whole hall is always in view: no panning or zooming, so tapping anywhere deploys.
     fitHall(world) {
@@ -24049,6 +24069,7 @@
   if (HELP.scene) {
     const SCENE = HELP.scene, WORLD = new GARDEN(SCENE.seed);
     SCENE.setup(WORLD);
+    RENDERER.attackPreviewSpecies = /^pea-t[1-6]$/.test(SCENE.id) ? 0 : null;
     start(WORLD, false);
     active.paused = false;
     HELP.scenario = globalThis.BloomGamekitScenario.createScenario({

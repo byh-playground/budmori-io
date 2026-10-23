@@ -7,6 +7,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { unitBodyDefinition } from '../src/features/unit-body/definition.cjs';
 
 const CASE = process.argv[2] || 'ui',
     VIEWPORT = process.argv[3] || 'desktop',
@@ -178,11 +179,20 @@ async function revealPreview(page, frame, mobile) {
 }
 
 async function observeDrawnPea(page) {
-    await page.waitForFunction(() => {
+    await page.waitForFunction((body) => {
         const UNIT = globalThis.BUDMORI?.sim?.units[0],
             PLAYER = UNIT && BUDMORI.renderer.vectorPlayers.get(UNIT.id);
         if (!PLAYER) {
             return false;
+        }
+        if (!BUDMORI.runtime.__peaClockObserver) {
+            const SESSION = BUDMORI.runtime,
+                PRESENT = SESSION.presentation;
+            SESSION.presentation = function (now) {
+                globalThis.__peaInputClock = now;
+                return PRESENT.call(this, now);
+            };
+            SESSION.__peaClockObserver = true;
         }
         if (!PLAYER.__peaCaptureWrapped) {
             const DRAW = PLAYER.draw,
@@ -203,9 +213,25 @@ async function observeDrawnPea(page) {
                     YS = CORNERS.map(
                         ([x, y]) => (MATRIX[1] * x + MATRIX[3] * y + MATRIX[5]) / BUDMORI.renderer.pixelRatio,
                     );
+                const TORSO = [
+                        [body.left, body.top],
+                        [body.right, body.top],
+                        [body.left, body.bottom],
+                        [body.right, body.bottom],
+                    ],
+                    TX = TORSO.map(
+                        ([x, y]) => (MATRIX[0] * x + MATRIX[2] * y + MATRIX[4]) / BUDMORI.renderer.pixelRatio,
+                    ),
+                    TY = TORSO.map(
+                        ([x, y]) => (MATRIX[1] * x + MATRIX[3] * y + MATRIX[5]) / BUDMORI.renderer.pixelRatio,
+                    );
                 globalThis.__peaDraw = DISPLAY
                     ? {
                           matrix: [...options.matrix],
+                          torso: {
+                              width: Math.max(...TX) - Math.min(...TX),
+                              height: Math.max(...TY) - Math.min(...TY),
+                          },
                           bounds: {
                               left: Math.min(...XS),
                               right: Math.max(...XS),
@@ -224,7 +250,35 @@ async function observeDrawnPea(page) {
                           at: BUDMORI.renderer.displayTimeMs,
                       }
                     : null;
-                return DRAW.call(PLAYER, options);
+                const RESULT = DRAW.call(PLAYER, options),
+                    REQUEST = globalThis.__peaCaptureRequest,
+                    DRAWN = globalThis.__peaDraw,
+                    ACTION = UNIT.ability.action?.peaAttack;
+                if (
+                    REQUEST &&
+                    !globalThis.__peaCaptured &&
+                    ACTION?.form === REQUEST.tier &&
+                    DRAWN?.form === REQUEST.tier &&
+                    DRAWN.phase === REQUEST.phase &&
+                    (REQUEST.actionId === null || REQUEST.actionId === ACTION.id) &&
+                    (REQUEST.phase !== 'windup' || DRAWN.elapsed >= ACTION.windupSeconds * 0.65) &&
+                    (!REQUEST.stage ||
+                        (DRAWN.stage === REQUEST.stage &&
+                            ACTION.contactTick !== null &&
+                            DRAWN.progress >= (REQUEST.stage === 'charge' ? 0.45 : 0.25)))
+                ) {
+                    const SESSION = BUDMORI.runtime;
+                    SESSION.paused = true;
+                    // Help uses a scaled frame clock, unlike the main battle. Freeze in
+                    // that same clock domain; never change simulation phase or pose.
+                    SESSION.pauseStartedAt = globalThis.__peaInputClock;
+                    globalThis.__peaCaptured = {
+                        actionId: ACTION.id,
+                        tick: BUDMORI.sim.simulationTick,
+                        drawn: structuredClone(DRAWN),
+                    };
+                }
+                return RESULT;
             };
             // Native players are frozen. A renderer-owned forwarding adapter observes
             // the real submitted matrix without mutating that player or its animation.
@@ -237,7 +291,7 @@ async function observeDrawnPea(page) {
             }
         }
         return true;
-    });
+    }, unitBodyDefinition(0).bounds);
 }
 
 async function captureMotion(page, tier, label) {
@@ -250,36 +304,17 @@ async function captureMotion(page, tier, label) {
             : [{ phase: 'active', stage: null }]),
         { phase: 'recover', stage: null },
     ];
-    for (const { phase: PHASE, stage: STAGE } of STAGES) {
-        await page.waitForFunction(
-            ({ tier: expected, phase, stage }) => {
-                const UNIT = globalThis.BUDMORI?.sim?.units[0],
-                    DRAWN = globalThis.__peaDraw;
-                if (
-                    UNIT?.ability.action?.peaAttack?.form !== expected ||
-                    DRAWN?.form !== expected ||
-                    DRAWN.phase !== phase
-                ) {
-                    return false;
-                }
-                const PEA = UNIT.ability.action.peaAttack;
-                if (phase === 'windup' && DRAWN.elapsed < PEA.windupSeconds * 0.65) {
-                    return false;
-                }
-                if (
-                    stage &&
-                    (DRAWN.stage !== stage ||
-                        PEA.contactTick === null ||
-                        DRAWN.progress < (stage === 'charge' ? 0.45 : 0.25))
-                ) {
-                    return false;
-                }
-                BUDMORI.runtime.paused = true;
-                return true;
-            },
-            { tier, phase: PHASE, stage: STAGE },
-            { timeout: 18000, polling: 'raf' },
-        );
+    let actionId = null;
+    await page.evaluate(
+        (request) => {
+            globalThis.__peaCaptured = null;
+            globalThis.__peaCaptureRequest = request;
+        },
+        { tier, ...STAGES[0], actionId },
+    );
+    for (let index = 0; index < STAGES.length; index++) {
+        const { phase: PHASE, stage: STAGE } = STAGES[index];
+        await page.waitForFunction(() => !!globalThis.__peaCaptured, null, { timeout: 18000, polling: 'raf' });
         await settleCapturedFrame(page);
         const STATE = await page.evaluate(() => {
             const WORLD = BUDMORI.sim,
@@ -301,6 +336,10 @@ async function captureMotion(page, tier, label) {
                 bossRadius: WORLD.boss.radius,
             };
         });
+        assert.equal(STATE.drawn.phase, PHASE, 'frozen render retains the captured phase');
+        if (STAGE) {
+            assert.equal(STATE.drawn.stage, STAGE, 'frozen render retains the captured stage');
+        }
         assert.equal(STATE.z, 0, 'pea attacks stay grounded');
         assert.equal(STATE.unitCount, 1, 'one body, no clones');
         assert.equal(STATE.projectileCount, 0, 'no projectiles');
@@ -312,10 +351,28 @@ async function captureMotion(page, tier, label) {
                 STATE.drawn.bounds.bottom <= STATE.drawn.viewport.height,
             'complete drawn pea bounds are inside the actual canvas',
         );
+        if (label === 'preview') {
+            assert.ok(
+                STATE.drawn.torso.width >= 32 && STATE.drawn.torso.height >= 32,
+                'authored preview torso is at least 32px wide and tall, including compressed poses',
+            );
+        }
         TRACE.push(STATE);
         await page.screenshot({ path: path.join(OUTPUT, `${VIEWPORT}-${label}-t${tier}-${STAGE || PHASE}.png`) });
         assert.equal(await page.evaluate(() => BUDMORI.sim.simulationTick), STATE.tick, 'PNG matches paused trace');
-        await resumeCapturedFrame(page);
+        actionId ??= STATE.pea.id;
+        await page.evaluate(
+            (request) => {
+                const SESSION = BUDMORI.runtime,
+                    DURATION = SESSION.pausedDurationMs + globalThis.__peaInputClock - SESSION.pauseStartedAt;
+                globalThis.__peaCaptureRequest = request;
+                globalThis.__peaCaptured = null;
+                SESSION.loop.resetTiming();
+                SESSION.paused = false;
+                SESSION.pausedDurationMs = DURATION;
+            },
+            index + 1 < STAGES.length ? { tier, ...STAGES[index + 1], actionId } : null,
+        );
     }
     assert.ok(TRACE.at(-1).bossHp < TRACE[0].bossHp, 'real contact damages the training boss');
     assert.ok(TRACE.at(-1).tick > TRACE[0].tick, 'animation advances');
@@ -345,6 +402,9 @@ async function preview(page, tier, mobile) {
         FRAME = await HANDLE.contentFrame();
     await FRAME.waitForFunction(() => globalThis.BUDMORI?.sim?.units[0]?.species === 0);
     await revealPreview(page, FRAME, mobile);
+    // Start a fresh real scenario after scrolling, which can consume its nine-second budget.
+    await FRAME.goto(FRAME.url());
+    await FRAME.waitForFunction(() => globalThis.BUDMORI?.sim?.units[0]?.species === 0);
     // Frame has no screenshot method: capture its owner page while retaining frame-local timing.
     FRAME.screenshot = async (options) => {
         const CANVAS = await FRAME.locator('#world').boundingBox(),
@@ -837,6 +897,9 @@ try {
                             };
                         return {
                             url: location.href,
+                            help: globalThis.__budmoriHelp?.snapshot() || null,
+                            captureRequest: globalThis.__peaCaptureRequest || null,
+                            captured: globalThis.__peaCaptured || null,
                             drawn: globalThis.__peaDraw || null,
                             unit: UNIT
                                 ? { id: UNIT.id, phase: UNIT.ability.phase, pea: UNIT.ability.action?.peaAttack }

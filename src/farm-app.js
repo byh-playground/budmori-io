@@ -2156,6 +2156,7 @@ if (HELP.scene) {
     const SCENE = HELP.scene,
         WORLD = new Garden(SCENE.seed);
     SCENE.setup(WORLD);
+    RENDERER.attackPreviewSpecies = /^pea-t[1-6]$/.test(SCENE.id) ? 0 : null;
     start(WORLD, false);
     active.paused = false;
     HELP.scenario = globalThis.BloomGamekitScenario.createScenario({
