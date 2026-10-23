@@ -181,6 +181,48 @@ async function revealPreview(page, frame, mobile) {
     throw new Error('Actual scrolling could not expose the full preview canvas within the viewport');
 }
 
+// SwiftShader can render slower than a short landing recovery lasts. Observe the real
+// main-world action at most half a 20Hz tick per frame; never inject steps,
+// poses or contacts. Other user flows and benchmarks keep their normal clock.
+async function limitMainMotionObservationClock(page) {
+    await page.evaluate(() => {
+        const SESSION = BUDMORI.runtime;
+        if (!SESSION.__redbeanMotionClock) {
+            const CLOCK = {
+                    active: true,
+                    lastInput: null,
+                    current: null,
+                    maxInputDeltaMs: 0,
+                    maxForwardedDeltaMs: 0,
+                    frames: 0,
+                    advance(now) {
+                        if (this.lastInput === null) {
+                            this.current = now;
+                        } else if (now !== this.lastInput) {
+                            const DELTA = Math.max(0, now - this.lastInput),
+                                FORWARDED = this.active ? Math.min(25, DELTA) : DELTA;
+                            this.current += FORWARDED;
+                            if (this.active) {
+                                this.maxInputDeltaMs = Math.max(this.maxInputDeltaMs, DELTA);
+                                this.maxForwardedDeltaMs = Math.max(this.maxForwardedDeltaMs, FORWARDED);
+                                this.frames++;
+                            }
+                        }
+                        this.lastInput = now;
+                        return this.current;
+                    },
+                },
+                PULSE = SESSION.pulse;
+            SESSION.__redbeanMotionClock = CLOCK;
+            SESSION.pulse = function (now) {
+                return PULSE.call(this, CLOCK.advance(now));
+            };
+            SESSION.loop.resetTiming();
+        }
+        SESSION.__redbeanMotionClock.active = true;
+    });
+}
+
 async function observeDrawnRedbean(page) {
     await page.waitForFunction((body) => {
         const UNIT = globalThis.BUDMORI?.sim?.units[0],
@@ -192,8 +234,9 @@ async function observeDrawnRedbean(page) {
             const SESSION = BUDMORI.runtime,
                 PRESENT = SESSION.presentation;
             SESSION.presentation = function (now) {
-                globalThis.__redbeanInputClock = now;
-                return PRESENT.call(this, now);
+                const CLOCK = this.__redbeanMotionClock?.advance(now) ?? now;
+                globalThis.__redbeanInputClock = CLOCK;
+                return PRESENT.call(this, CLOCK);
             };
             SESSION.__redbeanClockObserver = true;
         }
@@ -259,6 +302,20 @@ async function observeDrawnRedbean(page) {
                     DRAWN = globalThis.__redbeanDraw,
                     ACTION = UNIT.ability.action?.redbeanAttack;
                 if (
+                    REQUEST?.actionId != null &&
+                    ACTION &&
+                    REQUEST.actionId !== ACTION.id &&
+                    !globalThis.__redbeanCaptureMiss
+                ) {
+                    globalThis.__redbeanCaptureMiss = {
+                        requestedActionId: REQUEST.actionId,
+                        observedActionId: ACTION.id,
+                        tick: BUDMORI.sim.simulationTick,
+                        request: { ...REQUEST },
+                        drawn: structuredClone(DRAWN),
+                    };
+                }
+                if (
                     REQUEST &&
                     !globalThis.__redbeanCaptured &&
                     ACTION?.form === REQUEST.tier &&
@@ -302,6 +359,9 @@ async function observeDrawnRedbean(page) {
 
 async function captureMotion(page, tier, label) {
     await observeDrawnRedbean(page);
+    if (label === 'main') {
+        await limitMainMotionObservationClock(page);
+    }
     const TRACE = [];
     const LEG_COUNT = tier <= 2 ? 1 : tier === 6 ? 3 : 2;
     const STAGES = [
@@ -313,6 +373,7 @@ async function captureMotion(page, tier, label) {
     await page.evaluate(
         (request) => {
             globalThis.__redbeanCaptured = null;
+            globalThis.__redbeanCaptureMiss = null;
             globalThis.__redbeanCaptureRequest = request;
         },
         { tier, ...STAGES[0], actionId },
@@ -401,7 +462,26 @@ async function captureMotion(page, tier, label) {
             'every real rebound flight is observed in one action',
         );
     }
-    REPORT.push({ kind: label, tier, trace: TRACE });
+    const OBSERVATION_CLOCK = await page.evaluate(() => {
+        const CLOCK = BUDMORI.runtime.__redbeanMotionClock;
+        if (!CLOCK) {
+            return { mode: 'production-help-clock' };
+        }
+        // Retain the clock origin, but stop limiting deltas after this capture.
+        CLOCK.active = false;
+        return {
+            mode: 'bounded-main-motion-observation',
+            maxDeltaMs: 25,
+            frames: CLOCK.frames,
+            maxInputDeltaMs: CLOCK.maxInputDeltaMs,
+            maxForwardedDeltaMs: CLOCK.maxForwardedDeltaMs,
+            limitation: 'Slowed actual model/render observation, not normal-speed or device performance evidence.',
+        };
+    });
+    if (label === 'main') {
+        assert.ok(OBSERVATION_CLOCK.maxForwardedDeltaMs <= 25);
+    }
+    REPORT.push({ kind: label, tier, trace: TRACE, observationClock: OBSERVATION_CLOCK });
 }
 
 async function preview(page, tier, mobile) {
@@ -924,6 +1004,15 @@ try {
                             help: globalThis.__budmoriHelp?.snapshot() || null,
                             captureRequest: globalThis.__redbeanCaptureRequest || null,
                             captured: globalThis.__redbeanCaptured || null,
+                            missedAction: globalThis.__redbeanCaptureMiss || null,
+                            observationClock: globalThis.BUDMORI?.runtime?.__redbeanMotionClock
+                                ? {
+                                      active: BUDMORI.runtime.__redbeanMotionClock.active,
+                                      frames: BUDMORI.runtime.__redbeanMotionClock.frames,
+                                      maxInputDeltaMs: BUDMORI.runtime.__redbeanMotionClock.maxInputDeltaMs,
+                                      maxForwardedDeltaMs: BUDMORI.runtime.__redbeanMotionClock.maxForwardedDeltaMs,
+                                  }
+                                : null,
                             drawn: globalThis.__redbeanDraw || null,
                             unit: UNIT
                                 ? {
