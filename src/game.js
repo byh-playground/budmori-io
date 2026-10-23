@@ -1079,14 +1079,28 @@
     const BASE = baseUnitStatsFor(unit2?.tier, unit2?.species), MULTIPLIER = Number.isFinite(unit2?.permanentStatMultiplier) ? Math.max(0, unit2.permanentStatMultiplier) : 1;
     return {
       ...BASE,
-      maxHp: BASE.maxHp * MULTIPLIER,
+      maxHp: BASE.maxHp * MULTIPLIER * (unit2?.growthMaxHpMultiplier ?? 1),
       attackPower: BASE.attackPower * MULTIPLIER,
       ...unit2?.isFormationClone ? { maxHp: 1 } : {},
       ...overrides
     };
   }
+  function unitMaxHpFor(unit2) {
+    return unit2.isFormationClone ? 1 : baseUnitStatsFor(unit2.tier, unit2.species).maxHp * (unit2.growthMaxHpMultiplier ?? 1);
+  }
+  function applyRunGrowthHealth(unit2, progression, { preserveRatio = false } = {}) {
+    if ((unit2.species !== 2 || unit2.faction !== "player" || unit2.isFormationClone) && (unit2.growthMaxHpMultiplier ?? 1) === 1) {
+      return;
+    }
+    const PREVIOUS_MAX = unitMaxHpFor(unit2), BUILD = progression?.abilities?.["kidney-continuous-leap"];
+    unit2.growthMaxHpMultiplier = unit2.species === 2 && unit2.faction === "player" && !unit2.isFormationClone && BUILD?.treeVersion === 1 ? 1 + 0.04 * (BUILD.nodeRanks["basic-2"] || 0) : 1;
+    const NEXT_MAX = unitMaxHpFor(unit2);
+    if (unit2.hp > 0) {
+      unit2.hp = preserveRatio ? Math.min(1, unit2.hp / PREVIOUS_MAX) * NEXT_MAX : Math.min(unit2.hp, NEXT_MAX);
+    }
+  }
   function combatStats(unit2, overrides) {
-    return overrides === void 0 && !unit2?.isFormationClone ? baseUnitStatsFor(unit2?.tier, unit2?.species) : resolveUnitStats(unit2, overrides);
+    return overrides === void 0 && !unit2?.isFormationClone && (unit2?.growthMaxHpMultiplier ?? 1) === 1 ? baseUnitStatsFor(unit2?.tier, unit2?.species) : resolveUnitStats(unit2, overrides);
   }
   function resolveDamage(rawDamage, armor = 0, armorPenetration = 0, critical = false, critMultiplier = COMMON_UNIT_STAT_DEFAULTS.critMultiplier) {
     const RAW = Number.isFinite(rawDamage) ? Math.max(0, rawDamage) : 0;
@@ -3190,6 +3204,7 @@
   var init_model10 = __esm({
     "src/features/scenes/farm/model.js"() {
       init_model_base2();
+      init_unit_stats();
       init_definition11();
       FarmSimulationScene = class extends SimulationScene {
         constructor(dependencies) {
@@ -3237,11 +3252,10 @@
           return true;
         }
         restoreUnit(world, unit2) {
-          const { STATS: STATS2 } = this.dependencies;
           if (unit2.down !== 0) {
             return;
           }
-          const MAX_HP = STATS2(unit2.tier, unit2.species).maxHp;
+          const MAX_HP = unitMaxHpFor(unit2);
           world.releaseMate(unit2);
           unit2.revive(MAX_HP);
         }
@@ -3509,6 +3523,10 @@
               available: true,
               basic: ["박치기 위력", "첫 재돌진 위력", "후딜 감소"],
               specialty: ["재접근 가속", "첫 충돌", "마지막 충돌"]
+            } : id === 2 ? {
+              available: true,
+              basic: ["도약 위력", "최대 체력", "공격 속도"],
+              specialty: ["착지 범위", "연속 도약", "마무리 착지"]
             } : {}
           )
         )
@@ -5688,7 +5706,7 @@
           retreatWithinRange: true,
           aimAtCenter: true
         }),
-        2: COMPOSITION("contact", [], { specialAbility: "kidneyLeap" }),
+        2: COMPOSITION("redbean", [], { specialAbility: "kidneyLeap" }),
         3: COMPOSITION("contact", [], {
           contactRecoil: true,
           specialAbility: "chestnutThorns"
@@ -6365,7 +6383,7 @@
         lifeMs = DAMAGE_NUMBER.lifeMs;
         // `reduced` keeps the number but drops the pop and the rise: the information stays, the motion goes.
         draw(renderer, event, progress, feel) {
-          if (renderer.attackPreviewSpecies === 0) {
+          if ([0, 2].includes(renderer.attackPreviewSpecies)) {
             return;
           }
           const STYLE = STYLES[event.critical ? "critical" : event.role], REDUCED = feel?.reduced === true, POP = Math.min(1, progress / DAMAGE_NUMBER.popFraction), ALPHA = Math.min(1, (1 - progress) / DAMAGE_NUMBER.fadeFraction), SCALE = (event.critical ? DAMAGE_NUMBER.criticalScale : 1) * (REDUCED ? 1 : 0.65 + 0.45 * Math.sin(POP * Math.PI * 0.5)), LIFT = REDUCED ? 0 : DAMAGE_NUMBER.rise * (1 - (1 - progress) ** 2), DRIFT = (event.sequence * 7919 % 11 - 5) * DAMAGE_NUMBER.spread, POINT2 = renderer.project(event.x + DRIFT, event.y, event.z + 0.5 + LIFT), TEXT = `${STYLE.prefix}${formatDamage(event.amount)}${STYLE.suffix}`, HEIGHT = DAMAGE_NUMBER.height * SCALE * renderer.scale;
@@ -8362,6 +8380,354 @@
     }
   });
 
+  // src/features/species-growth/redbean-attack.js
+  function redbeanGrowthBuild(progression) {
+    const ENTRY = progression?.abilities?.["kidney-continuous-leap"];
+    return ENTRY?.treeVersion === 1 ? growthBuildOf(ENTRY) : null;
+  }
+  function redbeanPlan(form, speed) {
+    let end = 0;
+    const LEGS_LOCAL = LEGS[form].map(([ticks, height], index) => {
+      const START = end + (index ? 1 : 0);
+      end = START + Math.max(3, Math.ceil(ticks / speed - 1e-9));
+      return { start: START, end, height };
+    });
+    const STRIKES = REDBEAN_WEIGHTS[form].map((weight, index) => {
+      const LEG = LEGS_LOCAL[index];
+      const AERIAL = form === 5 && index === 0 || form === 6 && index === 1;
+      return { tick: AERIAL ? LEG.end - 2 : LEG.end, weight };
+    });
+    return { legs: LEGS_LOCAL, durationTicks: end, strikes: STRIKES };
+  }
+  function redbeanCycleTicks(form, speed, chance) {
+    const RECOVERY = Math.ceil(10 / speed - 1e-9), RESET = 2;
+    return Math.ceil(6.4 / speed - 1e-9) + redbeanPlan(form, speed).durationTicks + 1 + RECOVERY - chance * Math.max(0, RECOVERY - RESET);
+  }
+  function redbeanBudgetMultiplier(tier, form, speed, chance, one, current) {
+    let materials = 1;
+    for (let grade = 2; grade <= tier; grade++) {
+      materials *= mergeMaterialCostForTier(grade);
+    }
+    const GRADE = one > 0 && current > 0 && Number.isFinite(one + current) ? one * materials * 1.05 ** (tier - 1) / current : 1.75 ** (tier - 1);
+    return GRADE * redbeanCycleTicks(form, speed, chance) / redbeanCycleTicks(1, speed, chance);
+  }
+  function createRedbeanAttack(world, unit2, action, commandSpeed) {
+    const BUILD = redbeanGrowthBuild(world.abilityProgressionFor(unit2));
+    if (!BUILD || unit2.species !== 2) {
+      return null;
+    }
+    const R2 = BUILD.nodeRanks, FORM = growthForAbility("kidney-continuous-leap").attackTier(BUILD, unit2.tier);
+    const SPEED = Math.max(
+      0.05,
+      Math.min(4, baseUnitStatsFor(unit2.tier, 2).attackSpeed * commandSpeed * (1 + 0.02 * (R2["basic-3"] || 0)))
+    );
+    const CHANCE = Math.min(0.65, 0.2 + 0.09 * (R2["specialty-2"] || 0));
+    const CONTEXT = world.createAttackContext(unit2, { attackKind: "leap", attackMultiplier: 1 });
+    const INPUTS = { one: baseUnitStatsFor(1, 2).attackPower, current: baseUnitStatsFor(unit2.tier, 2).attackPower };
+    return {
+      version: 1,
+      id: action.id,
+      owner: unit2.id,
+      ownerGeneration: unit2.generation,
+      tier: unit2.tier,
+      form: FORM,
+      speed: SPEED,
+      chance: CHANCE,
+      windupSeconds: 0.32 / SPEED,
+      recoverySeconds: 0.5 / SPEED,
+      ranks: { power: R2["basic-1"] || 0, radius: R2["specialty-1"] || 0, finish: R2["specialty-3"] || 0 },
+      budgetInputs: INPUTS,
+      directMultiplier: redbeanBudgetMultiplier(unit2.tier, FORM, SPEED, CHANCE, INPUTS.one, INPUTS.current) * (1 + 0.03 * (R2["basic-1"] || 0)),
+      source: {
+        attackerStats: structuredClone(CONTEXT.attackerStats),
+        attackPowerMultiplier: CONTEXT.attackPowerMultiplier,
+        sourceDamageScale: world.passiveDamageScale(
+          unit2,
+          CONTEXT.attackerStats.maxHp,
+          world.boss,
+          world.boss.maxHp
+        ),
+        sourceKind: CONTEXT.sourceKind
+      },
+      launchTick: null,
+      motionTick: 0,
+      slot: 0,
+      leg: 0,
+      progress: 0,
+      stage: "windup",
+      origin: null,
+      points: null,
+      attack: null,
+      reset: false,
+      criticalRolls: {}
+    };
+  }
+  function launchRedbeanAttack(world, unit2, action) {
+    const R2 = action.redbeanAttack;
+    if (R2.launchTick !== null) {
+      return;
+    }
+    R2.launchTick = world.simulationTick;
+    R2.origin = { x: unit2.x, y: unit2.y };
+    const TARGET = world.attackTarget(unit2, action), X = TARGET?.x ?? action.target.x, Y = TARGET?.y ?? action.target.y;
+    const ANGLE = Math.atan2(unit2.y - Y, unit2.x - X), DISTANCE = (TARGET?.radius || 0) + unit2.radius - 0.12;
+    R2.points = LEGS[R2.form].map((_, i) => {
+      const SIDE = (R2.form === 4 || R2.form === 6) && i === 1 ? 0.35 : 0;
+      return { x: X + Math.cos(ANGLE + SIDE) * DISTANCE, y: Y + Math.sin(ANGLE + SIDE) * DISTANCE };
+    });
+    const PLAN = redbeanPlan(R2.form, R2.speed);
+    R2.attack = new AttackAction({ durationTicks: PLAN.durationTicks + 1, strikes: PLAN.strikes }, R2.launchTick).toDTO();
+  }
+  function sampleRedbeanMotion(record, tick) {
+    const PLAN = redbeanPlan(record.form, record.speed);
+    let index = PLAN.legs.findIndex((leg) => tick <= leg.end);
+    if (index < 0) {
+      index = PLAN.legs.length - 1;
+    }
+    const LEG = PLAN.legs[index], Q = Math.max(0, Math.min(1, (tick - LEG.start) / (LEG.end - LEG.start))), FROM = index ? record.points[index - 1] : record.origin, TO = record.points[index];
+    record.leg = index;
+    record.progress = Q;
+    record.stage = tick <= LEG.start || Q === 1 ? "ground" : "flight";
+    return {
+      x: FROM.x + (TO.x - FROM.x) * Q,
+      y: FROM.y + (TO.y - FROM.y) * Q,
+      z: Q === 0 || Q === 1 ? 0 : Math.sin(Math.PI * Q) * LEG.height
+    };
+  }
+  function resolveRedbeanSlots(world, unit2, action, geometry) {
+    const R2 = action.redbeanAttack, ATTACK2 = AttackAction.fromDTO(R2.attack), READY = ATTACK2.advance(
+      Math.min(world.simulationTick, R2.launchTick + redbeanPlan(R2.form, R2.speed).durationTicks)
+    );
+    for (const STRIKE of READY) {
+      R2.slot = STRIKE.slot;
+      const FINAL = STRIKE.slot === REDBEAN_WEIGHTS[R2.form].length - 1, POINT2 = sampleRedbeanMotion(R2, redbeanPlan(R2.form, R2.speed).strikes[STRIKE.slot].tick), RADIUS = (FINAL && [4, 6].includes(R2.form) ? 0.8 : 0.65) * (1 + 0.04 * R2.ranks.radius) * R2.source.attackerStats.attackArea, PRIMARY = world.attackTarget(unit2, action), CANDIDATES = [];
+      if (PRIMARY) {
+        CANDIDATES.push(PRIMARY);
+      }
+      for (const TARGET of [world.boss, ...world.units]) {
+        if (TARGET !== PRIMARY && TARGET.hp > 0 && areOpposingFactions(unit2, TARGET)) {
+          CANDIDATES.push(TARGET);
+        }
+      }
+      let secondary = 0;
+      for (const TARGET of CANDIDATES) {
+        const IS_PRIMARY = TARGET === PRIMARY;
+        if (!IS_PRIMARY && secondary >= 4 || !geometry.overlaps({ ...POINT2, radius: RADIUS, height: unit2.height }, TARGET)) {
+          continue;
+        }
+        const ID = TARGET === world.boss ? "boss" : TARGET.id;
+        if (!ATTACK2.claimHit(STRIKE.slot, ID, TARGET.generation)) {
+          continue;
+        }
+        if (!IS_PRIMARY) {
+          secondary++;
+        }
+        const KEY2 = attackTargetKey(ID, TARGET.generation);
+        if (!Object.hasOwn(R2.criticalRolls, KEY2)) {
+          R2.criticalRolls[KEY2] = world.random();
+        }
+        const SOURCE = R2.source;
+        world.damageCombatTarget(unit2, { id: action.id, hit: false }, TARGET, POINT2, {
+          attackKind: "leap",
+          suppressBasicProc: !ATTACK2.claimOnce("basic-proc"),
+          attackContext: {
+            source: unit2,
+            sourceKind: SOURCE.sourceKind,
+            attackerStats: SOURCE.attackerStats,
+            damageMultiplier: R2.directMultiplier * (STRIKE.weight + (FINAL ? 0.08 * R2.ranks.finish : 0)) * (IS_PRIMARY ? 1 : 0.5),
+            attackPowerMultiplier: SOURCE.attackPowerMultiplier,
+            sourceDamageScale: SOURCE.sourceDamageScale,
+            kind: "leap",
+            strikeIndex: STRIKE.slot,
+            buffed: false,
+            sourceStatOverrides: { ...SOURCE.attackerStats },
+            area: true,
+            criticalRoll: R2.criticalRolls[KEY2],
+            hitTargets: null
+          }
+        });
+      }
+      if (FINAL && ATTACK2.claimOnce("final-reset")) {
+        R2.reset = world.random() < R2.chance;
+        world.combat("redbean-final-reset", { unit: unit2.id, actionId: action.id, success: R2.reset });
+      }
+      world.combat("redbean-strike", {
+        unit: unit2.id,
+        actionId: action.id,
+        slot: STRIKE.slot,
+        form: R2.form,
+        ...POINT2
+      });
+    }
+    R2.attack = ATTACK2.toDTO();
+  }
+  function isRedbeanAttackRecord(r) {
+    if (!EXACT(
+      r,
+      "version id owner ownerGeneration tier form speed chance windupSeconds recoverySeconds ranks budgetInputs directMultiplier source launchTick motionTick slot leg progress stage origin points attack reset criticalRolls"
+    ) || r.version !== 1 || !["id", "owner", "ownerGeneration"].every((k) => Number.isSafeInteger(r[k]) && r[k] > 0) || !Number.isInteger(r.tier) || r.tier < 1 || r.tier > 6 || !Number.isInteger(r.form) || r.form < 1 || r.form > r.tier || !Number.isFinite(r.speed) || r.speed < 0.05 || r.speed > 4 || !Number.isFinite(r.chance) || r.chance < 0.2 || r.chance > 0.65 || ![0, 1, 2, 3, 4, 5].some((rank) => r.chance === Math.min(0.65, 0.2 + 0.09 * rank)) || r.windupSeconds !== 0.32 / r.speed || r.recoverySeconds !== 0.5 / r.speed || !EXACT(r.ranks, "power radius finish") || !Object.entries(r.ranks).every(([k, v]) => Number.isInteger(v) && v >= 0 && v <= (k === "power" ? 10 : 5)) || !EXACT(r.budgetInputs, "one current") || !Object.values(r.budgetInputs).every(Number.isFinite) || r.directMultiplier !== redbeanBudgetMultiplier(r.tier, r.form, r.speed, r.chance, r.budgetInputs.one, r.budgetInputs.current) * (1 + 0.03 * r.ranks.power) || !EXACT(r.source, "attackerStats attackPowerMultiplier sourceDamageScale sourceKind") || !EXACT(r.source.attackerStats, ["maxHp", "attackPower", ...Object.keys(COMMON_UNIT_STAT_DEFAULTS)].join(" ")) || !Object.values(r.source.attackerStats).every((v) => Number.isFinite(v) && v >= 0) || r.source.attackerStats.maxHp <= 0 || ![1, 3].includes(r.source.attackPowerMultiplier) || !Number.isFinite(r.source.sourceDamageScale) || r.source.sourceDamageScale < 0 || !["direct", "enemy"].includes(r.source.sourceKind) || typeof r.reset !== "boolean" || !Number.isFinite(r.motionTick) || r.motionTick < 0 || !Number.isInteger(r.slot) || r.slot < 0 || r.slot >= REDBEAN_WEIGHTS[r.form].length || !Number.isInteger(r.leg) || r.leg < 0 || r.leg >= LEGS[r.form].length || !Number.isFinite(r.progress) || r.progress < 0 || r.progress > 1 || !["windup", "ground", "flight"].includes(r.stage) || !r.criticalRolls || typeof r.criticalRolls !== "object" || Array.isArray(r.criticalRolls) || !Object.values(r.criticalRolls).every((v) => Number.isFinite(v) && v >= 0 && v < 1)) {
+      return false;
+    }
+    for (const KEY2 of Object.keys(r.criticalRolls)) {
+      try {
+        const PARTS = JSON.parse(KEY2);
+        if (!Array.isArray(PARTS) || attackTargetKey(PARTS[1], PARTS[2]) !== KEY2) {
+          return false;
+        }
+      } catch {
+        return false;
+      }
+    }
+    if (r.launchTick === null) {
+      return r.attack === null && r.origin === null && r.points === null && r.motionTick === 0 && r.slot === 0 && r.leg === 0 && r.progress === 0 && r.stage === "windup" && !r.reset && Object.keys(r.criticalRolls).length === 0;
+    }
+    const PLAN = redbeanPlan(r.form, r.speed);
+    if (!Number.isInteger(r.motionTick) || r.motionTick > PLAN.durationTicks || !isAttackActionDTO(r.attack)) {
+      return false;
+    }
+    const HIT_KEYS = new Set(r.attack.hits.flat());
+    const SAMPLE = { ...r };
+    if (!Array.isArray(r.points) || r.points.length !== PLAN.legs.length || !EXACT(r.origin, "x y") || !r.points.every((point2) => EXACT(point2, "x y"))) {
+      return false;
+    }
+    sampleRedbeanMotion(SAMPLE, r.motionTick);
+    if (r.leg !== SAMPLE.leg || r.progress !== SAMPLE.progress || r.stage !== SAMPLE.stage || r.attack.cancelled || r.attack.claims.some((claim) => !["basic-proc", "final-reset"].includes(claim)) || r.attack.claims.includes("basic-proc") !== HIT_KEYS.size > 0 || HIT_KEYS.size !== Object.keys(r.criticalRolls).length || r.attack.lastTick !== r.launchTick + r.motionTick || r.attack.nextSlot !== PLAN.strikes.filter((strike) => strike.tick <= r.motionTick).length || r.attack.claims.includes("final-reset") !== (r.attack.nextSlot === PLAN.strikes.length) || Object.keys(r.criticalRolls).some((key) => !r.attack.hits.some((hits) => hits.includes(key))) || ![r.origin, ...r.points].every(
+      (point2) => Object.values(point2).every((value) => Number.isFinite(value) && Math.abs(value) <= 100)
+    )) {
+      return false;
+    }
+    return Number.isSafeInteger(r.launchTick) && r.launchTick >= 0 && EXACT(r.origin, "x y") && Object.values(r.origin).every(Number.isFinite) && Array.isArray(r.points) && r.points.length === PLAN.legs.length && r.points.every((p) => EXACT(p, "x y") && Object.values(p).every(Number.isFinite)) && isAttackActionDTO(r.attack) && r.attack.startTick === r.launchTick && r.attack.plan.durationTicks === PLAN.durationTicks + 1 && JSON.stringify(r.attack.plan.strikes) === JSON.stringify(PLAN.strikes) && r.slot === Math.max(0, r.attack.nextSlot - 1) && (!r.reset || r.attack.claims.includes("final-reset"));
+  }
+  var REDBEAN_WEIGHTS, LEGS, EXACT;
+  var init_redbean_attack = __esm({
+    "src/features/species-growth/redbean-attack.js"() {
+      init_attack_action();
+      init_state();
+      init_unit_stats();
+      init_unit_grades();
+      init_factions();
+      REDBEAN_WEIGHTS = Object.freeze([
+        null,
+        [1],
+        [1],
+        [0.45, 0.55],
+        [0.45, 0.55],
+        [0.4, 0.6],
+        [0.2, 0.25, 0.55]
+      ]);
+      LEGS = [
+        null,
+        [[9, 0.65]],
+        [[11, 1.1]],
+        [
+          [9, 0.8],
+          [12, 1.4]
+        ],
+        [
+          [9, 0.8],
+          [12, 1.1]
+        ],
+        [
+          [11, 1.3],
+          [15, 2.2]
+        ],
+        [
+          [8, 0.6],
+          [11, 1.1],
+          [16, 2.7]
+        ]
+      ];
+      EXACT = (value, keys2) => value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).sort().join(" ") === keys2.split(" ").sort().join(" ");
+    }
+  });
+
+  // src/features/unit-attacks/redbean/model.js
+  function createRedbeanAttackMixin(contactAttack, geometry) {
+    return (base) => class extends contactAttack(base) {
+      prepareAttack(sim) {
+        super.prepareAttack?.(sim);
+        const RECORD = createRedbeanAttack(sim, this.owner, this.action, this.attackSpeedMultiplier(sim));
+        if (RECORD) {
+          this.action.redbeanAttack = RECORD;
+        }
+      }
+      attackWindupSeconds(sim) {
+        return this.action?.redbeanAttack?.windupSeconds ?? super.attackWindupSeconds?.(sim) ?? this.spec.timing.windup;
+      }
+      attackRecoverySeconds(sim) {
+        const R2 = this.action?.redbeanAttack;
+        return R2 ? (R2.reset ? 0.1 : Math.ceil(R2.recoverySeconds * 20 - 1e-9) / 20) - 1e-9 : super.attackRecoverySeconds(sim);
+      }
+      syncAttackSpeedMultiplier(tick) {
+        if (!this.action?.redbeanAttack) {
+          super.syncAttackSpeedMultiplier(tick);
+        }
+      }
+      onLaunch(sim, action) {
+        super.onLaunch?.(sim, action);
+        if (action.redbeanAttack) {
+          launchRedbeanAttack(sim, this.owner, action);
+        }
+      }
+      landingRecoverySeconds() {
+        return this.action?.redbeanAttack ? 0.05 : 0.25;
+      }
+      resetCombatEffects() {
+        super.resetCombatEffects?.();
+        this.interrupt();
+      }
+      integrate(dt) {
+        const R2 = this.action?.redbeanAttack, U = this.owner;
+        if (!R2 || this.phase !== "active") {
+          return super.integrate(dt);
+        }
+        if (U.stun > 0 || U.down > 0 || U.hp <= 0) {
+          return false;
+        }
+        this.elapsed += dt;
+        R2.motionTick = Math.min(redbeanPlan(R2.form, R2.speed).durationTicks, this.elapsed * 20);
+        const P = sampleRedbeanMotion(R2, R2.motionTick);
+        U.vx = (P.x - U.x) / dt;
+        U.vy = (P.y - U.y) / dt;
+        U.vz = (P.z - U.z) / dt;
+        U.x = P.x;
+        U.y = P.y;
+        U.z = P.z;
+        U.flash = Math.max(0, U.flash - dt);
+        U.bounce = Math.max(0, U.bounce - dt);
+        return true;
+      }
+      afterMove(sim, old) {
+        const A = this.action, R2 = A?.redbeanAttack, U = this.owner;
+        if (!R2) {
+          super.afterMove(sim, old);
+          return;
+        }
+        if (this.phase !== "active") {
+          return;
+        }
+        if (U.hp <= 0 || U.stun > 0 || U.down > 0) {
+          this.interrupt();
+          return;
+        }
+        R2.motionTick = Math.min(redbeanPlan(R2.form, R2.speed).durationTicks, sim.simulationTick - R2.launchTick);
+        Object.assign(U, sampleRedbeanMotion(R2, R2.motionTick));
+        resolveRedbeanSlots(sim, U, A, geometry);
+        Object.assign(U, sampleRedbeanMotion(R2, R2.motionTick));
+        if (R2.motionTick >= redbeanPlan(R2.form, R2.speed).durationTicks) {
+          U.z = U.vz = U.vx = U.vy = 0;
+          U.bounce = 0.16;
+          this.recover(sim, false);
+        }
+      }
+    };
+  }
+  var init_model30 = __esm({
+    "src/features/unit-attacks/redbean/model.js"() {
+      init_redbean_attack();
+    }
+  });
+
   // src/features/unit-attacks/pea/model.js
   function createPeaAttackMixin(contactAttack, geometry) {
     return (base) => class extends contactAttack(base) {
@@ -8473,7 +8839,7 @@
       }
     };
   }
-  var init_model30 = __esm({
+  var init_model31 = __esm({
     "src/features/unit-attacks/pea/model.js"() {
       init_pea_attack();
       init_attack_action();
@@ -8627,7 +8993,7 @@
     };
     return REPEATED_STRIKE;
   }
-  var init_model31 = __esm({
+  var init_model32 = __esm({
     "src/features/unit-attacks/dual-strike/model.js"() {
       init_unit_combat_patterns();
     }
@@ -8695,7 +9061,7 @@
     };
     return PROJECTILE_ATTACK;
   }
-  var init_model32 = __esm({
+  var init_model33 = __esm({
     "src/features/unit-attacks/lob/model.js"() {
       init_corn_attack();
     }
@@ -8826,7 +9192,7 @@
         return specialAbilityCompositionFor(this.owner.species).composition;
       }
       canBegin(sim) {
-        return !!KidneyLeapModel.config(sim.abilityProgressionFor(this.owner), this.owner.tier) && sim.simulationTick >= this.owner.kidneyLeapReadyTick && this.owner.kidneyLeapLastUseTick !== sim.simulationTick;
+        return !redbeanGrowthBuild(sim.abilityProgressionFor(this.owner)) && !!KidneyLeapModel.config(sim.abilityProgressionFor(this.owner), this.owner.tier) && sim.simulationTick >= this.owner.kidneyLeapReadyTick && this.owner.kidneyLeapLastUseTick !== sim.simulationTick;
       }
       onLaunch(sim, action) {
         super.onLaunch?.(sim, action);
@@ -9007,6 +9373,7 @@
     const ATTACKS = {
       contact: CONTACT_ATTACK,
       pea: createPeaAttackMixin(CONTACT_ATTACK, arenaGeometry),
+      redbean: createRedbeanAttackMixin(CONTACT_ATTACK, arenaGeometry),
       [FEATURE3.modelKey]: PROJECTILE_ATTACK,
       [FEATURE4.modelKey]: REPEATED_STRIKE
     };
@@ -9054,9 +9421,11 @@
   var init_unit_attack_capabilities = __esm({
     "src/unit-attack-capabilities.js"() {
       init_model30();
+      init_redbean_attack();
       init_model31();
-      init_definition18();
       init_model32();
+      init_definition18();
+      init_model33();
       init_definition17();
       init_unit_abilities();
       init_unit_stats();
@@ -9547,7 +9916,7 @@
             this.interrupt();
             return true;
           }
-          if (this.action && (this.phase === "windup" || this.phase === "active") && !this.action.cornAttack && !(sim.attackTarget(U, this.action)?.hp > 0)) {
+          if (this.action && (this.phase === "windup" || this.phase === "active") && !this.action.cornAttack && !this.action.redbeanAttack && !(sim.attackTarget(U, this.action)?.hp > 0)) {
             this.interrupt();
             return true;
           }
@@ -9639,6 +10008,7 @@
             species,
             tier,
             permanentStatMultiplier: 1,
+            growthMaxHpMultiplier: 1,
             faction: FACTION_CONFIG.PLAYER,
             meals: 0,
             growth: 0,
@@ -10341,7 +10711,7 @@
         get armyHealth() {
           return this.units.filter((u) => hasFaction(u, FACTION_CONFIG.PLAYER)).reduce(
             (sum, u) => {
-              const MAX_HP = u.isFormationClone ? 1 : STATS(u.tier, u.species).maxHp;
+              const MAX_HP = u.isFormationClone ? 1 : unitMaxHpFor(u);
               return {
                 current: sum.current + Math.max(0, Math.min(MAX_HP, u.hp)),
                 max: sum.max + MAX_HP,
@@ -10639,7 +11009,7 @@
           }
           return scale * (target === this.boss ? 1 : this.passiveReceivedScale(target, targetMaxHp));
         }
-        passiveReceivedScale(unit2, maxHp = STATS(unit2.tier, unit2.species).maxHp) {
+        passiveReceivedScale(unit2, maxHp = unitMaxHpFor(unit2)) {
           const TOWER = this.tower;
           if (!TOWER.active || !hasFaction(unit2, FACTION_CONFIG.PLAYER) || unit2.hp > maxHp * PASSIVE_SETTINGS.resolveBelow) {
             return 1;
@@ -10653,10 +11023,7 @@
             return;
           }
           TOWER.undyingUsed.add(unit2.id);
-          unit2.hp = Math.max(
-            1,
-            STATS(unit2.tier, unit2.species).maxHp * Math.min(PASSIVE_SETTINGS.undyingMaxRestore, RESTORE)
-          );
+          unit2.hp = Math.max(1, unitMaxHpFor(unit2) * Math.min(PASSIVE_SETTINGS.undyingMaxRestore, RESTORE));
           this.combat("passive-undying", {
             unit: unit2.id,
             x: unit2.x,
@@ -10684,7 +11051,7 @@
           );
           if (HEAL) {
             for (const OTHER of NEAR) {
-              applyHealing(OTHER, STATS(OTHER.tier, OTHER.species).maxHp * HEAL);
+              applyHealing(OTHER, unitMaxHpFor(OTHER) * HEAL);
             }
           }
           const TARGETS = NEAR.slice(0, 6).map((other) => ({ x: other.x, y: other.y, z: other.z, height: other.height }));
@@ -10853,6 +11220,7 @@
             return null;
           }
           const U = new UNIT(this.nextId++, species, CLAMP2(tier, 1, CONFIG.unit.maxTier), x, y);
+          applyRunGrowthHealth(U, this.runProgressionSnapshot, { preserveRatio: true });
           this.addUnit(U);
           return U;
         }
@@ -11082,6 +11450,9 @@
           const FLOOR = Math.min(Math.max(1, Math.floor(startFloor) || 1), Math.max(1, this.playerProgression.towerBest)), KIND = FLOOR % CONFIG.farm.tower.midBossEvery === 0 ? "mid" : "battle";
           const SLEEP = new Map(this.units.filter((u) => !u.isBattleOnlySummon && u.hp <= 0).map((u) => [u.id, FLOOR]));
           this.runProgressionSnapshot = structuredClone(this.playerProgression);
+          for (const UNIT_LOCAL of this.unitCollection.items) {
+            applyRunGrowthHealth(UNIT_LOCAL, this.runProgressionSnapshot, { preserveRatio: true });
+          }
           this.tower = {
             pendingKind: KIND,
             active: true,
@@ -11226,7 +11597,7 @@
           this.markProgressChanged();
         }
         _wakeUnit(unit2) {
-          unit2.revive(STATS(unit2.tier, unit2.species).maxHp);
+          unit2.revive(unitMaxHpFor(unit2));
           this.tower.sleepUntil.delete(unit2.id);
         }
         chooseDoor(index) {
@@ -11256,6 +11627,9 @@
           return true;
         }
         _clearRunStats() {
+          for (const UNIT_LOCAL of this.unitCollection.items) {
+            applyRunGrowthHealth(UNIT_LOCAL, null);
+          }
           this.tower.cards = [];
           this._applyRunStats();
         }
@@ -11265,7 +11639,7 @@
           this.tower.passives = passiveTotals(this.tower.cards);
           for (const UNIT_LOCAL of this.unitCollection.items) {
             if (UNIT_LOCAL.hp > 0 && !UNIT_LOCAL.isFormationClone) {
-              UNIT_LOCAL.hp = Math.min(UNIT_LOCAL.hp, STATS(UNIT_LOCAL.tier, UNIT_LOCAL.species).maxHp);
+              UNIT_LOCAL.hp = Math.min(UNIT_LOCAL.hp, unitMaxHpFor(UNIT_LOCAL));
             }
           }
         }
@@ -11297,7 +11671,7 @@
             if (UNIT_LOCAL.hp <= 0 && T.sleepUntil.has(UNIT_LOCAL.id) && T.sleepUntil.get(UNIT_LOCAL.id) < T.floor) {
               this._wakeUnit(UNIT_LOCAL);
             } else if (UNIT_LOCAL.hp > 0) {
-              UNIT_LOCAL.hp = STATS(UNIT_LOCAL.tier, UNIT_LOCAL.species).maxHp;
+              UNIT_LOCAL.hp = unitMaxHpFor(UNIT_LOCAL);
             }
           }
           T.fallen = 0;
@@ -12071,6 +12445,7 @@
           }
           const ORDERED = [...materials], FIRST = ORDERED[0], MATERIAL_IDS = ORDERED.map((unit2) => unit2.id), X = TASK.centerX, Y = TASK.centerY, Z = TASK.centerZ;
           const RESULT = new UNIT(this.nextId, FIRST.species, FIRST.tier + 1, X, Y);
+          applyRunGrowthHealth(RESULT, this.runProgressionSnapshot, { preserveRatio: true });
           RESULT.dropLanded = false;
           RESULT.meals = 1;
           RESULT.growth = CONFIG.farm.breeding.matureMeals;
@@ -12351,7 +12726,7 @@
               ACTIVE_ATTACK.afterMove?.(this, OLD_POSITION);
             }
             if (OLD_Z > 0 && U.z === 0) {
-              U.landingRecovery = 0.25;
+              U.landingRecovery = ACTIVE_ATTACK.landingRecoverySeconds?.() ?? 0.25;
               if (!U.dropLanded) {
                 U.dropLanded = true;
                 U.bounce = 0.16;
@@ -14494,7 +14869,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.32.0";
+      PRODUCT_VERSION = "0.33.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -14552,7 +14927,7 @@
       init_farm_progress();
       MAX_BYTES = 2 * 1024 * 1024;
       COMPATIBILITY_LOCAL = (version) => typeof version === "string" ? version.split(".").slice(0, 2).join(".") : "";
-      IS_READABLE_COMPATIBILITY = (version) => [COMPATIBILITY, "0.31", "0.30"].includes(COMPATIBILITY_LOCAL(version));
+      IS_READABLE_COMPATIBILITY = (version) => [COMPATIBILITY, "0.32", "0.31", "0.30"].includes(COMPATIBILITY_LOCAL(version));
     }
   });
 
@@ -16628,10 +17003,6 @@
     }
   };
 
-  // src/farm-render-units.js
-  var import_definition62 = __toESM(require_definition(), 1);
-  init_presentation9();
-
   // src/features/unit-attacks/presentation-base.js
   var UnitAttackPresentation = class {
     activeMotion() {
@@ -16641,6 +17012,59 @@
       return "recover";
     }
   };
+
+  // src/features/unit-attacks/redbean/presentation.js
+  var RedbeanAttackPresentation = class extends UnitAttackPresentation {
+    applyPose(matrix, unit2, ground) {
+      const A = unit2.ability, FORM = A.redbeanForm, PHASE = A.phase, Q = Math.max(0, Math.min(1, A.redbeanStageProgress || 0)), LEG = A.redbeanLeg || 0, DIRECTION = Math.cos(unit2.angle || 0) >= 0 ? 1 : -1;
+      if (!FORM || !["windup", "active", "recover"].includes(PHASE)) {
+        return;
+      }
+      let rotation = 0, squash = 0;
+      if (PHASE === "windup") {
+        squash = 0.25 * Math.min(1, A.elapsed / A.redbeanWindupDuration);
+      } else if (PHASE === "recover" || A.redbeanStage === "ground") {
+        squash = 0.22 * Math.max(0, 1 - A.elapsed / 0.2);
+      } else {
+        switch (FORM) {
+          case 1:
+            rotation = DIRECTION * 0.18 * Math.sin(Math.PI * Q);
+            squash = -0.08 * Math.sin(Math.PI * Q);
+            break;
+          case 2:
+            rotation = DIRECTION * Math.PI * 2 * Q;
+            break;
+          case 3:
+            rotation = DIRECTION * (LEG ? -0.45 : 0.3) * Math.sin(Math.PI * Q);
+            squash = -0.16 * Math.sin(Math.PI * Q);
+            break;
+          case 4:
+            rotation = DIRECTION * (LEG ? -0.65 : 0.3) * Math.sin(Math.PI * Q);
+            squash = -0.1 * Math.sin(Math.PI * Q);
+            break;
+          case 5:
+            rotation = LEG === 0 ? DIRECTION * Math.PI * 2 * Q : DIRECTION * 0.22 * Math.sin(Math.PI * Q);
+            squash = LEG === 1 ? -0.2 * Math.sin(Math.PI * Q) : 0;
+            break;
+          case 6:
+            rotation = LEG === 1 ? -DIRECTION * Math.PI * 2 * Q : DIRECTION * (LEG === 2 ? 0.45 : 0.15) * Math.sin(Math.PI * Q);
+            squash = LEG === 2 ? -0.22 * Math.sin(Math.PI * Q) : 0.08 * Math.sin(Math.PI * Q);
+            break;
+        }
+      }
+      const SCALE = matrix[0], CENTER = { x: ground.x, y: ground.y - 100 }, X = matrix[4] + CENTER.x * SCALE, Y = matrix[5] + CENTER.y * SCALE, COS = Math.cos(rotation), SIN = Math.sin(rotation), SX = SCALE * (1 + squash * 0.6), SY = SCALE * (1 - squash);
+      matrix[0] = COS * SX;
+      matrix[1] = SIN * SX;
+      matrix[2] = -SIN * SY;
+      matrix[3] = COS * SY;
+      matrix[4] = X - CENTER.x * matrix[0] - CENTER.y * matrix[2];
+      matrix[5] = Y - CENTER.x * matrix[1] - CENTER.y * matrix[3];
+    }
+  };
+
+  // src/farm-render-units.js
+  var import_definition62 = __toESM(require_definition(), 1);
+  init_presentation9();
 
   // src/features/unit-attacks/pea/presentation.js
   var PeaAttackPresentation = class extends UnitAttackPresentation {
@@ -16893,6 +17317,7 @@
   ]);
 
   // src/farm-render-units.js
+  var REDBEAN_ATTACK = new RedbeanAttackPresentation();
   var PEA_ATTACK = new PeaAttackPresentation();
   var DEFAULT_ATTACK = new UnitAttackPresentation();
   var BARLEY_SHRED_PRESENTATION = new BarleyArmorShredPresentation();
@@ -16901,6 +17326,9 @@
     [new DualStrikePresentation(), new LobPresentation()].map((presentation) => [presentation.id, presentation])
   );
   function unitAttackPresentation(unit2) {
+    if (unit2.species === 2 && unit2.ability?.redbeanForm) {
+      return REDBEAN_ATTACK;
+    }
     if (unit2.species === 0 && unit2.ability?.peaForm) {
       return PEA_ATTACK;
     }
@@ -17114,6 +17542,9 @@
       const MATRIX = [SCALE, 0, 0, SCALE, p.x - GROUND.x * SCALE, p.y - GROUND.y * SCALE];
       if (!SWING && !rest && u.species === 0 && u.hp > 0 && u.stun <= 0 && u.dropLanded && u.z === 0) {
         PEA_ATTACK.applyGroundedPose(MATRIX, u, GROUND);
+      }
+      if (!SWING && !rest && u.species === 2 && u.hp > 0 && u.stun <= 0 && u.dropLanded) {
+        REDBEAN_ATTACK.applyPose(MATRIX, u, GROUND);
       }
       this.renderer.ctx.vector.flush();
       player.draw({
@@ -18697,7 +19128,7 @@
     // The camera follows the climb: on the march it pulls back to show the tower and its door, and
     // it stays there a moment when the troops come back out; inside, it rests on the hall.
     directCamera(sim2, now) {
-      if (this.attackPreviewSpecies === 0 && sim2.units.length === 1 && sim2.units[0].species === 0) {
+      if ([0, 2].includes(this.attackPreviewSpecies) && sim2.units.length === 1 && sim2.units[0].species === this.attackPreviewSpecies) {
         this.fitAttackPreview(sim2);
         return;
       }
@@ -18743,10 +19174,28 @@
     // Isolated pea help frames show the real contact and body, not the entire hall.
     // This flag is installed only by the help entry point, never for a live run.
     fitAttackPreview(world) {
+      if (this.attackPreviewSpecies === 2) {
+        this.fitJumpPreview(world);
+        return;
+      }
       const UNIT3 = world.units[0], BODY2 = (0, import_definition69.unitBodyDefinition)(UNIT3.species), BASE = this.scenePresentation.cameraView(this.aspect), SCALE = 96 * this.pixelRatio / (UNIT3.bodyScale * Math.max(BODY2.viewBox[2], BODY2.viewBox[3])), FOCUS_X = world.boss.x - world.boss.radius - 0.8, FOCUS_Y = world.boss.y;
       this.zoom = 2 * BASE[0] * SCALE / this.canvas.width;
       this.configure(this.scene, true);
       const PAN_X = this.canvas.width * 0.45 / this.scale - FOCUS_X - this.view[0], PAN_Y = this.view[1] - this.baseY() - this.canvas.height * 0.76 / this.scale - FOCUS_Y * import_vector_sockets9.WORLD_DEPTH_PROJECTION;
+      this.panLimits.minX = Math.min(this.panLimits.minX, PAN_X);
+      this.panLimits.maxX = Math.max(this.panLimits.maxX, PAN_X);
+      this.panLimits.minY = Math.min(this.panLimits.minY, PAN_Y);
+      this.panLimits.maxY = Math.max(this.panLimits.maxY, PAN_Y);
+      this.setPan(PAN_X, PAN_Y);
+    }
+    fitJumpPreview(world) {
+      const UNIT3 = world.units[0], BODY2 = (0, import_definition69.unitBodyDefinition)(UNIT3.species), BASE = this.scenePresentation.cameraView(this.aspect), ART_WORLD_HEIGHT = UNIT3.bodyScale * Math.max(BODY2.viewBox[2], BODY2.viewBox[3]), MAX_HEIGHT = [0, 0.65, 1.1, 1.4, 1.1, 2.2, 2.7][UNIT3.tier], SCALE = Math.min(
+        96 * this.pixelRatio / ART_WORLD_HEIGHT,
+        (this.canvas.height - 24 * this.pixelRatio) / (ART_WORLD_HEIGHT * 1.4 + MAX_HEIGHT * import_vector_sockets9.WORLD_HEIGHT_PROJECTION)
+      ), FOCUS_X = UNIT3.x, FOCUS_Y = UNIT3.y;
+      this.zoom = 2 * BASE[0] * SCALE / this.canvas.width;
+      this.configure(this.scene, true);
+      const PAN_X = this.canvas.width * 0.45 / this.scale - FOCUS_X - this.view[0], PAN_Y = this.view[1] - this.baseY() - (this.canvas.height - 22 * this.pixelRatio) / this.scale - FOCUS_Y * import_vector_sockets9.WORLD_DEPTH_PROJECTION;
       this.panLimits.minX = Math.min(this.panLimits.minX, PAN_X);
       this.panLimits.maxX = Math.max(this.panLimits.maxX, PAN_X);
       this.panLimits.minY = Math.min(this.panLimits.minY, PAN_Y);
@@ -19074,6 +19523,12 @@
       "ability.phase": R.STATE_KEY,
       "ability.elapsed": R.LINEAR,
       "ability.peanutStrikeCount": R.STEP,
+      "ability.redbeanForm": R.STEP,
+      "ability.redbeanSlot": R.STEP,
+      "ability.redbeanLeg": R.STEP,
+      "ability.redbeanStage": R.STATE_KEY,
+      "ability.redbeanStageProgress": R.LINEAR,
+      "ability.redbeanWindupDuration": R.STEP,
       "ability.peaForm": R.STEP,
       "ability.peaSlot": R.STEP,
       "ability.peaStage": R.STATE_KEY,
@@ -19131,6 +19586,13 @@
       this.ability.phase = u.ability.phase;
       this.ability.elapsed = u.ability.elapsed;
       this.ability.peanutStrikeCount = u.ability.action?.peanutStrikeCount || 2;
+      const REDBEAN = u.ability.action?.redbeanAttack;
+      this.ability.redbeanForm = REDBEAN?.form || 0;
+      this.ability.redbeanSlot = REDBEAN?.slot || 0;
+      this.ability.redbeanLeg = REDBEAN?.leg || 0;
+      this.ability.redbeanStage = REDBEAN?.stage || u.ability.phase;
+      this.ability.redbeanStageProgress = REDBEAN?.progress || 0;
+      this.ability.redbeanWindupDuration = REDBEAN?.windupSeconds || 0.32;
       const PEA = u.ability.action?.peaAttack;
       this.ability.peaForm = PEA?.form || 0;
       this.ability.peaSlot = PEA?.slot || 0;
@@ -19148,7 +19610,7 @@
       this.bodyScale = u.bodyScale;
       this.height = u.height;
       this.radius = u.radius;
-      this.maxHp = u.isFormationClone ? 1 : baseUnitStatsFor(u.tier, u.species).maxHp;
+      this.maxHp = unitMaxHpFor(u);
       this.fed = u.fed;
       this.ownerId = u.ownerId;
       this.faction = u.faction;
@@ -19957,6 +20419,7 @@
   init_farm_model();
 
   // src/farm-snapshot-validation.js
+  init_redbean_attack();
   init_pea_attack();
   init_formation_skill_state();
   init_farm_model();
@@ -19999,6 +20462,7 @@
     species: 0,
     tier: 1,
     permanentStatMultiplier: 1,
+    growthMaxHpMultiplier: 1,
     faction: "player",
     meals: 0,
     growth: 0,
@@ -20240,7 +20704,8 @@
       },
       thornConfig: JSON_PAYLOAD,
       cornAttack: CORN_ACTION,
-      peaAttack: JSON_PAYLOAD
+      peaAttack: JSON_PAYLOAD,
+      redbeanAttack: JSON_PAYLOAD
     }
   );
   var UNIT2 = shapeFields(UNIT_SNAPSHOT_SHAPE, {
@@ -20671,7 +21136,9 @@
     for (const U of raw.units) {
       shape(U, UNIT_SNAPSHOT_SHAPE);
       ASSERT2(
-        Number.isFinite(U.growthElapsed) && U.growthElapsed >= 0 && Number.isFinite(U.growthDuration) && U.growthDuration > 0 && U.growthElapsed <= U.growthDuration + 1e-9 && Number.isFinite(U.cooldown) && U.cooldown >= 0 && Number.isFinite(U.cooldownDuration) && U.cooldownDuration >= U.cooldown - 1e-9 && U.cooldownDuration <= 1e5 && INTEGER2(U.mateId, 0, MATE_ID_LIMIT) && Number.isFinite(U.perceptionRange) && U.perceptionRange > 0 && U.perceptionRange <= 100 && Number.isFinite(U.down) && U.down >= 0 && U.down <= CONFIG.unit.corpseRecoverySeconds && INTEGER2(U.battleSummonEncounterId, 0, 1e12) && Number.isFinite(U.landingRecovery) && U.landingRecovery >= 0 && U.landingRecovery <= 0.25 + 1e-9 && INTEGER2(U.generation, 1, 1e12) && Number.isFinite(U.permanentStatMultiplier) && U.permanentStatMultiplier >= 1 && U.permanentStatMultiplier <= 2.25 && INTEGER2(U.walnutNextGuardTick, 0, 1e12) && INTEGER2(U.walnutGuardUntilTick, 0, 1e12) && Number.isFinite(U.walnutStoredRawDamage) && U.walnutStoredRawDamage >= 0 && Number.isFinite(U.wheatCommandUntil) && U.wheatCommandUntil >= 0 && U.wheatCommandUntil <= 1e12 && Number.isFinite(U.wheatCommandCritBonus) && U.wheatCommandCritBonus >= 0 && U.wheatCommandCritBonus <= 0.5 && Number.isFinite(U.barleyArmorBreakUntil) && U.barleyArmorBreakUntil >= 0 && U.barleyArmorBreakUntil <= 1e12 && Number.isFinite(U.barleyArmorBreakReduction) && U.barleyArmorBreakReduction >= 0 && U.barleyArmorBreakReduction <= 0.75 && INTEGER2(U.kidneyLeapReadyTick, 0, 1e12) && INTEGER2(U.kidneyLeapLastUseTick, 0, 1e12) && typeof U.peaRecoveryPending === "boolean" && INTEGER2(U.peaCounterExpiresAtTick, 0, 1e12) && typeof U.peaCounterPending === "boolean" && INTEGER2(U.peaRecoveryBoostExpiresAtTick, 0, 1e12) && Number.isFinite(U.peaRecoveryBoostMultiplier) && U.peaRecoveryBoostMultiplier >= 0 && U.peaRecoveryBoostMultiplier <= 2 && validWheatCommandBuffs(U.wheatCommandBuffs) && validBarleyArmorShredBuckets(U.barleyArmorShredBuckets)
+        Number.isFinite(U.growthElapsed) && U.growthElapsed >= 0 && Number.isFinite(U.growthDuration) && U.growthDuration > 0 && U.growthElapsed <= U.growthDuration + 1e-9 && Number.isFinite(U.cooldown) && U.cooldown >= 0 && Number.isFinite(U.cooldownDuration) && U.cooldownDuration >= U.cooldown - 1e-9 && U.cooldownDuration <= 1e5 && INTEGER2(U.mateId, 0, MATE_ID_LIMIT) && Number.isFinite(U.perceptionRange) && U.perceptionRange > 0 && U.perceptionRange <= 100 && Number.isFinite(U.down) && U.down >= 0 && U.down <= CONFIG.unit.corpseRecoverySeconds && INTEGER2(U.battleSummonEncounterId, 0, 1e12) && Number.isFinite(U.landingRecovery) && U.landingRecovery >= 0 && U.landingRecovery <= 0.25 + 1e-9 && INTEGER2(U.generation, 1, 1e12) && Number.isFinite(U.permanentStatMultiplier) && U.permanentStatMultiplier >= 1 && U.permanentStatMultiplier <= 2.25 && Number.isFinite(U.growthMaxHpMultiplier) && (U.growthMaxHpMultiplier === 1 || U.species === 2 && hasFaction(U, FACTION_CONFIG.PLAYER) && U.growthMaxHpMultiplier >= 1 && U.growthMaxHpMultiplier <= 1.4 && Math.abs(
+          (U.growthMaxHpMultiplier - 1) / 0.04 - Math.round((U.growthMaxHpMultiplier - 1) / 0.04)
+        ) < 1e-9) && INTEGER2(U.walnutNextGuardTick, 0, 1e12) && INTEGER2(U.walnutGuardUntilTick, 0, 1e12) && Number.isFinite(U.walnutStoredRawDamage) && U.walnutStoredRawDamage >= 0 && Number.isFinite(U.wheatCommandUntil) && U.wheatCommandUntil >= 0 && U.wheatCommandUntil <= 1e12 && Number.isFinite(U.wheatCommandCritBonus) && U.wheatCommandCritBonus >= 0 && U.wheatCommandCritBonus <= 0.5 && Number.isFinite(U.barleyArmorBreakUntil) && U.barleyArmorBreakUntil >= 0 && U.barleyArmorBreakUntil <= 1e12 && Number.isFinite(U.barleyArmorBreakReduction) && U.barleyArmorBreakReduction >= 0 && U.barleyArmorBreakReduction <= 0.75 && INTEGER2(U.kidneyLeapReadyTick, 0, 1e12) && INTEGER2(U.kidneyLeapLastUseTick, 0, 1e12) && typeof U.peaRecoveryPending === "boolean" && INTEGER2(U.peaCounterExpiresAtTick, 0, 1e12) && typeof U.peaCounterPending === "boolean" && INTEGER2(U.peaRecoveryBoostExpiresAtTick, 0, 1e12) && Number.isFinite(U.peaRecoveryBoostMultiplier) && U.peaRecoveryBoostMultiplier >= 0 && U.peaRecoveryBoostMultiplier <= 2 && validWheatCommandBuffs(U.wheatCommandBuffs) && validBarleyArmorShredBuckets(U.barleyArmorShredBuckets)
       );
       ASSERT2(
         INTEGER2(U.species, 0, CONFIG.unit.speciesCount - 1) && INTEGER2(U.tier, 1, CONFIG.unit.maxTier) && ["idle", "windup", "active", "recover"].includes(U.ability.phase) && typeof U.ownerId === "string" && Number.isSafeInteger(U.farmId) && Object.values(FACTION_CONFIG).includes(U.faction) && typeof U.dropLanded === "boolean" && typeof U.isBattleOnlySummon === "boolean" && typeof U.splitUsedThisBattle === "boolean" && typeof U.deathSplitHandled === "boolean" && INTEGER2(U.battleSummonParentGeneration, 0, 1e12) && INTEGER2(U.chestnutNextThornTick, 0, 1e12)
@@ -20752,6 +21219,11 @@
         ASSERT2(
           INTEGER2(A.id, 1, raw.attackSerial) && INTEGER2(A.targetGeneration, 1, 1e12) && typeof A.hit === "boolean" && A.target && Number.isFinite(A.target.x) && Number.isFinite(A.target.y)
         );
+        if (A.redbeanAttack !== void 0) {
+          ASSERT2(
+            U.species === 2 && isRedbeanAttackRecord(A.redbeanAttack) && A.redbeanAttack.id === A.id && A.redbeanAttack.owner === U.id && A.redbeanAttack.ownerGeneration === U.generation && A.redbeanAttack.tier === U.tier
+          );
+        }
         if (A.peaAttack !== void 0) {
           ASSERT2(
             U.species === 0 && isPeaAttackRecord(A.peaAttack) && A.peaAttack.id === A.id && A.peaAttack.owner === U.id && A.peaAttack.ownerGeneration === U.generation && A.peaAttack.tier === U.tier
@@ -21520,7 +21992,26 @@
     ["반동 재돌진", "첫 충돌 뒤 짧게 뒤튕겨 다시 충돌"],
     ["삼연 압축 충돌", "빠른 두 충돌 뒤 압축 마무리"]
   ]);
+  var REDBEAN_FORMS = Object.freeze([
+    ["낮은 도약", "낮게 뛰어 본체로 착지"],
+    ["앞구르기 착지", "앞으로 한 바퀴 돌아 작은 원형 착지"],
+    ["이중 착지", "첫 착지 뒤 재도약해 두 번째 착지"],
+    ["측면 교차 도약", "가까운 면 착지 뒤 옆으로 교차 착지"],
+    ["공중 회전 강하", "공중 회전 접촉 뒤 아래로 강하게 착지"],
+    ["삼연 도약 강타", "낮은 찍기 · 측면 회전 접촉 · 높은 마무리 착지"]
+  ]);
   var PRESENTATIONS2 = /* @__PURE__ */ new Map([
+    [
+      "kidney-continuous-leap",
+      {
+        key: "redbean",
+        name: "팥",
+        title: "도약과 연속 착지",
+        forms: REDBEAN_FORMS,
+        effect: redbeanGrowthEffect,
+        note: "하나의 본체가 실제로 도약하고 착지해요. 주변 피해는 각 타격의 50%이며 추가 4명까지 맞아요. 연속 도약은 마지막 착지에서 한 번만 추첨하며 성공하면 후딜만 0.1초로 줄어요. 다음 공격의 준비와 비행은 생략하지 않아요. 마무리 보너스는 전체 직접 피해 예산 기준으로 마지막 착지에 한 번 더해요."
+      }
+    ],
     [
       "corn-kernel-chain",
       {
@@ -21629,6 +22120,24 @@
         return `첫 충돌에 전체 직접 예산의 ${rank * 8}% 추가`;
       case "specialty-3":
         return `마지막 충돌에 전체 직접 예산의 ${rank * 8}% 추가`;
+      default:
+        throw new RangeError(`Unknown growth effect: ${nodeId}`);
+    }
+  }
+  function redbeanGrowthEffect(nodeId, rank) {
+    switch (nodeId) {
+      case "basic-1":
+        return `모든 도약 피해 +${rank * 3}%`;
+      case "basic-2":
+        return `최대 체력 +${rank * 4}% · 다음 런부터 적용`;
+      case "basic-3":
+        return `공격 속도 +${rank * 2}%`;
+      case "specialty-1":
+        return `착지 반경 +${rank * 4}%`;
+      case "specialty-2":
+        return `마지막 착지 후 ${Math.min(65, 20 + rank * 9)}% 확률로 후딜 0.1초`;
+      case "specialty-3":
+        return `마지막 착지에 전체 직접 예산의 ${rank * 8}% 추가`;
       default:
         throw new RangeError(`Unknown growth effect: ${nodeId}`);
     }
@@ -21820,7 +22329,7 @@
     if (!weights.length) {
       return [];
     }
-    const SUM = weights.reduce((sum, weight) => sum + weight, 0), EXACT = weights.map((weight) => SUM > 0 ? weight / SUM * total : total / weights.length), SHARES = EXACT.map(Math.floor), ORDER = EXACT.map((value, index) => ({ index, rest: value - SHARES[index] })).sort(
+    const SUM = weights.reduce((sum, weight) => sum + weight, 0), EXACT2 = weights.map((weight) => SUM > 0 ? weight / SUM * total : total / weights.length), SHARES = EXACT2.map(Math.floor), ORDER = EXACT2.map((value, index) => ({ index, rest: value - SHARES[index] })).sort(
       (a, b) => b.rest - a.rest || a.index - b.index
     );
     const REMAINING = total - SHARES.reduce((sum, share) => sum + share, 0);
@@ -21966,7 +22475,9 @@
     })
   ]);
   function helpSceneById(id) {
-    return [...HELP_SCENES, ...CORN_PREVIEW_SCENES, ...PEA_PREVIEW_SCENES].find((scene) => scene.id === id) ?? null;
+    return [...HELP_SCENES, ...CORN_PREVIEW_SCENES, ...PEA_PREVIEW_SCENES, ...REDBEAN_PREVIEW_SCENES].find(
+      (scene) => scene.id === id
+    ) ?? null;
   }
   var CORN_PREVIEW_SCENES = Object.freeze(
     Array.from({ length: 6 }, (_, index) => {
@@ -22056,6 +22567,51 @@
           prepare: "고정 훈련 표적 · 실제 지상 공격 준비",
           contact: "본체의 실제 이동과 앞면 충돌 · 점프와 분신 없음",
           recover: "충돌 후 회복 · 자체 반동은 재돌진 보너스를 만들지 않아요"
+        }
+      });
+    })
+  );
+  var REDBEAN_PREVIEW_SCENES = Object.freeze(
+    Array.from({ length: 6 }, (_, index) => {
+      const TIER = index + 1;
+      return Object.freeze({
+        id: `redbean-t${TIER}`,
+        title: `팥 T${TIER} 공격 미리보기`,
+        seed: 731,
+        rate: 0.6,
+        durationMs: 9e3,
+        timeline: [],
+        setup(world) {
+          world.resetUnits();
+          world.setWorkBasisPoints(0);
+          const BUILD = world.playerProgression.abilities["kidney-continuous-leap"];
+          BUILD.masteryLevel = 50;
+          BUILD.nodeRanks = Object.fromEntries(
+            Array.from({ length: TIER - 1 }, (_value, tierIndex) => [`evolution-${tierIndex + 2}`, 1])
+          );
+          const UNIT3 = world.spawn(2, TIER, -7, 0);
+          UNIT3.growth = 3;
+          UNIT3.growthElapsed = UNIT3.growthDuration;
+          world.startTower(1);
+          world.finishMarch();
+          world._benched.clear();
+          world._benchRevision++;
+          Object.assign(world.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
+          world.farmBossEvent.phase = "fighting";
+          world.farmBossEvent.elapsed = 0;
+          UNIT3.x = -(world.boss.radius + 1.45);
+          UNIT3.y = 0;
+          UNIT3.z = 0;
+          UNIT3.dropLanded = true;
+          world._unitSpatialDirty = true;
+        },
+        step(world) {
+          return world.units[0]?.ability.phase === "active" ? "contact" : world.units[0]?.ability.phase === "recover" ? "recover" : "prepare";
+        },
+        steps: {
+          prepare: "고정 훈련 표적 · 실제 도약 공격 준비",
+          contact: "하나의 본체가 실제 높이로 도약하고 접촉·착지",
+          recover: "마지막 착지 후 회복 · 성공해도 다음 준비와 비행은 유지"
         }
       });
     })
@@ -23163,11 +23719,11 @@
   function mountGrowthPreview(species, tier) {
     stopGrowthPreview();
     const HOST = DOLLAR2("abilityNodes").querySelector(".growth-evolution-preview");
-    if (!HOST || !["corn", "pea"].includes(species) || !Number.isInteger(tier) || tier < 1 || tier > 6) {
+    if (!HOST || !["corn", "pea", "redbean"].includes(species) || !Number.isInteger(tier) || tier < 1 || tier > 6) {
       return;
     }
     const FRAME = document.createElement("iframe");
-    FRAME.title = `${species === "pea" ? "콩" : "옥수수"} T${tier} 실제 공격 미리보기`;
+    FRAME.title = `${{ pea: "콩", corn: "옥수수", redbean: "팥" }[species]} T${tier} 실제 공격 미리보기`;
     FRAME.src = new URL(`?help=${species}-t${tier}`, location.href).href.split("#")[0];
     HOST.replaceChildren(FRAME);
     for (const BUTTON of DOLLAR2("abilityNodes").querySelectorAll("[data-growth-preview-tier]")) {
@@ -24072,7 +24628,7 @@
   if (HELP.scene) {
     const SCENE = HELP.scene, WORLD = new GARDEN(SCENE.seed);
     SCENE.setup(WORLD);
-    RENDERER.attackPreviewSpecies = /^pea-t[1-6]$/.test(SCENE.id) ? 0 : null;
+    RENDERER.attackPreviewSpecies = /^pea-t[1-6]$/.test(SCENE.id) ? 0 : /^redbean-t[1-6]$/.test(SCENE.id) ? 2 : null;
     start(WORLD, false);
     active.paused = false;
     HELP.scenario = globalThis.BloomGamekitScenario.createScenario({

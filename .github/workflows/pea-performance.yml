@@ -1,4 +1,4 @@
-name: Pea version performance
+name: Pea regression performance
 on:
     pull_request:
         paths:
@@ -30,9 +30,9 @@ jobs:
             - run: npm ci
             - run: npx playwright install --with-deps chromium
             - run: npm run build
-            - name: Archive the exact legacy baseline without changing the candidate
+            - name: Archive the exact deployed pea baseline without changing the candidate
               env:
-                  BASE_COMMIT: b60cf67f8dbfcfaa0ec3c59b721f6fd1b3a016f6
+                  BASE_COMMIT: 7b10214c2a1bdcf177581ca772da11dfcdf4b673
               run: |
                   git fetch --no-tags --depth=1 origin "$BASE_COMMIT"
                   test "$(git rev-parse FETCH_HEAD)" = "$BASE_COMMIT"

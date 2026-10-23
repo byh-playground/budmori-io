@@ -1,5 +1,5 @@
 import { Garden, bindPresentationClock } from './farm-model.js';
-import { baseUnitStatsFor } from './unit-stats.js';
+import { unitMaxHpFor } from './unit-stats.js';
 import { PASSIVE_SETTINGS } from './tower-run.js';
 import { BarleyArmorShredModel } from './features/abilities/barley-shred/model.js';
 const { PresentationRuntime: PRESENTATION_RUNTIME, RenderObject: RENDER_OBJECT } = globalThis.BloomGamekitInterpolation;
@@ -37,6 +37,12 @@ class UnitRender extends RENDER_OBJECT {
         'ability.phase': R.STATE_KEY,
         'ability.elapsed': R.LINEAR,
         'ability.peanutStrikeCount': R.STEP,
+        'ability.redbeanForm': R.STEP,
+        'ability.redbeanSlot': R.STEP,
+        'ability.redbeanLeg': R.STEP,
+        'ability.redbeanStage': R.STATE_KEY,
+        'ability.redbeanStageProgress': R.LINEAR,
+        'ability.redbeanWindupDuration': R.STEP,
         'ability.peaForm': R.STEP,
         'ability.peaSlot': R.STEP,
         'ability.peaStage': R.STATE_KEY,
@@ -94,6 +100,13 @@ class UnitRender extends RENDER_OBJECT {
         this.ability.phase = u.ability.phase;
         this.ability.elapsed = u.ability.elapsed;
         this.ability.peanutStrikeCount = u.ability.action?.peanutStrikeCount || 2;
+        const REDBEAN = u.ability.action?.redbeanAttack;
+        this.ability.redbeanForm = REDBEAN?.form || 0;
+        this.ability.redbeanSlot = REDBEAN?.slot || 0;
+        this.ability.redbeanLeg = REDBEAN?.leg || 0;
+        this.ability.redbeanStage = REDBEAN?.stage || u.ability.phase;
+        this.ability.redbeanStageProgress = REDBEAN?.progress || 0;
+        this.ability.redbeanWindupDuration = REDBEAN?.windupSeconds || 0.32;
         const PEA = u.ability.action?.peaAttack;
         this.ability.peaForm = PEA?.form || 0;
         this.ability.peaSlot = PEA?.slot || 0;
@@ -114,7 +127,7 @@ class UnitRender extends RENDER_OBJECT {
         this.bodyScale = u.bodyScale;
         this.height = u.height;
         this.radius = u.radius;
-        this.maxHp = u.isFormationClone ? 1 : baseUnitStatsFor(u.tier, u.species).maxHp;
+        this.maxHp = unitMaxHpFor(u);
         this.fed = u.fed;
         this.ownerId = u.ownerId;
         this.faction = u.faction;

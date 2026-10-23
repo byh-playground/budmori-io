@@ -32,6 +32,8 @@ const EMPTY_FOOD_SEARCH_BUCKET = Object.freeze([]);
 import {
     baseUnitStatsFor,
     resolveUnitStats,
+    applyRunGrowthHealth,
+    unitMaxHpFor,
     setRunStatMods,
     applyDamageToTargets,
     applyHealing,
@@ -519,6 +521,7 @@ class AttackCycle {
             this.action &&
             (this.phase === 'windup' || this.phase === 'active') &&
             !this.action.cornAttack &&
+            !this.action.redbeanAttack &&
             !(sim.attackTarget(U, this.action)?.hp > 0)
         ) {
             this.interrupt();
@@ -613,6 +616,7 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
             species,
             tier,
             permanentStatMultiplier: 1,
+            growthMaxHpMultiplier: 1,
             faction: FACTION_CONFIG.PLAYER,
             meals: 0,
             growth: 0,
@@ -1388,7 +1392,7 @@ const GARDEN = class Garden {
             .filter((u) => hasFaction(u, FACTION_CONFIG.PLAYER))
             .reduce(
                 (sum, u) => {
-                    const MAX_HP = u.isFormationClone ? 1 : STATS(u.tier, u.species).maxHp;
+                    const MAX_HP = u.isFormationClone ? 1 : unitMaxHpFor(u);
                     return {
                         current: sum.current + Math.max(0, Math.min(MAX_HP, u.hp)),
                         max: sum.max + MAX_HP,
@@ -1701,7 +1705,7 @@ const GARDEN = class Garden {
         }
         return scale * (target === this.boss ? 1 : this.passiveReceivedScale(target, targetMaxHp));
     }
-    passiveReceivedScale(unit, maxHp = STATS(unit.tier, unit.species).maxHp) {
+    passiveReceivedScale(unit, maxHp = unitMaxHpFor(unit)) {
         const TOWER = this.tower;
         if (
             !TOWER.active ||
@@ -1727,10 +1731,7 @@ const GARDEN = class Garden {
             return;
         }
         TOWER.undyingUsed.add(unit.id);
-        unit.hp = Math.max(
-            1,
-            STATS(unit.tier, unit.species).maxHp * Math.min(PASSIVE_SETTINGS.undyingMaxRestore, RESTORE),
-        );
+        unit.hp = Math.max(1, unitMaxHpFor(unit) * Math.min(PASSIVE_SETTINGS.undyingMaxRestore, RESTORE));
         this.combat('passive-undying', {
             unit: unit.id,
             x: unit.x,
@@ -1767,7 +1768,7 @@ const GARDEN = class Garden {
             );
         if (HEAL) {
             for (const OTHER of NEAR) {
-                applyHealing(OTHER, STATS(OTHER.tier, OTHER.species).maxHp * HEAL);
+                applyHealing(OTHER, unitMaxHpFor(OTHER) * HEAL);
             }
         }
         const TARGETS = NEAR.slice(0, 6).map((other) => ({ x: other.x, y: other.y, z: other.z, height: other.height }));
@@ -1956,6 +1957,7 @@ const GARDEN = class Garden {
             return null;
         }
         const U = new UNIT(this.nextId++, species, CLAMP(tier, 1, CONFIG.unit.maxTier), x, y);
+        applyRunGrowthHealth(U, this.runProgressionSnapshot, { preserveRatio: true });
         this.addUnit(U);
         return U;
     }
@@ -2217,6 +2219,9 @@ const GARDEN = class Garden {
         // Whoever is already down sleeps through the first floor.
         const SLEEP = new Map(this.units.filter((u) => !u.isBattleOnlySummon && u.hp <= 0).map((u) => [u.id, FLOOR]));
         this.runProgressionSnapshot = structuredClone(this.playerProgression);
+        for (const UNIT_LOCAL of this.unitCollection.items) {
+            applyRunGrowthHealth(UNIT_LOCAL, this.runProgressionSnapshot, { preserveRatio: true });
+        }
         this.tower = {
             pendingKind: KIND,
             active: true,
@@ -2371,7 +2376,7 @@ const GARDEN = class Garden {
         this.markProgressChanged();
     }
     _wakeUnit(unit) {
-        unit.revive(STATS(unit.tier, unit.species).maxHp);
+        unit.revive(unitMaxHpFor(unit));
         this.tower.sleepUntil.delete(unit.id);
     }
     chooseDoor(index) {
@@ -2403,6 +2408,9 @@ const GARDEN = class Garden {
         return true;
     }
     _clearRunStats() {
+        for (const UNIT_LOCAL of this.unitCollection.items) {
+            applyRunGrowthHealth(UNIT_LOCAL, null);
+        }
         this.tower.cards = [];
         this._applyRunStats();
     }
@@ -2412,7 +2420,7 @@ const GARDEN = class Garden {
         this.tower.passives = passiveTotals(this.tower.cards);
         for (const UNIT_LOCAL of this.unitCollection.items) {
             if (UNIT_LOCAL.hp > 0 && !UNIT_LOCAL.isFormationClone) {
-                UNIT_LOCAL.hp = Math.min(UNIT_LOCAL.hp, STATS(UNIT_LOCAL.tier, UNIT_LOCAL.species).maxHp);
+                UNIT_LOCAL.hp = Math.min(UNIT_LOCAL.hp, unitMaxHpFor(UNIT_LOCAL));
             }
         }
     }
@@ -2444,7 +2452,7 @@ const GARDEN = class Garden {
             if (UNIT_LOCAL.hp <= 0 && T.sleepUntil.has(UNIT_LOCAL.id) && T.sleepUntil.get(UNIT_LOCAL.id) < T.floor) {
                 this._wakeUnit(UNIT_LOCAL);
             } else if (UNIT_LOCAL.hp > 0) {
-                UNIT_LOCAL.hp = STATS(UNIT_LOCAL.tier, UNIT_LOCAL.species).maxHp;
+                UNIT_LOCAL.hp = unitMaxHpFor(UNIT_LOCAL);
             }
         }
         T.fallen = 0;
@@ -3422,6 +3430,7 @@ const GARDEN = class Garden {
         // Prepare the complete result before the collection owner commits the
         // replacement. A failed preparation never consumes existing units.
         const RESULT = new UNIT(this.nextId, FIRST.species, FIRST.tier + 1, X, Y);
+        applyRunGrowthHealth(RESULT, this.runProgressionSnapshot, { preserveRatio: true });
         RESULT.dropLanded = false;
         RESULT.meals = 1;
         RESULT.growth = CONFIG.farm.breeding.matureMeals;
@@ -3716,7 +3725,7 @@ const GARDEN = class Garden {
                 ACTIVE_ATTACK.afterMove?.(this, OLD_POSITION);
             }
             if (OLD_Z > 0 && U.z === 0) {
-                U.landingRecovery = 0.25;
+                U.landingRecovery = ACTIVE_ATTACK.landingRecoverySeconds?.() ?? 0.25;
                 if (!U.dropLanded) {
                     U.dropLanded = true;
                     U.bounce = 0.16;

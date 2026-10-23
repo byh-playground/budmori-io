@@ -91,7 +91,7 @@ export const UNIT_CAPABILITY_COMPOSITIONS = Object.freeze({
         retreatWithinRange: true,
         aimAtCenter: true,
     }),
-    2: COMPOSITION('contact', [], { specialAbility: 'kidneyLeap' }),
+    2: COMPOSITION('redbean', [], { specialAbility: 'kidneyLeap' }),
     3: COMPOSITION('contact', [], {
         contactRecoil: true,
         specialAbility: 'chestnutThorns',

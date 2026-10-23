@@ -31,6 +31,7 @@ export const UNIT_SNAPSHOT_SHAPE = {
     species: 0,
     tier: 1,
     permanentStatMultiplier: 1,
+    growthMaxHpMultiplier: 1,
     faction: 'player',
     meals: 0,
     growth: 0,
@@ -282,6 +283,7 @@ const ATTACK = FIELDS(
         thornConfig: JSON_PAYLOAD,
         cornAttack: CORN_ACTION,
         peaAttack: JSON_PAYLOAD,
+        redbeanAttack: JSON_PAYLOAD,
     },
 );
 const UNIT = shapeFields(UNIT_SNAPSHOT_SHAPE, {

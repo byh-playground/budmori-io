@@ -1,3 +1,5 @@
+import { createRedbeanAttackMixin } from './features/unit-attacks/redbean/model.js';
+import { redbeanGrowthBuild } from './features/species-growth/redbean-attack.js';
 import { createPeaAttackMixin } from './features/unit-attacks/pea/model.js';
 import { createDualStrikeMixin } from './features/unit-attacks/dual-strike/model.js';
 import { FEATURE as DUAL_STRIKE_FEATURE } from './features/unit-attacks/dual-strike/definition.js';
@@ -173,6 +175,7 @@ export function composeUnitAttackCycles(cycle, { ArenaGeometry: arenaGeometry, B
             }
             canBegin(sim) {
                 return (
+                    !redbeanGrowthBuild(sim.abilityProgressionFor(this.owner)) &&
                     !!KidneyLeapModel.config(sim.abilityProgressionFor(this.owner), this.owner.tier) &&
                     sim.simulationTick >= this.owner.kidneyLeapReadyTick &&
                     this.owner.kidneyLeapLastUseTick !== sim.simulationTick
@@ -374,6 +377,7 @@ export function composeUnitAttackCycles(cycle, { ArenaGeometry: arenaGeometry, B
     const ATTACKS = {
         contact: CONTACT_ATTACK,
         pea: createPeaAttackMixin(CONTACT_ATTACK, arenaGeometry),
+        redbean: createRedbeanAttackMixin(CONTACT_ATTACK, arenaGeometry),
         [LOB_FEATURE.modelKey]: PROJECTILE_ATTACK,
         [DUAL_STRIKE_FEATURE.modelKey]: REPEATED_STRIKE,
     };

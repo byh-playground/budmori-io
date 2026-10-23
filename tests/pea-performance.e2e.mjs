@@ -1,7 +1,7 @@
 // Version-to-version rendered maximum-army regression, not a synthetic step() microbenchmark.
 // The baseline is an untouched git archive. Both builds use one Chromium/SwiftShader process.
-// Only the candidate's T2–T6 evolution path is researched; basic/specialty ranks remain zero.
-// This intentionally measures the new T6 attack, including its damage normalization, against legacy pea.
+// Both builds use the released pea T6 evolution, with zero basic/specialty ranks.
+// This retains a pea-heavy maximum-army regression as the next species is activated.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -11,7 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
-const BASE_COMMIT = 'b60cf67f8dbfcfaa0ec3c59b721f6fd1b3a016f6',
+const BASE_COMMIT = '7b10214c2a1bdcf177581ca772da11dfcdf4b673',
     ROOT = fileURLToPath(new URL('../', import.meta.url)),
     OUTPUT = path.join(ROOT, 'tests/output/pea-performance'),
     STARTED = Date.now(),
@@ -101,7 +101,7 @@ const MANIFESTS = { base: manifest(ROOTS.base), candidate: manifest(ROOTS.candid
             maxMedianPairedP95Ratio: MAX_P95_RATIO,
             order: 'base/candidate, candidate/base, base/candidate per viewport',
             investmentDifference:
-                'Candidate: mastery 50 with evolution-2 through evolution-6 at rank 1; base: uninvested legacy pea. No basic or specialty investment in either build.',
+                'Both: released pea mastery50 with evolution-2 through evolution-6 at rank1, zero basic/specialty ranks. Redbean remains uninvested on both sides; its intentional legacy-to-tree representation is canonicalized only in the initial fixture.',
             fixture:
                 'Real new-game session, startTower(1), finishMarch(), all 200 deployed in the same radial layout; normal runtime simulation, presentation, renderer and HUD remain active.',
             limitations: [
@@ -194,17 +194,21 @@ async function runScene(variant, viewport, round, origin) {
             }
             WORLD.resetUnits();
             WORLD.setWorkBasisPoints(0);
-            if (build === 'candidate') {
-                if (INVESTMENT.treeVersion !== 1) {
-                    throw new Error('Candidate must contain the pea evolution tree');
-                }
-                INVESTMENT.masteryLevel = 50;
-                INVESTMENT.nodeRanks = {};
-                for (let tier = 2; tier <= 6; tier++) {
-                    INVESTMENT.nodeRanks[`evolution-${tier}`] = 1;
-                }
-            } else if (INVESTMENT.treeVersion) {
-                throw new Error('Base must use the legacy pea tree');
+            if (INVESTMENT.treeVersion !== 1) {
+                throw new Error('Both builds must contain the released pea evolution tree');
+            }
+            INVESTMENT.masteryLevel = 50;
+            INVESTMENT.nodeRanks = {};
+            for (let tier = 2; tier <= 6; tier++) {
+                INVESTMENT.nodeRanks[`evolution-${tier}`] = 1;
+            }
+            const REDBEAN = WORLD.playerProgression.abilities['kidney-continuous-leap'];
+            if (
+                build === 'base'
+                    ? REDBEAN.powerLevel !== 0 || REDBEAN.treeVersion !== undefined
+                    : REDBEAN.treeVersion !== 1 || Object.keys(REDBEAN.nodeRanks).length !== 0
+            ) {
+                throw new Error('Redbean fixture must retain zero investment across its intended activation');
             }
             for (let index = 0; index < 200; index++) {
                 const SPECIES = index < 60 ? 0 : 1 + ((index - 60) % 8),
@@ -237,6 +241,11 @@ async function runScene(variant, viewport, round, origin) {
                 DEBUG = GL.getExtension('WEBGL_debug_renderer_info'),
                 OTHER_ABILITIES = structuredClone(WORLD.runProgressionSnapshot.abilities);
             delete OTHER_ABILITIES['pea-recovery-boost'];
+            OTHER_ABILITIES['kidney-continuous-leap'] = {
+                masteryLevel: REDBEAN.masteryLevel,
+                masteryXp: REDBEAN.masteryXp,
+                investedPoints: 0,
+            };
             return {
                 renderer: DEBUG ? GL.getParameter(DEBUG.UNMASKED_RENDERER_WEBGL) : GL.getParameter(GL.RENDERER),
                 investment: structuredClone(INVESTMENT),
@@ -288,9 +297,14 @@ async function runScene(variant, viewport, round, origin) {
             assert.deepEqual(
                 REPORT.fixtures.candidate.common,
                 REPORT.fixtures.base.common,
-                'same seed/RNG, boss, rewards, other investments, stats and positions across versions',
+                'same seed/RNG, boss, rewards, unchanged investments and zero-investment redbean, stats and positions across versions',
             );
             assert.equal(REPORT.fixtures.candidate.renderer, REPORT.fixtures.base.renderer);
+            assert.deepEqual(
+                REPORT.fixtures.candidate.investment,
+                REPORT.fixtures.base.investment,
+                'released pea investment stays exact',
+            );
         }
         const SAMPLE = await PAGE.evaluate(
             async ({ warmup, count }) => {
@@ -378,7 +392,7 @@ async function runScene(variant, viewport, round, origin) {
         }
         assert.ok(RUN.after.tick > RUN.before.tick, 'normal simulation advances');
         assert.ok(RUN.after.bossHp < RUN.before.bossHp, 'actual attacks damage the boss');
-        assert.deepEqual(RUN.observedPeaForms, variant === 'candidate' ? [6] : [], 'actual legacy/T6 attack exercised');
+        assert.deepEqual(RUN.observedPeaForms, [6], 'actual released T6 pea attack exercised in both builds');
         assert.deepEqual(RUN.errors, [], 'no browser errors or external network dependency');
         progress(
             `${viewport.name} round ${round} ${variant}: p95 ${RUN.sample.p95Ms.toFixed(1)} ms, mean ${RUN.sample.meanMs.toFixed(1)} ms`,

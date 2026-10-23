@@ -1,0 +1,63 @@
+name: Redbean version performance
+on:
+    pull_request:
+        paths:
+            - 'index.html'
+            - 'src/**'
+            - 'assets/**'
+            - 'vendor/**'
+            - 'gamekit-lock.json'
+            - 'package*.json'
+            - 'scripts/build.cjs'
+            - 'tests/redbean-performance.e2e.mjs'
+            - '.github/workflows/redbean-performance.yml'
+    workflow_dispatch:
+permissions:
+    contents: read
+concurrency:
+    group: redbean-performance-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: true
+jobs:
+    paired-browser:
+        runs-on: ubuntu-latest
+        timeout-minutes: 25
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+            - run: npm ci
+            - uses: actions/cache@v4
+              id: playwright-cache
+              with:
+                  path: ~/.cache/ms-playwright
+                  key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+            - if: steps.playwright-cache.outputs.cache-hit != 'true'
+              run: npx playwright install --with-deps chromium
+            - if: steps.playwright-cache.outputs.cache-hit == 'true'
+              run: npx playwright install-deps chromium
+            - run: npm run build
+            - name: Archive the exact legacy baseline without changing the candidate
+              env:
+                  BASE_COMMIT: 7b10214c2a1bdcf177581ca772da11dfcdf4b673
+              run: |
+                  git fetch --no-tags --depth=1 origin "$BASE_COMMIT"
+                  test "$(git rev-parse FETCH_HEAD)" = "$BASE_COMMIT"
+                  BASE_ROOT="$(mktemp -d /tmp/budmori-redbean-base.XXXXXX)"
+                  git archive "$BASE_COMMIT" | tar -x -C "$BASE_ROOT"
+                  echo "REDBEAN_PERFORMANCE_BASE_ROOT=$BASE_ROOT" >> "$GITHUB_ENV"
+            - name: Compare three alternating pairs in one Chromium SwiftShader process
+              run: timeout 720s node tests/redbean-performance.e2e.mjs
+            - uses: actions/upload-artifact@v4
+              if: always()
+              with:
+                  name: redbean-version-performance
+                  path: tests/output/redbean-performance/
+                  if-no-files-found: error
+            - name: Remove the temporary legacy archive
+              if: always()
+              run: |
+                  if [ -n "$REDBEAN_PERFORMANCE_BASE_ROOT" ]; then
+                    rm -rf -- "$REDBEAN_PERFORMANCE_BASE_ROOT"
+                  fi
