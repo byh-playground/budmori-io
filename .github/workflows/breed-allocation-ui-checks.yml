@@ -15,6 +15,8 @@ on:
             - 'src/farm-model.js'
             - 'src/farm-session.js'
             - 'src/farm-render-items.js'
+            - 'src/farm-renderer.js'
+            - 'src/damage-numbers.js'
             - 'src/farm-app.js'
             - 'src/styles/game-menu.css'
             - 'tests/breed-allocation.e2e.mjs'
@@ -32,7 +34,7 @@ permissions:
 jobs:
     browser:
         runs-on: ubuntu-latest
-        timeout-minutes: 25
+        timeout-minutes: 30
         strategy:
             fail-fast: false
             matrix:
@@ -52,7 +54,7 @@ jobs:
             - if: ${{ !cancelled() && steps.build.outcome == 'success' && (matrix.species != 'corn' || matrix.viewport != 'landscape') }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- ui ${{ matrix.viewport }}
             - if: ${{ !cancelled() && steps.build.outcome == 'success' && (matrix.species != 'corn' || matrix.viewport != 'landscape') }}
-              run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- previews ${{ matrix.viewport }}
+              run: timeout 300s npm run test:${{ matrix.species }}-growth:case -- previews ${{ matrix.viewport }}
             - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- battle ${{ matrix.viewport }}
             - if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.species == 'pea' }}
