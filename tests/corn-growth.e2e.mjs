@@ -294,7 +294,7 @@ async function captureCrowdedCombat(page, mobile) {
             () => {
                 const WORLD = BUDMORI.sim,
                     READY =
-                        WORLD.boss.patternPhase === 'windup' &&
+                        WORLD.boss.patternRuntime?.active?.phase === 'windup' &&
                         WORLD.boss.patternRuntime?.active &&
                         WORLD.projectiles.some((shot) => shot.cornForm >= 5);
                 if (READY) {
@@ -319,7 +319,7 @@ async function captureCrowdedCombat(page, mobile) {
         tick: BUDMORI.sim.simulationTick,
         units: BUDMORI.sim.units.length,
         living: BUDMORI.sim.units.filter((unit) => unit.hp > 0).length,
-        phase: BUDMORI.sim.boss.patternPhase,
+        phase: BUDMORI.sim.boss.patternRuntime?.active?.phase || 'idle',
         pattern: BUDMORI.sim.boss.patternRuntime?.active?.id || null,
         projectileCount: BUDMORI.sim.projectiles.length,
         meteorCount: BUDMORI.sim.projectiles.filter((shot) => shot.cornForm >= 5).length,
