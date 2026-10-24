@@ -95,7 +95,8 @@ try {
         const FONT_READY = Date.now();
         // Simulation is already paused at an observed native frame. Stop only further RAF submissions
         // while Chromium reads it back, rather than competing with continuous software WebGL draws.
-        await PAGE.clock.pauseAt(await PAGE.evaluate(() => Date.now() + 1000));
+        // Rendering may delay the protocol round trip beyond one second. Simulation is already paused.
+        await PAGE.clock.pauseAt(await PAGE.evaluate(() => Date.now() + 60_000));
         const PAUSED = Date.now();
         REPORT.clock.combatResumed = false;
         try {
