@@ -1,5 +1,20 @@
-import { installShowcase } from 'https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@401a056bc4323e03d95c5d947414fbc8e7383257/scenario.js';
-const SHOWCASE = installShowcase({
+// The farm loads its vetted GameKit intro only when the visitor requests it.
+// Normal gameplay and offline smoke tests do not fetch another SDK module.
+if (new URLSearchParams(location.search).get('showcaseDemo') !== '1') {
+    const START_BUTTON = document.getElementById('newGame');
+    const LAUNCH = document.createElement('button');
+    LAUNCH.type = 'button';
+    LAUNCH.className = 'btn';
+    LAUNCH.textContent = '▶ 소개 보기';
+    LAUNCH.setAttribute('aria-label', '버드모리 플레이 소개 보기');
+    START_BUTTON.insertAdjacentElement('afterend', LAUNCH);
+    let HOST = null;
+    let PENDING = null;
+    async function host() {
+        if (HOST) return HOST;
+        if (!PENDING) {
+            PENDING = import('https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@401a056bc4323e03d95c5d947414fbc8e7383257/scenario.js').then(({ installShowcase }) => {
+                HOST = installShowcase({
     title: '버드모리',
     launcher: '#newGame',
     playSelector: '#newGame',
@@ -49,8 +64,29 @@ const SHOWCASE = installShowcase({
         },
     ],
 });
-
-// Restore direct introduction links after the game's own menu router has booted.
-if (window.__BLOOM_SHOWCASE_DEEPLINK && SHOWCASE) {
-    window.addEventListener('load', () => SHOWCASE.open(), { once: true });
+                LAUNCH.remove();
+                return HOST;
+            }).catch(error => {
+                PENDING = null;
+                throw error;
+            });
+        }
+        return PENDING;
+    }
+    async function open() {
+        LAUNCH.disabled = true;
+        LAUNCH.textContent = '소개 준비 중…';
+        try {
+            (await host())?.open();
+        } catch (error) {
+            console.warn('[Budmori intro]', error);
+            LAUNCH.textContent = '소개를 불러오지 못했습니다 · 다시 시도';
+        } finally {
+            LAUNCH.disabled = false;
+        }
+    }
+    LAUNCH.addEventListener('click', open);
+    if (window.__BLOOM_SHOWCASE_DEEPLINK) {
+        window.addEventListener('load', open, { once: true });
+    }
 }
