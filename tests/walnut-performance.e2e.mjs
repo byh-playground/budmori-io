@@ -13,6 +13,7 @@ import { sourceGraph } from '../scripts/source-graph.mjs';
 const FUNCTIONAL = process.env.FUNCTIONAL_GROWTH_PERFORMANCE === '1',
     SPECIES = process.env.PERFORMANCE_SPECIES || 'walnut',
     SPLIT = process.env.PERFORMANCE_SPLIT === '1',
+    CONTROLLED_CLOCK = process.env.PERFORMANCE_CONTROLLED_CLOCK === '1',
     SETTINGS = {
         corn: {
             id: 1,
@@ -46,11 +47,15 @@ if (FUNCTIONAL) {
     SETTINGS[SPECIES].equalTree = true;
 }
 assert.ok(!SPLIT || (FUNCTIONAL && SPECIES === 'peanut'), 'Split scene requires functional peanut');
+assert.ok(!CONTROLLED_CLOCK || SPLIT, 'Controlled clock is split-only');
 const SPECIES_ID = SETTINGS[SPECIES].id,
     ABILITY_ID = SETTINGS[SPECIES].ability;
 const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     BASE_COMMIT = SETTINGS[SPECIES].base,
-    OUTPUT = path.join(ROOT, `tests/output/${SPECIES}${SPLIT ? '-split' : ''}-performance`),
+    OUTPUT = path.join(
+        ROOT,
+        `tests/output/${SPECIES}${SPLIT ? '-split' : ''}${CONTROLLED_CLOCK ? '-controlled-clock' : ''}-performance`,
+    ),
     HASH = (bytes) => createHash('sha256').update(bytes).digest('hex'),
     MEDIAN = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)],
     P95 = (values) => [...values].sort((a, b) => a - b)[Math.ceil(values.length * 0.95) - 1],
@@ -82,6 +87,7 @@ const ROOTS = { base: fs.realpathSync(process.env.WALNUT_PERFORMANCE_BASE_ROOT),
         protocol: {
             units: 200,
             split: SPLIT,
+            controlledClock: CONTROLLED_CLOCK,
             livingUnits: SPLIT ? 400 : 200,
             renderedUnits: SPLIT ? 600 : 200,
             species: SPECIES_ID,
@@ -93,6 +99,9 @@ const ROOTS = { base: fs.realpathSync(process.env.WALNUT_PERFORMANCE_BASE_ROOT),
             p95Limit: 1.2,
             order: 'base/candidate, candidate/base, base/candidate',
             fixture: `Stationary 1e12 HP boss stunned for10000s, all200 T6 ${SPECIES} bodies deployed in identical radial layout. ${FUNCTIONAL ? 'Both arms have the same legal 50P: all evolution, b1/b2/b3 rank10 and specialty2 rank5.' : SETTINGS[SPECIES].equalTree ? 'Both arms have identical T2–T6 research and density rank5; no other investments.' : 'Candidate only has T2–T6 research; no basic/specialty investments.'} ${SPLIT ? 'After positioning, controlled lethal HP and the real death handler split all200 parents into400 T1 children; 200 corpses remain rendered. Not boss-AI damage coverage.' : ''} No incoming RAW in this isolated maximum-army rendering fixture.`,
+            clock: CONTROLLED_CLOCK
+                ? 'CONTROLLED split-only: original FarmSession pulse/presentation once per real frame, identical 50ms input; wall CPU/rAF unchanged. Not normal-clock or hardware FPS evidence.'
+                : 'Normal production wall clock',
             timing: 'rAF intervals retain all120 raw samples. CPU uses the production detailed profiler last30 completed frames, not the whole rAF window; nested stages are not added. Equal frame windows may cover different wall/simulation durations.',
         },
         runs: [],
@@ -179,7 +188,7 @@ async function run(variant, viewport, round, origin) {
         await PAGE.goto(`${origin}/${variant}/index.html`);
         await PAGE.waitForFunction(() => globalThis.BUDMORI?.renderer?.assetsReady);
         RUN.initial = await PAGE.evaluate(
-            ({ build, speciesId, abilityId, equalTree, functional, split }) => {
+            ({ build, speciesId, abilityId, equalTree, functional, split, controlledClock }) => {
                 document.getElementById('newGame').click();
                 const WORLD = BUDMORI.sim,
                     INVESTMENT = WORLD.playerProgression.abilities[abilityId];
@@ -239,6 +248,39 @@ async function run(variant, viewport, round, origin) {
                         throw Error('Expected exactly400 real split children');
                     }
                 }
+                if (controlledClock) {
+                    // Only the real session's two frame inputs are controlled. Wall rAF/profiler stay untouched.
+                    const SESSION = BUDMORI.runtime,
+                        PULSE = SESSION.pulse.bind(SESSION),
+                        PRESENT = SESSION.presentation.bind(SESSION),
+                        CLOCK = (globalThis.__controlledSplitClock = {
+                            origin: null,
+                            now: null,
+                            lastWall: null,
+                            pulses: 0,
+                            presentations: 0,
+                        });
+                    SESSION.pulse = (now) => {
+                        if (
+                            CLOCK.pulses !== CLOCK.presentations ||
+                            (CLOCK.lastWall !== null && now <= CLOCK.lastWall)
+                        ) {
+                            throw Error('Controlled split requires exactly one pulse per distinct frame');
+                        }
+                        CLOCK.origin ??= now;
+                        CLOCK.now = CLOCK.now === null ? now : CLOCK.now + 50;
+                        CLOCK.lastWall = now;
+                        CLOCK.pulses++;
+                        return PULSE(CLOCK.now);
+                    };
+                    SESSION.presentation = (now) => {
+                        if (now !== CLOCK.lastWall || CLOCK.presentations + 1 !== CLOCK.pulses) {
+                            throw Error('Controlled split presentation must follow the same frame pulse');
+                        }
+                        CLOCK.presentations++;
+                        return PRESENT(CLOCK.now);
+                    };
+                }
                 WORLD._unitSpatialDirty = true;
                 globalThis.__walnutPerformanceActivity = { hits: 0, damage: 0 };
                 WORLD.onCombatResolved.on((event) => {
@@ -266,6 +308,7 @@ async function run(variant, viewport, round, origin) {
                 equalTree: !!SETTINGS[SPECIES].equalTree,
                 functional: FUNCTIONAL,
                 split: SPLIT,
+                controlledClock: CONTROLLED_CLOCK,
             },
         );
         RUN.measurement = await PAGE.evaluate(async () => {
@@ -273,6 +316,9 @@ async function run(variant, viewport, round, origin) {
                 FORMS = new Set(),
                 READ = () => ({
                     tick: BUDMORI.sim.simulationTick,
+                    controlledClock: globalThis.__controlledSplitClock
+                        ? { ...globalThis.__controlledSplitClock }
+                        : null,
                     units: BUDMORI.sim.units.length,
                     living: BUDMORI.sim.units.filter((unit) => unit.hp > 0).length,
                     children: BUDMORI.sim.units.filter((unit) => unit.isBattleOnlySummon).length,
@@ -333,6 +379,21 @@ async function run(variant, viewport, round, origin) {
             assert.equal(STATE.actors, SPLIT ? 600 : 200);
             assert.equal(STATE.paused, false);
             assert.equal(STATE.phase, 'fighting');
+        }
+        if (CONTROLLED_CLOCK) {
+            const TRACE = SAMPLE.diagnostics.frames;
+            assert.ok(TRACE.every((frame) => frame.counts.clockGapDrops === 0));
+            assert.ok(TRACE.every((frame) => frame.counts.logicTicks > 0));
+            for (const STATE of [SAMPLE.before, SAMPLE.after]) {
+                assert.equal(STATE.controlledClock.pulses, STATE.controlledClock.presentations);
+                assert.ok(
+                    Math.abs(
+                        STATE.controlledClock.now -
+                            STATE.controlledClock.origin -
+                            (STATE.controlledClock.pulses - 1) * 50,
+                    ) < 1e-7,
+                );
+            }
         }
         assert.ok(SAMPLE.after.tick > SAMPLE.before.tick);
         assert.ok(SAMPLE.after.activity.hits > SAMPLE.before.activity.hits);

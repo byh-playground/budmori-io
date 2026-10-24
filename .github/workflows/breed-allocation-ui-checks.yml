@@ -117,7 +117,7 @@ jobs:
                   if-no-files-found: error
             - name: Paired functional peanut performance (both viewports)
               id: perf-peanut
-              if: ${{ !cancelled() && steps.functional-base.outcome == 'success' && !contains(github.event.pull_request.labels.*.name, 'verify-corn-render-only') }}
+              if: ${{ !cancelled() && steps.functional-base.outcome == 'success' && !contains(github.event.pull_request.labels.*.name, 'verify-corn-render-only') && !contains(github.event.pull_request.labels.*.name, 'verify-corn-and-split') }}
               env:
                   FUNCTIONAL_GROWTH_PERFORMANCE: '1'
                   PERFORMANCE_SPECIES: peanut
@@ -138,7 +138,7 @@ jobs:
                   if-no-files-found: error
             - name: Paired functional walnut performance (both viewports)
               id: perf-walnut
-              if: ${{ !cancelled() && steps.functional-base.outcome == 'success' && !contains(github.event.pull_request.labels.*.name, 'verify-corn-render-only') }}
+              if: ${{ !cancelled() && steps.functional-base.outcome == 'success' && !contains(github.event.pull_request.labels.*.name, 'verify-corn-render-only') && !contains(github.event.pull_request.labels.*.name, 'verify-corn-and-split') }}
               env:
                   FUNCTIONAL_GROWTH_PERFORMANCE: '1'
                   PERFORMANCE_SPECIES: walnut
@@ -164,6 +164,7 @@ jobs:
                   FUNCTIONAL_GROWTH_PERFORMANCE: '1'
                   PERFORMANCE_SPECIES: peanut
                   PERFORMANCE_SPLIT: '1'
+                  PERFORMANCE_CONTROLLED_CLOCK: '1'
                   WALNUT_PERFORMANCE_BASE_ROOT: ${{ steps.functional-base.outputs.root }}
               run: |
                   echo "scene=peanut-split start=$(date -u +%FT%TZ) budget=3600s"
@@ -175,8 +176,8 @@ jobs:
               uses: actions/upload-artifact@v4
               if: ${{ always() && (steps.perf-peanut-split.outcome == 'success' || steps.perf-peanut-split.outcome == 'failure' || steps.perf-peanut-split.outcome == 'cancelled') }}
               with:
-                  name: farm-functional-perf-peanut-split
-                  path: tests/output/peanut-split-performance/
+                  name: farm-functional-perf-peanut-split-controlled-clock
+                  path: tests/output/peanut-split-controlled-clock-performance/
                   if-no-files-found: error
             - name: Clean functional performance baseline
               if: ${{ always() && steps.functional-base.outputs.root != '' }}
