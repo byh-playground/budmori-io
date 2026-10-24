@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { sourceGraph } from '../scripts/source-graph.mjs';
 import { unitBodyDefinition } from '../src/features/unit-body/definition.js';
-import { installChestnutMotionObserver } from './chestnut-motion-observer.mjs';
+import { installChestnutMotionObserver, resumeChestnutMotionObservation } from './chestnut-motion-observer.mjs';
 
 const VIEWPORT = process.argv[2] || 'desktop',
     SELECTION = process.argv[3] || 'all',
@@ -237,13 +237,7 @@ try {
             if (state.complete) {
                 break;
             }
-            await FRAME.evaluate(() => {
-                const SESSION = BUDMORI.runtime;
-                SESSION.pausedDurationMs += globalThis.__chestnutInputClock - SESSION.pauseStartedAt;
-                globalThis.__chestnutMotion.ready = false;
-                SESSION.paused = false;
-                SESSION.loop.resetTiming();
-            });
+            await FRAME.evaluate(resumeChestnutMotionObservation);
         }
         REPORT.push(state);
         const LAST = state.trace.at(-1),
@@ -370,22 +364,7 @@ try {
             BEFORE,
             'isolated preview never changes the farm build',
         );
-        await FRAME.evaluate(() => {
-            const SESSION = BUDMORI.runtime,
-                STATE = globalThis.__chestnutMotion;
-            STATE.ready = false;
-            STATE.interruption = {
-                tick: BUDMORI.sim.simulationTick,
-                capture: SESSION.presentationSequence,
-                clock: globalThis.__chestnutInputClock,
-            };
-            globalThis.__chestnutPreviewClock.bounded = false;
-            BUDMORI.sim.units[0].ability.interrupt();
-            BUDMORI.sim.units[0].stun = 0.5;
-            SESSION.pausedDurationMs += globalThis.__chestnutInputClock - SESSION.pauseStartedAt;
-            SESSION.paused = false;
-            SESSION.loop.resetTiming();
-        });
+        await FRAME.evaluate(resumeChestnutMotionObservation, true);
         await previewWait(
             FRAME,
             PAGE,

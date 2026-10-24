@@ -372,3 +372,31 @@ export function installChestnutMotionObserver(body) {
             callback(CLOCK.current);
         });
 }
+
+// FarmSession's public pause setter samples the raw wall clock. Preserve the
+// observer's shared HELP clock across screenshot latency by restoring the
+// computed duration AFTER unpausing, just like the established wheat observer.
+export function resumeChestnutMotionObservation(interrupt = false) {
+    const SESSION = BUDMORI.runtime,
+        STATE = globalThis.__chestnutMotion,
+        DURATION = SESSION.pausedDurationMs + globalThis.__chestnutInputClock - SESSION.pauseStartedAt;
+    STATE.ready = false;
+    if (interrupt) {
+        STATE.interruption = {
+            tick: BUDMORI.sim.simulationTick,
+            capture: SESSION.presentationSequence,
+            clock: globalThis.__chestnutInputClock,
+        };
+        globalThis.__chestnutPreviewClock.bounded = false;
+        BUDMORI.sim.units[0].ability.interrupt();
+        BUDMORI.sim.units[0].stun = 0.5;
+    }
+    SESSION.paused = false;
+    SESSION.pausedDurationMs = DURATION;
+    SESSION.loop.resetTiming();
+    (STATE.resumes ||= []).push({
+        inputClock: globalThis.__chestnutInputClock,
+        rawClock: performance.now(),
+        pausedDurationMs: SESSION.pausedDurationMs,
+    });
+}

@@ -90,6 +90,16 @@ export function sourceGraph(root = DEFAULT_ROOT) {
         MANIFEST_SCRIPT = SCRIPTS.find((match) => attributes(match[1]).id === 'bloom-runtime-manifest');
     assert.ok(MANIFEST_SCRIPT, 'Runtime manifest is required');
     const MANIFEST = JSON.parse(MANIFEST_SCRIPT[2]);
+    const VERSION_MODULE = parse(READ('src/version.js').toString('utf8'), {
+        ecmaVersion: 'latest',
+        sourceType: 'module',
+    });
+    const VERSION_DECLARATION = VERSION_MODULE.body
+        .filter((node) => node.type === 'ExportNamedDeclaration')
+        .flatMap((node) => node.declaration?.declarations || [])
+        .find((node) => node.id.name === 'PRODUCT_VERSION');
+    assert.equal(typeof VERSION_DECLARATION?.init?.value, 'string', 'Product version must be a source literal');
+    assert.equal(MANIFEST.productVersion, VERSION_DECLARATION.init.value, 'Runtime manifest product version');
     assert.equal(MANIFEST.game?.file, 'src/farm-app.js', 'Runtime entry must be the authored farm-app.js');
     assert.equal(MANIFEST.bootstrap?.file, 'src/bootstrap.js');
     const ENTRY_POINTS = [];
