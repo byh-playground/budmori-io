@@ -176,6 +176,7 @@ try {
                     phase: UNIT.ability.phase,
                     clock: { ...globalThis.__walnutPreviewClock },
                     playerCount: RENDERER.vectorPlayers.size,
+                    initialCaptureClock: SESSION.lastCaptureClockMs,
                 },
                 rejected: { noPlayer: 0, noRecord: 0, displayMismatch: 0 },
                 guardHammer: false,
@@ -271,8 +272,18 @@ try {
         globalThis.__walnutPreviewClock = CLOCK;
         globalThis.requestAnimationFrame = (callback) =>
             REQUEST((now) => {
+                // Loader/UI RAFs can run long before FarmSession's initial raw
+                // performance.now() capture. Do not accumulate scaled-time debt
+                // before the app exists: that would hide its first attack.
+                if (!globalThis.BUDMORI) {
+                    callback(now);
+                    return;
+                }
                 if (CLOCK.last === null) {
-                    CLOCK.current = now;
+                    // RAF timestamps may precede work performed in this frame.
+                    // Start no earlier than the constructor's raw capture, then
+                    // forward the same bounded domain through every HELP consumer.
+                    CLOCK.current = Math.max(now, performance.now());
                 } else if (CLOCK.last !== now) {
                     const DELTA = globalThis.BUDMORI?.runtime?.paused ? 0 : Math.min(25, Math.max(0, now - CLOCK.last));
                     CLOCK.current += DELTA;
@@ -352,6 +363,10 @@ try {
         }
         assert.ok(await FRAME.evaluate(() => BUDMORI.runtime.__walnutObservationClock.maxDelta <= 25));
         REPORT.push(state);
+        assert.ok(
+            state.installedAt.clock.current >= state.installedAt.initialCaptureClock,
+            'first bounded input must not precede the session constructor capture',
+        );
         assert.equal(state.form, tier);
         assert.equal(state.units, 1);
         assert.equal(state.projectiles, 0);

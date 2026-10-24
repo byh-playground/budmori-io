@@ -62,6 +62,14 @@ async function openTree() {
     await activate(page.locator('[data-ability-species="5"]'));
     await page.locator('[data-growth-tree]').waitFor();
 }
+async function settleAbilityRedraw() {
+    // The real ability handler schedules a full panel replacement after180ms.
+    // Let that existing callback and its paint finish before another actual input.
+    await page.evaluate(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 220));
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    });
+}
 const NODE = (id) => page.locator(`[data-growth-node="${id}"] button`);
 async function purchase(id) {
     const BEFORE = await page.evaluate(
@@ -82,6 +90,7 @@ async function purchase(id) {
         { id, rank: BEFORE },
     );
     await activate(NODE(id));
+    await settleAbilityRedraw();
     await page.waitForFunction(
         ({ id, rank }) =>
             BUDMORI.sim.playerProgression.abilities['walnut-raw-guard'].nodeRanks[id] === rank &&
@@ -141,6 +150,7 @@ try {
     await purchase('basic-1');
     assert.equal(await NODE('basic-2').getAttribute('aria-disabled'), 'true');
     await activate(page.locator('[data-ability-action="reset"]'));
+    await settleAbilityRedraw();
     await page.waitForFunction(
         () => document.querySelector('[data-growth-node="basic-1"] .growth-rank')?.textContent === '0/10',
     );
@@ -176,6 +186,7 @@ try {
     assert.deepEqual(await page.evaluate(() => BUDMORI.sim.playerProgression.abilities['walnut-raw-guard']), BEFORE);
     await openTree();
     await activate(page.locator('[data-ability-action="reset"]'));
+    await settleAbilityRedraw();
     await page.waitForFunction(
         () =>
             Object.keys(BUDMORI.sim.playerProgression.abilities['walnut-raw-guard'].nodeRanks).length === 0 &&
