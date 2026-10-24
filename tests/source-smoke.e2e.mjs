@@ -1015,8 +1015,7 @@ try {
                 BUDMORI.runtime.capturePresentation('reset');
                 return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
             });
-            const FILE =
-                    ROLE === 'boss' && ['ufo', 'storm-cloud'].includes(ID) ? `shared-skills-${ROLE}-${ID}.jpg` : null,
+            const FILE = ROLE === 'boss' && ID === 'ufo' ? `shared-skills-${ROLE}-${ID}.jpg` : null,
                 CAPTURE_STARTED = Date.now();
             REPORT.pendingCase = {
                 role: ROLE,
