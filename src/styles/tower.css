@@ -156,3 +156,143 @@
 .start-floor[hidden] {
     display: none;
 }
+
+/* Paired card feedback never opens a modal or captures pointer input. */
+.boss-card-draw,
+.boss-loadout {
+    width: min(520px, 100%);
+    box-sizing: border-box;
+    border: var(--ui-bw) solid var(--ui-line);
+    border-radius: var(--ui-r-m);
+    background: var(--ui-panel);
+    padding: var(--ui-s2) var(--ui-s3);
+    pointer-events: none;
+}
+.boss-card-draw {
+    display: flex;
+    align-items: center;
+    gap: var(--ui-s2);
+    border-color: var(--ui-gauge-ally);
+}
+.boss-card-draw small {
+    display: block;
+    color: var(--ui-ink-2);
+}
+.boss-card-draw__icon {
+    display: grid;
+    place-items: center;
+    flex: 0 0 36px;
+    min-height: 42px;
+    border-radius: var(--ui-r-m);
+    background: var(--ui-card);
+    font-size: 26px;
+}
+.boss-card-draw[data-phase='player'] .boss-card-draw__icon {
+    animation: card-receive 0.3s ease both;
+}
+.boss-card-draw[data-phase='boss'] {
+    border-color: var(--ui-gauge-enemy);
+}
+.boss-card-draw[data-phase='boss'] .boss-card-draw__icon {
+    animation: boss-card-turn 0.4s ease both;
+}
+.boss-loadout {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px var(--ui-s2);
+    font-size: var(--ui-fs-2);
+}
+.boss-loadout > small {
+    flex-basis: 100%;
+    color: var(--ui-ink-2);
+}
+.boss-loadout__skills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px var(--ui-s2);
+}
+.boss-loadout__skill {
+    padding: 2px 6px;
+    border-radius: var(--ui-r-m);
+    background: var(--ui-card);
+}
+.boss-card-draw[hidden],
+.boss-loadout[hidden] {
+    display: none;
+}
+.door:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+@keyframes card-receive {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.8);
+    }
+}
+@keyframes boss-card-turn {
+    from {
+        opacity: 0;
+        transform: perspective(180px) rotateY(80deg);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .boss-card-draw .boss-card-draw__icon {
+        animation: none;
+    }
+}
+
+/* Short landscape screens reserve a separate viewport lane for the paired receipt.
+ * Keeping it out of the footer prevents card choices from pushing it above the screen.
+ * The footer ancestors intentionally have no transform (see formation-skills.css).
+ */
+@media (max-height: 550px) and (min-aspect-ratio: 4/3) {
+    #gameplayDock > div.bottom {
+        width: min(520px, 62vw);
+        gap: 6px;
+    }
+    #gameplayDock .boss-card-draw {
+        position: fixed;
+        top: max(8px, env(safe-area-inset-top));
+        right: max(8px, env(safe-area-inset-right));
+        width: calc(36vw - 16px);
+        max-width: 280px;
+        max-height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        overflow: auto;
+        padding: 8px;
+        gap: 6px;
+        z-index: calc(var(--ui-z-dock) + 3);
+        font-size: 13px;
+        line-height: 1.4;
+        overflow-wrap: anywhere;
+    }
+    #gameplayDock .boss-card-draw__icon {
+        flex-basis: 28px;
+        min-height: 34px;
+        font-size: 22px;
+    }
+    #gameplayDock .boss-loadout {
+        padding: 5px 8px;
+        gap: 4px 6px;
+        font-size: 12px;
+        line-height: 1.3;
+    }
+    #gameplayDock .boss-loadout > b {
+        white-space: nowrap;
+    }
+    #gameplayDock .boss-loadout__skills {
+        gap: 3px;
+    }
+    #gameplayDock .boss-loadout__skill {
+        padding: 2px 4px;
+        white-space: nowrap;
+    }
+    #gameplayDock .boss-loadout > small {
+        display: none;
+    }
+    #gameplayDock .boss-loadout:has(.boss-loadout__skills:empty) > small {
+        display: block;
+        flex-basis: auto;
+    }
+}

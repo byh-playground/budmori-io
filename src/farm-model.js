@@ -70,6 +70,7 @@ import {
     passiveTotals,
     rollFloorKind,
     runStatModifiers,
+    drawBossCard,
 } from './tower-run.js';
 import { SPECIES_COUNT } from './species-catalog.js';
 import { createPlayerProgressionState } from './player-progression.js';
@@ -2437,7 +2438,7 @@ const GARDEN = class Garden {
     chooseDoor(index) {
         const T = this.tower,
             DOOR = T.doors[index];
-        if (!T.active || this.farmBossEvent.phase !== 'idle' || !DOOR) {
+        if (!T.active || this.farmBossEvent.phase !== 'idle' || !DOOR || this.time < (T.bossCardDraw?.until || 0)) {
             return false;
         }
         T.floor++;
@@ -2453,6 +2454,15 @@ const GARDEN = class Garden {
             this._applyRunStats();
         } else {
             TOWER_EVENTS.find((event) => event.id === DOOR.id).apply(this);
+        }
+        if (['skill', 'stat', 'passive'].includes(DOOR.type)) {
+            drawBossCard(
+                T,
+                () => this.random(),
+                this.time,
+                CONFIG.farm.tower.relicSlots,
+                CONFIG.farm.tower.relicMaxLevel,
+            );
         }
         // A floor reached without a fight still counts as reached.
         this.playerProgression.towerBest = Math.max(this.playerProgression.towerBest, T.floor);
@@ -4843,6 +4853,14 @@ const GARDEN = class Garden {
             hits: SOURCE.faction === 'player' ? 1 : 0,
             critHits: SOURCE.faction === 'player' && DAMAGE.critical ? 1 : 0,
         });
+        if (target === this.boss && !SOURCE.isFormationClone) {
+            this.onCombatResolved.emit({
+                role: 'boss',
+                sourceFaction: SOURCE.faction,
+                targetFaction: 'enemy',
+                damageTaken: DAMAGE.totalActualLoss,
+            });
+        }
         if (!options.suppressBasicProc) {
             this.applyGrainOnBasicHit(SOURCE, target, KIND);
             SOURCE.ability?.afterSuccessfulAttack?.(this, action, target, DAMAGE);
@@ -5540,6 +5558,16 @@ const GARDEN = class Garden {
                 damageTaken: RECEIVED.totalActualLoss,
                 excluded: UNIT_LOCAL.isFormationClone,
             });
+            if (!UNIT_LOCAL.isFormationClone) {
+                this.onCombatResolved.emit({
+                    role: 'boss',
+                    sourceFaction: 'enemy',
+                    sourceActor: 'boss',
+                    targetFaction: UNIT_LOCAL.faction,
+                    hits: 1,
+                    damageDealt: RECEIVED.totalActualLoss,
+                });
+            }
             this._syncUnitAliveCount(UNIT_LOCAL);
             if (UNIT_LOCAL.hp === 0) {
                 UNIT_LOCAL.down = UNIT_LOCAL.isBattleOnlySummon ? 0 : CONFIG.unit.corpseRecoverySeconds;
@@ -5840,7 +5868,7 @@ const GARDEN = class Garden {
             return;
         }
         this.integrateBossKnockback(dt);
-        if (BOSS.stun > 0) {
+        if (BOSS.stun > 0 || this.formationRuntime.bossCast) {
             return;
         }
         const ACTION = BOSS.patternRuntime.active;
@@ -5877,6 +5905,9 @@ const GARDEN = class Garden {
         }
         if (B_LOCAL.stun > 0) {
             B_LOCAL.stun = Math.max(0, B_LOCAL.stun - dt);
+            return;
+        }
+        if (this.formationRuntime.bossCast) {
             return;
         }
         const LIVING = this.livingBossTargets();

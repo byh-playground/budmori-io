@@ -23,12 +23,6 @@ export class UfoPresentation extends FormationPresentation {
             BODY_SCALE = Math.max(1, BODY_RADIUS * 2.6),
             S = renderer.scale * BODY_SCALE * Math.max(0.08, ENTER) * (1 - Math.min(1, EXIT)),
             C = renderer.ctx;
-        renderer.ellipse(P.x, P.y, S * 0.72, S * 0.19, '#718695');
-        renderer.ellipse(P.x, P.y - S * 0.13, S * 0.34, S * 0.25, '#b9e6e2bb');
-        renderer.ellipse(P.x, P.y + S * 0.12, S * 0.26, S * 0.065, '#a0f8e4');
-        for (let i = 0; i < 5; i++) {
-            renderer.ellipse(P.x + (i - 2) * S * 0.23, P.y + S * 0.04, S * 0.035, S * 0.025, '#e9f8b4');
-        }
         const PULSE_AGE = effect.age - effect.lastPulse,
             CHARGING = effect.age > 0.3 && ENTER < 1;
         if (CHARGING || (effect.age >= 0.5 && EXIT === 0)) {
@@ -45,12 +39,24 @@ export class UfoPresentation extends FormationPresentation {
             POINTS[1][1] = effect.y;
             POINTS[1][2] = effect.beamTargetZ;
             const BEAM = bodyScale(effect.bodyRadius);
-            stroke(renderer, POINTS, '#74f5db44', 0.33 * BEAM);
-            stroke(renderer, POINTS, '#afffe6cc', 0.11 * BEAM);
-            stroke(renderer, POINTS, '#f4fff3', 0.035 * BEAM);
+            const WIDTH = effect.beamWidth || 0.11 * BEAM;
+            stroke(renderer, POINTS, '#74f5db44', effect.beamWidth ? WIDTH * 1.15 : 0.33 * BEAM);
+            stroke(renderer, POINTS, '#afffe6cc', WIDTH);
+            stroke(renderer, POINTS, '#f4fff3', effect.beamWidth ? WIDTH * 0.32 : 0.035 * BEAM);
+            if (effect.beamWidth) {
+                renderer.groundEllipse(effect.x, effect.y, WIDTH / 2, WIDTH / 2, '#afffe633');
+                renderer.ring(effect.x, effect.y, WIDTH / 2, '#afffe6cc', 0.035);
+            }
             if (PULSE_ACTIVE) {
                 renderer.ring(effect.x, effect.y, 0.25 + PULSE_AGE * 2, '#bfffd7aa', 0.04);
             }
+        }
+        // Draw the shared saucer above the beam: a wide round cap must not erase its silhouette.
+        renderer.ellipse(P.x, P.y, S * 0.72, S * 0.19, '#718695');
+        renderer.ellipse(P.x, P.y - S * 0.13, S * 0.34, S * 0.25, '#b9e6e2bb');
+        renderer.ellipse(P.x, P.y + S * 0.12, S * 0.26, S * 0.065, '#a0f8e4');
+        for (let i = 0; i < 5; i++) {
+            renderer.ellipse(P.x + (i - 2) * S * 0.23, P.y + S * 0.04, S * 0.035, S * 0.025, '#e9f8b4');
         }
         C.globalAlpha = 1;
     }

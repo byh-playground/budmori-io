@@ -4,18 +4,31 @@ export class UfoSkill extends FlyingSkill {
     constructor() {
         super(DEFINITION);
     }
-    onPulse(owner, effect) {
-        const TARGET = owner.verticalTarget(effect.x, effect.y);
-        if (TARGET) {
-            owner.damage(TARGET, this.definition.pulseDamage);
+    beamTargets(owner, effect) {
+        const PROFILE = this.profile(owner);
+        if (PROFILE.beamWidth > 0) {
+            effect.beamWidth = PROFILE.beamWidth;
+            return owner.verticalTargets(effect.x, effect.y, PROFILE.beamWidth, PROFILE.targetCount);
         }
-        effect.beamTargetZ = TARGET ? targetBodyDimensions(TARGET).topZ : 0;
+        const TARGET = owner.verticalTarget(effect.x, effect.y);
+        return TARGET ? [TARGET] : [];
+    }
+    onPulse(owner, effect) {
+        const TARGETS = this.beamTargets(owner, effect);
+        for (const TARGET of TARGETS) {
+            owner.damage(TARGET, this.profile(owner).pulseDamage);
+        }
+        effect.beamTargetZ = TARGETS.length
+            ? Math.min(...TARGETS.map((target) => targetBodyDimensions(target).topZ))
+            : 0;
     }
     update(owner, effect, dt) {
         const ALIVE = super.update(owner, effect, dt),
-            TARGET = owner.verticalTarget(effect.x, effect.y);
-        effect.beamTarget = !!TARGET;
-        effect.beamTargetZ = TARGET ? targetBodyDimensions(TARGET).topZ : 0;
+            TARGETS = this.beamTargets(owner, effect);
+        effect.beamTarget = TARGETS.length > 0;
+        effect.beamTargetZ = TARGETS.length
+            ? Math.min(...TARGETS.map((target) => targetBodyDimensions(target).topZ))
+            : 0;
         return ALIVE;
     }
 }

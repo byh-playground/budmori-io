@@ -1,3 +1,4 @@
+import { visibleSkillCast, sampleSkillCastPose, skillCastPartPoses } from './features/skill-cast/presentation.js';
 import { bossVectorScale } from './vector-sockets.js';
 import { speciesById } from './species-catalog.js';
 import { CONFIG, clamp } from './farm-model.js';
@@ -33,17 +34,18 @@ export class BossPresentation {
     }
     bossPose(world, boss = world.boss) {
         const B = boss,
-            K = bossAttackPresentation(B).summoning
-                ? {
-                      x: 0,
-                      y: 0,
-                      squash: 0,
-                  }
-                : this.renderer.feel?.boss(this.renderer.displayTimeMs) || {
-                      x: 0,
-                      y: 0,
-                      squash: 0,
-                  },
+            K =
+                visibleSkillCast(B) || bossAttackPresentation(B).summoning
+                    ? {
+                          x: 0,
+                          y: 0,
+                          squash: 0,
+                      }
+                    : this.renderer.feel?.boss(this.renderer.displayTimeMs) || {
+                          x: 0,
+                          y: 0,
+                          squash: 0,
+                      },
             GROUND = this.renderer.project(B.x + K.x, B.y + K.y, 0),
             P = this.renderer.project(B.x + K.x, B.y + K.y, B.z || 0),
             R = this.renderer.scale * B.radius * 1.16;
@@ -62,6 +64,9 @@ export class BossPresentation {
         }
         if (b.hp <= 0) {
             return 'death';
+        }
+        if (visibleSkillCast(b)) {
+            return 'idle';
         }
         if (b.flash > 0.09 && b.patternPhase === 'idle') {
             return 'hit';
@@ -84,7 +89,8 @@ export class BossPresentation {
             { b: B, p: P, k: K } = this.bossPose(world, BOSS),
             EVENT = BOSS === world.boss ? world.farmBossEvent : null,
             SPECIES = B.species,
-            PRESENTATION = bossAttackPresentation(B);
+            CAST = !EVENT || EVENT.phase === 'fighting' ? visibleSkillCast(B) : null,
+            PRESENTATION = CAST ? IDLE_PRESENTATION : bossAttackPresentation(B);
         const RECORD = this.renderer.bossSpeciesAssets.get(SPECIES);
         if (!RECORD) {
             throw new Error('Missing required boss vector asset for species ' + SPECIES);
@@ -127,22 +133,33 @@ export class BossPresentation {
             : NAME === 'walk'
               ? this.renderer.displayTimeMs - Math.max(0, B.travel || 0) * 110
               : this.renderer.displayTimeMs - (((B.travel || 0) * 37) % CLIP.durationMs);
-        PRESENTATION.play(instance, METADATA, B, CLIP_NAME, CLIP_START_AT_MS);
+        if (CAST) {
+            // Freeze the neutral authored frame so cast pose and release use only
+            // the simulation clock, including restore and repeated same-skill casts.
+            PLAYER.play('idle', 0);
+            PLAYER.seek(0);
+            instance.summoning = false;
+        } else {
+            PRESENTATION.play(instance, METADATA, B, CLIP_NAME, CLIP_START_AT_MS);
+        }
+        const CAST_POSE = CAST ? sampleSkillCastPose(CAST, B.radius / bossVectorScale()) : null;
         const SUMMON_OPEN = PRESENTATION.mouthOpen(B);
         const EXPRESSION =
             B.hp <= 0
                 ? 'dead'
                 : EVENT?.phase === 'celebrating' && EVENT.outcome === 'defeat'
                   ? 'happy'
-                  : SUMMON_OPEN
-                    ? 'attack'
-                    : B.patternPhase === 'windup'
-                      ? 'focused'
-                      : B.patternPhase === 'active'
-                        ? 'attack'
-                        : B.flash > 0.07
-                          ? 'hurt'
-                          : 'neutral';
+                  : CAST_POSE
+                    ? CAST_POSE.expression
+                    : SUMMON_OPEN
+                      ? 'attack'
+                      : B.patternPhase === 'windup'
+                        ? 'focused'
+                        : B.patternPhase === 'active'
+                          ? 'attack'
+                          : B.flash > 0.07
+                            ? 'hurt'
+                            : 'neutral';
         if (!METADATA.expressions?.[EXPRESSION] && !METADATA.expressions?.neutral) {
             throw new Error('Boss asset is missing a supported expression');
         }
@@ -150,7 +167,9 @@ export class BossPresentation {
         if (PLAYER.currentExpression !== SAFE_EXPRESSION) {
             PLAYER.setExpression(SAFE_EXPRESSION);
         }
-        PRESENTATION.seek(PLAYER, this.renderer.displayTimeMs);
+        if (!CAST) {
+            PRESENTATION.seek(PLAYER, this.renderer.displayTimeMs);
+        }
         const S_LOCAL = this.renderer.scale * bossVectorScale(),
             GROUND = RECORD.anchors.ground,
             MATRIX = [S_LOCAL, 0, 0, S_LOCAL, P.x - GROUND.x * S_LOCAL, P.y - GROUND.y * S_LOCAL];
@@ -161,6 +180,11 @@ export class BossPresentation {
         const FADE = EVENT?.phase === 'fading' ? clamp(1 - EVENT.elapsed / CONFIG.farm.bossEvent.fadeSeconds, 0, 1) : 1;
         const PARTS = RECORD.parts,
             POSE = PRESENTATION.pose(B, PARTS, this.bossAttackPose, RECORD.hands);
+        // Ordinary pose writes below reset every channel touched by the cast on
+        // completion, cancellation or death. No cast pose survives into combat.
+        if (CAST_POSE) {
+            Object.assign(POSE.body, CAST_POSE.body);
+        }
         PLAYER.setBasePose('body', {
             x: 0,
             y: POSE.body.y - 18 * DEFEAT_BOUNCE,
@@ -182,6 +206,13 @@ export class BossPresentation {
         for (const [PART, PART_POSE] of Object.entries(POSE.extras)) {
             if (PARTS.has(PART)) {
                 PLAYER.setBasePose(PART, PART_POSE);
+            }
+        }
+        if (CAST_POSE) {
+            for (const [PART, PART_POSE] of Object.entries(skillCastPartPoses(CAST_POSE, METADATA.parts, HELD))) {
+                if (PART !== 'body') {
+                    PLAYER.setBasePose(PART, PART_POSE);
+                }
             }
         }
         if (BOSS === world.boss && this.renderer.cornAttachmentBodies.has('boss')) {

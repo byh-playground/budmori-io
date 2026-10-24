@@ -24,6 +24,9 @@ export class FormationSkill {
     constructor(definition) {
         this.definition = definition;
     }
+    profile(owner) {
+        return owner.role === 'boss' ? { ...this.definition, ...this.definition.boss } : this.definition;
+    }
     power(level, base) {
         return base * (this.definition.upgradeFactor ?? 1.5) ** (level - 1);
     }
@@ -41,16 +44,19 @@ export class MeteorSkill extends FormationSkill {
         if (!TARGET) {
             return false;
         }
-        const ANGLE = owner.world.random() * Math.PI * 2,
-            DISTANCE = Math.sqrt(owner.world.random()) * (TARGET.radius + T1_DIAMETER * 3);
+        const PROFILE = this.profile(owner),
+            ANGLE = owner.world.random() * Math.PI * 2,
+            DISTANCE =
+                Math.sqrt(owner.world.random()) * (targetBodyDimensions(TARGET).bodyRadius + PROFILE.scatterRadius);
         owner.addEffect(this.definition.id, {
             x: TARGET.x + Math.cos(ANGLE) * DISTANCE,
             y: TARGET.y + Math.sin(ANGLE) * DISTANCE,
             z: 12,
-            delay: index * 0.25,
-            duration: index * 0.25 + 1.25,
-            radius: T1_DIAMETER * 3,
-            damage: this.power(slot.level, this.definition.upgradeBase),
+            delay: index * PROFILE.shotInterval,
+            fallSeconds: PROFILE.fallSeconds,
+            duration: index * PROFILE.shotInterval + PROFILE.fallSeconds + 0.5,
+            radius: PROFILE.aoeRadius,
+            damage: PROFILE.shotDamage ?? this.power(slot.level, PROFILE.upgradeBase),
             impacted: false,
         });
         return true;
@@ -60,7 +66,7 @@ export class MeteorSkill extends FormationSkill {
     }
     update(owner, effect, dt) {
         effect.age += dt;
-        if (!effect.impacted && effect.age + 1e-9 >= effect.delay + 0.75) {
+        if (!effect.impacted && effect.age + 1e-9 >= effect.delay + (effect.fallSeconds ?? 0.75)) {
             effect.impacted = true;
             owner.areaDamage(effect.x, effect.y, effect.radius, effect.damage, this.knockback === true);
         }
@@ -79,7 +85,8 @@ export class FlyingSkill extends FormationSkill {
         return true;
     }
     effectState(owner, target, slot, angle) {
-        const BODY = targetBodyDimensions(target),
+        const PROFILE = this.profile(owner),
+            BODY = targetBodyDimensions(target),
             TARGET_Z = targetTop(owner, target);
         return {
             x: target.x + Math.cos(angle) * 0.6,
@@ -88,7 +95,8 @@ export class FlyingSkill extends FormationSkill {
             bodyHeight: BODY.bodyHeight,
             bodyRadius: BODY.bodyRadius,
             targetId: owner.targetId(target),
-            duration: this.definition.upgradeBase + this.definition.upgradeStep * (slot.level - 1),
+            targetGeneration: owner.targetGeneration?.(target),
+            duration: PROFILE.upgradeBase + PROFILE.upgradeStep * (slot.level - 1),
             pulse: 0,
             lastPulse: -10,
             targetX: target.x,
@@ -98,12 +106,17 @@ export class FlyingSkill extends FormationSkill {
     }
     onPulse(_owner, _effect, _target) {}
     strike(_owner, _effect, _target) {}
-    update(owner, effect, dt) {
-        effect.age += dt;
-        const TARGET = owner.target(effect.targetId) || owner.enemy(effect);
+    track(owner, effect, dt) {
+        const TARGET = owner.target(effect.targetId, effect.targetGeneration) || owner.enemy(effect);
         if (TARGET) {
             const BODY = targetBodyDimensions(TARGET);
-            effect.targetId = owner.targetId(TARGET);
+            const ID = owner.targetId(TARGET),
+                GENERATION = owner.targetGeneration?.(TARGET);
+            if (owner.role === 'boss' && (ID !== effect.targetId || GENERATION !== effect.targetGeneration)) {
+                effect.readyAt = effect.age + 0.5;
+            }
+            effect.targetId = ID;
+            effect.targetGeneration = GENERATION;
             const DX = TARGET.x - effect.x,
                 DY = TARGET.y - effect.y,
                 TARGET_Z = targetTop(owner, TARGET),
@@ -117,9 +130,14 @@ export class FlyingSkill extends FormationSkill {
             effect.bodyHeight = BODY.bodyHeight;
             effect.bodyRadius = BODY.bodyRadius;
         }
+        return TARGET;
+    }
+    update(owner, effect, dt) {
+        effect.age += dt;
+        const TARGET = this.track(owner, effect, dt);
         owner.separateAir(effect, dt);
         const ACTIVE_AGE = effect.age - 0.5;
-        const INTERVAL = this.definition.pulseInterval;
+        const INTERVAL = this.profile(owner).pulseInterval;
         if (ACTIVE_AGE >= 0 && effect.pulse < Math.floor((effect.duration + 1e-9) / INTERVAL)) {
             const DUE = Math.min(
                 Math.floor((Math.min(ACTIVE_AGE, effect.duration) + 1e-9) / INTERVAL),
@@ -127,6 +145,9 @@ export class FlyingSkill extends FormationSkill {
             );
             while (effect.pulse < DUE) {
                 effect.pulse++;
+                if (effect.age < (effect.readyAt ?? 0)) {
+                    continue;
+                }
                 effect.lastPulse = effect.age;
                 this.onPulse(owner, effect, TARGET);
                 if (TARGET && Math.hypot(TARGET.x - effect.x, TARGET.y - effect.y) <= 18) {

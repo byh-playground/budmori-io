@@ -294,6 +294,11 @@ class UnitRender extends RENDER_OBJECT {
 }
 class BossRender extends RENDER_OBJECT {
     static renderSchema = Object.freeze({
+        'skillCast.id': R.STATE_KEY,
+        'skillCast.phase': R.STATE_KEY,
+        'skillCast.serial': R.STATE_KEY,
+        'skillCast.elapsed': R.LINEAR,
+        'skillCast.duration': R.STEP,
         generation: R.STATE_KEY,
         x: R.POSITION_X,
         y: R.POSITION_Y,
@@ -331,7 +336,19 @@ class BossRender extends RENDER_OBJECT {
         barleyArmorShredTotal: R.STEP,
         barleyArmorShredLeft: R.STEP,
     });
+    constructor() {
+        super();
+        this.skillCast = {};
+    }
     update(b, world) {
+        const CAST = world.formationRuntime.bossCast;
+        Object.assign(this.skillCast, {
+            id: CAST?.id || '',
+            phase: CAST?.phase || '',
+            serial: CAST?.serial || 0,
+            elapsed: CAST?.elapsed || 0,
+            duration: CAST?.duration || 0,
+        });
         const ACTION = b.patternRuntime.active,
             EVENT = world.farmBossEvent,
             TARGET = ACTION?.target || null,
@@ -495,6 +512,13 @@ class EffectRender extends RENDER_OBJECT {
 }
 class FormationEffectRender extends RENDER_OBJECT {
     static renderSchema = Object.freeze({
+        role: R.STEP,
+        beamWidth: R.STEP,
+        cloudSize: R.LINEAR,
+        targets: R.STEP,
+        fallSeconds: R.STEP,
+        telegraphSeconds: R.STEP,
+        impacted: R.STEP,
         id: R.STEP,
         kind: R.STATE_KEY,
         x: R.POSITION_X,
@@ -517,7 +541,9 @@ class FormationEffectRender extends RENDER_OBJECT {
     });
     update(effect) {
         for (const KEY of Object.keys(FormationEffectRender.renderSchema)) {
-            this[KEY] = effect[KEY] ?? (KEY === 'kind' ? '' : 0);
+            this[KEY] =
+                effect[KEY] ??
+                (KEY === 'kind' || KEY === 'role' ? '' : KEY === 'targets' ? [] : KEY === 'fallSeconds' ? 0.75 : 0);
         }
     }
 }
@@ -984,7 +1010,7 @@ class FarmSession {
         VIEW.projectiles.length = 0;
         VIEW.effects.length = 0;
         VIEW.formationEffects.length = 0;
-        VIEW.formationSlots = WORLD.formationRuntime.slots;
+        VIEW.formationSlots = WORLD.formationRuntime.slots.filter((slot) => slot.role !== 'boss');
         FRAME.forEach(this.collectPresentationModel);
         for (const FOOD of WORLD.food) {
             if (FOOD.phase === 'grounded') {
