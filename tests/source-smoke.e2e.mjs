@@ -338,13 +338,62 @@ try {
             OBS.workOverlap.windup &&
             OBS.hits > 0 &&
             OBS.bossSlams > 0 &&
-            OBS.bossHitBatches.some((batch) => new Set(batch.targets).size > 1) &&
             [2, 4, 8].every((species) => OBS.regenerated.includes(species)) &&
             OBS.splitCount > 0 &&
             OBS.splitChildren.length === OBS.splitCount &&
             OBS.deathRendered
         );
     });
+    // The original full-health boss only unlocks its single-target basic attack.
+    // After every nine-species condition is proven, arrange a crowd for one native unlocked sweep.
+    REPORT.physicalAoeFixture = await PAGE.evaluate(() => {
+        const WORLD = BUDMORI.sim;
+        BUDMORI.runtime.paused = true;
+        WORLD.setWorkBasisPoints(0);
+        WORLD.projectiles = [];
+        WORLD._bossHitBatch = [];
+        for (const [INDEX, UNIT] of WORLD.units.entries()) {
+            Object.assign(UNIT, { x: INDEX % 2 ? -18 : 18, y: 10, z: 0, vx: 0, vy: 0, vz: 0, stun: 1000 });
+        }
+        Object.assign(WORLD.boss, { x: 0, y: 0, z: 0, hp: 3e8, maxHp: 1e9, stun: 0, knockVx: 0, knockVy: 0 });
+        WORLD.boss.patternRuntime.active = null;
+        for (const ID of Object.keys(WORLD.boss.patternRuntime.cooldowns)) {
+            WORLD.boss.patternRuntime.cooldowns[ID] = ID === 'attack.sweep-360' ? 0 : 1000;
+        }
+        const TARGETS = [];
+        for (let index = 0; index < 4; index++) {
+            const ANGLE = (index < 2 ? 0 : Math.PI) + (index % 2) * 0.12,
+                UNIT = WORLD.spawn(0, 1, 0, 0),
+                DISTANCE = WORLD.boss.radius + UNIT.radius + 0.4;
+            Object.assign(UNIT, {
+                x: Math.cos(ANGLE) * DISTANCE,
+                y: Math.sin(ANGLE) * DISTANCE,
+                z: 0,
+                vx: 0,
+                vy: 0,
+                vz: 0,
+                hp: 1e6,
+                dropLanded: true,
+                stun: 1000,
+            });
+            WORLD._benched.delete(UNIT);
+            TARGETS.push(UNIT.id);
+        }
+        WORLD._benchRevision++;
+        WORLD._unitSpatialDirty = true;
+        BUDMORI.runtime.capturePresentation('reset');
+        BUDMORI.runtime.loop.resetTiming();
+        BUDMORI.runtime.paused = false;
+        return {
+            targetIds: TARGETS,
+            bossHpRatio: WORLD.bossHpRatio,
+            pattern: 'attack.sweep-360',
+            chargeSource: 'native physical settlement; no injected combat events',
+        };
+    });
+    await PAGE.waitForFunction(() =>
+        globalThis.__mixedCombat.bossHitBatches.some((batch) => new Set(batch.targets).size > 1),
+    );
     REPORT.mixedCombat = await PAGE.evaluate(() => ({
         ...globalThis.__mixedCombat,
         endTick: BUDMORI.sim.simulationTick,
@@ -456,6 +505,11 @@ try {
         WORLD.tower.doors = [{ type: 'stat', id: 'regen-flat', rarity: 0 }];
     });
     // Freeze before clicking, not after spotting a short-lived phase. Real screenshots can take >1s.
+    REPORT.clock = {
+        installedBeforeNavigation: true,
+        controlledScope: 'card receipt screenshots only',
+        combatResumed: false,
+    };
     await PAGE.clock.pauseAt(await PAGE.evaluate(() => Date.now() + 1000));
     await PAGE.clock.runFor(32);
     // Clock is paused, so bypass only RAF-based stability waiting; this is still a real pointer click.
@@ -529,6 +583,7 @@ try {
     await PAGE.locator('#bossCardDraw').waitFor({ state: 'hidden' });
 
     await PAGE.clock.resume();
+    REPORT.clock.combatResumed = true;
 
     await PAGE.evaluate(() => {
         BUDMORI.sim.tower.nextKind = 'battle';
@@ -719,7 +774,14 @@ try {
                     'prepare stops voluntary motion/patterns and does not release early',
                 );
                 if (ID === 'lightning') {
+                    await PAGE.evaluate(() => {
+                        BUDMORI.runtime.paused = true;
+                    });
                     await PAGE.screenshot({ path: path.join(OUTPUT, 'boss-skill-prepare.png'), fullPage: true });
+                    await PAGE.evaluate(() => {
+                        BUDMORI.runtime.loop.resetTiming();
+                        BUDMORI.runtime.paused = false;
+                    });
                 }
             }
             await PAGE.waitForFunction(
