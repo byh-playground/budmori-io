@@ -10,9 +10,13 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { sourceGraph } from '../scripts/source-graph.mjs';
 
+const SPECIES = process.env.PERFORMANCE_SPECIES === 'rice' ? 'rice' : 'walnut',
+    SPECIES_ID = SPECIES === 'rice' ? 6 : 5,
+    ABILITY_ID = SPECIES === 'rice' ? 'rice-low-health-harvest' : 'walnut-raw-guard';
 const ROOT = fileURLToPath(new URL('../', import.meta.url)),
-    BASE_COMMIT = 'bde28685e3ef0dc15934cde9d41a6b9b5e42ec7f',
-    OUTPUT = path.join(ROOT, 'tests/output/walnut-performance'),
+    BASE_COMMIT =
+        SPECIES === 'rice' ? '7fac7631be682d3750beeab16981fccd83898195' : 'bde28685e3ef0dc15934cde9d41a6b9b5e42ec7f',
+    OUTPUT = path.join(ROOT, `tests/output/${SPECIES}-performance`),
     HASH = (bytes) => createHash('sha256').update(bytes).digest('hex'),
     MEDIAN = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)],
     P95 = (values) => [...values].sort((a, b) => a - b)[Math.ceil(values.length * 0.95) - 1],
@@ -43,7 +47,7 @@ const ROOTS = { base: fs.realpathSync(process.env.WALNUT_PERFORMANCE_BASE_ROOT),
         scope: 'One Chromium process, real production simulation and render. SwiftShader/touch emulation, not hardware or physical-device FPS.',
         protocol: {
             units: 200,
-            species: 5,
+            species: SPECIES_ID,
             tier: 6,
             seed: 731,
             rounds: 3,
@@ -51,8 +55,7 @@ const ROOTS = { base: fs.realpathSync(process.env.WALNUT_PERFORMANCE_BASE_ROOT),
             sampleFrames: 120,
             p95Limit: 1.2,
             order: 'base/candidate, candidate/base, base/candidate',
-            fixture:
-                'Stationary 1e12 HP boss stunned for10000s, all200 T6 walnut bodies deployed in identical radial layout. Candidate only has T2–T6 research; no basic/specialty investments. No incoming RAW in this isolated maximum-army rendering fixture.',
+            fixture: `Stationary 1e12 HP boss stunned for10000s, all200 T6 ${SPECIES} bodies deployed in identical radial layout. Candidate only has T2–T6 research; no basic/specialty investments. No incoming RAW in this isolated maximum-army rendering fixture.`,
             timing: 'rAF intervals retain all120 raw samples. CPU uses the production detailed profiler last30 completed frames, not the whole rAF window; nested stages are not added. Equal frame windows may cover different wall/simulation durations.',
         },
         runs: [],
@@ -138,62 +141,70 @@ async function run(variant, viewport, round, origin) {
     try {
         await PAGE.goto(`${origin}/${variant}/index.html`);
         await PAGE.waitForFunction(() => globalThis.BUDMORI?.renderer?.assetsReady);
-        RUN.initial = await PAGE.evaluate((build) => {
-            document.getElementById('newGame').click();
-            const WORLD = BUDMORI.sim,
-                INVESTMENT = WORLD.playerProgression.abilities['walnut-raw-guard'];
-            if (WORLD.seed !== 731 || WORLD.simulationTick !== 0) {
-                throw Error('New game seed/tick mismatch');
-            }
-            WORLD.resetUnits();
-            WORLD.setWorkBasisPoints(0);
-            if (build === 'candidate') {
-                if (INVESTMENT.treeVersion !== 1) {
-                    throw Error('Candidate tree not active');
+        RUN.initial = await PAGE.evaluate(
+            ({ build, speciesId, abilityId }) => {
+                document.getElementById('newGame').click();
+                const WORLD = BUDMORI.sim,
+                    INVESTMENT = WORLD.playerProgression.abilities[abilityId];
+                if (WORLD.seed !== 731 || WORLD.simulationTick !== 0) {
+                    throw Error('New game seed/tick mismatch');
                 }
-                INVESTMENT.masteryLevel = 50;
-                INVESTMENT.nodeRanks = Object.fromEntries([2, 3, 4, 5, 6].map((tier) => [`evolution-${tier}`, 1]));
-            } else if (INVESTMENT.treeVersion) {
-                throw Error('Baseline is not legacy walnut');
-            }
-            for (let index = 0; index < 200; index++) {
-                const UNIT = WORLD.spawn(5, 6, 0, 0);
-                UNIT.growth = 3;
-                UNIT.growthElapsed = UNIT.growthDuration;
-                UNIT.dropLanded = true;
-            }
-            if (!WORLD.startTower(1) || !WORLD.finishMarch()) {
-                throw Error('Tower setup failed');
-            }
-            WORLD._benched.clear();
-            WORLD._benchRevision++;
-            WORLD.farmBossEvent.phase = 'fighting';
-            Object.assign(WORLD.boss, { z: 0, hp: 1e12, maxHp: 1e12, stun: 10000 });
-            WORLD.units.forEach((unit, index) => {
-                const ANGLE = index * 2.399963229728653,
-                    DISTANCE = WORLD.boss.radius + 1 + (index % 4) * 0.5;
-                Object.assign(unit, {
-                    x: Math.cos(ANGLE) * DISTANCE,
-                    y: Math.sin(ANGLE) * DISTANCE,
-                    z: 0,
-                    dropLanded: true,
+                WORLD.resetUnits();
+                WORLD.setWorkBasisPoints(0);
+                if (build === 'candidate') {
+                    if (INVESTMENT.treeVersion !== 1) {
+                        throw Error('Candidate tree not active');
+                    }
+                    INVESTMENT.masteryLevel = 50;
+                    INVESTMENT.nodeRanks = Object.fromEntries([2, 3, 4, 5, 6].map((tier) => [`evolution-${tier}`, 1]));
+                } else if (INVESTMENT.treeVersion) {
+                    throw Error('Baseline is not legacy selected species');
+                }
+                for (let index = 0; index < 200; index++) {
+                    const UNIT = WORLD.spawn(speciesId, 6, 0, 0);
+                    UNIT.growth = 3;
+                    UNIT.growthElapsed = UNIT.growthDuration;
+                    UNIT.dropLanded = true;
+                }
+                if (!WORLD.startTower(1) || !WORLD.finishMarch()) {
+                    throw Error('Tower setup failed');
+                }
+                WORLD._benched.clear();
+                WORLD._benchRevision++;
+                WORLD.farmBossEvent.phase = 'fighting';
+                Object.assign(WORLD.boss, { z: 0, hp: 1e12, maxHp: 1e12, stun: 10000 });
+                WORLD.units.forEach((unit, index) => {
+                    const ANGLE = index * 2.399963229728653,
+                        DISTANCE = WORLD.boss.radius + 1 + (index % 4) * 0.5;
+                    Object.assign(unit, {
+                        x: Math.cos(ANGLE) * DISTANCE,
+                        y: Math.sin(ANGLE) * DISTANCE,
+                        z: 0,
+                        dropLanded: true,
+                    });
                 });
-            });
-            WORLD._unitSpatialDirty = true;
-            globalThis.__walnutPerformanceActivity = { hits: 0, damage: 0 };
-            WORLD.onCombatResolved.on((event) => {
-                globalThis.__walnutPerformanceActivity.hits += event.hits || 0;
-                globalThis.__walnutPerformanceActivity.damage += event.damageDealt || 0;
-            });
-            const DETAIL = document.getElementById('diagnosticDetail');
-            DETAIL.checked = true;
-            DETAIL.dispatchEvent(new Event('change', { bubbles: true }));
-            return {
-                seed: WORLD.seed,
-                units: WORLD.units.map((unit) => ({ species: unit.species, tier: unit.tier, x: unit.x, y: unit.y })),
-                build: structuredClone(INVESTMENT),
-            };
-        }, variant);
+                WORLD._unitSpatialDirty = true;
+                globalThis.__walnutPerformanceActivity = { hits: 0, damage: 0 };
+                WORLD.onCombatResolved.on((event) => {
+                    globalThis.__walnutPerformanceActivity.hits += event.hits || 0;
+                    globalThis.__walnutPerformanceActivity.damage += event.damageDealt || 0;
+                });
+                const DETAIL = document.getElementById('diagnosticDetail');
+                DETAIL.checked = true;
+                DETAIL.dispatchEvent(new Event('change', { bubbles: true }));
+                return {
+                    seed: WORLD.seed,
+                    units: WORLD.units.map((unit) => ({
+                        species: unit.species,
+                        tier: unit.tier,
+                        x: unit.x,
+                        y: unit.y,
+                    })),
+                    build: structuredClone(INVESTMENT),
+                };
+            },
+            { build: variant, speciesId: SPECIES_ID, abilityId: ABILITY_ID },
+        );
         RUN.measurement = await PAGE.evaluate(async () => {
             const FRAMES = [],
                 FORMS = new Set(),
@@ -219,7 +230,7 @@ async function run(variant, viewport, round, origin) {
                 FRAMES.push(NOW - previous);
                 previous = NOW;
                 for (const UNIT of BUDMORI.sim.units) {
-                    const FORM = UNIT.ability.action?.walnutAttack?.form;
+                    const FORM = (UNIT.ability.action?.riceAttack || UNIT.ability.action?.walnutAttack)?.form;
                     if (FORM) {
                         FORMS.add(FORM);
                     }

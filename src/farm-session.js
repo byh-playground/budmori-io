@@ -1,3 +1,4 @@
+import { updateRicePresentation } from './features/unit-attacks/rice/presentation.js';
 import { updateWalnutPresentation } from './features/unit-attacks/walnut/presentation.js';
 import { Garden, bindPresentationClock } from './farm-model.js';
 import { unitMaxHpFor } from './unit-stats.js';
@@ -74,6 +75,18 @@ class UnitRender extends RENDER_OBJECT {
         'ability.walnutPointY': R.STEP,
         'ability.walnutRawBudget': R.STEP,
         'ability.walnutImpactLife': R.LINEAR,
+        'ability.riceForm': R.STEP,
+        'ability.riceActionId': R.STATE_KEY,
+        'ability.riceSlot': R.STATE_KEY,
+        'ability.riceStage': R.STATE_KEY,
+        'ability.ricePreviousStage': R.STEP,
+        'ability.riceFirstStage': R.STEP,
+        'ability.riceLastStage': R.STEP,
+        'ability.riceStageProgress': R.LINEAR,
+        'ability.riceWindupDuration': R.STEP,
+        'ability.riceRecoveryDuration': R.STEP,
+        'ability.ricePointX': R.STEP,
+        'ability.ricePointY': R.STEP,
         walnutGuarding: R.STEP,
         cooldown: R.LINEAR,
         cooldownDuration: R.STEP,
@@ -181,6 +194,7 @@ class UnitRender extends RENDER_OBJECT {
                 : PEA?.stageProgress || 0;
         this.ability.peaWindupDuration = PEA?.windupSeconds || 0.28;
         updateWalnutPresentation(this.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
+        updateRicePresentation(this.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
         this.walnutGuarding = !!u.ability.isGuarding?.(world.simulationTick);
         this.cooldown = u.cooldown;
         this.cooldownDuration = u.cooldownDuration;

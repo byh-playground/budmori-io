@@ -1,3 +1,4 @@
+import { createRiceAttackMixin } from './features/unit-attacks/rice/model.js';
 import { createWalnutAttackMixin } from './features/unit-attacks/walnut/model.js';
 import { walnutGrowthBuild } from './features/species-growth/walnut-attack.js';
 import { createChestnutAttackMixin } from './features/unit-attacks/chestnut/model.js';
@@ -387,6 +388,7 @@ export function composeUnitAttackCycles(cycle, { ArenaGeometry: arenaGeometry, B
         };
     const ATTACKS = {
         contact: CONTACT_ATTACK,
+        rice: createRiceAttackMixin(CONTACT_ATTACK, arenaGeometry),
         walnut: createWalnutAttackMixin(CONTACT_ATTACK, arenaGeometry),
         pea: createPeaAttackMixin(CONTACT_ATTACK, arenaGeometry),
         chestnut: createChestnutAttackMixin(CONTACT_ATTACK),

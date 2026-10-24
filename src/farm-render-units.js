@@ -1,3 +1,4 @@
+import { RiceAttackPresentation } from './features/unit-attacks/rice/presentation.js';
 import { WalnutAttackPresentation } from './features/unit-attacks/walnut/presentation.js';
 import { ChestnutAttackPresentation } from './features/unit-attacks/chestnut/presentation.js';
 import { RedbeanAttackPresentation } from './features/unit-attacks/redbean/presentation.js';
@@ -12,6 +13,7 @@ import { farmBreedingCooldown, unitRestPresentation } from './farm-indicators.js
 import { scenePresentation } from './farm-render-scenes.js';
 import { PassiveMarksPresentation } from './tower-passive-presentations.js';
 
+const RICE_ATTACK = new RiceAttackPresentation();
 const WALNUT_ATTACK = new WalnutAttackPresentation();
 const CHESTNUT_ATTACK = new ChestnutAttackPresentation();
 const REDBEAN_ATTACK = new RedbeanAttackPresentation();
@@ -23,6 +25,9 @@ const ATTACK_PRESENTATIONS = new Map(
     [new DualStrikePresentation(), new LobPresentation()].map((presentation) => [presentation.id, presentation]),
 );
 function unitAttackPresentation(unit) {
+    if (unit.species === 6 && unit.ability?.riceForm) {
+        return RICE_ATTACK;
+    }
     if (unit.species === 5 && unit.ability?.walnutForm) {
         return WALNUT_ATTACK;
     }
@@ -148,9 +153,49 @@ export class UnitPresentation {
     constructor(renderer) {
         this.renderer = renderer;
         this.unitRings = [];
+        this.riceDisplayUnits = new Map();
         this.unitRingPool = [{}, {}, {}, {}];
         this.breedingIndicator = {};
         this.restIndicator = {};
+    }
+    prepareUnits(units, time, world) {
+        if (this.riceDisplayWorld !== world || this.riceDisplayTime > this.renderer.displayTimeMs) {
+            this.riceDisplayUnits.clear();
+        }
+        this.riceDisplayWorld = world;
+        this.riceDisplayTime = this.renderer.displayTimeMs;
+        const LIVE = new Set();
+        for (const UNIT of units) {
+            if (UNIT.species !== 6) {
+                continue;
+            }
+            LIVE.add(UNIT.id);
+            let entry = this.riceDisplayUnits.get(UNIT.id);
+            if (!entry || entry.seed !== UNIT.seed) {
+                entry = { seed: UNIT.seed, unit: {}, offset: { x: 0, y: 0 }, releasedAt: null };
+                this.riceDisplayUnits.set(UNIT.id, entry);
+            }
+            const OFFSET = RICE_ATTACK.groundOffset(this.renderer, UNIT, time);
+            if (OFFSET) {
+                entry.offset = OFFSET;
+                entry.releasedAt = null;
+            } else {
+                // Cancelled/stunned/dead attacks leave no active contact. Let the
+                // connected body/feet/shadow settle home over120ms, not teleport.
+                entry.releasedAt ??= this.renderer.displayTimeMs;
+            }
+            const LEFT =
+                entry.releasedAt === null ? 1 : Math.max(0, 1 - (this.renderer.displayTimeMs - entry.releasedAt) / 120);
+            Object.assign(entry.unit, UNIT, { x: UNIT.x + entry.offset.x * LEFT, y: UNIT.y + entry.offset.y * LEFT });
+        }
+        for (const ID of this.riceDisplayUnits.keys()) {
+            if (!LIVE.has(ID)) {
+                this.riceDisplayUnits.delete(ID);
+            }
+        }
+    }
+    displayUnit(unit) {
+        return unit.species === 6 ? this.riceDisplayUnits.get(unit.id)?.unit || unit : unit;
     }
     addUnitRing(radius, color, width, progress) {
         const EFFECT = this.unitRingPool[this.unitRings.length];
@@ -305,6 +350,9 @@ export class UnitPresentation {
         if (!SWING && !rest && u.species === 5 && u.ability.walnutForm && u.hp > 0 && u.stun <= 0) {
             WALNUT_ATTACK.applyPose(MATRIX, u, GROUND);
         }
+        if (!SWING && !rest && u.species === 6 && u.ability.riceForm && u.hp > 0 && u.stun <= 0) {
+            RICE_ATTACK.applyPose(MATRIX, u, GROUND);
+        }
         // Native vector players submit directly to MeshRenderer, so flush earlier 2D paint first.
         this.renderer.ctx.vector.flush();
         player.draw({
@@ -313,6 +361,9 @@ export class UnitPresentation {
             alpha: u.isFormationClone ? 0.52 : 1,
             color: u.isFormationClone ? [0.55, 0.82, 1, 1] : [1, 1, 1, 1],
         });
+        if (u.species === 6) {
+            RICE_ATTACK.drawContact(this.renderer, u, player, MATRIX);
+        }
         return true;
     }
     drawUnit(u, sim, rest) {

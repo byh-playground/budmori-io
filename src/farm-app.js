@@ -52,6 +52,7 @@ let panPointer = null;
 let handKey = '';
 let farmSortTransition = null;
 let farmPanelRevision = -1;
+let abilityTreeProgression = null;
 let bossRewardRevealTimer = null;
 let bossRewardCalculationTimer = null;
 let bossRewardDialogReceiptKey = null;
@@ -560,8 +561,18 @@ const AUTOSAVE = new FarmAutosave(() => writeCheckpoint());
 function replacePersonalGarden(world) {
     unsubscribeProgress?.();
     personalGarden = world;
+    abilityTreeProgression = null;
     // The saved garden remains an owner while a separate raid session is active.
-    unsubscribeProgress = world?.onProgressChanged.on(() => AUTOSAVE.markDirty()) ?? null;
+    unsubscribeProgress =
+        world?.onProgressChanged.on(() => {
+            AUTOSAVE.markDirty();
+            // Purchases/reset publish their new state before this signal. A wall-time
+            // delay can run before the queued command; refresh only committed state.
+            // Other farm progress keeps the same identity and must not kill previews.
+            if (menuOpen && menuTab === 'abilities' && abilityTreeProgression !== world.playerProgression) {
+                drawAbilityTree();
+            }
+        }) ?? null;
 }
 function persist() {
     if (active?.world === personalGarden) {
@@ -1149,7 +1160,7 @@ function mountGrowthPreview(species, tier) {
     const HOST = DOLLAR('abilityNodes').querySelector('.growth-evolution-preview');
     if (
         !HOST ||
-        !['corn', 'pea', 'redbean', 'chestnut', 'peanut', 'walnut'].includes(species) ||
+        !['corn', 'pea', 'redbean', 'chestnut', 'peanut', 'walnut', 'rice'].includes(species) ||
         !Number.isInteger(tier) ||
         tier < 1 ||
         tier > 6
@@ -1157,7 +1168,7 @@ function mountGrowthPreview(species, tier) {
         return;
     }
     const FRAME = document.createElement('iframe');
-    FRAME.title = `${{ pea: '콩', corn: '옥수수', redbean: '팥', chestnut: '밤톨', peanut: '땅콩', walnut: '호두' }[species]} T${tier} 실제 공격 미리보기`;
+    FRAME.title = `${{ pea: '콩', corn: '옥수수', redbean: '팥', chestnut: '밤톨', peanut: '땅콩', walnut: '호두', rice: '쌀' }[species]} T${tier} 실제 공격 미리보기`;
     FRAME.src = new URL(`?help=${species}-t${tier}`, location.href).href.split('#')[0];
     HOST.replaceChildren(FRAME);
     for (const BUTTON of DOLLAR('abilityNodes').querySelectorAll('[data-growth-preview-tier]')) {
@@ -1187,6 +1198,7 @@ function drawAbilityTree() {
         runActive: W.tower.active,
         selectedSpecies: SELECTED_SPECIES,
     });
+    abilityTreeProgression = W.playerProgression;
     renderProgressionResetActions();
 }
 function currentProgressionResetScope() {
@@ -1381,10 +1393,6 @@ DOLLAR('progressionResetActions').onclick = (event) => {
     const SCOPE = BUTTON.dataset.progressionReset === 'all' ? { type: 'all' } : currentProgressionResetScope();
     if (SCOPE) {
         active.queue('progression-reset', { scope: SCOPE });
-        setTimeout(() => {
-            drawAbilityTree();
-            renderProgressionResetActions();
-        }, 180);
     }
 };
 DOLLAR('gameMenuTabs').onkeydown = (e) => {
@@ -1449,10 +1457,6 @@ DOLLAR('abilityNodes').onclick = (e) => {
             nodeId: NODE_ID,
         });
     }
-    setTimeout(() => {
-        drawAbilityTree();
-        renderProgressionResetActions();
-    }, 180);
 };
 function focusableMenuButtons() {
     return [...DOLLAR('gameMenuPanel').querySelectorAll('button:not(:disabled):not([aria-disabled="true"])')].filter(
@@ -2172,10 +2176,13 @@ if (HELP.scene) {
               ? 4
               : /^walnut-t[1-6]$/.test(SCENE.id)
                 ? 5
-                : null;
+                : /^rice-t[1-6]$/.test(SCENE.id)
+                  ? 6
+                  : null;
     document.documentElement.classList.toggle('chestnut-attack-preview', RENDERER.attackPreviewSpecies === 3);
     document.documentElement.classList.toggle('peanut-attack-preview', RENDERER.attackPreviewSpecies === 4);
     document.documentElement.classList.toggle('walnut-attack-preview', RENDERER.attackPreviewSpecies === 5);
+    document.documentElement.classList.toggle('rice-attack-preview', RENDERER.attackPreviewSpecies === 6);
     start(WORLD, false);
     active.paused = false;
     HELP.scenario = globalThis.BloomGamekitScenario.createScenario({

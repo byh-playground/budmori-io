@@ -287,6 +287,7 @@ const ATTACK = FIELDS(
         redbeanAttack: JSON_PAYLOAD,
         peanutAttack: JSON_PAYLOAD,
         walnutAttack: JSON_PAYLOAD,
+        riceAttack: JSON_PAYLOAD,
         chestnutAttack: JSON_PAYLOAD,
     },
 );

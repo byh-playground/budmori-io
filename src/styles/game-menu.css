@@ -500,7 +500,8 @@ html.help-scene #hand {
 /* Isolated attack previews frame the body, not the live battle HUD. */
 html.help-scene.chestnut-attack-preview #bossbar,
 html.help-scene.peanut-attack-preview #bossbar,
-html.help-scene.walnut-attack-preview #bossbar {
+html.help-scene.walnut-attack-preview #bossbar,
+html.help-scene.rice-attack-preview #bossbar {
     display: none !important;
 }
 

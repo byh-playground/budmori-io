@@ -1,3 +1,4 @@
+import { riceRange } from './features/species-growth/rice-attack.js';
 import { peanutRange } from './features/species-growth/peanut-attack.js';
 import {
     advanceChestnutAttacks,
@@ -533,6 +534,7 @@ class AttackCycle {
             !this.action.chestnutAttack &&
             !this.action.peanutAttack &&
             !this.action.walnutAttack &&
+            !this.action.riceAttack &&
             !(sim.attackTarget(U, this.action)?.hp > 0)
         ) {
             this.interrupt();
@@ -3644,9 +3646,13 @@ const GARDEN = class Garden {
                 continue;
             }
             U.age += dt;
-            const UNIT_STATS = U.species === 5 ? resolveUnitStats(U) : STATS(U.tier, U.species);
+            const UNIT_STATS = U.species === 5 || U.species === 6 ? resolveUnitStats(U) : STATS(U.tier, U.species);
             if (U.hp > 0 && UNIT_STATS.regen > 0) {
-                applyHealing(U, UNIT_STATS.regen * dt, U.species === 4 || U.species === 5 ? undefined : UNIT_STATS);
+                applyHealing(
+                    U,
+                    UNIT_STATS.regen * dt,
+                    U.species === 4 || U.species === 5 || U.species === 6 ? undefined : UNIT_STATS,
+                );
             }
             if (!U.mature) {
                 progressTimersAdvanced = true;
@@ -4790,7 +4796,7 @@ const GARDEN = class Garden {
                     : 0,
             SOURCE_STAT_OVERRIDES = {
                 ...CONTEXT.sourceStatOverrides,
-                critChance: CLAMP(ATTACKER_STATS.critChance + CRITICAL_BONUS, 0, 1),
+                critChance: CONTEXT.criticalChanceSnapshot ?? CLAMP(ATTACKER_STATS.critChance + CRITICAL_BONUS, 0, 1),
             };
         const RAW_BASE_DAMAGE =
                 ATTACKER_STATS.attackPower *
@@ -4963,7 +4969,7 @@ const GARDEN = class Garden {
         const BEHAVIOR = unitCapabilityComposition(u.species),
             STAND =
                 B_LOCAL.radius +
-                (chestnutRange(this, u) ?? peanutRange(this, u) ?? SPEC.range) +
+                (chestnutRange(this, u) ?? peanutRange(this, u) ?? riceRange(this, u) ?? SPEC.range) +
                 (u.species === 3 ? 0 : (u.tier - 1) * 0.12),
             MIN = STAND - 0.55,
             MAX = STAND + BEHAVIOR.outerRangeSlack;

@@ -1,3 +1,4 @@
+import { ricePreviewEnvelope } from './features/unit-attacks/rice/presentation.js';
 import { sampleChestnutShards } from './features/projectiles/spike/presentation.js';
 import { unitBodyDefinition } from './features/unit-body/definition.js';
 import { includeCornProjectileBounds } from './features/projectiles/corn/presentation.js';
@@ -473,7 +474,7 @@ const DIORAMA = class Diorama {
     // it stays there a moment when the troops come back out; inside, it rests on the hall.
     directCamera(sim2, now) {
         if (
-            [0, 2, 3, 4, 5].includes(this.attackPreviewSpecies) &&
+            [0, 2, 3, 4, 5, 6].includes(this.attackPreviewSpecies) &&
             sim2.units.length === 1 &&
             sim2.units[0].species === this.attackPreviewSpecies
         ) {
@@ -535,6 +536,10 @@ const DIORAMA = class Diorama {
             this.fitJumpPreview(world);
             return;
         }
+        if (this.attackPreviewSpecies === 6) {
+            this.fitRicePreview(world);
+            return;
+        }
         if (this.attackPreviewSpecies === 5) {
             this.fitWalnutPreview(world);
             return;
@@ -558,6 +563,27 @@ const DIORAMA = class Diorama {
                 this.baseY() -
                 (this.canvas.height * 0.76) / this.scale -
                 FOCUS_Y * WORLD_DEPTH_PROJECTION;
+        this.panLimits.minX = Math.min(this.panLimits.minX, PAN_X);
+        this.panLimits.maxX = Math.max(this.panLimits.maxX, PAN_X);
+        this.panLimits.minY = Math.min(this.panLimits.minY, PAN_Y);
+        this.panLimits.maxY = Math.max(this.panLimits.maxY, PAN_Y);
+        this.setPan(PAN_X, PAN_Y);
+    }
+    fitRicePreview(world) {
+        const UNIT = world.units[0],
+            BASE = this.scenePresentation.cameraView(this.aspect),
+            ENVELOPE = ricePreviewEnvelope(this, UNIT),
+            ART = UNIT.bodyScale * 350,
+            PAD = 12 * this.pixelRatio,
+            SCALE = Math.min(
+                (124 * this.pixelRatio) / ART,
+                (this.canvas.height - 2 * PAD) / (ENVELOPE.above + ENVELOPE.below),
+            ),
+            GROUND_Y = PAD + ENVELOPE.above * SCALE;
+        this.zoom = (2 * BASE[0] * SCALE) / this.canvas.width;
+        this.configure(this.scene, true);
+        const PAN_X = (this.canvas.width * 0.4) / this.scale - UNIT.x - this.view[0],
+            PAN_Y = this.view[1] - this.baseY() - GROUND_Y / this.scale - UNIT.y * WORLD_DEPTH_PROJECTION;
         this.panLimits.minX = Math.min(this.panLimits.minX, PAN_X);
         this.panLimits.maxX = Math.max(this.panLimits.maxX, PAN_X);
         this.panLimits.minY = Math.min(this.panLimits.minY, PAN_Y);
@@ -848,9 +874,11 @@ const DIORAMA = class Diorama {
             clearColor: [0.9, 0.92, 0.87, 1],
         });
         this.terrain(sim2, now);
+        this.unitPresentation.prepareUnits(sim2.units, sim2.time, sim2);
         const SIDES = sim2.insideTower || sim2.scene !== 'farm';
-        for (const U of sim2.units) {
-            const A = clamp(0.22 / (1 + U.z * 0.3), 0.045, 0.22),
+        for (const SOURCE of sim2.units) {
+            const U = this.unitPresentation.displayUnit(SOURCE),
+                A = clamp(0.22 / (1 + U.z * 0.3), 0.045, 0.22),
                 SHADOW = (U.size * 0.66) / (1 + U.z * 0.65);
             this.groundEllipse(U.x, U.y, SHADOW, SHADOW * 0.62, `rgba(42,61,35,${A})`);
             // Grade is a ground ring batched with the shadows, so each unit needs one native vector draw.
@@ -874,7 +902,8 @@ const DIORAMA = class Diorama {
             ACTORS = this.actors;
         ACTORS.length = 0;
         PRESENTATION.drawMergeBlackHoles?.(this, sim2);
-        for (const U of sim2.units) {
+        for (const SOURCE of sim2.units) {
+            const U = this.unitPresentation.displayUnit(SOURCE);
             if (!HIDDEN_MERGE_RESULT_IDS.has(U.id)) {
                 this.addActor(
                     this.unitPresentation,
@@ -1005,6 +1034,9 @@ const DIORAMA = class Diorama {
         this.actors.length = 0;
         this.actorPool.length = 0;
         this.liveUnitIds.clear();
+        this.unitPresentation.riceDisplayUnits.clear();
+        this.unitPresentation.riceDisplayWorld = null;
+        this.unitPresentation.riceDisplayTime = 0;
         this.joyEffects.length = 0;
         this.ctx.dispose();
         this.device.dispose();
