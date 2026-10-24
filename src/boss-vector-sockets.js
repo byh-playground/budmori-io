@@ -1,5 +1,5 @@
 import { BOSS_PATTERN_CONFIG } from './boss-patterns.js';
-import { bossVectorScale, readVectorSockets, socketWorldPoint, WORLD_DEPTH_PROJECTION } from './vector-sockets.cjs';
+import { bossVectorScale, readVectorSockets, socketWorldPoint, WORLD_DEPTH_PROJECTION } from './vector-sockets.js';
 const CLAMP = (x, a, b) => Math.max(a, Math.min(b, x));
 const BOSS_ASSETS = new Map();
 // Runtime-only assets/players are never attached to a Garden or save snapshot.

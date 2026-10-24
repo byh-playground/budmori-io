@@ -42,8 +42,6 @@ function prepareRuntime(root = PATH.resolve(__dirname, '..')) {
             sha256: SHA(BYTES),
         };
     });
-    const GAME_BYTES = readCanonicalTextAsset(PATH.join(root, 'src/game.js')),
-        BOOTSTRAP = readCanonicalTextAsset(PATH.join(root, 'src/bootstrap.js'));
     const VECTOR_ASSETS = require('./vector-sources.cjs').validateVectorSources(root);
     const MANIFEST = {
         vectorAssets: VECTOR_ASSETS,
@@ -51,16 +49,8 @@ function prepareRuntime(root = PATH.resolve(__dirname, '..')) {
         sourceCommit: LOCK.sourceCommit,
         distCommit: LOCK.distCommit,
         modules: MODULES,
-        game: {
-            file: 'src/game.js',
-            bytes: GAME_BYTES.length,
-            sha256: SHA(GAME_BYTES),
-        },
-        bootstrap: {
-            file: 'src/bootstrap.js',
-            bytes: BOOTSTRAP.length,
-            sha256: SHA(BOOTSTRAP),
-        },
+        game: { file: 'src/farm-app.js' },
+        bootstrap: { file: 'src/bootstrap.js' },
     };
     const SCOPE_FILE = PATH.join(root, 'src/scope.js');
     if (FS.existsSync(SCOPE_FILE)) {
@@ -86,21 +76,18 @@ function prepareRuntime(root = PATH.resolve(__dirname, '..')) {
         MARKER,
         '<script id="bloom-runtime-manifest" type="application/json">' + JSON.stringify(MANIFEST) + '</script>',
     );
-    const INTEGRITY = 'sha256-' + Buffer.from(MANIFEST.bootstrap.sha256, 'hex').toString('base64');
     const BOOTSTRAP_MARKER = /<script\b(?=[^>]*\bdata-bloom-bootstrap(?:\s|>|=))[^>]*>\s*<\/script>/;
     if (!BOOTSTRAP_MARKER.test(html)) {
         throw new Error('Runtime bootstrap marker missing');
     }
     html = html.replace(
         BOOTSTRAP_MARKER,
-        `<script type="module" src="./src/bootstrap.js?version=${MANIFEST.bootstrap.sha256}" integrity="${INTEGRITY}" crossorigin="anonymous" data-bloom-bootstrap></script>`,
+        '<script type="module" src="./src/bootstrap.js" data-bloom-bootstrap></script>',
     );
     FS.writeFileSync(PATH.join(root, 'index.html'), html);
     return {
         modules: MODULES.length,
-        gameBytes: GAME_BYTES.length,
         indexBytes: Buffer.byteLength(html),
-        gameSha256: MANIFEST.game.sha256,
     };
 }
 module.exports = {

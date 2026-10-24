@@ -1,6 +1,6 @@
 import { FEATURE, seedEllipseRadii } from './definition.js';
-import { unitBodyDefinition, unitDisplayScale } from '../../unit-body/definition.cjs';
-import { WORLD_HEIGHT_PROJECTION } from '../../../vector-sockets.cjs';
+import { unitBodyDefinition, unitDisplayScale } from '../../unit-body/definition.js';
+import { WORLD_HEIGHT_PROJECTION } from '../../../vector-sockets.js';
 
 export function seedDisplayMultiplier(renderer, projectile) {
     const BODY = unitBodyDefinition(projectile.species),

@@ -15,15 +15,19 @@ const STYLE_FILES = await Promise.all(
         return { file: match[1], bytes: BYTES.length, sha256: HASH(BYTES) };
     }),
 );
-const FILES = [
-    ...STYLE_FILES,
-    {
-        file: 'index.html',
-        sha256: EXPECTED,
-        bytes: HTML.length,
-    },
-    ...[MANIFEST?.game, MANIFEST?.bootstrap, MANIFEST?.scope, ...(MANIFEST?.vectorAssets || [])].filter(Boolean),
-];
+const FILES = await Promise.all(
+    [
+        ...STYLE_FILES,
+        { file: 'index.html', sha256: EXPECTED, bytes: HTML.length },
+        ...[MANIFEST?.game, MANIFEST?.bootstrap, MANIFEST?.scope, ...(MANIFEST?.vectorAssets || [])].filter(Boolean),
+    ].map(async (spec) => {
+        if (spec.sha256 && spec.bytes) {
+            return spec;
+        }
+        const BYTES = CANONICAL_TEXT(await readFile(new URL('../' + spec.file, import.meta.url)));
+        return { ...spec, bytes: BYTES.length, sha256: HASH(BYTES) };
+    }),
+);
 const URL_LOCAL = 'https://byh-playground.github.io/budmori-io/';
 const DEADLINE = Date.now() + 8 * 60 * 1000;
 let observed = 'not fetched';

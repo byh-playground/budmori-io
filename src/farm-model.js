@@ -17,7 +17,7 @@ import {
     bossBodyRadius,
     unitTorsoHeight,
     maximumUnitRadius,
-} from './features/unit-body/definition.cjs';
+} from './features/unit-body/definition.js';
 import { seedProjectileDimensions } from './features/projectiles/seed/definition.js';
 import { MutationNotifications } from './mutation-notifications.js';
 import { UnitCollection } from './unit-collection.js';

@@ -1,4 +1,4 @@
-import { unitBodyRadius } from '../unit-body/definition.cjs';
+import { unitBodyRadius } from '../unit-body/definition.js';
 export const T1_DIAMETER = unitBodyRadius({ species: 0, tier: 1, growthElapsed: 1, growthDuration: 1 }) * 2;
 
 // The size effects are drawn against: a unit's and a boss's hit volume is its drawn body.

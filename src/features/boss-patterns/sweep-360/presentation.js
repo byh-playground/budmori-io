@@ -2,7 +2,7 @@ import { BossAttackPresentation } from '../presentation-base.js';
 import { FEATURE } from './definition.js';
 import { SWEEP_HAND_STARTS } from './model.js';
 import { clamp } from '../../../farm-model.js';
-import { WORLD_DEPTH_PROJECTION } from '../../../vector-sockets.cjs';
+import { WORLD_DEPTH_PROJECTION } from '../../../vector-sockets.js';
 
 const HALF_TURN = Math.PI;
 const EASE = (t) => t * t * (3 - 2 * t);

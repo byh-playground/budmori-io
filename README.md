@@ -1,5 +1,13 @@
 # budmori
 
+## 브라우저 원본 모듈 실행 (2026-10-24)
+
+- `index.html` → `src/bootstrap.js` → `src/farm-app.js` 순서로 실행합니다.
+- 게임은 생성된 `src/game.js` 번들 대신 원본 ES 모듈을 직접 가져옵니다.
+- 원본 SVG와 고정된 GameKit SDK 해시 검증, 저장·네트워크 계약은 유지합니다.
+- `npm run check`는 문법·코드·모듈 계약을 검사하며 실행 파일을 만들지 않습니다.
+- GitHub Pages는 기존 `main /`의 원본 HTML·JS·CSS·SVG를 게시합니다.
+
 농장에서 먹이를 뿌리고 번식·합체로 병력을 키워, 거대 보스에 도전하는 2.5D WebGL 게임입니다. 싱글 플레이 전용입니다. 메인 버전은 `src/version.js`에서 관리합니다.
 
 [공개 게임](https://byh-playground.github.io/budmori-io/)
