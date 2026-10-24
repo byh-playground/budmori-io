@@ -119,6 +119,7 @@ try {
                 enemyWheat: null,
                 hits: 0,
                 bossSlams: 0,
+                bossHitBatches: [],
                 regenerated: [],
                 splitCount: 0,
                 splitChildren: [],
@@ -258,6 +259,32 @@ try {
                 OBS.splitCount += notice.count;
             }
         });
+        // Observe each real physical attack settlement without supplying hits or changing damage.
+        const SETTLE_BOSS_HITS = WORLD._settleBossHits;
+        WORLD._settleBossHits = function (...args) {
+            const TARGETS = this._bossHitBatch.filter((hit) => !hit.unit.isFormationClone).map((hit) => hit.unit.id),
+                BATCH = { targets: TARGETS, events: [], damageTaken: 0 },
+                OFF = this.onCombatResolved.on((event) => {
+                    if (event.role === 'boss' && event.sourceActor === 'boss') {
+                        BATCH.events.push({
+                            hits: event.hits,
+                            damageDealt: event.damageDealt,
+                            sourceFaction: event.sourceFaction,
+                            targetFaction: event.targetFaction,
+                        });
+                    } else if ((event.role || 'player') === 'player' && !event.excluded) {
+                        BATCH.damageTaken += event.damageTaken || 0;
+                    }
+                });
+            try {
+                return SETTLE_BOSS_HITS.apply(this, args);
+            } finally {
+                OFF();
+                if (TARGETS.length) {
+                    OBS.bossHitBatches.push(BATCH);
+                }
+            }
+        };
         const DRAW = RENDERER.unitPresentation.drawVectorUnit;
         RENDERER.unitPresentation.drawVectorUnit = function (unit, world, ...args) {
             const RESULT = DRAW.call(this, unit, world, ...args),
@@ -309,6 +336,7 @@ try {
             OBS.workOverlap.windup &&
             OBS.hits > 0 &&
             OBS.bossSlams > 0 &&
+            OBS.bossHitBatches.some((batch) => new Set(batch.targets).size > 1) &&
             [2, 4, 8].every((species) => OBS.regenerated.includes(species)) &&
             OBS.splitCount > 0 &&
             OBS.splitChildren.length === OBS.splitCount &&
@@ -322,6 +350,31 @@ try {
     }));
     const COMBAT = REPORT.mixedCombat;
     assert.ok(COMBAT.bossSlams > 0, 'the oversized pea boss selects and lands its basic attack');
+    assert.ok(
+        COMBAT.bossHitBatches.some((batch) => new Set(batch.targets).size > 1),
+        'a real boss attack settles multiple distinct targets',
+    );
+    for (const BATCH of COMBAT.bossHitBatches) {
+        assert.equal(
+            BATCH.events.length,
+            BATCH.targets.length,
+            'each actual eligible target emits one boss contribution',
+        );
+        assert.equal(
+            BATCH.events.reduce((sum, event) => sum + event.hits, 0),
+            BATCH.targets.length,
+            'N actual targets contribute exactly N hits',
+        );
+        assert.ok(
+            BATCH.events.every((event) => event.sourceFaction === 'enemy' && event.targetFaction === 'player'),
+            'physical boss contributions preserve actor faction isolation',
+        );
+        assert.ok(
+            Math.abs(BATCH.events.reduce((sum, event) => sum + event.damageDealt, 0) - BATCH.damageTaken) < 1e-6,
+            'boss damageDealt is the actual incoming health loss, not attack power',
+        );
+    }
+
     assert.ok(
         [2, 4, 8].every((species) => COMBAT.regenerated.includes(species)),
         'grown allies really regenerate',
@@ -451,6 +504,43 @@ try {
     REPORT.bossCards.maxed = await PAGE.evaluate(() => BUDMORI.sim.tower.bossCardDraw.status);
     assert.equal(REPORT.bossCards.maxed, 'maxed');
     await PAGE.locator('#bossCardDraw').waitFor({ state: 'hidden' });
+
+    await PAGE.evaluate(() => {
+        BUDMORI.sim.tower.nextKind = 'battle';
+        BUDMORI.sim.tower.doors = [{ type: 'fight', kind: 'battle' }];
+    });
+    await PAGE.locator('#doorCards [data-door="0"]:enabled').click();
+    await PAGE.waitForFunction(() => BUDMORI.sim.formationRuntime.active);
+    REPORT.bossCards.nextBattle = await PAGE.evaluate(() => ({
+        relics: [...BUDMORI.sim.tower.bossRelics],
+        slots: BUDMORI.sim.formationRuntime.slots
+            .filter((slot) => slot.role === 'boss')
+            .map((slot) => [slot.id, slot.level]),
+    }));
+    assert.deepEqual(REPORT.bossCards.nextBattle.relics, UPGRADE.deck, 'next real battle retains the boss deck');
+    assert.deepEqual(
+        REPORT.bossCards.nextBattle.slots,
+        UPGRADE.deck,
+        'next real battle synchronizes all owned boss skills',
+    );
+    REPORT.bossCards.restart = await PAGE.evaluate(() => {
+        const WORLD = BUDMORI.sim;
+        BUDMORI.runtime.paused = true;
+        // Arrange the between-floors boundary, then exercise the real public run lifecycle.
+        WORLD.farmBossEvent.phase = 'idle';
+        WORLD.boss.active = false;
+        WORLD.formationSkills.end();
+        const LEFT = WORLD.leaveTower(),
+            STARTED = WORLD.startTower(WORLD.playerProgression.towerBest),
+            EMPTY = WORLD.tower.bossRelics.size === 0 && WORLD.tower.bossCardDraw === null,
+            ENTERED = STARTED && WORLD.finishMarch();
+        return { left: LEFT, started: STARTED, empty: EMPTY, entered: ENTERED };
+    });
+    assert.deepEqual(
+        REPORT.bossCards.restart,
+        { left: true, started: true, empty: true, entered: true },
+        'a fresh high-floor climb starts with an empty boss deck',
+    );
 
     // Controlled encounter fixtures, but real RAF simulation, model casts and native rendering.
     // Models are untouched; draw instrumentation below delegates to the native implementation.
