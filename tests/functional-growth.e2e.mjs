@@ -120,6 +120,143 @@ async function reloadFarm() {
     await page.reload();
     await page.waitForFunction(() => globalThis.BUDMORI?.sim?.scene === 'farm');
 }
+async function captureCornAttachment(label, actionId) {
+    const CAPTURE = await page.evaluate(async (actionId) => {
+        const W = BUDMORI.sim,
+            R = BUDMORI.renderer,
+            RNG = W.rng.state;
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const { cornLocalPoint: LOCAL_POINT, CornAttachmentPresentation: PRESENTATION } =
+            await import('./src/features/abilities/corn-attachment/presentation.js');
+        const { snapshot: SNAPSHOT, restore: RESTORE } = await import('./src/farm-state.js');
+        const GROUP = W.cornAttachments.groups.find((group) => group.cornActionId === actionId);
+        if (!GROUP || !GROUP.attachments.some((attachment) => attachment.status === 'attached')) {
+            throw Error('Expected actual attached corn group');
+        }
+        const BODY = R.attachmentBody(W, GROUP);
+        if (!BODY.definition || !BODY.matrix) {
+            throw Error('Expected actual rendered SVG body matrix');
+        }
+        const DRAW = new PRESENTATION(),
+            BEFORE = JSON.stringify(SNAPSHOT(W));
+        const POINTS = GROUP.attachments.map((attachment) => {
+            const LOCAL = LOCAL_POINT(attachment, GROUP, BODY.definition),
+                WORLD = DRAW.anchor(attachment, GROUP, BODY, R);
+            return {
+                id: attachment.id,
+                status: attachment.status,
+                local: LOCAL,
+                pixel: R.project(WORLD.x, WORLD.y, WORLD.z),
+            };
+        });
+        const CLONE = RESTORE(JSON.parse(BEFORE)),
+            RESTORED_GROUP = CLONE.cornAttachments.groups.find((group) => group.id === GROUP.id);
+        return {
+            actionId,
+            groupId: GROUP.id,
+            species: BODY.definition.species,
+            points: POINTS,
+            restored: RESTORED_GROUP.attachments.map((attachment) =>
+                LOCAL_POINT(attachment, RESTORED_GROUP, BODY.definition),
+            ),
+            rngUnchanged: W.rng.state === RNG,
+            snapshotUnchanged: JSON.stringify(SNAPSHOT(W)) === BEFORE,
+            matrix: BODY.matrix,
+            transform: BODY.transform,
+        };
+    }, actionId);
+    assert.ok(CAPTURE.rngUnchanged && CAPTURE.snapshotUnchanged);
+    assert.deepEqual(
+        CAPTURE.points.map((point) => point.local),
+        CAPTURE.restored,
+    );
+    assert.equal(
+        new Set(CAPTURE.points.map((point) => `${point.local.x},${point.local.y}`)).size,
+        CAPTURE.points.length,
+    );
+    assert.ok(CAPTURE.points.every((point) => Number.isFinite(point.pixel.x) && Number.isFinite(point.pixel.y)));
+    await page.screenshot({ path: path.join(OUTPUT, `corn-attached-${label}.png`) });
+    REPORT.cornAttachments ||= [];
+    REPORT.cornAttachments.push(CAPTURE);
+    return CAPTURE;
+}
+async function captureChestnutBrown() {
+    await page.evaluate(async () => {
+        const { helpSceneById: SCENE } = await import('./src/help-scenes.js');
+        const { CHESTNUT_THORN_COLORS: COLORS } = await import('./src/features/projectiles/spike/definition.js');
+        const W = BUDMORI.sim,
+            R = BUDMORI.renderer;
+        SCENE('chestnut-t6').setup(W);
+        const STATE = (globalThis.__chestnutBrown = { ready: false, pending: null, colors: COLORS });
+        const PROJECTILES = R.projectilePresentation,
+            DRAW = PROJECTILES.draw,
+            RENDER = R.render;
+        PROJECTILES.draw = function (shot, ...args) {
+            const Q = shot.elapsed / shot.path.duration;
+            if (
+                STATE.pending ||
+                STATE.ready ||
+                !shot.chestnutActionId ||
+                shot.chestnutStage !== 'spread' ||
+                Q < 0.2 ||
+                Q > 0.8
+            ) {
+                return DRAW.call(this, shot, ...args);
+            }
+            const LINES = [],
+                TIPS = [],
+                LINE = R.line,
+                ELLIPSE = R.ellipse;
+            R.line = function (a, b, width, color) {
+                LINES.push({ a: { ...a }, b: { ...b }, width, color });
+                return LINE.call(this, a, b, width, color);
+            };
+            R.ellipse = function (x, y, rx, ry, color, angle) {
+                TIPS.push({ x, y, rx, ry, color, angle });
+                return ELLIPSE.call(this, x, y, rx, ry, color, angle);
+            };
+            let result;
+            try {
+                result = DRAW.call(this, shot, ...args);
+            } finally {
+                R.line = LINE;
+                R.ellipse = ELLIPSE;
+            }
+            STATE.pending = {
+                actionId: shot.chestnutActionId,
+                stage: shot.chestnutStage,
+                q: Q,
+                lines: LINES,
+                tips: TIPS,
+            };
+            return result;
+        };
+        R.render = function (...args) {
+            const RESULT = RENDER.apply(this, args);
+            if (STATE.pending && !STATE.ready) {
+                STATE.ready = true;
+                BUDMORI.runtime.paused = true;
+            }
+            return RESULT;
+        };
+    });
+    await page.waitForFunction(() => globalThis.__chestnutBrown.ready && BUDMORI.runtime.paused);
+    const CAPTURE = await page.evaluate(() => structuredClone(globalThis.__chestnutBrown));
+    assert.deepEqual(CAPTURE.colors, { shaft: '#79502f', tip: '#e0b878', trail: '#a0784888' });
+    assert.equal(CAPTURE.pending.stage, 'spread');
+    assert.equal(CAPTURE.pending.lines.filter((line) => line.color === CAPTURE.colors.shaft).length, 5);
+    assert.equal(CAPTURE.pending.lines.filter((line) => line.color === CAPTURE.colors.trail).length, 5);
+    assert.equal(CAPTURE.pending.tips.length, 5);
+    assert.ok(CAPTURE.pending.tips.every((tip) => tip.color === CAPTURE.colors.tip));
+    assert.ok(
+        CAPTURE.pending.lines.every((line) => Number.isFinite(line.a.x) && Number.isFinite(line.b.x) && line.width > 0),
+    );
+    REPORT.chestnutBrown = CAPTURE;
+    await page.screenshot({ path: path.join(OUTPUT, 'chestnut-brown-spread.png') });
+    REPORT.checks.push(
+        'Actual T6 chestnut five-shard flight uses shared brown shaft/tip/trail palette; native draws forwarded unchanged',
+    );
+}
 async function combat(species, ability, name) {
     await page.evaluate(
         ({ species }) => {
@@ -138,7 +275,7 @@ async function combat(species, ability, name) {
             W._benchRevision++;
             W.farmBossEvent.phase = 'fighting';
             W.farmBossEvent.elapsed = 0;
-            Object.assign(W.boss, { z: 0, hp: 1e9, maxHp: 1e9, stun: 1000 });
+            Object.assign(W.boss, { z: 0, hp: 1e9, maxHp: 1e9, stun: 1000, stage: 0, attackPower: 4 });
             Object.assign(U, { x: -(W.boss.radius + (species === 1 ? 4.1 : 1.45)), y: 0, z: 0, dropLanded: true });
             W._unitSpatialDirty = true;
             const P = (globalThis.__functional = {
@@ -206,6 +343,17 @@ async function combat(species, ability, name) {
             const STEP = W.step;
             W.step = function (...args) {
                 const RESULT = STEP.apply(this, args);
+                if (species === 1 && P.complete && !P.visualNextId) {
+                    const GROUP = this.cornAttachments.groups.find(
+                        (group) =>
+                            group.cornActionId !== P.id &&
+                            group.attachments.some((attachment) => attachment.status === 'attached'),
+                    );
+                    if (GROUP) {
+                        P.visualNextId = GROUP.cornActionId;
+                        BUDMORI.runtime.paused = true;
+                    }
+                }
                 if (species === 4 && !P.injected && U.ability.action?.peanutAttack) {
                     P.injected = true;
                     U.hp = 0;
@@ -224,6 +372,7 @@ async function combat(species, ability, name) {
     );
     if (species === 1) {
         await page.waitForFunction(() => globalThis.__functional.checkpoint && BUDMORI.runtime.paused);
+        await captureCornAttachment('first', await page.evaluate(() => globalThis.__functional.id));
         const CHECKPOINT = await page.evaluate(() => ({ tick: BUDMORI.sim.simulationTick, hp: BUDMORI.sim.boss.hp }));
         await page.goBack();
         await page.locator('#startScreen').waitFor({ state: 'visible' });
@@ -312,6 +461,26 @@ async function combat(species, ability, name) {
         assert.ok(Math.abs(RESULT.hits.reduce((sum, h) => sum + h.direct, 0) - D) < 1e-9);
         REPORT.checks.push(
             'Walnut controlled pre-armor RAW enters active guard storage before consumption; actual hammer budget exactly cap3D',
+        );
+    }
+    if (species === 1) {
+        if (!(await page.evaluate(() => !!globalThis.__functional.visualNextId))) {
+            await page.goBack();
+            await page.locator('#startScreen').waitFor({ state: 'visible' });
+            await ACTIVATE(page.locator('#continueGame'));
+            await page.waitForFunction(() => globalThis.__functional.visualNextId && BUDMORI.runtime.paused);
+        }
+        const SECOND = await captureCornAttachment(
+            'second',
+            await page.evaluate(() => globalThis.__functional.visualNextId),
+        );
+        assert.notEqual(SECOND.actionId, REPORT.cornAttachments[0].actionId);
+        assert.notDeepEqual(
+            SECOND.points.map((point) => point.local),
+            REPORT.cornAttachments[0].points.map((point) => point.local),
+        );
+        REPORT.checks.push(
+            'Two actual corn actions have different stable body-surface positions; exact snapshot/restore points, render and sampling leave RNG/DTO unchanged',
         );
     }
     REPORT.combat.push({ species: name, ...RESULT });
@@ -404,6 +573,8 @@ try {
             W.markProgressChanged();
             BUDMORI.storage.save(W);
         }, ABILITY);
+        await ACTIVATE(page.locator('#gameMenuClose'));
+        await openTree(SPECIES);
         await purchase(ABILITY, 'evolution-2');
         await purchase(ABILITY, 'evolution-3');
         for (let i = 0; i < 10; i++) {
@@ -454,6 +625,7 @@ try {
         REPORT.checks.push(`${NAME}: actual purchase/refund, XP and all ranks survive reload, exact UI reinvestment`);
         await combat(SPECIES, ABILITY, NAME);
     }
+    await captureChestnutBrown();
     assert.deepEqual(ERRORS, []);
     for (const URL of SDK.keys()) {
         assert.ok(

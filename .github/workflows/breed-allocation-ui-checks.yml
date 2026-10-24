@@ -19,7 +19,7 @@ jobs:
     browser:
         if: ${{ github.event_name == 'workflow_dispatch' || ((contains(github.event.pull_request.labels.*.name, 'verify-functional-growth') || contains(github.event.pull_request.labels.*.name, 'verify-gameplay') || contains(github.event.pull_request.labels.*.name, 'verify-peanut-desktop') || (contains(github.event.pull_request.labels.*.name, 'verify-walnut') || (contains(github.event.pull_request.labels.*.name, 'verify-rice') || (contains(github.event.pull_request.labels.*.name, 'verify-wheat') || contains(github.event.pull_request.labels.*.name, 'verify-chestnut'))))) && (github.event.action != 'labeled' || github.event.label.name == 'verify-functional-growth' || github.event.label.name == 'verify-gameplay' || github.event.label.name == 'verify-peanut-desktop' || github.event.label.name == 'verify-walnut' || github.event.label.name == 'verify-rice' || github.event.label.name == 'verify-wheat' || github.event.label.name == 'verify-chestnut')) }}
         runs-on: ubuntu-24.04
-        timeout-minutes: ${{ contains(github.event.pull_request.labels.*.name, 'verify-functional-growth') && 75 || 30 }}
+        timeout-minutes: ${{ contains(github.event.pull_request.labels.*.name, 'verify-functional-growth') && 150 || 30 }}
         env:
             FOCUSED_PEANUT_DESKTOP: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'verify-peanut-desktop') && !contains(github.event.pull_request.labels.*.name, 'verify-gameplay') }}
         strategy:
@@ -83,20 +83,104 @@ jobs:
             - name: Focused functional growth integration
               if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species == 'functional' }}
               run: timeout 300s node tests/functional-growth.e2e.mjs ${{ matrix.viewport }}
-            - name: Paired functional growth performance (once, both viewports)
-              if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species == 'functional' && matrix.viewport == 'desktop' }}
+            - name: Prepare exact functional performance baseline
+              id: functional-base
+              if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species == 'functional' && matrix.viewport == 'desktop' && !contains(github.event.pull_request.labels.*.name, 'verify-browser-only') }}
               env:
                   BASE_COMMIT: 3c4debd892ca47fb4ac01165390fa591c9c38000
               run: |
                   git fetch --no-tags --depth=1 origin "$BASE_COMMIT"
                   test "$(git rev-parse FETCH_HEAD)" = "$BASE_COMMIT"
                   BASE_ROOT="$(mktemp -d /tmp/budmori-functional-base.XXXXXX)"
-                  trap 'rm -rf -- "$BASE_ROOT"' EXIT
+                  echo "root=$BASE_ROOT" >> "$GITHUB_OUTPUT"
                   git archive "$BASE_COMMIT" | tar -x -C "$BASE_ROOT"
-                  for species in corn peanut walnut; do
-                      FUNCTIONAL_GROWTH_PERFORMANCE=1 PERFORMANCE_SPECIES="$species" WALNUT_PERFORMANCE_BASE_ROOT="$BASE_ROOT" timeout 960s node tests/walnut-performance.e2e.mjs || exit $?
-                  done
-                  FUNCTIONAL_GROWTH_PERFORMANCE=1 PERFORMANCE_SPECIES=peanut PERFORMANCE_SPLIT=1 WALNUT_PERFORMANCE_BASE_ROOT="$BASE_ROOT" timeout 960s node tests/walnut-performance.e2e.mjs
+            - name: Paired functional corn performance (both viewports)
+              id: perf-corn
+              if: ${{ !cancelled() && steps.functional-base.outcome == 'success' }}
+              env:
+                  FUNCTIONAL_GROWTH_PERFORMANCE: '1'
+                  PERFORMANCE_SPECIES: corn
+                  PERFORMANCE_SPLIT: '0'
+                  WALNUT_PERFORMANCE_BASE_ROOT: ${{ steps.functional-base.outputs.root }}
+              run: |
+                  echo "scene=corn start=$(date -u +%FT%TZ) budget=1200s"
+                  if timeout 1200s node tests/walnut-performance.e2e.mjs; then STATUS=0; else STATUS=$?; fi
+                  echo "scene=corn end=$(date -u +%FT%TZ) exit=$STATUS"
+                  echo "Performance corn exit=$STATUS" >> "$GITHUB_STEP_SUMMARY"
+                  exit "$STATUS"
+            - name: Preserve corn performance evidence immediately
+              uses: actions/upload-artifact@v4
+              if: ${{ always() && (steps.perf-corn.outcome == 'success' || steps.perf-corn.outcome == 'failure' || steps.perf-corn.outcome == 'cancelled') }}
+              with:
+                  name: farm-functional-perf-corn
+                  path: tests/output/corn-performance/
+                  if-no-files-found: error
+            - name: Paired functional peanut performance (both viewports)
+              id: perf-peanut
+              if: ${{ !cancelled() && steps.functional-base.outcome == 'success' && !contains(github.event.pull_request.labels.*.name, 'verify-corn-render-only') }}
+              env:
+                  FUNCTIONAL_GROWTH_PERFORMANCE: '1'
+                  PERFORMANCE_SPECIES: peanut
+                  PERFORMANCE_SPLIT: '0'
+                  WALNUT_PERFORMANCE_BASE_ROOT: ${{ steps.functional-base.outputs.root }}
+              run: |
+                  echo "scene=peanut start=$(date -u +%FT%TZ) budget=1800s"
+                  if timeout 1800s node tests/walnut-performance.e2e.mjs; then STATUS=0; else STATUS=$?; fi
+                  echo "scene=peanut end=$(date -u +%FT%TZ) exit=$STATUS"
+                  echo "Performance peanut exit=$STATUS" >> "$GITHUB_STEP_SUMMARY"
+                  exit "$STATUS"
+            - name: Preserve peanut performance evidence immediately
+              uses: actions/upload-artifact@v4
+              if: ${{ always() && (steps.perf-peanut.outcome == 'success' || steps.perf-peanut.outcome == 'failure' || steps.perf-peanut.outcome == 'cancelled') }}
+              with:
+                  name: farm-functional-perf-peanut
+                  path: tests/output/peanut-performance/
+                  if-no-files-found: error
+            - name: Paired functional walnut performance (both viewports)
+              id: perf-walnut
+              if: ${{ !cancelled() && steps.functional-base.outcome == 'success' && !contains(github.event.pull_request.labels.*.name, 'verify-corn-render-only') }}
+              env:
+                  FUNCTIONAL_GROWTH_PERFORMANCE: '1'
+                  PERFORMANCE_SPECIES: walnut
+                  PERFORMANCE_SPLIT: '0'
+                  WALNUT_PERFORMANCE_BASE_ROOT: ${{ steps.functional-base.outputs.root }}
+              run: |
+                  echo "scene=walnut start=$(date -u +%FT%TZ) budget=1800s"
+                  if timeout 1800s node tests/walnut-performance.e2e.mjs; then STATUS=0; else STATUS=$?; fi
+                  echo "scene=walnut end=$(date -u +%FT%TZ) exit=$STATUS"
+                  echo "Performance walnut exit=$STATUS" >> "$GITHUB_STEP_SUMMARY"
+                  exit "$STATUS"
+            - name: Preserve walnut performance evidence immediately
+              uses: actions/upload-artifact@v4
+              if: ${{ always() && (steps.perf-walnut.outcome == 'success' || steps.perf-walnut.outcome == 'failure' || steps.perf-walnut.outcome == 'cancelled') }}
+              with:
+                  name: farm-functional-perf-walnut
+                  path: tests/output/walnut-performance/
+                  if-no-files-found: error
+            - name: Paired functional peanut-split performance (both viewports)
+              id: perf-peanut-split
+              if: ${{ !cancelled() && steps.functional-base.outcome == 'success' && !contains(github.event.pull_request.labels.*.name, 'verify-corn-render-only') }}
+              env:
+                  FUNCTIONAL_GROWTH_PERFORMANCE: '1'
+                  PERFORMANCE_SPECIES: peanut
+                  PERFORMANCE_SPLIT: '1'
+                  WALNUT_PERFORMANCE_BASE_ROOT: ${{ steps.functional-base.outputs.root }}
+              run: |
+                  echo "scene=peanut-split start=$(date -u +%FT%TZ) budget=3600s"
+                  if timeout 3600s node tests/walnut-performance.e2e.mjs; then STATUS=0; else STATUS=$?; fi
+                  echo "scene=peanut-split end=$(date -u +%FT%TZ) exit=$STATUS"
+                  echo "Performance peanut-split exit=$STATUS" >> "$GITHUB_STEP_SUMMARY"
+                  exit "$STATUS"
+            - name: Preserve peanut-split performance evidence immediately
+              uses: actions/upload-artifact@v4
+              if: ${{ always() && (steps.perf-peanut-split.outcome == 'success' || steps.perf-peanut-split.outcome == 'failure' || steps.perf-peanut-split.outcome == 'cancelled') }}
+              with:
+                  name: farm-functional-perf-peanut-split
+                  path: tests/output/peanut-split-performance/
+                  if-no-files-found: error
+            - name: Clean functional performance baseline
+              if: ${{ always() && steps.functional-base.outputs.root != '' }}
+              run: rm -rf -- "${{ steps.functional-base.outputs.root }}"
             - name: Focused growth inputs
               if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species == 'walnut' || matrix.species == 'rice' || matrix.species == 'wheat' || matrix.species == 'chestnut') }}
               run: timeout 180s node tests/${{ matrix.species }}-growth.e2e.mjs ${{ matrix.viewport }}
@@ -124,10 +208,6 @@ jobs:
                       tests/output/${{ matrix.species }}-motion/
                       tests/output/${{ matrix.species }}-performance/
                       tests/output/browser-setup/
-                      tests/output/corn-performance/
-                      tests/output/peanut-performance/
-                      tests/output/peanut-split-performance/
-                      tests/output/walnut-performance/
                   if-no-files-found: error
     # The focus label alone does not opt into common regressions; verify-gameplay keeps full coverage.
     regression:

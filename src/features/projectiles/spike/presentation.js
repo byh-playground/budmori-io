@@ -1,5 +1,5 @@
 import { Ballistics } from '../../../farm-model.js';
-import { FEATURE } from './definition.js';
+import { FEATURE, CHESTNUT_THORN_COLORS } from './definition.js';
 
 // One authoritative projectile can display a bounded bundle. Shards never own
 // collision or damage. Every point uses the same fixed launch/impact endpoints.
@@ -46,9 +46,16 @@ export class SpikeProjectilePresentation {
                     ),
                     P = renderer.project(head.x, head.y, head.z),
                     T = TAILS[index];
-                renderer.line(renderer.project(T.x, T.y, T.z), P, 0.045, '#77924888');
-                renderer.line(P, TIP, head.width, '#68883e');
-                renderer.ellipse(TIP.x, TIP.y, renderer.scale * 0.045, renderer.scale * 0.035, '#e0e9ac', head.angle);
+                renderer.line(renderer.project(T.x, T.y, T.z), P, 0.045, CHESTNUT_THORN_COLORS.trail);
+                renderer.line(P, TIP, head.width, CHESTNUT_THORN_COLORS.shaft);
+                renderer.ellipse(
+                    TIP.x,
+                    TIP.y,
+                    renderer.scale * 0.045,
+                    renderer.scale * 0.035,
+                    CHESTNUT_THORN_COLORS.tip,
+                    head.angle,
+                );
             });
             return;
         }
@@ -60,8 +67,15 @@ export class SpikeProjectilePresentation {
                 x: point.x + Math.cos(ANGLE) * renderer.scale * 0.22,
                 y: point.y - 0.62 * Math.sin(ANGLE) * renderer.scale * 0.22,
             };
-        renderer.line(renderer.project(tail.x, tail.y, tail.z), point, 0.055, '#778f4c88');
-        renderer.line(point, TIP, 0.105, '#79964e');
-        renderer.ellipse(TIP.x, TIP.y, renderer.scale * 0.045, renderer.scale * 0.035, '#d5df9d', ANGLE);
+        renderer.line(renderer.project(tail.x, tail.y, tail.z), point, 0.055, CHESTNUT_THORN_COLORS.trail);
+        renderer.line(point, TIP, 0.105, CHESTNUT_THORN_COLORS.shaft);
+        renderer.ellipse(
+            TIP.x,
+            TIP.y,
+            renderer.scale * 0.045,
+            renderer.scale * 0.035,
+            CHESTNUT_THORN_COLORS.tip,
+            ANGLE,
+        );
     }
 }

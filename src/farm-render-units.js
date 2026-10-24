@@ -376,6 +376,9 @@ export class UnitPresentation {
         if (!SWING && !rest && u.species === 7 && u.ability.wheatForm && u.hp > 0 && u.stun <= 0) {
             WHEAT_ATTACK.applyPose(MATRIX, u, GROUND);
         }
+        if (this.renderer.cornAttachmentBodies.has(u.id)) {
+            this.renderer.captureCornAttachmentBody(u, u.id, player, MATRIX);
+        }
         // Native vector players submit directly to MeshRenderer, so flush earlier 2D paint first.
         this.renderer.ctx.vector.flush();
         player.draw({

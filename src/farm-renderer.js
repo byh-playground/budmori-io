@@ -85,6 +85,7 @@ const DIORAMA = class Diorama {
         this.vectorAssets = new Map();
         this.vectorPlayers = new Map();
         this.vectorPlayerAssets = new WeakMap();
+        this.cornAttachmentBodies = new Map();
         this.actors = [];
         this.actorPool = [];
         this.liveUnitIds = new Set();
@@ -945,6 +946,11 @@ const DIORAMA = class Diorama {
         }
         // Preserve stable source order for equal depth/id and every vector flush boundary.
         ACTORS.sort(COMPARE_ACTORS);
+        // Only targets with active corn groups need a body transform. No per-actor pose query otherwise.
+        this.cornAttachmentBodies.clear();
+        for (const GROUP of sim2.cornAttachments?.groups || []) {
+            this.cornAttachmentBodies.set(GROUP.targetId, null);
+        }
         let vectorRun = false;
         for (const ACTOR of ACTORS) {
             if (ACTOR.vector && !vectorRun) {
@@ -992,8 +998,26 @@ const DIORAMA = class Diorama {
         this.drawSceneFade(sim2, now);
         this.stats = C.endFrame();
     }
-    // The body a stuck kernel sits on: the boss is big and recoils when hit, a unit is small.
+    captureCornAttachmentBody(target, id, player, matrix) {
+        this.cornAttachmentBodies.set(id, {
+            generation: target.generation,
+            definition: unitBodyDefinition(target.species),
+            transform: player.getPartPose('body').transform,
+            matrix,
+            radius: target.radius,
+            height: target.height || 1,
+            // Four SVG units, so kernels scale with the actual target art (including giant units).
+            scale: (Math.hypot(matrix[0], matrix[1]) * 4) / (this.scale * 0.055),
+            shiftX: 0,
+            shiftY: 0,
+        });
+    }
+    // Use the very same posed SVG matrix as the body just drawn, including recoil, rotation and giant scale.
     attachmentBody(sim2, group, feel) {
+        const CAPTURED = this.cornAttachmentBodies.get(group.targetId);
+        if (CAPTURED?.generation === group.targetGeneration) {
+            return CAPTURED;
+        }
         if (group.targetId !== 'boss') {
             return undefined;
         }

@@ -214,7 +214,10 @@ class UnitRender extends RENDER_OBJECT {
         updateWalnutPresentation(this.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
         updateRicePresentation(this.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
         updateWheatPresentation(this.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
-        const WHEAT_BUILD = u.species === 7 ? world.abilityProgressionFor(u).abilities['wheat-command-crit'] : null;
+        // Enemy summons intentionally have no player progression. Keep their base
+        // baton unless an active attack supplies a form; never borrow player upgrades.
+        const WHEAT_PROGRESSION = u.species === 7 ? world.abilityProgressionFor(u) : null,
+            WHEAT_BUILD = WHEAT_PROGRESSION ? WHEAT_PROGRESSION.abilities['wheat-command-crit'] : null;
         this.ability.wheatLongBaton =
             (this.ability.wheatForm ||
                 (WHEAT_BUILD?.treeVersion === 1
