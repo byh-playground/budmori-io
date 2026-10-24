@@ -8,7 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { buildSync } from 'esbuild';
-import { unitBodyDefinition } from '../src/features/unit-body/definition.cjs';
+import { unitBodyDefinition } from '../src/features/unit-body/definition.js';
 
 const CASE = process.argv[2] || 'ui',
     VIEWPORT = process.argv[3] || 'desktop',
