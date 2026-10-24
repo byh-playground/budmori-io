@@ -41,6 +41,8 @@ const VIEWPORT = process.argv[2] || 'desktop',
     REPORT = [];
 assert.ok(['desktop', 'landscape'].includes(VIEWPORT));
 assert.ok(['all', 'forms', 'boundaries'].includes(SELECTION));
+const SELECTED_TIER = Number(process.env.MOTION_TIER || 0);
+assert.ok(Number.isInteger(SELECTED_TIER) && SELECTED_TIER >= 0 && SELECTED_TIER <= 6);
 const CASES = [
     ...(SELECTION === 'boundaries'
         ? []
@@ -52,7 +54,7 @@ const CASES = [
               { id: 'large-boss', tier: 6 },
               { id: 'giant-card', tier: 6 },
           ]),
-];
+].filter((item) => !SELECTED_TIER || item.tier === SELECTED_TIER);
 fs.mkdirSync(OUTPUT, { recursive: true });
 const SERVER = http.createServer((request, response) => {
     const FILE = path.resolve(ROOT, '.' + decodeURIComponent(request.url.split('?')[0]));

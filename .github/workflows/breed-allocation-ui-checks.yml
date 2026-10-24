@@ -186,9 +186,10 @@ jobs:
               if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species == 'walnut' || matrix.species == 'rice' || matrix.species == 'wheat' || matrix.species == 'chestnut') }}
               run: timeout 180s node tests/${{ matrix.species }}-growth.e2e.mjs ${{ matrix.viewport }}
             - name: Focused native motion and continuity
-              if: ${{ matrix.viewport != 'mobile' && !cancelled() && steps.check.outcome == 'success' && (matrix.species == 'barley' || matrix.species == 'walnut' || matrix.species == 'rice' || matrix.species == 'wheat' || matrix.species == 'chestnut') }}
+              if: ${{ (matrix.species != 'barley' || matrix.viewport == 'desktop') && matrix.viewport != 'mobile' && !cancelled() && steps.check.outcome == 'success' && (matrix.species == 'barley' || matrix.species == 'walnut' || matrix.species == 'rice' || matrix.species == 'wheat' || matrix.species == 'chestnut') }}
               env:
                   MOTION_SPECIES: ${{ matrix.species }}
+                  MOTION_TIER: ${{ matrix.species == 'barley' && '6' || '' }}
               run: timeout ${{ matrix.species == 'barley' && '180s' || (matrix.species == 'rice' || matrix.species == 'wheat' || matrix.species == 'chestnut') && '540s' || '360s' }} node tests/${{ matrix.species == 'barley' && 'wheat' || matrix.species }}-motion.e2e.mjs ${{ matrix.viewport }} ${{ matrix.species == 'barley' && 'forms' || 'all' }}
             - name: Paired selected-species performance in both viewports (once)
               if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species == 'walnut' || matrix.species == 'rice' || matrix.species == 'wheat' || matrix.species == 'chestnut') && matrix.viewport == 'desktop' && !contains(github.event.pull_request.labels.*.name, 'verify-browser-only') }}
