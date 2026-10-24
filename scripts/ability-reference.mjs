@@ -3,6 +3,8 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { SPECIES_ABILITY_DEFINITIONS, abilityPresentationFor } from '../src/ability-catalog.js';
 import { speciesById } from '../src/species-catalog.js';
 import { abilityProfile } from '../src/unit-abilities.js';
+import { growthForAbility } from '../src/features/species-growth/state.js';
+import { growthPresentationFor } from '../src/species-growth-presentation.js';
 
 // Documentation and the upgrade panel use the same feature-owned definitions and formatters.
 const LINES = [
@@ -15,6 +17,37 @@ const LINES = [
     '',
 ];
 for (const DEFINITION of SPECIES_ABILITY_DEFINITIONS) {
+    // Chestnut's legacy power values are import compatibility data, not the released growth tree.
+    if (DEFINITION.id === 'chestnut-target-thorns') {
+        const GROWTH = growthForAbility(DEFINITION.id),
+            PRESENTATION = growthPresentationFor(DEFINITION.id);
+        LINES.push(
+            `## ${speciesById(DEFINITION.species).name} · ${PRESENTATION.title}`,
+            '',
+            PRESENTATION.note,
+            '',
+            'Common(T1)부터 기본 가시 공격을 사용합니다. 기존 성장 노드와 투자 랭크는 유지됩니다.',
+            '형태별 비중은 기본 예산의 분배이며, 가시 밀도의 주 대상 추가 예산은 모든 가시에 따로 균등 분배합니다.',
+            '',
+            '| 연구 형태 | 기본 예산의 분배 |',
+            '| --- | --- |',
+            ...PRESENTATION.forms.map(([name, effect], index) => `| T${index + 1} ${name} | ${effect} |`),
+            '',
+            '| 성장 노드 | 랭크 | 실제 효과 | 랭크당 비용 |',
+            '| --- | --- | --- | --- |',
+            ...GROWTH.definition.nodes
+                .filter((node) => node.kind !== 'evolution')
+                .flatMap((node) =>
+                    Array.from(
+                        { length: node.maxRank + 1 },
+                        (_, rank) =>
+                            `| ${node.name} | ${rank}/${node.maxRank} | ${PRESENTATION.effect(node.id, rank)} | ${node.pointCost}P |`,
+                    ),
+                ),
+            '',
+        );
+        continue;
+    }
     const PRESENTATION = abilityPresentationFor(DEFINITION.id),
         ACCESS_LABEL =
             'Common(T1)\uBD80\uD130 \uC790\uB3D9 \uC801\uC6A9. \uD3EC\uC778\uD2B8\uB85C \uD6A8\uACFC\uB97C \uAC15\uD654\uD569\uB2C8\uB2E4.';

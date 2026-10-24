@@ -1,11 +1,7 @@
 import { wheatRange } from './features/species-growth/wheat-attack.js';
 import { riceRange } from './features/species-growth/rice-attack.js';
 import { peanutRange } from './features/species-growth/peanut-attack.js';
-import {
-    advanceChestnutAttacks,
-    tryChestnutPeriodic,
-    chestnutRange,
-} from './features/species-growth/chestnut-attack.js';
+import { advanceChestnutAttacks, chestnutRange } from './features/species-growth/chestnut-attack.js';
 import { applyOffline } from './farm-offline.js';
 import { assignWorkers, resetWork, stepWork, workOrder, workersBySpecies } from './farm-work.js';
 import { FormationSkills } from './formation-skills.js';
@@ -3649,12 +3645,16 @@ const GARDEN = class Garden {
             }
             U.age += dt;
             const UNIT_STATS =
-                U.species === 5 || U.species === 6 || U.species === 7 ? resolveUnitStats(U) : STATS(U.tier, U.species);
+                U.species === 3 || U.species === 5 || U.species === 6 || U.species === 7
+                    ? resolveUnitStats(U)
+                    : STATS(U.tier, U.species);
             if (U.hp > 0 && UNIT_STATS.regen > 0) {
                 applyHealing(
                     U,
                     UNIT_STATS.regen * dt,
-                    U.species === 4 || U.species === 5 || U.species === 6 || U.species === 7 ? undefined : UNIT_STATS,
+                    U.species === 3 || U.species === 4 || U.species === 5 || U.species === 6 || U.species === 7
+                        ? undefined
+                        : UNIT_STATS,
                 );
             }
             if (!U.mature) {
@@ -4950,7 +4950,6 @@ const GARDEN = class Garden {
         if (PARALLEL_GUARD) {
             u.ability.tryStartGuard(this);
         }
-        tryChestnutPeriodic(this, u, enemy);
         const ACTIVE_ATTACK = u.specialAbility && u.specialAbility.phase !== 'idle' ? u.specialAbility : u.ability;
         if (ACTIVE_ATTACK.update(this, dt) || u.stun > 0 || u.z > 0.1 || u.landingRecovery > 0) {
             return;

@@ -654,16 +654,9 @@ const DIORAMA = class Diorama {
             };
         // Reserve all committed directions before any shot appears, including
         // tip width and the full trail. The camera therefore never follows a shard.
-        const PROJECTILES = [
-            'thrust',
-            'cross-left',
-            'cross-right',
-            'fan',
-            'spread',
-            'converge',
-            'central',
-            'periodic',
-        ].map((stage) => ({ path: PATH, chestnutStage: stage }));
+        const PROJECTILES = ['thrust', 'cross-left', 'cross-right', 'fan', 'spread', 'converge', 'central'].map(
+            (stage) => ({ path: PATH, chestnutStage: stage }),
+        );
         PROJECTILES.push(...world.projectiles.filter((p) => p.chestnutActionId));
         for (const PROJECTILE of PROJECTILES) {
             for (const Q of [0, 0.25, 0.5, 0.75, 1]) {

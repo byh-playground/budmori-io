@@ -31,7 +31,7 @@ export const SPECIES_GROWTH_DEFINITIONS = Object.freeze(
                       ? {
                             available: true,
                             basic: ['가시 위력', '최대 체력', '공격 속도'],
-                            specialty: ['주기 가시', '가시 사거리', '집중 마무리'],
+                            specialty: ['가시 밀도', '가시 사거리', '집중 마무리'],
                         }
                       : id === 4
                         ? {
