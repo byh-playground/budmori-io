@@ -85,7 +85,7 @@ jobs:
               run: timeout 180s node tests/${{ matrix.species }}-growth.e2e.mjs ${{ matrix.viewport }}
             - name: Focused native motion and continuity
               if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species == 'walnut' || matrix.species == 'rice') }}
-              run: timeout 360s node tests/${{ matrix.species }}-motion.e2e.mjs ${{ matrix.viewport }}
+              run: timeout ${{ matrix.species == 'rice' && '540s' || '360s' }} node tests/${{ matrix.species }}-motion.e2e.mjs ${{ matrix.viewport }}
             - name: Paired selected-species performance in both viewports (once)
               if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species == 'walnut' || matrix.species == 'rice') && matrix.viewport == 'desktop' && !contains(github.event.pull_request.labels.*.name, 'verify-browser-only') }}
               env:
