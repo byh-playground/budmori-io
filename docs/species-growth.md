@@ -275,3 +275,24 @@ wall1.046453/1.063282/1.054195(중앙1.054195), CPU1.109625/1.250305/1.173158(�
 wall p95비1.077350/1.051844/1.063101(중앙1.063101),
 CPU1.105991/1.188792/1.159135(중앙1.159135), 각 pair의 타격/발사/phase 활동량은 동일하다.
 앞선 수정 전 raw도 유지하며 서로 다른 소스의 결과를 덮어쓰지 않는다.
+
+첫 opt-in Chromium 비교(head `5b76b849`)는 desktop frame/simulation p95 중앙비
+1.166458/1.076702였지만 touch landscape frame 1.235086으로 1.20 기준을 초과했다.
+가로 3쌍은 1.176491/1.235086/1.250188, simulation 중앙비는 1.068742였다.
+원본 12회 측정·스크린샷은 Actions run 40058917829 artifact에 보존한다. 이 실패는
+Node CPU 결과로 대체하지 않으며, SwiftShader 결과를 실기기 FPS로 해석하지 않는다.
+렌더 분석에서 guard/contact 추가 경로의 stroke·submission·upload 증가가 확인됐다.
+후속 동등 최적화의 호두 전용 성숙 radius/height 캐시는 기존 땅콩 표를 변경하지 않고,
+15,594 Object.is 경계/clone/giant/restore 검사를 통과했다. 동일 200 T6의 3쌍 비교는
+wall p95 중앙비 0.96730, process CPU 0.98085로 작은 개선이며 브라우저 통과와 별개다.
+
+성숙 기하 캐시 이후 전체 기존 버전과 다시 비교한 Node 측정도 실패로 보존한다.
+wall p95 3쌍은 1.239577/1.071249/4.422712, CPU는 1.313309/1.100552/4.486936이다.
+마지막 쌍에서 양쪽 모두 큰 시간 꼬리가 발생했다. 동시 검증 작업이 있었지만 원인으로
+확정하지 않았으며, 독립 cache-only 개선이나 이전 통과로 이 결과를 덮지 않는다.
+
+접지 crack의 retained mesh 최적화는 3/5갈래·선폭·cap/join·색·alpha·수명·각 유닛 직전
+그리기 순서를 유지한다. guard의 analytic ellipse는 변경하지 않았다. pinned SDK의
+원래 stroke 삼각형과 2,592조합을 비교해 double 좌표 오차0, Float32+morph 최대 오차는
+반지름10,000px 극단에서도0.000273px였다. nonidentity transform은 원래 stroke 경로를
+사용하며, context별 캐시는 반지름과 무관하게24개 이하이고 SDK가 자원을 해제/복구한다.

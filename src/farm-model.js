@@ -632,6 +632,19 @@ function peanutMatureGeometry(unit) {
         ? PEANUT_MATURE_GEOMETRY[unit.tier - 1]
         : null;
 }
+// Walnut-only mature geometry uses the same pure authored formulas. Keep the
+// peanut cache separate and leave live giant scaling in the getters below.
+const WALNUT_MATURE_GEOMETRY = Object.freeze(
+    Array.from({ length: 6 }, (_, index) => {
+        const UNIT_LOCAL = { species: 5, tier: index + 1, growthElapsed: 1, growthDuration: 1 };
+        return Object.freeze({ radius: unitBodyRadius(UNIT_LOCAL), height: unitBodyHeight(UNIT_LOCAL) });
+    }),
+);
+function walnutMatureGeometry(unit) {
+    return unit.species === 5 && unit.mature && Number.isInteger(unit.tier) && unit.tier >= 1 && unit.tier <= 6
+        ? WALNUT_MATURE_GEOMETRY[unit.tier - 1]
+        : null;
+}
 const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
     constructor(id, species, tier, x, y) {
         super(x, y);
@@ -757,7 +770,10 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         return this.giantUntil > (this._world?.time ?? 0) ? 3 : 1;
     }
     get radius() {
-        return (peanutMatureGeometry(this)?.radius ?? unitBodyRadius(this)) * this.giantScale;
+        return (
+            (peanutMatureGeometry(this)?.radius ?? walnutMatureGeometry(this)?.radius ?? unitBodyRadius(this)) *
+            this.giantScale
+        );
     }
     get mature() {
         return this.growthElapsed >= this.growthDuration - 1e-9;
@@ -772,7 +788,10 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         return unitVectorScale(this) * this.giantScale;
     }
     get height() {
-        return (peanutMatureGeometry(this)?.height ?? unitBodyHeight(this)) * this.giantScale;
+        return (
+            (peanutMatureGeometry(this)?.height ?? walnutMatureGeometry(this)?.height ?? unitBodyHeight(this)) *
+            this.giantScale
+        );
     }
     get bodyHeight() {
         return unitTorsoHeight(this) * this.giantScale;
