@@ -622,14 +622,24 @@ try {
             await previewWait(FRAME, PAGE, TIER, `capture-${capture}`, () => globalThis.__wheatMotion.ready);
             state = await FRAME.evaluate(() => structuredClone(globalThis.__wheatMotion));
             const SAMPLE = state.trace.at(-1);
-            await PAGE.screenshot({
-                path: path.join(
-                    OUTPUT,
-                    `${LABEL}-${SAMPLE.moment === 'contact' ? 'contact' : SAMPLE.phase}-${SAMPLE.slot}.png`,
-                ),
-            });
+            // Keep all native-frame observations/assertions, but save only
+            // useful barley contact evidence instead of duplicate frozen PNGs.
+            const SAVE_FRAME =
+                SPEC.key !== 'barley' ||
+                SAMPLE.moment === 'contact' ||
+                SAMPLE.sameFrameEarlyContact ||
+                SAMPLE.recoveryContact ||
+                (SAMPLE.phase === 'windup' && [1, 6].includes(TIER));
+            if (SAVE_FRAME) {
+                await PAGE.screenshot({
+                    path: path.join(
+                        OUTPUT,
+                        `${LABEL}-${SAMPLE.moment === 'contact' ? 'contact' : SAMPLE.phase}-${SAMPLE.slot}.png`,
+                    ),
+                });
+            }
             assert.equal(await FRAME.evaluate(() => BUDMORI.sim.simulationTick), state.tick);
-            if (SAMPLE.sameFrameEarlyContact || SAMPLE.recoveryContact) {
+            if (SPEC.key !== 'barley' && (SAMPLE.sameFrameEarlyContact || SAMPLE.recoveryContact)) {
                 // This is deliberately the same frozen native frame, not an
                 // invented earlier pose or a second observed hit.
                 await PAGE.screenshot({ path: path.join(OUTPUT, `${LABEL}-${SAMPLE.phase}-${SAMPLE.slot}.png`) });
