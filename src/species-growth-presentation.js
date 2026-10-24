@@ -60,7 +60,26 @@ const RICE_FORMS = Object.freeze([
     ['삼단 수확 찍기', '사선 · 반원 회수 · 좁은 수확 찍기 · 25·30·45%'],
     ['교차 수확 마무리', '좌우 교차 · 안쪽 수확 · 넓은 반원 마무리 · 20·20·25·35%'],
 ]);
+const WHEAT_FORMS = Object.freeze([
+    ['짧은 전면 타격', '실제 지휘봉으로 짧게 전면 타격 · 100%'],
+    ['올려치고 내리기', '지휘봉 올려치기 뒤 내리기 · 45·55%'],
+    ['전면 박자와 찌르기', '넓은 전면 박자 뒤 주 대상 찌르기 · 40·60%'],
+    ['긴 지휘봉 스윕', '길어진 실제 지휘봉 전방 스윕 뒤 강세 · 40·60%'],
+    ['스윕 회수 강세', '전방 스윕 · 지휘봉 회수 · 정면 강세 · 25·30·45%'],
+    ['좌우 박자 큰 마무리', '좌우 지휘봉 2타 · 정면 강타 · 큰 마무리 · 20·20·25·35%'],
+]);
 const PRESENTATIONS = new Map([
+    [
+        'wheat-command-crit',
+        {
+            key: 'wheat',
+            name: '밀',
+            title: '지휘봉 타격과 아군 박자',
+            forms: WHEAT_FORMS,
+            effect: wheatGrowthEffect,
+            note: '기본 공격을 발사할 때 공격당 한 번, 35% 확률로 살아 있는 범위 내 아군과 자신에게 공속 지휘를 줘요. 지휘 지속시간은 실제 합성 등급마다 3초씩 늘어나 T1 3초에서 T6 18초가 돼요. 봉 형태를 연구하지 않아도 적용돼요. 기본 위력 투자도 지휘 강도에 랭크당 3%씩 한 번 적용돼요. 범위를 떠나도 유지되며 가장 강한 지휘만 적용돼요. 같은 강도는 기존 종료 시각과 새 지속시간 중 더 늦은 쪽으로 갱신해요. 실제 지휘 발동 때만 박자 연출이 나오고 마무리에서 다시 발동하지 않아요. T4 이상 실제 지휘봉의 피해 사거리는 1.30배이며 지휘 반경 투자는 피해 사거리를 늘리지 않아요. 주변 최대 4명은 각 타격의 50% 피해를 받아요. 마법 파동·강제 평타·분신·명령 연쇄는 없어요.',
+        },
+    ],
     [
         'rice-low-health-harvest',
         {
@@ -357,6 +376,25 @@ function riceGrowthEffect(nodeId, rank) {
             return `낫 사거리·범위 +${rank * 4}%`;
         case 'specialty-3':
             return `마지막 수확에 전체 직접 예산의 ${rank * 8}% 추가`;
+        default:
+            throw new RangeError(`Unknown growth effect: ${nodeId}`);
+    }
+}
+
+function wheatGrowthEffect(nodeId, rank) {
+    switch (nodeId) {
+        case 'basic-1':
+            return `지휘봉 공격력·지휘 공속 보너스 +${rank * 3}%`;
+        case 'basic-2':
+            return `최대 체력 +${rank * 4}% · 다음 런부터 적용`;
+        case 'basic-3':
+            return `공격 속도 +${rank * 2}% · 준비 시간은 고정, 타격·후딜 예산에 적용`;
+        case 'specialty-1':
+            return `지휘 공속 +${50 + rank * 12.5}% · 기본 위력 배율 별도 · 실제 T1 3초→T6 18초`;
+        case 'specialty-2':
+            return `지휘 반경 기본 사거리×${2 + rank * 0.5} · 피해 범위 제외`;
+        case 'specialty-3':
+            return `마지막 지휘봉 타격에 전체 직접 예산의 ${rank * 8}% 추가`;
         default:
             throw new RangeError(`Unknown growth effect: ${nodeId}`);
     }

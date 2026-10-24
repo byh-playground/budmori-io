@@ -106,8 +106,8 @@ export const UNIT_CAPABILITY_COMPOSITIONS = Object.freeze({
     6: COMPOSITION('rice', ['riceCritical'], {
         useActiveDuration: true,
     }),
-    7: COMPOSITION('contact', ['commandAura'], {
-        contactRecoil: true,
+    7: COMPOSITION('wheat', ['commandAura'], {
+        useActiveDuration: true,
     }),
     8: COMPOSITION('contact', ['armorBreak'], {
         contactRecoil: true,

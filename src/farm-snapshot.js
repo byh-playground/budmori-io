@@ -288,6 +288,7 @@ const ATTACK = FIELDS(
         peanutAttack: JSON_PAYLOAD,
         walnutAttack: JSON_PAYLOAD,
         riceAttack: JSON_PAYLOAD,
+        wheatAttack: JSON_PAYLOAD,
         chestnutAttack: JSON_PAYLOAD,
     },
 );
@@ -302,7 +303,7 @@ const UNIT = shapeFields(UNIT_SNAPSHOT_SHAPE, {
         elapsed: true,
         action: ATTACK,
     },
-    wheatCommandBuffs: [FIELDS('level expiresAtTick')],
+    wheatCommandBuffs: [FIELDS('level bonus tier powerRank appliedAtTick expiresAtTick')],
     barleyArmorShredBuckets: [FIELDS('expiresAtTick amount')],
 });
 const BOSS_ACTION = FIELDS('id phase phaseElapsed targetId aim locked traveled volleyCount released nextRelease', {

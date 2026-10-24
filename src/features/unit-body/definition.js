@@ -155,7 +155,7 @@ const AUTHORED_BODIES = [
         species: 7,
         asset: 'assets/troops/wheat.svg',
         shapeId: 'wheat-grain-outline',
-        sourceSha256: '4bcb07c0d461f030e9fb54d0709cc162d3ef33514f21b5c691574fecf6628697',
+        sourceSha256: '192704e71ee11f95b6f6f01a965754fc29f0b648fa158a32ebd78fd951142945',
         viewBox: [0.0, 0.0, 320.0, 350.0],
         bounds: {
             left: 85.19999999999996,

@@ -1,3 +1,6 @@
+import { updateWheatPresentation } from './features/unit-attacks/wheat/presentation.js';
+import { growthBuildOf, growthForAbility } from './features/species-growth/state.js';
+import { WheatCommandModel } from './features/abilities/wheat-command/model.js';
 import { updateRicePresentation } from './features/unit-attacks/rice/presentation.js';
 import { updateWalnutPresentation } from './features/unit-attacks/walnut/presentation.js';
 import { Garden, bindPresentationClock } from './farm-model.js';
@@ -87,6 +90,21 @@ class UnitRender extends RENDER_OBJECT {
         'ability.riceRecoveryDuration': R.STEP,
         'ability.ricePointX': R.STEP,
         'ability.ricePointY': R.STEP,
+        'ability.wheatForm': R.STEP,
+        'ability.wheatActionId': R.STATE_KEY,
+        'ability.wheatSlot': R.STATE_KEY,
+        'ability.wheatStage': R.STATE_KEY,
+        'ability.wheatPreviousStage': R.STEP,
+        'ability.wheatFirstStage': R.STEP,
+        'ability.wheatLastStage': R.STEP,
+        'ability.wheatStageProgress': R.LINEAR,
+        'ability.wheatWindupDuration': R.STEP,
+        'ability.wheatRecoveryDuration': R.STEP,
+        'ability.wheatPointX': R.STEP,
+        'ability.wheatPointY': R.STEP,
+        'ability.wheatFace': R.STEP,
+        'ability.wheatLongBaton': R.STEP,
+        commandBeatLife: R.LINEAR,
         walnutGuarding: R.STEP,
         cooldown: R.LINEAR,
         cooldownDuration: R.STEP,
@@ -195,6 +213,13 @@ class UnitRender extends RENDER_OBJECT {
         this.ability.peaWindupDuration = PEA?.windupSeconds || 0.28;
         updateWalnutPresentation(this.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
         updateRicePresentation(this.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
+        updateWheatPresentation(this.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
+        const WHEAT_BUILD = u.species === 7 ? world.abilityProgressionFor(u).abilities['wheat-command-crit'] : null;
+        this.ability.wheatLongBaton =
+            (this.ability.wheatForm ||
+                (WHEAT_BUILD?.treeVersion === 1
+                    ? growthForAbility('wheat-command-crit').attackTier(growthBuildOf(WHEAT_BUILD), u.tier)
+                    : 1)) >= 4;
         this.walnutGuarding = !!u.ability.isGuarding?.(world.simulationTick);
         this.cooldown = u.cooldown;
         this.cooldownDuration = u.cooldownDuration;
@@ -212,7 +237,16 @@ class UnitRender extends RENDER_OBJECT {
         this.faction = u.faction;
         this.farmId = u.farmId;
         this.dropLanded = u.dropLanded;
-        this.buffed = false;
+        this.buffed = u.hp > 0 && !!WheatCommandModel.activeBuff(u, world.simulationTick);
+        let lastCommandTick = -6;
+        if (this.buffed) {
+            for (const BUFF of u.wheatCommandBuffs) {
+                lastCommandTick = Math.max(lastCommandTick, BUFF.appliedAtTick ?? BUFF.expiresAtTick - 60);
+            }
+        }
+        this.commandBeatLife = this.buffed
+            ? Math.max(0, Math.min(1, (lastCommandTick + 6 - world.simulationTick) / 6))
+            : 0;
         this.isBattleOnlySummon = u.isBattleOnlySummon;
         this.isFormationClone = u.isFormationClone;
         this.giantUntil = u.giantUntil;
