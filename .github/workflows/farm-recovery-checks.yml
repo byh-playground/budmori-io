@@ -16,6 +16,17 @@ jobs:
                   node-version: 22
                   cache: npm
             - run: npm ci
+            - name: Print canonical formatting for new intro files (temporary)
+              shell: bash
+              run: |
+                  echo BUDMORI_HTML_BEGIN
+                  ./node_modules/.bin/prettier index.html | base64 -w0
+                  echo
+                  echo BUDMORI_HTML_END
+                  echo BUDMORI_JS_BEGIN
+                  ./node_modules/.bin/prettier src/showcase.js | base64 -w0
+                  echo
+                  echo BUDMORI_JS_END
             - run: npm run check
             - uses: actions/cache@v4
               id: playwright-cache
