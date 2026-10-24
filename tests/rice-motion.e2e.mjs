@@ -336,6 +336,9 @@ try {
                             (A.riceSlot === REQUEST.slot &&
                                 A.riceStageProgress >= (REQUEST.moment === 'contact' ? 0.9 : 0.3)));
                 if (MATCH) {
+                    const SHOT_TICK = RECORD.shots[A.riceSlot]?.tick || 0,
+                        START_TICK = A.riceSlot > 0 ? RECORD.shots[A.riceSlot - 1].tick : 0,
+                        COMMITTED_TICK = START_TICK + A.riceStageProgress * (SHOT_TICK - START_TICK);
                     const SAMPLE = {
                         phase: A.phase,
                         moment: REQUEST.moment || A.phase,
@@ -359,8 +362,10 @@ try {
                         displayGiantActive: DISPLAY.giantUntil > WORLD.time,
                         nativeMatrix: NATIVE_FRAMES.get(PLAYER).matrix,
                         contactPoint: this.project(A.ricePointX, A.ricePointY, 0),
-                        shotDeltaMs:
-                            A.phase === 'active' ? (A.elapsed * 20 - RECORD.shots[A.riceSlot].tick) * 50 : null,
+                        committedTick: A.phase === 'active' ? COMMITTED_TICK : null,
+                        rawElapsedTick: A.elapsed * 20,
+                        worldSlotTickDelta: WORLD.simulationTick - (RECORD.launchTick + SHOT_TICK),
+                        shotDeltaMs: A.phase === 'active' ? (COMMITTED_TICK - SHOT_TICK) * 50 : null,
                         stage: A.riceStage,
                         slot: A.riceSlot,
                         progress: A.riceStageProgress,

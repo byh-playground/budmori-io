@@ -3,10 +3,10 @@ import { WORLD_DEPTH_PROJECTION } from '../../../vector-sockets.js';
 import { UnitAttackPresentation } from '../presentation-base.js';
 
 // The committed finite melee schedule is the only presentation clock.
-export function updateRicePresentation(output, action, phase, elapsed) {
+export function updateRicePresentation(output, action, phase, _elapsed) {
     const RECORD = action?.riceAttack,
-        TICK = phase === 'active' ? elapsed * 20 : 0,
-        INDEX = RECORD ? RECORD.shots.findIndex((shot) => TICK <= shot.tick + 1e-9) : -1,
+        TICK = phase === 'active' ? RECORD?.motionTick || 0 : 0,
+        INDEX = RECORD ? RECORD.shots.findIndex((shot) => TICK <= shot.tick) : -1,
         SLOT = RECORD ? (INDEX < 0 ? RECORD.shots.length - 1 : INDEX) : 0,
         SHOT = RECORD?.shots[SLOT],
         START = SLOT > 0 ? RECORD.shots[SLOT - 1].tick : 0;
