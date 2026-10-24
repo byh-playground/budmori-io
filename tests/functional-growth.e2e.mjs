@@ -374,8 +374,15 @@ async function combat(species, ability, name) {
         await page.waitForFunction(() => globalThis.__functional.checkpoint && BUDMORI.runtime.paused);
         await captureCornAttachment('first', await page.evaluate(() => globalThis.__functional.id));
         const CHECKPOINT = await page.evaluate(() => ({ tick: BUDMORI.sim.simulationTick, hp: BUDMORI.sim.boss.hp }));
-        await page.goBack();
+        await page.goto(new URL('#/', page.url()).href);
         await page.locator('#startScreen').waitFor({ state: 'visible' });
+        const HOME_ROUTE = await page.evaluate(() => ({
+            hash: location.hash,
+            sameWorld: globalThis.__functional.world === BUDMORI.sim,
+        }));
+        assert.equal(HOME_ROUTE.hash, '#/');
+        assert.ok(HOME_ROUTE.sameWorld, 'Home hash navigation must not reload or replace the live world');
+        (REPORT.homeRoutes ||= []).push(HOME_ROUTE);
         assert.deepEqual(
             await page.evaluate(() => ({ tick: BUDMORI.sim.simulationTick, hp: BUDMORI.sim.boss.hp })),
             CHECKPOINT,
@@ -465,8 +472,15 @@ async function combat(species, ability, name) {
     }
     if (species === 1) {
         if (!(await page.evaluate(() => !!globalThis.__functional.visualNextId))) {
-            await page.goBack();
+            await page.goto(new URL('#/', page.url()).href);
             await page.locator('#startScreen').waitFor({ state: 'visible' });
+            const HOME_ROUTE = await page.evaluate(() => ({
+                hash: location.hash,
+                sameWorld: globalThis.__functional.world === BUDMORI.sim,
+            }));
+            assert.equal(HOME_ROUTE.hash, '#/');
+            assert.ok(HOME_ROUTE.sameWorld, 'Home hash navigation must not reload or replace the live world');
+            (REPORT.homeRoutes ||= []).push(HOME_ROUTE);
             await ACTIVATE(page.locator('#continueGame'));
             await page.waitForFunction(() => globalThis.__functional.visualNextId && BUDMORI.runtime.paused);
         }
@@ -651,6 +665,9 @@ try {
                           injected: globalThis.__functional.injected,
                       }
                     : null,
+                href: location.href,
+                hash: location.hash,
+                menuVisible: !document.getElementById('gameMenuOverlay')?.hidden,
                 scene: globalThis.BUDMORI?.sim?.scene,
                 paused: globalThis.BUDMORI?.runtime?.paused,
             }))
