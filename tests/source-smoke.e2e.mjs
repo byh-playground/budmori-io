@@ -96,6 +96,8 @@ try {
         ERRORS.push(`Unexpected network request: ${URL_LOCAL}`);
         return route.abort();
     });
+    // Install before application timers exist; it runs normally except for receipt screenshot checkpoints.
+    await PAGE.clock.install();
     await PAGE.goto(`${ORIGIN}/index.html`);
     await PAGE.waitForFunction(() => Boolean(globalThis.BUDMORI));
     await PAGE.locator('#newGame').click();
@@ -453,7 +455,13 @@ try {
         WORLD.tower.nextKind = 'power';
         WORLD.tower.doors = [{ type: 'stat', id: 'regen-flat', rarity: 0 }];
     });
-    await PAGE.locator('#doorCards [data-door="0"]').click();
+    // Freeze before clicking, not after spotting a short-lived phase. Real screenshots can take >1s.
+    await PAGE.clock.pauseAt(await PAGE.evaluate(() => Date.now() + 1000));
+    await PAGE.clock.runFor(32);
+    // Clock is paused, so bypass only RAF-based stability waiting; this is still a real pointer click.
+    await PAGE.locator('#doorCards [data-door="0"]:enabled').waitFor({ state: 'visible' });
+    await PAGE.locator('#doorCards [data-door="0"]:enabled').click({ force: true });
+    await PAGE.clock.runFor(64);
     await PAGE.locator('#bossCardDraw[data-phase="player"]').waitFor({ state: 'visible' });
     REPORT.bossCards = await PAGE.evaluate(() => {
         const WORLD = BUDMORI.sim,
@@ -464,8 +472,10 @@ try {
     assert.equal(REPORT.bossCards.rejectedDuplicate, true);
     assert.equal(REPORT.bossCards.afterSerial, REPORT.bossCards.serial);
     await PAGE.screenshot({ path: path.join(OUTPUT, 'boss-card-player.png'), fullPage: true });
+    await PAGE.clock.runFor(400);
     await PAGE.locator('#bossCardDraw[data-phase="boss"]').waitFor({ state: 'visible' });
     await PAGE.screenshot({ path: path.join(OUTPUT, 'boss-card-boss.png'), fullPage: true });
+    await PAGE.clock.runFor(1000);
     await PAGE.locator('#bossCardDraw').waitFor({ state: 'hidden' });
     await PAGE.evaluate(() => {
         const WORLD = BUDMORI.sim;
@@ -477,7 +487,10 @@ try {
         ]);
         WORLD.tower.doors = [{ type: 'stat', id: 'regen-flat', rarity: 0 }];
     });
-    await PAGE.locator('#doorCards [data-door="0"]:enabled').click();
+    await PAGE.clock.runFor(32);
+    await PAGE.locator('#doorCards [data-door="0"]:enabled').waitFor({ state: 'visible' });
+    await PAGE.locator('#doorCards [data-door="0"]:enabled').click({ force: true });
+    await PAGE.clock.runFor(400);
     await PAGE.locator('#bossCardDraw[data-phase="boss"]').waitFor({ state: 'visible' });
     const UPGRADE = await PAGE.evaluate(() => ({
         draw: BUDMORI.sim.tower.bossCardDraw,
@@ -488,22 +501,34 @@ try {
     assert.equal(UPGRADE.draw.level, 5);
     assert.equal(UPGRADE.draw.status, 'upgraded');
     await PAGE.setViewportSize({ width: 844, height: 390 });
+    await PAGE.clock.runFor(32);
     await PAGE.screenshot({ path: path.join(OUTPUT, 'boss-card-landscape.png'), fullPage: true });
     await PAGE.setViewportSize({ width: 1000, height: 700 });
+    await PAGE.clock.runFor(1000);
     await PAGE.locator('#bossCardDraw').waitFor({ state: 'hidden' });
     await PAGE.evaluate(() => {
         BUDMORI.sim.tower.doors = [{ type: 'stat', id: 'regen-flat', rarity: 0 }];
     });
-    await PAGE.locator('#doorCards [data-door="0"]:enabled').click();
+    await PAGE.clock.runFor(32);
+    await PAGE.locator('#doorCards [data-door="0"]:enabled').waitFor({ state: 'visible' });
+    await PAGE.locator('#doorCards [data-door="0"]:enabled').click({ force: true });
+    await PAGE.clock.runFor(400);
     await PAGE.locator('#bossCardDraw[data-phase="maxed"]').waitFor({ state: 'visible' });
     await PAGE.screenshot({ path: path.join(OUTPUT, 'boss-card-maxed.png'), fullPage: true });
-    await PAGE.waitForFunction(() => BUDMORI.sim.time >= BUDMORI.sim.tower.bossCardDraw.until);
+    await PAGE.clock.runFor(1000);
+    assert.equal(
+        await PAGE.evaluate(() => BUDMORI.sim.time >= BUDMORI.sim.tower.bossCardDraw.until),
+        true,
+        'receipt lock expires through normal simulation ticks',
+    );
     await PAGE.locator('#doorCards button:enabled').first().waitFor({ state: 'visible' });
     assert.equal((await PAGE.locator('#doorCards button:enabled').count()) > 0, true, 'maxed cards do not halt play');
     REPORT.bossCards.upgrade = UPGRADE;
     REPORT.bossCards.maxed = await PAGE.evaluate(() => BUDMORI.sim.tower.bossCardDraw.status);
     assert.equal(REPORT.bossCards.maxed, 'maxed');
     await PAGE.locator('#bossCardDraw').waitFor({ state: 'hidden' });
+
+    await PAGE.clock.resume();
 
     await PAGE.evaluate(() => {
         BUDMORI.sim.tower.nextKind = 'battle';
