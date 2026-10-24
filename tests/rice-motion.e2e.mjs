@@ -440,12 +440,12 @@ try {
                     // forward the same bounded domain through every HELP consumer.
                     CLOCK.current = Math.max(now, performance.now());
                 } else if (CLOCK.last !== now) {
-                    // The final10% of a one-tick strike is5ms of simulation.
-                    // A5ms input pulse at the real HELP0.6 rate cannot skip it;
-                    // the same timestamp still reaches model and presentation.
+                    // Committed motionTick snapshots retain each endpoint for a
+                    // 50ms interval. At HELP0.6, a25ms input advances at most15ms,
+                    // preserving contact samples without slowing every frame5x.
                     const DELTA = globalThis.BUDMORI?.runtime?.paused
                         ? 0
-                        : Math.min(CLOCK.bounded ? 5 : Infinity, Math.max(0, now - CLOCK.last));
+                        : Math.min(CLOCK.bounded ? 25 : Infinity, Math.max(0, now - CLOCK.last));
                     CLOCK.current += DELTA;
                     CLOCK.maxDelta = Math.max(CLOCK.maxDelta, DELTA);
                 }
@@ -537,7 +537,7 @@ try {
                 SESSION.loop.resetTiming();
             }, NEXT);
         }
-        assert.ok(await FRAME.evaluate(() => BUDMORI.runtime.__riceObservationClock.maxDelta <= 5));
+        assert.ok(await FRAME.evaluate(() => BUDMORI.runtime.__riceObservationClock.maxDelta <= 25));
         REPORT.push(state);
         assert.ok(
             state.installedAt.clock.current >= state.installedAt.initialCaptureClock,
