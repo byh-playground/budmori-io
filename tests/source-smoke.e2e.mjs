@@ -101,6 +101,53 @@ try {
     await PAGE.locator('#newGame').click();
     await PAGE.waitForFunction(() => BUDMORI.sim?.scene === 'farm' && BUDMORI.sim.units.length > 0);
     await PAGE.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    // Regression: boss-mouth wheat summons have intentionally null progression.
+    // Exercise the production capture/render loop, not a second test pipeline.
+    REPORT.wheatSummon = await PAGE.evaluate(async () => {
+        const WORLD = BUDMORI.sim,
+            SESSION = BUDMORI.runtime;
+        SESSION.paused = true;
+        WORLD.resetUnits();
+        for (let index = 0; index < 144; index++) {
+            WORLD.spawn(index % 9, 1, (index % 12) - 6, Math.floor(index / 12) - 6);
+        }
+        WORLD.boss.species = 7;
+        const ACTION = {
+            released: 0,
+            volleyCount: 1,
+            aim: 0,
+            id: 'summon.mouth-t1',
+            phase: 'active',
+            phaseElapsed: 0,
+        };
+        WORLD.boss.patternRuntime.active = ACTION;
+        const SPAWNED = WORLD.spawnBossMouthUnit(ACTION),
+            ENEMY = WORLD.units.find((unit) => unit.ownerId === 'boss');
+        if (!SPAWNED || !ENEMY || WORLD.abilityProgressionFor(ENEMY) !== null) {
+            throw new Error('Expected a real enemy wheat summon with no player progression');
+        }
+        SESSION.capturePresentation('reset');
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const VIEW = SESSION.presentation(performance.now()),
+            RENDERED = VIEW.units.find((unit) => unit.id === ENEMY.id),
+            RESULT = {
+                units: WORLD.units.length,
+                enemySpecies: ENEMY.species,
+                progression: WORLD.abilityProgressionFor(ENEMY),
+                longBaton: RENDERED.ability.wheatLongBaton,
+                hp: RENDERED.hp,
+            };
+        WORLD.removeUnit(ENEMY);
+        WORLD.boss.patternRuntime.active = null;
+        SESSION.capturePresentation('reset');
+        SESSION.paused = false;
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        return RESULT;
+    });
+    assert.equal(REPORT.wheatSummon.units, 145);
+    assert.equal(REPORT.wheatSummon.enemySpecies, 7);
+    assert.equal(REPORT.wheatSummon.longBaton, false, 'enemy keeps its unresearched base baton');
+    assert.ok(REPORT.wheatSummon.hp > 0, 'enemy HP survives presentation');
     const STATE = await PAGE.evaluate(() => ({
         version: BUDMORI.version,
         units: BUDMORI.sim.units.length,
