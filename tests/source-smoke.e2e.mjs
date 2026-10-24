@@ -28,6 +28,11 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url)),
         status: 'running',
         startedAt: new Date().toISOString(),
         entry: 'src/farm-app.js',
+        renderEnvironment: {
+            backend: 'Chromium SwiftShader',
+            deviceScaleFactor: 0.75,
+            purpose: 'functional and CSS-layout verification, not device performance',
+        },
         chapters: {},
         renderCaptures: [],
     },
@@ -74,6 +79,7 @@ try {
     });
     const CONTEXT = await browser.newContext({
             viewport: { width: 1000, height: 700 },
+            deviceScaleFactor: 0.75,
             serviceWorkers: 'block',
         }),
         PAGE = await CONTEXT.newPage();
