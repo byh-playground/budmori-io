@@ -276,6 +276,31 @@ try {
                     A = DISPLAY?.ability,
                     RECORD = UNIT.ability.action?.riceAttack;
                 STATE.renderCalls++;
+                if (STATE.interruption && !STATE.interruption.settled) {
+                    const ROOT = this.unitPresentation.displayUnit(DISPLAY),
+                        OFFSET = Math.hypot(ROOT.x - DISPLAY.x, ROOT.y - DISPLAY.y),
+                        CHECK = {
+                            tick: WORLD.simulationTick,
+                            captureSequence: SESSION.presentationSequence,
+                            displayTimeMs: this.displayTimeMs,
+                            clock: globalThis.__riceInputClock,
+                            sourceAction: !!UNIT.ability.action,
+                            displayForm: A?.riceForm,
+                            groundOffset: OFFSET,
+                            paused: SESSION.paused,
+                        };
+                    STATE.interruption.last = CHECK;
+                    if (
+                        !CHECK.sourceAction &&
+                        !CHECK.displayForm &&
+                        !CHECK.paused &&
+                        CHECK.tick >= STATE.interruption.startTick + 2 &&
+                        CHECK.captureSequence >= STATE.interruption.startCapture + 2 &&
+                        OFFSET < 1e-9
+                    ) {
+                        STATE.interruption.settled = CHECK;
+                    }
+                }
                 STATE.sameUnitReference = WORLD.units[0] === UNIT;
                 STATE.sameWorldReference = BUDMORI.sim === WORLD;
                 STATE.lastRender = {
@@ -398,7 +423,7 @@ try {
             };
         }
         const REQUEST = globalThis.requestAnimationFrame.bind(globalThis),
-            CLOCK = { last: null, current: null, maxDelta: 0 };
+            CLOCK = { last: null, current: null, maxDelta: 0, bounded: true };
         globalThis.__ricePreviewClock = CLOCK;
         globalThis.requestAnimationFrame = (callback) =>
             REQUEST((now) => {
@@ -418,7 +443,9 @@ try {
                     // The final10% of a one-tick strike is5ms of simulation.
                     // A5ms input pulse at the real HELP0.6 rate cannot skip it;
                     // the same timestamp still reaches model and presentation.
-                    const DELTA = globalThis.BUDMORI?.runtime?.paused ? 0 : Math.min(5, Math.max(0, now - CLOCK.last));
+                    const DELTA = globalThis.BUDMORI?.runtime?.paused
+                        ? 0
+                        : Math.min(CLOCK.bounded ? 5 : Infinity, Math.max(0, now - CLOCK.last));
                     CLOCK.current += DELTA;
                     CLOCK.maxDelta = Math.max(CLOCK.maxDelta, DELTA);
                 }
@@ -604,6 +631,19 @@ try {
         await FRAME.evaluate(() => {
             const SESSION = BUDMORI.runtime,
                 DURATION = SESSION.pausedDurationMs + globalThis.__riceInputClock - SESSION.pauseStartedAt;
+            const STATE = globalThis.__riceMotion;
+            STATE.request = null;
+            STATE.ready = false;
+            STATE.interruption = {
+                startTick: BUDMORI.sim.simulationTick,
+                startCapture: SESSION.presentationSequence,
+                startClock: globalThis.__riceInputClock,
+                startRafClock: globalThis.__ricePreviewClock.current,
+            };
+            // Narrow slot observation is complete. Keep the clock origin and
+            // restore ordinary RAF deltas so five wall seconds do not mean only
+            // ~100ms of simulation on a loaded runner. No tick/pose/reset bypass.
+            globalThis.__ricePreviewClock.bounded = false;
             BUDMORI.sim.units[0].ability.interrupt();
             BUDMORI.sim.units[0].stun = 0.5;
             SESSION.paused = false;
@@ -615,9 +655,14 @@ try {
             PAGE,
             TIER,
             'interruption',
-            () => !BUDMORI.runtime.presentationView.units[0].ability.riceForm,
+            () => !!globalThis.__riceMotion.interruption?.settled,
             5000,
         );
+        REPORT.push({
+            kind: 'interruption-settled',
+            case: LABEL,
+            ...(await FRAME.evaluate(() => structuredClone(globalThis.__riceMotion.interruption))),
+        });
     }
     activePreview = null;
     // Main-world continuity uses the real browser Back/Home route and Continue
