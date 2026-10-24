@@ -1,3 +1,4 @@
+import { isRiceAttackRecord } from './features/species-growth/rice-attack.js';
 import { isWalnutAttackRecord } from './features/species-growth/walnut-attack.js';
 import { isPeanutAttackRecord } from './features/species-growth/peanut-attack.js';
 import { isChestnutAttackRecord } from './features/species-growth/chestnut-attack.js';
@@ -582,7 +583,7 @@ export function validateSnapshot(raw) {
                 U.permanentStatMultiplier <= 2.25 &&
                 Number.isFinite(U.growthMaxHpMultiplier) &&
                 (U.growthMaxHpMultiplier === 1 ||
-                    ((U.species === 2 || U.species === 3 || U.species === 4 || U.species === 5) &&
+                    ((U.species === 2 || U.species === 3 || U.species === 4 || U.species === 5 || U.species === 6) &&
                         !U.isBattleOnlySummon &&
                         !U.isFormationClone &&
                         hasFaction(U, FACTION_CONFIG.PLAYER) &&
@@ -831,6 +832,35 @@ export function validateSnapshot(raw) {
                                   (U.ability.phase === 'recover'
                                       ? 10
                                       : Math.min(10, Math.round(U.ability.elapsed * 20))) &&
+                              A.path?.duration === R.durationSeconds &&
+                              A.path.height === 0 &&
+                              sameCheckpointValue(A.path.from, R.origin) &&
+                              sameCheckpointValue(A.path.to, R.origin)) &&
+                        R.targetId === A.targetId &&
+                        R.targetGeneration === A.targetGeneration,
+                );
+            }
+            if (A.riceAttack !== undefined) {
+                const R = A.riceAttack;
+                ASSERT(
+                    U.species === 6 &&
+                        isRiceAttackRecord(R) &&
+                        R.id === A.id &&
+                        R.owner === U.id &&
+                        R.ownerGeneration === U.generation &&
+                        R.tier === U.tier &&
+                        U.hp > 0 &&
+                        (R.launchTick === null
+                            ? U.ability.phase === 'windup' && A.path === null
+                            : (U.ability.phase === 'active' || U.ability.phase === 'recover') &&
+                              R.launchTick <= raw.simulationTick &&
+                              R.motionTick ===
+                                  (U.ability.phase === 'recover'
+                                      ? Math.round(R.durationSeconds * 20)
+                                      : Math.min(
+                                            Math.round(R.durationSeconds * 20),
+                                            Math.round(U.ability.elapsed * 20),
+                                        )) &&
                               A.path?.duration === R.durationSeconds &&
                               A.path.height === 0 &&
                               sameCheckpointValue(A.path.from, R.origin) &&

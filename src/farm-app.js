@@ -2172,10 +2172,13 @@ if (HELP.scene) {
               ? 4
               : /^walnut-t[1-6]$/.test(SCENE.id)
                 ? 5
-                : null;
+                : /^rice-t[1-6]$/.test(SCENE.id)
+                  ? 6
+                  : null;
     document.documentElement.classList.toggle('chestnut-attack-preview', RENDERER.attackPreviewSpecies === 3);
     document.documentElement.classList.toggle('peanut-attack-preview', RENDERER.attackPreviewSpecies === 4);
     document.documentElement.classList.toggle('walnut-attack-preview', RENDERER.attackPreviewSpecies === 5);
+    document.documentElement.classList.toggle('rice-attack-preview', RENDERER.attackPreviewSpecies === 6);
     start(WORLD, false);
     active.paused = false;
     HELP.scenario = globalThis.BloomGamekitScenario.createScenario({

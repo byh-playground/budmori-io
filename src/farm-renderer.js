@@ -473,7 +473,7 @@ const DIORAMA = class Diorama {
     // it stays there a moment when the troops come back out; inside, it rests on the hall.
     directCamera(sim2, now) {
         if (
-            [0, 2, 3, 4, 5].includes(this.attackPreviewSpecies) &&
+            [0, 2, 3, 4, 5, 6].includes(this.attackPreviewSpecies) &&
             sim2.units.length === 1 &&
             sim2.units[0].species === this.attackPreviewSpecies
         ) {
@@ -535,7 +535,7 @@ const DIORAMA = class Diorama {
             this.fitJumpPreview(world);
             return;
         }
-        if (this.attackPreviewSpecies === 5) {
+        if (this.attackPreviewSpecies === 5 || this.attackPreviewSpecies === 6) {
             this.fitWalnutPreview(world);
             return;
         }

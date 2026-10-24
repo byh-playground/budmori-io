@@ -52,7 +52,26 @@ const WALNUT_FORMS = Object.freeze([
     ['올려치기 강타', '올려치기 · 내려찍기 · 바닥 근접 충격 · 25·45·30%'],
     ['근접 쐐기 강타', '가로막기 · 끌어올리기 · 강한 내려찍기 · 근접 쐐기 · 15·20·40·25%'],
 ]);
+const RICE_FORMS = Object.freeze([
+    ['짧은 낫베기', '짧게 한 번 낫베기 · 100%'],
+    ['낫베기와 되베기', '앞으로 베고 되베기 · 45·55%'],
+    ['가로 사선베기', '낮은 가로베기 뒤 높은 사선베기 · 40·60%'],
+    ['넓은 호 집중베기', '넓은 첫 호 뒤 안쪽 집중 베기 · 40·60%'],
+    ['삼단 수확 찍기', '사선 · 반원 회수 · 좁은 수확 찍기 · 25·30·45%'],
+    ['교차 수확 마무리', '좌우 교차 · 안쪽 수확 · 넓은 반원 마무리 · 20·20·25·35%'],
+]);
 const PRESENTATIONS = new Map([
+    [
+        'rice-low-health-harvest',
+        {
+            key: 'rice',
+            name: '쌀',
+            title: '낫베기와 수확 치명',
+            forms: RICE_FORMS,
+            effect: riceGrowthEffect,
+            note: '대상별 첫 명중 직전 적이 잃은 체력 비율로 치명 보너스를 계산하고 한 번만 추첨해요. 같은 공격의 후속 타격은 같은 치명 결과를 사용해요. 공통 치명 확률과 합해 최대 100%이며 기본 치명 피해는 2배예요. 주변 최대 4명에게 각 타격의 50% 피해를 줘요. 마지막 수확 보너스는 전체 직접 피해 예산 기준이며 즉사·처형·최대 체력 비례 피해는 없어요.',
+        },
+    ],
     [
         'walnut-raw-guard',
         {
@@ -319,6 +338,25 @@ function walnutGrowthEffect(nodeId, rank) {
             return `저장 RAW 전환율 ${100 + rank * 25}% · 추가 피해 상한 A×3 유지`;
         case 'specialty-3':
             return `마지막 직접 망치에 전체 직접 예산의 ${rank * 8}% 추가 · 저장분 제외`;
+        default:
+            throw new RangeError(`Unknown growth effect: ${nodeId}`);
+    }
+}
+
+function riceGrowthEffect(nodeId, rank) {
+    switch (nodeId) {
+        case 'basic-1':
+            return `낫 공격력 +${rank * 3}%`;
+        case 'basic-2':
+            return `최대 체력 +${rank * 4}% · 다음 런부터 적용`;
+        case 'basic-3':
+            return `공격 속도 +${rank * 2}% · 후딜에 적용`;
+        case 'specialty-1':
+            return `적 잃은 체력 비율×최대 ${35 + rank * 8}%p 치명 보너스 · 합계 100% 상한`;
+        case 'specialty-2':
+            return `낫 사거리·범위 +${rank * 4}%`;
+        case 'specialty-3':
+            return `마지막 수확에 전체 직접 예산의 ${rank * 8}% 추가`;
         default:
             throw new RangeError(`Unknown growth effect: ${nodeId}`);
     }
