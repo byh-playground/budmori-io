@@ -482,13 +482,10 @@ try {
             assert.match(TEXT, /기본 공격 총피해의 3배/);
         }
         await CARD.locator('h3').scrollIntoViewIfNeeded();
-        const FILE = `wording-${SPECIES}.png`;
-        await PAGE.screenshot({ path: path.join(OUTPUT, FILE), fullPage: true });
-        REPORT.wording.push({ species: SPECIES, title: TITLE, screenshot: FILE });
+        REPORT.wording.push({ species: SPECIES, title: TITLE });
     }
     await PAGE.setViewportSize({ width: 390, height: 844 });
     await PAGE.locator('[data-growth-node="specialty-2"]').scrollIntoViewIfNeeded();
-    await PAGE.screenshot({ path: path.join(OUTPUT, 'wording-walnut-mobile.png'), fullPage: true });
     assert.deepEqual(ERRORS, [], 'the representative growth menus remain free of runtime errors');
     // One real door interaction, then a bounded upgrade/exhaustion continuation.
     await PAGE.locator('#gameMenuClose').click();
@@ -525,10 +522,8 @@ try {
     });
     assert.equal(REPORT.bossCards.rejectedDuplicate, true);
     assert.equal(REPORT.bossCards.afterSerial, REPORT.bossCards.serial);
-    await PAGE.screenshot({ path: path.join(OUTPUT, 'boss-card-player.png'), fullPage: true });
     await PAGE.clock.runFor(400);
     await PAGE.locator('#bossCardDraw[data-phase="boss"]').waitFor({ state: 'visible' });
-    await PAGE.screenshot({ path: path.join(OUTPUT, 'boss-card-boss.png'), fullPage: true });
     await PAGE.clock.runFor(1000);
     await PAGE.locator('#bossCardDraw').waitFor({ state: 'hidden' });
     await PAGE.evaluate(() => {
@@ -556,6 +551,21 @@ try {
     assert.equal(UPGRADE.draw.status, 'upgraded');
     await PAGE.setViewportSize({ width: 844, height: 390 });
     await PAGE.clock.runFor(32);
+    REPORT.bossCards.landscape = await PAGE.evaluate(() => ({
+        receipt: document.getElementById('bossCardDraw').getBoundingClientRect().toJSON(),
+        width: innerWidth,
+        height: innerHeight,
+    }));
+    const LANDSCAPE = REPORT.bossCards.landscape;
+    assert.ok(
+        LANDSCAPE.receipt.width > 0 &&
+            LANDSCAPE.receipt.height > 0 &&
+            LANDSCAPE.receipt.left >= 0 &&
+            LANDSCAPE.receipt.top >= 0 &&
+            LANDSCAPE.receipt.right <= LANDSCAPE.width &&
+            LANDSCAPE.receipt.bottom <= LANDSCAPE.height,
+        'landscape card receipt remains fully inside the viewport',
+    );
     await PAGE.screenshot({ path: path.join(OUTPUT, 'boss-card-landscape.png'), fullPage: true });
     await PAGE.setViewportSize({ width: 1000, height: 700 });
     await PAGE.clock.runFor(1000);
@@ -568,7 +578,6 @@ try {
     await PAGE.locator('#doorCards [data-door="0"]:enabled').click({ force: true });
     await PAGE.clock.runFor(400);
     await PAGE.locator('#bossCardDraw[data-phase="maxed"]').waitFor({ state: 'visible' });
-    await PAGE.screenshot({ path: path.join(OUTPUT, 'boss-card-maxed.png'), fullPage: true });
     await PAGE.clock.runFor(1000);
     assert.equal(
         await PAGE.evaluate(() => BUDMORI.sim.time >= BUDMORI.sim.tower.bossCardDraw.until),
@@ -657,7 +666,7 @@ try {
         WORLD._benched.clear();
         WORLD._benchRevision++;
         WORLD._unitSpatialDirty = true;
-        globalThis.__sharedSkills = { casts: [], hits: [], cases: [] };
+        globalThis.__sharedSkills = { casts: [], hits: [], rendered: {} };
         WORLD.onNotice.on((notice) => {
             const OBS = globalThis.__sharedSkills;
             if (notice.kind === 'formation-cast') {
@@ -669,6 +678,25 @@ try {
         });
     });
     await PAGE.evaluate(async () => {
+        // Observe every actual role/skill native draw even when its redundant PNG is omitted.
+        for (const [ID, NAME] of [
+            ['lightning', 'LightningPresentation'],
+            ['meteor', 'MeteorPresentation'],
+            ['meteor-shower', 'MeteorShowerPresentation'],
+            ['ufo', 'UfoPresentation'],
+            ['storm-cloud', 'StormCloudPresentation'],
+        ]) {
+            const MODULE = await import(`./src/features/formation-skills/${ID}/presentation.js`),
+                TYPE = MODULE[NAME],
+                DRAW = TYPE.prototype.draw;
+            TYPE.prototype.draw = function (renderer, effect, ...args) {
+                const RESULT = DRAW.call(this, renderer, effect, ...args),
+                    KEY = `${effect.role}:${effect.kind}`,
+                    OBS = globalThis.__sharedSkills;
+                OBS.rendered[KEY] = (OBS.rendered[KEY] || 0) + 1;
+                return RESULT;
+            };
+        }
         const { StormCloudPresentation: CLOUD } =
                 await import('./src/features/formation-skills/storm-cloud/presentation.js'),
             DRAW = CLOUD.prototype.draw;
@@ -704,6 +732,9 @@ try {
             ['ufo', 10, 'hits'],
             ['storm-cloud', 75, 'hits'],
         ]) {
+            const CASE_STARTED = Date.now();
+            REPORT.pendingCase = { role: ROLE, id: ID, stage: 'simulate', startedAt: new Date().toISOString() };
+            fs.writeFileSync(path.join(OUTPUT, 'report.json'), JSON.stringify(REPORT, null, 2));
             const START = await PAGE.evaluate(
                 async ({ role, id, required, condition }) => {
                     const WORLD = BUDMORI.sim,
@@ -808,8 +839,19 @@ try {
             await PAGE.evaluate(
                 () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
             );
-            const FILE = `shared-skills-${ROLE}-${ID}.png`;
-            await PAGE.screenshot({ path: path.join(OUTPUT, FILE), fullPage: true });
+            const FILE = ['ufo', 'storm-cloud'].includes(ID) ? `shared-skills-${ROLE}-${ID}.png` : null,
+                CAPTURE_STARTED = Date.now();
+            REPORT.pendingCase = {
+                role: ROLE,
+                id: ID,
+                stage: FILE ? 'screenshot' : 'inspect native draw',
+                elapsedMs: CAPTURE_STARTED - CASE_STARTED,
+            };
+            fs.writeFileSync(path.join(OUTPUT, 'report.json'), JSON.stringify(REPORT, null, 2));
+            if (FILE) {
+                await PAGE.screenshot({ path: path.join(OUTPUT, FILE), fullPage: false });
+            }
+            const CAPTURE_MS = Date.now() - CAPTURE_STARTED;
             const RESULT = await PAGE.evaluate(
                 ({ role, id }) => {
                     const WORLD = BUDMORI.sim,
@@ -818,6 +860,7 @@ try {
                         ),
                         OTHER = WORLD.formationRuntime.slots.find((slot) => (slot.role || 'player') !== role);
                     return {
+                        nativeDraws: globalThis.__sharedSkills.rendered[`${role}:${id}`] || 0,
                         cloudDraw: globalThis.__sharedSkills.cloudDraw,
                         casts: globalThis.__sharedSkills.casts,
                         hits: globalThis.__sharedSkills.hits,
@@ -834,6 +877,7 @@ try {
                 },
                 { role: ROLE, id: ID },
             );
+            assert.ok(RESULT.nativeDraws > 0, 'every role and skill reaches its actual native presentation');
             assert.deepEqual(RESULT.casts, [{ id: ID, role: ROLE }], 'one release per cast');
             assert.equal(RESULT.otherCharge, 0, 'skill effects never recharge the opposite owner');
             assert.equal(RESULT.ownCharge, 0, 'released skills do not recharge themselves');
@@ -865,7 +909,17 @@ try {
                     'real session DTO renders cloud arcs, including player fallback',
                 );
             }
-            REPORT.sharedSkills.push({ role: ROLE, id: ID, ...START, ...RESULT, screenshot: FILE });
+            REPORT.sharedSkills.push({
+                role: ROLE,
+                id: ID,
+                ...START,
+                ...RESULT,
+                screenshot: FILE,
+                elapsedMs: Date.now() - CASE_STARTED,
+                screenshotMs: CAPTURE_MS,
+            });
+            REPORT.pendingCase = null;
+            fs.writeFileSync(path.join(OUTPUT, 'report.json'), JSON.stringify(REPORT, null, 2));
         }
     }
     // Keep the already released cloud alive while a UFO releases, then cancel a third cast.
