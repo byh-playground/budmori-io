@@ -16,6 +16,17 @@ jobs:
                   node-version: 22
                   cache: npm
             - run: npm ci
+            - name: Emit canonical formatting (temporary)
+              shell: bash
+              run: |
+                  echo FARM_HTML_BEGIN
+                  npx prettier index.html | base64 -w0
+                  echo
+                  echo FARM_HTML_END
+                  echo FARM_BOOT_BEGIN
+                  npx prettier src/bootstrap.js | base64 -w0
+                  echo
+                  echo FARM_BOOT_END
             - run: npm run check
             - uses: actions/cache@v4
               id: playwright-cache
