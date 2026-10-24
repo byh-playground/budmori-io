@@ -8,7 +8,11 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { sourceGraph } from '../scripts/source-graph.mjs';
 import { unitBodyDefinition } from '../src/features/unit-body/definition.js';
-import { installChestnutMotionObserver, resumeChestnutMotionObservation } from './chestnut-motion-observer.mjs';
+import {
+    installChestnutMotionObserver,
+    resumeChestnutMotionObservation,
+    measureChestnutNativeContact,
+} from './chestnut-motion-observer.mjs';
 
 const VIEWPORT = process.argv[2] || 'desktop',
     SELECTION = process.argv[3] || 'all',
@@ -335,28 +339,25 @@ try {
         // last actual native draw and compare to the real swept impact point,
         // rather than inventing a nonexistent full-flight contact frame.
         for (const HIT of state.hits) {
-            assert.ok(HIT.projectile && HIT.lastNative);
-            const CONTACT = await FRAME.evaluate((hit) => {
-                const R = BUDMORI.renderer,
-                    TARGET = R.project(hit.impact.x, hit.impact.y, hit.impact.z),
-                    POINTS = hit.lastNative.lines.flatMap((line) => [line.a, line.b]);
-                return {
-                    point: TARGET,
-                    nativeDistancePixels:
-                        Math.min(...POINTS.map((point) => Math.hypot(point.x - TARGET.x, point.y - TARGET.y))) /
-                        R.pixelRatio,
-                    deltaTicks: hit.tick - hit.lastNative.tick,
-                    progress: hit.lastNative.progress,
-                };
-            }, HIT);
+            assert.ok(HIT.projectile && HIT.lastNative && HIT.nativeImpact);
+            assert.equal(HIT.lastNative.actionId, HIT.attackId);
+            assert.equal(HIT.nativeImpact.actionId, HIT.attackId);
+            assert.equal(HIT.lastNative.slot, HIT.strikeIndex);
+            assert.equal(HIT.nativeImpact.slot, HIT.strikeIndex);
+            const CONTACT = measureChestnutNativeContact(HIT);
+            assert.equal(CONTACT.renderFrame, CONTACT.nativeFrame, 'impact and native spike use the same camera frame');
             HIT.contact = CONTACT;
             assert.ok(
+                CONTACT.spikeBodySegments > 0,
+                'only actual shaft lines from this action/slot are contact candidates',
+            );
+            assert.ok(
                 CONTACT.deltaTicks >= 0 && CONTACT.deltaTicks <= 1,
-                'real impact follows the last native spike within one simulation tick',
+                'real impact follows this slot’s last native spike within one simulation tick',
             );
             assert.ok(
                 CONTACT.nativeDistancePixels <= 12,
-                `slot${HIT.strikeIndex} native projectile reaches actual swept contact within12px: ${JSON.stringify(CONTACT)}`,
+                `slot${HIT.strikeIndex} native spike-body centerline reaches actual swept contact within12px (not a tip-only claim): ${JSON.stringify(CONTACT)}`,
             );
         }
         assert.equal(

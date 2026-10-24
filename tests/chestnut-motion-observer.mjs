@@ -168,7 +168,13 @@ export function installChestnutMotionObserver(body) {
                 LINE = RENDERER.line,
                 ELLIPSE = RENDERER.ellipse;
             RENDERER.line = function (a, b, width, color) {
-                LINES.push({ a: { ...a }, b: { ...b }, width: width * this.scale });
+                LINES.push({
+                    a: { ...a },
+                    b: { ...b },
+                    width: width * this.scale,
+                    color,
+                    role: color === '#68883e' ? 'spike-body' : 'trail',
+                });
                 return LINE.call(this, a, b, width, color);
             };
             RENDERER.ellipse = function (x, y, rx, ry, color, angle = 0) {
@@ -231,7 +237,18 @@ export function installChestnutMotionObserver(body) {
                 const SHOT = WORLD.projectiles.find(
                     (shot) => shot.chestnutActionId === action.id && shot.chestnutSlot === SLOT,
                 );
-                IMPACTS.set(SLOT, { projectile: SHOT && structuredClone(SHOT), impact: structuredClone(point) });
+                IMPACTS.set(SLOT, {
+                    projectile: SHOT && structuredClone(SHOT),
+                    impact: structuredClone(point),
+                    nativeImpact: {
+                        actionId: action.id,
+                        slot: SLOT,
+                        point: RENDERER.project(point.x, point.y, point.z),
+                        pixelRatio: RENDERER.pixelRatio,
+                        renderFrame: frameSerial,
+                        displayTimeMs: RENDERER.displayTimeMs,
+                    },
+                });
             }
             return DAMAGE.call(this, source, action, target, point, options);
         };
@@ -399,4 +416,43 @@ export function resumeChestnutMotionObservation(interrupt = false) {
         rawClock: performance.now(),
         pausedDurationMs: SESSION.pausedDurationMs,
     });
+}
+
+// Native spike shafts are continuous line segments. Comparing only endpoints
+// overstates the gap when contact falls beside the middle of the drawn shaft.
+// Use the exact renderer camera retained at the damage call, not a later frame's
+// camera. Stroke width is deliberately not subtracted: this is a conservative
+// centerline measurement against the unchanged 12px gate.
+export function measureChestnutNativeContact(hit) {
+    const TARGET = hit.nativeImpact.point,
+        SPIKES = hit.lastNative.lines.filter((line) => line.role === 'spike-body'),
+        DISTANCES = SPIKES.map(({ a, b }) => {
+            const DX = b.x - a.x,
+                DY = b.y - a.y,
+                LENGTH_SQUARED = DX * DX + DY * DY,
+                T =
+                    LENGTH_SQUARED > 0
+                        ? Math.max(0, Math.min(1, ((TARGET.x - a.x) * DX + (TARGET.y - a.y) * DY) / LENGTH_SQUARED))
+                        : 0;
+            return Math.hypot(TARGET.x - a.x - T * DX, TARGET.y - a.y - T * DY);
+        });
+    return {
+        point: TARGET,
+        nativeDistancePixels: Math.min(...DISTANCES) / hit.nativeImpact.pixelRatio,
+        spikeBodySegments: SPIKES.length,
+        tipDistancePixels:
+            Math.min(...SPIKES.map(({ b }) => Math.hypot(b.x - TARGET.x, b.y - TARGET.y))) /
+            hit.nativeImpact.pixelRatio,
+        endpointDistancePixels:
+            Math.min(
+                ...hit.lastNative.lines.flatMap(({ a, b }) => [
+                    Math.hypot(a.x - TARGET.x, a.y - TARGET.y),
+                    Math.hypot(b.x - TARGET.x, b.y - TARGET.y),
+                ]),
+            ) / hit.nativeImpact.pixelRatio,
+        deltaTicks: hit.tick - hit.lastNative.tick,
+        renderFrame: hit.nativeImpact.renderFrame,
+        nativeFrame: hit.lastNative.frame,
+        progress: hit.lastNative.progress,
+    };
 }
