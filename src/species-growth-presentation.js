@@ -44,7 +44,26 @@ const PEANUT_FORMS = Object.freeze([
     ['반원 조이기', '양쪽 반원 스윕 뒤 직선 닫기 · 20·20·30·30%'],
     ['전개 스윕 찍기', '좌우 전개 · 엇갈린 스윕 · 중앙 찍기 · 15·15·20·20·30%'],
 ]);
+const WALNUT_FORMS = Object.freeze([
+    ['망치 내려찍기', '망치로 한 번 내려찍기 · 100%'],
+    ['찍고 되받기', '내려찍기 뒤 짧게 되받기 · 60·40%'],
+    ['스윕 뒤 찍기', '전면 가로 스윕 뒤 내려찍기 · 35·65%'],
+    ['스윕 접촉 충격', '스윕 · 내려찍기 · 접촉점 근접 충격 · 25·45·30%'],
+    ['올려치기 강타', '올려치기 · 내려찍기 · 바닥 근접 충격 · 25·45·30%'],
+    ['근접 쐐기 강타', '가로막기 · 끌어올리기 · 강한 내려찍기 · 근접 쐐기 · 15·20·40·25%'],
+]);
 const PRESENTATIONS = new Map([
+    [
+        'walnut-raw-guard',
+        {
+            key: 'walnut',
+            name: '호두',
+            title: '방어 저장과 망치 강타',
+            forms: WALNUT_FORMS,
+            effect: walnutGrowthEffect,
+            note: '5초마다 2초 동안 방어력 +50이며 공격과 함께 작동해요. 방어 중 받은 방어 계산 전 피해(RAW)를 저장하고 공격 시작에 한 번 소비해요. 추가 피해는 저장량×전환율과 공격력 A×3 중 작은 값이며 주 대상만 받아요. T1~T3은 마지막 직접 타격, T4~T6은 마지막 직접 타격과 근접 충격에 70:30으로 나눠요. 주변 최대 4명은 기본 슬롯 피해의 50%만 받아요. 강타 특화는 저장 추가 피해를 늘리지 않아요. 공격 중 새로 저장한 피해는 다음 공격에 사용하며 취소된 저장분은 돌려받지 않아요.',
+        },
+    ],
     [
         'peanut-death-split',
         {
@@ -281,6 +300,25 @@ function peanutGrowthEffect(nodeId, rank) {
             return `중앙 또는 마지막 타격에 전체 직접 예산의 ${rank * 8}% 추가`;
         case 'specialty-3':
             return `사망 T1 분열체 체력·공격력 ${100 + rank * 25}% · 한 번 적용`;
+        default:
+            throw new RangeError(`Unknown growth effect: ${nodeId}`);
+    }
+}
+
+function walnutGrowthEffect(nodeId, rank) {
+    switch (nodeId) {
+        case 'basic-1':
+            return `공격력 +${rank * 3}% · 직접 예산과 저장 피해 상한에 적용`;
+        case 'basic-2':
+            return `최대 체력 +${rank * 4}% · 다음 런부터 적용`;
+        case 'basic-3':
+            return `공격 속도 +${rank * 2}% · 후딜에 적용`;
+        case 'specialty-1':
+            return `상시 방어력 +${rank * 3} · 방어 중 +50과 합산`;
+        case 'specialty-2':
+            return `저장 RAW 전환율 ${100 + rank * 25}% · 추가 피해 상한 A×3 유지`;
+        case 'specialty-3':
+            return `마지막 직접 망치에 전체 직접 예산의 ${rank * 8}% 추가 · 저장분 제외`;
         default:
             throw new RangeError(`Unknown growth effect: ${nodeId}`);
     }

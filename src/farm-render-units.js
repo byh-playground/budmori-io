@@ -1,3 +1,4 @@
+import { WalnutAttackPresentation } from './features/unit-attacks/walnut/presentation.js';
 import { ChestnutAttackPresentation } from './features/unit-attacks/chestnut/presentation.js';
 import { RedbeanAttackPresentation } from './features/unit-attacks/redbean/presentation.js';
 import { unitBodyDefinition, unitDisplayScale } from './features/unit-body/definition.js';
@@ -11,6 +12,7 @@ import { farmBreedingCooldown, unitRestPresentation } from './farm-indicators.js
 import { scenePresentation } from './farm-render-scenes.js';
 import { PassiveMarksPresentation } from './tower-passive-presentations.js';
 
+const WALNUT_ATTACK = new WalnutAttackPresentation();
 const CHESTNUT_ATTACK = new ChestnutAttackPresentation();
 const REDBEAN_ATTACK = new RedbeanAttackPresentation();
 const PEA_ATTACK = new PeaAttackPresentation();
@@ -21,6 +23,9 @@ const ATTACK_PRESENTATIONS = new Map(
     [new DualStrikePresentation(), new LobPresentation()].map((presentation) => [presentation.id, presentation]),
 );
 function unitAttackPresentation(unit) {
+    if (unit.species === 5 && unit.ability?.walnutForm) {
+        return WALNUT_ATTACK;
+    }
     if (unit.species === 3 && unit.ability?.chestnutForm) {
         return CHESTNUT_ATTACK;
     }
@@ -125,7 +130,7 @@ function unitExpression(u, sim, joyEffects, rest) {
         return 'surprised';
     }
     if (u.walnutGuarding) {
-        return 'guard';
+        return u.ability?.walnutForm && ['windup', 'active', 'recover'].includes(PHASE) ? 'guard-attack' : 'guard';
     }
     if (PHASE === 'windup') {
         return 'focused';
@@ -297,6 +302,9 @@ export class UnitPresentation {
         if (!SWING && !rest && u.species === 3 && u.hp > 0 && u.stun <= 0 && u.dropLanded) {
             CHESTNUT_ATTACK.applyPose(MATRIX, u, GROUND);
         }
+        if (!SWING && !rest && u.species === 5 && u.ability.walnutForm && u.hp > 0 && u.stun <= 0) {
+            WALNUT_ATTACK.applyPose(MATRIX, u, GROUND);
+        }
         // Native vector players submit directly to MeshRenderer, so flush earlier 2D paint first.
         this.renderer.ctx.vector.flush();
         player.draw({
@@ -342,6 +350,12 @@ export class UnitPresentation {
         const EFFECTS = this.unitRingEffects(u, sim);
         this.drawUnitRingLayer(u, EFFECTS, 'rear');
         const REST = unitRestPresentation(u, sim, CONFIG.unit.corpseRecoverySeconds, this.restIndicator);
+        if (!REST && u.species === 5) {
+            if (u.walnutGuarding && u.ability.walnutForm) {
+                this.renderer.ring(u.x, u.y, u.radius + 0.08, '#ebcc7a', 0.055);
+            }
+            WALNUT_ATTACK.drawContact(this.renderer, u);
+        }
         const POSE = this.drawUnit(u, sim, REST);
         this.drawUnitRingLayer(u, EFFECTS, 'front');
         this.drawSleepIndicator(REST, POSE);

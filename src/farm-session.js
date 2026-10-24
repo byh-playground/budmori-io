@@ -1,3 +1,4 @@
+import { updateWalnutPresentation } from './features/unit-attacks/walnut/presentation.js';
 import { Garden, bindPresentationClock } from './farm-model.js';
 import { unitMaxHpFor } from './unit-stats.js';
 import { PASSIVE_SETTINGS } from './tower-run.js';
@@ -59,6 +60,20 @@ class UnitRender extends RENDER_OBJECT {
         'ability.peaStage': R.STATE_KEY,
         'ability.peaStageProgress': R.LINEAR,
         'ability.peaWindupDuration': R.STEP,
+        'ability.walnutForm': R.STEP,
+        'ability.walnutActionId': R.STATE_KEY,
+        'ability.walnutSlot': R.STATE_KEY,
+        'ability.walnutStage': R.STATE_KEY,
+        'ability.walnutFirstStage': R.STEP,
+        'ability.walnutLastStage': R.STEP,
+        'ability.walnutStageProgress': R.LINEAR,
+        'ability.walnutMotionTick': R.STEP,
+        'ability.walnutWindupDuration': R.STEP,
+        'ability.walnutRecoveryDuration': R.STEP,
+        'ability.walnutPointX': R.STEP,
+        'ability.walnutPointY': R.STEP,
+        'ability.walnutRawBudget': R.STEP,
+        'ability.walnutImpactLife': R.LINEAR,
         walnutGuarding: R.STEP,
         cooldown: R.LINEAR,
         cooldownDuration: R.STEP,
@@ -165,6 +180,7 @@ class UnitRender extends RENDER_OBJECT {
                 ? Math.min(1, u.ability.elapsed / (u.ability.action.path?.duration || 0.12))
                 : PEA?.stageProgress || 0;
         this.ability.peaWindupDuration = PEA?.windupSeconds || 0.28;
+        updateWalnutPresentation(this.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
         this.walnutGuarding = !!u.ability.isGuarding?.(world.simulationTick);
         this.cooldown = u.cooldown;
         this.cooldownDuration = u.cooldownDuration;

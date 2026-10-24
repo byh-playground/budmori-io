@@ -67,7 +67,7 @@ export class FormationSkills {
     }
     trackHealth(unit) {
         const MAX_HP =
-            unit.species === 4
+            unit.species === 4 || unit.species === 5
                 ? unitMaxHpFor(unit)
                 : unit.isFormationClone
                   ? 1

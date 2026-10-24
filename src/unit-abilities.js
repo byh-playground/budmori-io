@@ -100,7 +100,7 @@ export const UNIT_CAPABILITY_COMPOSITIONS = Object.freeze({
         useActiveDuration: true,
         outerRangeSlack: 0,
     }),
-    5: COMPOSITION('contact', ['guard'], {
+    5: COMPOSITION('walnut', ['guard'], {
         useActiveDuration: true,
     }),
     6: COMPOSITION('contact', ['riceCritical'], {
