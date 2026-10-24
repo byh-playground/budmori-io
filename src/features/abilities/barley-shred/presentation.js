@@ -22,10 +22,10 @@ const SHIELD_STROKES = Object.freeze([
 ]);
 export class BarleyArmorShredPresentation {
     label(_definition, value) {
-        return `기본 공격 적중 후 방어도 ${value} 감소 · 감소마다 3초 · 방어도 최저 0`;
+        return `기본 공격 적중 후 방어력 ${value} 감소 · 감소마다 3초 · 방어력 최저 0`;
     }
     title(value) {
-        return `방어도 −${value}`;
+        return `방어력 −${value}`;
     }
     draw(renderer, event, progress) {
         const T = Math.min(1, progress / 0.72),

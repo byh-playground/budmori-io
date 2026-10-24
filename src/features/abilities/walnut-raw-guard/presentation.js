@@ -1,6 +1,6 @@
 export class WalnutRawGuardPresentation {
     label(_definition, value) {
-        return `5초마다 2초 방어 · 방어력 +50 · 저장 RAW의 ${Math.round(value * 100)}% 추가 반격`;
+        return `5초마다 2초 방어 · 방어력 +50 · 모아 둔 피해의 ${Math.round(value * 100)}% 추가 반격`;
     }
     title(value) {
         return `추가 피해 ${Math.round(value * 100)}%`;

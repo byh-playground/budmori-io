@@ -6,8 +6,8 @@ export const PEA_RECOVERY_BOOST_FEATURE = Object.freeze({
         species: 0,
         availableByDefault: true,
         minimumTier: 1,
-        name: '회복 기동',
-        description: '적 공격으로 강제 이동이 끝나면 2초 동안 이동 속도가 증가해요.',
+        name: '빠른 복귀',
+        description: '적에게 밀려난 뒤 움직일 수 있게 되면 2초 동안 이동 속도가 증가해요.',
         powerValues: Object.freeze([0.25, 0.35, 0.55]),
     }),
     model: Object.freeze({

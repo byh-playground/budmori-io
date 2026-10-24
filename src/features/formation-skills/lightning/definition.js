@@ -3,7 +3,7 @@ export const DEFINITION = Object.freeze({
     name: '낙뢰',
     condition: 'hits',
     required: 50,
-    description: '하나의 적에게 굵은 낙뢰를 내려 피해 75.',
+    description: '적 하나에게 벼락을 내려 피해 75를 줘요.',
     upgradeAxis: '피해 ×1.5',
     upgradeBase: 75,
     upgradeFactor: 1.5,

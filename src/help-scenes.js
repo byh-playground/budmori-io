@@ -27,7 +27,7 @@ export const HELP_SCENES = Object.freeze([
         },
         steps: {
             work: '일꾼 3마리가 곡식 더미를 쳐요',
-            food: '낟알이 떨어졌어요. 번식 3마리가 먹어요',
+            food: '낟알이 떨어졌어요. 번식할 3마리가 먹어요',
             born: '먹은 두 마리가 번식해 새끼가 태어났어요',
         },
     }),
@@ -62,7 +62,7 @@ export const HELP_SCENES = Object.freeze([
     Object.freeze({
         id: 'tower',
         title: '보스와 탑',
-        rule: '탑 오르기를 누르면 보스가 떨어져요. 병력이 사방에서 자동으로 투입돼 싸우고, 이기면 다음 층의 선택지가 나와요. 강화 층에서 카드를 고르면 이번 도전 동안 병력이 강해져요. 이긴 보스 종의 숙련이 쌓여 능력 포인트가 돼요.',
+        rule: '탑 오르기를 누르면 보스가 떨어져요. 병력이 사방에서 자동으로 투입돼 싸우고, 이기면 다음 층의 선택지가 나와요. 강화 층에서 카드를 고르면 이번 도전 동안 병력이 강해져요. 쓰러뜨린 보스의 병종 숙련이 쌓여 숙련 포인트를 얻어요.',
         seed: 4104,
         rate: 4,
         durationMs: 60000,
@@ -190,9 +190,9 @@ const CORN_PREVIEW_SCENES = Object.freeze(
                       : 'prepare';
             },
             steps: {
-                prepare: '고정 훈련 표적 · 실제 공격 준비',
-                flight: '실제 투사체의 비행과 충돌',
-                explosion: '부착 1초 뒤부터 0.1초 간격의 연쇄 폭발',
+                prepare: '알갱이를 쏠 준비를 해요',
+                flight: '알갱이가 날아가 적에게 붙어요',
+                explosion: '붙은 지 1초 뒤부터 0.1초 간격으로 터져요',
             },
         });
     }),
@@ -240,9 +240,9 @@ const PEA_PREVIEW_SCENES = Object.freeze(
                       : 'prepare';
             },
             steps: {
-                prepare: '고정 훈련 표적 · 실제 지상 공격 준비',
-                contact: '본체의 실제 이동과 앞면 충돌 · 점프와 분신 없음',
-                recover: '충돌 후 회복 · 자체 반동은 재돌진 보너스를 만들지 않아요',
+                prepare: '적을 향해 돌진할 준비를 해요',
+                contact: '앞으로 돌진해 적을 들이받아요',
+                recover: '들이받은 뒤 다음 돌진을 준비해요',
             },
         });
     }),
@@ -290,9 +290,9 @@ const REDBEAN_PREVIEW_SCENES = Object.freeze(
                       : 'prepare';
             },
             steps: {
-                prepare: '고정 훈련 표적 · 실제 도약 공격 준비',
-                contact: '하나의 본체가 실제 높이로 도약하고 접촉·착지',
-                recover: '마지막 착지 후 회복 · 성공해도 다음 준비와 비행은 유지',
+                prepare: '적을 향해 뛰어오를 준비를 해요',
+                contact: '뛰어올라 적을 덮쳐요',
+                recover: '착지한 뒤 다음 도약을 준비해요',
             },
         });
     }),
@@ -340,9 +340,9 @@ const CHESTNUT_PREVIEW_SCENES = Object.freeze(
                       : 'prepare';
             },
             steps: {
-                prepare: '고정 훈련 표적 · 실제 가시 공격 준비',
-                flight: '실제 가시의 전개·교차·수렴과 고정 영역 충돌',
-                recover: '한 번의 가시 평타 후 회복 · 공속은 전체 공격 주기에 적용',
+                prepare: '가시를 쏠 준비를 해요',
+                flight: '가시를 날려 적을 찔러요',
+                recover: '가시를 쏜 뒤 다음 공격을 준비해요',
             },
         });
     }),
@@ -390,9 +390,9 @@ const PEANUT_PREVIEW_SCENES = Object.freeze(
                       : 'prepare';
             },
             steps: {
-                prepare: '고정 훈련 표적 · 한 본체가 두 알 협공을 준비',
-                contact: '본체의 실제 두 알이 교대·교차·스윕 · 독립 분신 없음',
-                recover: '마지막 협공 후 회복 · 사망 분열은 별도이며 생존 협공과 구분',
+                prepare: '두 알이 함께 공격할 준비를 해요',
+                contact: '두 알이 번갈아 적을 공격해요',
+                recover: '협공을 마치고 다음 공격을 준비해요',
             },
         });
     }),
@@ -440,9 +440,9 @@ const WALNUT_PREVIEW_SCENES = Object.freeze(
                       : 'prepare';
             },
             steps: {
-                prepare: '고정 훈련 표적 · 망치 공격을 준비 · 방어는 공격과 병행',
-                contact: '실제 망치의 내려찍기·되받기·스윕·근접 충격',
-                recover: '마지막 망치 타격 후 회복 · 피격이 없어도 진화 동작',
+                prepare: '망치를 들어 공격할 준비를 해요',
+                contact: '망치를 휘둘러 적을 때려요',
+                recover: '망치를 거두고 다음 공격을 준비해요',
             },
         });
     }),
@@ -490,9 +490,9 @@ const RICE_PREVIEW_SCENES = Object.freeze(
                       : 'prepare';
             },
             steps: {
-                prepare: '고정 훈련 표적 · 실제 낫의 연속 베기를 준비',
-                contact: '실제 낫의 가로·사선·되베기·수확 마무리',
-                recover: '마지막 낫베기 후 회복 · 한 본체의 유한한 타격',
+                prepare: '낫을 들어 적을 벨 준비를 해요',
+                contact: '낫을 휘둘러 적을 베어요',
+                recover: '낫을 거두고 다음 공격을 준비해요',
             },
         });
     }),
@@ -540,9 +540,9 @@ const WHEAT_PREVIEW_SCENES = Object.freeze(
                       : 'prepare';
             },
             steps: {
-                prepare: '고정 훈련 표적 · 실제 지휘봉의 박자를 준비',
-                contact: '실제 지휘봉의 올려치기·스윕·찌르기 · 지휘 성공 시 아군 박자',
-                recover: '마지막 지휘봉 타격 후 회복 · 추가 지휘 발동 없음',
+                prepare: '지휘봉을 들어 공격할 준비를 해요',
+                contact: '지휘봉을 휘둘러 적을 공격해요',
+                recover: '지휘봉을 거두고 다음 공격을 준비해요',
             },
         });
     }),
@@ -590,9 +590,9 @@ const BARLEY_PREVIEW_SCENES = Object.freeze(
                       : 'prepare';
             },
             steps: {
-                prepare: '고정 훈련 표적 · 실제 도리깨의 연속 타격을 준비',
-                contact: '실제 도리깨의 스윕·당겨치기·찍기 · 타격 피해 뒤 방어 감소',
-                recover: '마지막 도리깨 타격 후 회복 · 방어 감소는 각 적용 시점부터 독립 만료',
+                prepare: '도리깨를 들어 공격할 준비를 해요',
+                contact: '도리깨를 휘둘러 적을 때려요',
+                recover: '도리깨를 거두고 다음 공격을 준비해요',
             },
         });
     }),

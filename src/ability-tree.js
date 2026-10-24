@@ -23,13 +23,13 @@ const DEFAULT_ABILITY_PRESENTATION = {
     },
 };
 const INVESTMENT_REASON_LABELS = new Map([
-    ['already-invested', '이미 투자한 노드예요.'],
+    ['already-invested', '이미 투자한 항목이에요.'],
     ['prerequisite-required', '이전 단계에 먼저 투자해야 해요.'],
     ['insufficient-points', '이 종의 숙련 포인트가 필요해요. 이 종 보스를 잡으면 쌓여요.'],
     ['combat-lock', '전투 중에는 투자할 수 없어요.'],
     ['farm-only', '농장에서만 투자할 수 있어요.'],
     ['max-level', '최대 강화 단계예요.'],
-    ['invalid-state', '성장 데이터가 유효하지 않아요.'],
+    ['invalid-state', '성장 정보를 불러올 수 없어요.'],
 ]);
 const NODE_REASON_LABELS = new Map([...Array.from(INVESTMENT_REASON_LABELS, ([reason, text]) => [reason, () => text])]);
 const RESET_REASON_LABELS = new Map([
@@ -72,7 +72,7 @@ export function renderAbilityTreeMarkup(
                 ? renderGrowthCardMarkup(state, definition, CONTEXT)
                 : renderAbilityCard(state, definition, CONTEXT),
         ).join('') ||
-        `<p class="ability-tree__note" role="status">이 병종은 기본 공격으로 전투에 참여해요. 전용 특수 능력 트리는 아직 추가되지 않았어요.</p>`;
+        `<p class="ability-tree__note" role="status">이 병종은 기본 공격으로 싸워요. 아직 강화할 특성은 없어요.</p>`;
     const FOCUS = Number.isInteger(selectedSpecies)
             ? SPECIES_ABILITY_DEFINITIONS.find((definition) => definition.species === selectedSpecies)
             : null,
@@ -88,7 +88,7 @@ export function renderAbilityTreeMarkup(
                 : renderMasteryMarkup(state.abilities[FOCUS.id], speciesById(FOCUS.species).name)
             : '',
         DEFAULTS_NOTE =
-            '모든 일반 병종의 대표 능력은 Common(T1)부터 무료로 적용돼요. 이 종의 보스를 잡을수록 숙련이 올라 능력을 강화할 포인트가 생겨요.';
+            '각 병종의 기본 특성은 T1부터 적용돼요. 같은 병종의 보스를 쓰러뜨리면 숙련이 올라 특성을 강화할 포인트를 얻어요.';
     return `<section class="ability-tree" aria-labelledby="ability-tree-title">
     <header class="ability-tree__header">
       <div><p class="ability-tree__eyebrow">농장 성장</p><h2 id="ability-tree-title">병종 특성</h2></div>
@@ -97,7 +97,7 @@ export function renderAbilityTreeMarkup(
     <p class="ability-tree__note">${DEFAULTS_NOTE}</p>
     ${LEVEL_MARKUP}
     <div class="ability-tree__actions">
-      <p class="ability-tree__lock-note" role="status">${inCombat || runActive ? '진행 중인 런에서는 투자와 초기화가 잠겨요.' : location !== 'farm' ? '농장에서 투자하거나 초기화할 수 있어요.' : '농장에서 무료로 초기화할 수 있어요.'}</p>
+      <p class="ability-tree__lock-note" role="status">${inCombat || runActive ? '탑 도전 중에는 투자하거나 초기화할 수 없어요.' : location !== 'farm' ? '농장에서 투자하거나 초기화할 수 있어요.' : '농장에서 무료로 초기화할 수 있어요.'}</p>
       <button type="button" class="ability-tree__reset" data-ability-action="reset" aria-describedby="ability-tree-reset-help" aria-disabled="${!RESET_CHECK.allowed}">무료 초기화</button>
       <span class="ability-tree__action-help" id="ability-tree-reset-help">${resetReasonLabel(RESET_CHECK.reason, INVESTED)}</span>
     </div>
@@ -205,10 +205,10 @@ function renderAbilityCard(state, definition, context) {
     const SPECIES_NAME = speciesById(definition.species).name,
         CURRENT_LABEL = '현재 효과';
     return `<article class="ability-card" data-species="${definition.species}" data-ability="${definition.id}">
-    <header class="ability-card__header"><div><p class="ability-card__species">${SPECIES_NAME}</p><h3>${definition.name}</h3></div><span class="ability-card__grade">Common(T1)</span></header>
+    <header class="ability-card__header"><div><p class="ability-card__species">${SPECIES_NAME}</p><h3>${definition.name}</h3></div><span class="ability-card__grade">일반(T1)</span></header>
     <p class="ability-card__description">${definition.description}</p>
     <p class="ability-card__current-effect">${CURRENT_LABEL}: ${CURRENT_EFFECT}</p>
-    <div class="ability-card__root"><p class="ability-card__base-effect">Common: ${BASE_EFFECT}</p></div>
+    <div class="ability-card__root"><p class="ability-card__base-effect">기본 효과: ${BASE_EFFECT}</p></div>
     <div class="ability-card__branches">
       <section class="ability-branch" aria-label="능력 강화 경로"><h4>능력 강화</h4><div class="ability-branch__nodes">${POWER_NODES}</div></section>
       ${BRANCH_SECTIONS}
@@ -263,7 +263,7 @@ function branchTitle(definition, branchId, value, level) {
 function nodeReasonLabel(reason, definition, context) {
     return (
         NODE_REASON_LABELS.get(reason)?.(definition) ??
-        (context.location === 'farm' ? '사용할 수 없는 노드예요.' : '농장에서 사용할 수 있어요.')
+        (context.location === 'farm' ? '사용할 수 없는 항목이에요.' : '농장에서 사용할 수 있어요.')
     );
 }
 function resetReasonLabel(reason, invested) {

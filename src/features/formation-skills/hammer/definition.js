@@ -3,7 +3,7 @@ export const DEFINITION = Object.freeze({
     name: '거대 망치',
     condition: 'allyDeaths',
     required: 3,
-    description: '거대 적 우선, 단일 피해 50과 1초 기절.',
+    description: '적 하나에게 피해 50을 주고 1초 동안 기절시켜요. 거대한 적을 먼저 노려요.',
     upgradeAxis: '피해 ×1.5',
     upgradeBase: 50,
     upgradeFactor: 1.5,
