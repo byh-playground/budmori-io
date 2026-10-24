@@ -104,7 +104,8 @@ try {
     // One real FarmSession encounter: normal RAF, simulation, presentation and native
     // vector draws. Only the starting roster/encounter is arranged; never step or
     // render a synthetic world, and never replace attack/clip implementations.
-    await PAGE.evaluate(() => {
+    await PAGE.evaluate(async () => {
+        const { unitMaxHpFor: MAX_HP_FOR } = await import('./src/unit-stats.js');
         const WORLD = BUDMORI.sim,
             SESSION = BUDMORI.runtime,
             RENDERER = BUDMORI.renderer,
@@ -117,6 +118,8 @@ try {
                 workOverlap: {},
                 enemyWheat: null,
                 hits: 0,
+                bossSlams: 0,
+                regenerated: [],
                 splitCount: 0,
                 splitChildren: [],
                 deathRendered: false,
@@ -133,9 +136,10 @@ try {
         for (const BUILD of Object.values(WORLD.playerProgression.abilities)) {
             if (BUILD.treeVersion === 1) {
                 BUILD.masteryLevel = 50;
-                BUILD.nodeRanks = Object.fromEntries(
-                    Array.from({ length: 5 }, (_, index) => [`evolution-${index + 2}`, 1]),
-                );
+                BUILD.nodeRanks = {
+                    ...Object.fromEntries(Array.from({ length: 5 }, (_, index) => [`evolution-${index + 2}`, 1])),
+                    'basic-2': 10,
+                };
             }
         }
         const ALLIES = Array.from({ length: 9 }, (_, species) => WORLD.spawn(species, 6, 0, 0));
@@ -153,7 +157,9 @@ try {
         WORLD._benched.clear();
         WORLD._benchRevision++;
         WORLD.farmBossEvent.phase = 'fighting';
-        Object.assign(WORLD.boss, { z: 0, hp: 1e9, maxHp: 1e9, stun: 60 });
+        WORLD.tower.cards.push({ id: 'regen-flat', rarity: 0 }, { id: 'regen-pct', rarity: 0 });
+        WORLD._applyRunStats();
+        Object.assign(WORLD.boss, { species: 0, z: 0, hp: 1e9, maxHp: 1e9, stun: 0 });
         ALLIES.forEach((unit, index) => {
             const ANGLE = (index * Math.PI * 2) / (ALLIES.length - 1),
                 DISTANCE = WORLD.boss.radius + 1.2 + (index % 2) * 0.8;
@@ -161,7 +167,7 @@ try {
                 x: Math.cos(ANGLE) * DISTANCE,
                 y: Math.sin(ANGLE) * DISTANCE,
                 z: 0,
-                hp: 1e6,
+                hp: [2, 4, 8].includes(unit.species) ? MAX_HP_FOR(unit) - 1 : 1e6,
                 vx: 0,
                 vy: 0,
                 vz: 0,
@@ -202,7 +208,7 @@ try {
                 throw new Error('Boss-mouth summons must retain null player progression');
             }
         }
-        WORLD.boss.species = 7;
+        WORLD.boss.species = 0;
         WORLD.boss.patternRuntime.active = null;
         // Existing farm labor can overlap combat. Seed its independent fire
         // clock, then let normal work/attack ticks reach wheat windup/recovery.
@@ -229,7 +235,16 @@ try {
             }
         }
         WORLD._unitSpatialDirty = true;
+        WORLD.unitCollection.onHealthChanged.on(({ unitId, previousHp, hp }) => {
+            const UNIT = ALLIES.find((unit) => unit.id === unitId);
+            if (UNIT && UNIT !== PEANUT && hp > previousHp) {
+                ADD(OBS.regenerated, UNIT.species);
+            }
+        });
         WORLD.onNotice.on((notice) => {
+            if (notice.kind === 'unit-hit' && notice.attackKind === 'attack.front-slam') {
+                OBS.bossSlams++;
+            }
             if (notice.kind === 'attack-launch') {
                 const UNIT = WORLD.units.find((unit) => unit.id === notice.unit);
                 if (UNIT) {
@@ -293,6 +308,8 @@ try {
             OBS.wheatForms.length === 2 &&
             OBS.workOverlap.windup &&
             OBS.hits > 0 &&
+            OBS.bossSlams > 0 &&
+            [2, 4, 8].every((species) => OBS.regenerated.includes(species)) &&
             OBS.splitCount > 0 &&
             OBS.splitChildren.length === OBS.splitCount &&
             OBS.deathRendered
@@ -304,6 +321,11 @@ try {
         units: BUDMORI.sim.units.length,
     }));
     const COMBAT = REPORT.mixedCombat;
+    assert.ok(COMBAT.bossSlams > 0, 'the oversized pea boss selects and lands its basic attack');
+    assert.ok(
+        [2, 4, 8].every((species) => COMBAT.regenerated.includes(species)),
+        'grown allies really regenerate',
+    );
     assert.deepEqual([...COMBAT.launches.player].sort(), [0, 1, 2, 3, 4, 5, 6, 7, 8], 'every species really attacks');
     assert.deepEqual([...COMBAT.rendered.player].sort(), [0, 1, 2, 3, 4, 5, 6, 7, 8], 'all allies use native draws');
     assert.deepEqual(

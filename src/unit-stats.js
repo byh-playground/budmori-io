@@ -115,16 +115,9 @@ export function resolveUnitStats(unit, overrides) {
         ...(unit?.isFormationClone ? { maxHp: 1 } : {}),
         ...overrides,
     };
-    // Chestnut, walnut, rice and wheat percentage regen follows effective HP, not the cached pre-growth HP.
-    // Keep flat regen and explicit caller overrides intact; other species retain legacy behavior.
-    if (
-        (unit?.species === 3 ||
-            unit?.species === 5 ||
-            unit?.species === 6 ||
-            unit?.species === 7 ||
-            unit?.species === 8) &&
-        !Object.hasOwn(overrides || {}, 'regen')
-    ) {
+    // Percentage regeneration follows effective max HP for every body, including growth and summons.
+    // Flat regeneration and explicit caller overrides remain unchanged.
+    if (!Object.hasOwn(overrides || {}, 'regen')) {
         RESULT.regen += (RESULT.maxHp - BASE.maxHp) * (RUN_MODS.regen?.pct || 0);
     }
     return RESULT;

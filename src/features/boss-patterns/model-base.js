@@ -13,11 +13,15 @@ export class BossPattern {
     selectedTarget(_world, targets, _fallback) {
         return targets.nearest;
     }
+    reachFor(_boss) {
+        return this.config.reach;
+    }
     eligible(world, targets, _aliveAdds) {
         const TARGET = this.selectedTarget(world, targets);
         return (
             !!TARGET &&
-            Math.hypot(TARGET.x - world.boss.x, TARGET.y - world.boss.y) <= this.config.reach + TARGET.radius + 1e-9
+            Math.hypot(TARGET.x - world.boss.x, TARGET.y - world.boss.y) <=
+                this.reachFor(world.boss) + TARGET.radius + 1e-9
         );
     }
     // How many units this attack would hit right now; null for an attack that does no damage.

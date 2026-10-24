@@ -84,6 +84,7 @@ import {
     chooseBossPattern,
     bossAttackTotal,
     BOSS_BASIC_ID,
+    BOSS_CONTACT_MARGIN,
     BOSS_ENRAGE,
     BOSS_PHASE_THRESHOLDS,
 } from './boss-patterns.js';
@@ -3650,23 +3651,9 @@ const GARDEN = class Garden {
                 continue;
             }
             U.age += dt;
-            const UNIT_STATS =
-                U.species === 3 || U.species === 5 || U.species === 6 || U.species === 7 || U.species === 8
-                    ? resolveUnitStats(U)
-                    : STATS(U.tier, U.species);
-            if (U.hp > 0 && UNIT_STATS.regen > 0) {
-                applyHealing(
-                    U,
-                    UNIT_STATS.regen * dt,
-                    U.species === 3 ||
-                        U.species === 4 ||
-                        U.species === 5 ||
-                        U.species === 6 ||
-                        U.species === 7 ||
-                        U.species === 8
-                        ? undefined
-                        : UNIT_STATS,
-                );
+            if (STATS(U.tier, U.species).regen > 0) {
+                const UNIT_STATS = resolveUnitStats(U);
+                applyHealing(U, UNIT_STATS.regen * dt, UNIT_STATS);
             }
             if (!U.mature) {
                 progressTimersAdvanced = true;
@@ -5811,7 +5798,7 @@ const GARDEN = class Garden {
                         DY = TARGET.y - B_LOCAL.y,
                         D_LOCAL = Math.hypot(DX, DY) || 1;
                     B_LOCAL.angle = B_LOCAL.facing = Math.atan2(DY, DX);
-                    const CONTACT = B_LOCAL.radius + TARGET.radius + 0.2;
+                    const CONTACT = B_LOCAL.radius + TARGET.radius + BOSS_CONTACT_MARGIN;
                     if (D_LOCAL > CONTACT) {
                         const SPEED = Math.min(B_LOCAL.moveSpeed, (D_LOCAL - CONTACT) / dt);
                         B_LOCAL.chaseVx = (DX / D_LOCAL) * SPEED;
