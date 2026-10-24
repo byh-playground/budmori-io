@@ -980,6 +980,9 @@ const DIORAMA = class Diorama {
         feel?.draw(this, this.displayTimeMs);
         for (const GROUP of sim2.cornAttachments?.groups || []) {
             const BODY = this.attachmentBody(sim2, GROUP, feel);
+            if (!BODY) {
+                continue;
+            }
             for (const ATTACHMENT of GROUP.attachments) {
                 if (ATTACHMENT.status === 'attached' || ATTACHMENT.status === 'fading') {
                     CORN_ATTACHMENT_PRESENTATION.drawAttachment(this, ATTACHMENT, GROUP, {
@@ -1013,22 +1016,10 @@ const DIORAMA = class Diorama {
         });
     }
     // Use the very same posed SVG matrix as the body just drawn, including recoil, rotation and giant scale.
-    attachmentBody(sim2, group, feel) {
+    attachmentBody(_sim2, group) {
         const CAPTURED = this.cornAttachmentBodies.get(group.targetId);
-        if (CAPTURED?.generation === group.targetGeneration) {
-            return CAPTURED;
-        }
-        if (group.targetId !== 'boss') {
-            return undefined;
-        }
-        const RECOIL = feel?.boss(this.displayTimeMs);
-        return {
-            radius: sim2.boss.radius,
-            height: sim2.boss.height,
-            scale: 3.4,
-            shiftX: RECOIL?.x || 0,
-            shiftY: RECOIL?.y || 0,
-        };
+        // Missing or old-generation render targets must never receive a default-position kernel.
+        return CAPTURED?.generation === group.targetGeneration ? CAPTURED : null;
     }
     dispose() {
         disposeEffectPresentations(this);
