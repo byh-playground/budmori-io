@@ -1,8 +1,7 @@
 import { FormationPresentation } from '../presentation-base.js';
 
 // Every size below is a share of the blast radius, so the big meteor and the shower's small ones are one drawing.
-const FALL_SECONDS = 0.75,
-    BLAST_SECONDS = 0.5,
+const BLAST_SECONDS = 0.5,
     METEOR = Object.freeze({
         // Fall: starts this many radii up and this many radii to the side, then accelerates onto the target.
         fallHeight: 5.5,
@@ -32,7 +31,8 @@ function fallPosition(effect, progress) {
 
 export class MeteorPresentation extends FormationPresentation {
     draw(renderer, effect) {
-        const AGE = effect.age - effect.delay;
+        const AGE = effect.age - effect.delay,
+            FALL_SECONDS = effect.fallSeconds ?? 0.75;
         if (AGE < 0) {
             return;
         }

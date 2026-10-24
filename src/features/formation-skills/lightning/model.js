@@ -9,16 +9,32 @@ export class LightningSkill extends FormationSkill {
         if (!TARGET) {
             return false;
         }
-        const BODY = targetBodyDimensions(TARGET);
+        const PROFILE = this.profile(owner),
+            BODY = targetBodyDimensions(TARGET),
+            DAMAGE = this.power(slot.level, PROFILE.upgradeBase);
         owner.addEffect(DEFINITION.id, {
             x: TARGET.x,
             y: TARGET.y,
-            z: BODY.z,
+            z: PROFILE.aoeRadius > 0 ? 0 : BODY.z,
             bodyHeight: BODY.bodyHeight,
             bodyRadius: BODY.bodyRadius,
-            duration: 0.65,
+            duration: PROFILE.telegraphSeconds + 0.65,
+            telegraphSeconds: PROFILE.telegraphSeconds,
+            radius: PROFILE.aoeRadius,
+            damage: DAMAGE,
+            impacted: PROFILE.aoeRadius === 0,
         });
-        owner.damage(TARGET, this.power(slot.level, this.definition.upgradeBase));
+        if (PROFILE.aoeRadius === 0) {
+            owner.damage(TARGET, DAMAGE);
+        }
         return true;
+    }
+    update(owner, effect, dt) {
+        effect.age += dt;
+        if (!effect.impacted && effect.age + 1e-9 >= effect.telegraphSeconds) {
+            effect.impacted = true;
+            owner.areaDamage(effect.x, effect.y, effect.radius, effect.damage, false);
+        }
+        return effect.age < effect.duration;
     }
 }

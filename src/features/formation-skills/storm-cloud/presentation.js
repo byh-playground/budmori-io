@@ -24,7 +24,11 @@ function visualOffset(effect, index, salt) {
 
 function cloudGeometry(effect) {
     const RADIUS = Math.max(0.2, (effect.bodyRadius || 0.3) * 0.55);
-    return { radius: RADIUS, size: RADIUS * 2.6, z: Math.max(effect.z, effect.targetZ + 2) + RADIUS * 1.9 };
+    return {
+        radius: RADIUS,
+        size: effect.role === 'boss' && effect.cloudSize > 0 ? effect.cloudSize : RADIUS * 2.6,
+        z: Math.max(effect.z, effect.targetZ + 2) + RADIUS * 1.9,
+    };
 }
 
 export class StormCloudPresentation extends FormationPresentation {
@@ -43,7 +47,6 @@ export class StormCloudPresentation extends FormationPresentation {
     }
     draw(renderer, effect) {
         const { radius: BODY_RADIUS, size: CLOUD_SIZE, z: CLOUD_Z } = cloudGeometry(effect),
-            BODY_SCALE = bodyScale(effect.bodyRadius),
             ENTER = Math.min(1, effect.age / 0.5),
             EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5,
             // The cloud's screen-facing lobes grow with the target. Keep their underside clear of the head;
@@ -78,42 +81,58 @@ export class StormCloudPresentation extends FormationPresentation {
             INTRO_POINTS[3][2] = Z;
             stroke(renderer, INTRO_POINTS, '#b7e8f0aa', 0.035);
         }
+        for (const TARGET of effect.targets ?? []) {
+            if (effect.age < TARGET.readyAt) {
+                renderer.ring(TARGET.x, TARGET.y, TARGET.bodyRadius * 1.3, '#b7e8f0aa', 0.035);
+            }
+        }
         if (effect.pulse > 0 && effect.age > 0.5 && EXIT === 0) {
             const BUFFERS = pointBuffersFor(effect),
                 ARCS = BUFFERS.arcs,
                 BRANCHES = BUFFERS.branches;
-            for (let arcIndex = 0; arcIndex < ARCS.length; arcIndex++) {
-                const POINTS = ARCS[arcIndex];
-                for (let index = 0; index < POINTS.length; index++) {
-                    const T = index / (POINTS.length - 1),
-                        CURVE = Math.sin(T * Math.PI),
-                        SEED = arcIndex * 17,
-                        BEND = visualOffset(effect, index, SEED) * CURVE,
-                        SIDE = (arcIndex - 1) * BODY_RADIUS * 0.34 * CURVE,
-                        POINT = POINTS[index];
-                    POINT[0] = effect.x + (effect.targetX - effect.x) * T + BEND * 0.55 + SIDE;
-                    POINT[1] = effect.y + (effect.targetY - effect.y) * T + BEND * 0.22 - SIDE * 0.42;
-                    POINT[2] = ARC_Z + (effect.targetZ - ARC_Z) * T + CURVE * (0.18 + BEND * 0.16);
+            const TARGETS =
+                effect.role === 'boss'
+                    ? effect.targets || []
+                    : [{ x: effect.targetX, y: effect.targetY, z: effect.targetZ, bodyRadius: effect.bodyRadius }];
+            for (const TARGET of TARGETS) {
+                if (effect.age < (TARGET.readyAt ?? 0)) {
+                    continue;
                 }
-                const BRANCH = BRANCHES[arcIndex],
-                    ROOT_T = 0.3 + arcIndex * 0.18 + visualOffset(effect, arcIndex, 1) * 0.08,
-                    ROOT = POINTS[Math.round(ROOT_T * (POINTS.length - 1))],
-                    DX = visualOffset(effect, arcIndex, 2) * BODY_RADIUS * 2.4,
-                    DY = visualOffset(effect, arcIndex, 3) * BODY_RADIUS * 1.9;
-                BRANCH[0][0] = ROOT[0];
-                BRANCH[0][1] = ROOT[1];
-                BRANCH[0][2] = ROOT[2];
-                BRANCH[1][0] = ROOT[0] + DX * 0.55;
-                BRANCH[1][1] = ROOT[1] + DY * 0.55;
-                BRANCH[1][2] = ROOT[2] + BODY_RADIUS * 0.45;
-                BRANCH[2][0] = ROOT[0] + DX;
-                BRANCH[2][1] = ROOT[1] + DY;
-                BRANCH[2][2] = ROOT[2] + BODY_RADIUS * 0.2;
-                stroke(renderer, POINTS, '#408bff99', 0.3 * BODY_SCALE);
-                stroke(renderer, POINTS, '#8bd4ff', 0.13 * BODY_SCALE);
-                stroke(renderer, POINTS, '#f3fdff', 0.045 * BODY_SCALE);
-                stroke(renderer, BRANCH, '#408bff88', 0.18 * BODY_SCALE);
-                stroke(renderer, BRANCH, '#d9f5ff', 0.045 * BODY_SCALE);
+                const BODY_SCALE = bodyScale(TARGET.bodyRadius),
+                    ARC_RADIUS = Math.max(0.2, (TARGET.bodyRadius || 0.3) * 0.55);
+                for (let arcIndex = 0; arcIndex < ARCS.length; arcIndex++) {
+                    const POINTS = ARCS[arcIndex];
+                    for (let index = 0; index < POINTS.length; index++) {
+                        const T = index / (POINTS.length - 1),
+                            CURVE = Math.sin(T * Math.PI),
+                            SEED = arcIndex * 17,
+                            BEND = visualOffset(effect, index, SEED) * CURVE,
+                            SIDE = (arcIndex - 1) * ARC_RADIUS * 0.34 * CURVE,
+                            POINT = POINTS[index];
+                        POINT[0] = effect.x + (TARGET.x - effect.x) * T + BEND * 0.55 + SIDE;
+                        POINT[1] = effect.y + (TARGET.y - effect.y) * T + BEND * 0.22 - SIDE * 0.42;
+                        POINT[2] = ARC_Z + (TARGET.z - ARC_Z) * T + CURVE * (0.18 + BEND * 0.16);
+                    }
+                    const BRANCH = BRANCHES[arcIndex],
+                        ROOT_T = 0.3 + arcIndex * 0.18 + visualOffset(effect, arcIndex, 1) * 0.08,
+                        ROOT = POINTS[Math.round(ROOT_T * (POINTS.length - 1))],
+                        DX = visualOffset(effect, arcIndex, 2) * ARC_RADIUS * 2.4,
+                        DY = visualOffset(effect, arcIndex, 3) * ARC_RADIUS * 1.9;
+                    BRANCH[0][0] = ROOT[0];
+                    BRANCH[0][1] = ROOT[1];
+                    BRANCH[0][2] = ROOT[2];
+                    BRANCH[1][0] = ROOT[0] + DX * 0.55;
+                    BRANCH[1][1] = ROOT[1] + DY * 0.55;
+                    BRANCH[1][2] = ROOT[2] + ARC_RADIUS * 0.45;
+                    BRANCH[2][0] = ROOT[0] + DX;
+                    BRANCH[2][1] = ROOT[1] + DY;
+                    BRANCH[2][2] = ROOT[2] + ARC_RADIUS * 0.2;
+                    stroke(renderer, POINTS, '#408bff99', 0.3 * BODY_SCALE);
+                    stroke(renderer, POINTS, '#8bd4ff', 0.13 * BODY_SCALE);
+                    stroke(renderer, POINTS, '#f3fdff', 0.045 * BODY_SCALE);
+                    stroke(renderer, BRANCH, '#408bff88', 0.18 * BODY_SCALE);
+                    stroke(renderer, BRANCH, '#d9f5ff', 0.045 * BODY_SCALE);
+                }
             }
         }
     }

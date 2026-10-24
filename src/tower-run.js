@@ -1,3 +1,4 @@
+import { BOSS_SKILL_IDS } from './formation-skill-state.js';
 // The rules of one tower climb that are not about fighting: which kind of floor comes next, and the cards a strengthening
 // floor offers. Pure functions of the run state and a random source, so the model only stores the results.
 
@@ -31,6 +32,8 @@ export function freshTowerRun() {
         cards: [],
         passives: {},
         relics: new Map(),
+        bossRelics: new Map(),
+        bossCardDraw: null,
         since: { battle: 0, power: 1, event: 1 },
         // This fight's: allies fallen so far and the units whose undying card is already spent.
         fallen: 0,
@@ -256,4 +259,27 @@ export function rollEventOffers({ world, random }) {
         OFFERS.push({ type: 'event', id: POOL.splice(Math.floor(random() * POOL.length), 1)[0].id });
     }
     return OFFERS;
+}
+
+// Exactly one receipt per successful strengthening-card selection, including an exhausted pool.
+export function drawBossCard(tower, random, time, slots = 3, maxLevel = 5) {
+    const POOL = BOSS_SKILL_IDS.filter(
+            (id) =>
+                (tower.bossRelics.get(id) || 0) < maxLevel &&
+                (tower.bossRelics.has(id) || tower.bossRelics.size < slots),
+        ),
+        ID = POOL.length ? POOL[Math.floor(random() * POOL.length)] : '',
+        PREVIOUS = tower.bossRelics.get(ID) || 0;
+    if (ID) {
+        tower.bossRelics.set(ID, PREVIOUS + 1);
+    }
+    tower.bossCardDraw = {
+        serial: (tower.bossCardDraw?.serial || 0) + 1,
+        floor: tower.floor,
+        id: ID,
+        level: ID ? PREVIOUS + 1 : 0,
+        status: ID ? (PREVIOUS ? 'upgraded' : 'acquired') : 'maxed',
+        until: time + 1.2,
+    };
+    return tower.bossCardDraw;
 }

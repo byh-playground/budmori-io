@@ -156,3 +156,89 @@
 .start-floor[hidden] {
     display: none;
 }
+
+/* Paired card feedback never opens a modal or captures pointer input. */
+.boss-card-draw,
+.boss-loadout {
+    width: min(520px, 100%);
+    box-sizing: border-box;
+    border: var(--ui-bw) solid var(--ui-line);
+    border-radius: var(--ui-r-m);
+    background: var(--ui-panel);
+    padding: var(--ui-s2) var(--ui-s3);
+    pointer-events: none;
+}
+.boss-card-draw {
+    display: flex;
+    align-items: center;
+    gap: var(--ui-s2);
+    border-color: var(--ui-gauge-ally);
+}
+.boss-card-draw small {
+    display: block;
+    color: var(--ui-ink-2);
+}
+.boss-card-draw__icon {
+    display: grid;
+    place-items: center;
+    flex: 0 0 36px;
+    min-height: 42px;
+    border-radius: var(--ui-r-m);
+    background: var(--ui-card);
+    font-size: 26px;
+}
+.boss-card-draw[data-phase='player'] .boss-card-draw__icon {
+    animation: card-receive 0.3s ease both;
+}
+.boss-card-draw[data-phase='boss'] {
+    border-color: var(--ui-gauge-enemy);
+}
+.boss-card-draw[data-phase='boss'] .boss-card-draw__icon {
+    animation: boss-card-turn 0.4s ease both;
+}
+.boss-loadout {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px var(--ui-s2);
+    font-size: var(--ui-fs-2);
+}
+.boss-loadout > small {
+    flex-basis: 100%;
+    color: var(--ui-ink-2);
+}
+.boss-loadout__skills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px var(--ui-s2);
+}
+.boss-loadout__skill {
+    padding: 2px 6px;
+    border-radius: var(--ui-r-m);
+    background: var(--ui-card);
+}
+.boss-card-draw[hidden],
+.boss-loadout[hidden] {
+    display: none;
+}
+.door:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+@keyframes card-receive {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.8);
+    }
+}
+@keyframes boss-card-turn {
+    from {
+        opacity: 0;
+        transform: perspective(180px) rotateY(80deg);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .boss-card-draw .boss-card-draw__icon {
+        animation: none;
+    }
+}

@@ -26,6 +26,9 @@ const MODELS = new Map(
 export class FormationSkills {
     constructor(world) {
         this.world = world;
+        this.role = 'player';
+        this.bossContext = Object.create(this);
+        this.bossContext.role = 'boss';
         this.members = new Set(world.units);
         this.injured = new Set();
         this.rebuildInjured();
@@ -86,6 +89,15 @@ export class FormationSkills {
         }
         return out;
     }
+    contextFor(role) {
+        return role === 'boss' ? this.bossContext : this;
+    }
+    get friendlyFaction() {
+        return this.role === 'boss' ? 'enemy' : 'player';
+    }
+    get hostileFaction() {
+        return this.role === 'boss' ? 'player' : 'enemy';
+    }
     get runtime() {
         return this.world.formationRuntime;
     }
@@ -109,6 +121,9 @@ export class FormationSkills {
             for (const [ID, LEVEL] of this.world.tower.active ? this.world.tower.relics : []) {
                 this.slots.push({ id: ID, ownerId: '', level: LEVEL, charge: 0, cooldown: 0 });
             }
+            for (const [ID, LEVEL] of this.world.tower.active ? this.world.tower.bossRelics : []) {
+                this.slots.push({ id: ID, ownerId: 'boss', role: 'boss', level: LEVEL, charge: 0, cooldown: 0 });
+            }
         } else if (!this.active && this.runtime.active) {
             this.end();
         }
@@ -130,7 +145,12 @@ export class FormationSkills {
             return;
         }
         for (const SLOT of this.slots) {
-            const DEFINITION = MODELS.get(SLOT.id).definition;
+            const ROLE = SLOT.role || 'player';
+            if (ROLE !== (event.role || 'player')) {
+                continue;
+            }
+            const MODEL = MODELS.get(SLOT.id),
+                DEFINITION = ROLE === 'boss' ? MODEL.profile(this.bossContext) : MODEL.definition;
             SLOT.charge = Math.min(DEFINITION.required, SLOT.charge + Math.max(0, event[DEFINITION.condition] || 0));
         }
     }
@@ -150,12 +170,19 @@ export class FormationSkills {
         const COUNT = this.effects.length;
         for (let i = 0; i < COUNT; i++) {
             const EFFECT = this.effects[i];
-            if (MODELS.get(EFFECT.kind).update(this, EFFECT, dt)) {
+            if (EFFECT.encounterId !== undefined && EFFECT.encounterId !== this.world.boss.encounterId) {
+                continue;
+            }
+            if (MODELS.get(EFFECT.kind).update(this.contextFor(EFFECT.role), EFFECT, dt)) {
                 this.effects[write++] = EFFECT;
             }
         }
         this.effects.length = write;
+        this.updateBossCast(dt);
         for (const SLOT of this.slots) {
+            if (SLOT.role === 'boss') {
+                continue;
+            }
             SLOT.cooldown = Math.max(0, SLOT.cooldown - dt);
             const MODEL = MODELS.get(SLOT.id);
             if (SLOT.cooldown < 1e-9 && SLOT.charge >= MODEL.definition.required && MODEL.cast(this, SLOT)) {
@@ -165,22 +192,88 @@ export class FormationSkills {
             }
         }
     }
+    updateBossCast(dt) {
+        const BOSS = this.world.boss;
+        let cast = this.runtime.bossCast;
+        if (!this.world.tower.active || !BOSS.active || BOSS.hp <= 0 || BOSS.stun > 0) {
+            // Before release the charge remains reserved, not consumed. Existing effects have their own lifetime.
+            this.runtime.bossCast = null;
+            return;
+        }
+        if (cast) {
+            cast.elapsed += dt;
+            if (cast.elapsed + 1e-9 < cast.duration) {
+                return;
+            }
+            if (cast.phase === 'prepare') {
+                const SLOT = this.slots.find((slot) => slot.role === 'boss' && slot.id === cast.id),
+                    MODEL = SLOT && MODELS.get(SLOT.id);
+                if (MODEL && MODEL.cast(this.bossContext, SLOT)) {
+                    SLOT.charge = 0;
+                    this.world.combat('formation-cast', {
+                        skillId: SLOT.id,
+                        role: 'boss',
+                        x: BOSS.x,
+                        y: BOSS.y,
+                        z: BOSS.z,
+                    });
+                }
+                cast.phase = 'recover';
+                cast.elapsed = 0;
+                cast.duration = 0.45;
+            } else {
+                this.runtime.bossCast = null;
+            }
+            return;
+        }
+        if (BOSS.patternRuntime.active || !this.bossContext.enemy()) {
+            return;
+        }
+        const SLOT = this.slots.find(
+            (slot) => slot.role === 'boss' && slot.charge >= MODELS.get(slot.id).profile(this.bossContext).required,
+        );
+        if (SLOT) {
+            cast = { id: SLOT.id, phase: 'prepare', elapsed: 0, duration: 0.8, serial: ++this.runtime.serial };
+            this.runtime.bossCast = cast;
+            BOSS.chaseVx = BOSS.chaseVy = 0;
+        }
+    }
     addEffect(kind, data) {
-        const EFFECT = { id: ++this.runtime.serial, kind, age: 0, x: 0, y: 0, z: 0, ...data };
+        const EFFECT = {
+            id: ++this.runtime.serial,
+            kind,
+            role: this.role,
+            encounterId: this.world.boss.encounterId,
+            age: 0,
+            x: 0,
+            y: 0,
+            z: 0,
+            ...data,
+        };
         this.effects.push(EFFECT);
         return EFFECT;
     }
     allies() {
-        return [...this.members].filter((unit) => unit.faction === 'player' && unit.hp > 0);
+        return [...this.members].filter((unit) => unit.faction === this.friendlyFaction && unit.hp > 0);
     }
     targetId(target) {
         return target === this.world.boss ? 'boss' : target.id;
     }
-    target(id) {
+    targetGeneration(target) {
+        return target.generation;
+    }
+    target(id, generation) {
         const TARGET = id === 'boss' ? this.world.boss : this.world._unitForId(id);
-        return TARGET?.hp > 0 && TARGET.faction === 'enemy' ? TARGET : null;
+        return TARGET?.hp > 0 &&
+            TARGET.faction === this.hostileFaction &&
+            (generation === undefined || TARGET.generation === generation)
+            ? TARGET
+            : null;
     }
     enemy(origin = null) {
+        if (this.role === 'boss') {
+            return this.enemies(origin, 18, 1)[0] || null;
+        }
         const BOSS = this.world.boss;
         if (BOSS.active && BOSS.hp > 0 && (!origin || Math.hypot(origin.x - BOSS.x, origin.y - BOSS.y) <= 18)) {
             return BOSS;
@@ -196,6 +289,31 @@ export class FormationSkills {
         }
         return null;
     }
+    enemies(origin = null, range = Infinity, limit = Infinity) {
+        const TARGETS = [...this.members].filter(
+            (unit) =>
+                unit.faction === this.hostileFaction &&
+                unit.hp > 0 &&
+                unit.dropLanded &&
+                !this.world._benched.has(unit),
+        );
+        if (this.hostileFaction === 'enemy' && this.world.boss.active && this.world.boss.hp > 0) {
+            TARGETS.unshift(this.world.boss);
+        }
+        const CENTER = origin || this.world.boss;
+        return TARGETS.filter((target) => Math.hypot(target.x - CENTER.x, target.y - CENTER.y) <= range)
+            .sort(
+                (a, b) =>
+                    Math.hypot(a.x - CENTER.x, a.y - CENTER.y) - Math.hypot(b.x - CENTER.x, b.y - CENTER.y) ||
+                    String(this.targetId(a)).localeCompare(String(this.targetId(b))),
+            )
+            .slice(0, limit);
+    }
+    verticalTargets(x, y, width, limit) {
+        return this.enemies(null, Infinity)
+            .filter((target) => target.z <= 0.5 && Math.hypot(target.x - x, target.y - y) <= target.radius + width / 2)
+            .slice(0, limit);
+    }
     nearby(x, y, radius) {
         this.world._beginSpatialQueryBatch();
         try {
@@ -205,10 +323,18 @@ export class FormationSkills {
         }
     }
     damage(target, amount) {
-        if (!target || target.hp <= 0) {
+        if (!target || target.hp <= 0 || target.faction !== this.hostileFaction) {
             return;
         }
+        if (this.role === 'boss') {
+            const GUARD = target.ability?.receiveGuard?.(this.world);
+            amount *= (GUARD?.receivedDamageMultiplier ?? 1) * this.world.passiveReceivedScale(target);
+            target.ability?.receiveRawDamage?.(this.world, amount, this.world.boss, null);
+        }
         applyDamage(target, amount, { armor: this.world.combatTargetDefense(target).armor });
+        if (this.role === 'boss') {
+            this.world.passiveUndying(target);
+        }
         target.flash = 0.3;
         // A skill hit reads like any other hit: a burst on the body, a recoil, a shake. Bigger hits are stronger.
         const IS_BOSS = target === this.world.boss,
@@ -255,13 +381,13 @@ export class FormationSkills {
         );
     }
     areaDamage(x, y, radius, amount, knock = false, vertical = false) {
-        const TARGETS = [...this.nearby(x, y, radius + 6)];
-        if (this.world.boss.active) {
+        const TARGETS = this.role === 'boss' ? this.enemies(null, Infinity) : [...this.nearby(x, y, radius + 6)];
+        if (this.world.boss.active && this.hostileFaction === 'enemy') {
             TARGETS.push(this.world.boss);
         }
         for (const TARGET of TARGETS) {
             if (
-                TARGET.faction !== 'enemy' ||
+                TARGET.faction !== this.hostileFaction ||
                 TARGET.hp <= 0 ||
                 Math.hypot(TARGET.x - x, TARGET.y - y) > radius + TARGET.radius ||
                 (vertical && TARGET.z > 0.5)

@@ -386,6 +386,398 @@ try {
     await PAGE.locator('[data-growth-node="specialty-2"]').scrollIntoViewIfNeeded();
     await PAGE.screenshot({ path: path.join(OUTPUT, 'wording-walnut-mobile.png'), fullPage: true });
     assert.deepEqual(ERRORS, [], 'the representative growth menus remain free of runtime errors');
+    // One real door interaction, then a bounded upgrade/exhaustion continuation.
+    await PAGE.locator('#gameMenuClose').click();
+    await PAGE.setViewportSize({ width: 1000, height: 700 });
+    await PAGE.evaluate(() => {
+        const WORLD = BUDMORI.sim;
+        WORLD.formationSkills.end();
+        WORLD.farmBossEvent.phase = 'idle';
+        WORLD.boss.active = false;
+        WORLD.tower.bossRelics = new Map();
+        WORLD.tower.bossCardDraw = null;
+        BUDMORI.runtime.paused = false;
+        WORLD.tower.nextKind = 'power';
+        WORLD.tower.doors = [{ type: 'stat', id: 'regen-flat', rarity: 0 }];
+    });
+    await PAGE.locator('#doorCards [data-door="0"]').click();
+    await PAGE.locator('#bossCardDraw[data-phase="player"]').waitFor({ state: 'visible' });
+    REPORT.bossCards = await PAGE.evaluate(() => {
+        const WORLD = BUDMORI.sim,
+            SERIAL = WORLD.tower.bossCardDraw.serial,
+            REJECTED = WORLD.chooseDoor(0) === false;
+        return { rejectedDuplicate: REJECTED, serial: SERIAL, afterSerial: WORLD.tower.bossCardDraw.serial };
+    });
+    assert.equal(REPORT.bossCards.rejectedDuplicate, true);
+    assert.equal(REPORT.bossCards.afterSerial, REPORT.bossCards.serial);
+    await PAGE.screenshot({ path: path.join(OUTPUT, 'boss-card-player.png'), fullPage: true });
+    await PAGE.locator('#bossCardDraw[data-phase="boss"]').waitFor({ state: 'visible' });
+    await PAGE.screenshot({ path: path.join(OUTPUT, 'boss-card-boss.png'), fullPage: true });
+    await PAGE.locator('#bossCardDraw').waitFor({ state: 'hidden' });
+    await PAGE.evaluate(() => {
+        const WORLD = BUDMORI.sim;
+        WORLD.tower.bossCardDraw = null;
+        WORLD.tower.bossRelics = new Map([
+            ['lightning', 5],
+            ['ufo', 5],
+            ['storm-cloud', 4],
+        ]);
+        WORLD.tower.doors = [{ type: 'stat', id: 'regen-flat', rarity: 0 }];
+    });
+    await PAGE.locator('#doorCards [data-door="0"]:enabled').click();
+    await PAGE.locator('#bossCardDraw[data-phase="boss"]').waitFor({ state: 'visible' });
+    const UPGRADE = await PAGE.evaluate(() => ({
+        draw: BUDMORI.sim.tower.bossCardDraw,
+        deck: [...BUDMORI.sim.tower.bossRelics],
+    }));
+    assert.equal(UPGRADE.deck.length, 3, 'a full boss deck never receives a fourth kind');
+    assert.equal(UPGRADE.draw.id, 'storm-cloud');
+    assert.equal(UPGRADE.draw.level, 5);
+    assert.equal(UPGRADE.draw.status, 'upgraded');
+    await PAGE.setViewportSize({ width: 844, height: 390 });
+    await PAGE.screenshot({ path: path.join(OUTPUT, 'boss-card-landscape.png'), fullPage: true });
+    await PAGE.setViewportSize({ width: 1000, height: 700 });
+    await PAGE.locator('#bossCardDraw').waitFor({ state: 'hidden' });
+    await PAGE.evaluate(() => {
+        BUDMORI.sim.tower.doors = [{ type: 'stat', id: 'regen-flat', rarity: 0 }];
+    });
+    await PAGE.locator('#doorCards [data-door="0"]:enabled').click();
+    await PAGE.locator('#bossCardDraw[data-phase="maxed"]').waitFor({ state: 'visible' });
+    await PAGE.screenshot({ path: path.join(OUTPUT, 'boss-card-maxed.png'), fullPage: true });
+    await PAGE.waitForFunction(() => BUDMORI.sim.time >= BUDMORI.sim.tower.bossCardDraw.until);
+    await PAGE.locator('#doorCards button:enabled').first().waitFor({ state: 'visible' });
+    assert.equal((await PAGE.locator('#doorCards button:enabled').count()) > 0, true, 'maxed cards do not halt play');
+    REPORT.bossCards.upgrade = UPGRADE;
+    REPORT.bossCards.maxed = await PAGE.evaluate(() => BUDMORI.sim.tower.bossCardDraw.status);
+    assert.equal(REPORT.bossCards.maxed, 'maxed');
+    await PAGE.locator('#bossCardDraw').waitFor({ state: 'hidden' });
+
+    // Controlled encounter fixtures, but real RAF simulation, model casts and native rendering.
+    // Models are untouched; draw instrumentation below delegates to the native implementation.
+    // Screenshots need human pixel review.
+    await PAGE.evaluate(() => {
+        const WORLD = BUDMORI.sim;
+        BUDMORI.runtime.paused = true;
+        WORLD.resetUnits();
+        WORLD.setWorkBasisPoints(0);
+        WORLD.tower.doors = [];
+        WORLD.projectiles = [];
+        WORLD.tower.bossCardDraw = null;
+        WORLD.effects = [];
+        WORLD._bossHitBatch = [];
+        WORLD.tower.cards = [];
+        WORLD._applyRunStats();
+        WORLD.farmBossEvent.phase = 'fighting';
+        Object.assign(WORLD.boss, { active: true, hp: 1e9, maxHp: 1e9, x: 0, y: 0, z: 0, stun: 0 });
+        for (let index = 0; index < 3; index++) {
+            const UNIT = WORLD.spawn(0, 1, 4 + index * 0.1, 0);
+            Object.assign(UNIT, {
+                hp: 1e8,
+                z: 0,
+                vx: 0,
+                vy: 0,
+                vz: 0,
+                dropLanded: true,
+                stun: 1000,
+                growth: 3,
+                growthDuration: 1,
+                growthElapsed: 1,
+            });
+        }
+        WORLD._benched.clear();
+        WORLD._benchRevision++;
+        WORLD._unitSpatialDirty = true;
+        globalThis.__sharedSkills = { casts: [], hits: [], cases: [] };
+        WORLD.onNotice.on((notice) => {
+            const OBS = globalThis.__sharedSkills;
+            if (notice.kind === 'formation-cast') {
+                OBS.casts.push({ id: notice.skillId, role: notice.role || 'player' });
+            }
+            if (notice.attackKind === 'skill' && ['unit-hit', 'boss-hit'].includes(notice.kind)) {
+                OBS.hits.push({ unit: notice.unit, kind: notice.kind });
+            }
+        });
+    });
+    await PAGE.evaluate(async () => {
+        const { StormCloudPresentation: CLOUD } =
+                await import('./src/features/formation-skills/storm-cloud/presentation.js'),
+            DRAW = CLOUD.prototype.draw;
+        CLOUD.prototype.draw = function (renderer, effect, ...args) {
+            const OBS = { role: effect.role, age: effect.age, widths: [], arcStrokes: 0 },
+                ELLIPSE = renderer.ellipse,
+                STROKE = renderer.ctx.stroke;
+            renderer.ellipse = function (x, y, width, ...rest) {
+                OBS.widths.push(width);
+                return ELLIPSE.call(this, x, y, width, ...rest);
+            };
+            renderer.ctx.stroke = function (...strokeArgs) {
+                if (this.strokeStyle === '#f3fdff') {
+                    OBS.arcStrokes++;
+                }
+                return STROKE.apply(this, strokeArgs);
+            };
+            try {
+                return DRAW.call(this, renderer, effect, ...args);
+            } finally {
+                renderer.ellipse = ELLIPSE;
+                renderer.ctx.stroke = STROKE;
+                globalThis.__sharedSkills.cloudDraw = OBS;
+            }
+        };
+    });
+    REPORT.sharedSkills = [];
+    for (const ROLE of ['player', 'boss']) {
+        for (const [ID, REQUIRED, CONDITION] of [
+            ['lightning', 50, 'hits'],
+            ['meteor', 500, 'damageDealt'],
+            ['meteor-shower', 100, 'hits'],
+            ['ufo', 10, 'hits'],
+            ['storm-cloud', 75, 'hits'],
+        ]) {
+            const START = await PAGE.evaluate(
+                async ({ role, id, required, condition }) => {
+                    const WORLD = BUDMORI.sim,
+                        SKILLS = WORLD.formationSkills,
+                        { DEFINITION } = await import(`./src/features/formation-skills/${id}/definition.js`),
+                        PROFILE = { ...DEFINITION, ...DEFINITION.boss };
+                    if (PROFILE.required !== required || PROFILE.condition !== condition) {
+                        throw new Error(`Unexpected boss condition: ${id}`);
+                    }
+                    SKILLS.end();
+                    WORLD.tower.relics = new Map([[id, 1]]);
+                    WORLD.tower.bossRelics = new Map([[id, 1]]);
+                    SKILLS.synchronize();
+                    Object.assign(WORLD.boss, {
+                        x: 0,
+                        y: 0,
+                        z: 0,
+                        stun: role === 'player' ? 1000 : 0,
+                        knockVx: 0,
+                        knockVy: 0,
+                    });
+                    WORLD.boss.patternRuntime.active = null;
+                    for (const KEY of Object.keys(WORLD.boss.patternRuntime.cooldowns)) {
+                        WORLD.boss.patternRuntime.cooldowns[KEY] = 1000;
+                    }
+                    for (const [INDEX, UNIT] of WORLD.units.entries()) {
+                        Object.assign(UNIT, { x: 4 + INDEX * 0.1, y: 0, z: 0, stun: 1000, vx: 0, vy: 0, vz: 0 });
+                    }
+                    WORLD._unitSpatialDirty = true;
+                    const SLOT = SKILLS.slots.find((slot) => (slot.role || 'player') === role),
+                        OTHER = SKILLS.slots.find((slot) => slot !== SLOT),
+                        KEY = role === 'boss' ? PROFILE.condition : DEFINITION.condition,
+                        LIMIT = role === 'boss' ? PROFILE.required : DEFINITION.required,
+                        OBS = globalThis.__sharedSkills;
+                    OBS.casts = [];
+                    OBS.hits = [];
+                    WORLD.onCombatResolved.emit({ role, [KEY]: LIMIT - 1 });
+                    if (SLOT.charge !== LIMIT - 1 || OTHER.charge !== 0) {
+                        throw new Error('Combat contribution crossed roles or the exact threshold');
+                    }
+                    WORLD.onCombatResolved.emit({ role, [KEY]: 1 });
+                    if (SLOT.charge !== LIMIT || OTHER.charge !== 0) {
+                        throw new Error('Threshold was not reached exactly');
+                    }
+                    BUDMORI.runtime.capturePresentation('reset');
+                    BUDMORI.runtime.loop.resetTiming();
+                    BUDMORI.runtime.paused = false;
+                    return { required: LIMIT, condition: KEY, bossRequired: PROFILE.required };
+                },
+                { role: ROLE, id: ID, required: REQUIRED, condition: CONDITION },
+            );
+            if (ROLE === 'boss') {
+                await PAGE.waitForFunction(() => BUDMORI.sim.formationRuntime.bossCast?.phase === 'prepare');
+                const PREPARE = await PAGE.evaluate(() => ({
+                    x: BUDMORI.sim.boss.x,
+                    y: BUDMORI.sim.boss.y,
+                    tick: BUDMORI.sim.simulationTick,
+                }));
+                await PAGE.waitForFunction((tick) => BUDMORI.sim.simulationTick >= tick + 5, PREPARE.tick);
+                assert.deepEqual(
+                    await PAGE.evaluate(() => ({
+                        x: BUDMORI.sim.boss.x,
+                        y: BUDMORI.sim.boss.y,
+                        active: BUDMORI.sim.boss.patternRuntime.active,
+                        effects: BUDMORI.sim.formationRuntime.effects.length,
+                    })),
+                    { x: PREPARE.x, y: PREPARE.y, active: null, effects: 0 },
+                    'prepare stops voluntary motion/patterns and does not release early',
+                );
+                if (ID === 'lightning') {
+                    await PAGE.screenshot({ path: path.join(OUTPUT, 'boss-skill-prepare.png'), fullPage: true });
+                }
+            }
+            await PAGE.waitForFunction(
+                ({ role, id }) => {
+                    const EFFECT = BUDMORI.sim.formationRuntime.effects.find(
+                            (effect) => effect.role === role && effect.kind === id,
+                        ),
+                        AGE =
+                            id === 'lightning'
+                                ? role === 'boss'
+                                    ? 0.8
+                                    : 0.1
+                                : ['ufo', 'storm-cloud'].includes(id)
+                                  ? 0.9
+                                  : 0.25;
+                    if (!EFFECT || EFFECT.age < AGE) {
+                        return false;
+                    }
+                    BUDMORI.runtime.paused = true;
+                    return true;
+                },
+                { role: ROLE, id: ID },
+            );
+            await PAGE.evaluate(
+                () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+            );
+            const FILE = `shared-skills-${ROLE}-${ID}.png`;
+            await PAGE.screenshot({ path: path.join(OUTPUT, FILE), fullPage: true });
+            const RESULT = await PAGE.evaluate(
+                ({ role, id }) => {
+                    const WORLD = BUDMORI.sim,
+                        EFFECT = WORLD.formationRuntime.effects.find(
+                            (effect) => effect.role === role && effect.kind === id,
+                        ),
+                        OTHER = WORLD.formationRuntime.slots.find((slot) => (slot.role || 'player') !== role);
+                    return {
+                        cloudDraw: globalThis.__sharedSkills.cloudDraw,
+                        casts: globalThis.__sharedSkills.casts,
+                        hits: globalThis.__sharedSkills.hits,
+                        effect: EFFECT,
+                        otherCharge: OTHER.charge,
+                        ownCharge: WORLD.formationRuntime.slots.find((slot) => slot !== OTHER).charge,
+                        targetBody:
+                            role === 'player'
+                                ? { radius: WORLD.boss.radius, height: WORLD.boss.height }
+                                : { radius: WORLD.units[0].radius, height: WORLD.units[0].height },
+                        bossCast: WORLD.formationRuntime.bossCast,
+                        pattern: WORLD.boss.patternRuntime.active,
+                    };
+                },
+                { role: ROLE, id: ID },
+            );
+            assert.deepEqual(RESULT.casts, [{ id: ID, role: ROLE }], 'one release per cast');
+            assert.equal(RESULT.otherCharge, 0, 'skill effects never recharge the opposite owner');
+            assert.equal(RESULT.ownCharge, 0, 'released skills do not recharge themselves');
+            if (['lightning', 'ufo', 'storm-cloud'].includes(ID)) {
+                assert.equal(
+                    RESULT.effect.bodyRadius,
+                    RESULT.targetBody.radius,
+                    'effect uses the actual target body radius',
+                );
+                if (ROLE === 'boss') {
+                    assert.ok(
+                        new Set(RESULT.hits.map((hit) => hit.unit)).size >= 2,
+                        'boss effect actually damages multiple units',
+                    );
+                }
+            }
+            if (ROLE === 'boss' && ['meteor', 'meteor-shower'].includes(ID)) {
+                assert.equal(RESULT.bossCast.phase, 'recover');
+                assert.equal(RESULT.pattern, null, 'recovery suppresses physical patterns');
+            }
+            if (ID === 'storm-cloud') {
+                assert.equal(RESULT.cloudDraw.role, ROLE);
+                assert.ok(
+                    RESULT.cloudDraw.widths.some((width) => width > 1),
+                    'real session DTO renders a visible cloud',
+                );
+                assert.ok(
+                    RESULT.cloudDraw.arcStrokes >= 3,
+                    'real session DTO renders cloud arcs, including player fallback',
+                );
+            }
+            REPORT.sharedSkills.push({ role: ROLE, id: ID, ...START, ...RESULT, screenshot: FILE });
+        }
+    }
+    // Keep the already released cloud alive while a UFO releases, then cancel a third cast.
+    await PAGE.evaluate(() => {
+        const WORLD = BUDMORI.sim;
+        WORLD.formationRuntime.slots = [
+            { id: 'ufo', ownerId: 'boss', role: 'boss', level: 1, charge: 10, cooldown: 0 },
+            { id: 'lightning', ownerId: 'boss', role: 'boss', level: 1, charge: 0, cooldown: 0 },
+        ];
+        BUDMORI.runtime.paused = false;
+    });
+    await PAGE.waitForFunction(() => {
+        const WORLD = BUDMORI.sim;
+        if (WORLD.formationRuntime.bossCast?.id !== 'ufo' || WORLD.formationRuntime.bossCast.phase !== 'recover') {
+            return false;
+        }
+        BUDMORI.runtime.paused = true;
+        return true;
+    });
+    const RECOVERY = await PAGE.evaluate(() => {
+        const WORLD = BUDMORI.sim;
+        return { tick: WORLD.simulationTick, x: WORLD.boss.x, y: WORLD.boss.y };
+    });
+    await PAGE.evaluate(() => {
+        BUDMORI.runtime.paused = false;
+    });
+    await PAGE.waitForFunction((tick) => BUDMORI.sim.simulationTick >= tick + 5, RECOVERY.tick);
+    assert.deepEqual(
+        await PAGE.evaluate(() => ({
+            x: BUDMORI.sim.boss.x,
+            y: BUDMORI.sim.boss.y,
+            pattern: BUDMORI.sim.boss.patternRuntime.active,
+        })),
+        { x: RECOVERY.x, y: RECOVERY.y, pattern: null },
+        'recovery stops voluntary motion and physical patterns',
+    );
+    await PAGE.evaluate(() => {
+        BUDMORI.sim.formationRuntime.slots.find((slot) => slot.id === 'lightning').charge = 50;
+    });
+    await PAGE.waitForFunction(() => BUDMORI.sim.formationRuntime.bossCast?.id === 'lightning');
+    const CANCEL = await PAGE.evaluate(() => {
+        const WORLD = BUDMORI.sim,
+            EFFECTS = WORLD.formationRuntime.effects.filter((effect) => ['ufo', 'storm-cloud'].includes(effect.kind));
+        WORLD.boss.stun = 3;
+        return {
+            tick: WORLD.simulationTick,
+            effects: EFFECTS.map((effect) => ({ id: effect.id, age: effect.age, pulse: effect.pulse })),
+        };
+    });
+    assert.equal(CANCEL.effects.length, 2, 'both released persistent effects are present');
+    await PAGE.waitForFunction((tick) => BUDMORI.sim.simulationTick >= tick + 50, CANCEL.tick);
+    REPORT.castCancellation = await PAGE.evaluate(() => ({
+        cast: BUDMORI.sim.formationRuntime.bossCast,
+        effects: BUDMORI.sim.formationRuntime.effects,
+        casts: globalThis.__sharedSkills.casts,
+    }));
+    assert.equal(REPORT.castCancellation.cast, null, 'stun cancels the pending release');
+    assert.equal(
+        REPORT.castCancellation.casts.some((cast) => cast.id === 'lightning'),
+        false,
+        'cancelled prepare emits no cast',
+    );
+    assert.equal(
+        REPORT.castCancellation.effects.some((effect) => effect.kind === 'lightning'),
+        false,
+        'cancelled prepare emits no effect',
+    );
+    for (const BEFORE of CANCEL.effects) {
+        const AFTER = REPORT.castCancellation.effects.find((effect) => effect.id === BEFORE.id);
+        assert.ok(
+            AFTER && AFTER.age > BEFORE.age && AFTER.pulse > BEFORE.pulse,
+            'released UFO/cloud keep ticking through another prepare and stun',
+        );
+    }
+    REPORT.bossSkillDefense = await PAGE.evaluate(() => {
+        const WORLD = BUDMORI.sim,
+            UNIT = WORLD.units.find((unit) => unit.faction === 'player' && !unit.isBattleOnlySummon);
+        BUDMORI.runtime.paused = true;
+        WORLD.tower.passives.undying = 0.05;
+        WORLD.tower.undyingUsed.delete(UNIT.id);
+        UNIT.hp = 1;
+        WORLD.formationSkills.bossContext.damage(UNIT, 1000000);
+        return { hp: UNIT.hp, protected: WORLD.tower.undyingUsed.has(UNIT.id) };
+    });
+    assert.ok(
+        REPORT.bossSkillDefense.hp > 0 && REPORT.bossSkillDefense.protected,
+        'boss skills preserve the existing undying defense',
+    );
+    assert.deepEqual(ERRORS, [], 'card and shared-skill scenarios remain free of runtime errors');
     REPORT.status = 'passed';
     REPORT.state = STATE;
     console.log(

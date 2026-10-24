@@ -1,3 +1,4 @@
+import { T1_DIAMETER } from '../model-base.js';
 const DURATION = 5,
     PULSE_INTERVAL = 0.2,
     PULSE_DAMAGE = 4;
@@ -7,6 +8,9 @@ export const DEFINITION = Object.freeze({
     condition: 'critHits',
     required: 10,
     description: `${DURATION}초 동안 ${PULSE_INTERVAL}초마다 아래로 레이저를 쏴 피해 ${PULSE_DAMAGE}를 줘요 (총 피해 ${(DURATION / PULSE_INTERVAL) * PULSE_DAMAGE}).`,
+    targetCount: 1,
+    beamWidth: 0,
+    boss: Object.freeze({ condition: 'hits', required: 10, beamWidth: T1_DIAMETER * 2, targetCount: 3 }),
     upgradeAxis: '지속시간 +1초',
     pulseInterval: PULSE_INTERVAL,
     pulseDamage: PULSE_DAMAGE,
