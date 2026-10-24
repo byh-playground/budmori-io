@@ -1890,6 +1890,10 @@ CANVAS.addEventListener('webglcontextlost', (e) => {
 function route() {
     stopWorldInput();
     const R = location.hash;
+    if (R === '#/showcase') {
+        setHome(true, false);
+        return;
+    }
     if (R === '#/' || !R) {
         if (menuOpen) {
             closeMenu(false);
