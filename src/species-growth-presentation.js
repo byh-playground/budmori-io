@@ -68,7 +68,26 @@ const WHEAT_FORMS = Object.freeze([
     ['스윕 회수 강세', '전방 스윕 · 지휘봉 회수 · 정면 강세 · 25·30·45%'],
     ['좌우 박자 큰 마무리', '좌우 지휘봉 2타 · 정면 강타 · 큰 마무리 · 20·20·25·35%'],
 ]);
+const BARLEY_FORMS = Object.freeze([
+    ['도리깨 한 번', '도리깨로 한 번 후려치기 · 100%'],
+    ['후려치고 당기기', '전면 후려치기 뒤 당겨치기 · 40·60%'],
+    ['앞 호와 대각선 찍기', '넓은 앞 호 스윕 뒤 대각선 찍기 · 40·60%'],
+    ['반원 회전 중앙 찍기', '전면 반원 회전 뒤 중앙 찍기 · 40·60%'],
+    ['좌우 스윕 내려찍기', '좌 스윕 · 우 스윕 · 중앙 내려찍기 · 25·30·45%'],
+    ['회수 당겨치기 강타', '낮은 스윕 · 회수 스윕 · 짧은 당겨치기 · 중앙 강타 · 20·20·25·35%'],
+]);
 const PRESENTATIONS = new Map([
+    [
+        'barley-armor-break',
+        {
+            key: 'barley',
+            name: '보리',
+            title: '도리깨 연격과 방어 파쇄',
+            forms: BARLEY_FORMS,
+            effect: barleyGrowthEffect,
+            note: '각 타격의 피해를 먼저 적용한 뒤 방어를 깎아요. 공격당 대상별 방어 감소 예산은 (1+0.4×방어 파쇄 랭크)×(1+0.03×기본 위력 랭크)×(1+0.2×(실제 등급−1))이며, 직접 피해의 합성 보정은 다시 곱하지 않아요. T1은 한 타격 뒤 전부 적용하고 T2 이상은 마지막을 뺀 앞 타격에 균등하게 나눠요. 빗나간 몫은 다음 타격으로 넘기지 않으며 마지막 타격은 낮아진 방어를 이용해요. 소수 감소량을 보존하고 각 기여는 적용 시점부터 3~5초 뒤 따로 만료돼요. 새 타격으로 이전 만료를 연장하지 않고, 방어는 0보다 낮아지지 않아요. 초과 감소를 피해로 바꾸거나 마무리가 감소량을 소모하지 않아요. 주변 최대 4명은 각 타격의 50% 피해와 같은 방어 감소 몫을 받아요.',
+        },
+    ],
     [
         'wheat-command-crit',
         {
@@ -399,6 +418,25 @@ function wheatGrowthEffect(nodeId, rank) {
             return `지휘 반경 기본 사거리×${2 + rank * 0.5} · 피해 범위 제외`;
         case 'specialty-3':
             return `마지막 지휘봉 타격에 전체 직접 예산의 ${rank * 8}% 추가`;
+        default:
+            throw new RangeError(`Unknown growth effect: ${nodeId}`);
+    }
+}
+
+function barleyGrowthEffect(nodeId, rank) {
+    switch (nodeId) {
+        case 'basic-1':
+            return `도리깨 공격력·공격당 방어 감소량 +${rank * 3}%`;
+        case 'basic-2':
+            return `최대 체력 +${rank * 4}% · 다음 런부터 적용`;
+        case 'basic-3':
+            return `공격 속도 +${rank * 2}% · 준비 시간은 고정, 타격·후딜 예산에 적용`;
+        case 'specialty-1':
+            return `공격당 대상별 방어 감소 ${Number((1 + rank * 0.4).toFixed(1))} · 기본 위력·실제 등급 배율 별도`;
+        case 'specialty-2':
+            return `각 방어 감소가 적용 후 ${Number((3 + rank * 0.4).toFixed(1))}초 유지 · 독립 만료`;
+        case 'specialty-3':
+            return `마지막 도리깨 타격에 전체 직접 예산의 ${rank * 8}% 추가`;
         default:
             throw new RangeError(`Unknown growth effect: ${nodeId}`);
     }

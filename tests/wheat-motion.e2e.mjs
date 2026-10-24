@@ -7,10 +7,18 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
+const SPECIES = process.env.MOTION_SPECIES || 'wheat';
+assert.ok(['wheat', 'barley'].includes(SPECIES));
+const SPEC = {
+    key: SPECIES,
+    species: SPECIES === 'barley' ? 8 : 7,
+    part: SPECIES === 'barley' ? 'flail' : 'command-baton',
+    presentation: SPECIES === 'barley' ? 'BarleyAttackPresentation' : 'WheatAttackPresentation',
+};
 const VIEWPORT = process.argv[2] || 'desktop',
     SELECTION = process.argv[3] || 'all',
     ROOT = path.resolve(fileURLToPath(new URL('../', import.meta.url))),
-    OUTPUT = path.join(ROOT, 'tests/output/wheat-motion', VIEWPORT),
+    OUTPUT = path.join(ROOT, `tests/output/${SPEC.key}-motion`, VIEWPORT),
     SIZE = VIEWPORT === 'landscape' ? { width: 844, height: 390 } : { width: 1100, height: 850 },
     HTML = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'),
     MANIFEST = JSON.parse(
@@ -102,7 +110,7 @@ async function previewFailure(frame, page, tier, label, error) {
                     y: UNIT.y,
                     z: UNIT.z,
                     phase: UNIT.ability.phase,
-                    action: UNIT.ability.action?.wheatAttack,
+                    action: UNIT.ability.action?.[globalThis.__motionKey('Attack')],
                 },
                 display: DISPLAY && { id: DISPLAY.id, ability: DISPLAY.ability },
             };
@@ -160,7 +168,9 @@ try {
         ERRORS.push('Unexpected network request: ' + URL_LOCAL);
         return route.abort();
     });
-    await PAGE.addInitScript(() => {
+    await PAGE.addInitScript((spec) => {
+        globalThis.__motionSpec = spec;
+        globalThis.__motionKey = (suffix) => spec.key + suffix;
         if (!new URLSearchParams(location.search).has('help')) {
             return;
         }
@@ -216,7 +226,8 @@ try {
                 UNIT = WORLD.units[0],
                 SESSION = BUDMORI.runtime,
                 PRESENT = SESSION.presentation;
-            const CASE = new URLSearchParams(location.search).get('wheat-case') || `t${UNIT.tier}`,
+            const CASE =
+                    new URLSearchParams(location.search).get(globalThis.__motionSpec.key + '-case') || `t${UNIT.tier}`,
                 FIXTURE = { case: CASE, changedBoss: false, acquiredGiant: false };
             if (CASE === 'small-boss' || CASE === 'large-boss') {
                 // Use the actual factory to find current roster extrema; no fake
@@ -277,56 +288,54 @@ try {
             };
             const NATIVE_FRAMES = new WeakMap();
             let trackedRecord = null;
-            import('./src/features/unit-attacks/wheat/presentation.js').then(
-                ({ WheatAttackPresentation: presentation }) => {
-                    const CONTACT = presentation.prototype.drawContact;
-                    presentation.prototype.drawContact = function (renderer, unit, player, matrix) {
-                        const RESULT = CONTACT.call(this, renderer, unit, player, matrix),
-                            TIP = player.getSocket('weapon-tip'),
-                            GROUND = player.getSocket('ground');
-                        // This callback receives the exact matrix immediately after
-                        // the live native player.draw, not a reconstructed expected pose.
-                        NATIVE_FRAMES.set(player, {
-                            tip: {
-                                x: matrix[0] * TIP.x + matrix[2] * TIP.y + matrix[4],
-                                y: matrix[1] * TIP.x + matrix[3] * TIP.y + matrix[5],
-                            },
-                            ground: {
-                                x: matrix[0] * GROUND.x + matrix[2] * GROUND.y + matrix[4],
-                                y: matrix[1] * GROUND.x + matrix[3] * GROUND.y + matrix[5],
-                            },
-                            root: renderer.project(unit.x, unit.y, 0),
-                            displayPosition: { x: unit.x, y: unit.y },
-                            footprint: {
-                                radiusX: Math.max(unit.size * 0.66 * 1.12, unit.radius + 0.1) * renderer.scale,
-                                radiusY: Math.max(unit.size * 0.66 * 1.12, unit.radius + 0.1) * renderer.scale * 0.62,
-                                stroke: 0.06 * renderer.scale,
-                            },
-                            canvas: { width: renderer.canvas.width, height: renderer.canvas.height },
-                            drawScale: Math.abs(matrix[0]),
-                            authoredScale: unit.bodyScale * renderer.scale,
-                            minimumScale:
-                                (2 * renderer.minimumUnitPixels() * (unit.giantUntil > WORLD.time ? 3 : 1)) / 350,
-                            giantEndedAt: unit.giantEndedAt,
-                            matrix: [...matrix],
-                        });
-                        return RESULT;
-                    };
-                },
-            );
+            import(`./src/features/unit-attacks/${globalThis.__motionSpec.key}/presentation.js`).then((module) => {
+                const PRESENTATION = module[globalThis.__motionSpec.presentation];
+                const CONTACT = PRESENTATION.prototype.drawContact;
+                PRESENTATION.prototype.drawContact = function (renderer, unit, player, matrix) {
+                    const RESULT = CONTACT.call(this, renderer, unit, player, matrix),
+                        TIP = player.getSocket('weapon-tip'),
+                        GROUND = player.getSocket('ground');
+                    // This callback receives the exact matrix immediately after
+                    // the live native player.draw, not a reconstructed expected pose.
+                    NATIVE_FRAMES.set(player, {
+                        tip: {
+                            x: matrix[0] * TIP.x + matrix[2] * TIP.y + matrix[4],
+                            y: matrix[1] * TIP.x + matrix[3] * TIP.y + matrix[5],
+                        },
+                        ground: {
+                            x: matrix[0] * GROUND.x + matrix[2] * GROUND.y + matrix[4],
+                            y: matrix[1] * GROUND.x + matrix[3] * GROUND.y + matrix[5],
+                        },
+                        root: renderer.project(unit.x, unit.y, 0),
+                        displayPosition: { x: unit.x, y: unit.y },
+                        footprint: {
+                            radiusX: Math.max(unit.size * 0.66 * 1.12, unit.radius + 0.1) * renderer.scale,
+                            radiusY: Math.max(unit.size * 0.66 * 1.12, unit.radius + 0.1) * renderer.scale * 0.62,
+                            stroke: 0.06 * renderer.scale,
+                        },
+                        canvas: { width: renderer.canvas.width, height: renderer.canvas.height },
+                        drawScale: Math.abs(matrix[0]),
+                        authoredScale: unit.bodyScale * renderer.scale,
+                        minimumScale: (2 * renderer.minimumUnitPixels() * (unit.giantUntil > WORLD.time ? 3 : 1)) / 350,
+                        giantEndedAt: unit.giantEndedAt,
+                        matrix: [...matrix],
+                    });
+                    return RESULT;
+                };
+            });
             RENDERER.render = function (...args) {
                 const RESULT = RENDER.apply(this, args),
                     STATE = globalThis.__wheatMotion,
                     DISPLAY = BUDMORI.runtime.presentationView?.units.find((unit) => unit.id === UNIT.id),
                     PLAYER = this.vectorPlayers.get(UNIT.id),
                     A = DISPLAY?.ability,
-                    LIVE_RECORD = UNIT.ability.action?.wheatAttack,
+                    LIVE_RECORD = UNIT.ability.action?.[globalThis.__motionKey('Attack')],
                     // The interpolated final recovery can outlive the model's
                     // action by one tick. Retain only this observed real record.
                     RECORD =
-                        LIVE_RECORD?.id === A?.wheatActionId
+                        LIVE_RECORD?.id === A?.[globalThis.__motionKey('ActionId')]
                             ? LIVE_RECORD
-                            : trackedRecord?.id === A?.wheatActionId
+                            : trackedRecord?.id === A?.[globalThis.__motionKey('ActionId')]
                               ? trackedRecord
                               : null;
                 STATE.renderCalls++;
@@ -339,7 +348,7 @@ try {
                             displayTimeMs: this.displayTimeMs,
                             clock: globalThis.__wheatInputClock,
                             sourceAction: !!UNIT.ability.action,
-                            displayForm: A?.wheatForm,
+                            displayForm: A?.[globalThis.__motionKey('Form')],
                             groundOffset: OFFSET,
                             paused: SESSION.paused,
                         };
@@ -362,7 +371,7 @@ try {
                     unitId: UNIT.id,
                     phase: A?.phase,
                     recordId: RECORD?.id,
-                    displayId: A?.wheatActionId,
+                    displayId: A?.[globalThis.__motionKey('ActionId')],
                     player: !!PLAYER,
                     clock: globalThis.__wheatInputClock,
                 };
@@ -372,10 +381,15 @@ try {
                 if (!RECORD) {
                     STATE.rejected.noRecord++;
                 }
-                if (!A?.wheatForm || RECORD?.id !== A?.wheatActionId) {
+                if (!A?.[globalThis.__motionKey('Form')] || RECORD?.id !== A?.[globalThis.__motionKey('ActionId')]) {
                     STATE.rejected.displayMismatch++;
                 }
-                if (!NATIVE_FRAMES.has(PLAYER) || !A?.wheatForm || !RECORD || RECORD.id !== A.wheatActionId) {
+                if (
+                    !NATIVE_FRAMES.has(PLAYER) ||
+                    !A?.[globalThis.__motionKey('Form')] ||
+                    !RECORD ||
+                    RECORD.id !== A[globalThis.__motionKey('ActionId')]
+                ) {
                     return RESULT;
                 }
                 if (
@@ -413,7 +427,7 @@ try {
                     STATE.committedLaunchTick = RECORD.launchTick;
                     STATE.committedDurationTicks = RECORD.durationSeconds * 20;
                 }
-                const BATON = PLAYER.getPartPose('command-baton'),
+                const BATON = PLAYER.getPartPose(globalThis.__motionSpec.part),
                     PLAN_INDEX = STATE.request.phase === 'sequence' ? STATE.request.index : -1,
                     REQUEST = PLAN_INDEX >= 0 ? STATE.capturePlan?.[PLAN_INDEX] : STATE.request;
                 if (!REQUEST) {
@@ -424,19 +438,22 @@ try {
                     (REQUEST.recoveryContact
                         ? A.elapsed === 0 && PLAYER.currentTimeMs === 0
                         : A.phase !== 'active' ||
-                          (A.wheatSlot === REQUEST.slot &&
-                              A.wheatStageProgress >= (REQUEST.moment === 'contact' ? 0.9 : 0.3)));
+                          (A[globalThis.__motionKey('Slot')] === REQUEST.slot &&
+                              A[globalThis.__motionKey('StageProgress')] >=
+                                  (REQUEST.moment === 'contact' ? 0.9 : 0.3)));
                 if (MATCH) {
                     // One actual short-stage frame may already meet both thresholds.
                     // Record that fact instead of demanding a later duplicate frame.
                     const EARLY_CONTACT =
-                            REQUEST.moment === 'early' && A.phase === 'active' && A.wheatStageProgress >= 0.9,
-                        SLOT = REQUEST.slot ?? A.wheatSlot,
+                            REQUEST.moment === 'early' &&
+                            A.phase === 'active' &&
+                            A[globalThis.__motionKey('StageProgress')] >= 0.9,
+                        SLOT = REQUEST.slot ?? A[globalThis.__motionKey('Slot')],
                         SHOT_TICK = RECORD.shots[SLOT]?.tick || 0,
                         START_TICK = SLOT > 0 ? RECORD.shots[SLOT - 1].tick : 0,
                         COMMITTED_TICK = REQUEST.recoveryContact
                             ? RECORD.motionTick
-                            : START_TICK + A.wheatStageProgress * (SHOT_TICK - START_TICK);
+                            : START_TICK + A[globalThis.__motionKey('StageProgress')] * (SHOT_TICK - START_TICK);
                     const SAMPLE = {
                         phase: A.phase,
                         moment: EARLY_CONTACT ? 'contact' : REQUEST.moment || A.phase,
@@ -462,7 +479,11 @@ try {
                         giantActive: UNIT.giantUntil > WORLD.time,
                         displayGiantActive: DISPLAY.giantUntil > WORLD.time,
                         nativeMatrix: NATIVE_FRAMES.get(PLAYER).matrix,
-                        contactPoint: this.project(A.wheatPointX, A.wheatPointY, 0),
+                        contactPoint: this.project(
+                            A[globalThis.__motionKey('PointX')],
+                            A[globalThis.__motionKey('PointY')],
+                            0,
+                        ),
                         committedTick: A.phase === 'active' || REQUEST.recoveryContact ? COMMITTED_TICK : null,
                         rawElapsedTick: A.elapsed * 20,
                         worldSlotTickDelta: WORLD.simulationTick - (RECORD.launchTick + SHOT_TICK),
@@ -471,16 +492,16 @@ try {
                             : A.phase === 'active'
                               ? (COMMITTED_TICK - SHOT_TICK) * 50
                               : null,
-                        stage: REQUEST.recoveryContact ? REQUEST.stage : A.wheatStage,
+                        stage: REQUEST.recoveryContact ? REQUEST.stage : A[globalThis.__motionKey('Stage')],
                         slot: SLOT,
-                        progress: A.wheatStageProgress,
+                        progress: A[globalThis.__motionKey('StageProgress')],
                         clip: PLAYER.currentClip,
                         time: PLAYER.currentTimeMs,
                         pose: { x: BATON.x, y: BATON.y, rotation: BATON.rotation },
                         batonVisible: BATON.visible,
                         recordId: RECORD.id,
-                        displayId: A.wheatActionId,
-                        point: [A.wheatPointX, A.wheatPointY],
+                        displayId: A[globalThis.__motionKey('ActionId')],
+                        point: [A[globalThis.__motionKey('PointX')], A[globalThis.__motionKey('PointY')]],
                         actualPoint: [RECORD.point.x, RECORD.point.y],
                     };
                     SAMPLE.socketDistancePixels = Math.hypot(
@@ -537,7 +558,7 @@ try {
                 }
                 callback(CLOCK.current);
             });
-    });
+    }, SPEC);
     for (const CASE of CASES) {
         const TIER = CASE.tier,
             LABEL = CASE.id;
@@ -550,8 +571,8 @@ try {
         }
         await PAGE.waitForFunction(() => document.body.dataset.home === 'false');
         await activate(PAGE.locator('#upgradeMenu'));
-        await activate(PAGE.locator('[data-ability-species="7"]'));
-        await activate(PAGE.locator(`[data-wheat-preview-tier="${TIER}"]`));
+        await activate(PAGE.locator(`[data-ability-species="${SPEC.species}"]`));
+        await activate(PAGE.locator(`[data-${SPEC.key}-preview-tier="${TIER}"]`));
         const HOST = PAGE.locator('.growth-evolution-preview iframe');
         await HOST.scrollIntoViewIfNeeded();
         const HANDLE = await HOST.elementHandle(),
@@ -576,12 +597,24 @@ try {
             'actual modal iframe is fully visible through its scroll pane',
         );
         REPORT.push({ kind: 'modal-preview-viewport', tier: TIER, ...VISIBLE });
-        await previewWait(FRAME, PAGE, TIER, 'initial-scene', () => globalThis.BUDMORI?.sim?.units[0]?.species === 7);
+        await previewWait(
+            FRAME,
+            PAGE,
+            TIER,
+            'initial-scene',
+            () => globalThis.BUDMORI?.sim?.units[0]?.species === globalThis.__motionSpec.species,
+        );
         const PREVIEW_URL = new URL(FRAME.url());
-        PREVIEW_URL.searchParams.set('wheat-case', LABEL);
+        PREVIEW_URL.searchParams.set(SPEC.key + '-case', LABEL);
         await FRAME.goto(PREVIEW_URL.href);
         // Install observation before asynchronous SVG players finish loading.
-        await previewWait(FRAME, PAGE, TIER, 'reloaded-scene', () => globalThis.BUDMORI?.sim?.units[0]?.species === 7);
+        await previewWait(
+            FRAME,
+            PAGE,
+            TIER,
+            'reloaded-scene',
+            () => globalThis.BUDMORI?.sim?.units[0]?.species === globalThis.__motionSpec.species,
+        );
         assert.equal(await FRAME.locator('#bossbar').evaluate((element) => getComputedStyle(element).display), 'none');
 
         let state;
@@ -685,7 +718,7 @@ try {
                     .map((sample) => JSON.stringify(sample.pose)),
             ).size,
             state.visible.filter((group) => group.phase === 'active').length,
-            'each observable active stage has a distinct actual baton pose',
+            'each observable active stage has a distinct actual weapon pose',
         );
         for (const SAMPLE of state.trace) {
             const FOOT = SAMPLE.footprint,
@@ -707,7 +740,7 @@ try {
                     SAMPLE.nativeTip.x <= SAMPLE.canvas.width &&
                     SAMPLE.nativeTip.y >= 0 &&
                     SAMPLE.nativeTip.y <= SAMPLE.canvas.height,
-                'native baton endpoint stays inside the actual iframe',
+                'native weapon endpoint stays inside the actual iframe',
             );
             assert.ok(SAMPLE.batonVisible);
             assert.equal(SAMPLE.recordId, SAMPLE.displayId);
@@ -728,11 +761,11 @@ try {
                 assert.equal(SAMPLE.time, 0, 'final contact is the exact native first recovery pose');
                 assert.equal(SAMPLE.committedTick, state.allShots.at(-1).tick);
                 assert.ok(Math.abs(SAMPLE.worldSlotTickDelta) <= 1);
-                assert.equal(SAMPLE.clip, `recover-wheat-${state.allShots.at(-1).stage}`);
+                assert.equal(SAMPLE.clip, `recover-${SPEC.key}-${state.allShots.at(-1).stage}`);
             }
             if (SAMPLE.phase === 'active') {
                 assert.ok(Math.abs(SAMPLE.time - SAMPLE.progress * 1000) < 1e-5);
-                assert.match(SAMPLE.clip, /fire-wheat-/);
+                assert.ok(SAMPLE.clip.startsWith(`fire-${SPEC.key}-`));
             }
         }
         // Interrupt the real action while paused, then resume the ordinary clock.
@@ -785,12 +818,12 @@ try {
     await PAGE.evaluate(async () => {
         const { helpSceneById: HELP_SCENE_BY_ID } = await import('./src/help-scenes.js'),
             WORLD = BUDMORI.sim;
-        HELP_SCENE_BY_ID('wheat-t6').setup(WORLD);
+        HELP_SCENE_BY_ID(globalThis.__motionSpec.key + '-t6').setup(WORLD);
         globalThis.__wheatMain = { id: null, hits: [], complete: false };
         WORLD.onNotice.on((notice) => {
             const STATE = globalThis.__wheatMain,
                 UNIT = WORLD.units[0],
-                RECORD = UNIT.ability.action?.wheatAttack;
+                RECORD = UNIT.ability.action?.[globalThis.__motionKey('Attack')];
             if (notice.kind !== 'boss-hit' || !RECORD || notice.attackId !== RECORD.id) {
                 return;
             }
@@ -841,7 +874,7 @@ try {
     REPORT.push({ kind: 'main-home-continue', ...CONTINUITY });
     await PAGE.screenshot({ path: path.join(OUTPUT, 'main-home-continue.png') });
     assert.deepEqual(ERRORS, []);
-    console.log(`PASS wheat six-form actual native motion (${VIEWPORT})`);
+    console.log(`PASS ${SPEC.key} six-form actual native motion (${VIEWPORT})`);
 } catch (error) {
     if (
         activePreview &&

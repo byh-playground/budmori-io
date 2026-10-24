@@ -1,3 +1,4 @@
+import { barleyPreviewEnvelope } from './features/unit-attacks/barley/presentation.js';
 import { wheatPreviewEnvelope } from './features/unit-attacks/wheat/presentation.js';
 import { ricePreviewEnvelope } from './features/unit-attacks/rice/presentation.js';
 import { sampleChestnutShards } from './features/projectiles/spike/presentation.js';
@@ -538,6 +539,10 @@ const DIORAMA = class Diorama {
             this.fitJumpPreview(world);
             return;
         }
+        if (this.attackPreviewSpecies === 8) {
+            this.fitRicePreview(world, barleyPreviewEnvelope);
+            return;
+        }
         if (this.attackPreviewSpecies === 7) {
             this.fitRicePreview(world, wheatPreviewEnvelope);
             return;
@@ -1049,6 +1054,7 @@ const DIORAMA = class Diorama {
         this.liveUnitIds.clear();
         this.unitPresentation.riceDisplayUnits.clear();
         this.unitPresentation.wheatDisplayUnits.clear();
+        this.unitPresentation.barleyDisplayUnits.clear();
         this.unitPresentation.riceDisplayWorld = null;
         this.unitPresentation.riceDisplayTime = 0;
         this.joyEffects.length = 0;

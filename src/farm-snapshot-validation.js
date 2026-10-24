@@ -1,4 +1,5 @@
 import { isWheatAttackRecord } from './features/species-growth/wheat-attack.js';
+import { isBarleyAttackRecord } from './features/species-growth/barley-attack.js';
 import { isRiceAttackRecord } from './features/species-growth/rice-attack.js';
 import { isWalnutAttackRecord } from './features/species-growth/walnut-attack.js';
 import { isPeanutAttackRecord } from './features/species-growth/peanut-attack.js';
@@ -17,6 +18,11 @@ import { FARM_SNAPSHOT_SHAPE as GARDEN_SHAPE, UNIT_SNAPSHOT_SHAPE as UNIT_SHAPE 
 import { attackTargetKey } from './features/species-growth/attack-action.js';
 import { isCornAttackRecord, cornKernelMultiplier } from './features/species-growth/corn-attack.js';
 import { CORN_ATTACHMENT_FEATURE } from './features/abilities/corn-attachment/definition.js';
+import {
+    BARLEY_ARMOR_SHRED_BUCKETS,
+    BARLEY_ARMOR_SHRED_LEGACY_DURATION_TICKS,
+    BARLEY_ARMOR_SHRED_MAX_DURATION_TICKS,
+} from './features/abilities/barley-shred/model.js';
 const INTEGER = (v, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(v) && v >= min && v <= max;
 const VALID_BATTLE_UNIT_ID = (id, bossSummonSerial) =>
     INTEGER(id, 1, CONFIG.farm.maxUnitId) ||
@@ -178,23 +184,31 @@ function validWheatCommandBuffs(buffs, tick) {
         new Set(buffs.map((buff) => buff.bonus ?? [0.5, 0.75, 1.125][buff.level])).size === buffs.length
     );
 }
-function validBarleyArmorShredBuckets(buckets) {
+function validBarleyArmorShredBuckets(buckets, tick, allowLegacy) {
+    const LEGACY = allowLegacy && buckets?.length === BARLEY_ARMOR_SHRED_LEGACY_DURATION_TICKS;
+    const SIZE = LEGACY ? BARLEY_ARMOR_SHRED_LEGACY_DURATION_TICKS : BARLEY_ARMOR_SHRED_BUCKETS;
+    const HORIZON = LEGACY ? BARLEY_ARMOR_SHRED_LEGACY_DURATION_TICKS : BARLEY_ARMOR_SHRED_MAX_DURATION_TICKS;
     return (
         Array.isArray(buckets) &&
-        buckets.length === 60 &&
-        buckets.every(
+        buckets.length === SIZE &&
+        Array.from(buckets).every(
             (bucket, index) =>
                 bucket &&
+                Object.keys(bucket).length === 2 &&
+                Object.hasOwn(bucket, 'expiresAtTick') &&
+                Object.hasOwn(bucket, 'amount') &&
                 INTEGER(bucket.expiresAtTick, 0, 1e12) &&
                 Number.isFinite(bucket.amount) &&
                 bucket.amount >= 0 &&
                 (bucket.expiresAtTick === 0
                     ? bucket.amount === 0
-                    : bucket.amount > 0 && bucket.expiresAtTick % 60 === index),
+                    : bucket.amount > 0 &&
+                      bucket.expiresAtTick % SIZE === index &&
+                      bucket.expiresAtTick <= tick + HORIZON),
         )
     );
 }
-export function validateSnapshot(raw) {
+export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
     finiteTree(raw);
     shape(raw, GARDEN_SHAPE);
     ASSERT(isValidFormationRuntime(raw.formationRuntime));
@@ -600,7 +614,8 @@ export function validateSnapshot(raw) {
                         U.species === 4 ||
                         U.species === 5 ||
                         U.species === 6 ||
-                        U.species === 7) &&
+                        U.species === 7 ||
+                        U.species === 8) &&
                         !U.isBattleOnlySummon &&
                         !U.isFormationClone &&
                         hasFaction(U, FACTION_CONFIG.PLAYER) &&
@@ -635,7 +650,7 @@ export function validateSnapshot(raw) {
                 U.peaRecoveryBoostMultiplier >= 0 &&
                 U.peaRecoveryBoostMultiplier <= 2 &&
                 validWheatCommandBuffs(U.wheatCommandBuffs, raw.simulationTick) &&
-                validBarleyArmorShredBuckets(U.barleyArmorShredBuckets),
+                validBarleyArmorShredBuckets(U.barleyArmorShredBuckets, raw.simulationTick, allowLegacyBarleyShred),
         );
         ASSERT(
             INTEGER(U.species, 0, CONFIG.unit.speciesCount - 1) &&
@@ -900,6 +915,35 @@ export function validateSnapshot(raw) {
                 ASSERT(
                     U.species === 7 &&
                         isWheatAttackRecord(R) &&
+                        R.id === A.id &&
+                        R.owner === U.id &&
+                        R.ownerGeneration === U.generation &&
+                        R.tier === U.tier &&
+                        U.hp > 0 &&
+                        (R.launchTick === null
+                            ? U.ability.phase === 'windup' && A.path === null
+                            : (U.ability.phase === 'active' || U.ability.phase === 'recover') &&
+                              R.launchTick <= raw.simulationTick &&
+                              R.motionTick ===
+                                  (U.ability.phase === 'recover'
+                                      ? Math.round(R.durationSeconds * 20)
+                                      : Math.min(
+                                            Math.round(R.durationSeconds * 20),
+                                            Math.round(U.ability.elapsed * 20),
+                                        )) &&
+                              A.path?.duration === R.durationSeconds &&
+                              A.path.height === 0 &&
+                              sameCheckpointValue(A.path.from, R.origin) &&
+                              sameCheckpointValue(A.path.to, R.origin)) &&
+                        R.targetId === A.targetId &&
+                        R.targetGeneration === A.targetGeneration,
+                );
+            }
+            if (A.barleyAttack !== undefined) {
+                const R = A.barleyAttack;
+                ASSERT(
+                    U.species === 8 &&
+                        isBarleyAttackRecord(R) &&
                         R.id === A.id &&
                         R.owner === U.id &&
                         R.ownerGeneration === U.generation &&
@@ -1316,7 +1360,7 @@ export function validateSnapshot(raw) {
             Number.isFinite(raw.boss.barleyArmorBreakReduction) &&
             raw.boss.barleyArmorBreakReduction >= 0 &&
             raw.boss.barleyArmorBreakReduction <= 0.75 &&
-            validBarleyArmorShredBuckets(raw.boss.barleyArmorShredBuckets),
+            validBarleyArmorShredBuckets(raw.boss.barleyArmorShredBuckets, raw.simulationTick, allowLegacyBarleyShred),
     );
     if (raw.boss.stage === 0) {
         ASSERT(raw.boss.attackPower === 4);

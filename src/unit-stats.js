@@ -118,7 +118,11 @@ export function resolveUnitStats(unit, overrides) {
     // Chestnut, walnut, rice and wheat percentage regen follows effective HP, not the cached pre-growth HP.
     // Keep flat regen and explicit caller overrides intact; other species retain legacy behavior.
     if (
-        (unit?.species === 3 || unit?.species === 5 || unit?.species === 6 || unit?.species === 7) &&
+        (unit?.species === 3 ||
+            unit?.species === 5 ||
+            unit?.species === 6 ||
+            unit?.species === 7 ||
+            unit?.species === 8) &&
         !Object.hasOwn(overrides || {}, 'regen')
     ) {
         RESULT.regen += (RESULT.maxHp - BASE.maxHp) * (RUN_MODS.regen?.pct || 0);
@@ -147,7 +151,8 @@ export function applyRunGrowthHealth(unit, progression, { preserveRatio = false 
             unit.species === 4 ||
             unit.species === 5 ||
             unit.species === 6 ||
-            unit.species === 7) &&
+            unit.species === 7 ||
+            unit.species === 8) &&
         unit.faction === 'player' &&
         !unit.isFormationClone &&
         !unit.isBattleOnlySummon;
@@ -156,17 +161,19 @@ export function applyRunGrowthHealth(unit, progression, { preserveRatio = false 
     }
     const PREVIOUS_MAX = unitMaxHpFor(unit),
         ABILITY_ID =
-            unit.species === 7
-                ? 'wheat-command-crit'
-                : unit.species === 6
-                  ? 'rice-low-health-harvest'
-                  : unit.species === 5
-                    ? 'walnut-raw-guard'
-                    : unit.species === 4
-                      ? 'peanut-death-split'
-                      : unit.species === 3
-                        ? 'chestnut-target-thorns'
-                        : 'kidney-continuous-leap',
+            unit.species === 8
+                ? 'barley-armor-break'
+                : unit.species === 7
+                  ? 'wheat-command-crit'
+                  : unit.species === 6
+                    ? 'rice-low-health-harvest'
+                    : unit.species === 5
+                      ? 'walnut-raw-guard'
+                      : unit.species === 4
+                        ? 'peanut-death-split'
+                        : unit.species === 3
+                          ? 'chestnut-target-thorns'
+                          : 'kidney-continuous-leap',
         BUILD = progression?.abilities?.[ABILITY_ID];
     unit.growthMaxHpMultiplier =
         HAS_GROWTH_HEALTH && BUILD?.treeVersion === 1 ? 1 + 0.04 * (BUILD.nodeRanks['basic-2'] || 0) : 1;

@@ -4,7 +4,7 @@ export const SPECIES_MASTERY_CAP = 50;
 export const EVOLUTION_UNLOCK_LEVELS = Object.freeze([2, 6, 12, 20, 30]);
 
 // Rollout is explicit: a species is enabled only with its attack, effects, UI and save consumer.
-// Corn, pea, redbean, chestnut, peanut, walnut, rice and wheat are released. Barley keeps legacy progression until its release.
+// All nine species have their attack, growth presentation and save consumer enabled.
 export const SPECIES_GROWTH_DEFINITIONS = Object.freeze(
     SPECIES_CATALOG.map(({ id }) =>
         createSpeciesGrowthDefinition(
@@ -57,7 +57,13 @@ export const SPECIES_GROWTH_DEFINITIONS = Object.freeze(
                                     basic: ['지휘봉 위력', '최대 체력', '공격 속도'],
                                     specialty: ['지휘 공속', '지휘 반경', '마무리 강세'],
                                 }
-                              : {},
+                              : id === 8
+                                ? {
+                                      available: true,
+                                      basic: ['도리깨 위력', '최대 체력', '공격 속도'],
+                                      specialty: ['방어 파쇄', '파쇄 지속', '마무리 강타'],
+                                  }
+                                : {},
         ),
     ),
 );

@@ -1,3 +1,4 @@
+import { BarleyAttackPresentation } from './features/unit-attacks/barley/presentation.js';
 import { WheatAttackPresentation, setWheatBatonLength } from './features/unit-attacks/wheat/presentation.js';
 import { RiceAttackPresentation } from './features/unit-attacks/rice/presentation.js';
 import { WalnutAttackPresentation } from './features/unit-attacks/walnut/presentation.js';
@@ -14,6 +15,7 @@ import { farmBreedingCooldown, unitRestPresentation } from './farm-indicators.js
 import { scenePresentation } from './farm-render-scenes.js';
 import { PassiveMarksPresentation } from './tower-passive-presentations.js';
 
+const BARLEY_ATTACK = new BarleyAttackPresentation();
 const WHEAT_ATTACK = new WheatAttackPresentation();
 const RICE_ATTACK = new RiceAttackPresentation();
 const WALNUT_ATTACK = new WalnutAttackPresentation();
@@ -27,6 +29,9 @@ const ATTACK_PRESENTATIONS = new Map(
     [new DualStrikePresentation(), new LobPresentation()].map((presentation) => [presentation.id, presentation]),
 );
 function unitAttackPresentation(unit) {
+    if (unit.species === 8 && unit.ability?.barleyForm) {
+        return BARLEY_ATTACK;
+    }
     if (unit.species === 7 && unit.ability?.wheatForm) {
         return WHEAT_ATTACK;
     }
@@ -161,6 +166,7 @@ export class UnitPresentation {
         this.unitRings = [];
         this.riceDisplayUnits = new Map();
         this.wheatDisplayUnits = new Map();
+        this.barleyDisplayUnits = new Map();
         this.unitRingPool = [{}, {}, {}, {}];
         this.breedingIndicator = {};
         this.restIndicator = {};
@@ -169,17 +175,23 @@ export class UnitPresentation {
         if (this.riceDisplayWorld !== world || this.riceDisplayTime > this.renderer.displayTimeMs) {
             this.riceDisplayUnits.clear();
             this.wheatDisplayUnits.clear();
+            this.barleyDisplayUnits.clear();
         }
         this.riceDisplayWorld = world;
         this.riceDisplayTime = this.renderer.displayTimeMs;
         const LIVE = new Set();
         for (const UNIT of units) {
-            if (UNIT.species !== 6 && UNIT.species !== 7) {
+            if (UNIT.species !== 6 && UNIT.species !== 7 && UNIT.species !== 8) {
                 continue;
             }
             LIVE.add(UNIT.id);
-            const CACHE = UNIT.species === 7 ? this.wheatDisplayUnits : this.riceDisplayUnits,
-                ATTACK = UNIT.species === 7 ? WHEAT_ATTACK : RICE_ATTACK;
+            const CACHE =
+                    UNIT.species === 8
+                        ? this.barleyDisplayUnits
+                        : UNIT.species === 7
+                          ? this.wheatDisplayUnits
+                          : this.riceDisplayUnits,
+                ATTACK = UNIT.species === 8 ? BARLEY_ATTACK : UNIT.species === 7 ? WHEAT_ATTACK : RICE_ATTACK;
             let entry = CACHE.get(UNIT.id);
             if (!entry || entry.seed !== UNIT.seed) {
                 entry = { seed: UNIT.seed, unit: {}, offset: { x: 0, y: 0 }, releasedAt: null };
@@ -198,7 +210,7 @@ export class UnitPresentation {
                 entry.releasedAt === null ? 1 : Math.max(0, 1 - (this.renderer.displayTimeMs - entry.releasedAt) / 120);
             Object.assign(entry.unit, UNIT, { x: UNIT.x + entry.offset.x * LEFT, y: UNIT.y + entry.offset.y * LEFT });
         }
-        for (const CACHE of [this.riceDisplayUnits, this.wheatDisplayUnits]) {
+        for (const CACHE of [this.riceDisplayUnits, this.wheatDisplayUnits, this.barleyDisplayUnits]) {
             for (const ID of CACHE.keys()) {
                 if (!LIVE.has(ID)) {
                     CACHE.delete(ID);
@@ -207,7 +219,14 @@ export class UnitPresentation {
         }
     }
     displayUnit(unit) {
-        const CACHE = unit.species === 7 ? this.wheatDisplayUnits : unit.species === 6 ? this.riceDisplayUnits : null;
+        const CACHE =
+            unit.species === 8
+                ? this.barleyDisplayUnits
+                : unit.species === 7
+                  ? this.wheatDisplayUnits
+                  : unit.species === 6
+                    ? this.riceDisplayUnits
+                    : null;
         return CACHE?.get(unit.id)?.unit || unit;
     }
     addUnitRing(radius, color, width, progress) {
@@ -377,6 +396,9 @@ export class UnitPresentation {
         if (!SWING && !rest && u.species === 7 && u.ability.wheatForm && u.hp > 0 && u.stun <= 0) {
             WHEAT_ATTACK.applyPose(MATRIX, u, GROUND);
         }
+        if (!SWING && !rest && u.species === 8 && u.ability?.barleyForm && u.hp > 0 && u.stun <= 0) {
+            BARLEY_ATTACK.applyPose(MATRIX, u, GROUND);
+        }
         if (this.renderer.cornAttachmentBodies.has(u.id)) {
             this.renderer.captureCornAttachmentBody(u, u.id, player, MATRIX);
         }
@@ -393,6 +415,9 @@ export class UnitPresentation {
         }
         if (u.species === 7) {
             WHEAT_ATTACK.drawContact(this.renderer, u, player, MATRIX);
+        }
+        if (u.species === 8) {
+            BARLEY_ATTACK.drawContact(this.renderer, u, player, MATRIX);
         }
         return true;
     }
