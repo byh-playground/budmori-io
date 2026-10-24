@@ -71,5 +71,11 @@
             "bytes": 514988,
             "sha256": "d1f0d1b14015d3f417f9552d1f650c8585a71e4d67e13c667a1cca0aca3fc310"
         }
-    ]
+    ],
+    "showcase": {
+        "repository": "byh-playground/bloom-gamekit",
+        "distCommit": "401a056bc4323e03d95c5d947414fbc8e7383257",
+        "module": "scenario.js",
+        "bundleSHA256": "34e61752ac185b4e6212a3b014d3cdeee8ab5c0dffd3a0b55435a7c2d20cf9ff"
+    }
 }
