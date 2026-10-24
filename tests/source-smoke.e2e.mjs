@@ -309,6 +309,10 @@ try {
         });
         // Observe each real physical attack settlement without supplying hits or changing damage.
         const SETTLE_BOSS_HITS = WORLD._settleBossHits;
+        globalThis.__restoreBossHitObservation = () => {
+            WORLD._settleBossHits = SETTLE_BOSS_HITS;
+            return WORLD._settleBossHits === SETTLE_BOSS_HITS;
+        };
         WORLD._settleBossHits = function (...args) {
             const TARGETS = this._bossHitBatch.filter((hit) => !hit.unit.isFormationClone).map((hit) => hit.unit.id),
                 BATCH = { targets: TARGETS, events: [], damageTaken: 0 },
@@ -510,6 +514,8 @@ try {
     assert.ok(![...REQUESTS].some((url) => new URL(url).pathname === '/src/game.js'), 'no generated bundle was used');
     assert.deepEqual(ERRORS, [], 'the source boot is free of page, console and network errors');
     // A small real-UI copy check after the unchanged combat assertions, not a form matrix.
+    REPORT.bossHitObservationRestored = await PAGE.evaluate(() => globalThis.__restoreBossHitObservation());
+    assert.equal(REPORT.bossHitObservationRestored, true);
     CHECKPOINT('mixedCombatAssertions');
     await PAGE.locator('#upgradeMenu').click();
     await PAGE.locator('#menuTabAbilities').click();
@@ -724,31 +730,86 @@ try {
         WORLD._benched.clear();
         WORLD._benchRevision++;
         WORLD._unitSpatialDirty = true;
-        globalThis.__sharedSkills = { casts: [], hits: [], rendered: {}, recoveries: {} };
+        globalThis.__sharedSkillRestores = [];
+        globalThis.__sharedSkills = {
+            casts: [],
+            hits: [],
+            rendered: {},
+            recoveries: {},
+            preparations: {},
+            checkpoint: null,
+        };
         // Browser polls can skip an entire short recovery during catch-up. Observe every native step.
         const STEP = WORLD.step;
         WORLD.step = function (dt) {
             const BEFORE = { x: this.boss.x, y: this.boss.y, serial: this.formationRuntime.bossCast?.serial },
                 RESULT = STEP.call(this, dt),
-                CAST = this.formationRuntime.bossCast;
-            if (CAST?.phase === 'recover' && BEFORE.serial === CAST.serial) {
-                const OBS = globalThis.__sharedSkills,
-                    RECOVERY = (OBS.recoveries[CAST.id] ||= { ticks: 0, stationary: true, patternsStopped: true });
-                RECOVERY.ticks++;
-                RECOVERY.stationary &&= this.boss.x === BEFORE.x && this.boss.y === BEFORE.y;
-                RECOVERY.patternsStopped &&=
+                CAST = this.formationRuntime.bossCast,
+                OBS = globalThis.__sharedSkills;
+            if (CAST && ['prepare', 'recover'].includes(CAST.phase) && BEFORE.serial === CAST.serial) {
+                const RECORDS = CAST.phase === 'prepare' ? OBS.preparations : OBS.recoveries,
+                    RECORD = (RECORDS[CAST.id] ||= {
+                        ticks: 0,
+                        x: BEFORE.x,
+                        y: BEFORE.y,
+                        stationary: true,
+                        patternsStopped: true,
+                        noEarlyEffect: true,
+                    });
+                RECORD.ticks++;
+                RECORD.stationary &&= this.boss.x === BEFORE.x && this.boss.y === BEFORE.y;
+                RECORD.patternsStopped &&=
                     this.boss.patternRuntime.active === null && this.boss.chaseVx === 0 && this.boss.chaseVy === 0;
+                if (CAST.phase === 'prepare') {
+                    RECORD.noEarlyEffect &&= !this.formationRuntime.effects.some(
+                        (effect) => effect.role === 'boss' && effect.kind === CAST.id,
+                    );
+                }
+            }
+            const REQUEST = OBS.checkpoint;
+            if (REQUEST && !REQUEST.reached) {
+                const EFFECT =
+                        REQUEST.kind === 'effect' &&
+                        this.formationRuntime.effects.find(
+                            (effect) => effect.role === REQUEST.role && effect.kind === REQUEST.id,
+                        ),
+                    PHASE_RECORD =
+                        REQUEST.phase === 'prepare' ? OBS.preparations[REQUEST.id] : OBS.recoveries[REQUEST.id],
+                    REACHED =
+                        REQUEST.kind === 'effect'
+                            ? EFFECT && EFFECT.age + 1e-9 >= REQUEST.age
+                            : REQUEST.kind === 'phase'
+                              ? CAST?.id === REQUEST.id &&
+                                CAST.phase === REQUEST.phase &&
+                                PHASE_RECORD?.ticks >= REQUEST.ticks
+                              : this.simulationTick >= REQUEST.tick;
+                if (REACHED) {
+                    REQUEST.reached = true;
+                    REQUEST.observedTick = this.simulationTick;
+                    REQUEST.effectId = EFFECT?.id || null;
+                    REQUEST.observedAge = EFFECT?.age ?? null;
+                    BUDMORI.runtime.paused = true;
+                }
             }
             return RESULT;
         };
-        WORLD.onNotice.on((notice) => {
-            const OBS = globalThis.__sharedSkills;
-            if (notice.kind === 'formation-cast') {
-                OBS.casts.push({ id: notice.skillId, role: notice.role || 'player' });
-            }
-            if (notice.attackKind === 'skill' && ['unit-hit', 'boss-hit'].includes(notice.kind)) {
-                OBS.hits.push({ unit: notice.unit, kind: notice.kind });
-            }
+        globalThis.__sharedSkillRestores.push(() => {
+            WORLD.step = STEP;
+            return WORLD.step === STEP;
+        });
+        const LISTENER_COUNT = WORLD.onNotice.listeners.size,
+            OFF = WORLD.onNotice.on((notice) => {
+                const OBS = globalThis.__sharedSkills;
+                if (notice.kind === 'formation-cast') {
+                    OBS.casts.push({ id: notice.skillId, role: notice.role || 'player' });
+                }
+                if (notice.attackKind === 'skill' && ['unit-hit', 'boss-hit'].includes(notice.kind)) {
+                    OBS.hits.push({ unit: notice.unit, kind: notice.kind });
+                }
+            });
+        globalThis.__sharedSkillRestores.push(() => {
+            OFF();
+            return WORLD.onNotice.listeners.size === LISTENER_COUNT;
         });
     });
     await PAGE.evaluate(async () => {
@@ -762,7 +823,16 @@ try {
         ]) {
             const MODULE = await import(`./src/features/formation-skills/${ID}/presentation.js`),
                 TYPE = MODULE[NAME],
-                DRAW = TYPE.prototype.draw;
+                DRAW = TYPE.prototype.draw,
+                OWN_DRAW = Object.getOwnPropertyDescriptor(TYPE.prototype, 'draw');
+            globalThis.__sharedSkillRestores.push(() => {
+                if (OWN_DRAW) {
+                    Object.defineProperty(TYPE.prototype, 'draw', OWN_DRAW);
+                } else {
+                    delete TYPE.prototype.draw;
+                }
+                return true;
+            });
             TYPE.prototype.draw = function (renderer, effect, ...args) {
                 const RESULT = DRAW.call(this, renderer, effect, ...args),
                     KEY = `${effect.role}:${effect.kind}`,
@@ -774,6 +844,10 @@ try {
         const { StormCloudPresentation: CLOUD } =
                 await import('./src/features/formation-skills/storm-cloud/presentation.js'),
             DRAW = CLOUD.prototype.draw;
+        globalThis.__sharedSkillRestores.push(() => {
+            CLOUD.prototype.draw = DRAW;
+            return CLOUD.prototype.draw === DRAW;
+        });
         CLOUD.prototype.draw = function (renderer, effect, ...args) {
             const OBS = { role: effect.role, age: effect.age, widths: [], arcStrokes: 0 },
                 ELLIPSE = renderer.ellipse,
@@ -846,6 +920,21 @@ try {
                     OBS.casts = [];
                     OBS.hits = [];
                     OBS.recoveries = {};
+                    OBS.preparations = {};
+                    OBS.checkpoint = {
+                        kind: 'effect',
+                        role,
+                        id,
+                        age:
+                            id === 'lightning'
+                                ? role === 'boss'
+                                    ? 0.8
+                                    : 0.1
+                                : ['ufo', 'storm-cloud'].includes(id)
+                                  ? 0.9
+                                  : 0.25,
+                        reached: false,
+                    };
                     WORLD.onCombatResolved.emit({ role, [KEY]: LIMIT - 1 });
                     if (SLOT.charge !== LIMIT - 1 || OTHER.charge !== 0) {
                         throw new Error('Combat contribution crossed roles or the exact threshold');
@@ -861,49 +950,12 @@ try {
                 },
                 { role: ROLE, id: ID, required: REQUIRED, condition: CONDITION },
             );
-            if (ROLE === 'boss') {
-                await PAGE.waitForFunction(() => BUDMORI.sim.formationRuntime.bossCast?.phase === 'prepare');
-                const PREPARE = await PAGE.evaluate(() => ({
-                    x: BUDMORI.sim.boss.x,
-                    y: BUDMORI.sim.boss.y,
-                    tick: BUDMORI.sim.simulationTick,
-                }));
-                await PAGE.waitForFunction((tick) => BUDMORI.sim.simulationTick >= tick + 5, PREPARE.tick);
-                assert.deepEqual(
-                    await PAGE.evaluate(() => ({
-                        x: BUDMORI.sim.boss.x,
-                        y: BUDMORI.sim.boss.y,
-                        active: BUDMORI.sim.boss.patternRuntime.active,
-                        effects: BUDMORI.sim.formationRuntime.effects.length,
-                    })),
-                    { x: PREPARE.x, y: PREPARE.y, active: null, effects: 0 },
-                    'prepare stops voluntary motion/patterns and does not release early',
-                );
-            }
-            await PAGE.waitForFunction(
-                ({ role, id }) => {
-                    const EFFECT = BUDMORI.sim.formationRuntime.effects.find(
-                            (effect) => effect.role === role && effect.kind === id,
-                        ),
-                        AGE =
-                            id === 'lightning'
-                                ? role === 'boss'
-                                    ? 0.8
-                                    : 0.1
-                                : ['ufo', 'storm-cloud'].includes(id)
-                                  ? 0.9
-                                  : 0.25;
-                    if (!EFFECT || EFFECT.age < AGE) {
-                        return false;
-                    }
-                    BUDMORI.runtime.paused = true;
-                    return true;
-                },
-                { role: ROLE, id: ID },
-            );
-            await PAGE.evaluate(
-                () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
-            );
+            await PAGE.waitForFunction(() => globalThis.__sharedSkills.checkpoint?.reached === true);
+            await PAGE.evaluate(() => {
+                // Copy the actual paused model into the production session DTO; normal RAF draws it.
+                BUDMORI.runtime.capturePresentation('reset');
+                return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            });
             const FILE =
                     ROLE === 'boss' && ['ufo', 'storm-cloud'].includes(ID) ? `shared-skills-${ROLE}-${ID}.jpg` : null,
                 CAPTURE_STARTED = Date.now();
@@ -937,6 +989,8 @@ try {
                             role === 'player'
                                 ? { radius: WORLD.boss.radius, height: WORLD.boss.height }
                                 : { radius: WORLD.units[0].radius, height: WORLD.units[0].height },
+                        preparation: globalThis.__sharedSkills.preparations[id] || null,
+                        checkpoint: globalThis.__sharedSkills.checkpoint,
                         recovery: globalThis.__sharedSkills.recoveries[id] || null,
                         bossCast: WORLD.formationRuntime.bossCast,
                         pattern: WORLD.boss.patternRuntime.active,
@@ -962,6 +1016,10 @@ try {
                 }
             }
             if (ROLE === 'boss') {
+                assert.ok(RESULT.preparation?.ticks >= 5, 'prepare is observed for at least five actual ticks');
+                assert.equal(RESULT.preparation.stationary, true, 'prepare stops voluntary motion');
+                assert.equal(RESULT.preparation.patternsStopped, true, 'prepare suppresses physical patterns');
+                assert.equal(RESULT.preparation.noEarlyEffect, true, 'prepare never releases effects early');
                 assert.ok(
                     RESULT.recovery?.ticks >= 3,
                     'each released skill traverses recovery on multiple actual simulation ticks',
@@ -1005,52 +1063,47 @@ try {
     // Keep the already released cloud alive while a UFO releases, then cancel a third cast.
     await PAGE.evaluate(() => {
         const WORLD = BUDMORI.sim;
+        globalThis.__sharedSkills.recoveries.ufo = undefined;
+        globalThis.__sharedSkills.checkpoint = { kind: 'phase', id: 'ufo', phase: 'recover', ticks: 6, reached: false };
         WORLD.formationRuntime.slots = [
             { id: 'ufo', ownerId: 'boss', role: 'boss', level: 1, charge: 10, cooldown: 0 },
             { id: 'lightning', ownerId: 'boss', role: 'boss', level: 1, charge: 0, cooldown: 0 },
         ];
         BUDMORI.runtime.paused = false;
     });
-    await PAGE.waitForFunction(() => {
-        const WORLD = BUDMORI.sim;
-        if (WORLD.formationRuntime.bossCast?.id !== 'ufo' || WORLD.formationRuntime.bossCast.phase !== 'recover') {
-            return false;
-        }
-        BUDMORI.runtime.paused = true;
-        return true;
-    });
-    const RECOVERY = await PAGE.evaluate(() => {
-        const WORLD = BUDMORI.sim;
-        return { tick: WORLD.simulationTick, x: WORLD.boss.x, y: WORLD.boss.y };
-    });
-    await PAGE.evaluate(() => {
-        BUDMORI.runtime.paused = false;
-    });
-    await PAGE.waitForFunction((tick) => BUDMORI.sim.simulationTick >= tick + 5, RECOVERY.tick);
-    assert.deepEqual(
-        await PAGE.evaluate(() => ({
-            x: BUDMORI.sim.boss.x,
-            y: BUDMORI.sim.boss.y,
-            pattern: BUDMORI.sim.boss.patternRuntime.active,
-        })),
-        { x: RECOVERY.x, y: RECOVERY.y, pattern: null },
-        'recovery stops voluntary motion and physical patterns',
-    );
+    await PAGE.waitForFunction(() => globalThis.__sharedSkills.checkpoint.reached);
+    const RECOVERY = await PAGE.evaluate(() => globalThis.__sharedSkills.recoveries.ufo);
+    assert.ok(RECOVERY.ticks >= 6, 'recovery remains stopped for five ticks after its first observed tick');
+    assert.equal(RECOVERY.stationary, true, 'recovery stops voluntary motion');
+    assert.equal(RECOVERY.patternsStopped, true, 'recovery stops physical patterns');
     await PAGE.evaluate(() => {
         BUDMORI.sim.formationRuntime.slots.find((slot) => slot.id === 'lightning').charge = 50;
+        globalThis.__sharedSkills.preparations.lightning = undefined;
+        globalThis.__sharedSkills.checkpoint = {
+            kind: 'phase',
+            id: 'lightning',
+            phase: 'prepare',
+            ticks: 1,
+            reached: false,
+        };
+        BUDMORI.runtime.loop.resetTiming();
+        BUDMORI.runtime.paused = false;
     });
-    await PAGE.waitForFunction(() => BUDMORI.sim.formationRuntime.bossCast?.id === 'lightning');
+    await PAGE.waitForFunction(() => globalThis.__sharedSkills.checkpoint.reached);
     const CANCEL = await PAGE.evaluate(() => {
         const WORLD = BUDMORI.sim,
             EFFECTS = WORLD.formationRuntime.effects.filter((effect) => ['ufo', 'storm-cloud'].includes(effect.kind));
         WORLD.boss.stun = 3;
+        globalThis.__sharedSkills.checkpoint = { kind: 'tick', tick: WORLD.simulationTick + 50, reached: false };
+        BUDMORI.runtime.loop.resetTiming();
+        BUDMORI.runtime.paused = false;
         return {
             tick: WORLD.simulationTick,
             effects: EFFECTS.map((effect) => ({ id: effect.id, age: effect.age, pulse: effect.pulse })),
         };
     });
     assert.equal(CANCEL.effects.length, 2, 'both released persistent effects are present');
-    await PAGE.waitForFunction((tick) => BUDMORI.sim.simulationTick >= tick + 50, CANCEL.tick);
+    await PAGE.waitForFunction(() => globalThis.__sharedSkills.checkpoint.reached);
     REPORT.castCancellation = await PAGE.evaluate(() => ({
         cast: BUDMORI.sim.formationRuntime.bossCast,
         effects: BUDMORI.sim.formationRuntime.effects,
@@ -1089,6 +1142,18 @@ try {
         'boss skills preserve the existing undying defense',
     );
     assert.deepEqual(ERRORS, [], 'card and shared-skill scenarios remain free of runtime errors');
+    REPORT.instrumentationRestored = await PAGE.evaluate(() =>
+        globalThis.__sharedSkillRestores
+            .splice(0)
+            .reverse()
+            .map((restore) => restore())
+            .every(Boolean),
+    );
+    assert.equal(
+        REPORT.instrumentationRestored,
+        true,
+        'native step, presentation methods and observation listener are restored',
+    );
     CHECKPOINT('cancellationAndDefenseAssertions');
     REPORT.status = 'passed';
     REPORT.state = STATE;
@@ -1100,6 +1165,28 @@ try {
     REPORT.failure = String(error.stack || error);
     if (page && !page.isClosed()) {
         REPORT.mixedCombat = await page.evaluate(() => globalThis.__mixedCombat).catch(() => null);
+        REPORT.bossHitObservationRestored = await page
+            .evaluate(() => globalThis.__restoreBossHitObservation?.() ?? true)
+            .catch(() => false);
+        REPORT.failureSnapshot = await page
+            .evaluate(() => ({
+                observation: globalThis.__sharedSkills,
+                paused: BUDMORI.runtime.paused,
+                tick: BUDMORI.sim.simulationTick,
+                cast: BUDMORI.sim.formationRuntime.bossCast,
+                slots: BUDMORI.sim.formationRuntime.slots,
+                effects: BUDMORI.sim.formationRuntime.effects,
+            }))
+            .catch(() => null);
+        REPORT.instrumentationRestored = await page
+            .evaluate(() =>
+                (globalThis.__sharedSkillRestores || [])
+                    .splice(0)
+                    .reverse()
+                    .map((restore) => restore())
+                    .every(Boolean),
+            )
+            .catch(() => false);
     }
     throw error;
 } finally {
