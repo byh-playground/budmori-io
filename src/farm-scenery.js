@@ -1,7 +1,7 @@
 // The look of the places the troops fight and live in: the farm with the great tower behind it,
 // and the tower's own hall. Everything is drawn from the farm's world coordinates; nothing here
 // touches the simulation.
-import { WORLD_HEIGHT_PROJECTION } from './vector-sockets.cjs';
+import { WORLD_HEIGHT_PROJECTION } from './vector-sockets.js';
 import { CONFIG } from './farm-model.js';
 
 const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena;

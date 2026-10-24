@@ -1,4 +1,4 @@
-name: Farm build checks
+name: Farm source checks
 on:
     pull_request:
     push:
@@ -7,8 +7,8 @@ permissions:
     contents: read
 jobs:
     checks:
-        runs-on: ubuntu-latest
-        timeout-minutes: 5
+        runs-on: ubuntu-24.04
+        timeout-minutes: 20
         steps:
             - uses: actions/checkout@v4
             - uses: actions/setup-node@v4
@@ -16,4 +16,36 @@ jobs:
                   node-version: 22
                   cache: npm
             - run: npm ci
-            - run: npm run build
+            - run: npm run check
+            - uses: actions/cache@v4
+              id: playwright-cache
+              with:
+                  path: ~/.cache/ms-playwright
+                  key: playwright-ubuntu-24.04-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
+            - name: Install official Chromium OS dependencies (timed)
+              run: |
+                  set -o pipefail
+                  mkdir -p tests/output/browser-setup
+                  echo "runner=${ImageOS} image=${ImageVersion} arch=$(uname -m) cache=${{ steps.playwright-cache.outputs.cache-hit }}" > tests/output/browser-setup/setup.txt
+                  echo "dependencies_start=$(date -u +%FT%TZ)" >> tests/output/browser-setup/setup.txt
+                  ./node_modules/.bin/playwright install-deps chromium 2>&1 | tee tests/output/browser-setup/dependencies.log
+                  echo "dependencies_end=$(date -u +%FT%TZ)" >> tests/output/browser-setup/setup.txt
+                  dpkg-query -W fonts-freefont-ttf fonts-ipafont-gothic fonts-wqy-zenhei libnss3 xvfb >> tests/output/browser-setup/setup.txt
+            - name: Install exact pinned Chromium (timed, including partial cache)
+              run: |
+                  set -o pipefail
+                  echo "browser_start=$(date -u +%FT%TZ)" >> tests/output/browser-setup/setup.txt
+                  ./node_modules/.bin/playwright install chromium 2>&1 | tee tests/output/browser-setup/chromium-install.log
+                  echo "browser_end=$(date -u +%FT%TZ)" >> tests/output/browser-setup/setup.txt
+                  node --input-type=module -e "import {chromium} from 'playwright'; import {execFileSync} from 'node:child_process'; console.log(execFileSync(chromium.executablePath(), ['--version'], {encoding:'utf8'}));" >> tests/output/browser-setup/setup.txt
+                  ./node_modules/.bin/playwright --version >> tests/output/browser-setup/setup.txt
+            - name: Boot the unbuilt source once
+              run: timeout 120s npm run test:source-smoke
+            - uses: actions/upload-artifact@v4
+              if: always()
+              with:
+                  name: farm-source-smoke
+                  path: |
+                      tests/output/source-smoke/
+                      tests/output/browser-setup/
+                  if-no-files-found: warn

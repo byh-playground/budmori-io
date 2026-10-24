@@ -10,6 +10,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { sourceGraph } from '../scripts/source-graph.mjs';
 
 const BASE_COMMIT = '5fd48cad7f6cda109e8dc8af645d7f255c8b3a8e',
     ROOT = fileURLToPath(new URL('../', import.meta.url)),
@@ -81,15 +82,24 @@ for (const FILE of ['index.html', 'src/bootstrap.js', 'src/game.js']) {
     BASE_FILES[FILE] = digest(ACTUAL);
 }
 const MANIFESTS = { base: manifest(ROOTS.base), candidate: manifest(ROOTS.candidate) },
+    CANDIDATE_SOURCE_GRAPH = sourceGraph(ROOTS.candidate),
     REPORT = {
         scope: 'Paired rendered rAF intervals in one CI Chromium SwiftShader process; no hardware GPU or physical-device FPS claim.',
         baseCommit: BASE_COMMIT,
         candidateCommit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim(),
         baseFiles: BASE_FILES,
+        candidateSourceGraph: CANDIDATE_SOURCE_GRAPH,
         builds: Object.fromEntries(
             Object.entries(MANIFESTS).map(([variant, build]) => [
                 variant,
-                { productVersion: build.productVersion, game: build.game, gamekitCommit: build.distCommit },
+                {
+                    productVersion: build.productVersion,
+                    game:
+                        variant === 'candidate'
+                            ? CANDIDATE_SOURCE_GRAPH.files.find((file) => file.file === build.game.file)
+                            : build.game,
+                    gamekitCommit: build.distCommit,
+                },
             ]),
         ),
         protocol: {

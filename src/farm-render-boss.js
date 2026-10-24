@@ -1,4 +1,4 @@
-import { bossVectorScale } from './vector-sockets.cjs';
+import { bossVectorScale } from './vector-sockets.js';
 import { speciesById } from './species-catalog.js';
 import { CONFIG, clamp } from './farm-model.js';
 import { BossAttackPose, BossAttackPresentation } from './features/boss-patterns/presentation-base.js';

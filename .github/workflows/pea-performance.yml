@@ -1,16 +1,7 @@
 name: Pea regression performance
 on:
     pull_request:
-        paths:
-            - 'index.html'
-            - 'src/**'
-            - 'assets/**'
-            - 'vendor/**'
-            - 'gamekit-lock.json'
-            - 'package*.json'
-            - 'scripts/build.cjs'
-            - 'tests/pea-performance.e2e.mjs'
-            - '.github/workflows/pea-performance.yml'
+        types: [labeled, synchronize]
     workflow_dispatch:
 permissions:
     contents: read
@@ -19,6 +10,7 @@ concurrency:
     cancel-in-progress: true
 jobs:
     paired-browser:
+        if: ${{ github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'verify-gameplay') && (github.event.action != 'labeled' || github.event.label.name == 'verify-gameplay')) }}
         runs-on: ubuntu-24.04
         timeout-minutes: 25
         steps:
@@ -48,7 +40,7 @@ jobs:
                   echo "browser_end=$(date -u +%FT%TZ)" >> tests/output/browser-setup/setup.txt
                   node --input-type=module -e "import {chromium} from 'playwright'; import {execFileSync} from 'node:child_process'; console.log(execFileSync(chromium.executablePath(), ['--version'], {encoding:'utf8'}));" >> tests/output/browser-setup/setup.txt
                   ./node_modules/.bin/playwright --version >> tests/output/browser-setup/setup.txt
-            - run: npm run build
+            - run: npm run check
             - name: Archive the exact deployed pea baseline without changing the candidate
               env:
                   BASE_COMMIT: 7b10214c2a1bdcf177581ca772da11dfcdf4b673

@@ -521,24 +521,12 @@ async function launch() {
             },
         });
         initStage = 'loading-game-script';
-        const SCRIPT = document.createElement('script'),
-            ASSET = config.game;
-        SCRIPT.src = new URL(ASSET.file + '?version=' + ASSET.sha256, document.baseURI).href;
-        SCRIPT.integrity =
-            'sha256-' +
-            btoa(String.fromCharCode(...Uint8Array.from(ASSET.sha256.match(/../g), (b) => parseInt(b, 16))));
-        SCRIPT.crossOrigin = 'anonymous';
-        globalThis.BloomGameSourceURL = SCRIPT.src;
-        globalThis.BloomGameSourceIntegrity = SCRIPT.integrity;
+        // Native ES modules are the authored runtime; no generated IIFE or build artifact.
+        const GAME_URL = new URL('./farm-app.js', import.meta.url).href;
+        globalThis.BloomGameSourceURL = GAME_URL;
+        globalThis.BloomGameSourceIntegrity = null;
         gameScriptAttempted = true;
-        await new Promise((resolve, reject) => {
-            SCRIPT.onload = resolve;
-            SCRIPT.onerror = () => {
-                gameScriptAttempted = false;
-                reject(new Error('Game source loading failed'));
-            };
-            document.body.append(SCRIPT);
-        });
+        await import(GAME_URL);
         initStage = 'verifying-game-init';
         if (!globalThis.BUDMORI) {
             throw new Error('Game script loaded but app initialization did not complete');

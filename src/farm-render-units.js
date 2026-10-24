@@ -1,6 +1,6 @@
 import { ChestnutAttackPresentation } from './features/unit-attacks/chestnut/presentation.js';
 import { RedbeanAttackPresentation } from './features/unit-attacks/redbean/presentation.js';
-import { unitBodyDefinition, unitDisplayScale } from './features/unit-body/definition.cjs';
+import { unitBodyDefinition, unitDisplayScale } from './features/unit-body/definition.js';
 import { BarleyArmorShredPresentation } from './features/abilities/barley-shred/presentation.js';
 import { UnitAttackPresentation } from './features/unit-attacks/presentation-base.js';
 import { PeaAttackPresentation } from './features/unit-attacks/pea/presentation.js';

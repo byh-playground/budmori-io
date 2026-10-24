@@ -18,7 +18,7 @@ import {
     bossBodyRadius,
     unitTorsoHeight,
     maximumUnitRadius,
-} from './features/unit-body/definition.cjs';
+} from './features/unit-body/definition.js';
 import { seedProjectileDimensions } from './features/projectiles/seed/definition.js';
 import { MutationNotifications } from './mutation-notifications.js';
 import { UnitCollection } from './unit-collection.js';
@@ -617,6 +617,20 @@ const ATTACKING_BODY = (baseLocal) =>
             }
         }
     };
+// Mature peanut geometry is a pure function of its valid tier: authored body
+// metadata and size configuration are frozen. Preserve the original arithmetic
+// and apply the live giant scale only in the getters, never in this table.
+const PEANUT_MATURE_GEOMETRY = Object.freeze(
+    Array.from({ length: 6 }, (_, index) => {
+        const UNIT_LOCAL = { species: 4, tier: index + 1, growthElapsed: 1, growthDuration: 1 };
+        return Object.freeze({ radius: unitBodyRadius(UNIT_LOCAL), height: unitBodyHeight(UNIT_LOCAL) });
+    }),
+);
+function peanutMatureGeometry(unit) {
+    return unit.species === 4 && unit.mature && Number.isInteger(unit.tier) && unit.tier >= 1 && unit.tier <= 6
+        ? PEANUT_MATURE_GEOMETRY[unit.tier - 1]
+        : null;
+}
 const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
     constructor(id, species, tier, x, y) {
         super(x, y);
@@ -742,7 +756,7 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         return this.giantUntil > (this._world?.time ?? 0) ? 3 : 1;
     }
     get radius() {
-        return unitBodyRadius(this) * this.giantScale;
+        return (peanutMatureGeometry(this)?.radius ?? unitBodyRadius(this)) * this.giantScale;
     }
     get mature() {
         return this.growthElapsed >= this.growthDuration - 1e-9;
@@ -757,7 +771,7 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         return unitVectorScale(this) * this.giantScale;
     }
     get height() {
-        return unitBodyHeight(this) * this.giantScale;
+        return (peanutMatureGeometry(this)?.height ?? unitBodyHeight(this)) * this.giantScale;
     }
     get bodyHeight() {
         return unitTorsoHeight(this) * this.giantScale;

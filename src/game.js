@@ -1105,10 +1105,6 @@
               available: true,
               basic: ["가시 위력", "최대 체력", "공격 속도"],
               specialty: ["주기 가시", "가시 사거리", "집중 마무리"]
-            } : id === 4 ? {
-              available: true,
-              basic: ["협공 위력", "최대 체력", "공격 속도"],
-              specialty: ["협공 범위", "중앙 마무리", "분열체 강화"]
             } : {}
           )
         )
@@ -1465,33 +1461,28 @@
     const BASE = baseUnitStatsFor(unit2?.tier, unit2?.species), MULTIPLIER = Number.isFinite(unit2?.permanentStatMultiplier) ? Math.max(0, unit2.permanentStatMultiplier) : 1;
     return {
       ...BASE,
-      maxHp: BASE.maxHp * MULTIPLIER * growthHealthMultiplierFor(unit2),
+      maxHp: BASE.maxHp * MULTIPLIER * (unit2?.growthMaxHpMultiplier ?? 1),
       attackPower: BASE.attackPower * MULTIPLIER,
       ...unit2?.isFormationClone ? { maxHp: 1 } : {},
       ...overrides
     };
   }
-  function growthHealthMultiplierFor(unit2) {
-    return unit2?.species === 4 && unit2.isBattleOnlySummon ? 1 : unit2?.growthMaxHpMultiplier ?? 1;
-  }
   function unitMaxHpFor(unit2) {
-    const SPLIT_MULTIPLIER = unit2.species === 4 && unit2.isBattleOnlySummon && Number.isFinite(unit2.permanentStatMultiplier) ? Math.max(0, unit2.permanentStatMultiplier) : 1;
-    return unit2.isFormationClone ? 1 : baseUnitStatsFor(unit2.tier, unit2.species).maxHp * growthHealthMultiplierFor(unit2) * SPLIT_MULTIPLIER;
+    return unit2.isFormationClone ? 1 : baseUnitStatsFor(unit2.tier, unit2.species).maxHp * (unit2.growthMaxHpMultiplier ?? 1);
   }
   function applyRunGrowthHealth(unit2, progression, { preserveRatio = false } = {}) {
-    const HAS_GROWTH_HEALTH = (unit2.species === 2 || unit2.species === 3 || unit2.species === 4) && unit2.faction === "player" && !unit2.isFormationClone && !unit2.isBattleOnlySummon;
-    if (!HAS_GROWTH_HEALTH && (unit2.growthMaxHpMultiplier ?? 1) === 1) {
+    if ((unit2.species !== 2 && unit2.species !== 3 || unit2.faction !== "player" || unit2.isFormationClone) && (unit2.growthMaxHpMultiplier ?? 1) === 1) {
       return;
     }
-    const PREVIOUS_MAX = unitMaxHpFor(unit2), ABILITY_ID9 = unit2.species === 4 ? "peanut-death-split" : unit2.species === 3 ? "chestnut-target-thorns" : "kidney-continuous-leap", BUILD = progression?.abilities?.[ABILITY_ID9];
-    unit2.growthMaxHpMultiplier = HAS_GROWTH_HEALTH && BUILD?.treeVersion === 1 ? 1 + 0.04 * (BUILD.nodeRanks["basic-2"] || 0) : 1;
+    const PREVIOUS_MAX = unitMaxHpFor(unit2), BUILD = progression?.abilities?.[unit2.species === 3 ? "chestnut-target-thorns" : "kidney-continuous-leap"];
+    unit2.growthMaxHpMultiplier = (unit2.species === 2 || unit2.species === 3) && unit2.faction === "player" && !unit2.isFormationClone && BUILD?.treeVersion === 1 ? 1 + 0.04 * (BUILD.nodeRanks["basic-2"] || 0) : 1;
     const NEXT_MAX = unitMaxHpFor(unit2);
     if (unit2.hp > 0) {
       unit2.hp = preserveRatio ? Math.min(1, unit2.hp / PREVIOUS_MAX) * NEXT_MAX : Math.min(unit2.hp, NEXT_MAX);
     }
   }
   function combatStats(unit2, overrides) {
-    return overrides === void 0 && !unit2?.isFormationClone && (unit2?.permanentStatMultiplier ?? 1) === 1 && growthHealthMultiplierFor(unit2) === 1 ? baseUnitStatsFor(unit2?.tier, unit2?.species) : resolveUnitStats(unit2, overrides);
+    return overrides === void 0 && !unit2?.isFormationClone && (unit2?.growthMaxHpMultiplier ?? 1) === 1 ? baseUnitStatsFor(unit2?.tier, unit2?.species) : resolveUnitStats(unit2, overrides);
   }
   function resolveDamage(rawDamage, armor = 0, armorPenetration = 0, critical = false, critMultiplier = COMMON_UNIT_STAT_DEFAULTS.critMultiplier) {
     const RAW = Number.isFinite(rawDamage) ? Math.max(0, rawDamage) : 0;
@@ -1669,281 +1660,6 @@
     }
   });
 
-  // src/features/unit-attacks/dual-strike/definition.js
-  var FEATURE;
-  var init_definition15 = __esm({
-    "src/features/unit-attacks/dual-strike/definition.js"() {
-      FEATURE = Object.freeze({ id: "peanut-dual-strike", modelKey: "repeatedStrike" });
-    }
-  });
-
-  // src/features/species-growth/peanut-attack.js
-  function peanutGrowthBuild(progression) {
-    const ENTRY = progression?.abilities?.["peanut-death-split"];
-    return ENTRY?.treeVersion === 1 ? growthBuildOf(ENTRY) : null;
-  }
-  function peanutRange(world, unit2) {
-    if (unit2.species !== 4) {
-      return null;
-    }
-    if (unit2.isBattleOnlySummon) {
-      return 1.45;
-    }
-    const BUILD = peanutGrowthBuild(world.abilityProgressionFor(unit2));
-    return BUILD ? 1.45 * (1 + 0.04 * (BUILD.nodeRanks["specialty-1"] || 0)) : null;
-  }
-  function peanutBudgetMultiplier(tier, one, current) {
-    let materials = 1;
-    for (let grade = 2; grade <= tier; grade++) {
-      materials *= mergeMaterialCostForTier(grade);
-    }
-    return one > 0 && current > 0 && Number.isFinite(one + current) ? one * materials * 1.05 ** (tier - 1) / current : 1.75 ** (tier - 1);
-  }
-  function peanutShots(form) {
-    return PEANUT_WEIGHTS[form].map((weight, slot) => ({
-      slot,
-      tick: TICKS[form][slot],
-      weight,
-      stage: STAGES2[form][slot]
-    }));
-  }
-  function createPeanutAttack(world, unit2, action, commandSpeed = 1) {
-    const BUILD = peanutGrowthBuild(world.abilityProgressionFor(unit2));
-    if (unit2.species !== 4 || !BUILD && !unit2.isBattleOnlySummon) {
-      return null;
-    }
-    const CHILD = !!unit2.isBattleOnlySummon;
-    const R2 = CHILD ? {} : BUILD.nodeRanks;
-    const FORM = CHILD ? 1 : growthForAbility("peanut-death-split").attackTier(BUILD, unit2.tier);
-    const C = world.createAttackContext(unit2, { attackKind: FEATURE.id, attackMultiplier: 1 });
-    const SPEED = Math.min(
-      4,
-      Math.max(0.05, C.attackerStats.attackSpeed * commandSpeed * (1 + 0.02 * (R2["basic-3"] || 0)))
-    );
-    const INPUTS = { one: baseUnitStatsFor(1, 4).attackPower, current: baseUnitStatsFor(unit2.tier, 4).attackPower };
-    const TARGET = world.attackTarget(unit2, action);
-    const DX = (TARGET?.x ?? action.target.x) - unit2.x, DY = (TARGET?.y ?? action.target.y) - unit2.y;
-    const DIST = Math.hypot(DX, DY) || 1;
-    const TRAVEL = Math.max(0, DIST - (TARGET?.radius || 0) * 0.98);
-    return {
-      version: 1,
-      id: action.id,
-      owner: unit2.id,
-      ownerGeneration: unit2.generation,
-      tier: unit2.tier,
-      form: FORM,
-      child: CHILD,
-      speed: SPEED,
-      windupSeconds: 0.25,
-      durationSeconds: 0.5,
-      recoverySeconds: 1 / SPEED,
-      ranks: { power: R2["basic-1"] || 0, range: R2["specialty-1"] || 0, finish: R2["specialty-2"] || 0 },
-      budgetInputs: INPUTS,
-      multiplier: (CHILD ? 1 : peanutBudgetMultiplier(unit2.tier, INPUTS.one, INPUTS.current)) * (1 + 0.03 * (R2["basic-1"] || 0)),
-      source: {
-        attackerStats: structuredClone(C.attackerStats),
-        attackPowerMultiplier: C.attackPowerMultiplier,
-        sourceKind: C.sourceKind,
-        sourceDamageScale: world.passiveDamageScale(unit2, C.attackerStats.maxHp, world.boss, world.boss.maxHp)
-      },
-      origin: { x: unit2.x, y: unit2.y, z: 0 },
-      point: { x: unit2.x + DX / DIST * TRAVEL, y: unit2.y + DY / DIST * TRAVEL, z: 0 },
-      targetId: action.targetId,
-      targetGeneration: action.targetGeneration,
-      shots: peanutShots(FORM),
-      launchTick: null,
-      motionTick: 0,
-      attack: null,
-      criticalRolls: {}
-    };
-  }
-  function launchPeanutAttack(world, action) {
-    const R2 = action.peanutAttack;
-    if (!R2 || R2.launchTick !== null) {
-      return;
-    }
-    R2.launchTick = world.simulationTick;
-    R2.attack = new AttackAction(
-      { durationTicks: 11, strikes: R2.shots.map(({ tick, weight }) => ({ tick, weight })) },
-      R2.launchTick
-    ).toDTO();
-  }
-  function peanutSlotGeometry(r, slot) {
-    const SHOT = r.shots[slot];
-    const DX = r.point.x - r.origin.x, DY = r.point.y - r.origin.y;
-    const D = Math.hypot(DX, DY) || 1, NX = -DY / D, NY = DX / D;
-    const SIDE = SHOT.stage.endsWith("left") ? -1 : SHOT.stage.endsWith("right") ? 1 : 0;
-    const SWEEP = SHOT.stage.startsWith("sweep"), SPREAD = SHOT.stage.startsWith("spread");
-    const SCALE = (1 + 0.04 * r.ranks.range) * r.source.attackerStats.attackArea;
-    const OFFSET = SIDE * (SWEEP ? 0.55 : SPREAD ? 0.35 : 0.18) * SCALE;
-    return {
-      from: { x: r.origin.x + NX * OFFSET, y: r.origin.y + NY * OFFSET, z: 0 },
-      to: {
-        x: r.point.x + NX * (SWEEP ? -OFFSET : OFFSET * 0.3),
-        y: r.point.y + NY * (SWEEP ? -OFFSET : OFFSET * 0.3),
-        z: 0
-      },
-      radius: (SWEEP ? 0.45 : SHOT.stage === "central" ? 0.38 : 0.2) * SCALE,
-      height: 0.5
-    };
-  }
-  function peanutRuntime(record) {
-    let runtime = PEANUT_RUNTIME.get(record);
-    if (!runtime || runtime.checkpoint !== record.attack) {
-      runtime = { action: AttackAction.fromDTO(record.attack), checkpoint: record.attack };
-      PEANUT_RUNTIME.set(record, runtime);
-    }
-    return runtime;
-  }
-  function peanutOwnerCanContinue(world, unit2, action, record) {
-    return unit2.hp > 0 && unit2.stun <= 0 && unit2.down <= 0 && unit2.generation === record.ownerGeneration && world._unitForId(record.owner) === unit2 && unit2.ability.action === action && unit2.ability.phase === "active";
-  }
-  function resolvePeanutSlots(world, unit2, action, elapsed, geometry) {
-    const R2 = action.peanutAttack;
-    if (!R2 || R2.launchTick === null || !peanutOwnerCanContinue(world, unit2, action, R2)) {
-      return;
-    }
-    R2.motionTick = Math.min(10, Math.max(0, Math.round(elapsed * 20)));
-    const RUNTIME = peanutRuntime(R2), A = RUNTIME.action, READY = A.advance(R2.launchTick + R2.motionTick);
-    if (!READY.length) {
-      R2.attack.lastTick = A.lastTick;
-      return;
-    }
-    for (const S of READY) {
-      if (!peanutOwnerCanContinue(world, unit2, action, R2)) {
-        break;
-      }
-      const G = peanutSlotGeometry(R2, S.slot), TARGET = world.attackTarget(unit2, action), PRIMARY = TARGET?.hp > 0 ? TARGET : null;
-      const CANDIDATES = PRIMARY ? [PRIMARY] : [];
-      if (world.boss !== PRIMARY && world.boss.hp > 0 && areOpposingFactions(unit2, world.boss)) {
-        CANDIDATES.push(world.boss);
-      }
-      let hasUnitEnemy = false;
-      for (const [FACTION, COUNT] of world._liveFactionCounts) {
-        if (FACTION !== unit2.faction && COUNT > 0) {
-          hasUnitEnemy = true;
-          break;
-        }
-      }
-      if (hasUnitEnemy) {
-        for (const T of world.units) {
-          if (T !== PRIMARY && T.hp > 0 && areOpposingFactions(unit2, T)) {
-            CANDIDATES.push(T);
-          }
-        }
-      }
-      let secondary = 0;
-      for (const T of CANDIDATES) {
-        if (!peanutOwnerCanContinue(world, unit2, action, R2)) {
-          break;
-        }
-        const MAIN = T === PRIMARY;
-        if (!MAIN && secondary >= 4) {
-          continue;
-        }
-        const HIT = geometry.sweep(G.from, G.to, G.radius, G.height, T);
-        if (!HIT) {
-          continue;
-        }
-        const ID = T === world.boss ? "boss" : T.id;
-        if (!A.claimHit(S.slot, ID, T.generation)) {
-          continue;
-        }
-        if (!MAIN) {
-          secondary++;
-        }
-        const KEY2 = attackTargetKey(ID, T.generation);
-        if (!Object.hasOwn(R2.criticalRolls, KEY2)) {
-          R2.criticalRolls[KEY2] = world.random();
-        }
-        const SOURCE = R2.source;
-        world.damageCombatTarget(unit2, { id: action.id, hit: false }, T, HIT, {
-          attackKind: FEATURE.id,
-          suppressBasicProc: !A.claimOnce("basic-proc"),
-          attackContext: {
-            source: unit2,
-            sourceKind: SOURCE.sourceKind,
-            attackerStats: SOURCE.attackerStats,
-            damageMultiplier: R2.multiplier * (S.weight + (S.slot === R2.shots.length - 1 ? 0.08 * R2.ranks.finish : 0)) * (MAIN ? 1 : 0.5),
-            attackPowerMultiplier: SOURCE.attackPowerMultiplier,
-            sourceDamageScale: SOURCE.sourceDamageScale,
-            kind: FEATURE.id,
-            strikeIndex: S.slot,
-            buffed: false,
-            sourceStatOverrides: SOURCE.attackerStats,
-            area: true,
-            criticalRoll: R2.criticalRolls[KEY2],
-            hitTargets: null
-          }
-        });
-      }
-      world.combat("peanut-strike", {
-        unit: unit2.id,
-        actionId: action.id,
-        slot: S.slot,
-        form: R2.form,
-        stage: R2.shots[S.slot].stage
-      });
-    }
-    R2.attack.nextSlot = A.nextSlot;
-    R2.attack.lastTick = A.lastTick;
-    R2.attack.cancelled = A.cancelled;
-    for (const S of READY) {
-      R2.attack.hits[S.slot] = [...A.hits[S.slot]];
-    }
-    R2.attack.claims = [...A.claims];
-  }
-  function isPeanutAttackRecord(r) {
-    if (!EXACT(
-      r,
-      "version id owner ownerGeneration tier form child speed windupSeconds durationSeconds recoverySeconds ranks budgetInputs multiplier source origin point targetId targetGeneration shots launchTick motionTick attack criticalRolls"
-    ) || r.version !== 1 || !["id", "owner", "ownerGeneration", "targetGeneration"].every((k) => Number.isSafeInteger(r[k]) && r[k] > 0) || attackTargetKey(r.targetId, r.targetGeneration) === null || !Number.isInteger(r.tier) || r.tier < 1 || r.tier > 6 || !Number.isInteger(r.form) || r.form < 1 || r.form > r.tier || typeof r.child !== "boolean" || !Number.isFinite(r.speed) || r.speed < 0.05 || r.speed > 4 || r.windupSeconds !== 0.25 || r.durationSeconds !== 0.5 || r.recoverySeconds !== 1 / r.speed || !EXACT(r.ranks, "power range finish") || !Object.entries(r.ranks).every(([k, v]) => Number.isInteger(v) && v >= 0 && v <= (k === "power" ? 10 : 5)) || r.child && (r.form !== 1 || r.tier !== 1 || Object.values(r.ranks).some((v) => v !== 0)) || !EXACT(r.budgetInputs, "one current") || !Object.values(r.budgetInputs).every(Number.isFinite) || r.multiplier !== (r.child ? 1 : peanutBudgetMultiplier(r.tier, r.budgetInputs.one, r.budgetInputs.current)) * (1 + 0.03 * r.ranks.power) || !EXACT(r.source, "attackerStats attackPowerMultiplier sourceKind sourceDamageScale") || !EXACT(r.source.attackerStats, ["maxHp", "attackPower", ...Object.keys(COMMON_UNIT_STAT_DEFAULTS)].join(" ")) || !Object.values(r.source.attackerStats).every((v) => Number.isFinite(v) && v >= 0) || r.source.attackerStats.maxHp <= 0 || ![1, 3].includes(r.source.attackPowerMultiplier) || !Number.isFinite(r.source.sourceDamageScale) || r.source.sourceDamageScale < 0 || !["direct", "enemy"].includes(r.source.sourceKind) || ![r.origin, r.point].every(
-      (p) => EXACT(p, "x y z") && Object.values(p).every((v) => Number.isFinite(v) && Math.abs(v) <= 100) && p.z === 0
-    ) || JSON.stringify(r.shots) !== JSON.stringify(peanutShots(r.form)) || !Number.isInteger(r.motionTick) || r.motionTick < 0 || r.motionTick > 10 || !r.criticalRolls || typeof r.criticalRolls !== "object" || Array.isArray(r.criticalRolls) || !Object.values(r.criticalRolls).every((v) => Number.isFinite(v) && v >= 0 && v < 1)) {
-      return false;
-    }
-    if (r.launchTick === null) {
-      return r.attack === null && r.motionTick === 0 && Object.keys(r.criticalRolls).length === 0;
-    }
-    if (!Number.isSafeInteger(r.launchTick) || r.launchTick < 0 || !isAttackActionDTO(r.attack)) {
-      return false;
-    }
-    const A = r.attack, KEYS = new Set(A.hits.flat());
-    return !A.cancelled && A.startTick === r.launchTick && A.lastTick === r.launchTick + r.motionTick && A.plan.durationTicks === 11 && JSON.stringify(A.plan.strikes) === JSON.stringify(r.shots.map(({ tick, weight }) => ({ tick, weight }))) && A.claims.every((c) => c === "basic-proc") && A.claims.includes("basic-proc") === KEYS.size > 0 && Object.keys(r.criticalRolls).length === KEYS.size && Object.keys(r.criticalRolls).every((k) => KEYS.has(k)) && A.hits.every((hits) => hits.length <= 5);
-  }
-  var PEANUT_WEIGHTS, TICKS, STAGES2, PEANUT_RUNTIME, EXACT;
-  var init_peanut_attack = __esm({
-    "src/features/species-growth/peanut-attack.js"() {
-      init_attack_action();
-      init_state();
-      init_unit_stats();
-      init_unit_grades();
-      init_factions();
-      init_definition15();
-      PEANUT_WEIGHTS = Object.freeze([
-        null,
-        [0.5, 0.5],
-        [0.45, 0.55],
-        [0.3, 0.3, 0.4],
-        [0.25, 0.25, 0.5],
-        [0.2, 0.2, 0.3, 0.3],
-        [0.15, 0.15, 0.2, 0.2, 0.3]
-      ]);
-      TICKS = [null, [3, 8], [3, 8], [2, 5, 9], [2, 5, 9], [1, 4, 6, 9], [1, 3, 5, 7, 9]];
-      STAGES2 = [
-        null,
-        ["tap-left", "tap-right"],
-        ["spread-left", "spread-right"],
-        ["cross-left", "cross-right", "cross-left"],
-        ["close-left", "close-right", "central"],
-        ["sweep-left", "sweep-right", "close-left", "close-right"],
-        ["spread-left", "spread-right", "sweep-left", "sweep-right", "central"]
-      ];
-      PEANUT_RUNTIME = /* @__PURE__ */ new WeakMap();
-      EXACT = (v, keys2) => v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).sort().join(" ") === keys2.split(" ").sort().join(" ");
-    }
-  });
-
   // src/features/species-growth/chestnut-attack.js
   function chestnutGrowthBuild(progression) {
     const ENTRY = progression?.abilities?.["chestnut-target-thorns"];
@@ -2024,7 +1740,7 @@
         slot: index,
         tick: periodic ? index * 2 : Math.ceil(index * 3 / SPEED - 1e-9),
         weight: periodic ? 1 / COUNT : CHESTNUT_WEIGHTS[FORM][index],
-        stage: periodic ? "periodic" : STAGES3[FORM][index]
+        stage: periodic ? "periodic" : STAGES2[FORM][index]
       })),
       nextShot: 0,
       completedSlots: Array(COUNT).fill(false),
@@ -2228,7 +1944,7 @@
     }
     const COUNT = r.periodic ? 1 + r.ranks.periodic : CHESTNUT_WEIGHTS[r.form].length;
     if (r.shots.length !== COUNT || !r.shots.every(
-      (s, i) => exactKeys(s, "slot tick weight stage") && s.slot === i && s.tick === (r.periodic ? i * 2 : Math.ceil(i * 3 / r.speed - 1e-9)) && s.weight === (r.periodic ? 1 / COUNT : CHESTNUT_WEIGHTS[r.form][i]) && s.stage === (r.periodic ? "periodic" : STAGES3[r.form][i])
+      (s, i) => exactKeys(s, "slot tick weight stage") && s.slot === i && s.tick === (r.periodic ? i * 2 : Math.ceil(i * 3 / r.speed - 1e-9)) && s.weight === (r.periodic ? 1 / COUNT : CHESTNUT_WEIGHTS[r.form][i]) && s.stage === (r.periodic ? "periodic" : STAGES2[r.form][i])
     ) || !Array.isArray(r.completedSlots) || r.completedSlots.length !== COUNT || !r.completedSlots.every((v, i) => typeof v === "boolean" && (i < r.nextShot || !v))) {
       return false;
     }
@@ -2252,7 +1968,7 @@
       ([key, value]) => KEYS.has(key) && Number.isFinite(value) && value >= 0 && value < 1
     ) && r.attack.claims.length === Number(KEYS.size > 0) && r.attack.claims.every((c) => c === "basic-proc") && [r.origin, r.point].every((p) => exactKeys(p, "x y z") && ["x", "y", "z"].every((k) => Number.isFinite(p[k])));
   }
-  var CHESTNUT_WEIGHTS, STAGES3;
+  var CHESTNUT_WEIGHTS, STAGES2;
   var init_chestnut_attack = __esm({
     "src/features/species-growth/chestnut-attack.js"() {
       init_attack_action();
@@ -2269,7 +1985,7 @@
         [0.4, 0.6],
         [0.25, 0.3, 0.45]
       ]);
-      STAGES3 = [
+      STAGES2 = [
         null,
         ["thrust"],
         ["cross-left", "cross-right"],
@@ -3019,7 +2735,7 @@
           species: 4,
           asset: "assets/troops/peanut.svg",
           shapeId: "peanut-pod-outline",
-          sourceSha256: "5cc6811a0045bee6282b5f3b32aabc2c1021824d9c147bd84a9464e7a84e3003",
+          sourceSha256: "79c2dc3bdb2f576662fd620b8b1be8795a33399fdfe42e527e8e8eeaae782c84",
           viewBox: [0, 0, 320, 300],
           bounds: {
             left: 101.3125,
@@ -3230,11 +2946,11 @@
     const BODY2 = targetBodyDimensions(target), MARGIN = Math.max(T1_DIAMETER * 0.12, BODY2.bodyHeight * 0.06);
     return BODY2.topZ + MARGIN;
   }
-  var import_definition17, T1_DIAMETER, FormationSkill, MeteorSkill, FlyingSkill;
+  var import_definition16, T1_DIAMETER, FormationSkill, MeteorSkill, FlyingSkill;
   var init_model_base = __esm({
     "src/features/formation-skills/model-base.js"() {
-      import_definition17 = __toESM(require_definition(), 1);
-      T1_DIAMETER = (0, import_definition17.unitBodyRadius)({ species: 0, tier: 1, growthElapsed: 1, growthDuration: 1 }) * 2;
+      import_definition16 = __toESM(require_definition(), 1);
+      T1_DIAMETER = (0, import_definition16.unitBodyRadius)({ species: 0, tier: 1, growthElapsed: 1, growthDuration: 1 }) * 2;
       FormationSkill = class {
         constructor(definition) {
           this.definition = definition;
@@ -3737,7 +3453,7 @@
           ];
         }
         trackHealth(unit2) {
-          const MAX_HP = unit2.species === 4 ? unitMaxHpFor(unit2) : unit2.isFormationClone ? 1 : baseUnitStatsFor(unit2.tier, unit2.species).maxHp;
+          const MAX_HP = unit2.isFormationClone ? 1 : baseUnitStatsFor(unit2.tier, unit2.species).maxHp;
           if (unit2.faction === "player" && unit2.hp > 0 && unit2.hp < MAX_HP) {
             this.injured.add(unit2);
           } else {
@@ -4018,25 +3734,25 @@
   // src/features/projectiles/seed/definition.js
   function seedEllipseRadii(projectile) {
     const Y = projectile.height * import_vector_sockets.WORLD_HEIGHT_PROJECTION * 0.5 / VERTICAL_EXTENT;
-    return { x: Y * FEATURE2.widthToHeight, y: Y };
+    return { x: Y * FEATURE.widthToHeight, y: Y };
   }
   function seedProjectileDimensions(unit2) {
-    const HEIGHT = unit2.bodyHeight * FEATURE2.bodyHeightFraction, RADII = seedEllipseRadii({ height: HEIGHT });
+    const HEIGHT = unit2.bodyHeight * FEATURE.bodyHeightFraction, RADII = seedEllipseRadii({ height: HEIGHT });
     return { radius: RADII.y * HORIZONTAL_EXTENT, height: HEIGHT };
   }
-  var import_vector_sockets, FEATURE2, VERTICAL_EXTENT, HORIZONTAL_EXTENT;
-  var init_definition16 = __esm({
+  var import_vector_sockets, FEATURE, VERTICAL_EXTENT, HORIZONTAL_EXTENT;
+  var init_definition15 = __esm({
     "src/features/projectiles/seed/definition.js"() {
       import_vector_sockets = __toESM(require_vector_sockets(), 1);
-      FEATURE2 = Object.freeze({
+      FEATURE = Object.freeze({
         id: "seed",
         landingEffect: "shell-land",
         bodyHeightFraction: 0.2,
         widthToHeight: 0.7,
         rotation: 0.3
       });
-      VERTICAL_EXTENT = Math.hypot(FEATURE2.widthToHeight * Math.sin(FEATURE2.rotation), Math.cos(FEATURE2.rotation));
-      HORIZONTAL_EXTENT = Math.hypot(FEATURE2.widthToHeight * Math.cos(FEATURE2.rotation), Math.sin(FEATURE2.rotation));
+      VERTICAL_EXTENT = Math.hypot(FEATURE.widthToHeight * Math.sin(FEATURE.rotation), Math.cos(FEATURE.rotation));
+      HORIZONTAL_EXTENT = Math.hypot(FEATURE.widthToHeight * Math.cos(FEATURE.rotation), Math.sin(FEATURE.rotation));
     }
   });
 
@@ -4572,10 +4288,10 @@
   });
 
   // src/features/scenes/farm/definition.js
-  var FEATURE3;
-  var init_definition17 = __esm({
+  var FEATURE2;
+  var init_definition16 = __esm({
     "src/features/scenes/farm/definition.js"() {
-      FEATURE3 = Object.freeze({ id: "farm" });
+      FEATURE2 = Object.freeze({ id: "farm" });
     }
   });
 
@@ -4585,12 +4301,12 @@
     "src/features/scenes/farm/model.js"() {
       init_model_base2();
       init_unit_stats();
-      init_definition17();
+      init_definition16();
       FarmSimulationScene = class extends SimulationScene {
         constructor(dependencies) {
           const { CONFIG: CONFIG2 } = dependencies;
           super(dependencies);
-          this.feature = FEATURE3;
+          this.feature = FEATURE2;
           this.dropLandingEvent = "boss-add-land";
           this.battleCapacity = CONFIG2.farm.capacity.battleUnits;
         }
@@ -6111,13 +5827,6 @@
       ABILITY_ID5 = PEANUT_DEATH_SPLIT_FEATURE.definition.id;
       PeanutDeathSplitModel = class {
         static config(progression, tier) {
-          const BUILD = progression?.abilities?.[ABILITY_ID5];
-          if (BUILD?.treeVersion === 1) {
-            return {
-              childCount: PEANUT_DEATH_SPLIT_FEATURE.definition.childCount,
-              statMultiplier: 1 + 0.25 * (BUILD.nodeRanks["specialty-3"] || 0)
-            };
-          }
           const EFFECT = getAbilityEffects(progression, ABILITY_ID5, tier);
           if (!EFFECT) {
             return null;
@@ -6251,10 +5960,18 @@
   });
 
   // src/features/unit-attacks/lob/definition.js
+  var FEATURE3;
+  var init_definition17 = __esm({
+    "src/features/unit-attacks/lob/definition.js"() {
+      FEATURE3 = Object.freeze({ id: "lob", modelKey: "projectile" });
+    }
+  });
+
+  // src/features/unit-attacks/dual-strike/definition.js
   var FEATURE4;
   var init_definition18 = __esm({
-    "src/features/unit-attacks/lob/definition.js"() {
-      FEATURE4 = Object.freeze({ id: "lob", modelKey: "projectile" });
+    "src/features/unit-attacks/dual-strike/definition.js"() {
+      FEATURE4 = Object.freeze({ id: "peanut-dual-strike", modelKey: "repeatedStrike" });
     }
   });
 
@@ -6287,8 +6004,8 @@
   var ATTACK_DEFAULTS, UNIT_ABILITY_PROFILES, COMPOSITION, UNIT_CAPABILITY_COMPOSITIONS, UNIT_SPECIAL_ABILITY_COMPOSITIONS, CAPABILITY_SPECIES, NO_SPECIES;
   var init_unit_abilities = __esm({
     "src/unit-abilities.js"() {
+      init_definition17();
       init_definition18();
-      init_definition15();
       init_kidney_continuous_leap();
       init_definition10();
       ATTACK_DEFAULTS = Object.freeze({
@@ -6303,7 +6020,7 @@
       });
       UNIT_ABILITY_PROFILES = Object.freeze({
         0: attackProfile("ram"),
-        1: attackProfile(FEATURE4.id, {
+        1: attackProfile(FEATURE3.id, {
           timing: {
             windup: 0.38,
             recovery: 1.25
@@ -6316,7 +6033,7 @@
         3: attackProfile("punch"),
         // One Peanut remains one world unit; its two kernels are presentation-only
         // and the two deterministic strike slots share the same active window.
-        4: attackProfile(FEATURE.id, {
+        4: attackProfile(FEATURE4.id, {
           timing: {
             windup: 0.25,
             active: 0.5,
@@ -6351,7 +6068,7 @@
         0: COMPOSITION("pea", ["recoveryHaste"], {
           contactRecoil: true
         }),
-        1: COMPOSITION(FEATURE4.modelKey, ["cornAttachment"], {
+        1: COMPOSITION(FEATURE3.modelKey, ["cornAttachment"], {
           retreatWithinRange: true,
           aimAtCenter: true
         }),
@@ -6360,7 +6077,7 @@
           contactRecoil: true,
           specialAbility: "chestnutThorns"
         }),
-        4: COMPOSITION(FEATURE.modelKey, ["deathSplit"], {
+        4: COMPOSITION(FEATURE4.modelKey, ["deathSplit"], {
           useActiveDuration: true,
           outerRangeSlack: 0
         }),
@@ -7032,7 +6749,7 @@
         lifeMs = DAMAGE_NUMBER.lifeMs;
         // `reduced` keeps the number but drops the pop and the rise: the information stays, the motion goes.
         draw(renderer, event, progress, feel) {
-          if ([0, 2, 3, 4].includes(renderer.attackPreviewSpecies)) {
+          if ([0, 2, 3].includes(renderer.attackPreviewSpecies)) {
             return;
           }
           const STYLE = STYLES[event.critical ? "critical" : event.role], REDUCED = feel?.reduced === true, POP = Math.min(1, progress / DAMAGE_NUMBER.popFraction), ALPHA = Math.min(1, (1 - progress) / DAMAGE_NUMBER.fadeFraction), SCALE = (event.critical ? DAMAGE_NUMBER.criticalScale : 1) * (REDUCED ? 1 : 0.65 + 0.45 * Math.sin(POP * Math.PI * 0.5)), LIFT = REDUCED ? 0 : DAMAGE_NUMBER.rise * (1 - (1 - progress) ** 2), DRIFT = (event.sequence * 7919 % 11 - 5) * DAMAGE_NUMBER.spread, POINT2 = renderer.project(event.x + DRIFT, event.y, event.z + 0.5 + LIFT), TEXT = `${STYLE.prefix}${formatDamage(event.amount)}${STYLE.suffix}`, HEIGHT = DAMAGE_NUMBER.height * SCALE * renderer.scale;
@@ -7318,10 +7035,10 @@
   var init_model21 = __esm({
     "src/features/projectiles/seed/model.js"() {
       init_damage_model();
-      init_definition16();
+      init_definition15();
       SeedProjectile = class extends DamageProjectile {
         constructor(dependencies) {
-          super(FEATURE2, dependencies);
+          super(FEATURE, dependencies);
         }
       };
     }
@@ -7354,11 +7071,11 @@
     return projectileFlightFeature(projectile);
   }
   function projectileFlightFeature(projectile) {
-    return projectile.projectileKind === "chestnut-spike" ? FEATURE5 : FEATURE2;
+    return projectile.projectileKind === "chestnut-spike" ? FEATURE5 : FEATURE;
   }
   var init_definition20 = __esm({
     "src/features/projectiles/definition.js"() {
-      init_definition16();
+      init_definition15();
       init_definition19();
     }
   });
@@ -9235,10 +8952,10 @@
     R2.attack = ATTACK2.toDTO();
   }
   function isRedbeanAttackRecord(r) {
-    if (!EXACT2(
+    if (!EXACT(
       r,
       "version id owner ownerGeneration tier form speed chance windupSeconds recoverySeconds ranks budgetInputs directMultiplier source launchTick motionTick slot leg progress stage origin points attack reset criticalRolls"
-    ) || r.version !== 1 || !["id", "owner", "ownerGeneration"].every((k) => Number.isSafeInteger(r[k]) && r[k] > 0) || !Number.isInteger(r.tier) || r.tier < 1 || r.tier > 6 || !Number.isInteger(r.form) || r.form < 1 || r.form > r.tier || !Number.isFinite(r.speed) || r.speed < 0.05 || r.speed > 4 || !Number.isFinite(r.chance) || r.chance < 0.2 || r.chance > 0.65 || ![0, 1, 2, 3, 4, 5].some((rank) => r.chance === Math.min(0.65, 0.2 + 0.09 * rank)) || r.windupSeconds !== 0.32 / r.speed || r.recoverySeconds !== 0.5 / r.speed || !EXACT2(r.ranks, "power radius finish") || !Object.entries(r.ranks).every(([k, v]) => Number.isInteger(v) && v >= 0 && v <= (k === "power" ? 10 : 5)) || !EXACT2(r.budgetInputs, "one current") || !Object.values(r.budgetInputs).every(Number.isFinite) || r.directMultiplier !== redbeanBudgetMultiplier(r.tier, r.form, r.speed, r.chance, r.budgetInputs.one, r.budgetInputs.current) * (1 + 0.03 * r.ranks.power) || !EXACT2(r.source, "attackerStats attackPowerMultiplier sourceDamageScale sourceKind") || !EXACT2(r.source.attackerStats, ["maxHp", "attackPower", ...Object.keys(COMMON_UNIT_STAT_DEFAULTS)].join(" ")) || !Object.values(r.source.attackerStats).every((v) => Number.isFinite(v) && v >= 0) || r.source.attackerStats.maxHp <= 0 || ![1, 3].includes(r.source.attackPowerMultiplier) || !Number.isFinite(r.source.sourceDamageScale) || r.source.sourceDamageScale < 0 || !["direct", "enemy"].includes(r.source.sourceKind) || typeof r.reset !== "boolean" || !Number.isFinite(r.motionTick) || r.motionTick < 0 || !Number.isInteger(r.slot) || r.slot < 0 || r.slot >= REDBEAN_WEIGHTS[r.form].length || !Number.isInteger(r.leg) || r.leg < 0 || r.leg >= LEGS[r.form].length || !Number.isFinite(r.progress) || r.progress < 0 || r.progress > 1 || !["windup", "ground", "flight"].includes(r.stage) || !r.criticalRolls || typeof r.criticalRolls !== "object" || Array.isArray(r.criticalRolls) || !Object.values(r.criticalRolls).every((v) => Number.isFinite(v) && v >= 0 && v < 1)) {
+    ) || r.version !== 1 || !["id", "owner", "ownerGeneration"].every((k) => Number.isSafeInteger(r[k]) && r[k] > 0) || !Number.isInteger(r.tier) || r.tier < 1 || r.tier > 6 || !Number.isInteger(r.form) || r.form < 1 || r.form > r.tier || !Number.isFinite(r.speed) || r.speed < 0.05 || r.speed > 4 || !Number.isFinite(r.chance) || r.chance < 0.2 || r.chance > 0.65 || ![0, 1, 2, 3, 4, 5].some((rank) => r.chance === Math.min(0.65, 0.2 + 0.09 * rank)) || r.windupSeconds !== 0.32 / r.speed || r.recoverySeconds !== 0.5 / r.speed || !EXACT(r.ranks, "power radius finish") || !Object.entries(r.ranks).every(([k, v]) => Number.isInteger(v) && v >= 0 && v <= (k === "power" ? 10 : 5)) || !EXACT(r.budgetInputs, "one current") || !Object.values(r.budgetInputs).every(Number.isFinite) || r.directMultiplier !== redbeanBudgetMultiplier(r.tier, r.form, r.speed, r.chance, r.budgetInputs.one, r.budgetInputs.current) * (1 + 0.03 * r.ranks.power) || !EXACT(r.source, "attackerStats attackPowerMultiplier sourceDamageScale sourceKind") || !EXACT(r.source.attackerStats, ["maxHp", "attackPower", ...Object.keys(COMMON_UNIT_STAT_DEFAULTS)].join(" ")) || !Object.values(r.source.attackerStats).every((v) => Number.isFinite(v) && v >= 0) || r.source.attackerStats.maxHp <= 0 || ![1, 3].includes(r.source.attackPowerMultiplier) || !Number.isFinite(r.source.sourceDamageScale) || r.source.sourceDamageScale < 0 || !["direct", "enemy"].includes(r.source.sourceKind) || typeof r.reset !== "boolean" || !Number.isFinite(r.motionTick) || r.motionTick < 0 || !Number.isInteger(r.slot) || r.slot < 0 || r.slot >= REDBEAN_WEIGHTS[r.form].length || !Number.isInteger(r.leg) || r.leg < 0 || r.leg >= LEGS[r.form].length || !Number.isFinite(r.progress) || r.progress < 0 || r.progress > 1 || !["windup", "ground", "flight"].includes(r.stage) || !r.criticalRolls || typeof r.criticalRolls !== "object" || Array.isArray(r.criticalRolls) || !Object.values(r.criticalRolls).every((v) => Number.isFinite(v) && v >= 0 && v < 1)) {
       return false;
     }
     for (const KEY2 of Object.keys(r.criticalRolls)) {
@@ -9260,7 +8977,7 @@
     }
     const HIT_KEYS = new Set(r.attack.hits.flat());
     const SAMPLE = { ...r };
-    if (!Array.isArray(r.points) || r.points.length !== PLAN.legs.length || !EXACT2(r.origin, "x y") || !r.points.every((point2) => EXACT2(point2, "x y"))) {
+    if (!Array.isArray(r.points) || r.points.length !== PLAN.legs.length || !EXACT(r.origin, "x y") || !r.points.every((point2) => EXACT(point2, "x y"))) {
       return false;
     }
     sampleRedbeanMotion(SAMPLE, r.motionTick);
@@ -9269,9 +8986,9 @@
     )) {
       return false;
     }
-    return Number.isSafeInteger(r.launchTick) && r.launchTick >= 0 && EXACT2(r.origin, "x y") && Object.values(r.origin).every(Number.isFinite) && Array.isArray(r.points) && r.points.length === PLAN.legs.length && r.points.every((p) => EXACT2(p, "x y") && Object.values(p).every(Number.isFinite)) && isAttackActionDTO(r.attack) && r.attack.startTick === r.launchTick && r.attack.plan.durationTicks === PLAN.durationTicks + 1 && JSON.stringify(r.attack.plan.strikes) === JSON.stringify(PLAN.strikes) && r.slot === Math.max(0, r.attack.nextSlot - 1) && (!r.reset || r.attack.claims.includes("final-reset"));
+    return Number.isSafeInteger(r.launchTick) && r.launchTick >= 0 && EXACT(r.origin, "x y") && Object.values(r.origin).every(Number.isFinite) && Array.isArray(r.points) && r.points.length === PLAN.legs.length && r.points.every((p) => EXACT(p, "x y") && Object.values(p).every(Number.isFinite)) && isAttackActionDTO(r.attack) && r.attack.startTick === r.launchTick && r.attack.plan.durationTicks === PLAN.durationTicks + 1 && JSON.stringify(r.attack.plan.strikes) === JSON.stringify(PLAN.strikes) && r.slot === Math.max(0, r.attack.nextSlot - 1) && (!r.reset || r.attack.claims.includes("final-reset"));
   }
-  var REDBEAN_WEIGHTS, LEGS, EXACT2;
+  var REDBEAN_WEIGHTS, LEGS, EXACT;
   var init_redbean_attack = __esm({
     "src/features/species-growth/redbean-attack.js"() {
       init_attack_action();
@@ -9310,7 +9027,7 @@
           [16, 2.7]
         ]
       ];
-      EXACT2 = (value, keys2) => value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).sort().join(" ") === keys2.split(" ").sort().join(" ");
+      EXACT = (value, keys2) => value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).sort().join(" ") === keys2.split(" ").sort().join(" ");
     }
   });
 
@@ -9580,28 +9297,8 @@
       get strikeDuration() {
         return this.spec.timing.active ?? PEANUT_BASE_STRIKE.activeSeconds;
       }
-      syncAttackSpeedMultiplier(tick) {
-        if (!this.action?.peanutAttack) {
-          super.syncAttackSpeedMultiplier(tick);
-        }
-      }
-      attackRecoverySeconds(sim) {
-        return this.action?.peanutAttack?.recoverySeconds ?? super.attackRecoverySeconds(sim);
-      }
-      launchAttack(sim) {
-        if (this.action?.peanutAttack) {
-          launchPeanutAttack(sim, this.action);
-        } else {
-          super.launchAttack?.(sim);
-        }
-      }
       prepareAttack(sim) {
         super.prepareAttack?.(sim);
-        const RECORD = createPeanutAttack(sim, this.owner, this.action, this.attackSpeedMultiplier(sim));
-        if (RECORD) {
-          this.action.peanutAttack = RECORD;
-          return;
-        }
         const ASSAULT_LOCAL = this.strikeConfig?.(sim);
         Object.assign(this.action, {
           resolvedMask: 0,
@@ -9631,13 +9328,6 @@
       afterMove(sim) {
         const A = this.action, U = this.owner;
         if (this.phase !== "active" || !A?.path) {
-          return;
-        }
-        if (A.peanutAttack) {
-          resolvePeanutSlots(sim, U, A, this.elapsed, arenaGeometry);
-          if (this.elapsed >= this.strikeDuration - 1e-9) {
-            this.recover(sim, false);
-          }
           return;
         }
         const SCHEDULE = createPeanutStrikeSchedule({
@@ -9695,7 +9385,6 @@
   }
   var init_model33 = __esm({
     "src/features/unit-attacks/dual-strike/model.js"() {
-      init_peanut_attack();
       init_unit_combat_patterns();
     }
   });
@@ -10076,8 +9765,8 @@
       pea: createPeaAttackMixin(CONTACT_ATTACK, arenaGeometry),
       chestnut: createChestnutAttackMixin(CONTACT_ATTACK),
       redbean: createRedbeanAttackMixin(CONTACT_ATTACK, arenaGeometry),
-      [FEATURE4.modelKey]: PROJECTILE_ATTACK,
-      [FEATURE.modelKey]: REPEATED_STRIKE
+      [FEATURE3.modelKey]: PROJECTILE_ATTACK,
+      [FEATURE4.modelKey]: REPEATED_STRIKE
     };
     const TRAITS = {
       landing: LANDING,
@@ -10128,9 +9817,9 @@
       init_redbean_attack();
       init_model32();
       init_model33();
-      init_definition15();
-      init_model34();
       init_definition18();
+      init_model34();
+      init_definition17();
       init_unit_abilities();
       init_unit_stats();
       init_model18();
@@ -10212,18 +9901,17 @@
     }
     return true;
   }
-  var import_definition54, SEEDED_PRNG, CREATE_BUDGETED_SCHEDULER, EMPTY_FOOD_SEARCH_BUCKET, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, BREED_RESERVATION_OWNER, MERGE_RESERVATION_OWNER, FARM_MAX_UNITS, BATTLE_MAX_UNITS, MAX_PEANUT_SPLIT_CHILDREN, MAX_BOSS_SUMMONS, WORLD_ARENA, FARM_ARENA, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, FARM_BOSS_PHASES, PROJECTILE_BEHAVIORS, FARM_MODES, BOSS_BEHAVIORS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, CREATE_UNIT_SPECIAL_ABILITY, SIMULATION_SCENES, ATTACKING_BODY, UNIT, GARDEN;
+  var import_definition53, SEEDED_PRNG, CREATE_BUDGETED_SCHEDULER, EMPTY_FOOD_SEARCH_BUCKET, PRESENTATION_CLOCKS, PRESENTATION_EVENT_TIMES, BREED_COOLDOWN_SECONDS, BREED_RESERVATION_OWNER, MERGE_RESERVATION_OWNER, FARM_MAX_UNITS, BATTLE_MAX_UNITS, MAX_PEANUT_SPLIT_CHILDREN, MAX_BOSS_SUMMONS, WORLD_ARENA, FARM_ARENA, CONFIG, CLAMP2, STATS, BODY, KNOCKABLE, ARENA_GEOMETRY, BALLISTICS, FARM_BOSS_PHASES, PROJECTILE_BEHAVIORS, FARM_MODES, BOSS_BEHAVIORS, AttackCycle, CREATE_UNIT_ATTACK_CYCLE, CREATE_UNIT_SPECIAL_ABILITY, SIMULATION_SCENES, ATTACKING_BODY, UNIT, GARDEN;
   var init_farm_model = __esm({
     "src/farm-model.js"() {
-      init_peanut_attack();
       init_chestnut_attack();
       init_farm_offline();
       init_farm_work();
       init_formation_skills();
       init_formation_skill_state();
       init_signal();
-      import_definition54 = __toESM(require_definition(), 1);
-      init_definition16();
+      import_definition53 = __toESM(require_definition(), 1);
+      init_definition15();
       init_mutation_notifications();
       init_unit_collection();
       init_farm_roster();
@@ -10346,7 +10034,7 @@
         unit: Object.freeze({
           speciesCount: SPECIES_COUNT,
           maxTier: MAX_UNIT_TIER,
-          maxRadius: (0, import_definition54.maximumUnitRadius)(MAX_UNIT_TIER),
+          maxRadius: (0, import_definition53.maximumUnitRadius)(MAX_UNIT_TIER),
           perceptionRange: 18,
           corpseRecoverySeconds: 60
         }),
@@ -10624,7 +10312,7 @@
             this.interrupt();
             return true;
           }
-          if (this.action && (this.phase === "windup" || this.phase === "active") && !this.action.cornAttack && !this.action.redbeanAttack && !this.action.chestnutAttack && !this.action.peanutAttack && !(sim.attackTarget(U, this.action)?.hp > 0)) {
+          if (this.action && (this.phase === "windup" || this.phase === "active") && !this.action.cornAttack && !this.action.redbeanAttack && !this.action.chestnutAttack && !(sim.attackTarget(U, this.action)?.hp > 0)) {
             this.interrupt();
             return true;
           }
@@ -10832,7 +10520,7 @@
           return this.giantUntil > (this._world?.time ?? 0) ? 3 : 1;
         }
         get radius() {
-          return (0, import_definition54.unitBodyRadius)(this) * this.giantScale;
+          return (0, import_definition53.unitBodyRadius)(this) * this.giantScale;
         }
         get mature() {
           return this.growthElapsed >= this.growthDuration - 1e-9;
@@ -10841,16 +10529,16 @@
           return this.meals >= 1;
         }
         get size() {
-          return (0, import_definition54.unitVisualSize)(this) * this.giantScale;
+          return (0, import_definition53.unitVisualSize)(this) * this.giantScale;
         }
         get bodyScale() {
-          return (0, import_definition54.unitVectorScale)(this) * this.giantScale;
+          return (0, import_definition53.unitVectorScale)(this) * this.giantScale;
         }
         get height() {
-          return (0, import_definition54.unitBodyHeight)(this) * this.giantScale;
+          return (0, import_definition53.unitBodyHeight)(this) * this.giantScale;
         }
         get bodyHeight() {
-          return (0, import_definition54.unitTorsoHeight)(this) * this.giantScale;
+          return (0, import_definition53.unitTorsoHeight)(this) * this.giantScale;
         }
       };
       GARDEN = class Garden {
@@ -11776,9 +11464,7 @@
           unit2.specialAbility?.interrupt();
           unit2.ability.resetCombatEffects?.();
           this.clearPeaRecoveryBoost(unit2);
-          this.onCombatResolved.emit({
-            allyDeaths: unit2.faction === "player" && !unit2.isFormationClone && !unit2.isBattleOnlySummon ? 1 : 0
-          });
+          this.onCombatResolved.emit({ allyDeaths: unit2.faction === "player" && !unit2.isFormationClone ? 1 : 0 });
           this._syncUnitAliveCount(unit2);
           if (!unit2.isBattleOnlySummon) {
             this.markProgressChanged();
@@ -12388,7 +12074,7 @@
           }
           T.fallen = 0;
           T.undyingUsed = /* @__PURE__ */ new Set();
-          for (const UNIT_LOCAL of this.unitCollection.items) {
+          for (const UNIT_LOCAL of this.units) {
             if (!UNIT_LOCAL.isBattleOnlySummon) {
               UNIT_LOCAL.splitUsedThisBattle = false;
               UNIT_LOCAL.deathSplitHandled = false;
@@ -12522,10 +12208,10 @@
             generation: ++this.entityGenerationSerial,
             // The hit volume is the drawn body of the species, exactly as for a unit.
             get radius() {
-              return (0, import_definition54.bossBodyRadius)(this);
+              return (0, import_definition53.bossBodyRadius)(this);
             },
             get height() {
-              return (0, import_definition54.bossBodyHeight)(this);
+              return (0, import_definition53.bossBodyHeight)(this);
             },
             hp: HP,
             maxHp: HP,
@@ -13314,7 +13000,7 @@
             U.age += dt;
             const UNIT_STATS = STATS(U.tier, U.species);
             if (U.hp > 0 && UNIT_STATS.regen > 0) {
-              applyHealing(U, UNIT_STATS.regen * dt, U.species === 4 ? void 0 : UNIT_STATS);
+              applyHealing(U, UNIT_STATS.regen * dt, UNIT_STATS);
             }
             if (!U.mature) {
               progressTimersAdvanced = true;
@@ -14404,12 +14090,12 @@
             return;
           }
           const B_LOCAL = enemy, SPEC = abilityProfile(u.species), DX = u.x - B_LOCAL.x, DY = u.y - B_LOCAL.y, N = Math.hypot(DX, DY) || 1, TARGET_ID = enemy === this.boss ? "boss" : enemy.id;
-          const BEHAVIOR = unitCapabilityComposition(u.species), STAND = B_LOCAL.radius + (chestnutRange(this, u) ?? peanutRange(this, u) ?? SPEC.range) + (u.species === 3 ? 0 : (u.tier - 1) * 0.12), MIN = STAND - 0.55, MAX = STAND + BEHAVIOR.outerRangeSlack;
+          const BEHAVIOR = unitCapabilityComposition(u.species), STAND = B_LOCAL.radius + (chestnutRange(this, u) ?? SPEC.range) + (u.species === 3 ? 0 : (u.tier - 1) * 0.12), MIN = STAND - 0.55, MAX = STAND + BEHAVIOR.outerRangeSlack;
           if (N > MAX || BEHAVIOR.retreatWithinRange && N < MIN) {
             const SLOT = ARENA_GEOMETRY.clamp(
               {
-                x: B_LOCAL.x + DX / N * (STAND - (u.species === 4 ? 0.1 : 0)),
-                y: B_LOCAL.y + DY / N * (STAND - (u.species === 4 ? 0.1 : 0))
+                x: B_LOCAL.x + DX / N * STAND,
+                y: B_LOCAL.y + DY / N * STAND
               },
               this.scene,
               u.radius
@@ -14946,7 +14632,7 @@
           return bossMouthWorldPoint(this.boss, released);
         }
         bossSummonLanding(angle, action = null) {
-          const B_LOCAL = this.boss, SCENE = this.scene, RADIUS = (0, import_definition54.unitBodyRadius)({ species: B_LOCAL.species, tier: 1, growthElapsed: 1, growthDuration: 1 });
+          const B_LOCAL = this.boss, SCENE = this.scene, RADIUS = (0, import_definition53.unitBodyRadius)({ species: B_LOCAL.species, tier: 1, growthElapsed: 1, growthDuration: 1 });
           for (let i = 0; i < 16; i++) {
             const OFFSET = i === 0 ? 0 : (i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI / 8, A_LOCAL = angle + OFFSET, CANDIDATE = {
               x: B_LOCAL.x + Math.cos(A_LOCAL) * BOSS_PATTERN_CONFIG["summon.mouth-t1"].landingRadius,
@@ -15584,7 +15270,7 @@
   var PRODUCT_VERSION, COMPATIBILITY;
   var init_version = __esm({
     "src/version.js"() {
-      PRODUCT_VERSION = "0.35.0";
+      PRODUCT_VERSION = "0.34.0";
       COMPATIBILITY = PRODUCT_VERSION.split(".").slice(0, 2).join(".");
     }
   });
@@ -15642,7 +15328,7 @@
       init_farm_progress();
       MAX_BYTES = 2 * 1024 * 1024;
       COMPATIBILITY_LOCAL = (version) => typeof version === "string" ? version.split(".").slice(0, 2).join(".") : "";
-      IS_READABLE_COMPATIBILITY = (version) => [COMPATIBILITY, "0.34", "0.33", "0.32", "0.31", "0.30"].includes(COMPATIBILITY_LOCAL(version));
+      IS_READABLE_COMPATIBILITY = (version) => [COMPATIBILITY, "0.33", "0.32", "0.31", "0.30"].includes(COMPATIBILITY_LOCAL(version));
     }
   });
 
@@ -16245,22 +15931,22 @@
   };
 
   // src/farm-renderer.js
-  var import_definition70 = __toESM(require_definition(), 1);
+  var import_definition69 = __toESM(require_definition(), 1);
 
   // src/features/projectiles/corn/presentation.js
   var import_vector_sockets4 = __toESM(require_vector_sockets(), 1);
 
   // src/features/projectiles/seed/presentation.js
-  init_definition16();
-  var import_definition58 = __toESM(require_definition(), 1);
+  init_definition15();
+  var import_definition57 = __toESM(require_definition(), 1);
   var import_vector_sockets3 = __toESM(require_vector_sockets(), 1);
   function seedDisplayMultiplier(renderer, projectile) {
-    const BODY2 = (0, import_definition58.unitBodyDefinition)(projectile.species), OWNER_VECTOR_SCALE = projectile.height * import_vector_sockets3.WORLD_HEIGHT_PROJECTION / (FEATURE2.bodyHeightFraction * (BODY2.bounds.bottom - BODY2.bounds.top)), DISPLAY_SCALE = (0, import_definition58.unitDisplayScale)(BODY2, OWNER_VECTOR_SCALE, renderer.scale, renderer.minimumUnitPixels());
+    const BODY2 = (0, import_definition57.unitBodyDefinition)(projectile.species), OWNER_VECTOR_SCALE = projectile.height * import_vector_sockets3.WORLD_HEIGHT_PROJECTION / (FEATURE.bodyHeightFraction * (BODY2.bounds.bottom - BODY2.bounds.top)), DISPLAY_SCALE = (0, import_definition57.unitDisplayScale)(BODY2, OWNER_VECTOR_SCALE, renderer.scale, renderer.minimumUnitPixels());
     return DISPLAY_SCALE / OWNER_VECTOR_SCALE;
   }
   var SeedProjectilePresentation = class {
     constructor() {
-      this.id = FEATURE2.id;
+      this.id = FEATURE.id;
     }
     drawShadow(renderer, projectile) {
       const RADIUS = projectile.radius * seedDisplayMultiplier(renderer, projectile) / renderer.scale;
@@ -16270,7 +15956,7 @@
       const RADII = seedEllipseRadii(projectile), SCALE = seedDisplayMultiplier(renderer, projectile), HEIGHT = projectile.height * import_vector_sockets3.WORLD_HEIGHT_PROJECTION * SCALE, P = { x: point2.x, y: point2.y - HEIGHT * 0.5 }, TAIL = renderer.project(tail.x, tail.y, tail.z), X = RADII.x * SCALE, Y = RADII.y * SCALE;
       TAIL.y -= HEIGHT * 0.5;
       renderer.line(TAIL, P, RADII.y * 0.35 * SCALE / renderer.scale, "#ba964a80");
-      renderer.ellipse(P.x, P.y, X, Y, "#cfa957", FEATURE2.rotation);
+      renderer.ellipse(P.x, P.y, X, Y, "#cfa957", FEATURE.rotation);
       renderer.ellipse(P.x - Y * 0.15, P.y - Y * 0.25, Y * 0.25, Y * 0.4, "#fff0ae");
     }
   };
@@ -17012,7 +16698,7 @@
   }
 
   // src/features/scenes/farm/presentation.js
-  init_definition17();
+  init_definition16();
 
   // src/features/farm-modes/vfx-kit.js
   init_unit_grades();
@@ -17619,7 +17305,7 @@
   // src/features/scenes/farm/presentation.js
   var FarmScenePresentation = class {
     constructor() {
-      this.id = FEATURE3.id;
+      this.id = FEATURE2.id;
       this.groundColor = "#d1d8b8";
       this.surfaceColor = "#d9dfc2";
       this.minimumUnitPixels = 11;
@@ -17861,7 +17547,7 @@
   };
 
   // src/farm-render-units.js
-  var import_definition63 = __toESM(require_definition(), 1);
+  var import_definition62 = __toESM(require_definition(), 1);
   init_presentation9();
 
   // src/features/unit-attacks/pea/presentation.js
@@ -17907,11 +17593,11 @@
   };
 
   // src/features/unit-attacks/lob/presentation.js
-  init_definition18();
+  init_definition17();
   var LobPresentation = class extends UnitAttackPresentation {
     constructor() {
       super();
-      this.id = FEATURE4.id;
+      this.id = FEATURE3.id;
     }
     recoverMotion(unit2) {
       return unit2.ability?.action?.path && unit2.ability.elapsed < 0.12 ? "fire" : "recover";
@@ -17919,21 +17605,14 @@
   };
 
   // src/features/unit-attacks/dual-strike/presentation.js
-  init_definition15();
+  init_definition18();
   var DualStrikePresentation = class extends UnitAttackPresentation {
     constructor() {
       super();
-      this.id = FEATURE.id;
-    }
-    windupMotion(unit2) {
-      return unit2.ability.peanutForm ? `windup-t${unit2.ability.peanutForm}` : "windup";
+      this.id = FEATURE4.id;
     }
     activeMotion(unit2) {
-      return unit2.ability.peanutForm ? `fire-t${unit2.ability.peanutForm}` : unit2.ability.peanutStrikeCount > 2 ? `fire-${unit2.ability.peanutStrikeCount}` : "fire";
-    }
-    clipElapsedMs(unit2, motion) {
-      const FORM = unit2.ability.peanutForm;
-      return FORM && (motion === `windup-t${FORM}` || motion === `fire-t${FORM}`) ? unit2.ability.elapsed * 1e3 : null;
+      return unit2.ability.peanutStrikeCount > 2 ? `fire-${unit2.ability.peanutStrikeCount}` : "fire";
     }
   };
 
@@ -18176,7 +17855,7 @@
       return "landing";
     }
     if (PHASE === "windup") {
-      return unitAttackPresentation(u).windupMotion?.(u) || "windup";
+      return "windup";
     }
     if (PHASE === "active") {
       return unitAttackPresentation(u).activeMotion(u);
@@ -18190,7 +17869,7 @@
     if (name === "idle" || name === "walk" || name === "airborne") {
       return (u.seed || 0) * 80 % clip.durationMs;
     }
-    if (name === "windup" || name.startsWith("windup-") || name === "fire" || name.startsWith("fire-") || name === "recover") {
+    if (name === "windup" || name === "fire" || name.startsWith("fire-") || name === "recover") {
       return CLAMP2((u.ability?.elapsed || 0) * 1e3, 0, clip.durationMs);
     }
     if (name === "hit") {
@@ -18330,8 +18009,8 @@
         this.renderer.vectorPlayers.delete(u.id);
         player = null;
       }
-      const METADATA = RECORD.compiled.metadata, SWING = rest ? null : workSwing(u, sim), MOTION_NAME = SWING?.name || unitMotion(u, sim, rest), CLIP = METADATA.clips[MOTION_NAME] || METADATA.clips.idle, PHASE_TIME_MS = !rest && !SWING ? unitAttackPresentation(u).clipElapsedMs?.(u, MOTION_NAME) : null, HAS_PHASE_CLOCK = Number.isFinite(PHASE_TIME_MS);
-      const CLIP_START_AT_MS = rest || HAS_PHASE_CLOCK ? 0 : this.renderer.displayTimeMs - (SWING ? SWING.elapsed : motionElapsedMs(u, MOTION_NAME, CLIP));
+      const METADATA = RECORD.compiled.metadata, SWING = rest ? null : workSwing(u, sim), MOTION_NAME = SWING?.name || unitMotion(u, sim, rest), CLIP = METADATA.clips[MOTION_NAME] || METADATA.clips.idle;
+      const CLIP_START_AT_MS = rest ? 0 : this.renderer.displayTimeMs - (SWING ? SWING.elapsed : motionElapsedMs(u, MOTION_NAME, CLIP));
       if (!player) {
         player = RECORD.asset.createPlayer({
           clip: MOTION_NAME,
@@ -18346,10 +18025,8 @@
       if (EXPRESSION !== player.currentExpression) {
         player.setExpression(EXPRESSION);
       }
-      player.seek(
-        HAS_PHASE_CLOCK ? CLAMP2(PHASE_TIME_MS, 0, CLIP.durationMs) : rest ? rest.elapsed * 1e3 : this.renderer.displayTimeMs
-      );
-      const [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox, GROUND = (0, import_definition63.unitBodyDefinition)(u.species).ground, SCALE = 2 * r / Math.max(WIDTH, HEIGHT);
+      player.seek(rest ? rest.elapsed * 1e3 : this.renderer.displayTimeMs);
+      const [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox, GROUND = (0, import_definition62.unitBodyDefinition)(u.species).ground, SCALE = 2 * r / Math.max(WIDTH, HEIGHT);
       const MATRIX = [SCALE, 0, 0, SCALE, p.x - GROUND.x * SCALE, p.y - GROUND.y * SCALE];
       if (!SWING && !rest && u.species === 0 && u.hp > 0 && u.stun <= 0 && u.dropLanded && u.z === 0) {
         PEA_ATTACK.applyGroundedPose(MATRIX, u, GROUND);
@@ -18375,7 +18052,7 @@
         u.y,
         u.z + BOB
       );
-      const BODY2 = (0, import_definition63.unitBodyDefinition)(u.species), GIANT_SCALE = u.giantUntil > sim.time ? 3 : 1, SCALE = (0, import_definition63.unitDisplayScale)(
+      const BODY2 = (0, import_definition62.unitBodyDefinition)(u.species), GIANT_SCALE = u.giantUntil > sim.time ? 3 : 1, SCALE = (0, import_definition62.unitDisplayScale)(
         BODY2,
         u.bodyScale,
         this.renderer.scale,
@@ -19942,7 +19619,7 @@
     // The camera follows the climb: on the march it pulls back to show the tower and its door, and
     // it stays there a moment when the troops come back out; inside, it rests on the hall.
     directCamera(sim2, now) {
-      if ([0, 2, 3, 4].includes(this.attackPreviewSpecies) && sim2.units.length === 1 && sim2.units[0].species === this.attackPreviewSpecies) {
+      if ([0, 2, 3].includes(this.attackPreviewSpecies) && sim2.units.length === 1 && sim2.units[0].species === this.attackPreviewSpecies) {
         this.fitAttackPreview(sim2);
         return;
       }
@@ -19996,11 +19673,7 @@
         this.fitJumpPreview(world);
         return;
       }
-      if (this.attackPreviewSpecies === 4) {
-        this.fitPeanutPreview(world);
-        return;
-      }
-      const UNIT3 = world.units[0], BODY2 = (0, import_definition70.unitBodyDefinition)(UNIT3.species), BASE = this.scenePresentation.cameraView(this.aspect), SCALE = 96 * this.pixelRatio / (UNIT3.bodyScale * Math.max(BODY2.viewBox[2], BODY2.viewBox[3])), FOCUS_X = world.boss.x - world.boss.radius - 0.8, FOCUS_Y = world.boss.y;
+      const UNIT3 = world.units[0], BODY2 = (0, import_definition69.unitBodyDefinition)(UNIT3.species), BASE = this.scenePresentation.cameraView(this.aspect), SCALE = 96 * this.pixelRatio / (UNIT3.bodyScale * Math.max(BODY2.viewBox[2], BODY2.viewBox[3])), FOCUS_X = world.boss.x - world.boss.radius - 0.8, FOCUS_Y = world.boss.y;
       this.zoom = 2 * BASE[0] * SCALE / this.canvas.width;
       this.configure(this.scene, true);
       const PAN_X = this.canvas.width * 0.45 / this.scale - FOCUS_X - this.view[0], PAN_Y = this.view[1] - this.baseY() - this.canvas.height * 0.76 / this.scale - FOCUS_Y * import_vector_sockets9.WORLD_DEPTH_PROJECTION;
@@ -20010,19 +19683,8 @@
       this.panLimits.maxY = Math.max(this.panLimits.maxY, PAN_Y);
       this.setPan(PAN_X, PAN_Y);
     }
-    fitPeanutPreview(world) {
-      const UNIT3 = world.units[0], BODY2 = (0, import_definition70.unitBodyDefinition)(UNIT3.species), BASE = this.scenePresentation.cameraView(this.aspect), ART = UNIT3.bodyScale * Math.max(BODY2.viewBox[2], BODY2.viewBox[3]), SCALE = Math.min(124 * this.pixelRatio / ART, (this.canvas.height - 24 * this.pixelRatio) / ART);
-      this.zoom = 2 * BASE[0] * SCALE / this.canvas.width;
-      this.configure(this.scene, true);
-      const PAN_X = this.canvas.width * 0.4 / this.scale - UNIT3.x - this.view[0], PAN_Y = this.view[1] - this.baseY() - (this.canvas.height - 18 * this.pixelRatio) / this.scale - UNIT3.y * import_vector_sockets9.WORLD_DEPTH_PROJECTION;
-      this.panLimits.minX = Math.min(this.panLimits.minX, PAN_X);
-      this.panLimits.maxX = Math.max(this.panLimits.maxX, PAN_X);
-      this.panLimits.minY = Math.min(this.panLimits.minY, PAN_Y);
-      this.panLimits.maxY = Math.max(this.panLimits.maxY, PAN_Y);
-      this.setPan(PAN_X, PAN_Y);
-    }
     fitChestnutPreview(world) {
-      const UNIT3 = world.units[0], BODY2 = (0, import_definition70.unitBodyDefinition)(UNIT3.species), ART = UNIT3.bodyScale * Math.max(BODY2.viewBox[2], BODY2.viewBox[3]), BASE = this.scenePresentation.cameraView(this.aspect), BOUNDS = {
+      const UNIT3 = world.units[0], BODY2 = (0, import_definition69.unitBodyDefinition)(UNIT3.species), ART = UNIT3.bodyScale * Math.max(BODY2.viewBox[2], BODY2.viewBox[3]), BASE = this.scenePresentation.cameraView(this.aspect), BOUNDS = {
         left: UNIT3.x - ART * 0.75,
         right: UNIT3.x + ART * 0.75,
         top: UNIT3.y * import_vector_sockets9.WORLD_DEPTH_PROJECTION + ART * 1.25,
@@ -20069,7 +19731,7 @@
       this.setPan(PAN_X, PAN_Y);
     }
     fitJumpPreview(world) {
-      const UNIT3 = world.units[0], BODY2 = (0, import_definition70.unitBodyDefinition)(UNIT3.species), BASE = this.scenePresentation.cameraView(this.aspect), ART_WORLD_HEIGHT = UNIT3.bodyScale * Math.max(BODY2.viewBox[2], BODY2.viewBox[3]), MAX_HEIGHT = [0, 0.65, 1.1, 1.4, 1.1, 2.2, 2.7][UNIT3.tier], SCALE = Math.min(
+      const UNIT3 = world.units[0], BODY2 = (0, import_definition69.unitBodyDefinition)(UNIT3.species), BASE = this.scenePresentation.cameraView(this.aspect), ART_WORLD_HEIGHT = UNIT3.bodyScale * Math.max(BODY2.viewBox[2], BODY2.viewBox[3]), MAX_HEIGHT = [0, 0.65, 1.1, 1.4, 1.1, 2.2, 2.7][UNIT3.tier], SCALE = Math.min(
         96 * this.pixelRatio / ART_WORLD_HEIGHT,
         (this.canvas.height - 24 * this.pixelRatio) / (ART_WORLD_HEIGHT * 1.4 + MAX_HEIGHT * import_vector_sockets9.WORLD_HEIGHT_PROJECTION)
       ), FOCUS_X = UNIT3.x, FOCUS_Y = UNIT3.y;
@@ -20403,12 +20065,6 @@
       "ability.phase": R.STATE_KEY,
       "ability.elapsed": R.LINEAR,
       "ability.peanutStrikeCount": R.STEP,
-      "ability.peanutForm": R.STEP,
-      "ability.peanutActionId": R.STATE_KEY,
-      "ability.peanutSlot": R.STEP,
-      "ability.peanutStage": R.STATE_KEY,
-      "ability.peanutStageProgress": R.LINEAR,
-      "ability.peanutWindupDuration": R.STEP,
       "ability.chestnutForm": R.STEP,
       "ability.chestnutSlot": R.STEP,
       "ability.chestnutStage": R.STATE_KEY,
@@ -20477,18 +20133,6 @@
       this.ability.phase = u.ability.phase;
       this.ability.elapsed = u.ability.elapsed;
       this.ability.peanutStrikeCount = u.ability.action?.peanutStrikeCount || 2;
-      const PEANUT = u.ability.action?.peanutAttack, PEANUT_TICK = u.ability.phase === "active" ? u.ability.elapsed * 20 : 0, PEANUT_INDEX = PEANUT?.shots.findIndex(
-        (shot, index, shots) => !shots[index + 1] || PEANUT_TICK < (shot.tick + shots[index + 1].tick) / 2
-      ) ?? -1, PEANUT_SHOT = PEANUT?.shots[Math.max(0, PEANUT_INDEX)], PEANUT_START = PEANUT_INDEX > 0 ? (PEANUT.shots[PEANUT_INDEX - 1].tick + PEANUT_SHOT.tick) / 2 : 0, PEANUT_END = PEANUT_SHOT ? PEANUT.shots[PEANUT_INDEX + 1] ? (PEANUT_SHOT.tick + PEANUT.shots[PEANUT_INDEX + 1].tick) / 2 : PEANUT.durationSeconds * 20 : 1;
-      this.ability.peanutForm = PEANUT?.form || 0;
-      this.ability.peanutActionId = PEANUT?.id || 0;
-      this.ability.peanutSlot = PEANUT_SHOT?.slot || 0;
-      this.ability.peanutStage = u.ability.phase === "active" ? PEANUT_SHOT?.stage || "active" : u.ability.phase;
-      this.ability.peanutStageProgress = Math.max(
-        0,
-        Math.min(1, (PEANUT_TICK - PEANUT_START) / (PEANUT_END - PEANUT_START))
-      );
-      this.ability.peanutWindupDuration = PEANUT?.windupSeconds || 0.25;
       const CHESTNUT = u.ability.action?.chestnutAttack, CHESTNUT_TICK = u.ability.phase === "recover" ? u.ability.elapsed * 20 : 0, CHESTNUT_SHOT = CHESTNUT?.shots.findLast((shot) => shot.tick <= CHESTNUT_TICK), CHESTNUT_FLIGHT = Math.max(0.1, 0.3 / (CHESTNUT?.speed || 1));
       this.ability.chestnutForm = CHESTNUT?.form || 0;
       this.ability.chestnutSlot = CHESTNUT_SHOT?.slot || 0;
@@ -21338,7 +20982,6 @@
   init_farm_model();
 
   // src/farm-snapshot-validation.js
-  init_peanut_attack();
   init_chestnut_attack();
   init_redbean_attack();
   init_pea_attack();
@@ -21628,7 +21271,6 @@
       cornAttack: CORN_ACTION,
       peaAttack: JSON_PAYLOAD,
       redbeanAttack: JSON_PAYLOAD,
-      peanutAttack: JSON_PAYLOAD,
       chestnutAttack: JSON_PAYLOAD
     }
   );
@@ -22069,7 +21711,7 @@
     for (const U of raw.units) {
       shape(U, UNIT_SNAPSHOT_SHAPE);
       ASSERT2(
-        Number.isFinite(U.growthElapsed) && U.growthElapsed >= 0 && Number.isFinite(U.growthDuration) && U.growthDuration > 0 && U.growthElapsed <= U.growthDuration + 1e-9 && Number.isFinite(U.cooldown) && U.cooldown >= 0 && Number.isFinite(U.cooldownDuration) && U.cooldownDuration >= U.cooldown - 1e-9 && U.cooldownDuration <= 1e5 && INTEGER2(U.mateId, 0, MATE_ID_LIMIT) && Number.isFinite(U.perceptionRange) && U.perceptionRange > 0 && U.perceptionRange <= 100 && Number.isFinite(U.down) && U.down >= 0 && U.down <= CONFIG.unit.corpseRecoverySeconds && INTEGER2(U.battleSummonEncounterId, 0, 1e12) && Number.isFinite(U.landingRecovery) && U.landingRecovery >= 0 && U.landingRecovery <= 0.25 + 1e-9 && INTEGER2(U.generation, 1, 1e12) && Number.isFinite(U.permanentStatMultiplier) && U.permanentStatMultiplier >= 1 && U.permanentStatMultiplier <= 2.25 && Number.isFinite(U.growthMaxHpMultiplier) && (U.growthMaxHpMultiplier === 1 || (U.species === 2 || U.species === 3 || U.species === 4) && !U.isBattleOnlySummon && !U.isFormationClone && hasFaction(U, FACTION_CONFIG.PLAYER) && U.growthMaxHpMultiplier >= 1 && U.growthMaxHpMultiplier <= 1.4 && Math.abs(
+        Number.isFinite(U.growthElapsed) && U.growthElapsed >= 0 && Number.isFinite(U.growthDuration) && U.growthDuration > 0 && U.growthElapsed <= U.growthDuration + 1e-9 && Number.isFinite(U.cooldown) && U.cooldown >= 0 && Number.isFinite(U.cooldownDuration) && U.cooldownDuration >= U.cooldown - 1e-9 && U.cooldownDuration <= 1e5 && INTEGER2(U.mateId, 0, MATE_ID_LIMIT) && Number.isFinite(U.perceptionRange) && U.perceptionRange > 0 && U.perceptionRange <= 100 && Number.isFinite(U.down) && U.down >= 0 && U.down <= CONFIG.unit.corpseRecoverySeconds && INTEGER2(U.battleSummonEncounterId, 0, 1e12) && Number.isFinite(U.landingRecovery) && U.landingRecovery >= 0 && U.landingRecovery <= 0.25 + 1e-9 && INTEGER2(U.generation, 1, 1e12) && Number.isFinite(U.permanentStatMultiplier) && U.permanentStatMultiplier >= 1 && U.permanentStatMultiplier <= 2.25 && Number.isFinite(U.growthMaxHpMultiplier) && (U.growthMaxHpMultiplier === 1 || (U.species === 2 || U.species === 3) && hasFaction(U, FACTION_CONFIG.PLAYER) && U.growthMaxHpMultiplier >= 1 && U.growthMaxHpMultiplier <= 1.4 && Math.abs(
           (U.growthMaxHpMultiplier - 1) / 0.04 - Math.round((U.growthMaxHpMultiplier - 1) / 0.04)
         ) < 1e-9) && INTEGER2(U.walnutNextGuardTick, 0, 1e12) && INTEGER2(U.walnutGuardUntilTick, 0, 1e12) && Number.isFinite(U.walnutStoredRawDamage) && U.walnutStoredRawDamage >= 0 && Number.isFinite(U.wheatCommandUntil) && U.wheatCommandUntil >= 0 && U.wheatCommandUntil <= 1e12 && Number.isFinite(U.wheatCommandCritBonus) && U.wheatCommandCritBonus >= 0 && U.wheatCommandCritBonus <= 0.5 && Number.isFinite(U.barleyArmorBreakUntil) && U.barleyArmorBreakUntil >= 0 && U.barleyArmorBreakUntil <= 1e12 && Number.isFinite(U.barleyArmorBreakReduction) && U.barleyArmorBreakReduction >= 0 && U.barleyArmorBreakReduction <= 0.75 && INTEGER2(U.kidneyLeapReadyTick, 0, 1e12) && INTEGER2(U.kidneyLeapLastUseTick, 0, 1e12) && typeof U.peaRecoveryPending === "boolean" && INTEGER2(U.peaCounterExpiresAtTick, 0, 1e12) && typeof U.peaCounterPending === "boolean" && INTEGER2(U.peaRecoveryBoostExpiresAtTick, 0, 1e12) && Number.isFinite(U.peaRecoveryBoostMultiplier) && U.peaRecoveryBoostMultiplier >= 0 && U.peaRecoveryBoostMultiplier <= 2 && validWheatCommandBuffs(U.wheatCommandBuffs) && validBarleyArmorShredBuckets(U.barleyArmorShredBuckets)
       );
@@ -22152,12 +21794,6 @@
         ASSERT2(
           INTEGER2(A.id, 1, raw.attackSerial) && INTEGER2(A.targetGeneration, 1, 1e12) && typeof A.hit === "boolean" && A.target && Number.isFinite(A.target.x) && Number.isFinite(A.target.y)
         );
-        if (A.peanutAttack !== void 0) {
-          const R2 = A.peanutAttack;
-          ASSERT2(
-            U.species === 4 && isPeanutAttackRecord(R2) && R2.id === A.id && R2.owner === U.id && R2.ownerGeneration === U.generation && R2.tier === U.tier && R2.child === U.isBattleOnlySummon && U.hp > 0 && (R2.launchTick === null ? U.ability.phase === "windup" && A.path === null : (U.ability.phase === "active" || U.ability.phase === "recover") && R2.launchTick <= raw.simulationTick && R2.motionTick === (U.ability.phase === "recover" ? 10 : Math.min(10, Math.round(U.ability.elapsed * 20))) && A.path?.duration === R2.durationSeconds && A.path.height === 0 && sameCheckpointValue(A.path.from, R2.origin) && sameCheckpointValue(A.path.to, R2.origin)) && R2.targetId === A.targetId && R2.targetGeneration === A.targetGeneration
-          );
-        }
         if (A.redbeanAttack !== void 0) {
           ASSERT2(
             U.species === 2 && isRedbeanAttackRecord(A.redbeanAttack) && A.redbeanAttack.id === A.id && A.redbeanAttack.owner === U.id && A.redbeanAttack.ownerGeneration === U.generation && A.redbeanAttack.tier === U.tier
@@ -22183,7 +21819,7 @@
             U.species === 1 && isCornAttackRecord(A.cornAttack, { pending: true }) && A.cornAttack.id === A.id && A.cornAttack.owner === U.id && A.cornAttack.ownerGeneration === U.generation && A.cornAttack.tier === U.tier
           );
         }
-        if (hasUnitCapability(U.species, "repeatedStrike") && !A.peanutAttack) {
+        if (hasUnitCapability(U.species, "repeatedStrike")) {
           ASSERT2(
             INTEGER2(A.peanutStrikeCount, 2, 5) && Number.isFinite(A.peanutAttackMultiplier) && A.peanutAttackMultiplier > 0 && A.peanutAttackMultiplier <= 10 && Number.isFinite(A.peanutSpreadRadians) && A.peanutSpreadRadians >= 0 && A.peanutSpreadRadians <= Math.PI / 6
           );
@@ -22972,26 +22608,7 @@
     ["중앙 가시 찌르기", "부채 40% 뒤 굵은 중앙 가시 60%"],
     ["삼단 압축 가시", "전개 25% · 양 날개 수렴 30% · 중앙 마무리 45%"]
   ]);
-  var PEANUT_FORMS = Object.freeze([
-    ["교대 툭툭", "두 알이 번갈아 50·50% 타격"],
-    ["좌우 시간차", "양쪽으로 벌려 45·55% 시간차 타격"],
-    ["삼연 교차", "좌→우→좌 교차 협공 · 30·30·40%"],
-    ["중앙 합쳐치기", "바깥 두 타 뒤 중앙 합체 · 25·25·50%"],
-    ["반원 조이기", "양쪽 반원 스윕 뒤 직선 닫기 · 20·20·30·30%"],
-    ["전개 스윕 찍기", "좌우 전개 · 엇갈린 스윕 · 중앙 찍기 · 15·15·20·20·30%"]
-  ]);
   var PRESENTATIONS2 = /* @__PURE__ */ new Map([
-    [
-      "peanut-death-split",
-      {
-        key: "peanut",
-        name: "땅콩",
-        title: "두 알 협공과 사망 분열",
-        forms: PEANUT_FORMS,
-        effect: peanutGrowthEffect,
-        note: "두 알은 한 본체·한 체력으로 협공해요. 주변 최대 4명에게 각 타격의 50% 피해를 주며 본체가 죽거나 기절하면 남은 협공은 취소돼요. 사망하면 T1 분열체 2마리가 생기며 부모의 성장과 진화를 다시 적용하지 않아요. 분열체는 재분열·영구 보유·번식·합성 없이 전투가 끝나면 사라져요."
-      }
-    ],
     [
       "chestnut-target-thorns",
       {
@@ -23158,24 +22775,6 @@
         return `가시 사거리·범위 +${rank * 4}%`;
       case "specialty-3":
         return `평타 마지막 가시에 전체 직접 예산의 ${rank * 8}% 추가`;
-      default:
-        throw new RangeError(`Unknown growth effect: ${nodeId}`);
-    }
-  }
-  function peanutGrowthEffect(nodeId, rank) {
-    switch (nodeId) {
-      case "basic-1":
-        return `생존 협공 피해 +${rank * 3}%`;
-      case "basic-2":
-        return `최대 체력 +${rank * 4}% · 다음 런부터 적용`;
-      case "basic-3":
-        return `공격 속도 +${rank * 2}% · 후딜에 적용`;
-      case "specialty-1":
-        return `협공 사거리·범위 +${rank * 4}%`;
-      case "specialty-2":
-        return `중앙 또는 마지막 타격에 전체 직접 예산의 ${rank * 8}% 추가`;
-      case "specialty-3":
-        return `사망 T1 분열체 체력·공격력 ${100 + rank * 25}% · 한 번 적용`;
       default:
         throw new RangeError(`Unknown growth effect: ${nodeId}`);
     }
@@ -23367,7 +22966,7 @@
     if (!weights.length) {
       return [];
     }
-    const SUM = weights.reduce((sum, weight) => sum + weight, 0), EXACT3 = weights.map((weight) => SUM > 0 ? weight / SUM * total : total / weights.length), SHARES = EXACT3.map(Math.floor), ORDER = EXACT3.map((value, index) => ({ index, rest: value - SHARES[index] })).sort(
+    const SUM = weights.reduce((sum, weight) => sum + weight, 0), EXACT2 = weights.map((weight) => SUM > 0 ? weight / SUM * total : total / weights.length), SHARES = EXACT2.map(Math.floor), ORDER = EXACT2.map((value, index) => ({ index, rest: value - SHARES[index] })).sort(
       (a, b) => b.rest - a.rest || a.index - b.index
     );
     const REMAINING = total - SHARES.reduce((sum, share) => sum + share, 0);
@@ -23518,8 +23117,7 @@
       ...CORN_PREVIEW_SCENES,
       ...PEA_PREVIEW_SCENES,
       ...REDBEAN_PREVIEW_SCENES,
-      ...CHESTNUT_PREVIEW_SCENES,
-      ...PEANUT_PREVIEW_SCENES
+      ...CHESTNUT_PREVIEW_SCENES
     ].find((scene) => scene.id === id) ?? null;
   }
   var CORN_PREVIEW_SCENES = Object.freeze(
@@ -23700,51 +23298,6 @@
           prepare: "고정 훈련 표적 · 실제 가시 공격 준비",
           flight: "실제 가시의 전개·교차·수렴과 고정 영역 충돌",
           recover: "평타 후 회복 · 별도 주기 가시는 3초마다 발사"
-        }
-      });
-    })
-  );
-  var PEANUT_PREVIEW_SCENES = Object.freeze(
-    Array.from({ length: 6 }, (_, index) => {
-      const TIER = index + 1;
-      return Object.freeze({
-        id: `peanut-t${TIER}`,
-        title: `땅콩 T${TIER} 공격 미리보기`,
-        seed: 731,
-        rate: 0.6,
-        durationMs: 9e3,
-        timeline: [],
-        setup(world) {
-          world.resetUnits();
-          world.setWorkBasisPoints(0);
-          const BUILD = world.playerProgression.abilities["peanut-death-split"];
-          BUILD.masteryLevel = 50;
-          BUILD.nodeRanks = Object.fromEntries(
-            Array.from({ length: TIER - 1 }, (_value, tierIndex) => [`evolution-${tierIndex + 2}`, 1])
-          );
-          const UNIT3 = world.spawn(4, TIER, -7, 0);
-          UNIT3.growth = 3;
-          UNIT3.growthElapsed = UNIT3.growthDuration;
-          world.startTower(1);
-          world.finishMarch();
-          world._benched.clear();
-          world._benchRevision++;
-          Object.assign(world.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
-          world.farmBossEvent.phase = "fighting";
-          world.farmBossEvent.elapsed = 0;
-          UNIT3.x = -(world.boss.radius + 1.35);
-          UNIT3.y = 0;
-          UNIT3.z = 0;
-          UNIT3.dropLanded = true;
-          world._unitSpatialDirty = true;
-        },
-        step(world) {
-          return world.units[0]?.ability.phase === "active" ? "contact" : world.units[0]?.ability.phase === "recover" ? "recover" : "prepare";
-        },
-        steps: {
-          prepare: "고정 훈련 표적 · 한 본체가 두 알 협공을 준비",
-          contact: "본체의 실제 두 알이 교대·교차·스윕 · 독립 분신 없음",
-          recover: "마지막 협공 후 회복 · 사망 분열은 별도이며 생존 협공과 구분"
         }
       });
     })
@@ -24852,11 +24405,11 @@
   function mountGrowthPreview(species, tier) {
     stopGrowthPreview();
     const HOST = DOLLAR2("abilityNodes").querySelector(".growth-evolution-preview");
-    if (!HOST || !["corn", "pea", "redbean", "chestnut", "peanut"].includes(species) || !Number.isInteger(tier) || tier < 1 || tier > 6) {
+    if (!HOST || !["corn", "pea", "redbean", "chestnut"].includes(species) || !Number.isInteger(tier) || tier < 1 || tier > 6) {
       return;
     }
     const FRAME = document.createElement("iframe");
-    FRAME.title = `${{ pea: "콩", corn: "옥수수", redbean: "팥", chestnut: "밤톨", peanut: "땅콩" }[species]} T${tier} 실제 공격 미리보기`;
+    FRAME.title = `${{ pea: "콩", corn: "옥수수", redbean: "팥", chestnut: "밤톨" }[species]} T${tier} 실제 공격 미리보기`;
     FRAME.src = new URL(`?help=${species}-t${tier}`, location.href).href.split("#")[0];
     HOST.replaceChildren(FRAME);
     for (const BUTTON of DOLLAR2("abilityNodes").querySelectorAll("[data-growth-preview-tier]")) {
@@ -25761,9 +25314,8 @@
   if (HELP.scene) {
     const SCENE = HELP.scene, WORLD = new GARDEN(SCENE.seed);
     SCENE.setup(WORLD);
-    RENDERER.attackPreviewSpecies = /^pea-t[1-6]$/.test(SCENE.id) ? 0 : /^redbean-t[1-6]$/.test(SCENE.id) ? 2 : /^chestnut-t[1-6]$/.test(SCENE.id) ? 3 : /^peanut-t[1-6]$/.test(SCENE.id) ? 4 : null;
+    RENDERER.attackPreviewSpecies = /^pea-t[1-6]$/.test(SCENE.id) ? 0 : /^redbean-t[1-6]$/.test(SCENE.id) ? 2 : /^chestnut-t[1-6]$/.test(SCENE.id) ? 3 : null;
     document.documentElement.classList.toggle("chestnut-attack-preview", RENDERER.attackPreviewSpecies === 3);
-    document.documentElement.classList.toggle("peanut-attack-preview", RENDERER.attackPreviewSpecies === 4);
     start(WORLD, false);
     active.paused = false;
     HELP.scenario = globalThis.BloomGamekitScenario.createScenario({

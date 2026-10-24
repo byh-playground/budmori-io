@@ -1,51 +1,29 @@
 name: Farm browser checks
 on:
     pull_request:
-        paths:
-            - 'index.html'
-            - 'src/breed-allocation.js'
-            - 'src/features/species-growth/**'
-            - 'src/features/projectiles/**'
-            - 'src/features/unit-attacks/**'
-            - 'src/features/abilities/corn-attachment/**'
-            - 'src/ability-*.js'
-            - 'src/ability-tree.css'
-            - 'src/species-growth-presentation.js'
-            - 'src/help-scenes.js'
-            - 'src/farm-model.js'
-            - 'src/farm-session.js'
-            - 'src/farm-render-items.js'
-            - 'src/farm-renderer.js'
-            - 'src/damage-numbers.js'
-            - 'src/farm-app.js'
-            - 'src/styles/game-menu.css'
-            - 'tests/breed-allocation.e2e.mjs'
-            - 'tests/corn-growth.e2e.mjs'
-            - 'tests/pea-*.mjs'
-            - 'tests/redbean-*.mjs'
-            - 'tests/chestnut-*.mjs'
-            - 'tests/peanut-*.mjs'
-            - 'tests/fixtures/chestnut-0.34.0-peanut-legacy.json'
-            - 'assets/troops/peanut.svg'
-            - 'tests/fixtures/redbean-0.33.0-chestnut-legacy.json'
-            - 'tests/fixtures/pea-0.32.0-redbean-legacy.json'
-            - 'tests/fixtures/pea-*.json'
-            - 'tests/fixtures/corn-0.31.0-pea-legacy.json'
-            - 'tests/smoke.e2e.mjs'
-            - 'src/farm-render-units.js'
-            - 'src/unit-attack-capabilities.js'
-            - 'src/unit-abilities.js'
-            - '.github/workflows/breed-allocation-ui-checks.yml'
+        types: [labeled, synchronize]
+    workflow_dispatch:
+        inputs:
+            species:
+                description: Species to check (all keeps the complete existing suite)
+                type: choice
+                default: peanut
+                options: [peanut, chestnut, redbean, pea, corn, all]
+            regression:
+                description: Also run the complete common browser regressions
+                type: boolean
+                default: true
 permissions:
     contents: read
 jobs:
     browser:
+        if: ${{ github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'verify-gameplay') && (github.event.action != 'labeled' || github.event.label.name == 'verify-gameplay')) }}
         runs-on: ubuntu-24.04
         timeout-minutes: 30
         strategy:
             fail-fast: false
             matrix:
-                species: [corn, pea, redbean, chestnut, peanut]
+                species: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.species != 'all' && format('["{0}"]', inputs.species) || '["corn","pea","redbean","chestnut","peanut"]') }}
                 viewport: [desktop, mobile, landscape]
         steps:
             - uses: actions/checkout@v4
@@ -74,26 +52,26 @@ jobs:
                   echo "browser_end=$(date -u +%FT%TZ)" >> tests/output/browser-setup/setup.txt
                   node --input-type=module -e "import {chromium} from 'playwright'; import {execFileSync} from 'node:child_process'; console.log(execFileSync(chromium.executablePath(), ['--version'], {encoding:'utf8'}));" >> tests/output/browser-setup/setup.txt
                   ./node_modules/.bin/playwright --version >> tests/output/browser-setup/setup.txt
-            - id: build
-              run: npm run build
+            - id: check
+              run: npm run check
             # Corn's existing landscape scenario is combat-only; its seven established cases remain.
-            - if: ${{ !cancelled() && steps.build.outcome == 'success' && (matrix.species != 'corn' || matrix.viewport != 'landscape') }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species != 'corn' || matrix.viewport != 'landscape') }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- ui ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.build.outcome == 'success' && (matrix.species != 'corn' || matrix.viewport != 'landscape') && matrix.species != 'redbean' && matrix.species != 'chestnut' && matrix.species != 'peanut' }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species != 'corn' || matrix.viewport != 'landscape') && matrix.species != 'redbean' && matrix.species != 'chestnut' && matrix.species != 'peanut' }}
               run: timeout 300s npm run test:${{ matrix.species }}-growth:case -- previews ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- battle ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.species == 'pea' }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species == 'pea' }}
               run: timeout 180s npm run test:pea-growth:case -- migration ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.build.outcome == 'success' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- previews-low ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.build.outcome == 'success' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- previews-high ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.build.outcome == 'success' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- battle-extra ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.build.outcome == 'success' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- continuity ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.build.outcome == 'success' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- migration ${{ matrix.viewport }}
             - uses: actions/upload-artifact@v4
               if: always()
@@ -104,6 +82,7 @@ jobs:
                       tests/output/browser-setup/
                   if-no-files-found: error
     regression:
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.regression) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'verify-gameplay') && (github.event.action != 'labeled' || github.event.label.name == 'verify-gameplay')) }}
         runs-on: ubuntu-24.04
         timeout-minutes: 20
         steps:
@@ -133,11 +112,11 @@ jobs:
                   echo "browser_end=$(date -u +%FT%TZ)" >> tests/output/browser-setup/setup.txt
                   node --input-type=module -e "import {chromium} from 'playwright'; import {execFileSync} from 'node:child_process'; console.log(execFileSync(chromium.executablePath(), ['--version'], {encoding:'utf8'}));" >> tests/output/browser-setup/setup.txt
                   ./node_modules/.bin/playwright --version >> tests/output/browser-setup/setup.txt
-            - id: build
-              run: npm run build
-            - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+            - id: check
+              run: npm run check
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' }}
               run: timeout 180s npm run test:breed-allocation
-            - if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' }}
               run: timeout 180s npm test
             - uses: actions/upload-artifact@v4
               if: always()

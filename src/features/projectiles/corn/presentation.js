@@ -1,4 +1,4 @@
-import { WORLD_HEIGHT_PROJECTION, WORLD_DEPTH_PROJECTION } from '../../../vector-sockets.cjs';
+import { WORLD_HEIGHT_PROJECTION, WORLD_DEPTH_PROJECTION } from '../../../vector-sockets.js';
 import { seedDisplayMultiplier } from '../seed/presentation.js';
 
 // Visual cob dimensions are deliberately independent of the physical hit filter.
