@@ -48,7 +48,8 @@ function unitAttackPresentation(unit) {
     return ATTACK_PRESENTATIONS.get(ATTACK_TYPES[unit.species]?.kind) || DEFAULT_ATTACK;
 }
 
-// A worker at the grain stack reuses its attack clips: wind up, strike on the tap, then recover.
+// Labor has its own clock, independent of an overlapping combat action. Use
+// the shared native work clips, never a form-specific combat stage from that action.
 function workSwing(u, sim) {
     const SWING = sim.workSwingOf?.(u.id);
     if (!SWING || SWING.phase === 'idle' || u.hp <= 0) {
@@ -59,7 +60,7 @@ function workSwing(u, sim) {
         return { name: 'windup', elapsed: Math.min(279, ELAPSED) };
     }
     return SWING.phase === 'fire'
-        ? { name: unitAttackPresentation(u).activeMotion(u), elapsed: Math.min(ELAPSED, 399) }
+        ? { name: 'fire', elapsed: Math.min(ELAPSED, 399) }
         : { name: 'recover', elapsed: ELAPSED };
 }
 function unitMotion(u, sim, rest) {
