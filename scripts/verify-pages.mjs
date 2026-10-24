@@ -21,9 +21,9 @@ const FILES = await Promise.all(
         { file: 'index.html', sha256: EXPECTED, bytes: HTML.length },
         ...[MANIFEST?.game, MANIFEST?.bootstrap, MANIFEST?.scope, ...(MANIFEST?.vectorAssets || [])].filter(Boolean),
     ].map(async (spec) => {
-        if (spec.sha256 && spec.bytes) return spec;
-        const bytes = CANONICAL_TEXT(await readFile(new URL('../' + spec.file, import.meta.url)));
-        return { ...spec, bytes: bytes.length, sha256: HASH(bytes) };
+        if (spec.sha256 && spec.bytes) { return spec; }
+        const BYTES = CANONICAL_TEXT(await readFile(new URL('../' + spec.file, import.meta.url)));
+        return { ...spec, bytes: BYTES.length, sha256: HASH(BYTES) };
     }),
 );
 const URL_LOCAL = 'https://byh-playground.github.io/budmori-io/';
