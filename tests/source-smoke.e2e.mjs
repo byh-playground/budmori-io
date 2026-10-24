@@ -915,7 +915,15 @@ try {
                         WORLD.boss.patternRuntime.cooldowns[KEY] = 1000;
                     }
                     for (const [INDEX, UNIT] of WORLD.units.entries()) {
-                        Object.assign(UNIT, { x: 4 + INDEX * 0.1, y: 0, z: 0, stun: 1000, vx: 0, vy: 0, vz: 0 });
+                        Object.assign(UNIT, {
+                            x: role === 'boss' ? 8 + INDEX * 0.75 : 4 + INDEX * 0.1,
+                            y: 0,
+                            z: 0,
+                            stun: 1000,
+                            vx: 0,
+                            vy: 0,
+                            vz: 0,
+                        });
                     }
                     WORLD._unitSpatialDirty = true;
                     const SLOT = SKILLS.slots.find((slot) => (slot.role || 'player') === role),
@@ -927,6 +935,7 @@ try {
                     OBS.hits = [];
                     OBS.recoveries = {};
                     OBS.preparations = {};
+                    OBS.impactFixture = null;
                     OBS.checkpoint = {
                         kind: 'effect',
                         role,
@@ -957,6 +966,49 @@ try {
                 { role: ROLE, id: ID, required: REQUIRED, condition: CONDITION },
             );
             await PAGE.waitForFunction(() => globalThis.__sharedSkills.checkpoint?.reached === true);
+            if (ROLE === 'boss' && ['meteor', 'meteor-shower'].includes(ID)) {
+                await PAGE.evaluate((id) => {
+                    const WORLD = BUDMORI.sim,
+                        EFFECT = WORLD.formationRuntime.effects.find(
+                            (effect) => effect.role === 'boss' && effect.kind === id,
+                        ),
+                        OBS = globalThis.__sharedSkills;
+                    // The production launch already chose this legal landing point. Arrange only targets
+                    // within that telegraphed footprint; never alter the effect, random roll or damage code.
+                    OBS.impactFixture = {
+                        effectId: EFFECT.id,
+                        x: EFFECT.x,
+                        y: EFFECT.y,
+                        radius: EFFECT.radius,
+                        launchAge: EFFECT.age,
+                        targets: [],
+                    };
+                    for (const [INDEX, UNIT] of WORLD.units.entries()) {
+                        Object.assign(UNIT, {
+                            x: EFFECT.x + (INDEX - 1) * EFFECT.radius * 0.2,
+                            y: EFFECT.y,
+                            z: 0,
+                            vx: 0,
+                            vy: 0,
+                            vz: 0,
+                            stun: 1000,
+                            dropLanded: true,
+                        });
+                        OBS.impactFixture.targets.push({ id: UNIT.id, hp: UNIT.hp, x: UNIT.x, y: UNIT.y });
+                    }
+                    WORLD._unitSpatialDirty = true;
+                    OBS.checkpoint = {
+                        kind: 'effect',
+                        role: 'boss',
+                        id,
+                        age: EFFECT.fallSeconds + EFFECT.delay + 0.05,
+                        reached: false,
+                    };
+                    BUDMORI.runtime.loop.resetTiming();
+                    BUDMORI.runtime.paused = false;
+                }, ID);
+                await PAGE.waitForFunction(() => globalThis.__sharedSkills.checkpoint.reached);
+            }
             await PAGE.evaluate(() => {
                 // Copy the actual paused model into the production session DTO; normal RAF draws it.
                 BUDMORI.runtime.capturePresentation('reset');
@@ -989,6 +1041,15 @@ try {
                         casts: globalThis.__sharedSkills.casts,
                         hits: globalThis.__sharedSkills.hits,
                         effect: EFFECT,
+                        impactFixture: globalThis.__sharedSkills.impactFixture,
+                        targetBodies: WORLD.units.map((unit) => ({
+                            id: unit.id,
+                            x: unit.x,
+                            y: unit.y,
+                            radius: unit.radius,
+                            hp: unit.hp,
+                        })),
+                        bossBody: { x: WORLD.boss.x, y: WORLD.boss.y, radius: WORLD.boss.radius },
                         otherCharge: OTHER.charge,
                         ownCharge: WORLD.formationRuntime.slots.find((slot) => slot !== OTHER).charge,
                         targetBody:
@@ -1020,6 +1081,50 @@ try {
                         'boss effect actually damages multiple units',
                     );
                 }
+            }
+            if (ROLE === 'boss' && ['meteor', 'meteor-shower'].includes(ID)) {
+                assert.equal(
+                    RESULT.effect.id,
+                    RESULT.impactFixture.effectId,
+                    'the observed impact belongs to the original production launch',
+                );
+                assert.equal(RESULT.effect.impacted, true, 'the meteor reaches its real impact transition');
+                assert.ok(
+                    RESULT.effect.age >= RESULT.effect.fallSeconds + RESULT.effect.delay,
+                    'damage is observed after the actual landing time',
+                );
+                assert.ok(
+                    RESULT.impactFixture.targets.every(
+                        (target) =>
+                            Math.hypot(target.x - RESULT.impactFixture.x, target.y - RESULT.impactFixture.y) <=
+                            RESULT.impactFixture.radius,
+                    ),
+                    'fixture targets begin within the original telegraphed footprint',
+                );
+                assert.ok(
+                    RESULT.impactFixture.targets.some(
+                        (target) => RESULT.targetBodies.find((unit) => unit.id === target.id)?.hp < target.hp,
+                    ),
+                    'native meteor impact actually reduces target health',
+                );
+                assert.ok(
+                    RESULT.hits.some(
+                        (hit) =>
+                            hit.kind === 'unit-hit' &&
+                            RESULT.impactFixture.targets.some((target) => target.id === hit.unit),
+                    ),
+                    'native meteor impact emits a real skill hit',
+                );
+            }
+            if (ROLE === 'boss' && ['ufo', 'storm-cloud'].includes(ID)) {
+                assert.ok(
+                    RESULT.targetBodies.every(
+                        (target) =>
+                            Math.hypot(target.x - RESULT.bossBody.x, target.y - RESULT.bossBody.y) >
+                            RESULT.bossBody.radius + target.radius,
+                    ),
+                    'captured targets stand outside the boss body',
+                );
             }
             if (ROLE === 'boss') {
                 assert.ok(RESULT.preparation?.ticks >= 5, 'prepare is observed for at least five actual ticks');
