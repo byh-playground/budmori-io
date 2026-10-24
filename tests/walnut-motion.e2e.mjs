@@ -45,7 +45,77 @@ await new Promise((resolve) => SERVER.listen(0, '127.0.0.1', resolve));
 async function activate(locator) {
     await (VIEWPORT === 'landscape' ? locator.tap() : locator.click());
 }
-let browser;
+// Preserve the failing iframe state before browser teardown, including waits
+// before observer installation. Diagnostics never mutate simulation or pose.
+async function previewWait(frame, page, tier, label, predicate, timeout = 30000) {
+    try {
+        await frame.waitForFunction(predicate, null, { timeout });
+    } catch (error) {
+        await previewFailure(frame, page, tier, label, error);
+        throw error;
+    }
+}
+async function previewFailure(frame, page, tier, label, error) {
+    const FAILURE = { kind: 'preview-wait-failure', tier, label, error: String(error), url: frame.url() };
+    try {
+        FAILURE.live = await frame.evaluate(() => {
+            const APP = globalThis.BUDMORI,
+                WORLD = APP?.sim,
+                UNIT = WORLD?.units[0],
+                SESSION = APP?.runtime,
+                DISPLAY = SESSION?.presentationView?.units.find((unit) => unit.id === UNIT?.id);
+            return {
+                sceneId: new URLSearchParams(location.search).get('help'),
+                help: globalThis.__budmoriHelp?.snapshot(),
+                hidden: document.hidden,
+                home: document.body.dataset.home,
+                simulationTick: WORLD?.simulationTick,
+                scene: WORLD?.scene,
+                eventPhase: WORLD?.farmBossEvent?.phase,
+                paused: SESSION?.paused,
+                pauseStartedAt: SESSION?.pauseStartedAt,
+                pausedDurationMs: SESSION?.pausedDurationMs,
+                clock: globalThis.__walnutPreviewClock,
+                inputClock: globalThis.__walnutInputClock,
+                observer: globalThis.__walnutMotion,
+                playerIds: [...(APP?.renderer?.vectorPlayers.keys() || [])],
+                unit: UNIT && {
+                    id: UNIT.id,
+                    species: UNIT.species,
+                    hp: UNIT.hp,
+                    stun: UNIT.stun,
+                    x: UNIT.x,
+                    y: UNIT.y,
+                    z: UNIT.z,
+                    phase: UNIT.ability.phase,
+                    guardUntilTick: UNIT.walnutGuardUntilTick,
+                    nextGuardTick: UNIT.walnutNextGuardTick,
+                    guarding: UNIT.ability.isGuarding?.(WORLD.simulationTick),
+                    action: UNIT.ability.action?.walnutAttack,
+                },
+                display: DISPLAY && { id: DISPLAY.id, guarding: DISPLAY.walnutGuarding, ability: DISPLAY.ability },
+            };
+        });
+    } catch (diagnosticError) {
+        FAILURE.diagnosticError = String(diagnosticError);
+    }
+    for (const [NAME, TARGET] of [
+        ['modal', page],
+        ['iframe', frame.locator('body')],
+    ]) {
+        try {
+            await TARGET.screenshot({
+                path: path.join(OUTPUT, `t${tier}-${label}-failure-${NAME}.png`),
+                timeout: 5000,
+            });
+        } catch (screenshotError) {
+            FAILURE[`${NAME}ScreenshotError`] = String(screenshotError);
+        }
+    }
+    REPORT.push(FAILURE);
+}
+
+let browser, activePreview;
 try {
     browser = await chromium.launch({
         executablePath: process.env.CHROME_PATH,
@@ -83,61 +153,7 @@ try {
         if (!new URLSearchParams(location.search).has('help')) {
             return;
         }
-        const REQUEST = globalThis.requestAnimationFrame.bind(globalThis),
-            CLOCK = { last: null, current: null, maxDelta: 0 };
-        globalThis.__walnutPreviewClock = CLOCK;
-        globalThis.requestAnimationFrame = (callback) =>
-            REQUEST((now) => {
-                if (CLOCK.last === null) {
-                    CLOCK.current = now;
-                } else if (CLOCK.last !== now) {
-                    const DELTA = globalThis.BUDMORI?.runtime?.paused ? 0 : Math.min(25, Math.max(0, now - CLOCK.last));
-                    CLOCK.current += DELTA;
-                    CLOCK.maxDelta = Math.max(CLOCK.maxDelta, DELTA);
-                }
-                CLOCK.last = now;
-                callback(CLOCK.current);
-            });
-    });
-    for (let tier = 1; tier <= 6; tier++) {
-        await PAGE.goto(`${ORIGIN}/index.html`);
-        await PAGE.waitForFunction(() => globalThis.BUDMORI);
-        await activate(PAGE.locator('#newGame'));
-        if (await PAGE.locator('#newConfirm').isVisible()) {
-            await activate(PAGE.locator('#confirmNew'));
-        }
-        await PAGE.waitForFunction(() => document.body.dataset.home === 'false');
-        await activate(PAGE.locator('#upgradeMenu'));
-        await activate(PAGE.locator('[data-ability-species="5"]'));
-        await activate(PAGE.locator(`[data-walnut-preview-tier="${tier}"]`));
-        const HOST = PAGE.locator('.growth-evolution-preview iframe');
-        await HOST.scrollIntoViewIfNeeded();
-        const HANDLE = await HOST.elementHandle(),
-            FRAME = await HANDLE.contentFrame(),
-            VISIBLE = await HOST.evaluate((element) => {
-                const BOX = element.getBoundingClientRect(),
-                    PANE = document
-                        .getElementById(
-                            getComputedStyle(document.getElementById('abilityPanel')).overflowY === 'auto'
-                                ? 'abilityPanel'
-                                : 'abilityNodes',
-                        )
-                        .getBoundingClientRect();
-                return {
-                    height: BOX.height,
-                    visibleHeight: Math.min(innerHeight, PANE.bottom, BOX.bottom) - Math.max(0, PANE.top, BOX.top),
-                };
-            });
-        assert.ok(
-            VISIBLE.height >= 160 && VISIBLE.visibleHeight >= VISIBLE.height - 3,
-            'actual modal iframe is fully visible through its scroll pane',
-        );
-        REPORT.push({ kind: 'modal-preview-viewport', tier, ...VISIBLE });
-        await FRAME.waitForFunction(() => globalThis.BUDMORI?.sim?.units[0]?.species === 5);
-        await FRAME.goto(FRAME.url());
-        await FRAME.waitForFunction(() => globalThis.BUDMORI?.renderer?.vectorPlayers.size > 0);
-        assert.equal(await FRAME.locator('#bossbar').evaluate((element) => getComputedStyle(element).display), 'none');
-        await FRAME.evaluate(() => {
+        function installObserver() {
             const RENDERER = BUDMORI.renderer,
                 RENDER = RENDERER.render,
                 WORLD = BUDMORI.sim,
@@ -154,6 +170,14 @@ try {
             SESSION.loop.resetTiming();
             globalThis.__walnutMotion = {
                 stages: {},
+                renderCalls: 0,
+                installedAt: {
+                    tick: WORLD.simulationTick,
+                    phase: UNIT.ability.phase,
+                    clock: { ...globalThis.__walnutPreviewClock },
+                    playerCount: RENDERER.vectorPlayers.size,
+                },
+                rejected: { noPlayer: 0, noRecord: 0, displayMismatch: 0 },
                 guardHammer: false,
                 captures: 0,
                 ready: false,
@@ -169,6 +193,28 @@ try {
                     PLAYER = this.vectorPlayers.get(UNIT.id),
                     A = DISPLAY?.ability,
                     RECORD = UNIT.ability.action?.walnutAttack;
+                STATE.renderCalls++;
+                STATE.sameUnitReference = WORLD.units[0] === UNIT;
+                STATE.sameWorldReference = BUDMORI.sim === WORLD;
+                STATE.lastRender = {
+                    tick: WORLD.simulationTick,
+                    unitId: UNIT.id,
+                    phase: A?.phase,
+                    guard: DISPLAY?.walnutGuarding,
+                    recordId: RECORD?.id,
+                    displayId: A?.walnutActionId,
+                    player: !!PLAYER,
+                    clock: globalThis.__walnutInputClock,
+                };
+                if (!PLAYER) {
+                    STATE.rejected.noPlayer++;
+                }
+                if (!RECORD) {
+                    STATE.rejected.noRecord++;
+                }
+                if (!A?.walnutForm || RECORD?.id !== A?.walnutActionId) {
+                    STATE.rejected.displayMismatch++;
+                }
                 if (!PLAYER || !A?.walnutForm || !RECORD || RECORD.id !== A.walnutActionId) {
                     return RESULT;
                 }
@@ -219,10 +265,73 @@ try {
                 }
                 return RESULT;
             };
-        });
+        }
+        const REQUEST = globalThis.requestAnimationFrame.bind(globalThis),
+            CLOCK = { last: null, current: null, maxDelta: 0 };
+        globalThis.__walnutPreviewClock = CLOCK;
+        globalThis.requestAnimationFrame = (callback) =>
+            REQUEST((now) => {
+                if (CLOCK.last === null) {
+                    CLOCK.current = now;
+                } else if (CLOCK.last !== now) {
+                    const DELTA = globalThis.BUDMORI?.runtime?.paused ? 0 : Math.min(25, Math.max(0, now - CLOCK.last));
+                    CLOCK.current += DELTA;
+                    CLOCK.maxDelta = Math.max(CLOCK.maxDelta, DELTA);
+                }
+                CLOCK.last = now;
+                // The app publishes BUDMORI synchronously before its first RAF.
+                // Hook before that first render, not after SVG readiness polling.
+                if (globalThis.BUDMORI && !globalThis.__walnutMotion) {
+                    installObserver();
+                }
+                callback(CLOCK.current);
+            });
+    });
+    for (let tier = 1; tier <= 6; tier++) {
+        activePreview = { frame: PAGE.mainFrame(), page: PAGE, tier };
+        await PAGE.goto(`${ORIGIN}/index.html`);
+        await PAGE.waitForFunction(() => globalThis.BUDMORI);
+        await activate(PAGE.locator('#newGame'));
+        if (await PAGE.locator('#newConfirm').isVisible()) {
+            await activate(PAGE.locator('#confirmNew'));
+        }
+        await PAGE.waitForFunction(() => document.body.dataset.home === 'false');
+        await activate(PAGE.locator('#upgradeMenu'));
+        await activate(PAGE.locator('[data-ability-species="5"]'));
+        await activate(PAGE.locator(`[data-walnut-preview-tier="${tier}"]`));
+        const HOST = PAGE.locator('.growth-evolution-preview iframe');
+        await HOST.scrollIntoViewIfNeeded();
+        const HANDLE = await HOST.elementHandle(),
+            FRAME = await HANDLE.contentFrame(),
+            VISIBLE = await HOST.evaluate((element) => {
+                const BOX = element.getBoundingClientRect(),
+                    PANE = document
+                        .getElementById(
+                            getComputedStyle(document.getElementById('abilityPanel')).overflowY === 'auto'
+                                ? 'abilityPanel'
+                                : 'abilityNodes',
+                        )
+                        .getBoundingClientRect();
+                return {
+                    height: BOX.height,
+                    visibleHeight: Math.min(innerHeight, PANE.bottom, BOX.bottom) - Math.max(0, PANE.top, BOX.top),
+                };
+            });
+        activePreview.frame = FRAME;
+        assert.ok(
+            VISIBLE.height >= 160 && VISIBLE.visibleHeight >= VISIBLE.height - 3,
+            'actual modal iframe is fully visible through its scroll pane',
+        );
+        REPORT.push({ kind: 'modal-preview-viewport', tier, ...VISIBLE });
+        await previewWait(FRAME, PAGE, tier, 'initial-scene', () => globalThis.BUDMORI?.sim?.units[0]?.species === 5);
+        await FRAME.goto(FRAME.url());
+        // Install observation before asynchronous SVG players finish loading.
+        await previewWait(FRAME, PAGE, tier, 'reloaded-scene', () => globalThis.BUDMORI?.sim?.units[0]?.species === 5);
+        assert.equal(await FRAME.locator('#bossbar').evaluate((element) => getComputedStyle(element).display), 'none');
+
         let state;
         for (let capture = 0; ; capture++) {
-            await FRAME.waitForFunction(() => globalThis.__walnutMotion.ready, null, { timeout: 30000 });
+            await previewWait(FRAME, PAGE, tier, `capture-${capture}`, () => globalThis.__walnutMotion.ready);
             state = await FRAME.evaluate(() => structuredClone(globalThis.__walnutMotion));
             const SAMPLE = state.trace.at(-1);
             await PAGE.screenshot({ path: path.join(OUTPUT, `t${tier}-${SAMPLE.phase}-${SAMPLE.slot}.png`) });
@@ -281,15 +390,21 @@ try {
             SESSION.pausedDurationMs = DURATION;
             SESSION.loop.resetTiming();
         });
-        await FRAME.waitForFunction(() => !BUDMORI.runtime.presentationView.units[0].ability.walnutForm, null, {
-            timeout: 5000,
-        });
+        await previewWait(
+            FRAME,
+            PAGE,
+            tier,
+            'interruption',
+            () => !BUDMORI.runtime.presentationView.units[0].ability.walnutForm,
+            5000,
+        );
         assert.equal(
             await FRAME.evaluate(() => BUDMORI.runtime.presentationView.units[0].ability.walnutImpactLife),
             0,
             'interruption clears pending contact presentation',
         );
     }
+    activePreview = null;
     // Main-world continuity uses the real browser Back/Home route and Continue
     // control. Combat fixtures choose a scenario, never inject hits or poses.
     await PAGE.goto(`${ORIGIN}/index.html`);
@@ -445,6 +560,14 @@ try {
     await PAGE.screenshot({ path: path.join(OUTPUT, 'main-natural-raw.png') });
     assert.deepEqual(ERRORS, []);
     console.log(`PASS walnut six-form actual native motion (${VIEWPORT})`);
+} catch (error) {
+    if (
+        activePreview &&
+        !REPORT.some((entry) => entry.kind === 'preview-wait-failure' && entry.tier === activePreview.tier)
+    ) {
+        await previewFailure(activePreview.frame, activePreview.page, activePreview.tier, 'preview-operation', error);
+    }
+    throw error;
 } finally {
     fs.writeFileSync(path.join(OUTPUT, 'report.json'), JSON.stringify({ forms: REPORT, errors: ERRORS }, null, 2));
     await browser?.close();

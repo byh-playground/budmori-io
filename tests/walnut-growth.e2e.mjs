@@ -64,12 +64,30 @@ async function openTree() {
 }
 const NODE = (id) => page.locator(`[data-growth-node="${id}"] button`);
 async function purchase(id) {
-    const BEFORE = await page.locator(`[data-growth-node="${id}"] .growth-rank`).textContent();
-    assert.equal(await NODE(id).getAttribute('aria-disabled'), 'false');
+    const BEFORE = await page.evaluate(
+        (nodeId) => BUDMORI.sim.playerProgression.abilities['walnut-raw-guard'].nodeRanks[nodeId] || 0,
+        id,
+    );
+    // A queued reset/purchase can update the model before the panel redraws.
+    // Require agreement before clicking, then require exactly one rank in both owners.
+    await page.waitForFunction(
+        ({ id, rank }) => {
+            const LABEL = document.querySelector(`[data-growth-node="${id}"] .growth-rank`)?.textContent;
+            return (
+                (BUDMORI.sim.playerProgression.abilities['walnut-raw-guard'].nodeRanks[id] || 0) === rank &&
+                LABEL?.split('/')[0] === String(rank) &&
+                document.querySelector(`[data-growth-node="${id}"] button`)?.getAttribute('aria-disabled') === 'false'
+            );
+        },
+        { id, rank: BEFORE },
+    );
     await activate(NODE(id));
     await page.waitForFunction(
-        ({ id, before }) => document.querySelector(`[data-growth-node="${id}"] .growth-rank`)?.textContent !== before,
-        { id, before: BEFORE },
+        ({ id, rank }) =>
+            BUDMORI.sim.playerProgression.abilities['walnut-raw-guard'].nodeRanks[id] === rank &&
+            document.querySelector(`[data-growth-node="${id}"] .growth-rank`)?.textContent?.split('/')[0] ===
+                String(rank),
+        { id, rank: BEFORE + 1 },
     );
 }
 try {
@@ -159,7 +177,12 @@ try {
     await openTree();
     await activate(page.locator('[data-ability-action="reset"]'));
     await page.waitForFunction(
-        () => Object.keys(BUDMORI.sim.playerProgression.abilities['walnut-raw-guard'].nodeRanks).length === 0,
+        () =>
+            Object.keys(BUDMORI.sim.playerProgression.abilities['walnut-raw-guard'].nodeRanks).length === 0 &&
+            document.querySelector('[data-growth-node="basic-2"] .growth-rank')?.textContent === '0/10' &&
+            [...document.querySelectorAll('[data-growth-node] .growth-rank')].every(
+                (label) => label.textContent.split('/')[0] === '0',
+            ),
     );
     assert.equal(await page.evaluate(() => BUDMORI.sim.playerProgression.abilities['walnut-raw-guard'].masteryXp), 125);
     await purchase('basic-2');
