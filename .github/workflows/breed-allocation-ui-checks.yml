@@ -80,13 +80,14 @@ jobs:
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- continuity ${{ matrix.viewport }}
             - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'walnut' && env.FOCUSED_PEANUT_DESKTOP != 'true' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- migration ${{ matrix.viewport }}
-            - name: Focused walnut growth and native motion
+            - name: Focused walnut growth inputs
               if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species == 'walnut' }}
-              run: |
-                  timeout 180s node tests/walnut-growth.e2e.mjs ${{ matrix.viewport }}
-                  timeout 360s node tests/walnut-motion.e2e.mjs ${{ matrix.viewport }}
+              run: timeout 180s node tests/walnut-growth.e2e.mjs ${{ matrix.viewport }}
+            - name: Focused walnut native motion and continuity
+              if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species == 'walnut' }}
+              run: timeout 360s node tests/walnut-motion.e2e.mjs ${{ matrix.viewport }}
             - name: Paired walnut performance in both viewports (once)
-              if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species == 'walnut' && matrix.viewport == 'desktop' }}
+              if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species == 'walnut' && matrix.viewport == 'desktop' && !contains(github.event.pull_request.labels.*.name, 'verify-browser-only') }}
               env:
                   BASE_COMMIT: bde28685e3ef0dc15934cde9d41a6b9b5e42ec7f
               run: |

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const VIEWPORT = process.argv[2] || 'desktop',
-    ROOT = fileURLToPath(new URL('../', import.meta.url)),
+    ROOT = path.resolve(fileURLToPath(new URL('../', import.meta.url))),
     OUTPUT = path.join(ROOT, 'tests/output/walnut-motion', VIEWPORT),
     SIZE = VIEWPORT === 'landscape' ? { width: 844, height: 390 } : { width: 1100, height: 850 },
     HTML = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'),
@@ -76,6 +76,26 @@ try {
         ERRORS.push('Unexpected network request: ' + URL_LOCAL);
         return route.abort();
     });
+    await PAGE.addInitScript(() => {
+        if (!new URLSearchParams(location.search).has('help')) {
+            return;
+        }
+        const REQUEST = globalThis.requestAnimationFrame.bind(globalThis),
+            CLOCK = { last: null, current: null, maxDelta: 0 };
+        globalThis.__walnutPreviewClock = CLOCK;
+        globalThis.requestAnimationFrame = (callback) =>
+            REQUEST((now) => {
+                if (CLOCK.last === null) {
+                    CLOCK.current = now;
+                } else if (CLOCK.last !== now) {
+                    const DELTA = globalThis.BUDMORI?.runtime?.paused ? 0 : Math.min(25, Math.max(0, now - CLOCK.last));
+                    CLOCK.current += DELTA;
+                    CLOCK.maxDelta = Math.max(CLOCK.maxDelta, DELTA);
+                }
+                CLOCK.last = now;
+                callback(CLOCK.current);
+            });
+    });
     for (let tier = 1; tier <= 6; tier++) {
         await PAGE.goto(`${ORIGIN}/index.html?help=walnut-t${tier}`);
         await PAGE.waitForFunction(() => globalThis.BUDMORI?.renderer?.vectorPlayers.size > 0);
@@ -85,32 +105,13 @@ try {
                 WORLD = BUDMORI.sim,
                 UNIT = WORLD.units[0],
                 SESSION = BUDMORI.runtime,
-                PRESENT = SESSION.presentation,
-                PULSE = SESSION.pulse,
-                CLOCK = {
-                    last: null,
-                    current: null,
-                    maxDelta: 0,
-                    advance(now) {
-                        if (this.last === null) {
-                            this.current = now;
-                        } else if (now !== this.last) {
-                            const DELTA = Math.min(25, Math.max(0, now - this.last));
-                            this.current += DELTA;
-                            this.maxDelta = Math.max(this.maxDelta, DELTA);
-                        }
-                        this.last = now;
-                        return this.current;
-                    },
-                };
-            SESSION.__walnutObservationClock = CLOCK;
-            SESSION.pulse = function (now) {
-                return PULSE.call(this, CLOCK.advance(now));
-            };
+                PRESENT = SESSION.presentation;
+            // One bounded RAF input reaches HELP.clock, scenario.pulse, session
+            // pulse and presentation. Never rescale only one consumer downstream.
+            SESSION.__walnutObservationClock = globalThis.__walnutPreviewClock;
             SESSION.presentation = function (now) {
-                const INPUT = CLOCK.advance(now);
-                globalThis.__walnutInputClock = INPUT;
-                return PRESENT.call(this, INPUT);
+                globalThis.__walnutInputClock = now;
+                return PRESENT.call(this, now);
             };
             SESSION.loop.resetTiming();
             globalThis.__walnutMotion = {
@@ -256,6 +257,10 @@ try {
     await PAGE.goto(`${ORIGIN}/index.html`);
     await PAGE.waitForFunction(() => globalThis.BUDMORI);
     await (VIEWPORT === 'landscape' ? PAGE.locator('#newGame').tap() : PAGE.locator('#newGame').click());
+    if (await PAGE.locator('#newConfirm').isVisible()) {
+        await (VIEWPORT === 'landscape' ? PAGE.locator('#confirmNew').tap() : PAGE.locator('#confirmNew').click());
+    }
+    await PAGE.waitForFunction(() => document.body.dataset.home === 'false' && BUDMORI.sim.scene === 'farm');
     await PAGE.evaluate(async () => {
         const { helpSceneById: HELP_SCENE_BY_ID } = await import('./src/help-scenes.js'),
             WORLD = BUDMORI.sim;

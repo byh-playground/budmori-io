@@ -53,7 +53,9 @@ async function activate(locator) {
     await (MOBILE ? locator.tap() : locator.click());
 }
 async function openTree() {
-    await activate(page.locator('#upgradeMenu'));
+    if (!(await page.locator('#gameMenuOverlay').isVisible())) {
+        await activate(page.locator('#upgradeMenu'));
+    }
     await activate(page.locator('#menuTabAbilities'));
     await activate(page.locator('[data-ability-species="5"]'));
     await page.locator('[data-growth-tree]').waitFor();
