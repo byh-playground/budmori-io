@@ -170,6 +170,20 @@ export function sourceGraph(root = DEFAULT_ROOT) {
             } else {
                 return;
             }
+            if (file === 'src/showcase.js' && specifier.startsWith('https://')) {
+                // Intro host is a version-pinned GameKit ESM import, not arbitrary remote code.
+                const PIN = JSON.parse(READ('gamekit-lock.json')).showcase;
+                assert.ok(PIN, 'GameKit introduction pin is required');
+                assert.match(PIN.distCommit, /^[a-f0-9]{40}$/);
+                assert.match(PIN.bundleSHA256, SHA256);
+                assert.equal(
+                    specifier,
+                    `https://cdn.jsdelivr.net/gh/${PIN.repository}@${PIN.distCommit}/scenario.js`,
+                    'Showcase must import exactly the vetted GameKit scenario release',
+                );
+                EDGES.push({ from: file, kind: 'immutable-sdk-scenario', to: specifier });
+                return;
+            }
             const TARGET = RESOLVE(specifier, file, true);
             EDGES.push({ from: file, kind: node.type, to: TARGET });
             VISIT_MODULE(TARGET);
