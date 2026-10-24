@@ -180,7 +180,7 @@ class UnitRender extends RENDER_OBJECT {
         );
         this.ability.peanutWindupDuration = PEANUT?.windupSeconds || 0.25;
         const CHESTNUT = u.ability.action?.chestnutAttack,
-            CHESTNUT_TICK = u.ability.phase === 'recover' ? u.ability.elapsed * 20 : 0,
+            CHESTNUT_TICK = CHESTNUT?.motionTick || 0,
             CHESTNUT_SHOT = CHESTNUT?.shots.findLast((shot) => shot.tick <= CHESTNUT_TICK),
             CHESTNUT_FLIGHT = Math.max(0.1, 0.3 / (CHESTNUT?.speed || 1));
         this.ability.chestnutForm = CHESTNUT?.form || 0;

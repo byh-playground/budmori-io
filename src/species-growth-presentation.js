@@ -29,12 +29,12 @@ const REDBEAN_FORMS = Object.freeze([
     ['삼연 도약 강타', '낮은 찍기 · 측면 회전 접촉 · 높은 마무리 착지'],
 ]);
 const CHESTNUT_FORMS = Object.freeze([
-    ['짧은 가시 주먹', '짧은 가시를 정면으로 한 번 발사'],
-    ['좌우 엇찌르기', '좌우 가시가 교차하며 45·55% 타격'],
-    ['전면 가시 부채', '전방에 펼친 가시가 한 예산으로 타격'],
-    ['부채 수렴', '부채 전개 40% 뒤 고정 표적점으로 60% 수렴'],
-    ['중앙 가시 찌르기', '부채 40% 뒤 굵은 중앙 가시 60%'],
-    ['삼단 압축 가시', '전개 25% · 양 날개 수렴 30% · 중앙 마무리 45%'],
+    ['짧은 가시 찌르기', '정면 가시 1발에 기본 예산 100%'],
+    ['좌우 엇찌르기', '좌우 가시 교차 · 기본 예산 45·55%'],
+    ['전면 가시 부채', '전방 부채에 기본 예산 100%'],
+    ['부채 수렴', '기본 예산 전개 40% · 고정 표적점 수렴 60%'],
+    ['중앙 가시 찌르기', '기본 예산 부채 40% · 중앙 가시 60%'],
+    ['삼단 압축 가시', '기본 예산 전개 25% · 수렴 30% · 중앙 45%'],
 ]);
 const PEANUT_FORMS = Object.freeze([
     ['교대 툭툭', '두 알이 번갈아 50·50% 타격'],
@@ -118,10 +118,10 @@ const PRESENTATIONS = new Map([
         {
             key: 'chestnut',
             name: '밤톨',
-            title: '가시 전개와 집중',
+            title: '하나의 가시 기본 공격',
             forms: CHESTNUT_FORMS,
             effect: chestnutGrowthEffect,
-            note: '전개와 수렴은 서로 다른 타격 예산을 써요. 범위 타격은 주 대상 100%, 주변 최대 4명에게 50%예요. 주기 가시는 평타와 별도로 3초마다 0.1초 간격으로 발사하며 총예산을 가시 수로 나눠요. 이미 발사한 가시는 본체가 사라져도 고정한 표적점까지 진행해요.',
+            note: '평타 자체가 가시 공격이며 별도 주기 공격은 없어요. 가시 밀도 랭크만큼 같은 평타 안에 가시가 더 나와요. 주 대상 추가 예산은 기본 예산×(1+0.4×밀도 랭크)/3이며, 형태 가시와 추가 가시 전체에 균등하게 나눠요. 기본 예산에는 실제 합성 등급 보정과 가시 위력 투자가 각각 한 번 적용돼요. 집중 마무리는 형태의 마지막 가시에 기본 예산의 8%/랭크를 더해요. 주변 최대 4명은 기존 범위 타격 예산의 50%만 받고 주 대상 추가 예산은 받지 않아요. 모든 공격 속도 증가는 가시 평타 전체의 반복 속도를 높여요. 이미 발사한 가시는 본체가 사라져도 고정한 표적점까지 진행해요.',
         },
     ],
     [
@@ -168,6 +168,10 @@ const GROWTH_REASON_LABELS = new Map([
     ['max-rank', '최대 랭크'],
     ['insufficient-points', '숙련 포인트 부족'],
 ]);
+
+export function growthPresentationFor(abilityId) {
+    return PRESENTATIONS.get(abilityId) || null;
+}
 
 export function renderGrowthMasteryMarkup(investment, definition) {
     const GROWTH = growthForAbility(definition.id),
@@ -308,17 +312,17 @@ function redbeanGrowthEffect(nodeId, rank) {
 function chestnutGrowthEffect(nodeId, rank) {
     switch (nodeId) {
         case 'basic-1':
-            return `공격력 +${rank * 3}% · 평타와 주기 가시에 적용`;
+            return `가시 평타 전체 피해 +${rank * 3}%`;
         case 'basic-2':
             return `최대 체력 +${rank * 4}% · 다음 런부터 적용`;
         case 'basic-3':
-            return `공격 속도 +${rank * 2}% · 주기 가시 간격 제외`;
+            return `공격 속도 +${rank * 2}% · 가시 평타 전체에 적용`;
         case 'specialty-1':
-            return `주기 가시 ${1 + rank}개 · 총예산 ${100 + rank * 40}% 균등 분배`;
+            return `평타 가시 +${rank}발 · 주 대상 추가 예산 (기본 예산의 ${100 + rank * 40}%)/3을 전체 가시에 분배`;
         case 'specialty-2':
             return `가시 사거리·범위 +${rank * 4}%`;
         case 'specialty-3':
-            return `평타 마지막 가시에 전체 직접 예산의 ${rank * 8}% 추가`;
+            return `형태의 마지막 가시에 기본 예산의 ${rank * 8}% 추가`;
         default:
             throw new RangeError(`Unknown growth effect: ${nodeId}`);
     }

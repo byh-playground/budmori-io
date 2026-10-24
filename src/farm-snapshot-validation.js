@@ -941,7 +941,6 @@ export function validateSnapshot(raw) {
                 ASSERT(
                     U.species === 3 &&
                         isChestnutAttackRecord(R, { pending: true }) &&
-                        !R.periodic &&
                         R.id === A.id &&
                         R.owner === U.id &&
                         R.ownerGeneration === U.generation &&
@@ -1094,7 +1093,7 @@ export function validateSnapshot(raw) {
                     P.radius === 0.12 &&
                     P.height === 0.5 &&
                     P.path.height === 0 &&
-                    P.path.duration === Math.max(0.1, 0.3 / (R.periodic ? 1 : R.speed)) &&
+                    P.path.duration === Math.max(0.1, 0.3 / R.speed) &&
                     sameCheckpointValue(P.path.from, R.origin) &&
                     sameCheckpointValue(P.path.to, R.point) &&
                     INTEGER(P.chestnutBornTick, R.launchTick, raw.simulationTick) &&

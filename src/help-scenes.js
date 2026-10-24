@@ -341,7 +341,7 @@ const CHESTNUT_PREVIEW_SCENES = Object.freeze(
             steps: {
                 prepare: '고정 훈련 표적 · 실제 가시 공격 준비',
                 flight: '실제 가시의 전개·교차·수렴과 고정 영역 충돌',
-                recover: '평타 후 회복 · 별도 주기 가시는 3초마다 발사',
+                recover: '한 번의 가시 평타 후 회복 · 공속은 전체 공격 주기에 적용',
             },
         });
     }),

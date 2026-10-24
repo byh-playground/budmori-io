@@ -37,18 +37,48 @@ export function chestnutRange(world, unit) {
     const FORM = growthForAbility('chestnut-target-thorns').attackTier(BUILD, unit.tier);
     return (FORM >= 3 ? 2 : 1.45) * (1 + 0.04 * (BUILD.nodeRanks['specialty-2'] || 0));
 }
-// All six basic forms share the same actor cadence. The independent 60-tick
-// emitter never locks that actor, so both budgets use this material normalization.
+// All six forms share one actor cadence and one normalized basic-attack budget.
 export function chestnutBudgetMultiplier(tier, one, current) {
     let materials = 1;
     for (let grade = 2; grade <= tier; grade++) {
         materials *= mergeMaterialCostForTier(grade);
     }
-    return one > 0 && current > 0 && Number.isFinite(one + current)
-        ? (one * materials * 1.05 ** (tier - 1)) / current
+    const MULTIPLIER = (one / current) * materials * 1.05 ** (tier - 1);
+    return one > 0 &&
+        current > 0 &&
+        Number.isFinite(one) &&
+        Number.isFinite(current) &&
+        Number.isFinite(MULTIPLIER) &&
+        MULTIPLIER > 0
+        ? MULTIPLIER
         : 1.75 ** (tier - 1);
 }
-export function createChestnutAttack(world, unit, action, commandSpeed = 1, periodic = false) {
+// The old S1 actor repeated every 20 ticks while thorns repeated every 60.
+// Transfer that fixed 1/3 contribution, so attack speed now strengthens all thorns.
+export function chestnutShots(form, density, speed) {
+    const BASE = CHESTNUT_WEIGHTS[form];
+    const SHOTS = BASE.map((baseWeight, index) => ({
+        offset: index * 3,
+        baseWeight,
+        finish: index === BASE.length - 1,
+        stage: STAGES[form][index],
+    }));
+    for (let index = 0; index < density; index++) {
+        SHOTS.push({ offset: ((index + 1) * 6) / density, baseWeight: 0, finish: false, stage: 'thrust' });
+    }
+    SHOTS.sort((a, b) => a.offset - b.offset);
+    return SHOTS.map((shot, slot) => ({
+        slot,
+        // The actor can finish recovery before the end-of-tick emitter runs.
+        // Compress finite slots into its remaining whole ticks, including tick 0.
+        tick: Math.min(Math.max(0, Math.ceil(13 / speed) - 1), Math.ceil(shot.offset / speed - 1e-9)),
+        weight: 1 / SHOTS.length,
+        baseWeight: shot.baseWeight,
+        finish: shot.finish,
+        stage: shot.stage,
+    }));
+}
+export function createChestnutAttack(world, unit, action, commandSpeed = 1) {
     const BUILD = chestnutGrowthBuild(world.abilityProgressionFor(unit));
     if (!BUILD || unit.species !== 3) {
         return null;
@@ -56,20 +86,16 @@ export function createChestnutAttack(world, unit, action, commandSpeed = 1, peri
     const R = BUILD.nodeRanks,
         FORM = growthForAbility('chestnut-target-thorns').attackTier(BUILD, unit.tier);
     const C = world.createAttackContext(unit, { attackKind: 'chestnut-spike', attackMultiplier: 1 });
-    const SPEED = Math.min(
-        4,
-        Math.max(0.05, C.attackerStats.attackSpeed * commandSpeed * (1 + 0.02 * (R['basic-3'] || 0))),
-    );
+    const SPEED = Math.max(0.05, C.attackerStats.attackSpeed * commandSpeed * (1 + 0.02 * (R['basic-3'] || 0)));
     const INPUTS = { one: baseUnitStatsFor(1, 3).attackPower, current: baseUnitStatsFor(unit.tier, 3).attackPower };
-    const COUNT = periodic ? 1 + (R['specialty-1'] || 0) : CHESTNUT_WEIGHTS[FORM].length;
+    const SHOTS = chestnutShots(FORM, R['specialty-1'] || 0, SPEED);
     return {
-        version: 1,
+        version: 2,
         id: action.id,
         owner: unit.id,
         ownerGeneration: unit.generation,
         tier: unit.tier,
         form: FORM,
-        periodic,
         speed: SPEED,
         windupSeconds: 0.28 / SPEED,
         recoverySeconds: 0.65 / SPEED,
@@ -77,7 +103,7 @@ export function createChestnutAttack(world, unit, action, commandSpeed = 1, peri
         multiplier: chestnutBudgetMultiplier(unit.tier, INPUTS.one, INPUTS.current) * (1 + 0.03 * (R['basic-1'] || 0)),
         ranks: {
             power: R['basic-1'] || 0,
-            periodic: R['specialty-1'] || 0,
+            density: R['specialty-1'] || 0,
             range: R['specialty-2'] || 0,
             finish: R['specialty-3'] || 0,
         },
@@ -102,14 +128,10 @@ export function createChestnutAttack(world, unit, action, commandSpeed = 1, peri
         point: null,
         targetId: action.targetId,
         targetGeneration: action.targetGeneration,
-        shots: Array.from({ length: COUNT }, (_, index) => ({
-            slot: index,
-            tick: periodic ? index * 2 : Math.ceil((index * 3) / SPEED - 1e-9),
-            weight: periodic ? 1 / COUNT : CHESTNUT_WEIGHTS[FORM][index],
-            stage: periodic ? 'periodic' : STAGES[FORM][index],
-        })),
+        shots: SHOTS,
+        motionTick: 0,
         nextShot: 0,
-        completedSlots: Array(COUNT).fill(false),
+        completedSlots: Array(SHOTS.length).fill(false),
         cancelled: false,
         attack: null,
         criticalRolls: {},
@@ -153,7 +175,7 @@ function emitChestnutShots(world, r) {
         OWNER.hp <= 0 ||
         OWNER.stun > 0 ||
         OWNER.down > 0 ||
-        (!r.periodic && OWNER.ability.action?.chestnutAttack !== r && r.nextShot < r.shots.length)
+        (OWNER.ability.action?.chestnutAttack !== r && r.nextShot < r.shots.length)
     ) {
         r.cancelled = true;
     }
@@ -169,7 +191,7 @@ function emitChestnutShots(world, r) {
         r.launchTick + r.shots[r.nextShot].tick <= world.simulationTick
     ) {
         const S = r.shots[r.nextShot];
-        const DURATION = Math.max(0.1, 0.3 / (r.periodic ? 1 : r.speed));
+        const DURATION = Math.max(0.1, 0.3 / r.speed);
         const P = {
             id: ++world.projectileSerial,
             owner: r.owner,
@@ -202,6 +224,7 @@ function emitChestnutShots(world, r) {
 }
 export function advanceChestnutAttacks(world) {
     for (const R of world.chestnutAttacks) {
+        R.motionTick = world.simulationTick - R.launchTick;
         emitChestnutShots(world, R);
     }
     const LIVE = new Set(world.projectiles.filter((p) => !p.hit).map((p) => p.chestnutActionId));
@@ -211,32 +234,6 @@ export function advanceChestnutAttacks(world) {
             LIVE.has(r.id) ||
             world._unitForId(r.owner)?.ability.action?.chestnutAttack === r,
     );
-}
-export function tryChestnutPeriodic(world, unit, enemy) {
-    if (
-        unit.species !== 3 ||
-        !chestnutGrowthBuild(world.abilityProgressionFor(unit)) ||
-        unit.hp <= 0 ||
-        unit.stun > 0 ||
-        unit.down > 0 ||
-        !enemy ||
-        enemy.hp <= 0 ||
-        world.simulationTick < unit.chestnutNextThornTick
-    ) {
-        return;
-    }
-    if (Math.hypot(unit.x - enemy.x, unit.y - enemy.y) > enemy.radius + chestnutRange(world, unit) + 0.55) {
-        return;
-    }
-    const ACTION = {
-        id: ++world.attackSerial,
-        targetId: enemy === world.boss ? 'boss' : enemy.id,
-        targetGeneration: enemy.generation,
-        target: { x: enemy.x, y: enemy.y, z: 0 },
-    };
-    ACTION.chestnutAttack = createChestnutAttack(world, unit, ACTION, unit.ability.attackSpeedMultiplier(world), true);
-    launchChestnutAttack(world, unit, ACTION);
-    unit.chestnutNextThornTick = world.simulationTick + 60;
 }
 export function chestnutRecordFor(world, id) {
     return world.chestnutAttacks.find((r) => r.id === id);
@@ -250,7 +247,7 @@ export function resolveChestnutImpact(world, p, geometry, old) {
     if (world.simulationTick <= p.chestnutBornTick) {
         return;
     }
-    const AREA = !R.periodic && ['fan', 'spread', 'converge'].includes(p.chestnutStage);
+    const AREA = ['fan', 'spread', 'converge'].includes(p.chestnutStage);
     const PRIMARY = p.targetId === 'boss' ? world.boss : world._unitForId(p.targetId);
     const END = p.elapsed + 1e-9 >= p.path.duration;
     const DIRECT =
@@ -313,15 +310,13 @@ export function resolveChestnutImpact(world, p, geometry, old) {
         if (!Object.hasOwn(R.criticalRolls, KEY)) {
             R.criticalRolls[KEY] = world.random();
         }
-        const S = R.shots[p.chestnutSlot],
-            LAST = p.chestnutSlot === R.shots.length - 1;
-        const WEIGHT = R.periodic
-            ? S.weight * (1 + 0.4 * R.ranks.periodic)
-            : S.weight + (LAST ? 0.08 * R.ranks.finish : 0);
+        const S = R.shots[p.chestnutSlot];
+        const BASE = S.baseWeight + (S.finish ? 0.08 * R.ranks.finish : 0);
+        const WEIGHT = BASE * (MAIN ? 1 : 0.5) + (MAIN ? (S.weight * (1 + 0.4 * R.ranks.density)) / 3 : 0);
         const SNAPSHOT = R.source,
             CANDIDATE = world._unitForId(R.owner),
             SOURCE = CANDIDATE?.generation === R.ownerGeneration && CANDIDATE.hp > 0 ? CANDIDATE : SNAPSHOT,
-            KIND = R.periodic ? 'chestnut-thorns' : 'punch',
+            KIND = 'chestnut-spike',
             FIRST = A.claimOnce('basic-proc');
         world.damageCombatTarget(SOURCE, { id: R.id, hit: false }, T, DIRECT || R.point, {
             attackKind: KIND,
@@ -332,7 +327,7 @@ export function resolveChestnutImpact(world, p, geometry, old) {
                 attackerStats: SNAPSHOT.attackerStats,
                 attackPowerMultiplier: SNAPSHOT.attackPowerMultiplier,
                 sourceDamageScale: SNAPSHOT.sourceDamageScale,
-                damageMultiplier: R.multiplier * WEIGHT * (MAIN ? 1 : 0.5),
+                damageMultiplier: R.multiplier * WEIGHT,
                 kind: KIND,
                 strikeIndex: S.slot,
                 buffed: false,
@@ -359,9 +354,9 @@ export function isChestnutAttackRecord(r, { pending = false } = {}) {
     if (
         !exactKeys(
             r,
-            'version id owner ownerGeneration tier form periodic speed windupSeconds recoverySeconds budgetInputs multiplier ranks source launchTick origin point targetId targetGeneration shots nextShot completedSlots cancelled attack criticalRolls',
+            'version id owner ownerGeneration tier form speed windupSeconds recoverySeconds budgetInputs multiplier ranks source launchTick origin point targetId targetGeneration shots motionTick nextShot completedSlots cancelled attack criticalRolls',
         ) ||
-        r.version !== 1 ||
+        r.version !== 2 ||
         !Number.isSafeInteger(r.id) ||
         r.id < 1 ||
         !Number.isSafeInteger(r.owner) ||
@@ -377,18 +372,16 @@ export function isChestnutAttackRecord(r, { pending = false } = {}) {
         !Number.isInteger(r.tier) ||
         r.tier < r.form ||
         r.tier > 6 ||
-        typeof r.periodic !== 'boolean' ||
         typeof r.cancelled !== 'boolean' ||
         !Number.isFinite(r.speed) ||
         r.speed < 0.05 ||
-        r.speed > 4 ||
         r.windupSeconds !== 0.28 / r.speed ||
         r.recoverySeconds !== 0.65 / r.speed ||
         !Number.isFinite(r.multiplier) ||
         r.multiplier <= 0 ||
         !Array.isArray(r.shots) ||
         r.shots.length < 1 ||
-        r.shots.length > 6 ||
+        r.shots.length > 32 ||
         !Number.isInteger(r.nextShot) ||
         r.nextShot < 0 ||
         r.nextShot > r.shots.length
@@ -396,7 +389,7 @@ export function isChestnutAttackRecord(r, { pending = false } = {}) {
         return false;
     }
     if (
-        !exactKeys(r.ranks, 'power periodic range finish') ||
+        !exactKeys(r.ranks, 'power density range finish') ||
         !Object.entries(r.ranks).every(([k, v]) => Number.isInteger(v) && v >= 0 && v <= (k === 'power' ? 10 : 5)) ||
         !exactKeys(r.budgetInputs, 'one current') ||
         !Object.values(r.budgetInputs).every(Number.isFinite) ||
@@ -405,16 +398,16 @@ export function isChestnutAttackRecord(r, { pending = false } = {}) {
     ) {
         return false;
     }
-    const COUNT = r.periodic ? 1 + r.ranks.periodic : CHESTNUT_WEIGHTS[r.form].length;
+    const SHOTS = chestnutShots(r.form, r.ranks.density, r.speed);
+    const COUNT = SHOTS.length;
     if (
+        !Number.isSafeInteger(r.motionTick) ||
+        r.motionTick < 0 ||
         r.shots.length !== COUNT ||
         !r.shots.every(
             (s, i) =>
-                exactKeys(s, 'slot tick weight stage') &&
-                s.slot === i &&
-                s.tick === (r.periodic ? i * 2 : Math.ceil((i * 3) / r.speed - 1e-9)) &&
-                s.weight === (r.periodic ? 1 / COUNT : CHESTNUT_WEIGHTS[r.form][i]) &&
-                s.stage === (r.periodic ? 'periodic' : STAGES[r.form][i]),
+                exactKeys(s, 'slot tick weight baseWeight finish stage') &&
+                Object.keys(SHOTS[i]).every((key) => s[key] === SHOTS[i][key]),
         ) ||
         !Array.isArray(r.completedSlots) ||
         r.completedSlots.length !== COUNT ||
@@ -453,6 +446,7 @@ export function isChestnutAttackRecord(r, { pending = false } = {}) {
             r.origin === null &&
             r.point === null &&
             r.nextShot === 0 &&
+            r.motionTick === 0 &&
             !r.cancelled &&
             Object.keys(r.criticalRolls).length === 0
         );
@@ -476,7 +470,7 @@ export function isChestnutAttackRecord(r, { pending = false } = {}) {
             (h, i) =>
                 (i < r.nextShot || !h.length) &&
                 (!h.length || r.completedSlots[i]) &&
-                h.length <= (r.periodic || !['fan', 'spread', 'converge'].includes(r.shots[i].stage) ? 1 : 5),
+                h.length <= (!['fan', 'spread', 'converge'].includes(r.shots[i].stage) ? 1 : 5),
         ) &&
         KEYS.size === Object.keys(r.criticalRolls).length &&
         Object.entries(r.criticalRolls).every(

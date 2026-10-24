@@ -41,7 +41,7 @@ export const UNIT_ABILITY_PROFILES = Object.freeze({
         projectileCount: 1,
     }),
     2: attackProfile('ram'),
-    3: attackProfile('punch'),
+    3: attackProfile('chestnut-spike'),
     // One Peanut remains one world unit; its two kernels are presentation-only
     // and the two deterministic strike slots share the same active window.
     4: attackProfile(DUAL_STRIKE_FEATURE.id, {

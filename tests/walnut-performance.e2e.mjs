@@ -12,11 +12,17 @@ import { sourceGraph } from '../scripts/source-graph.mjs';
 
 const SPECIES = process.env.PERFORMANCE_SPECIES || 'walnut',
     SETTINGS = {
+        chestnut: {
+            id: 3,
+            ability: 'chestnut-target-thorns',
+            base: '23f65b0232472435ac8ca18bc362ebc1308a65ca',
+            equalTree: true,
+        },
         wheat: { id: 7, ability: 'wheat-command-crit', base: '76edf4868031f3b2e09f6c64c32c94a4ada745e8' },
         rice: { id: 6, ability: 'rice-low-health-harvest', base: '7fac7631be682d3750beeab16981fccd83898195' },
         walnut: { id: 5, ability: 'walnut-raw-guard', base: 'bde28685e3ef0dc15934cde9d41a6b9b5e42ec7f' },
     };
-assert.ok(Object.hasOwn(SETTINGS, SPECIES), 'Choose wheat, rice or walnut performance');
+assert.ok(Object.hasOwn(SETTINGS, SPECIES), 'Choose chestnut, wheat, rice or walnut performance');
 const SPECIES_ID = SETTINGS[SPECIES].id,
     ABILITY_ID = SETTINGS[SPECIES].ability;
 const ROOT = fileURLToPath(new URL('../', import.meta.url)),
@@ -60,7 +66,7 @@ const ROOTS = { base: fs.realpathSync(process.env.WALNUT_PERFORMANCE_BASE_ROOT),
             sampleFrames: 120,
             p95Limit: 1.2,
             order: 'base/candidate, candidate/base, base/candidate',
-            fixture: `Stationary 1e12 HP boss stunned for10000s, all200 T6 ${SPECIES} bodies deployed in identical radial layout. Candidate only has T2–T6 research; no basic/specialty investments. No incoming RAW in this isolated maximum-army rendering fixture.`,
+            fixture: `Stationary 1e12 HP boss stunned for10000s, all200 T6 ${SPECIES} bodies deployed in identical radial layout. ${SETTINGS[SPECIES].equalTree ? 'Both arms have identical T2–T6 research and density rank5; no other investments.' : 'Candidate only has T2–T6 research; no basic/specialty investments.'} No incoming RAW in this isolated maximum-army rendering fixture.`,
             timing: 'rAF intervals retain all120 raw samples. CPU uses the production detailed profiler last30 completed frames, not the whole rAF window; nested stages are not added. Equal frame windows may cover different wall/simulation durations.',
         },
         runs: [],
@@ -147,7 +153,7 @@ async function run(variant, viewport, round, origin) {
         await PAGE.goto(`${origin}/${variant}/index.html`);
         await PAGE.waitForFunction(() => globalThis.BUDMORI?.renderer?.assetsReady);
         RUN.initial = await PAGE.evaluate(
-            ({ build, speciesId, abilityId }) => {
+            ({ build, speciesId, abilityId, equalTree }) => {
                 document.getElementById('newGame').click();
                 const WORLD = BUDMORI.sim,
                     INVESTMENT = WORLD.playerProgression.abilities[abilityId];
@@ -156,12 +162,15 @@ async function run(variant, viewport, round, origin) {
                 }
                 WORLD.resetUnits();
                 WORLD.setWorkBasisPoints(0);
-                if (build === 'candidate') {
+                if (build === 'candidate' || equalTree) {
                     if (INVESTMENT.treeVersion !== 1) {
                         throw Error('Candidate tree not active');
                     }
                     INVESTMENT.masteryLevel = 50;
                     INVESTMENT.nodeRanks = Object.fromEntries([2, 3, 4, 5, 6].map((tier) => [`evolution-${tier}`, 1]));
+                    if (equalTree) {
+                        INVESTMENT.nodeRanks['specialty-1'] = 5;
+                    }
                 } else if (INVESTMENT.treeVersion) {
                     throw Error('Baseline is not legacy selected species');
                 }
@@ -208,7 +217,7 @@ async function run(variant, viewport, round, origin) {
                     build: structuredClone(INVESTMENT),
                 };
             },
-            { build: variant, speciesId: SPECIES_ID, abilityId: ABILITY_ID },
+            { build: variant, speciesId: SPECIES_ID, abilityId: ABILITY_ID, equalTree: !!SETTINGS[SPECIES].equalTree },
         );
         RUN.measurement = await PAGE.evaluate(async () => {
             const FRAMES = [],
@@ -236,6 +245,7 @@ async function run(variant, viewport, round, origin) {
                 previous = NOW;
                 for (const UNIT of BUDMORI.sim.units) {
                     const FORM = (
+                        UNIT.ability.action?.chestnutAttack ||
                         UNIT.ability.action?.wheatAttack ||
                         UNIT.ability.action?.riceAttack ||
                         UNIT.ability.action?.walnutAttack
@@ -308,6 +318,9 @@ try {
                 BASE = PAIR.find((entry) => entry.variant === 'base'),
                 CANDIDATE = PAIR.find((entry) => entry.variant === 'candidate');
             assert.deepEqual(CANDIDATE.initial.units, BASE.initial.units);
+            if (SETTINGS[SPECIES].equalTree) {
+                assert.deepEqual(CANDIDATE.initial.build, BASE.initial.build);
+            }
             PAIRS.push({
                 round,
                 frameRatio: CANDIDATE.frameP95Ms / BASE.frameP95Ms,
