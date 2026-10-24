@@ -181,6 +181,9 @@ async function captureCornAttachment(label, actionId) {
     return CAPTURE;
 }
 async function captureChestnutBrown() {
+    await ACTIVATE(page.locator('#gameMenuClose'));
+    await page.locator('#gameMenuOverlay').waitFor({ state: 'hidden' });
+    assert.equal(await page.evaluate(() => BUDMORI.runtime.paused), false);
     await page.evaluate(async () => {
         const { helpSceneById: SCENE } = await import('./src/help-scenes.js');
         const { CHESTNUT_THORN_COLORS: COLORS } = await import('./src/features/projectiles/spike/definition.js');
