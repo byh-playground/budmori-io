@@ -24,7 +24,17 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     MODULES = new Map(),
     REQUESTS = new Set(),
     ERRORS = [],
-    REPORT = { status: 'running', startedAt: new Date().toISOString(), entry: 'src/farm-app.js' };
+    REPORT = {
+        status: 'running',
+        startedAt: new Date().toISOString(),
+        entry: 'src/farm-app.js',
+        chapters: {},
+        renderCaptures: [],
+    },
+    CHECKPOINT = (name) => {
+        REPORT.chapters[name] = Date.now() - Date.parse(REPORT.startedAt);
+        fs.writeFileSync(path.join(OUTPUT, 'report.json'), JSON.stringify(REPORT, null, 2));
+    };
 fs.mkdirSync(OUTPUT, { recursive: true });
 fs.writeFileSync(path.join(OUTPUT, 'report.json'), JSON.stringify(REPORT, null, 2));
 
@@ -68,6 +78,41 @@ try {
         }),
         PAGE = await CONTEXT.newPage();
     page = PAGE;
+    const CAPTURE_FRAME = async (file) => {
+        const START = Date.now();
+        assert.equal(
+            await PAGE.evaluate(() => BUDMORI.runtime.paused),
+            true,
+            'capture only freezes an already-paused observed frame',
+        );
+        await PAGE.evaluate(() => document.fonts.ready.then(() => true));
+        const FONT_READY = Date.now();
+        // Simulation is already paused at an observed native frame. Stop only further RAF submissions
+        // while Chromium reads it back, rather than competing with continuous software WebGL draws.
+        await PAGE.clock.pauseAt(await PAGE.evaluate(() => Date.now() + 1000));
+        const PAUSED = Date.now();
+        REPORT.clock.combatResumed = false;
+        try {
+            await PAGE.screenshot({
+                path: path.join(OUTPUT, file),
+                type: 'jpeg',
+                quality: 80,
+                scale: 'css',
+                fullPage: false,
+            });
+        } finally {
+            REPORT.renderCaptures.push({
+                file,
+                fontReadyMs: FONT_READY - START,
+                pauseMs: PAUSED - FONT_READY,
+                captureMs: Date.now() - PAUSED,
+                clockResumed: false,
+            });
+            await PAGE.clock.resume();
+            REPORT.renderCaptures.at(-1).clockResumed = true;
+            REPORT.clock.combatResumed = true;
+        }
+    };
     PAGE.setDefaultTimeout(45000);
     PAGE.on('pageerror', (error) => ERRORS.push(String(error)));
     PAGE.on('console', (message) => {
@@ -103,6 +148,7 @@ try {
     await PAGE.locator('#newGame').click();
     await PAGE.waitForFunction(() => BUDMORI.sim?.scene === 'farm' && BUDMORI.sim.units.length > 0);
     await PAGE.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    CHECKPOINT('sourceBoot');
     // One real FarmSession encounter: normal RAF, simulation, presentation and native
     // vector draws. Only the starting roster/encounter is arranged; never step or
     // render a synthetic world, and never replace attack/clip implementations.
@@ -344,6 +390,7 @@ try {
             OBS.deathRendered
         );
     });
+    CHECKPOINT('nineSpeciesCombat');
     // The original full-health boss only unlocks its single-target basic attack.
     // After every nine-species condition is proven, arrange a crowd for one native unlocked sweep.
     REPORT.physicalAoeFixture = await PAGE.evaluate(() => {
@@ -463,7 +510,7 @@ try {
     assert.ok(![...REQUESTS].some((url) => new URL(url).pathname === '/src/game.js'), 'no generated bundle was used');
     assert.deepEqual(ERRORS, [], 'the source boot is free of page, console and network errors');
     // A small real-UI copy check after the unchanged combat assertions, not a form matrix.
-    await PAGE.screenshot({ path: path.join(OUTPUT, 'mixed-combat.png'), fullPage: true });
+    CHECKPOINT('mixedCombatAssertions');
     await PAGE.locator('#upgradeMenu').click();
     await PAGE.locator('#menuTabAbilities').click();
     REPORT.wording = [];
@@ -487,12 +534,20 @@ try {
     await PAGE.setViewportSize({ width: 390, height: 844 });
     await PAGE.locator('[data-growth-node="specialty-2"]').scrollIntoViewIfNeeded();
     assert.deepEqual(ERRORS, [], 'the representative growth menus remain free of runtime errors');
+    CHECKPOINT('wordingAssertions');
     // One real door interaction, then a bounded upgrade/exhaustion continuation.
     await PAGE.locator('#gameMenuClose').click();
     await PAGE.setViewportSize({ width: 1000, height: 700 });
     await PAGE.evaluate(() => {
         const WORLD = BUDMORI.sim;
         WORLD.formationSkills.end();
+        WORLD.resetUnits(
+            WORLD.units
+                .filter((unit) => unit.faction === 'player' && !unit.isBattleOnlySummon && unit.hp > 0)
+                .slice(0, 3),
+        );
+        WORLD.projectiles = [];
+        WORLD.effects = [];
         WORLD.farmBossEvent.phase = 'idle';
         WORLD.boss.active = false;
         WORLD.tower.bossRelics = new Map();
@@ -504,7 +559,8 @@ try {
     // Freeze before clicking, not after spotting a short-lived phase. Real screenshots can take >1s.
     REPORT.clock = {
         installedBeforeNavigation: true,
-        controlledScope: 'card receipt screenshots only',
+        controlledScope:
+            'card receipt phases and already-paused render captures only; combat runs normally between checkpoints',
         combatResumed: false,
     };
     await PAGE.clock.pauseAt(await PAGE.evaluate(() => Date.now() + 1000));
@@ -566,7 +622,7 @@ try {
             LANDSCAPE.receipt.bottom <= LANDSCAPE.height,
         'landscape card receipt remains fully inside the viewport',
     );
-    await PAGE.screenshot({ path: path.join(OUTPUT, 'boss-card-landscape.png'), fullPage: true });
+    REPORT.bossCards.landscape.previouslyReviewedCapture = 'CI722 boss-card-landscape.png';
     await PAGE.setViewportSize({ width: 1000, height: 700 });
     await PAGE.clock.runFor(1000);
     await PAGE.locator('#bossCardDraw').waitFor({ state: 'hidden' });
@@ -593,6 +649,7 @@ try {
 
     await PAGE.clock.resume();
     REPORT.clock.combatResumed = true;
+    CHECKPOINT('cardAssertions');
 
     await PAGE.evaluate(() => {
         BUDMORI.sim.tower.nextKind = 'battle';
@@ -631,6 +688,7 @@ try {
         'a fresh high-floor climb starts with an empty boss deck',
     );
 
+    CHECKPOINT('nextBattleAndRestartAssertions');
     // Controlled encounter fixtures, but real RAF simulation, model casts and native rendering.
     // Models are untouched; draw instrumentation below delegates to the native implementation.
     // Screenshots need human pixel review.
@@ -808,7 +866,7 @@ try {
                     await PAGE.evaluate(() => {
                         BUDMORI.runtime.paused = true;
                     });
-                    await PAGE.screenshot({ path: path.join(OUTPUT, 'boss-skill-prepare.png'), fullPage: true });
+                    await CAPTURE_FRAME('boss-skill-prepare.jpg');
                     await PAGE.evaluate(() => {
                         BUDMORI.runtime.loop.resetTiming();
                         BUDMORI.runtime.paused = false;
@@ -839,7 +897,10 @@ try {
             await PAGE.evaluate(
                 () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
             );
-            const FILE = ['ufo', 'storm-cloud'].includes(ID) ? `shared-skills-${ROLE}-${ID}.png` : null,
+            const FILE =
+                    ID === 'storm-cloud' || (ROLE === 'boss' && ID === 'ufo')
+                        ? `shared-skills-${ROLE}-${ID}.jpg`
+                        : null,
                 CAPTURE_STARTED = Date.now();
             REPORT.pendingCase = {
                 role: ROLE,
@@ -849,7 +910,7 @@ try {
             };
             fs.writeFileSync(path.join(OUTPUT, 'report.json'), JSON.stringify(REPORT, null, 2));
             if (FILE) {
-                await PAGE.screenshot({ path: path.join(OUTPUT, FILE), fullPage: false });
+                await CAPTURE_FRAME(FILE);
             }
             const CAPTURE_MS = Date.now() - CAPTURE_STARTED;
             const RESULT = await PAGE.evaluate(
@@ -922,6 +983,7 @@ try {
             fs.writeFileSync(path.join(OUTPUT, 'report.json'), JSON.stringify(REPORT, null, 2));
         }
     }
+    CHECKPOINT('sharedSkillsAssertions');
     // Keep the already released cloud alive while a UFO releases, then cancel a third cast.
     await PAGE.evaluate(() => {
         const WORLD = BUDMORI.sim;
@@ -1009,6 +1071,7 @@ try {
         'boss skills preserve the existing undying defense',
     );
     assert.deepEqual(ERRORS, [], 'card and shared-skill scenarios remain free of runtime errors');
+    CHECKPOINT('cancellationAndDefenseAssertions');
     REPORT.status = 'passed';
     REPORT.state = STATE;
     console.log(
@@ -1022,7 +1085,7 @@ try {
     }
     throw error;
 } finally {
-    if (page && !page.isClosed()) {
+    if (REPORT.status !== 'passed' && page && !page.isClosed()) {
         try {
             await page.screenshot({ path: path.join(OUTPUT, 'source-boot.png'), fullPage: true, timeout: 15000 });
             REPORT.screenshot = 'source-boot.png';
