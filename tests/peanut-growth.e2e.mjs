@@ -936,7 +936,18 @@ async function captureInterruptedCombo(page, mobile) {
             if (!RECORD || RECORD.id !== notice.attackId || RECORD.form !== 6) {
                 return;
             }
-            STATE.actionId ??= RECORD.id;
+            if (STATE.actionId === null) {
+                // Native-player readiness can finish after an action has started.
+                // Select a complete action's actual first contact, not merely the
+                // first notice delivered after this observer subscribed.
+                const FIRST_HIT = WORLD.notices.find(
+                    (event) => event.kind === 'boss-hit' && event.attackId === RECORD.id && event.unit === notice.unit,
+                );
+                if (notice.strikeIndex !== 0 || FIRST_HIT?.sequence !== notice.sequence) {
+                    return;
+                }
+                STATE.actionId = RECORD.id;
+            }
             if (notice.attackId !== STATE.actionId) {
                 return;
             }
@@ -960,6 +971,7 @@ async function captureInterruptedCombo(page, mobile) {
         };
     });
     assert.equal(BEFORE.hits.length, 1, 'checkpoint after first visible collision');
+    assert.equal(BEFORE.hits[0].strikeIndex, 0, 'checkpoint begins with the complete action first slot');
     await page.evaluate(() => {
         location.hash = '#/';
     });

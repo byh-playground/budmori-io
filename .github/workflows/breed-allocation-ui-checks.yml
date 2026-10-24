@@ -17,14 +17,16 @@ permissions:
     contents: read
 jobs:
     browser:
-        if: ${{ github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'verify-gameplay') && (github.event.action != 'labeled' || github.event.label.name == 'verify-gameplay')) }}
+        if: ${{ github.event_name == 'workflow_dispatch' || ((contains(github.event.pull_request.labels.*.name, 'verify-gameplay') || contains(github.event.pull_request.labels.*.name, 'verify-peanut-desktop')) && (github.event.action != 'labeled' || github.event.label.name == 'verify-gameplay' || github.event.label.name == 'verify-peanut-desktop')) }}
         runs-on: ubuntu-24.04
         timeout-minutes: 30
+        env:
+            FOCUSED_PEANUT_DESKTOP: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'verify-peanut-desktop') && !contains(github.event.pull_request.labels.*.name, 'verify-gameplay') }}
         strategy:
             fail-fast: false
             matrix:
-                species: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.species != 'all' && format('["{0}"]', inputs.species) || '["corn","pea","redbean","chestnut","peanut"]') }}
-                viewport: [desktop, mobile, landscape]
+                species: ${{ fromJSON((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'verify-peanut-desktop') && !contains(github.event.pull_request.labels.*.name, 'verify-gameplay')) && '["peanut"]' || (github.event_name == 'workflow_dispatch' && inputs.species != 'all' && format('["{0}"]', inputs.species) || '["corn","pea","redbean","chestnut","peanut"]')) }}
+                viewport: ${{ fromJSON((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'verify-peanut-desktop') && !contains(github.event.pull_request.labels.*.name, 'verify-gameplay')) && '["desktop"]' || '["desktop","mobile","landscape"]') }}
         steps:
             - uses: actions/checkout@v4
             - uses: actions/setup-node@v4
@@ -54,24 +56,29 @@ jobs:
                   ./node_modules/.bin/playwright --version >> tests/output/browser-setup/setup.txt
             - id: check
               run: npm run check
+            - name: Record focused validation scope
+              if: ${{ env.FOCUSED_PEANUT_DESKTOP == 'true' }}
+              run: |
+                  echo 'Focused check: peanut desktop previews-low, previews-high and continuity only.' >> "$GITHUB_STEP_SUMMARY"
+                  echo 'UI, battle, battle-extra, migration and common regressions are skipped, not passed by this run.' >> "$GITHUB_STEP_SUMMARY"
             # Corn's existing landscape scenario is combat-only; its seven established cases remain.
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species != 'corn' || matrix.viewport != 'landscape') }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && env.FOCUSED_PEANUT_DESKTOP != 'true' && (matrix.species != 'corn' || matrix.viewport != 'landscape') }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- ui ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species != 'corn' || matrix.viewport != 'landscape') && matrix.species != 'redbean' && matrix.species != 'chestnut' && matrix.species != 'peanut' }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && env.FOCUSED_PEANUT_DESKTOP != 'true' && (matrix.species != 'corn' || matrix.viewport != 'landscape') && matrix.species != 'redbean' && matrix.species != 'chestnut' && matrix.species != 'peanut' }}
               run: timeout 300s npm run test:${{ matrix.species }}-growth:case -- previews ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && env.FOCUSED_PEANUT_DESKTOP != 'true' }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- battle ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species == 'pea' }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && env.FOCUSED_PEANUT_DESKTOP != 'true' && matrix.species == 'pea' }}
               run: timeout 180s npm run test:pea-growth:case -- migration ${{ matrix.viewport }}
             - if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
-              run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- previews-low ${{ matrix.viewport }}
+              run: timeout ${{ matrix.species == 'peanut' && '300s' || '180s' }} npm run test:${{ matrix.species }}-growth:case -- previews-low ${{ matrix.viewport }}
             - if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
-              run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- previews-high ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
+              run: timeout ${{ matrix.species == 'peanut' && '300s' || '180s' }} npm run test:${{ matrix.species }}-growth:case -- previews-high ${{ matrix.viewport }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && env.FOCUSED_PEANUT_DESKTOP != 'true' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- battle-extra ${{ matrix.viewport }}
             - if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- continuity ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && env.FOCUSED_PEANUT_DESKTOP != 'true' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- migration ${{ matrix.viewport }}
             - uses: actions/upload-artifact@v4
               if: always()
@@ -81,8 +88,9 @@ jobs:
                       tests/output/${{ matrix.species }}-growth/
                       tests/output/browser-setup/
                   if-no-files-found: error
+    # The focus label alone does not opt into common regressions; verify-gameplay keeps full coverage.
     regression:
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.regression) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'verify-gameplay') && (github.event.action != 'labeled' || github.event.label.name == 'verify-gameplay')) }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.regression) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'verify-gameplay') && (github.event.action != 'labeled' || github.event.label.name == 'verify-gameplay' || github.event.label.name == 'verify-peanut-desktop')) }}
         runs-on: ubuntu-24.04
         timeout-minutes: 20
         steps:
