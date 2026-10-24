@@ -1,3 +1,5 @@
+import { createWalnutAttackMixin } from './features/unit-attacks/walnut/model.js';
+import { walnutGrowthBuild } from './features/species-growth/walnut-attack.js';
 import { createChestnutAttackMixin } from './features/unit-attacks/chestnut/model.js';
 import { chestnutGrowthBuild } from './features/species-growth/chestnut-attack.js';
 import { createRedbeanAttackMixin } from './features/unit-attacks/redbean/model.js';
@@ -228,6 +230,9 @@ export function composeUnitAttackCycles(cycle, { ArenaGeometry: arenaGeometry, B
                 });
                 return true;
             }
+            guardAlongsideAttack(sim) {
+                return !!walnutGrowthBuild(sim.abilityProgressionFor(this.owner));
+            }
             isGuarding(simulationTick) {
                 return WalnutRawGuardModel.isGuarding(this.owner, simulationTick);
             }
@@ -237,7 +242,7 @@ export function composeUnitAttackCycles(cycle, { ArenaGeometry: arenaGeometry, B
                 return WalnutRawGuardModel.armorBonus(U, simulationTick, CONFIG_LOCAL);
             }
             rawDamageBonus(sim, action, kind) {
-                if (action !== this.action || kind !== this.spec.kind) {
+                if (this.action?.walnutAttack || action !== this.action || kind !== this.spec.kind) {
                     return 0;
                 }
                 const U = this.owner,
@@ -245,7 +250,7 @@ export function composeUnitAttackCycles(cycle, { ArenaGeometry: arenaGeometry, B
                 return WalnutRawGuardModel.nextHammerBonus(U, sim.unitStatsFor(U).attackPower, CONFIG_LOCAL);
             }
             afterSuccessfulAttack(_sim, action) {
-                if (action === this.action) {
+                if (!this.action?.walnutAttack && action === this.action) {
                     WalnutRawGuardModel.consume(this.owner);
                 }
             }
@@ -382,6 +387,7 @@ export function composeUnitAttackCycles(cycle, { ArenaGeometry: arenaGeometry, B
         };
     const ATTACKS = {
         contact: CONTACT_ATTACK,
+        walnut: createWalnutAttackMixin(CONTACT_ATTACK, arenaGeometry),
         pea: createPeaAttackMixin(CONTACT_ATTACK, arenaGeometry),
         chestnut: createChestnutAttackMixin(CONTACT_ATTACK),
         redbean: createRedbeanAttackMixin(CONTACT_ATTACK, arenaGeometry),

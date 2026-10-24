@@ -1,3 +1,4 @@
+import { growthBuildOf } from '../../species-growth/state.js';
 import { getAbilityEffects } from '../../../ability-progression.js';
 import { WALNUT_RAW_GUARD_FEATURE } from './definition.js';
 
@@ -5,6 +6,19 @@ const DEFINITION = WALNUT_RAW_GUARD_FEATURE.definition;
 
 export class WalnutRawGuardModel {
     static config(progression, tier) {
+        const ENTRY = progression?.abilities?.[DEFINITION.id];
+        if (ENTRY?.treeVersion === 1) {
+            const R = growthBuildOf(ENTRY).nodeRanks;
+            return {
+                rawDamageMultiplier: 1 + 0.25 * (R['specialty-2'] || 0),
+                cooldownTicks: 100,
+                durationTicks: 40,
+                armorBonus: 50,
+                passiveArmor: 3 * (R['specialty-1'] || 0),
+                maxBonusAttackMultiples: 3,
+                parallel: true,
+            };
+        }
         const EFFECT = getAbilityEffects(progression, DEFINITION.id, tier);
         if (!EFFECT) {
             return null;
@@ -23,7 +37,7 @@ export class WalnutRawGuardModel {
             unit?.hp > 0 &&
             Number.isSafeInteger(tick) &&
             tick >= (unit.walnutNextGuardTick || 0) &&
-            !(unit.walnutStoredRawDamage > 0)
+            (config.parallel || !(unit.walnutStoredRawDamage > 0))
         );
     }
     static start(unit, tick, config) {
@@ -38,7 +52,7 @@ export class WalnutRawGuardModel {
         return !!(unit?.hp > 0 && unit.walnutGuardUntilTick > tick);
     }
     static armorBonus(unit, tick, config) {
-        return config && this.isGuarding(unit, tick) ? config.armorBonus : 0;
+        return (config?.passiveArmor || 0) + (config && this.isGuarding(unit, tick) ? config.armorBonus : 0);
     }
     static accumulate(unit, rawDamage, tick, config) {
         if (!config || !this.isGuarding(unit, tick) || !Number.isFinite(rawDamage) || rawDamage <= 0) {
@@ -64,6 +78,7 @@ export class WalnutRawGuardModel {
         return CONSUMED;
     }
     static clear(unit) {
+        unit.walnutNextGuardTick = 0;
         unit.walnutGuardUntilTick = 0;
         unit.walnutStoredRawDamage = 0;
     }

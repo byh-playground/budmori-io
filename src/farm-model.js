@@ -532,6 +532,7 @@ class AttackCycle {
             !this.action.redbeanAttack &&
             !this.action.chestnutAttack &&
             !this.action.peanutAttack &&
+            !this.action.walnutAttack &&
             !(sim.attackTarget(U, this.action)?.hp > 0)
         ) {
             this.interrupt();
@@ -629,6 +630,19 @@ const PEANUT_MATURE_GEOMETRY = Object.freeze(
 function peanutMatureGeometry(unit) {
     return unit.species === 4 && unit.mature && Number.isInteger(unit.tier) && unit.tier >= 1 && unit.tier <= 6
         ? PEANUT_MATURE_GEOMETRY[unit.tier - 1]
+        : null;
+}
+// Walnut-only mature geometry uses the same pure authored formulas. Keep the
+// peanut cache separate and leave live giant scaling in the getters below.
+const WALNUT_MATURE_GEOMETRY = Object.freeze(
+    Array.from({ length: 6 }, (_, index) => {
+        const UNIT_LOCAL = { species: 5, tier: index + 1, growthElapsed: 1, growthDuration: 1 };
+        return Object.freeze({ radius: unitBodyRadius(UNIT_LOCAL), height: unitBodyHeight(UNIT_LOCAL) });
+    }),
+);
+function walnutMatureGeometry(unit) {
+    return unit.species === 5 && unit.mature && Number.isInteger(unit.tier) && unit.tier >= 1 && unit.tier <= 6
+        ? WALNUT_MATURE_GEOMETRY[unit.tier - 1]
         : null;
 }
 const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
@@ -756,7 +770,10 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         return this.giantUntil > (this._world?.time ?? 0) ? 3 : 1;
     }
     get radius() {
-        return (peanutMatureGeometry(this)?.radius ?? unitBodyRadius(this)) * this.giantScale;
+        return (
+            (peanutMatureGeometry(this)?.radius ?? walnutMatureGeometry(this)?.radius ?? unitBodyRadius(this)) *
+            this.giantScale
+        );
     }
     get mature() {
         return this.growthElapsed >= this.growthDuration - 1e-9;
@@ -771,7 +788,10 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         return unitVectorScale(this) * this.giantScale;
     }
     get height() {
-        return (peanutMatureGeometry(this)?.height ?? unitBodyHeight(this)) * this.giantScale;
+        return (
+            (peanutMatureGeometry(this)?.height ?? walnutMatureGeometry(this)?.height ?? unitBodyHeight(this)) *
+            this.giantScale
+        );
     }
     get bodyHeight() {
         return unitTorsoHeight(this) * this.giantScale;
@@ -3624,9 +3644,9 @@ const GARDEN = class Garden {
                 continue;
             }
             U.age += dt;
-            const UNIT_STATS = STATS(U.tier, U.species);
+            const UNIT_STATS = U.species === 5 ? resolveUnitStats(U) : STATS(U.tier, U.species);
             if (U.hp > 0 && UNIT_STATS.regen > 0) {
-                applyHealing(U, UNIT_STATS.regen * dt, U.species === 4 ? undefined : UNIT_STATS);
+                applyHealing(U, UNIT_STATS.regen * dt, U.species === 4 || U.species === 5 ? undefined : UNIT_STATS);
             }
             if (!U.mature) {
                 progressTimersAdvanced = true;
@@ -4777,8 +4797,7 @@ const GARDEN = class Garden {
                 (CONTEXT.attackPowerMultiplier ?? (SOURCE.giantUntil > this.time ? 3 : 1)) *
                 DAMAGE_MULTIPLIER,
             RAW_DAMAGE = Number.isFinite(CONTEXT.sourceDamageScale)
-                ? RAW_BASE_DAMAGE *
-                  CONTEXT.sourceDamageScale *
+                ? (RAW_BASE_DAMAGE * CONTEXT.sourceDamageScale + (CONTEXT.rawDamageBonus || 0)) *
                   (IS_BOSS ? 1 : this.passiveReceivedScale(target, DEFENSE.maxHp))
                 : (RAW_BASE_DAMAGE + (SOURCE.ability?.rawDamageBonus?.(this, action, KIND) || 0)) *
                   this.passiveDamageScale(SOURCE, ATTACKER_STATS.maxHp, target, DEFENSE.maxHp);
@@ -4918,12 +4937,16 @@ const GARDEN = class Garden {
             this.clearPeaRecoveryBoost(u);
             return;
         }
+        const PARALLEL_GUARD = u.ability.guardAlongsideAttack?.(this);
+        if (PARALLEL_GUARD) {
+            u.ability.tryStartGuard(this);
+        }
         tryChestnutPeriodic(this, u, enemy);
         const ACTIVE_ATTACK = u.specialAbility && u.specialAbility.phase !== 'idle' ? u.specialAbility : u.ability;
         if (ACTIVE_ATTACK.update(this, dt) || u.stun > 0 || u.z > 0.1 || u.landingRecovery > 0) {
             return;
         }
-        if (u.ability.isGuarding?.(this.simulationTick)) {
+        if (!PARALLEL_GUARD && u.ability.isGuarding?.(this.simulationTick)) {
             return;
         }
         if (!enemy) {
@@ -4978,7 +5001,7 @@ const GARDEN = class Garden {
             SPECIAL_ABILITY.begin(this, TARGET);
             return;
         }
-        if (u.ability.tryStartGuard?.(this, TARGET)) {
+        if (!PARALLEL_GUARD && u.ability.tryStartGuard?.(this, TARGET)) {
             return;
         }
         u.ability.begin(this, TARGET);
@@ -5486,15 +5509,19 @@ const GARDEN = class Garden {
         for (const HIT of BATCH) {
             const UNIT_LOCAL = HIT.unit,
                 CONFIG_LOCAL = BOSS_PATTERN_CONFIG[HIT.patternId];
+            const RAW_DAMAGE =
+                B_LOCAL.attackPower *
+                CONFIG_LOCAL.damageMultiplier *
+                SHARE *
+                (this.bossEnraged ? BOSS_ENRAGE.damageMultiplier : 1) *
+                (HIT.guard?.receivedDamageMultiplier ?? 1) *
+                this.passiveReceivedScale(UNIT_LOCAL);
+            // The guard observes this unit's allocated pre-armor damage once,
+            // before lethal damage can clear its guard state.
+            UNIT_LOCAL.ability?.receiveRawDamage?.(this, RAW_DAMAGE, B_LOCAL, HIT);
             const RECEIVED = applyDamageToTargets(null, [UNIT_LOCAL], {
                 armorForTarget: () => this.combatTargetDefense(UNIT_LOCAL).armor,
-                rawDamage:
-                    B_LOCAL.attackPower *
-                    CONFIG_LOCAL.damageMultiplier *
-                    SHARE *
-                    (this.bossEnraged ? BOSS_ENRAGE.damageMultiplier : 1) *
-                    (HIT.guard?.receivedDamageMultiplier ?? 1) *
-                    this.passiveReceivedScale(UNIT_LOCAL),
+                rawDamage: RAW_DAMAGE,
                 sourceKind: 'enemy',
             });
             this.passiveUndying(UNIT_LOCAL);

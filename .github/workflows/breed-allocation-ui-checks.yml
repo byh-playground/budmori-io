@@ -8,7 +8,7 @@ on:
                 description: Species to check (all keeps the complete existing suite)
                 type: choice
                 default: peanut
-                options: [peanut, chestnut, redbean, pea, corn, all]
+                options: [walnut, peanut, chestnut, redbean, pea, corn, all]
             regression:
                 description: Also run the complete common browser regressions
                 type: boolean
@@ -17,7 +17,7 @@ permissions:
     contents: read
 jobs:
     browser:
-        if: ${{ github.event_name == 'workflow_dispatch' || ((contains(github.event.pull_request.labels.*.name, 'verify-gameplay') || contains(github.event.pull_request.labels.*.name, 'verify-peanut-desktop')) && (github.event.action != 'labeled' || github.event.label.name == 'verify-gameplay' || github.event.label.name == 'verify-peanut-desktop')) }}
+        if: ${{ github.event_name == 'workflow_dispatch' || ((contains(github.event.pull_request.labels.*.name, 'verify-gameplay') || contains(github.event.pull_request.labels.*.name, 'verify-peanut-desktop') || contains(github.event.pull_request.labels.*.name, 'verify-walnut')) && (github.event.action != 'labeled' || github.event.label.name == 'verify-gameplay' || github.event.label.name == 'verify-peanut-desktop' || github.event.label.name == 'verify-walnut')) }}
         runs-on: ubuntu-24.04
         timeout-minutes: 30
         env:
@@ -25,8 +25,8 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                species: ${{ fromJSON((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'verify-peanut-desktop') && !contains(github.event.pull_request.labels.*.name, 'verify-gameplay')) && '["peanut"]' || (github.event_name == 'workflow_dispatch' && inputs.species != 'all' && format('["{0}"]', inputs.species) || '["corn","pea","redbean","chestnut","peanut"]')) }}
-                viewport: ${{ fromJSON((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'verify-peanut-desktop') && !contains(github.event.pull_request.labels.*.name, 'verify-gameplay')) && '["desktop"]' || '["desktop","mobile","landscape"]') }}
+                species: ${{ fromJSON((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'verify-walnut') && !contains(github.event.pull_request.labels.*.name, 'verify-gameplay')) && '["walnut"]' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'verify-peanut-desktop') && !contains(github.event.pull_request.labels.*.name, 'verify-gameplay')) && '["peanut"]' || (github.event_name == 'workflow_dispatch' && inputs.species != 'all' && format('["{0}"]', inputs.species) || '["corn","pea","redbean","chestnut","peanut"]')) }}
+                viewport: ${{ fromJSON(((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'verify-walnut') && !contains(github.event.pull_request.labels.*.name, 'verify-gameplay')) || (github.event_name == 'workflow_dispatch' && inputs.species == 'walnut')) && '["desktop","landscape"]' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'verify-peanut-desktop') && !contains(github.event.pull_request.labels.*.name, 'verify-gameplay')) && '["desktop"]' || '["desktop","mobile","landscape"]') }}
         steps:
             - uses: actions/checkout@v4
             - uses: actions/setup-node@v4
@@ -62,30 +62,49 @@ jobs:
                   echo 'Focused check: peanut desktop previews-low, previews-high and continuity only.' >> "$GITHUB_STEP_SUMMARY"
                   echo 'UI, battle, battle-extra, migration and common regressions are skipped, not passed by this run.' >> "$GITHUB_STEP_SUMMARY"
             # Corn's existing landscape scenario is combat-only; its seven established cases remain.
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && env.FOCUSED_PEANUT_DESKTOP != 'true' && (matrix.species != 'corn' || matrix.viewport != 'landscape') }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'walnut' && env.FOCUSED_PEANUT_DESKTOP != 'true' && (matrix.species != 'corn' || matrix.viewport != 'landscape') }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- ui ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && env.FOCUSED_PEANUT_DESKTOP != 'true' && (matrix.species != 'corn' || matrix.viewport != 'landscape') && matrix.species != 'redbean' && matrix.species != 'chestnut' && matrix.species != 'peanut' }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'walnut' && env.FOCUSED_PEANUT_DESKTOP != 'true' && (matrix.species != 'corn' || matrix.viewport != 'landscape') && matrix.species != 'redbean' && matrix.species != 'chestnut' && matrix.species != 'peanut' }}
               run: timeout 300s npm run test:${{ matrix.species }}-growth:case -- previews ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && env.FOCUSED_PEANUT_DESKTOP != 'true' }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'walnut' && env.FOCUSED_PEANUT_DESKTOP != 'true' }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- battle ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && env.FOCUSED_PEANUT_DESKTOP != 'true' && matrix.species == 'pea' }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'walnut' && env.FOCUSED_PEANUT_DESKTOP != 'true' && matrix.species == 'pea' }}
               run: timeout 180s npm run test:pea-growth:case -- migration ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'walnut' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
               run: timeout ${{ matrix.species == 'peanut' && '300s' || '180s' }} npm run test:${{ matrix.species }}-growth:case -- previews-low ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'walnut' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
               run: timeout ${{ matrix.species == 'peanut' && '300s' || '180s' }} npm run test:${{ matrix.species }}-growth:case -- previews-high ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && env.FOCUSED_PEANUT_DESKTOP != 'true' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'walnut' && env.FOCUSED_PEANUT_DESKTOP != 'true' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- battle-extra ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'walnut' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- continuity ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && env.FOCUSED_PEANUT_DESKTOP != 'true' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'walnut' && env.FOCUSED_PEANUT_DESKTOP != 'true' && (matrix.species == 'redbean' || matrix.species == 'chestnut' || matrix.species == 'peanut') }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- migration ${{ matrix.viewport }}
+            - name: Focused walnut growth inputs
+              if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species == 'walnut' }}
+              run: timeout 180s node tests/walnut-growth.e2e.mjs ${{ matrix.viewport }}
+            - name: Focused walnut native motion and continuity
+              if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species == 'walnut' }}
+              run: timeout 360s node tests/walnut-motion.e2e.mjs ${{ matrix.viewport }}
+            - name: Paired walnut performance in both viewports (once)
+              if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species == 'walnut' && matrix.viewport == 'desktop' && !contains(github.event.pull_request.labels.*.name, 'verify-browser-only') }}
+              env:
+                  BASE_COMMIT: bde28685e3ef0dc15934cde9d41a6b9b5e42ec7f
+              run: |
+                  git fetch --no-tags --depth=1 origin "$BASE_COMMIT"
+                  test "$(git rev-parse FETCH_HEAD)" = "$BASE_COMMIT"
+                  BASE_ROOT="$(mktemp -d /tmp/budmori-walnut-base.XXXXXX)"
+                  trap 'rm -rf -- "$BASE_ROOT"' EXIT
+                  git archive "$BASE_COMMIT" | tar -x -C "$BASE_ROOT"
+                  WALNUT_PERFORMANCE_BASE_ROOT="$BASE_ROOT" timeout 960s node tests/walnut-performance.e2e.mjs
             - uses: actions/upload-artifact@v4
               if: always()
               with:
                   name: farm-browser-${{ matrix.species }}-${{ matrix.viewport }}
                   path: |
                       tests/output/${{ matrix.species }}-growth/
+                      tests/output/${{ matrix.species }}-motion/
+                      tests/output/${{ matrix.species }}-performance/
                       tests/output/browser-setup/
                   if-no-files-found: error
     # The focus label alone does not opt into common regressions; verify-gameplay keeps full coverage.

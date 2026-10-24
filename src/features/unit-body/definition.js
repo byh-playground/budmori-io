@@ -113,7 +113,7 @@ const AUTHORED_BODIES = [
         species: 5,
         asset: 'assets/troops/walnut.svg',
         shapeId: 'walnut-body-outline',
-        sourceSha256: '6f3f16d7548daa981439764dd2646817349dfd644f6d8e8f4beb1defe9342c57',
+        sourceSha256: 'df16923e98708c750f97f3acfa5d5da6c663dec63b71654207116c48b9fd87d0',
         viewBox: [0.0, 0.0, 320.0, 300.0],
         bounds: {
             left: 83.5,
