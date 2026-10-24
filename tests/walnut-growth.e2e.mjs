@@ -62,6 +62,96 @@ async function openTree() {
     await activate(page.locator('[data-ability-species="5"]'));
     await page.locator('[data-growth-tree]').waitFor();
 }
+async function installInputDiagnostics() {
+    await page.evaluate(() => {
+        const EVENTS = [],
+            READ = () => {
+                const RUNTIME = globalThis.BUDMORI?.runtime,
+                    WORLD = globalThis.BUDMORI?.sim;
+                return {
+                    time: performance.now(),
+                    tick: WORLD?.simulationTick,
+                    runtimeTick: RUNTIME?.tick,
+                    paused: RUNTIME?.paused,
+                    closed: RUNTIME?.closed,
+                    scene: WORLD?.scene,
+                    selectedSpecies: document.getElementById('abilityPanel')?.dataset.selectedSpecies,
+                    abilityClickHandler: typeof document.getElementById('abilityNodes')?.onclick,
+                    animations: document.getAnimations().map((animation) => ({
+                        state: animation.playState,
+                        time: animation.currentTime,
+                        target: animation.effect?.target?.id,
+                    })),
+                    build: structuredClone(WORLD?.playerProgression?.abilities?.['walnut-raw-guard']),
+                    pending: structuredClone(RUNTIME?.pending || []),
+                    wallet: document.querySelector('[data-growth-wallet]')?.textContent,
+                    nodes: [...document.querySelectorAll('[data-growth-node]')].map((node) => ({
+                        id: node.dataset.growthNode,
+                        rank: node.querySelector('.growth-rank')?.textContent,
+                        disabled: node.querySelector('button')?.getAttribute('aria-disabled'),
+                    })),
+                };
+            },
+            RECORD = (kind, detail = {}) => {
+                EVENTS.push({ kind, ...detail, state: READ() });
+                if (EVENTS.length > 120) {
+                    EVENTS.shift();
+                }
+            };
+        globalThis.__walnutUiProbe = { events: EVENTS, read: READ, record: RECORD };
+        for (const TYPE of ['pointerdown', 'pointerup', 'click']) {
+            for (const CAPTURE of [true, false]) {
+                document.addEventListener(
+                    TYPE,
+                    (event) => {
+                        const TARGET = event.target,
+                            BUTTON = TARGET.closest?.('button'),
+                            HIT = document.elementFromPoint(event.clientX, event.clientY);
+                        RECORD(`${TYPE}:${CAPTURE ? 'capture' : 'bubble'}`, {
+                            targetTag: TARGET.tagName,
+                            targetId: TARGET.id,
+                            buttonId: BUTTON?.id,
+                            node: BUTTON?.dataset.abilityNode,
+                            action: BUTTON?.dataset.abilityAction,
+                            targetConnected: TARGET.isConnected,
+                            buttonBox: BUTTON?.getBoundingClientRect().toJSON(),
+                            handlerInPath: event.composedPath().includes(document.getElementById('abilityNodes')),
+                            buttonDisabled: BUTTON?.getAttribute('aria-disabled'),
+                            hitTag: HIT?.tagName,
+                            hitId: HIT?.id,
+                            trusted: event.isTrusted,
+                            prevented: event.defaultPrevented,
+                            x: event.clientX,
+                            y: event.clientY,
+                        });
+                    },
+                    { capture: CAPTURE, passive: true },
+                );
+            }
+        }
+        new MutationObserver(() => RECORD('ability-dom-replaced')).observe(document.getElementById('abilityNodes'), {
+            childList: true,
+            subtree: true,
+        });
+    });
+}
+async function observeCommandResults() {
+    await page.evaluate(() => {
+        const RUNTIME = BUDMORI.runtime,
+            ORIGINAL = RUNTIME.command;
+        // Observe the existing command outcome without changing, retrying or adding any command.
+        RUNTIME.command = function (...args) {
+            const RESULT = ORIGINAL.apply(this, args);
+            if (args[0]?.type?.startsWith('progression-')) {
+                globalThis.__walnutUiProbe.record('command-result', {
+                    command: structuredClone(args[0]),
+                    result: RESULT,
+                });
+            }
+            return RESULT;
+        };
+    });
+}
 async function settleAbilityRedraw() {
     // The real ability handler schedules a full panel replacement after180ms.
     // Let that existing callback and its paint finish before another actual input.
@@ -89,8 +179,13 @@ async function purchase(id) {
         },
         { id, rank: BEFORE },
     );
+    await page.evaluate(
+        ({ id, rank }) => globalThis.__walnutUiProbe.record('purchase-before-input', { id, expectedRank: rank }),
+        { id, rank: BEFORE + 1 },
+    );
     await activate(NODE(id));
     await settleAbilityRedraw();
+    await page.evaluate((nodeId) => globalThis.__walnutUiProbe.record('purchase-after-redraw', { id: nodeId }), id);
     await page.waitForFunction(
         ({ id, rank }) =>
             BUDMORI.sim.playerProgression.abilities['walnut-raw-guard'].nodeRanks[id] === rank &&
@@ -141,7 +236,9 @@ try {
     });
     await page.goto(`${ORIGIN}/index.html`);
     await page.waitForFunction(() => globalThis.BUDMORI);
+    await installInputDiagnostics();
     await activate(page.locator('#newGame'));
+    await observeCommandResults();
     await openTree();
     assert.equal(await page.locator('[data-growth-node]').count(), 11);
     assert.equal(await page.locator('[data-walnut-preview-tier]').count(), 6);
@@ -183,6 +280,8 @@ try {
     );
     await page.reload();
     await page.waitForFunction(() => globalThis.BUDMORI?.sim?.scene === 'farm');
+    await installInputDiagnostics();
+    await observeCommandResults();
     assert.deepEqual(await page.evaluate(() => BUDMORI.sim.playerProgression.abilities['walnut-raw-guard']), BEFORE);
     await openTree();
     await activate(page.locator('[data-ability-action="reset"]'));
@@ -222,6 +321,8 @@ try {
     assert.equal(await page.evaluate(() => JSON.stringify(BUDMORI.sim.runProgressionSnapshot)), SNAPSHOT);
     await page.reload();
     await page.waitForFunction(() => globalThis.BUDMORI?.sim?.scene === 'farm');
+    await installInputDiagnostics();
+    await observeCommandResults();
     assert.equal(await page.evaluate(() => BUDMORI.sim.tower.active), false);
     REPORT.checks.push('live-run purchase/reset locks, fixed investment snapshot, disk reload returns to farm');
     assert.deepEqual(ERRORS, []);
@@ -231,6 +332,12 @@ try {
     REPORT.status = 'failed';
     REPORT.error = String(error);
     if (page) {
+        REPORT.inputDiagnostics = await page
+            .evaluate(() => ({
+                state: globalThis.__walnutUiProbe?.read(),
+                events: globalThis.__walnutUiProbe?.events,
+            }))
+            .catch((diagnosticError) => ({ error: String(diagnosticError) }));
         await page.screenshot({ path: path.join(OUTPUT, `${VIEWPORT}-failure.png`) }).catch(() => {});
     }
     throw error;

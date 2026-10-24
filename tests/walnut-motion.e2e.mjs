@@ -521,7 +521,10 @@ try {
             }
             return RESULT;
         };
-        WORLD.configureBossStage(1, 0);
+        // Use a real redbean boss: its body fits the existing basic-attack
+        // reach. The pea boss body exceeds that fixed reach, leaving a lone
+        // target physically outside every eligible attack (separate AI issue).
+        WORLD.configureBossStage(1, 2);
         Object.assign(WORLD.boss, { z: 0, hp: 1e10, maxHp: 1e10, stun: 10000 });
         globalThis.__walnutMain.awaitGuard = true;
         BUDMORI.runtime.paused = false;
@@ -549,6 +552,10 @@ try {
                 boss: {
                     hp: BUDMORI.sim.boss.hp,
                     active: BUDMORI.sim.boss.active,
+                    species: BUDMORI.sim.boss.species,
+                    radius: BUDMORI.sim.boss.radius,
+                    hpRatio: BUDMORI.sim.bossHpRatio,
+                    eligible: BUDMORI.sim.eligibleBossPatterns(BUDMORI.sim.livingBossTargets()),
                     stun: BUDMORI.sim.boss.stun,
                     pattern: structuredClone(BUDMORI.sim.boss.patternRuntime),
                 },
