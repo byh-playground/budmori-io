@@ -17,6 +17,8 @@ export const BOSS_PATTERN_IDS = Object.freeze([
 export const BOSS_HIT_SPLIT = Object.freeze({ everyone: 0.35 });
 // The boss's basic attack is the single strong hit; every other attack is an area attack.
 export const BOSS_BASIC_ID = 'attack.front-slam';
+// Shared standoff used by pursuit and the basic attack on oversized bodies.
+export const BOSS_CONTACT_MARGIN = 0.2;
 // All the damage an attack of this strength deals when it reaches `hits` units (what BOSS_HIT_SPLIT adds up to).
 export function bossAttackTotal(multiplier, hits) {
     return multiplier * (BOSS_HIT_SPLIT.everyone * hits + (1 - BOSS_HIT_SPLIT.everyone));

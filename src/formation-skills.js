@@ -1,5 +1,5 @@
 import { createFormationRuntime, FORMATION_COOLDOWN_SECONDS } from './formation-skill-state.js';
-import { applyDamage, resolveKnockback, baseUnitStatsFor, unitMaxHpFor } from './unit-stats.js';
+import { applyDamage, resolveKnockback, unitMaxHpFor } from './unit-stats.js';
 import { FixedSpatialGrid } from './spatial-grid.js';
 import { GiantSkill } from './features/formation-skills/giant/model.js';
 import { LightningSkill } from './features/formation-skills/lightning/model.js';
@@ -66,12 +66,7 @@ export class FormationSkills {
         ];
     }
     trackHealth(unit) {
-        const MAX_HP =
-            unit.species === 3 || unit.species === 4 || unit.species === 5 || unit.species === 6 || unit.species === 7
-                ? unitMaxHpFor(unit)
-                : unit.isFormationClone
-                  ? 1
-                  : baseUnitStatsFor(unit.tier, unit.species).maxHp;
+        const MAX_HP = unitMaxHpFor(unit);
         if (unit.faction === 'player' && unit.hp > 0 && unit.hp < MAX_HP) {
             this.injured.add(unit);
         } else {

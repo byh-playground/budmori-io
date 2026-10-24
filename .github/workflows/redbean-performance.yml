@@ -1,16 +1,13 @@
 name: Redbean version performance
 on:
-    pull_request:
-        types: [labeled, synchronize]
     workflow_dispatch:
 permissions:
     contents: read
 concurrency:
-    group: redbean-performance-${{ github.event.pull_request.number || github.ref }}
+    group: redbean-performance-${{ github.ref }}
     cancel-in-progress: true
 jobs:
     paired-browser:
-        if: ${{ github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'verify-gameplay') && (github.event.action != 'labeled' || github.event.label.name == 'verify-gameplay')) }}
         runs-on: ubuntu-24.04
         timeout-minutes: 25
         steps:
