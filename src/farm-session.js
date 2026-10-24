@@ -1,3 +1,4 @@
+import { updateBarleyPresentation } from './features/unit-attacks/barley/presentation.js';
 import { updateWheatPresentation } from './features/unit-attacks/wheat/presentation.js';
 import { growthBuildOf, growthForAbility } from './features/species-growth/state.js';
 import { WheatCommandModel } from './features/abilities/wheat-command/model.js';
@@ -91,6 +92,19 @@ class UnitRender extends RENDER_OBJECT {
         'ability.riceRecoveryDuration': R.STEP,
         'ability.ricePointX': R.STEP,
         'ability.ricePointY': R.STEP,
+        'ability.barleyForm': R.STEP,
+        'ability.barleyActionId': R.STATE_KEY,
+        'ability.barleySlot': R.STATE_KEY,
+        'ability.barleyStage': R.STATE_KEY,
+        'ability.barleyPreviousStage': R.STEP,
+        'ability.barleyFirstStage': R.STEP,
+        'ability.barleyLastStage': R.STEP,
+        'ability.barleyStageProgress': R.LINEAR,
+        'ability.barleyWindupDuration': R.STEP,
+        'ability.barleyRecoveryDuration': R.STEP,
+        'ability.barleyPointX': R.STEP,
+        'ability.barleyPointY': R.STEP,
+        'ability.barleyFace': R.STEP,
         'ability.wheatForm': R.STEP,
         'ability.wheatActionId': R.STATE_KEY,
         'ability.wheatSlot': R.STATE_KEY,
@@ -216,6 +230,7 @@ class UnitRender extends RENDER_OBJECT {
         updateWalnutPresentation(this.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
         updateRicePresentation(this.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
         updateWheatPresentation(this.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
+        updateBarleyPresentation(this.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
         // Enemy summons intentionally have no player progression. Keep their base
         // baton unless an active attack supplies a form; never borrow player upgrades.
         const WHEAT_PROGRESSION = u.species === 7 ? world.abilityProgressionFor(u) : null,

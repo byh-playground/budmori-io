@@ -1,3 +1,5 @@
+import { createBarleyAttackMixin } from './features/unit-attacks/barley/model.js';
+import { barleyGrowthBuild } from './features/species-growth/barley-attack.js';
 import { createWheatAttackMixin } from './features/unit-attacks/wheat/model.js';
 import { createRiceAttackMixin } from './features/unit-attacks/rice/model.js';
 import { createWalnutAttackMixin } from './features/unit-attacks/walnut/model.js';
@@ -372,7 +374,7 @@ export function composeUnitAttackCycles(cycle, { ArenaGeometry: arenaGeometry, B
                 super.onBasicHit?.(sim, target);
                 const U = this.owner,
                     CONFIG_LOCAL = BarleyArmorShredModel.config(sim.abilityProgressionFor(U), U.tier);
-                if (CONFIG_LOCAL && target.hp > 0) {
+                if (CONFIG_LOCAL && target.hp > 0 && !barleyGrowthBuild(sim.abilityProgressionFor(U))) {
                     const RESULT = BarleyArmorShredModel.applyHit(target, CONFIG_LOCAL.amount, sim.simulationTick);
                     if (RESULT) {
                         sim.combat('barley-shred', {
@@ -389,6 +391,7 @@ export function composeUnitAttackCycles(cycle, { ArenaGeometry: arenaGeometry, B
         };
     const ATTACKS = {
         contact: CONTACT_ATTACK,
+        barley: createBarleyAttackMixin(CONTACT_ATTACK, arenaGeometry),
         wheat: createWheatAttackMixin(CONTACT_ATTACK, arenaGeometry),
         rice: createRiceAttackMixin(CONTACT_ATTACK, arenaGeometry),
         walnut: createWalnutAttackMixin(CONTACT_ATTACK, arenaGeometry),

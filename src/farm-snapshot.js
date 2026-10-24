@@ -1,5 +1,6 @@
 import { createFormationRuntime } from './formation-skill-state.js';
 import { createPlayerProgressionState } from './player-progression.js';
+import { createBarleyArmorShredBuckets } from './features/abilities/barley-shred/model.js';
 // Internal current-schema checkpoint shapes. Disk writes use farm-progress.js;
 // runtime values are not exported as user saves.
 export const UNIT_SNAPSHOT_SHAPE = {
@@ -77,7 +78,7 @@ export const UNIT_SNAPSHOT_SHAPE = {
     wheatCommandBuffs: [],
     barleyArmorBreakUntil: 0,
     barleyArmorBreakReduction: 0,
-    barleyArmorShredBuckets: Array.from({ length: 60 }, () => ({ expiresAtTick: 0, amount: 0 })),
+    barleyArmorShredBuckets: createBarleyArmorShredBuckets(),
     giantUntil: 0,
     giantEndedAt: -10,
     isFormationClone: false,
@@ -212,7 +213,7 @@ export const FARM_SNAPSHOT_SHAPE = {
         airborneRecovery: 0,
         barleyArmorBreakUntil: 0,
         barleyArmorBreakReduction: 0,
-        barleyArmorShredBuckets: Array.from({ length: 60 }, () => ({ expiresAtTick: 0, amount: 0 })),
+        barleyArmorShredBuckets: createBarleyArmorShredBuckets(),
         summonMouth: {
             x: 0,
             y: 0,
@@ -291,6 +292,7 @@ const ATTACK = FIELDS(
         walnutAttack: JSON_PAYLOAD,
         riceAttack: JSON_PAYLOAD,
         wheatAttack: JSON_PAYLOAD,
+        barleyAttack: JSON_PAYLOAD,
         chestnutAttack: JSON_PAYLOAD,
     },
 );

@@ -1,3 +1,4 @@
+import { barleyPreviewEnvelope } from './features/unit-attacks/barley/presentation.js';
 import { wheatPreviewEnvelope } from './features/unit-attacks/wheat/presentation.js';
 import { ricePreviewEnvelope } from './features/unit-attacks/rice/presentation.js';
 import { sampleChestnutShards } from './features/projectiles/spike/presentation.js';
@@ -476,7 +477,7 @@ const DIORAMA = class Diorama {
     // it stays there a moment when the troops come back out; inside, it rests on the hall.
     directCamera(sim2, now) {
         if (
-            [0, 2, 3, 4, 5, 6, 7].includes(this.attackPreviewSpecies) &&
+            [0, 2, 3, 4, 5, 6, 7, 8].includes(this.attackPreviewSpecies) &&
             sim2.units.length === 1 &&
             sim2.units[0].species === this.attackPreviewSpecies
         ) {
@@ -536,6 +537,10 @@ const DIORAMA = class Diorama {
         }
         if (this.attackPreviewSpecies === 2) {
             this.fitJumpPreview(world);
+            return;
+        }
+        if (this.attackPreviewSpecies === 8) {
+            this.fitRicePreview(world, barleyPreviewEnvelope);
             return;
         }
         if (this.attackPreviewSpecies === 7) {
@@ -1049,6 +1054,7 @@ const DIORAMA = class Diorama {
         this.liveUnitIds.clear();
         this.unitPresentation.riceDisplayUnits.clear();
         this.unitPresentation.wheatDisplayUnits.clear();
+        this.unitPresentation.barleyDisplayUnits.clear();
         this.unitPresentation.riceDisplayWorld = null;
         this.unitPresentation.riceDisplayTime = 0;
         this.joyEffects.length = 0;

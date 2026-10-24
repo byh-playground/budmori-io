@@ -109,7 +109,7 @@ export const UNIT_CAPABILITY_COMPOSITIONS = Object.freeze({
     7: COMPOSITION('wheat', ['commandAura'], {
         useActiveDuration: true,
     }),
-    8: COMPOSITION('contact', ['armorBreak'], {
+    8: COMPOSITION('barley', ['armorBreak'], {
         contactRecoil: true,
     }),
 });

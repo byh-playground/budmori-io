@@ -18,6 +18,8 @@
 유물을 1레벨 올립니다. 한 판에 최대 3종, 유물당 최대 Lv.5이며 그 판이 끝나면 모두 사라집니다. 조건과 5초 재사용 시간이
 모두 준비되면 자동 발동합니다. [수치·강화축·복사/버프 정책](docs/formation-skills.md)에 초기값과 경계를 정리했습니다.
 
+보리까지 9종의 성장 트리를 사용할 수 있으며 기본 위력·실제 등급에 따라 도리깨 방어 파쇄도 강해집니다.
+
 ## 실행과 검증
 
 실행은 저장소 루트를 제공하는 정적 서버와 WebGL 브라우저만 필요합니다. 아래 Node.js 도구는 선택적인 검증용이며 제품 파일을 생성하지 않습니다.
@@ -161,3 +163,5 @@ asset/player는 세션 runtime에만 보관하고 저장에 넣지 않습니다.
 호두의 최소 성장 UI 흐름은 `node tests/walnut-growth.e2e.mjs desktop`으로 실행합니다. `mobile` 또는 `landscape`로 터치 에뮬레이션을 선택할 수 있으며 구매·초기화·저장 복원·런 잠금만 검사합니다. 망치 동작·RAW 예산·성능 검증과 구분하며 기본 CI에 추가 전체 행렬을 붙이지 않습니다.
 
 호두 최대200마리 렌더 성능은 `WALNUT_PERFORMANCE_BASE_ROOT=/path/to/bde28685-archive node tests/walnut-performance.e2e.mjs`로 별도 실행합니다. 정확한 원본 직접 실행 기준본과 후보를 같은 Chromium 프로세스에서 데스크톱·터치 가로 각각3쌍 교대 비교하며, 60프레임 예열 뒤120 rAF 원본 표본과 실제 지원 진단의 최근30 CPU 프레임을 모두 보존합니다. 프레임·시뮬레이션 p95의 paired 중앙 비율1.20을 검사하며 실제 기기 FPS나 대량 피격 성능 검증으로 대체하지 않습니다.
+
+보리 변경 시 기존 수동 browser 검증에서 `species=barley`를 선택하거나 `verify-barley` 라벨로 데스크톱·터치 가로의 6형태 미리보기를 확인합니다. 기존 `tests/wheat-motion.e2e.mjs` 공통 흐름을 `MOTION_SPECIES=barley`와 `forms` 선택으로 재사용하며 기본 자동 검증은 전 9종 혼합 전투 source smoke만 유지합니다.

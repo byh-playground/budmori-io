@@ -1,3 +1,4 @@
+import { barleyRange } from './features/species-growth/barley-attack.js';
 import { wheatRange } from './features/species-growth/wheat-attack.js';
 import { riceRange } from './features/species-growth/rice-attack.js';
 import { peanutRange } from './features/species-growth/peanut-attack.js';
@@ -28,7 +29,7 @@ import { createFarmModeBehaviors } from './farm-mode-behaviors.js';
 import { createBossPatternBehaviors } from './boss-pattern-behaviors.js';
 import { bossMouthWorldPoint } from './boss-vector-sockets.js';
 import { WheatCommandModel } from './features/abilities/wheat-command/model.js';
-import { BarleyArmorShredModel } from './features/abilities/barley-shred/model.js';
+import { BarleyArmorShredModel, createBarleyArmorShredBuckets } from './features/abilities/barley-shred/model.js';
 import { CornAttachmentModel } from './features/abilities/corn-attachment/model.js';
 const { SeededPRNG: SEEDED_PRNG } = globalThis.BloomGamekitDeterministic;
 const { createBudgetedScheduler: CREATE_BUDGETED_SCHEDULER } = globalThis.BloomGamekitWorkScheduler;
@@ -533,6 +534,7 @@ class AttackCycle {
             !this.action.walnutAttack &&
             !this.action.riceAttack &&
             !this.action.wheatAttack &&
+            !this.action.barleyAttack &&
             !(sim.attackTarget(U, this.action)?.hp > 0)
         ) {
             this.interrupt();
@@ -708,7 +710,7 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
             wheatCommandBuffs: [],
             barleyArmorBreakUntil: 0,
             barleyArmorBreakReduction: 0,
-            barleyArmorShredBuckets: Array.from({ length: 60 }, () => ({ expiresAtTick: 0, amount: 0 })),
+            barleyArmorShredBuckets: createBarleyArmorShredBuckets(),
             giantUntil: 0,
             giantEndedAt: -10,
             isFormationClone: false,
@@ -730,6 +732,7 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         }
     }
     die() {
+        this.barleyArmorShredBuckets = createBarleyArmorShredBuckets();
         this.ability.resetCombatEffects?.();
         if (this.deathSplitHandled) {
             return false;
@@ -739,6 +742,7 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         return true;
     }
     revive(maxHp) {
+        this.barleyArmorShredBuckets = createBarleyArmorShredBuckets();
         Object.assign(this, {
             hp: maxHp,
             down: 0,
@@ -2695,7 +2699,7 @@ const GARDEN = class Garden {
             airborneRecovery: 0,
             barleyArmorBreakUntil: 0,
             barleyArmorBreakReduction: 0,
-            barleyArmorShredBuckets: Array.from({ length: 60 }, () => ({ expiresAtTick: 0, amount: 0 })),
+            barleyArmorShredBuckets: createBarleyArmorShredBuckets(),
             summonMouth: {
                 x: 0,
                 y: 0,
@@ -3647,14 +3651,19 @@ const GARDEN = class Garden {
             }
             U.age += dt;
             const UNIT_STATS =
-                U.species === 3 || U.species === 5 || U.species === 6 || U.species === 7
+                U.species === 3 || U.species === 5 || U.species === 6 || U.species === 7 || U.species === 8
                     ? resolveUnitStats(U)
                     : STATS(U.tier, U.species);
             if (U.hp > 0 && UNIT_STATS.regen > 0) {
                 applyHealing(
                     U,
                     UNIT_STATS.regen * dt,
-                    U.species === 3 || U.species === 4 || U.species === 5 || U.species === 6 || U.species === 7
+                    U.species === 3 ||
+                        U.species === 4 ||
+                        U.species === 5 ||
+                        U.species === 6 ||
+                        U.species === 7 ||
+                        U.species === 8
                         ? undefined
                         : UNIT_STATS,
                 );
@@ -4976,6 +4985,7 @@ const GARDEN = class Garden {
                 (chestnutRange(this, u) ??
                     peanutRange(this, u) ??
                     riceRange(this, u) ??
+                    barleyRange(this, u) ??
                     wheatRange(this, u) ??
                     SPEC.range) +
                 (u.species === 3 ? 0 : (u.tier - 1) * 0.12),

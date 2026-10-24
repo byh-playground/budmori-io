@@ -1,10 +1,29 @@
 import { getAbilityEffects } from '../../../ability-progression.js';
 
-export const BARLEY_ARMOR_SHRED_BUCKETS = 60;
+export const BARLEY_ARMOR_SHRED_LEGACY_DURATION_TICKS = 60;
+export const BARLEY_ARMOR_SHRED_MAX_DURATION_TICKS = 100;
+export const BARLEY_ARMOR_SHRED_BUCKETS = BARLEY_ARMOR_SHRED_MAX_DURATION_TICKS + 1;
 const ABILITY_ID = 'barley-armor-break';
 
 export function createBarleyArmorShredBuckets() {
     return Array.from({ length: BARLEY_ARMOR_SHRED_BUCKETS }, () => ({ expiresAtTick: 0, amount: 0 }));
+}
+
+// The checkpoint boundary validates legacy entries before migration. Keep each
+// live expiry unchanged; the old hit-index ring happened to share expiry % 60.
+export function migrateLegacyBarleyArmorShredBuckets(buckets, tick) {
+    if (buckets.length !== BARLEY_ARMOR_SHRED_LEGACY_DURATION_TICKS) {
+        return buckets;
+    }
+    const RESULT = createBarleyArmorShredBuckets();
+    for (const BUCKET of buckets) {
+        if (BUCKET.expiresAtTick > tick) {
+            const NEXT = RESULT[BUCKET.expiresAtTick % BARLEY_ARMOR_SHRED_BUCKETS];
+            NEXT.expiresAtTick = BUCKET.expiresAtTick;
+            NEXT.amount += BUCKET.amount;
+        }
+    }
+    return RESULT;
 }
 
 export class BarleyArmorShredModel {
@@ -18,25 +37,43 @@ export class BarleyArmorShredModel {
         };
     }
     static applyHit(target, amount, tick) {
+        return this.applyAmount(target, tick, amount, BARLEY_ARMOR_SHRED_LEGACY_DURATION_TICKS);
+    }
+    static applyAmount(target, tick, amount, durationTicks) {
         if (
             !target ||
+            !Number.isFinite(target.hp) ||
             target.hp <= 0 ||
             !Number.isFinite(amount) ||
             amount <= 0 ||
             !Number.isSafeInteger(tick) ||
-            tick < 0
+            tick < 0 ||
+            !Number.isSafeInteger(durationTicks) ||
+            durationTicks < BARLEY_ARMOR_SHRED_LEGACY_DURATION_TICKS ||
+            durationTicks > BARLEY_ARMOR_SHRED_MAX_DURATION_TICKS ||
+            !Number.isSafeInteger(tick + durationTicks)
         ) {
             return null;
         }
         const BUCKETS =
             Array.isArray(target.barleyArmorShredBuckets) &&
-            target.barleyArmorShredBuckets.length === BARLEY_ARMOR_SHRED_BUCKETS
-                ? target.barleyArmorShredBuckets
+            [BARLEY_ARMOR_SHRED_BUCKETS, BARLEY_ARMOR_SHRED_LEGACY_DURATION_TICKS].includes(
+                target.barleyArmorShredBuckets.length,
+            )
+                ? (target.barleyArmorShredBuckets = migrateLegacyBarleyArmorShredBuckets(
+                      target.barleyArmorShredBuckets,
+                      tick,
+                  ))
                 : (target.barleyArmorShredBuckets = createBarleyArmorShredBuckets());
         this.prune(target, tick);
-        const INDEX = tick % BARLEY_ARMOR_SHRED_BUCKETS,
-            BUCKET = BUCKETS[INDEX],
-            EXPIRES_AT_TICK = tick + BARLEY_ARMOR_SHRED_BUCKETS;
+        const EXPIRES_AT_TICK = tick + durationTicks,
+            BUCKET = BUCKETS[EXPIRES_AT_TICK % BARLEY_ARMOR_SHRED_BUCKETS],
+            TOTAL = this.total(target, tick) + amount;
+        // Distinct live expiries cannot collide within the bounded 100-tick
+        // horizon. Do not erase an existing contribution on malformed input.
+        if ((BUCKET.expiresAtTick > tick && BUCKET.expiresAtTick !== EXPIRES_AT_TICK) || !Number.isFinite(TOTAL)) {
+            return null;
+        }
         if (BUCKET.expiresAtTick === EXPIRES_AT_TICK) {
             BUCKET.amount += amount;
         } else {
@@ -46,7 +83,7 @@ export class BarleyArmorShredModel {
         return {
             amount,
             expiresAtTick: EXPIRES_AT_TICK,
-            total: this.total(target, tick),
+            total: TOTAL,
         };
     }
     static prune(target, tick) {
@@ -70,13 +107,13 @@ export class BarleyArmorShredModel {
         }
         return total;
     }
-    // Share of the shred lifetime the newest stack still has, 0 when nothing is shredded.
+    // Latest live expiry against the fixed five-second maximum, not stack amount.
     static remaining(target, tick) {
         let latest = 0;
         for (const BUCKET of target?.barleyArmorShredBuckets || []) {
             latest = Math.max(latest, BUCKET.expiresAtTick - tick);
         }
-        return Math.max(0, Math.min(1, latest / BARLEY_ARMOR_SHRED_BUCKETS));
+        return Math.max(0, Math.min(1, latest / BARLEY_ARMOR_SHRED_MAX_DURATION_TICKS));
     }
     static effectiveArmor(target, baseArmor, armorBonus, tick) {
         const BASE_ARMOR = Number.isFinite(baseArmor) ? baseArmor : 0,

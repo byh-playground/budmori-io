@@ -139,6 +139,7 @@ export function helpSceneById(id) {
             ...WALNUT_PREVIEW_SCENES,
             ...RICE_PREVIEW_SCENES,
             ...WHEAT_PREVIEW_SCENES,
+            ...BARLEY_PREVIEW_SCENES,
         ].find((scene) => scene.id === id) ?? null
     );
 }
@@ -542,6 +543,56 @@ const WHEAT_PREVIEW_SCENES = Object.freeze(
                 prepare: '고정 훈련 표적 · 실제 지휘봉의 박자를 준비',
                 contact: '실제 지휘봉의 올려치기·스윕·찌르기 · 지휘 성공 시 아군 박자',
                 recover: '마지막 지휘봉 타격 후 회복 · 추가 지휘 발동 없음',
+            },
+        });
+    }),
+);
+
+const BARLEY_PREVIEW_SCENES = Object.freeze(
+    Array.from({ length: 6 }, (_, index) => {
+        const TIER = index + 1;
+        return Object.freeze({
+            id: `barley-t${TIER}`,
+            title: `보리 T${TIER} 공격 미리보기`,
+            seed: 731,
+            rate: 0.6,
+            durationMs: 9000,
+            timeline: [],
+            setup(world) {
+                world.resetUnits();
+                world.setWorkBasisPoints(0);
+                const BUILD = world.playerProgression.abilities['barley-armor-break'];
+                BUILD.masteryLevel = 50;
+                BUILD.nodeRanks = Object.fromEntries(
+                    Array.from({ length: TIER - 1 }, (_value, tierIndex) => [`evolution-${tierIndex + 2}`, 1]),
+                );
+                const UNIT = world.spawn(8, TIER, -7, 0);
+                UNIT.growth = 3;
+                UNIT.growthElapsed = UNIT.growthDuration;
+                world.startTower(1);
+                world.finishMarch();
+                world._benched.clear();
+                world._benchRevision++;
+                Object.assign(world.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
+                world.farmBossEvent.phase = 'fighting';
+                world.farmBossEvent.elapsed = 0;
+                UNIT.x = -(world.boss.radius + 1.35);
+                UNIT.y = 0;
+                UNIT.z = 0;
+                UNIT.dropLanded = true;
+                world._unitSpatialDirty = true;
+            },
+            step(world) {
+                return world.units[0]?.ability.phase === 'active'
+                    ? 'contact'
+                    : world.units[0]?.ability.phase === 'recover'
+                      ? 'recover'
+                      : 'prepare';
+            },
+            steps: {
+                prepare: '고정 훈련 표적 · 실제 도리깨의 연속 타격을 준비',
+                contact: '실제 도리깨의 스윕·당겨치기·찍기 · 타격 피해 뒤 방어 감소',
+                recover: '마지막 도리깨 타격 후 회복 · 방어 감소는 각 적용 시점부터 독립 만료',
             },
         });
     }),
