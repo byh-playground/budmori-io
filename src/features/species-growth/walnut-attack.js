@@ -295,6 +295,7 @@ export function isWalnutAttackRecord(r) {
         r.attackPower < 0 ||
         r.attackPower !==
             r.source?.attackerStats?.attackPower * r.source?.attackPowerMultiplier * (1 + 0.03 * r.ranks?.power) ||
+        !Number.isFinite(r.rawBudget) ||
         r.rawBudget !== Math.min(r.storedRaw * (1 + 0.25 * r.ranks?.conversion), r.attackPower * 3) ||
         !Number.isFinite(r.speed) ||
         r.speed < 0.05 ||
@@ -323,6 +324,16 @@ export function isWalnutAttackRecord(r) {
         !Number.isFinite(r.source.sourceDamageScale) ||
         r.source.sourceDamageScale < 0 ||
         !['direct', 'enemy'].includes(r.source.sourceKind) ||
+        !Number.isFinite(
+            (r.source.attackerStats.attackPower *
+                r.source.attackPowerMultiplier *
+                r.multiplier *
+                r.source.sourceDamageScale *
+                (1 + 0.08 * r.ranks.finish) +
+                r.rawBudget) *
+                Math.max(1, r.source.attackerStats.critMultiplier),
+        ) ||
+        !Number.isFinite((r.source.attackerStats.attackArea * 0.65) ** 2) ||
         ![r.origin, r.point].every(
             (p) =>
                 EXACT(p, 'x y z') &&
