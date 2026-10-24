@@ -1,3 +1,4 @@
+import { growthBuildOf } from '../../species-growth/state.js';
 import { getAbilityEffects } from '../../../ability-progression.js';
 import { abilityProfile } from '../../../unit-abilities.js';
 import { WHEAT_COMMAND_CRIT_FEATURE } from '../wheat-command-crit.js';
@@ -7,6 +8,22 @@ const ABILITY_ID = DEFINITION.id;
 
 export class WheatCommandModel {
     static config(progression, tier) {
+        const ENTRY = progression?.abilities?.[ABILITY_ID];
+        if (ENTRY?.treeVersion === 1) {
+            const R = growthBuildOf(ENTRY).nodeRanks,
+                LEVEL = R['specialty-1'] || 0,
+                POWER_RANK = R['basic-1'] || 0;
+            const RANGE_MULTIPLIER = 2 + 0.5 * (R['specialty-2'] || 0);
+            return {
+                level: LEVEL,
+                speedValue: (0.5 + 0.125 * LEVEL) * 1.5 ** (tier - 1) * (1 + 0.03 * POWER_RANK),
+                powerRank: POWER_RANK,
+                tier,
+                rangeMultiplier: RANGE_MULTIPLIER,
+                radius: abilityProfile(7).range * RANGE_MULTIPLIER,
+                growth: true,
+            };
+        }
         const EFFECT = getAbilityEffects(progression, ABILITY_ID, tier);
         if (!EFFECT) {
             return null;
@@ -27,12 +44,17 @@ export class WheatCommandModel {
             !action ||
             !config ||
             action.wheatCommandResolved ||
-            !Number.isFinite(config.radius) ||
+            action.wheatAttack?.commandResolved ||
+            !Number.isFinite(config.radius * config.radius) ||
+            config.radius < 0 ||
             typeof sim.random !== 'function'
         ) {
             return false;
         }
         action.wheatCommandResolved = true;
+        if (action.wheatAttack) {
+            action.wheatAttack.commandResolved = true;
+        }
         if (sim.random() >= DEFINITION.triggerChance) {
             return false;
         }
@@ -43,9 +65,19 @@ export class WheatCommandModel {
             const DX = UNIT.x - source.x,
                 DY = UNIT.y - source.y;
             if (UNIT.hp > 0 && UNIT.faction === source.faction && DX * DX + DY * DY <= RADIUS_SQUARED) {
-                this.refreshBuff(UNIT, config.level, TICK);
+                this.refreshBuff(
+                    UNIT,
+                    config.level,
+                    TICK,
+                    config.growth ? config.speedValue : undefined,
+                    config.growth ? config.tier : undefined,
+                    config.growth ? config.powerRank : undefined,
+                );
                 affected++;
             }
+        }
+        if (action.wheatAttack) {
+            action.wheatAttack.commandTriggered = affected > 0;
         }
         if (affected > 0) {
             sim.combat?.('wheat-command', {
@@ -60,12 +92,17 @@ export class WheatCommandModel {
         }
         return affected > 0;
     }
-    static refreshBuff(unit, level, tick) {
+    static refreshBuff(unit, level, tick, bonus, tier, powerRank) {
         if (
             !unit ||
             !Number.isSafeInteger(level) ||
             level < 0 ||
-            level > 2 ||
+            level > (bonus === undefined ? 2 : 5) ||
+            (tier !== undefined && (!Number.isInteger(tier) || tier < 1 || tier > 6 || bonus === undefined)) ||
+            (powerRank !== undefined &&
+                (!Number.isInteger(powerRank) || powerRank < 0 || powerRank > 10 || bonus === undefined)) ||
+            (bonus !== undefined &&
+                bonus !== (0.5 + 0.125 * level) * 1.5 ** ((tier ?? 1) - 1) * (1 + 0.03 * (powerRank ?? 0))) ||
             !Number.isSafeInteger(tick) ||
             tick < 0
         ) {
@@ -75,22 +112,35 @@ export class WheatCommandModel {
             ? unit.wheatCommandBuffs.filter((buff) => buff.expiresAtTick > tick)
             : [];
         unit.wheatCommandBuffs = BUFFS;
-        const EXISTING = BUFFS.find((buff) => buff.level === level),
+        const EXISTING = BUFFS.find((buff) => this.buffBonus(buff) === (bonus ?? DEFINITION.powerValues[level])),
             EXPIRES_AT_TICK = tick + DEFINITION.durationTicks;
         if (EXISTING) {
             EXISTING.expiresAtTick = Math.max(EXISTING.expiresAtTick, EXPIRES_AT_TICK);
         } else {
-            BUFFS.push({ level, expiresAtTick: EXPIRES_AT_TICK });
-            BUFFS.sort((a, b) => a.level - b.level);
+            BUFFS.push(
+                bonus === undefined
+                    ? { level, expiresAtTick: EXPIRES_AT_TICK }
+                    : {
+                          level,
+                          bonus,
+                          ...(tier === undefined ? {} : { tier }),
+                          ...(powerRank === undefined ? {} : { powerRank }),
+                          expiresAtTick: EXPIRES_AT_TICK,
+                      },
+            );
+            BUFFS.sort((a, b) => this.buffBonus(a) - this.buffBonus(b));
         }
         unit.ability?.syncAttackSpeedMultiplier?.(tick);
         return true;
+    }
+    static buffBonus(buff) {
+        return buff.bonus ?? DEFINITION.powerValues[buff.level];
     }
     static activeBuff(unit, tick) {
         const BUFFS = Array.isArray(unit?.wheatCommandBuffs) ? unit.wheatCommandBuffs : [];
         let strongest = null;
         for (const BUFF of BUFFS) {
-            if (BUFF.expiresAtTick > tick && (!strongest || BUFF.level > strongest.level)) {
+            if (BUFF.expiresAtTick > tick && (!strongest || this.buffBonus(BUFF) > this.buffBonus(strongest))) {
                 strongest = BUFF;
             }
         }
@@ -98,6 +148,6 @@ export class WheatCommandModel {
     }
     static attackSpeedMultiplier(unit, tick) {
         const ACTIVE = this.activeBuff(unit, tick);
-        return ACTIVE ? 1 + DEFINITION.powerValues[ACTIVE.level] : 1;
+        return ACTIVE ? 1 + this.buffBonus(ACTIVE) : 1;
     }
 }

@@ -1,3 +1,4 @@
+import { isWheatAttackRecord } from './features/species-growth/wheat-attack.js';
 import { isRiceAttackRecord } from './features/species-growth/rice-attack.js';
 import { isWalnutAttackRecord } from './features/species-growth/walnut-attack.js';
 import { isPeanutAttackRecord } from './features/species-growth/peanut-attack.js';
@@ -154,16 +155,26 @@ function validateProgression(progression) {
 function validWheatCommandBuffs(buffs) {
     return (
         Array.isArray(buffs) &&
-        buffs.length <= 3 &&
+        buffs.length <= 396 &&
         buffs.every(
             (buff) =>
                 buff &&
+                Object.keys(buff).every((key) =>
+                    ['level', 'bonus', 'tier', 'powerRank', 'expiresAtTick'].includes(key),
+                ) &&
                 Number.isSafeInteger(buff.level) &&
                 buff.level >= 0 &&
-                buff.level <= 2 &&
+                buff.level <= (buff.bonus === undefined ? 2 : 5) &&
+                (buff.tier === undefined || (INTEGER(buff.tier, 1, 6) && buff.bonus !== undefined)) &&
+                (buff.powerRank === undefined || (INTEGER(buff.powerRank, 0, 10) && buff.bonus !== undefined)) &&
+                (buff.bonus === undefined ||
+                    buff.bonus ===
+                        (0.5 + 0.125 * buff.level) *
+                            1.5 ** ((buff.tier ?? 1) - 1) *
+                            (1 + 0.03 * (buff.powerRank ?? 0))) &&
                 INTEGER(buff.expiresAtTick, 1, 1e12),
         ) &&
-        new Set(buffs.map((buff) => buff.level)).size === buffs.length
+        new Set(buffs.map((buff) => buff.bonus ?? [0.5, 0.75, 1.125][buff.level])).size === buffs.length
     );
 }
 function validBarleyArmorShredBuckets(buckets) {
@@ -583,7 +594,12 @@ export function validateSnapshot(raw) {
                 U.permanentStatMultiplier <= 2.25 &&
                 Number.isFinite(U.growthMaxHpMultiplier) &&
                 (U.growthMaxHpMultiplier === 1 ||
-                    ((U.species === 2 || U.species === 3 || U.species === 4 || U.species === 5 || U.species === 6) &&
+                    ((U.species === 2 ||
+                        U.species === 3 ||
+                        U.species === 4 ||
+                        U.species === 5 ||
+                        U.species === 6 ||
+                        U.species === 7) &&
                         !U.isBattleOnlySummon &&
                         !U.isFormationClone &&
                         hasFaction(U, FACTION_CONFIG.PLAYER) &&
@@ -845,6 +861,35 @@ export function validateSnapshot(raw) {
                 ASSERT(
                     U.species === 6 &&
                         isRiceAttackRecord(R) &&
+                        R.id === A.id &&
+                        R.owner === U.id &&
+                        R.ownerGeneration === U.generation &&
+                        R.tier === U.tier &&
+                        U.hp > 0 &&
+                        (R.launchTick === null
+                            ? U.ability.phase === 'windup' && A.path === null
+                            : (U.ability.phase === 'active' || U.ability.phase === 'recover') &&
+                              R.launchTick <= raw.simulationTick &&
+                              R.motionTick ===
+                                  (U.ability.phase === 'recover'
+                                      ? Math.round(R.durationSeconds * 20)
+                                      : Math.min(
+                                            Math.round(R.durationSeconds * 20),
+                                            Math.round(U.ability.elapsed * 20),
+                                        )) &&
+                              A.path?.duration === R.durationSeconds &&
+                              A.path.height === 0 &&
+                              sameCheckpointValue(A.path.from, R.origin) &&
+                              sameCheckpointValue(A.path.to, R.origin)) &&
+                        R.targetId === A.targetId &&
+                        R.targetGeneration === A.targetGeneration,
+                );
+            }
+            if (A.wheatAttack !== undefined) {
+                const R = A.wheatAttack;
+                ASSERT(
+                    U.species === 7 &&
+                        isWheatAttackRecord(R) &&
                         R.id === A.id &&
                         R.owner === U.id &&
                         R.ownerGeneration === U.generation &&

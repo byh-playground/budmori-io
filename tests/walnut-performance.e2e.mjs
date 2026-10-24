@@ -10,12 +10,17 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { sourceGraph } from '../scripts/source-graph.mjs';
 
-const SPECIES = process.env.PERFORMANCE_SPECIES === 'rice' ? 'rice' : 'walnut',
-    SPECIES_ID = SPECIES === 'rice' ? 6 : 5,
-    ABILITY_ID = SPECIES === 'rice' ? 'rice-low-health-harvest' : 'walnut-raw-guard';
+const SPECIES = process.env.PERFORMANCE_SPECIES || 'walnut',
+    SETTINGS = {
+        wheat: { id: 7, ability: 'wheat-command-crit', base: '76edf4868031f3b2e09f6c64c32c94a4ada745e8' },
+        rice: { id: 6, ability: 'rice-low-health-harvest', base: '7fac7631be682d3750beeab16981fccd83898195' },
+        walnut: { id: 5, ability: 'walnut-raw-guard', base: 'bde28685e3ef0dc15934cde9d41a6b9b5e42ec7f' },
+    };
+assert.ok(Object.hasOwn(SETTINGS, SPECIES), 'Choose wheat, rice or walnut performance');
+const SPECIES_ID = SETTINGS[SPECIES].id,
+    ABILITY_ID = SETTINGS[SPECIES].ability;
 const ROOT = fileURLToPath(new URL('../', import.meta.url)),
-    BASE_COMMIT =
-        SPECIES === 'rice' ? '7fac7631be682d3750beeab16981fccd83898195' : 'bde28685e3ef0dc15934cde9d41a6b9b5e42ec7f',
+    BASE_COMMIT = SETTINGS[SPECIES].base,
     OUTPUT = path.join(ROOT, `tests/output/${SPECIES}-performance`),
     HASH = (bytes) => createHash('sha256').update(bytes).digest('hex'),
     MEDIAN = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)],
@@ -230,7 +235,11 @@ async function run(variant, viewport, round, origin) {
                 FRAMES.push(NOW - previous);
                 previous = NOW;
                 for (const UNIT of BUDMORI.sim.units) {
-                    const FORM = (UNIT.ability.action?.riceAttack || UNIT.ability.action?.walnutAttack)?.form;
+                    const FORM = (
+                        UNIT.ability.action?.wheatAttack ||
+                        UNIT.ability.action?.riceAttack ||
+                        UNIT.ability.action?.walnutAttack
+                    )?.form;
                     if (FORM) {
                         FORMS.add(FORM);
                     }

@@ -1,3 +1,4 @@
+import { WheatAttackPresentation, setWheatBatonLength } from './features/unit-attacks/wheat/presentation.js';
 import { RiceAttackPresentation } from './features/unit-attacks/rice/presentation.js';
 import { WalnutAttackPresentation } from './features/unit-attacks/walnut/presentation.js';
 import { ChestnutAttackPresentation } from './features/unit-attacks/chestnut/presentation.js';
@@ -13,6 +14,7 @@ import { farmBreedingCooldown, unitRestPresentation } from './farm-indicators.js
 import { scenePresentation } from './farm-render-scenes.js';
 import { PassiveMarksPresentation } from './tower-passive-presentations.js';
 
+const WHEAT_ATTACK = new WheatAttackPresentation();
 const RICE_ATTACK = new RiceAttackPresentation();
 const WALNUT_ATTACK = new WalnutAttackPresentation();
 const CHESTNUT_ATTACK = new ChestnutAttackPresentation();
@@ -25,6 +27,9 @@ const ATTACK_PRESENTATIONS = new Map(
     [new DualStrikePresentation(), new LobPresentation()].map((presentation) => [presentation.id, presentation]),
 );
 function unitAttackPresentation(unit) {
+    if (unit.species === 7 && unit.ability?.wheatForm) {
+        return WHEAT_ATTACK;
+    }
     if (unit.species === 6 && unit.ability?.riceForm) {
         return RICE_ATTACK;
     }
@@ -154,6 +159,7 @@ export class UnitPresentation {
         this.renderer = renderer;
         this.unitRings = [];
         this.riceDisplayUnits = new Map();
+        this.wheatDisplayUnits = new Map();
         this.unitRingPool = [{}, {}, {}, {}];
         this.breedingIndicator = {};
         this.restIndicator = {};
@@ -161,21 +167,24 @@ export class UnitPresentation {
     prepareUnits(units, time, world) {
         if (this.riceDisplayWorld !== world || this.riceDisplayTime > this.renderer.displayTimeMs) {
             this.riceDisplayUnits.clear();
+            this.wheatDisplayUnits.clear();
         }
         this.riceDisplayWorld = world;
         this.riceDisplayTime = this.renderer.displayTimeMs;
         const LIVE = new Set();
         for (const UNIT of units) {
-            if (UNIT.species !== 6) {
+            if (UNIT.species !== 6 && UNIT.species !== 7) {
                 continue;
             }
             LIVE.add(UNIT.id);
-            let entry = this.riceDisplayUnits.get(UNIT.id);
+            const CACHE = UNIT.species === 7 ? this.wheatDisplayUnits : this.riceDisplayUnits,
+                ATTACK = UNIT.species === 7 ? WHEAT_ATTACK : RICE_ATTACK;
+            let entry = CACHE.get(UNIT.id);
             if (!entry || entry.seed !== UNIT.seed) {
                 entry = { seed: UNIT.seed, unit: {}, offset: { x: 0, y: 0 }, releasedAt: null };
-                this.riceDisplayUnits.set(UNIT.id, entry);
+                CACHE.set(UNIT.id, entry);
             }
-            const OFFSET = RICE_ATTACK.groundOffset(this.renderer, UNIT, time);
+            const OFFSET = ATTACK.groundOffset(this.renderer, UNIT, time);
             if (OFFSET) {
                 entry.offset = OFFSET;
                 entry.releasedAt = null;
@@ -188,14 +197,17 @@ export class UnitPresentation {
                 entry.releasedAt === null ? 1 : Math.max(0, 1 - (this.renderer.displayTimeMs - entry.releasedAt) / 120);
             Object.assign(entry.unit, UNIT, { x: UNIT.x + entry.offset.x * LEFT, y: UNIT.y + entry.offset.y * LEFT });
         }
-        for (const ID of this.riceDisplayUnits.keys()) {
-            if (!LIVE.has(ID)) {
-                this.riceDisplayUnits.delete(ID);
+        for (const CACHE of [this.riceDisplayUnits, this.wheatDisplayUnits]) {
+            for (const ID of CACHE.keys()) {
+                if (!LIVE.has(ID)) {
+                    CACHE.delete(ID);
+                }
             }
         }
     }
     displayUnit(unit) {
-        return unit.species === 6 ? this.riceDisplayUnits.get(unit.id)?.unit || unit : unit;
+        const CACHE = unit.species === 7 ? this.wheatDisplayUnits : unit.species === 6 ? this.riceDisplayUnits : null;
+        return CACHE?.get(unit.id)?.unit || unit;
     }
     addUnitRing(radius, color, width, progress) {
         const EFFECT = this.unitRingPool[this.unitRings.length];
@@ -211,7 +223,12 @@ export class UnitPresentation {
             S_LOCAL = ATTACK_TYPES[u.species];
         EFFECTS.length = 0;
         if (u.buffed && u.hp > 0) {
-            this.addUnitRing(u.radius + 0.16, '#eacb72', 0.055, 1);
+            this.addUnitRing(
+                u.radius + 0.16 + 0.12 * u.commandBeatLife,
+                '#eacb72',
+                0.045 + 0.025 * u.commandBeatLife,
+                1,
+            );
         }
         if (world.isWorker?.(u)) {
             this.addUnitRing(u.radius + 0.08, '#c2913e', 0.04, 1);
@@ -327,6 +344,9 @@ export class UnitPresentation {
         if (EXPRESSION !== player.currentExpression) {
             player.setExpression(EXPRESSION);
         }
+        if (u.species === 7) {
+            setWheatBatonLength(player, u.ability.wheatLongBaton);
+        }
         player.seek(
             HAS_PHASE_CLOCK
                 ? clamp(PHASE_TIME_MS, 0, CLIP.durationMs)
@@ -353,6 +373,9 @@ export class UnitPresentation {
         if (!SWING && !rest && u.species === 6 && u.ability.riceForm && u.hp > 0 && u.stun <= 0) {
             RICE_ATTACK.applyPose(MATRIX, u, GROUND);
         }
+        if (!SWING && !rest && u.species === 7 && u.ability.wheatForm && u.hp > 0 && u.stun <= 0) {
+            WHEAT_ATTACK.applyPose(MATRIX, u, GROUND);
+        }
         // Native vector players submit directly to MeshRenderer, so flush earlier 2D paint first.
         this.renderer.ctx.vector.flush();
         player.draw({
@@ -363,6 +386,9 @@ export class UnitPresentation {
         });
         if (u.species === 6) {
             RICE_ATTACK.drawContact(this.renderer, u, player, MATRIX);
+        }
+        if (u.species === 7) {
+            WHEAT_ATTACK.drawContact(this.renderer, u, player, MATRIX);
         }
         return true;
     }
