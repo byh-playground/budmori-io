@@ -152,15 +152,15 @@ function validateProgression(progression) {
             isValidPlayerProgressionState(progression),
     );
 }
-function validWheatCommandBuffs(buffs) {
+function validWheatCommandBuffs(buffs, tick) {
     return (
         Array.isArray(buffs) &&
-        buffs.length <= 396 &&
+        buffs.length <= 66 &&
         buffs.every(
             (buff) =>
                 buff &&
                 Object.keys(buff).every((key) =>
-                    ['level', 'bonus', 'tier', 'powerRank', 'expiresAtTick'].includes(key),
+                    ['level', 'bonus', 'tier', 'powerRank', 'appliedAtTick', 'expiresAtTick'].includes(key),
                 ) &&
                 Number.isSafeInteger(buff.level) &&
                 buff.level >= 0 &&
@@ -168,10 +168,11 @@ function validWheatCommandBuffs(buffs) {
                 (buff.tier === undefined || (INTEGER(buff.tier, 1, 6) && buff.bonus !== undefined)) &&
                 (buff.powerRank === undefined || (INTEGER(buff.powerRank, 0, 10) && buff.bonus !== undefined)) &&
                 (buff.bonus === undefined ||
-                    buff.bonus ===
-                        (0.5 + 0.125 * buff.level) *
-                            1.5 ** ((buff.tier ?? 1) - 1) *
-                            (1 + 0.03 * (buff.powerRank ?? 0))) &&
+                    buff.bonus === (0.5 + 0.125 * buff.level) * (1 + 0.03 * (buff.powerRank ?? 0))) &&
+                (buff.appliedAtTick === undefined ||
+                    (INTEGER(buff.appliedAtTick, 0, tick) &&
+                        buff.appliedAtTick < buff.expiresAtTick &&
+                        buff.expiresAtTick - buff.appliedAtTick <= 360)) &&
                 INTEGER(buff.expiresAtTick, 1, 1e12),
         ) &&
         new Set(buffs.map((buff) => buff.bonus ?? [0.5, 0.75, 1.125][buff.level])).size === buffs.length
@@ -633,7 +634,7 @@ export function validateSnapshot(raw) {
                 Number.isFinite(U.peaRecoveryBoostMultiplier) &&
                 U.peaRecoveryBoostMultiplier >= 0 &&
                 U.peaRecoveryBoostMultiplier <= 2 &&
-                validWheatCommandBuffs(U.wheatCommandBuffs) &&
+                validWheatCommandBuffs(U.wheatCommandBuffs, raw.simulationTick) &&
                 validBarleyArmorShredBuckets(U.barleyArmorShredBuckets),
         );
         ASSERT(

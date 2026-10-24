@@ -164,6 +164,51 @@ try {
         if (!new URLSearchParams(location.search).has('help')) {
             return;
         }
+        // Launch may retime the real finite schedule after a successful command.
+        // A shared tick has one visible first stage; a final active-boundary tick
+        // is the exact first recovery pose. Every authoritative hit is still checked.
+        function committedObservationPlan(record) {
+            const ALL_SHOTS = record.shots.map((shot) => ({ ...shot })),
+                GROUPS = [];
+            for (const SHOT of ALL_SHOTS) {
+                const LAST = GROUPS.at(-1);
+                if (LAST?.tick === SHOT.tick) {
+                    LAST.shots.push(SHOT);
+                } else {
+                    GROUPS.push({ tick: SHOT.tick, shots: [SHOT] });
+                }
+            }
+            const VISIBLE = GROUPS.map((group) => {
+                const RECOVERY = group.tick >= record.durationSeconds * 20 - 1e-9,
+                    SHOT = RECOVERY ? group.shots.at(-1) : group.shots[0];
+                return {
+                    tick: group.tick,
+                    slot: SHOT.slot,
+                    stage: SHOT.stage,
+                    phase: RECOVERY ? 'recover' : 'active',
+                    slots: group.shots.map((shot) => shot.slot),
+                    stages: group.shots.map((shot) => shot.stage),
+                };
+            });
+            return {
+                allShots: ALL_SHOTS,
+                visible: VISIBLE,
+                mergedGroups: VISIBLE.filter((group) => group.slots.length > 1),
+                capturePlan: [
+                    ...VISIBLE.flatMap((group) =>
+                        group.phase === 'active'
+                            ? [
+                                  { ...group, moment: 'early' },
+                                  { ...group, moment: 'contact' },
+                              ]
+                            : [{ ...group, moment: 'contact', recoveryContact: true }],
+                    ),
+                    ...(VISIBLE.at(-1).phase === 'recover'
+                        ? []
+                        : [{ phase: 'recover', moment: 'recover', slot: ALL_SHOTS.at(-1).slot }]),
+                ],
+            };
+        }
         function installObserver() {
             const RENDERER = BUDMORI.renderer,
                 RENDER = RENDERER.render,
@@ -231,6 +276,7 @@ try {
                 initialHp: WORLD.boss.hp,
             };
             const NATIVE_FRAMES = new WeakMap();
+            let trackedRecord = null;
             import('./src/features/unit-attacks/wheat/presentation.js').then(
                 ({ WheatAttackPresentation: presentation }) => {
                     const CONTACT = presentation.prototype.drawContact;
@@ -274,7 +320,15 @@ try {
                     DISPLAY = BUDMORI.runtime.presentationView?.units.find((unit) => unit.id === UNIT.id),
                     PLAYER = this.vectorPlayers.get(UNIT.id),
                     A = DISPLAY?.ability,
-                    RECORD = UNIT.ability.action?.wheatAttack;
+                    LIVE_RECORD = UNIT.ability.action?.wheatAttack,
+                    // The interpolated final recovery can outlive the model's
+                    // action by one tick. Retain only this observed real record.
+                    RECORD =
+                        LIVE_RECORD?.id === A?.wheatActionId
+                            ? LIVE_RECORD
+                            : trackedRecord?.id === A?.wheatActionId
+                              ? trackedRecord
+                              : null;
                 STATE.renderCalls++;
                 if (STATE.interruption && !STATE.interruption.settled) {
                     const ROOT = this.unitPresentation.displayUnit(DISPLAY),
@@ -330,6 +384,7 @@ try {
                     (CASE !== 'giant-card' || (UNIT.giantUntil > WORLD.time && DISPLAY.giantUntil > WORLD.time))
                 ) {
                     STATE.actionId = RECORD.id;
+                    trackedRecord = RECORD;
                     STATE.expected = RECORD.shots.map((shot) => shot.stage);
                     STATE.form = RECORD.form;
                     STATE.geometry = {
@@ -353,20 +408,41 @@ try {
                 if (STATE.actionId !== RECORD.id || STATE.ready || !STATE.request) {
                     return RESULT;
                 }
+                if (!STATE.capturePlan && RECORD.launchTick !== null) {
+                    Object.assign(STATE, committedObservationPlan(RECORD));
+                    STATE.committedLaunchTick = RECORD.launchTick;
+                    STATE.committedDurationTicks = RECORD.durationSeconds * 20;
+                }
                 const BATON = PLAYER.getPartPose('command-baton'),
-                    REQUEST = STATE.request,
-                    MATCH =
-                        A.phase === REQUEST.phase &&
-                        (A.phase !== 'active' ||
-                            (A.wheatSlot === REQUEST.slot &&
-                                A.wheatStageProgress >= (REQUEST.moment === 'contact' ? 0.9 : 0.3)));
+                    PLAN_INDEX = STATE.request.phase === 'sequence' ? STATE.request.index : -1,
+                    REQUEST = PLAN_INDEX >= 0 ? STATE.capturePlan?.[PLAN_INDEX] : STATE.request;
+                if (!REQUEST) {
+                    return RESULT;
+                }
+                const MATCH =
+                    A.phase === REQUEST.phase &&
+                    (REQUEST.recoveryContact
+                        ? A.elapsed === 0 && PLAYER.currentTimeMs === 0
+                        : A.phase !== 'active' ||
+                          (A.wheatSlot === REQUEST.slot &&
+                              A.wheatStageProgress >= (REQUEST.moment === 'contact' ? 0.9 : 0.3)));
                 if (MATCH) {
-                    const SHOT_TICK = RECORD.shots[A.wheatSlot]?.tick || 0,
-                        START_TICK = A.wheatSlot > 0 ? RECORD.shots[A.wheatSlot - 1].tick : 0,
-                        COMMITTED_TICK = START_TICK + A.wheatStageProgress * (SHOT_TICK - START_TICK);
+                    // One actual short-stage frame may already meet both thresholds.
+                    // Record that fact instead of demanding a later duplicate frame.
+                    const EARLY_CONTACT =
+                            REQUEST.moment === 'early' && A.phase === 'active' && A.wheatStageProgress >= 0.9,
+                        SLOT = REQUEST.slot ?? A.wheatSlot,
+                        SHOT_TICK = RECORD.shots[SLOT]?.tick || 0,
+                        START_TICK = SLOT > 0 ? RECORD.shots[SLOT - 1].tick : 0,
+                        COMMITTED_TICK = REQUEST.recoveryContact
+                            ? RECORD.motionTick
+                            : START_TICK + A.wheatStageProgress * (SHOT_TICK - START_TICK);
                     const SAMPLE = {
                         phase: A.phase,
-                        moment: REQUEST.moment || A.phase,
+                        moment: EARLY_CONTACT ? 'contact' : REQUEST.moment || A.phase,
+                        sameFrameEarlyContact: EARLY_CONTACT,
+                        planIndex: PLAN_INDEX + (EARLY_CONTACT ? 1 : 0),
+                        recoveryContact: !!REQUEST.recoveryContact,
                         nativeTip: NATIVE_FRAMES.get(PLAYER).tip,
                         nativeGround: NATIVE_FRAMES.get(PLAYER).ground,
                         groundRoot: NATIVE_FRAMES.get(PLAYER).root,
@@ -378,7 +454,7 @@ try {
                         giantEndedAt: NATIVE_FRAMES.get(PLAYER).giantEndedAt,
                         displayPosition: NATIVE_FRAMES.get(PLAYER).displayPosition,
                         sourcePosition: { x: UNIT.x, y: UNIT.y },
-                        authoritativeSlotTick: RECORD.launchTick + (RECORD.shots[A.wheatSlot]?.tick || 0),
+                        authoritativeSlotTick: RECORD.launchTick + SHOT_TICK,
                         worldTick: WORLD.simulationTick,
                         bossRadius: WORLD.boss.radius,
                         unitRadius: UNIT.radius,
@@ -387,12 +463,16 @@ try {
                         displayGiantActive: DISPLAY.giantUntil > WORLD.time,
                         nativeMatrix: NATIVE_FRAMES.get(PLAYER).matrix,
                         contactPoint: this.project(A.wheatPointX, A.wheatPointY, 0),
-                        committedTick: A.phase === 'active' ? COMMITTED_TICK : null,
+                        committedTick: A.phase === 'active' || REQUEST.recoveryContact ? COMMITTED_TICK : null,
                         rawElapsedTick: A.elapsed * 20,
                         worldSlotTickDelta: WORLD.simulationTick - (RECORD.launchTick + SHOT_TICK),
-                        shotDeltaMs: A.phase === 'active' ? (COMMITTED_TICK - SHOT_TICK) * 50 : null,
-                        stage: A.wheatStage,
-                        slot: A.wheatSlot,
+                        shotDeltaMs: REQUEST.recoveryContact
+                            ? (WORLD.simulationTick - RECORD.launchTick - SHOT_TICK) * 50
+                            : A.phase === 'active'
+                              ? (COMMITTED_TICK - SHOT_TICK) * 50
+                              : null,
+                        stage: REQUEST.recoveryContact ? REQUEST.stage : A.wheatStage,
+                        slot: SLOT,
                         progress: A.wheatStageProgress,
                         clip: PLAYER.currentClip,
                         time: PLAYER.currentTimeMs,
@@ -516,17 +596,15 @@ try {
                 ),
             });
             assert.equal(await FRAME.evaluate(() => BUDMORI.sim.simulationTick), state.tick);
+            if (SAMPLE.sameFrameEarlyContact || SAMPLE.recoveryContact) {
+                // This is deliberately the same frozen native frame, not an
+                // invented earlier pose or a second observed hit.
+                await PAGE.screenshot({ path: path.join(OUTPUT, `${LABEL}-${SAMPLE.phase}-${SAMPLE.slot}.png`) });
+            }
             if (SAMPLE.phase === 'recover') {
                 break;
             }
-            const NEXT =
-                SAMPLE.phase === 'windup'
-                    ? { phase: 'active', slot: 0, moment: 'early' }
-                    : SAMPLE.moment === 'early'
-                      ? { phase: 'active', slot: SAMPLE.slot, moment: 'contact' }
-                      : SAMPLE.slot + 1 < state.expected.length
-                        ? { phase: 'active', slot: SAMPLE.slot + 1, moment: 'early' }
-                        : { phase: 'recover' };
+            const NEXT = { phase: 'sequence', index: SAMPLE.planIndex + 1 };
             await FRAME.evaluate((request) => {
                 const SESSION = BUDMORI.runtime,
                     DURATION = SESSION.pausedDurationMs + globalThis.__wheatInputClock - SESSION.pauseStartedAt;
@@ -563,9 +641,26 @@ try {
         assert.ok(state.bossHp < state.initialHp);
         assert.deepEqual(
             state.hits.map((hit) => hit.slot),
-            state.expected.map((_stage, index) => index),
+            state.allShots.map((shot) => shot.slot),
         );
-        assert.equal(new Set(state.hits.map((hit) => hit.sequence)).size, state.expected.length);
+        assert.equal(new Set(state.hits.map((hit) => hit.sequence)).size, state.allShots.length);
+        assert.deepEqual(
+            state.allShots.map((shot) => shot.stage),
+            state.expected,
+        );
+        assert.deepEqual(
+            state.visible.flatMap((group) => group.slots),
+            state.allShots.map((shot) => shot.slot),
+        );
+        assert.deepEqual(
+            state.trace.filter((sample) => sample.moment === 'contact').map((sample) => sample.slot),
+            state.visible.map((group) => group.slot),
+            'each distinct committed hit tick has a native active or exact recovery contact',
+        );
+        assert.deepEqual(
+            state.trace.filter((sample) => sample.moment === 'contact').map((sample) => sample.stage),
+            state.visible.map((group) => group.stage),
+        );
         assert.equal(
             new Set(state.trace.map((sample) => sample.recordId)).size,
             1,
@@ -573,18 +668,24 @@ try {
         );
         assert.deepEqual(
             state.trace
-                .filter((sample) => sample.phase === 'active' && sample.moment === 'early')
+                .filter(
+                    (sample) =>
+                        sample.phase === 'active' && (sample.moment === 'early' || sample.sameFrameEarlyContact),
+                )
                 .map((sample) => sample.stage),
-            state.expected,
+            state.visible.filter((group) => group.phase === 'active').map((group) => group.stage),
         );
         assert.equal(
             new Set(
                 state.trace
-                    .filter((sample) => sample.phase === 'active' && sample.moment === 'early')
+                    .filter(
+                        (sample) =>
+                            sample.phase === 'active' && (sample.moment === 'early' || sample.sameFrameEarlyContact),
+                    )
                     .map((sample) => JSON.stringify(sample.pose)),
             ).size,
-            state.expected.length,
-            'each slot has a distinct actual baton pose',
+            state.visible.filter((group) => group.phase === 'active').length,
+            'each observable active stage has a distinct actual baton pose',
         );
         for (const SAMPLE of state.trace) {
             const FOOT = SAMPLE.footprint,
@@ -621,6 +722,13 @@ try {
                     'contact observed within one native simulation frame of its real slot',
                 );
                 assert.ok(DISTANCE <= 12, `native tip reaches committed contact: ${DISTANCE.toFixed(3)}px`);
+            }
+            if (SAMPLE.recoveryContact) {
+                assert.equal(SAMPLE.phase, 'recover');
+                assert.equal(SAMPLE.time, 0, 'final contact is the exact native first recovery pose');
+                assert.equal(SAMPLE.committedTick, state.allShots.at(-1).tick);
+                assert.ok(Math.abs(SAMPLE.worldSlotTickDelta) <= 1);
+                assert.equal(SAMPLE.clip, `recover-wheat-${state.allShots.at(-1).stage}`);
             }
             if (SAMPLE.phase === 'active') {
                 assert.ok(Math.abs(SAMPLE.time - SAMPLE.progress * 1000) < 1e-5);
@@ -689,19 +797,23 @@ try {
             if (!STATE.complete) {
                 if (STATE.id === null && notice.strikeIndex === 0) {
                     STATE.id = RECORD.id;
+                    STATE.firstTickSlots = RECORD.shots.filter((shot) => shot.tick === RECORD.shots[0].tick).length;
+                    STATE.allShots = RECORD.shots.map((shot) => ({ ...shot }));
                 }
                 if (STATE.id !== RECORD.id) {
                     return;
                 }
                 STATE.hits.push(structuredClone(notice));
-                if (STATE.hits.length === 1 || STATE.hits.length === 4) {
+                if (STATE.hits.length === STATE.firstTickSlots || STATE.hits.length === 4) {
                     STATE.complete = STATE.hits.length === 4;
                     BUDMORI.runtime.paused = true;
                 }
             }
         });
     });
-    await PAGE.waitForFunction(() => globalThis.__wheatMain.hits.length === 1 && BUDMORI.runtime.paused);
+    await PAGE.waitForFunction(
+        () => globalThis.__wheatMain.hits.length === globalThis.__wheatMain.firstTickSlots && BUDMORI.runtime.paused,
+    );
     const CHECKPOINT = await PAGE.evaluate(() => {
         globalThis.__wheatCheckpoint = { world: BUDMORI.sim, action: BUDMORI.sim.units[0].ability.action };
         return { tick: BUDMORI.sim.simulationTick, hp: BUDMORI.sim.boss.hp };
@@ -716,6 +828,8 @@ try {
         sameWorld: BUDMORI.sim === globalThis.__wheatCheckpoint.world,
         sameAction: BUDMORI.sim.units[0].ability.action === globalThis.__wheatCheckpoint.action,
         hits: structuredClone(globalThis.__wheatMain.hits),
+        allShots: structuredClone(globalThis.__wheatMain.allShots),
+        firstTickSlots: globalThis.__wheatMain.firstTickSlots,
     }));
     assert.ok(CONTINUITY.sameWorld && CONTINUITY.sameAction);
     assert.equal(CONTINUITY.boundedClock, false, 'main Home/Continue uses the normal production clock');

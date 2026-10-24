@@ -238,14 +238,14 @@ class UnitRender extends RENDER_OBJECT {
         this.farmId = u.farmId;
         this.dropLanded = u.dropLanded;
         this.buffed = u.hp > 0 && !!WheatCommandModel.activeBuff(u, world.simulationTick);
-        let lastCommandEnd = 0;
+        let lastCommandTick = -6;
         if (this.buffed) {
             for (const BUFF of u.wheatCommandBuffs) {
-                lastCommandEnd = Math.max(lastCommandEnd, BUFF.expiresAtTick);
+                lastCommandTick = Math.max(lastCommandTick, BUFF.appliedAtTick ?? BUFF.expiresAtTick - 60);
             }
         }
         this.commandBeatLife = this.buffed
-            ? Math.max(0, Math.min(1, (lastCommandEnd - world.simulationTick - 54) / 6))
+            ? Math.max(0, Math.min(1, (lastCommandTick + 6 - world.simulationTick) / 6))
             : 0;
         this.isBattleOnlySummon = u.isBattleOnlySummon;
         this.isFormationClone = u.isFormationClone;

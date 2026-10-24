@@ -16,7 +16,7 @@ export class WheatCommandModel {
             const RANGE_MULTIPLIER = 2 + 0.5 * (R['specialty-2'] || 0);
             return {
                 level: LEVEL,
-                speedValue: (0.5 + 0.125 * LEVEL) * 1.5 ** (tier - 1) * (1 + 0.03 * POWER_RANK),
+                speedValue: (0.5 + 0.125 * LEVEL) * (1 + 0.03 * POWER_RANK),
                 powerRank: POWER_RANK,
                 tier,
                 rangeMultiplier: RANGE_MULTIPLIER,
@@ -101,8 +101,7 @@ export class WheatCommandModel {
             (tier !== undefined && (!Number.isInteger(tier) || tier < 1 || tier > 6 || bonus === undefined)) ||
             (powerRank !== undefined &&
                 (!Number.isInteger(powerRank) || powerRank < 0 || powerRank > 10 || bonus === undefined)) ||
-            (bonus !== undefined &&
-                bonus !== (0.5 + 0.125 * level) * 1.5 ** ((tier ?? 1) - 1) * (1 + 0.03 * (powerRank ?? 0))) ||
+            (bonus !== undefined && bonus !== (0.5 + 0.125 * level) * (1 + 0.03 * (powerRank ?? 0))) ||
             !Number.isSafeInteger(tick) ||
             tick < 0
         ) {
@@ -113,21 +112,23 @@ export class WheatCommandModel {
             : [];
         unit.wheatCommandBuffs = BUFFS;
         const EXISTING = BUFFS.find((buff) => this.buffBonus(buff) === (bonus ?? DEFINITION.powerValues[level])),
-            EXPIRES_AT_TICK = tick + DEFINITION.durationTicks;
+            EXPIRES_AT_TICK = tick + DEFINITION.durationTicks * (tier ?? 1);
+        const NEXT =
+            bonus === undefined
+                ? { level, appliedAtTick: tick, expiresAtTick: EXPIRES_AT_TICK }
+                : {
+                      level,
+                      bonus,
+                      ...(tier === undefined ? {} : { tier }),
+                      ...(powerRank === undefined ? {} : { powerRank }),
+                      appliedAtTick: tick,
+                      expiresAtTick: EXPIRES_AT_TICK,
+                  };
         if (EXISTING) {
-            EXISTING.expiresAtTick = Math.max(EXISTING.expiresAtTick, EXPIRES_AT_TICK);
+            NEXT.expiresAtTick = Math.max(EXISTING.expiresAtTick, EXPIRES_AT_TICK);
+            BUFFS[BUFFS.indexOf(EXISTING)] = NEXT;
         } else {
-            BUFFS.push(
-                bonus === undefined
-                    ? { level, expiresAtTick: EXPIRES_AT_TICK }
-                    : {
-                          level,
-                          bonus,
-                          ...(tier === undefined ? {} : { tier }),
-                          ...(powerRank === undefined ? {} : { powerRank }),
-                          expiresAtTick: EXPIRES_AT_TICK,
-                      },
-            );
+            BUFFS.push(NEXT);
             BUFFS.sort((a, b) => this.buffBonus(a) - this.buffBonus(b));
         }
         unit.ability?.syncAttackSpeedMultiplier?.(tick);
