@@ -47,8 +47,8 @@ export function walnutBudgetMultiplier(tier, one, current) {
     for (let grade = 2; grade <= tier; grade++) {
         materials *= mergeMaterialCostForTier(grade);
     }
-    return one > 0 && current > 0 && Number.isFinite(one + current)
-        ? (one * materials * 1.05 ** (tier - 1)) / current
+    return one > 0 && current > 0 && Number.isFinite(one) && Number.isFinite(current)
+        ? (one / current) * materials * 1.05 ** (tier - 1)
         : 1.75 ** (tier - 1);
 }
 export function walnutShots(form) {
@@ -78,11 +78,15 @@ export function createWalnutAttack(world, unit, action, commandSpeed = 1) {
     const DIST = Math.hypot(DX, DY) || 1;
     const TRAVEL = Math.max(0, DIST - (TARGET?.radius || 0) * 0.98);
     const ATTACK_POWER = C.attackerStats.attackPower * C.attackPowerMultiplier * (1 + 0.03 * (R['basic-1'] || 0));
+    const MULTIPLIER = walnutBudgetMultiplier(unit.tier, INPUTS.one, INPUTS.current) * (1 + 0.03 * (R['basic-1'] || 0));
+    const SOURCE_DAMAGE_SCALE = world.passiveDamageScale(unit, C.attackerStats.maxHp, world.boss, world.boss.maxHp);
+    // The cap follows the complete pre-critical direct budget. Stored RAW itself is never grade-scaled.
+    const DIRECT_BUDGET = C.attackerStats.attackPower * C.attackPowerMultiplier * MULTIPLIER * SOURCE_DAMAGE_SCALE;
     const STORED = Math.max(0, unit.walnutStoredRawDamage || 0);
     const CONVERSION = 1 + 0.25 * (R['specialty-2'] || 0);
     unit.walnutStoredRawDamage = 0;
     return {
-        version: 1,
+        version: 2,
         id: action.id,
         owner: unit.id,
         ownerGeneration: unit.generation,
@@ -90,20 +94,20 @@ export function createWalnutAttack(world, unit, action, commandSpeed = 1) {
         form: FORM,
         attackPower: ATTACK_POWER,
         storedRaw: STORED,
-        rawBudget: Math.min(STORED * CONVERSION, ATTACK_POWER * 3),
+        rawBudget: Math.min(STORED * CONVERSION, DIRECT_BUDGET * 3),
         speed: SPEED,
         windupSeconds: 0.5,
         durationSeconds: 0.5,
         recoverySeconds: 1 / SPEED,
         ranks: { power: R['basic-1'] || 0, conversion: R['specialty-2'] || 0, finish: R['specialty-3'] || 0 },
         budgetInputs: INPUTS,
-        multiplier: walnutBudgetMultiplier(unit.tier, INPUTS.one, INPUTS.current) * (1 + 0.03 * (R['basic-1'] || 0)),
+        multiplier: MULTIPLIER,
         source: {
             attackerStats: structuredClone(C.attackerStats),
             statMultiplier: unit.permanentStatMultiplier ?? 1,
             attackPowerMultiplier: C.attackPowerMultiplier,
             sourceKind: C.sourceKind,
-            sourceDamageScale: world.passiveDamageScale(unit, C.attackerStats.maxHp, world.boss, world.boss.maxHp),
+            sourceDamageScale: SOURCE_DAMAGE_SCALE,
         },
         origin: { x: unit.x, y: unit.y, z: 0 },
         point: { x: unit.x + (DX / DIST) * TRAVEL, y: unit.y + (DY / DIST) * TRAVEL, z: 0 },
@@ -283,7 +287,7 @@ export function isWalnutAttackRecord(r) {
             r,
             'version id owner ownerGeneration tier form attackPower storedRaw rawBudget speed windupSeconds durationSeconds recoverySeconds ranks budgetInputs multiplier source origin point targetId targetGeneration shots launchTick motionTick attack criticalRolls',
         ) ||
-        r.version !== 1 ||
+        r.version !== 2 ||
         !['id', 'owner', 'ownerGeneration', 'targetGeneration'].every((k) => Number.isSafeInteger(r[k]) && r[k] > 0) ||
         attackTargetKey(r.targetId, r.targetGeneration) === null ||
         !Number.isInteger(r.tier) ||
@@ -299,7 +303,23 @@ export function isWalnutAttackRecord(r) {
         r.attackPower !==
             r.source?.attackerStats?.attackPower * r.source?.attackPowerMultiplier * (1 + 0.03 * r.ranks?.power) ||
         !Number.isFinite(r.rawBudget) ||
-        r.rawBudget !== Math.min(r.storedRaw * (1 + 0.25 * r.ranks?.conversion), r.attackPower * 3) ||
+        !Number.isFinite(r.storedRaw * (1 + 0.25 * r.ranks?.conversion)) ||
+        !Number.isFinite(
+            r.source?.attackerStats?.attackPower *
+                r.source?.attackPowerMultiplier *
+                r.multiplier *
+                r.source?.sourceDamageScale *
+                3,
+        ) ||
+        r.rawBudget !==
+            Math.min(
+                r.storedRaw * (1 + 0.25 * r.ranks?.conversion),
+                r.source?.attackerStats?.attackPower *
+                    r.source?.attackPowerMultiplier *
+                    r.multiplier *
+                    r.source?.sourceDamageScale *
+                    3,
+            ) ||
         !Number.isFinite(r.speed) ||
         r.speed < 0.05 ||
         r.speed > 4 ||

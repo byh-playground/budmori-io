@@ -56,6 +56,8 @@ export const UNIT_SNAPSHOT_SHAPE = {
     battleSummonKind: '',
     battleSummonParentId: 0,
     battleSummonParentGeneration: 0,
+    peanutInheritedPowerRank: 0,
+    peanutInheritedSpeedRank: 0,
     battleSummonEncounterId: 0,
     countsTowardPermanentRoster: true,
     breedingEligible: true,

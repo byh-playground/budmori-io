@@ -87,7 +87,7 @@ export function createCornAttack(world, unit, action, commandSpeed = 1) {
         return SHOT;
     });
     return {
-        version: 1,
+        version: 2,
         id: action.id,
         owner: unit.id,
         ownerGeneration: unit.generation,
@@ -120,7 +120,7 @@ export function createCornAttack(world, unit, action, commandSpeed = 1) {
             extra: RANKS['specialty-3'] || 0,
         },
         directMultiplier: 1.6 * GRADE * (1 + 0.03 * (RANKS['basic-1'] || 0)),
-        attachmentMultiplier: 0.5 * GRADE * (1 + 0.03 * (RANKS['basic-2'] || 0)),
+        attachmentMultiplier: 0.5 * GRADE * (1 + 0.03 * (RANKS['basic-1'] || 0)) * (1 + 0.03 * (RANKS['basic-2'] || 0)),
         source: {
             id: unit.id,
             generation: unit.generation,
@@ -261,7 +261,7 @@ export function isCornAttackRecord(record, { pending = false } = {}) {
             record,
             'version id owner ownerGeneration tier form launchTick firstAttachTick speed budgetInputs windupSeconds recoverySeconds shots baseKernelCount extraKernel terminalIndex ranks directMultiplier attachmentMultiplier source attack criticalRolls',
         ) ||
-        record.version !== 1 ||
+        record.version !== 2 ||
         !Number.isSafeInteger(record.id) ||
         record.id < 1 ||
         !Number.isInteger(record.form) ||
@@ -332,7 +332,8 @@ export function isCornAttackRecord(record, { pending = false } = {}) {
         ) ||
         INPUTS.gradeMultiplier !== cornBudgetFromInputs(record.tier, INPUTS.tierOneAttack, INPUTS.tierAttack) ||
         record.directMultiplier !== 1.6 * INPUTS.gradeMultiplier * (1 + 0.03 * INPUTS.directRank) ||
-        record.attachmentMultiplier !== 0.5 * INPUTS.gradeMultiplier * (1 + 0.03 * INPUTS.attachmentRank) ||
+        record.attachmentMultiplier !==
+            0.5 * INPUTS.gradeMultiplier * (1 + 0.03 * INPUTS.directRank) * (1 + 0.03 * INPUTS.attachmentRank) ||
         record.source.attackerStats.attackPower !== INPUTS.tierAttack * INPUTS.permanentMultiplier ||
         record.speed !==
             Math.min(
@@ -351,6 +352,22 @@ export function isCornAttackRecord(record, { pending = false } = {}) {
         record.shots.length !== FORM.weights.length ||
         record.baseKernelCount !== FORM.kernels.reduce((total, count) => total + count, 0) ||
         record.terminalIndex !== record.baseKernelCount - 1 + Number(record.extraKernel)
+    ) {
+        return false;
+    }
+    // Reject finite inputs whose complete direct/follow-up damage or area would overflow.
+    const MAX_KERNEL = Math.max(
+        ...Array.from({ length: record.terminalIndex + 1 }, (_, index) => cornKernelMultiplier(record, index)),
+    );
+    if (
+        !Number.isFinite(
+            record.source.attackerStats.attackPower *
+                record.source.attackPowerMultiplier *
+                Math.max(record.directMultiplier, MAX_KERNEL) *
+                record.source.sourceDamageScale *
+                Math.max(1, record.source.attackerStats.critMultiplier),
+        ) ||
+        !Number.isFinite(record.source.attackerStats.attackArea ** 2)
     ) {
         return false;
     }

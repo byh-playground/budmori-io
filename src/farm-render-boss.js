@@ -184,6 +184,9 @@ export class BossPresentation {
                 PLAYER.setBasePose(PART, PART_POSE);
             }
         }
+        if (BOSS === world.boss && this.renderer.cornAttachmentBodies.has('boss')) {
+            this.renderer.captureCornAttachmentBody(B, 'boss', PLAYER, MATRIX);
+        }
         const MOUTH_SOCKET = PLAYER.getSocket('mouth'),
             MOUTH_SCREEN = {
                 x: MOUTH_SOCKET.x * S_LOCAL + MATRIX[4],

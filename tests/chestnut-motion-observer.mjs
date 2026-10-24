@@ -1,6 +1,6 @@
 // Runs inside the real HELP document. This observer forwards native draws unchanged;
 // it never steps the simulation, seeks a player, injects a pose, or creates a hit.
-export function installChestnutMotionObserver(body) {
+export function installChestnutMotionObserver({ body, thornColors }) {
     if (!new URLSearchParams(location.search).has('help')) {
         return;
     }
@@ -173,7 +173,7 @@ export function installChestnutMotionObserver(body) {
                     b: { ...b },
                     width: width * this.scale,
                     color,
-                    role: color === '#68883e' ? 'spike-body' : 'trail',
+                    role: color === thornColors.shaft ? 'spike-body' : 'trail',
                 });
                 return LINE.call(this, a, b, width, color);
             };

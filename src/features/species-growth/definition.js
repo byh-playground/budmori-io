@@ -12,7 +12,7 @@ export const SPECIES_GROWTH_DEFINITIONS = Object.freeze(
             id === 1
                 ? {
                       available: true,
-                      basic: ['직격 위력', '부착 폭발 위력', '공격 속도'],
+                      basic: ['평타 위력', '부착 폭발 위력', '공격 속도'],
                       specialty: ['연쇄 가열', '마무리 파열', '추가 알'],
                   }
                 : id === 0

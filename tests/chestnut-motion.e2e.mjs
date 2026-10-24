@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { sourceGraph } from '../scripts/source-graph.mjs';
+import { CHESTNUT_THORN_COLORS } from '../src/features/projectiles/spike/definition.js';
 import { unitBodyDefinition } from '../src/features/unit-body/definition.js';
 import {
     installChestnutMotionObserver,
@@ -173,7 +174,10 @@ try {
         ERRORS.push('Unexpected network request: ' + URL_LOCAL);
         return route.abort();
     });
-    await PAGE.addInitScript(installChestnutMotionObserver, unitBodyDefinition(3).bounds);
+    await PAGE.addInitScript(installChestnutMotionObserver, {
+        body: unitBodyDefinition(3).bounds,
+        thornColors: CHESTNUT_THORN_COLORS,
+    });
     for (const CASE of CASES) {
         const TIER = CASE.tier,
             LABEL = CASE.id;

@@ -27,6 +27,7 @@ const CLOSED = Object.freeze({
 class UnitRender extends RENDER_OBJECT {
     static renderSchema = Object.freeze({
         id: R.STEP,
+        generation: R.STATE_KEY,
         x: R.POSITION_X,
         y: R.POSITION_Y,
         z: R.POSITION_Z,
@@ -142,6 +143,7 @@ class UnitRender extends RENDER_OBJECT {
     }
     update(u, world) {
         this.id = u.id;
+        this.generation = u.generation;
         this.x = u.x;
         this.y = u.y;
         this.z = u.z;
@@ -277,6 +279,7 @@ class UnitRender extends RENDER_OBJECT {
 }
 class BossRender extends RENDER_OBJECT {
     static renderSchema = Object.freeze({
+        generation: R.STATE_KEY,
         x: R.POSITION_X,
         y: R.POSITION_Y,
         z: R.POSITION_Z,
@@ -319,6 +322,7 @@ class BossRender extends RENDER_OBJECT {
             TARGET = ACTION?.target || null,
             START = ACTION?.start || null,
             MOUTH = b.summonMouth || {};
+        this.generation = b.generation;
         this.x = b.x;
         this.y = b.y;
         this.z = b.z;
