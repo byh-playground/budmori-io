@@ -228,6 +228,7 @@ async function captureChestnutBrown() {
             STATE.pending = {
                 actionId: shot.chestnutActionId,
                 stage: shot.chestnutStage,
+                scale: R.scale,
                 q: Q,
                 lines: LINES,
                 tips: TIPS,
@@ -245,16 +246,30 @@ async function captureChestnutBrown() {
     });
     await page.waitForFunction(() => globalThis.__chestnutBrown.ready && BUDMORI.runtime.paused);
     const CAPTURE = await page.evaluate(() => structuredClone(globalThis.__chestnutBrown));
+    REPORT.chestnutBrown = CAPTURE;
     assert.deepEqual(CAPTURE.colors, { shaft: '#79502f', tip: '#e0b878', trail: '#a0784888' });
     assert.equal(CAPTURE.pending.stage, 'spread');
     assert.equal(CAPTURE.pending.lines.filter((line) => line.color === CAPTURE.colors.shaft).length, 5);
     assert.equal(CAPTURE.pending.lines.filter((line) => line.color === CAPTURE.colors.trail).length, 5);
-    assert.equal(CAPTURE.pending.tips.length, 5);
-    assert.ok(CAPTURE.pending.tips.every((tip) => tip.color === CAPTURE.colors.tip));
+    assert.equal(CAPTURE.pending.tips.length, 6);
+    const SHADOWS = CAPTURE.pending.tips.filter((ellipse) => ellipse.color === '#55452433'),
+        TIPS = CAPTURE.pending.tips.filter((ellipse) => ellipse.color === CAPTURE.colors.tip);
+    assert.equal(SHADOWS.length, 1);
+    assert.equal(TIPS.length, 5);
+    assert.ok(Math.abs(SHADOWS[0].rx - 0.14 * CAPTURE.pending.scale) < 1e-9);
+    assert.ok(Math.abs(SHADOWS[0].ry - 0.1 * CAPTURE.pending.scale * 0.62) < 1e-9);
+    assert.ok(
+        TIPS.every(
+            (tip) =>
+                Number.isFinite(tip.x) &&
+                Number.isFinite(tip.y) &&
+                Math.abs(tip.rx - 0.045 * CAPTURE.pending.scale) < 1e-9 &&
+                Math.abs(tip.ry - 0.035 * CAPTURE.pending.scale) < 1e-9,
+        ),
+    );
     assert.ok(
         CAPTURE.pending.lines.every((line) => Number.isFinite(line.a.x) && Number.isFinite(line.b.x) && line.width > 0),
     );
-    REPORT.chestnutBrown = CAPTURE;
     await page.screenshot({ path: path.join(OUTPUT, 'chestnut-brown-spread.png') });
     REPORT.checks.push(
         'Actual T6 chestnut five-shard flight uses shared brown shaft/tip/trail palette; native draws forwarded unchanged',
