@@ -350,7 +350,7 @@ function riceGrowthEffect(nodeId, rank) {
         case 'basic-2':
             return `최대 체력 +${rank * 4}% · 다음 런부터 적용`;
         case 'basic-3':
-            return `공격 속도 +${rank * 2}% · 후딜에 적용`;
+            return `공격 속도 +${rank * 2}% · 준비 시간은 고정, 타격·후딜 예산에 적용`;
         case 'specialty-1':
             return `적 잃은 체력 비율×최대 ${35 + rank * 8}%p 치명 보너스 · 합계 100% 상한`;
         case 'specialty-2':

@@ -27,7 +27,10 @@ const RATIOS = [null, [0.65], [0.25, 0.75], [0.25, 0.75], [0.25, 0.75], [0.15, 0
 // Repartition the verified legacy contact (2 ticks) plus recovery budget.
 // The active scythe window overlaps that budget instead of extending it.
 export function riceTiming(speed) {
-    const TOTAL = Math.ceil(13 / speed) + 2;
+    const RECOVERY = Math.ceil(13 / speed);
+    // With at most two recovery ticks, legacy recoil returns in one contact
+    // tick after the opening cycle. Keep that measured sustained cadence.
+    const TOTAL = RECOVERY + (RECOVERY <= 2 ? 1 : 2);
     const ACTIVE = Math.min(10, TOTAL - 1);
     return { activeTicks: ACTIVE, recoveryTicks: TOTAL - ACTIVE };
 }
@@ -54,7 +57,7 @@ export function riceBudgetMultiplier(tier, one, current) {
 export function riceShots(form, activeTicks = 10) {
     return RICE_WEIGHTS[form].map((weight, slot) => ({
         slot,
-        tick: Math.max(slot + 1, Math.min(activeTicks, Math.round(RATIOS[form][slot] * activeTicks))),
+        tick: Math.max(1, Math.min(activeTicks, Math.round(RATIOS[form][slot] * activeTicks))),
         weight,
         stage: STAGES[form][slot],
     }));
@@ -67,10 +70,7 @@ export function createRiceAttack(world, unit, action, commandSpeed = 1) {
     const R = BUILD.nodeRanks;
     const FORM = growthForAbility('rice-low-health-harvest').attackTier(BUILD, unit.tier);
     const C = world.createAttackContext(unit, { attackKind: ATTACK_KIND, attackMultiplier: 1 });
-    const SPEED = Math.min(
-        4,
-        Math.max(0.05, C.attackerStats.attackSpeed * commandSpeed * (1 + 0.02 * (R['basic-3'] || 0))),
-    );
+    const SPEED = Math.max(0.05, C.attackerStats.attackSpeed * commandSpeed * (1 + 0.02 * (R['basic-3'] || 0)));
     const INPUTS = { one: baseUnitStatsFor(1, 6).attackPower, current: baseUnitStatsFor(unit.tier, 6).attackPower };
     const TARGET = world.attackTarget(unit, action);
     const DX = (TARGET?.x ?? action.target.x) - unit.x,
@@ -303,7 +303,6 @@ export function isRiceAttackRecord(r) {
         r.form > r.tier ||
         !Number.isFinite(r.speed) ||
         r.speed < 0.05 ||
-        r.speed > 4 ||
         r.windupSeconds !== 0.28 ||
         r.durationSeconds !== riceTiming(r.speed).activeTicks / 20 ||
         r.recoverySeconds !== riceTiming(r.speed).recoveryTicks / 20 ||
