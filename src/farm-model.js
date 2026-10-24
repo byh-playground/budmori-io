@@ -1,3 +1,4 @@
+import { peanutRange } from './features/species-growth/peanut-attack.js';
 import {
     advanceChestnutAttacks,
     tryChestnutPeriodic,
@@ -530,6 +531,7 @@ class AttackCycle {
             !this.action.cornAttack &&
             !this.action.redbeanAttack &&
             !this.action.chestnutAttack &&
+            !this.action.peanutAttack &&
             !(sim.attackTarget(U, this.action)?.hp > 0)
         ) {
             this.interrupt();
@@ -615,6 +617,20 @@ const ATTACKING_BODY = (baseLocal) =>
             }
         }
     };
+// Mature peanut geometry is a pure function of its valid tier: authored body
+// metadata and size configuration are frozen. Preserve the original arithmetic
+// and apply the live giant scale only in the getters, never in this table.
+const PEANUT_MATURE_GEOMETRY = Object.freeze(
+    Array.from({ length: 6 }, (_, index) => {
+        const UNIT_LOCAL = { species: 4, tier: index + 1, growthElapsed: 1, growthDuration: 1 };
+        return Object.freeze({ radius: unitBodyRadius(UNIT_LOCAL), height: unitBodyHeight(UNIT_LOCAL) });
+    }),
+);
+function peanutMatureGeometry(unit) {
+    return unit.species === 4 && unit.mature && Number.isInteger(unit.tier) && unit.tier >= 1 && unit.tier <= 6
+        ? PEANUT_MATURE_GEOMETRY[unit.tier - 1]
+        : null;
+}
 const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
     constructor(id, species, tier, x, y) {
         super(x, y);
@@ -740,7 +756,7 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         return this.giantUntil > (this._world?.time ?? 0) ? 3 : 1;
     }
     get radius() {
-        return unitBodyRadius(this) * this.giantScale;
+        return (peanutMatureGeometry(this)?.radius ?? unitBodyRadius(this)) * this.giantScale;
     }
     get mature() {
         return this.growthElapsed >= this.growthDuration - 1e-9;
@@ -755,7 +771,7 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         return unitVectorScale(this) * this.giantScale;
     }
     get height() {
-        return unitBodyHeight(this) * this.giantScale;
+        return (peanutMatureGeometry(this)?.height ?? unitBodyHeight(this)) * this.giantScale;
     }
     get bodyHeight() {
         return unitTorsoHeight(this) * this.giantScale;
@@ -1793,7 +1809,9 @@ const GARDEN = class Garden {
         unit.specialAbility?.interrupt();
         unit.ability.resetCombatEffects?.();
         this.clearPeaRecoveryBoost(unit);
-        this.onCombatResolved.emit({ allyDeaths: unit.faction === 'player' && !unit.isFormationClone ? 1 : 0 });
+        this.onCombatResolved.emit({
+            allyDeaths: unit.faction === 'player' && !unit.isFormationClone && !unit.isBattleOnlySummon ? 1 : 0,
+        });
         this._syncUnitAliveCount(unit);
         if (!unit.isBattleOnlySummon) {
             this.markProgressChanged();
@@ -2467,7 +2485,8 @@ const GARDEN = class Garden {
         }
         T.fallen = 0;
         T.undyingUsed = new Set();
-        for (const UNIT_LOCAL of this.units) {
+        // Between floors residents are still benched; the field-only view is empty.
+        for (const UNIT_LOCAL of this.unitCollection.items) {
             if (!UNIT_LOCAL.isBattleOnlySummon) {
                 UNIT_LOCAL.splitUsedThisBattle = false;
                 UNIT_LOCAL.deathSplitHandled = false;
@@ -3607,7 +3626,7 @@ const GARDEN = class Garden {
             U.age += dt;
             const UNIT_STATS = STATS(U.tier, U.species);
             if (U.hp > 0 && UNIT_STATS.regen > 0) {
-                applyHealing(U, UNIT_STATS.regen * dt, UNIT_STATS);
+                applyHealing(U, UNIT_STATS.regen * dt, U.species === 4 ? undefined : UNIT_STATS);
             }
             if (!U.mature) {
                 progressTimersAdvanced = true;
@@ -4920,14 +4939,16 @@ const GARDEN = class Garden {
         // they never follow a rotating slot through its body to reach the opposite side.
         const BEHAVIOR = unitCapabilityComposition(u.species),
             STAND =
-                B_LOCAL.radius + (chestnutRange(this, u) ?? SPEC.range) + (u.species === 3 ? 0 : (u.tier - 1) * 0.12),
+                B_LOCAL.radius +
+                (chestnutRange(this, u) ?? peanutRange(this, u) ?? SPEC.range) +
+                (u.species === 3 ? 0 : (u.tier - 1) * 0.12),
             MIN = STAND - 0.55,
             MAX = STAND + BEHAVIOR.outerRangeSlack;
         if (N > MAX || (BEHAVIOR.retreatWithinRange && N < MIN)) {
             const SLOT = ARENA_GEOMETRY.clamp(
                 {
-                    x: B_LOCAL.x + (DX / N) * STAND,
-                    y: B_LOCAL.y + (DY / N) * STAND,
+                    x: B_LOCAL.x + (DX / N) * (STAND - (u.species === 4 ? 0.1 : 0)),
+                    y: B_LOCAL.y + (DY / N) * (STAND - (u.species === 4 ? 0.1 : 0)),
                 },
                 this.scene,
                 u.radius,

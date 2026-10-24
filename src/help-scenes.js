@@ -135,6 +135,7 @@ export function helpSceneById(id) {
             ...PEA_PREVIEW_SCENES,
             ...REDBEAN_PREVIEW_SCENES,
             ...CHESTNUT_PREVIEW_SCENES,
+            ...PEANUT_PREVIEW_SCENES,
         ].find((scene) => scene.id === id) ?? null
     );
 }
@@ -338,6 +339,56 @@ const CHESTNUT_PREVIEW_SCENES = Object.freeze(
                 prepare: '고정 훈련 표적 · 실제 가시 공격 준비',
                 flight: '실제 가시의 전개·교차·수렴과 고정 영역 충돌',
                 recover: '평타 후 회복 · 별도 주기 가시는 3초마다 발사',
+            },
+        });
+    }),
+);
+
+const PEANUT_PREVIEW_SCENES = Object.freeze(
+    Array.from({ length: 6 }, (_, index) => {
+        const TIER = index + 1;
+        return Object.freeze({
+            id: `peanut-t${TIER}`,
+            title: `땅콩 T${TIER} 공격 미리보기`,
+            seed: 731,
+            rate: 0.6,
+            durationMs: 9000,
+            timeline: [],
+            setup(world) {
+                world.resetUnits();
+                world.setWorkBasisPoints(0);
+                const BUILD = world.playerProgression.abilities['peanut-death-split'];
+                BUILD.masteryLevel = 50;
+                BUILD.nodeRanks = Object.fromEntries(
+                    Array.from({ length: TIER - 1 }, (_value, tierIndex) => [`evolution-${tierIndex + 2}`, 1]),
+                );
+                const UNIT = world.spawn(4, TIER, -7, 0);
+                UNIT.growth = 3;
+                UNIT.growthElapsed = UNIT.growthDuration;
+                world.startTower(1);
+                world.finishMarch();
+                world._benched.clear();
+                world._benchRevision++;
+                Object.assign(world.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
+                world.farmBossEvent.phase = 'fighting';
+                world.farmBossEvent.elapsed = 0;
+                UNIT.x = -(world.boss.radius + 1.35);
+                UNIT.y = 0;
+                UNIT.z = 0;
+                UNIT.dropLanded = true;
+                world._unitSpatialDirty = true;
+            },
+            step(world) {
+                return world.units[0]?.ability.phase === 'active'
+                    ? 'contact'
+                    : world.units[0]?.ability.phase === 'recover'
+                      ? 'recover'
+                      : 'prepare';
+            },
+            steps: {
+                prepare: '고정 훈련 표적 · 한 본체가 두 알 협공을 준비',
+                contact: '본체의 실제 두 알이 교대·교차·스윕 · 독립 분신 없음',
+                recover: '마지막 협공 후 회복 · 사망 분열은 별도이며 생존 협공과 구분',
             },
         });
     }),

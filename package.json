@@ -3,7 +3,6 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "build": "npm run check",
         "test": "node tests/smoke.e2e.mjs",
         "verify:upstream": "node scripts/gamekit-provenance.cjs refresh https://github.com/byh-playground/bloom-gamekit.git",
         "vector-assets:validate": "node scripts/vector-sources.cjs",
@@ -16,7 +15,10 @@
         "test:pea-growth:case": "node tests/pea-growth.e2e.mjs",
         "test:redbean-growth:case": "node tests/redbean-growth.e2e.mjs",
         "test:chestnut-growth:case": "node tests/chestnut-growth.e2e.mjs",
-        "check": "npm run format:check && npm run lint && node scripts/ability-reference.mjs --check && node --check src/bootstrap.js && node --check src/farm-app.js && node --check src/vector-sockets.js && node --check src/features/unit-body/definition.js"
+        "test:peanut-growth:case": "node tests/peanut-growth.e2e.mjs",
+        "test:peanut-performance": "node tests/peanut-performance.e2e.mjs",
+        "check": "npm run format:check && npm run lint && node scripts/ability-reference.mjs --check && node --check src/bootstrap.js && node --check src/farm-app.js && node --check src/vector-sockets.js && node --check src/features/unit-body/definition.js && node scripts/source-graph.mjs",
+        "test:source-smoke": "node tests/source-smoke.e2e.mjs"
     },
     "devDependencies": {
         "@eslint/js": "10.0.1",

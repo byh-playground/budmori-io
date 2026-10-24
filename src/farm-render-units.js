@@ -71,7 +71,7 @@ function unitMotion(u, sim, rest) {
         return 'landing';
     }
     if (PHASE === 'windup') {
-        return 'windup';
+        return unitAttackPresentation(u).windupMotion?.(u) || 'windup';
     }
     if (PHASE === 'active') {
         return unitAttackPresentation(u).activeMotion(u);
@@ -85,7 +85,13 @@ function motionElapsedMs(u, name, clip) {
     if (name === 'idle' || name === 'walk' || name === 'airborne') {
         return ((u.seed || 0) * 80) % clip.durationMs;
     }
-    if (name === 'windup' || name === 'fire' || name.startsWith('fire-') || name === 'recover') {
+    if (
+        name === 'windup' ||
+        name.startsWith('windup-') ||
+        name === 'fire' ||
+        name.startsWith('fire-') ||
+        name === 'recover'
+    ) {
         return clamp((u.ability?.elapsed || 0) * 1000, 0, clip.durationMs);
     }
     if (name === 'hit') {
@@ -246,10 +252,13 @@ export class UnitPresentation {
         const METADATA = RECORD.compiled.metadata,
             SWING = rest ? null : workSwing(u, sim),
             MOTION_NAME = SWING?.name || unitMotion(u, sim, rest),
-            CLIP = METADATA.clips[MOTION_NAME] || METADATA.clips.idle;
-        const CLIP_START_AT_MS = rest
-            ? 0
-            : this.renderer.displayTimeMs - (SWING ? SWING.elapsed : motionElapsedMs(u, MOTION_NAME, CLIP));
+            CLIP = METADATA.clips[MOTION_NAME] || METADATA.clips.idle,
+            PHASE_TIME_MS = !rest && !SWING ? unitAttackPresentation(u).clipElapsedMs?.(u, MOTION_NAME) : null,
+            HAS_PHASE_CLOCK = Number.isFinite(PHASE_TIME_MS);
+        const CLIP_START_AT_MS =
+            rest || HAS_PHASE_CLOCK
+                ? 0
+                : this.renderer.displayTimeMs - (SWING ? SWING.elapsed : motionElapsedMs(u, MOTION_NAME, CLIP));
         if (!player) {
             player = RECORD.asset.createPlayer({
                 clip: MOTION_NAME,
@@ -268,7 +277,13 @@ export class UnitPresentation {
         if (EXPRESSION !== player.currentExpression) {
             player.setExpression(EXPRESSION);
         }
-        player.seek(rest ? rest.elapsed * 1000 : this.renderer.displayTimeMs);
+        player.seek(
+            HAS_PHASE_CLOCK
+                ? clamp(PHASE_TIME_MS, 0, CLIP.durationMs)
+                : rest
+                  ? rest.elapsed * 1000
+                  : this.renderer.displayTimeMs,
+        );
         const [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox,
             GROUND = unitBodyDefinition(u.species).ground,
             SCALE = (2 * r) / Math.max(WIDTH, HEIGHT);

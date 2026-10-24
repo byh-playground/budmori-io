@@ -10,6 +10,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { sourceGraph } from '../scripts/source-graph.mjs';
 
 const BASE_COMMIT = '7b10214c2a1bdcf177581ca772da11dfcdf4b673',
     ROOT = fileURLToPath(new URL('../', import.meta.url)),
@@ -81,15 +82,24 @@ for (const FILE of ['index.html', 'src/bootstrap.js', 'src/game.js']) {
     BASE_FILES[FILE] = digest(ACTUAL);
 }
 const MANIFESTS = { base: manifest(ROOTS.base), candidate: manifest(ROOTS.candidate) },
+    CANDIDATE_SOURCE_GRAPH = sourceGraph(ROOTS.candidate),
     REPORT = {
         scope: 'Paired rendered rAF intervals in one CI Chromium SwiftShader process; no hardware GPU or physical-device FPS claim.',
         baseCommit: BASE_COMMIT,
         candidateCommit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim(),
         baseFiles: BASE_FILES,
+        candidateSourceGraph: CANDIDATE_SOURCE_GRAPH,
         builds: Object.fromEntries(
             Object.entries(MANIFESTS).map(([variant, build]) => [
                 variant,
-                { productVersion: build.productVersion, game: build.game, gamekitCommit: build.distCommit },
+                {
+                    productVersion: build.productVersion,
+                    game:
+                        variant === 'candidate'
+                            ? CANDIDATE_SOURCE_GRAPH.files.find((file) => file.file === build.game.file)
+                            : build.game,
+                    gamekitCommit: build.distCommit,
+                },
             ]),
         ),
         protocol: {
@@ -219,6 +229,16 @@ async function runScene(variant, viewport, round, origin) {
             ) {
                 throw new Error('Chestnut must be uninvested in both version fixtures');
             }
+            const PEANUT = WORLD.playerProgression.abilities['peanut-death-split'];
+            if (
+                build === 'base'
+                    ? PEANUT.powerLevel !== 0 ||
+                      PEANUT.treeVersion !== undefined ||
+                      Object.values(PEANUT.branchLevels || {}).some(Boolean)
+                    : PEANUT.treeVersion !== 1 || Object.keys(PEANUT.nodeRanks).length !== 0
+            ) {
+                throw new Error('Peanut must remain uninvested across its intended legacy-to-tree activation');
+            }
             for (let index = 0; index < 200; index++) {
                 const SPECIES = index < 60 ? 2 : [0, 1, 3, 4, 5, 6, 7, 8][(index - 60) % 8],
                     UNIT = WORLD.spawn(SPECIES, 6, 0, 0);
@@ -255,6 +275,12 @@ async function runScene(variant, viewport, round, origin) {
             OTHER_ABILITIES['chestnut-target-thorns'] = {
                 masteryLevel: CHESTNUT.masteryLevel,
                 masteryXp: CHESTNUT.masteryXp,
+                investedPoints: 0,
+            };
+            // Preserve the exact zero-investment semantics, not the intentionally changed tree representation.
+            OTHER_ABILITIES['peanut-death-split'] = {
+                masteryLevel: PEANUT.masteryLevel,
+                masteryXp: PEANUT.masteryXp,
                 investedPoints: 0,
             };
             return {

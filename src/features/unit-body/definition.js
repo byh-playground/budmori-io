@@ -2,7 +2,7 @@ import { WORLD_HEIGHT_PROJECTION, bossVectorScale as BOSS_VECTOR_SCALE } from '.
 
 // Neutral, named torso contours measured in the original SVG canvas, including
 // their authored round stroke. Hats, leaves, weapons, limbs and grade outlines
-// do not enlarge the body. Source identities are checked by the existing build.
+// do not enlarge the body. Source identities are checked against the original SVG assets.
 const AUTHORED_BODIES = [
     {
         species: 0,
@@ -92,7 +92,7 @@ const AUTHORED_BODIES = [
         species: 4,
         asset: 'assets/troops/peanut.svg',
         shapeId: 'peanut-pod-outline',
-        sourceSha256: '79c2dc3bdb2f576662fd620b8b1be8795a33399fdfe42e527e8e8eeaae782c84',
+        sourceSha256: '5cc6811a0045bee6282b5f3b32aabc2c1021824d9c147bd84a9464e7a84e3003',
         viewBox: [0.0, 0.0, 320.0, 300.0],
         bounds: {
             left: 101.3125,

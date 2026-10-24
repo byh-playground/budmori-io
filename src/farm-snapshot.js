@@ -285,6 +285,7 @@ const ATTACK = FIELDS(
         cornAttack: CORN_ACTION,
         peaAttack: JSON_PAYLOAD,
         redbeanAttack: JSON_PAYLOAD,
+        peanutAttack: JSON_PAYLOAD,
         chestnutAttack: JSON_PAYLOAD,
     },
 );

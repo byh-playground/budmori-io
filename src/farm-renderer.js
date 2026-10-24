@@ -473,7 +473,7 @@ const DIORAMA = class Diorama {
     // it stays there a moment when the troops come back out; inside, it rests on the hall.
     directCamera(sim2, now) {
         if (
-            [0, 2, 3].includes(this.attackPreviewSpecies) &&
+            [0, 2, 3, 4].includes(this.attackPreviewSpecies) &&
             sim2.units.length === 1 &&
             sim2.units[0].species === this.attackPreviewSpecies
         ) {
@@ -535,6 +535,10 @@ const DIORAMA = class Diorama {
             this.fitJumpPreview(world);
             return;
         }
+        if (this.attackPreviewSpecies === 4) {
+            this.fitPeanutPreview(world);
+            return;
+        }
         const UNIT = world.units[0],
             BODY = unitBodyDefinition(UNIT.species),
             BASE = this.scenePresentation.cameraView(this.aspect),
@@ -550,6 +554,28 @@ const DIORAMA = class Diorama {
                 this.baseY() -
                 (this.canvas.height * 0.76) / this.scale -
                 FOCUS_Y * WORLD_DEPTH_PROJECTION;
+        this.panLimits.minX = Math.min(this.panLimits.minX, PAN_X);
+        this.panLimits.maxX = Math.max(this.panLimits.maxX, PAN_X);
+        this.panLimits.minY = Math.min(this.panLimits.minY, PAN_Y);
+        this.panLimits.maxY = Math.max(this.panLimits.maxY, PAN_Y);
+        this.setPan(PAN_X, PAN_Y);
+    }
+    fitPeanutPreview(world) {
+        const UNIT = world.units[0],
+            BODY = unitBodyDefinition(UNIT.species),
+            BASE = this.scenePresentation.cameraView(this.aspect),
+            ART = UNIT.bodyScale * Math.max(BODY.viewBox[2], BODY.viewBox[3]),
+            // Both source kernels, the opened shell and the grounded feet fit
+            // the authored canvas. Reserve the complete canvas, not just the pod.
+            SCALE = Math.min((124 * this.pixelRatio) / ART, (this.canvas.height - 24 * this.pixelRatio) / ART);
+        this.zoom = (2 * BASE[0] * SCALE) / this.canvas.width;
+        this.configure(this.scene, true);
+        const PAN_X = (this.canvas.width * 0.4) / this.scale - UNIT.x - this.view[0],
+            PAN_Y =
+                this.view[1] -
+                this.baseY() -
+                (this.canvas.height - 18 * this.pixelRatio) / this.scale -
+                UNIT.y * WORLD_DEPTH_PROJECTION;
         this.panLimits.minX = Math.min(this.panLimits.minX, PAN_X);
         this.panLimits.maxX = Math.max(this.panLimits.maxX, PAN_X);
         this.panLimits.minY = Math.min(this.panLimits.minY, PAN_Y);

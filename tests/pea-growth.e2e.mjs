@@ -7,7 +7,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-import { unitBodyDefinition } from '../src/features/unit-body/definition.cjs';
+import { unitBodyDefinition } from '../src/features/unit-body/definition.js';
 
 const CASE = process.argv[2] || 'ui',
     VIEWPORT = process.argv[3] || 'desktop',
@@ -841,7 +841,7 @@ try {
             WORLD.markProgressChanged();
             BUDMORI.storage.save(WORLD);
         });
-        await activate(PAGE.locator('[data-ability-species="4"]'), MOBILE);
+        await activate(PAGE.locator('[data-ability-species="5"]'), MOBILE);
         assert.equal(await PAGE.locator('[data-growth-tree]').count(), 0, 'unreleased species keeps its legacy tree');
         await activate(PAGE.locator('[data-ability-species="0"]'), MOBILE);
         assert.match(await PAGE.locator('[data-growth-wallet]').textContent(), /총\s*50P/);

@@ -20,24 +20,24 @@
 
 ## 실행과 검증
 
-Node.js와 Microsoft Edge가 필요합니다.
+실행은 저장소 루트를 제공하는 정적 서버와 WebGL 브라우저만 필요합니다. 아래 Node.js 도구는 선택적인 검증용이며 제품 파일을 생성하지 않습니다.
 
 ```sh
 npm ci
-npm run build
+npm run check
 node scripts/gamekit-provenance.cjs
 npm test
 npm run test:breed-allocation
 npm run test:corn-growth
 ```
 
-정적 서버로 저장소 루트를 열면 실행됩니다. `index.html`, `src/bootstrap.js`, 빌드된 `src/game.js`가 제품 진입점입니다. 빌드는 농장 소스와 GameKit 컴파일 SVG를 번들로 만들고 바이트 수·SHA256·SRI manifest를 갱신합니다. GameKit은 `gamekit-lock.json`의 불변 CDN ESM을 검증 후 로드합니다.
+정적 서버로 저장소 루트를 열면 `index.html` → `src/bootstrap.js` → `src/farm-app.js`와 그 원본 ES 모듈을 직접 실행합니다. 별도 번들·concat·생성 산출물 배포 단계는 없습니다. GameKit은 `gamekit-lock.json`의 불변 CDN ESM을 검증 후 로드합니다. 기존 `src/game.js`는 제품 진입점이나 검증 후보가 아닙니다.
 
-`assets/troops/`와 `assets/bosses/`의 SVG가 각 캐릭터 벡터 아트, 클립, 표정, 소켓의 단일 원본입니다. `npm run vector-assets:compile`은 고정 GameKit 컴파일러로 SVG를 검증하고 메시를 생성하며, `npm run build`는 이를 제품 번들에 포함합니다. GameKit의 native `play`, `setExpression`, `seek`, `getSocket`, `draw` API를 사용하고 모든 캐릭터를 공통 `PresentationRuntime` 표시 시각에 맞춥니다. 수동 얼굴 그리기나 SVG 옆 모션 sidecar는 사용하지 않습니다.
+`assets/troops/`와 `assets/bosses/`의 SVG가 각 캐릭터 벡터 아트, 클립, 표정, 소켓의 단일 원본입니다. 고정 GameKit SVG 로더가 원본을 읽어 실행 메모리에서 메시를 만들며, 저장소 파일을 재작성하거나 배포용 메시를 생성하지 않습니다. `npm run check`는 원본 import graph와 자산 무결성을 읽기 전용으로 확인합니다. GameKit의 native `play`, `setExpression`, `seek`, `getSocket`, `draw` API를 사용하고 모든 캐릭터를 공통 `PresentationRuntime` 표시 시각에 맞춥니다. 수동 얼굴 그리기나 SVG 옆 모션 sidecar는 사용하지 않습니다.
 
 병력의 충돌 반경·높이와 표시 배율은 원본의 이름 있는 몸통 외곽선·지면 소켓을 공유합니다. 옥수수 낟알은 발사 순간 몸통 높이의 20%이며, 최소 표시 픽셀은 충돌 크기에 영향을 주지 않습니다. 측정 기준과 저장 호환성은 [몸 크기와 투사체 크기](docs/unit-body-dimensions.md)에 정리했습니다.
 
-기본 PR CI는 `npm ci`와 `npm run build`를 실행해 SVG 원본·제품 번들을 확인합니다. 빠른 피드백을 목표로 하며 1분 내외는 아직 측정하지 않은 목표입니다. 브라우저 스모크 테스트(`tests/smoke.e2e.mjs`)는 필요할 때 `npm test`로 실행하며, 게임 라이브러리를 `vendor/upstream`에서 받아 오프라인으로 돌고 약 70초 걸립니다. 번식 몫 UI 변경 PR은 별도 UI 시나리오와 기존 스모크도 검사하며, `npm run test:breed-allocation`으로 따로 실행할 수 있습니다. 옥수수 성장 흐름은 `npm run test:corn-growth`로 구매·초기화·실제 형태 미리보기·저장 복원·런 잠금을 검증하고 `tests/output/corn-growth/`에 프레임과 보고서를 남깁니다. 각 브라우저 검증 명령은180초 이내로 실행합니다. 콩의 동일 사용자 흐름은 `npm run test:pea-growth:case -- ui desktop` (또는 `previews`/`battle`, `mobile`/`landscape`)로 실행하며 `tests/output/pea-growth/`에 기록합니다. 팥은 `npm run test:redbean-growth:case -- ui desktop`으로 실행하며 `previews-low`/`previews-high`/`battle`/`battle-extra`/`continuity`/`migration` 사용자 흐름을 각각180초 이내로 검사합니다. 네 종의 브라우저 작업은 병종·뷰포트별로 분리되어 기존 검증을 생략하지 않습니다. 밤톨은 `npm run test:chestnut-growth:case -- ui desktop` 및 팥과 같은7개 사용자 흐름으로 실제 가시·경로·저장·분열을 검증합니다. 모바일은 Chromium 터치 에뮬레이션이며 실제 기기 검증과 구분합니다.
+기본 PR CI는 검증 도구 준비 후 `npm run check`와 공통 시작 smoke만 실행합니다. 병종별 사용자 흐름과 성능 검사는 필요할 때 workflow_dispatch 또는 PR의 `verify-gameplay` 라벨로 명시적으로 실행하며, 자동으로 매 변경마다 전체 행렬을 실행하지 않습니다. skipped 작업은 통과로 세지 않습니다. 브라우저 스모크 테스트(`tests/smoke.e2e.mjs`)는 필요할 때 `npm test`로 실행하며, 게임 라이브러리를 `vendor/upstream`에서 받아 오프라인으로 돌고 약 70초 걸립니다. 필요한 변경에서는 번식 몫 UI 시나리오와 기존 전체 스모크도 검사하며, `npm run test:breed-allocation`으로 따로 실행할 수 있습니다. 옥수수 성장 흐름은 `npm run test:corn-growth`로 구매·초기화·실제 형태 미리보기·저장 복원·런 잠금을 검증하고 `tests/output/corn-growth/`에 프레임과 보고서를 남깁니다. 각 브라우저 검증 명령은180초 이내로 실행합니다. 콩의 동일 사용자 흐름은 `npm run test:pea-growth:case -- ui desktop` (또는 `previews`/`battle`, `mobile`/`landscape`)로 실행하며 `tests/output/pea-growth/`에 기록합니다. 팥은 `npm run test:redbean-growth:case -- ui desktop`으로 실행하며 `previews-low`/`previews-high`/`battle`/`battle-extra`/`continuity`/`migration` 사용자 흐름을 각각180초 이내로 검사합니다. 다섯 종의 브라우저 작업은 병종·뷰포트별로 분리되어 기존 검증을 생략하지 않습니다. 밤톨은 `npm run test:chestnut-growth:case -- ui desktop` 및 팥과 같은7개 사용자 흐름으로 실제 가시·경로·저장·분열을 검증합니다. 땅콩은 `npm run test:peanut-growth:case -- ui desktop` 및 같은7개 사용자 흐름으로 한 본체의 실제 두 알 동작·사망 분열·저장 복원을 검사합니다. 별도 `PEANUT_PERFORMANCE_BASE_ROOT=/path/to/0.34.0 npm run test:peanut-performance`는 정확한0.34.0 기준본과 최대200 영구 유닛·실제 분열체2마리 장면을 세 번 교대 비교합니다. 모바일은 Chromium 터치 에뮬레이션이며 실제 기기 검증과 구분합니다.
 
 ## 농장
 
@@ -48,7 +48,7 @@ npm run test:corn-growth
 
 ## 자동 군단전
 
-병종은 완두콩·옥수수·팥·밤톨·땅콩·호두입니다. 땅콩은 한 개체로 남아 두 알이 정해진 두 타격 슬롯에서 각각 기본 공격력의 절반으로 협공하고, 호두는 망치로 한 번 내려찍습니다. 두 공격의 피해는 기존 등급 스탯에서 파생해 공통 전투 대상 처리기로 전달됩니다.
+병종은 완두콩·옥수수·팥·밤톨·땅콩·호두입니다. 땅콩은 한 개체·한 체력으로 남아 두 알이 T1 교대 두 타부터 T6 전개·스윕·중앙 찍기 다섯 타까지 협공하며, 연구 형태는 실제 합성 등급을 넘지 않습니다. 각 공격의 슬롯 비중 합계는100%이고 사망 시 별도의 T1 분열체 두 마리가 생깁니다. 분열체는 부모 성장을 다시 적용하거나 재분열·영구 보유·번식·합성하지 않습니다. 호두는 망치로 한 번 내려찍습니다. 두 공격의 피해는 기존 등급 스탯에서 파생해 공통 전투 대상 처리기로 전달됩니다.
 
 농장의 탑 오르기 버튼을 누르면 1층부터 시작하고, 보스가 농장 한가운데로 떨어지며 병력은 모두 대기합니다. 병력은 투입 순서(병종 카드, 누른 병종이 맨 앞)대로 0.1초마다 한 마리씩 사방에서 자동 투입되어 싸웁니다(탑 오르기를 누르면 뜨는 출전 순서 창에서 카드 두 장을 눌러 자리를 바꿔 정하고, 전투 중에는 카드를 눌러 그 병종을 맨 앞으로 보냅니다). 층이 n층이면 보스 HP는 `200 × 1.5^(n−1)`, 공격력은 `4 × 1.2^(n−1)`, 승리 XP는 `round(20 × 1.2^(n−1))`입니다. 층을 깨면 문 둘(전투·정예·쉼터·유물 중, 쉼터는 잠든 병력이 있을 때만, 유물은 얻을 수 있을 때만)을 고르고, 5층마다 중간 보스가 단독으로 막습니다. 정예는 HP ×1.6·공격 ×1.25에 보상 ×2, 중간 보스는 HP ×2.2·공격 ×1.4에 보상 ×3이며 둘 다 패턴이 일찍 열립니다. 쓰러진 병력은 등급(최대 3)만큼의 층 동안 잠들고 쉼터에서 모두 깹니다. 보상은 이전 최고 층보다 높은 층을 처음 깰 때만 줍니다. 최고 층은 저장되고, 61층이 꼭대기입니다(모든 수치는 임시 값). 보스는 체력이 75%·60%·50%·40% 아래로 내려가면 패턴이 하나씩 늘어납니다. 제한 시간(90초 + 단계마다 10초)이 지나면 격노해 피해 2배, 패턴 대기 절반이 됩니다. 패배는 병력이 모두 쓰러지거나 후퇴할 때입니다. 전투는 한 번에 하나만 진행합니다.
 
@@ -76,7 +76,7 @@ npm run test:corn-growth
 
 ## 화면과 싱글 실행
 
-설정 `#/menu`에는 효과음을 두고, 업그보스전 안에 병종 특성 `#/abilities` 탭을 둡니다. [현재 병종 특성 효과 표](docs/ability-reference.md)는 제품 정의에서 생성하고 빌드에서 일치 여부를 확인합니다.
+설정 `#/menu`에는 효과음을 두고, 업그보스전 안에 병종 특성 `#/abilities` 탭을 둡니다. [현재 병종 특성 효과 표](docs/ability-reference.md)는 제품 정의에서 생성하고 정적 검사에서 일치 여부를 확인합니다.
 
 도움말 `#/help`, 농장 `#/farm`, 시작 `#/`는 화면·이력·F5와 동기화됩니다.
 
@@ -134,15 +134,15 @@ npm run test:corn-growth
 캐릭터 배포 리소스는 `assets/troops/*.svg`, `assets/bosses/*.svg` 원본만 사용합니다.
 부트스트랩이 manifest의 SHA-256/크기를 확인하고 GameKit `vector-assets-loader`로 시작 시 한 번 변환한 뒤 게임을 시작합니다.
 메시와 애니메이션은 세션 캐시에서 재사용하며 장면 전환·매 프레임에 다시 컴파일하지 않습니다.
-일반 병력은 `smallAsset`(곡선 분할 2, 선 끝 호 분할 2), 모든 거대 보스는 `standard`(4, 2) 품질로 별도 변환합니다. 밤톨 거대 보스는 기존 전용 SVG를 유지하고 나머지 종은 병력과 동일한 SVG 원본을 사용합니다.
+일반 병력은 `smallAsset`(곡선 분할 2, 선 끝 호 분할 2), 모든 거대 보스는 `standard`(4, 2) 품질로 별도 변환합니다. 보스는 떠 있는 손과 전용 소켓을 포함한 `assets/bosses/`의 원본 SVG를 직접 사용합니다. 병사 SVG로 대체하지 않습니다.
 생성 정점 배열/base64 메시를 `game.js` 또는 HTML에 내장하거나 생성 캐릭터 파일을 배포하지 않습니다.
-리소스 로딩 실패 시 시작을 막고 재시도 UI를 제공합니다. `npm run build`는 SVG 원본과 제품 manifest를 검증하며, 기본 Farm E2E는 실제 브라우저에서 게임 리소스가 로드되는 시작 흐름을 확인합니다.
+리소스 로딩 실패 시 시작을 막고 재시도 UI를 제공합니다. `npm run check`는 원본 모듈 graph와 SVG/manifest 기록을 검증하며, 기본 Farm E2E는 실제 브라우저에서 게임 리소스가 로드되는 시작 흐름을 확인합니다.
 
 자동 저장은 변경이 멈춘 뒤 1초, 계속 변경될 때는 최대 10초에 체크포인트를 저장합니다. 기존 타이머가 최신 마감 시각을 다시 확인해 매 틱 취소·재생성하지 않습니다. 스냅샷의 정규화·검증·저장 순서와 실패 시 기존 저장 보존은 유지합니다. 물리 스텝은 비직렬화 임시 배열을 재사용하되 시작 시점의 유닛 순서를 고정하며, 도중 생성된 유닛은 인덱스에 즉시 반영되고 다음 스텝부터 진행합니다.
 
 ### SVG 입·지면 좌표 계약
 
-모든 병종과 보스 SVG는 `mouth`와 `ground` socket을 명시합니다. `mouth`는 공격 표정의 입 중앙이며 `face-attack` part를 따르고, `ground`는 몸통이 움직여도 월드 그림자 기준을 고정하는 정적 canvas 좌표입니다. 원본 SVG transform은 컴파일 geometry에 이미 반영되므로 socket에 다시 적용하지 않습니다. 누락·잘못된 좌표는 빌드와 시작 시 asset/species를 포함한 오류로 중단하며 다른 병종이나 viewBox 값으로 대체하지 않습니다.
+모든 병종과 보스 SVG는 `mouth`와 `ground` socket을 명시합니다. `mouth`는 공격 표정의 입 중앙이며 `face-attack` part를 따르고, `ground`는 몸통이 움직여도 월드 그림자 기준을 고정하는 정적 canvas 좌표입니다. 원본 SVG transform은 컴파일 geometry에 이미 반영되므로 socket에 다시 적용하지 않습니다. 누락·잘못된 좌표는 원본 검증과 시작 시 asset/species를 포함한 오류로 중단하며 다른 병종이나 viewBox 값으로 대체하지 않습니다.
 
 시작에 한 번 읽은 compiled metadata와 native GameKit asset에서 모델·렌더가 같은 socket 계약을 사용합니다. 모델은 소환을 실제로 방출할 때만 별도 runtime player를 phase seek하여 애니메이션된 입을 읽습니다. 렌더의 소환도 동일 phase seek와 몸통 pose를 사용하며 이전 프레임의 crossfade나 피격 장식 변형에 의존하지 않습니다. 화면을 향한 보스 SVG의 가로축은 월드 x, 세로축은 기존 0.785 높이 투영으로 바꾸고 현재 보스 높이를 더합니다. 지면 기준은 애니메이션된 ground socket으로 흔들지 않습니다.
 
@@ -150,7 +150,7 @@ asset/player는 세션 runtime에만 보관하고 저장에 넣지 않습니다.
 
 ## 코드 규약 확인
 
-[코드 규약](docs/code-conventions.md)을 따릅니다. `npm run format`은 직접 작성한 소스·스크립트·기존 E2E·문서의 포맷을 적용하고, `npm run format:check`와 `npm run lint`는 파일을 고치지 않고 위반을 검사합니다. `npm run build`는 두 검사를 통과해야 기존 시작 검증·SVG 검증·번들을 생성합니다. vendor와 생성된 `src/game.js`는 직접 포맷하지 않습니다. 이 내부 이름·포맷 정리는 제품·저장 계약을 바꾸지 않아 버전 `0.8.0`을 유지합니다.
+[코드 규약](docs/code-conventions.md)을 따릅니다. `npm run format`은 직접 작성한 소스·스크립트·기존 E2E·문서의 포맷을 적용하고, `npm run format:check`와 `npm run lint`는 파일을 고치지 않고 위반을 검사합니다. `npm run check`는 두 검사와 원본 엔트리 검증을 실행하며 어떠한 제품 파일도 생성하지 않습니다. 고정 vendor와 사용하지 않는 과거 `src/game.js`는 직접 포맷하지 않습니다.
 
 ## 기능별 구조
 
