@@ -8,15 +8,17 @@ if (new URLSearchParams(location.search).get('showcaseDemo') !== '1') {
     LAUNCH.textContent = '▶ 소개 보기';
     LAUNCH.setAttribute('aria-label', '버드모리 플레이 소개 보기');
     START_BUTTON.insertAdjacentElement('afterend', LAUNCH);
-    let HOST = null;
-    let PENDING = null;
+    let hostInstance = null;
+    let pending = null;
     async function host() {
-        if (HOST) return HOST;
-        if (!PENDING) {
-            PENDING =
+        if (hostInstance) {
+            return hostInstance;
+        }
+        if (!pending) {
+            pending =
                 import('https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@401a056bc4323e03d95c5d947414fbc8e7383257/scenario.js')
                     .then(({ installShowcase }) => {
-                        HOST = installShowcase({
+                        hostInstance = installShowcase({
                             title: '버드모리',
                             launcher: '#newGame',
                             playSelector: '#newGame',
@@ -67,14 +69,14 @@ if (new URLSearchParams(location.search).get('showcaseDemo') !== '1') {
                             ],
                         });
                         LAUNCH.remove();
-                        return HOST;
+                        return hostInstance;
                     })
                     .catch((error) => {
-                        PENDING = null;
+                        pending = null;
                         throw error;
                     });
         }
-        return PENDING;
+        return pending;
     }
     async function open() {
         LAUNCH.disabled = true;
