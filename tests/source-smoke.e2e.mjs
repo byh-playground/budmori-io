@@ -724,7 +724,23 @@ try {
         WORLD._benched.clear();
         WORLD._benchRevision++;
         WORLD._unitSpatialDirty = true;
-        globalThis.__sharedSkills = { casts: [], hits: [], rendered: {} };
+        globalThis.__sharedSkills = { casts: [], hits: [], rendered: {}, recoveries: {} };
+        // Browser polls can skip an entire short recovery during catch-up. Observe every native step.
+        const STEP = WORLD.step;
+        WORLD.step = function (dt) {
+            const BEFORE = { x: this.boss.x, y: this.boss.y, serial: this.formationRuntime.bossCast?.serial },
+                RESULT = STEP.call(this, dt),
+                CAST = this.formationRuntime.bossCast;
+            if (CAST?.phase === 'recover' && BEFORE.serial === CAST.serial) {
+                const OBS = globalThis.__sharedSkills,
+                    RECOVERY = (OBS.recoveries[CAST.id] ||= { ticks: 0, stationary: true, patternsStopped: true });
+                RECOVERY.ticks++;
+                RECOVERY.stationary &&= this.boss.x === BEFORE.x && this.boss.y === BEFORE.y;
+                RECOVERY.patternsStopped &&=
+                    this.boss.patternRuntime.active === null && this.boss.chaseVx === 0 && this.boss.chaseVy === 0;
+            }
+            return RESULT;
+        };
         WORLD.onNotice.on((notice) => {
             const OBS = globalThis.__sharedSkills;
             if (notice.kind === 'formation-cast') {
@@ -829,6 +845,7 @@ try {
                         OBS = globalThis.__sharedSkills;
                     OBS.casts = [];
                     OBS.hits = [];
+                    OBS.recoveries = {};
                     WORLD.onCombatResolved.emit({ role, [KEY]: LIMIT - 1 });
                     if (SLOT.charge !== LIMIT - 1 || OTHER.charge !== 0) {
                         throw new Error('Combat contribution crossed roles or the exact threshold');
@@ -862,16 +879,6 @@ try {
                     { x: PREPARE.x, y: PREPARE.y, active: null, effects: 0 },
                     'prepare stops voluntary motion/patterns and does not release early',
                 );
-                if (ID === 'lightning') {
-                    await PAGE.evaluate(() => {
-                        BUDMORI.runtime.paused = true;
-                    });
-                    await CAPTURE_FRAME('boss-skill-prepare.jpg');
-                    await PAGE.evaluate(() => {
-                        BUDMORI.runtime.loop.resetTiming();
-                        BUDMORI.runtime.paused = false;
-                    });
-                }
             }
             await PAGE.waitForFunction(
                 ({ role, id }) => {
@@ -898,9 +905,7 @@ try {
                 () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
             );
             const FILE =
-                    ID === 'storm-cloud' || (ROLE === 'boss' && ID === 'ufo')
-                        ? `shared-skills-${ROLE}-${ID}.jpg`
-                        : null,
+                    ROLE === 'boss' && ['ufo', 'storm-cloud'].includes(ID) ? `shared-skills-${ROLE}-${ID}.jpg` : null,
                 CAPTURE_STARTED = Date.now();
             REPORT.pendingCase = {
                 role: ROLE,
@@ -932,6 +937,7 @@ try {
                             role === 'player'
                                 ? { radius: WORLD.boss.radius, height: WORLD.boss.height }
                                 : { radius: WORLD.units[0].radius, height: WORLD.units[0].height },
+                        recovery: globalThis.__sharedSkills.recoveries[id] || null,
                         bossCast: WORLD.formationRuntime.bossCast,
                         pattern: WORLD.boss.patternRuntime.active,
                     };
@@ -955,9 +961,21 @@ try {
                     );
                 }
             }
-            if (ROLE === 'boss' && ['meteor', 'meteor-shower'].includes(ID)) {
-                assert.equal(RESULT.bossCast.phase, 'recover');
-                assert.equal(RESULT.pattern, null, 'recovery suppresses physical patterns');
+            if (ROLE === 'boss') {
+                assert.ok(
+                    RESULT.recovery?.ticks >= 3,
+                    'each released skill traverses recovery on multiple actual simulation ticks',
+                );
+                assert.equal(
+                    RESULT.recovery.stationary,
+                    true,
+                    'recovery stops voluntary motion throughout the observed native ticks',
+                );
+                assert.equal(
+                    RESULT.recovery.patternsStopped,
+                    true,
+                    'recovery suppresses physical patterns throughout the observed native ticks',
+                );
             }
             if (ID === 'storm-cloud') {
                 assert.equal(RESULT.cloudDraw.role, ROLE);
