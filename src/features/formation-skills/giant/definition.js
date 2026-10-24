@@ -3,8 +3,8 @@ export const DEFINITION = Object.freeze({
     name: '거대화',
     condition: 'damageDealt',
     required: 200,
-    description: '아군 몸집 3배 · 20초 지속 · 공격력 3배 · 방어력 +100.',
-    upgradeAxis: '대상 수 3 → 5 → 8 (4레벨부터 8명)',
+    description: '20초 동안 아군의 몸집과 공격력이 3배가 되고 방어력이 100 올라요.',
+    upgradeAxis: '대상 3 → 5 → 8마리 (4레벨부터 8마리)',
     upgradeValues: Object.freeze([3, 5, 8]),
     durationSeconds: 20,
 });

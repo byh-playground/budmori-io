@@ -57,7 +57,7 @@ export const PASSIVE_CARDS = Object.freeze([
         id: 'last-stand',
         name: '배수진',
         values: [0.15, 0.24, 0.38],
-        text: (value) => `체력 50% 이하일 때 공격 +${PERCENT(value)}`,
+        text: (value) => `체력 50% 이하일 때 공격력 +${PERCENT(value)}`,
     },
     {
         id: 'resolve',
@@ -69,13 +69,13 @@ export const PASSIVE_CARDS = Object.freeze([
         id: 'vengeance',
         name: '복수',
         values: [0.03, 0.045, 0.07],
-        text: (value) => `아군이 쓰러질 때마다 공격 +${PERCENT(value)} (전투 동안, 최대 10회)`,
+        text: (value) => `아군이 쓰러질 때마다 공격력 +${PERCENT(value)} (전투 동안, 최대 10회)`,
     },
     {
         id: 'opening',
         name: '선제 공격',
         values: [0.4, 0.6, 0.9],
-        text: (value) => `전투 시작 후 ${PASSIVE_SETTINGS.openingSeconds}초간 공격 +${PERCENT(value)}`,
+        text: (value) => `전투 시작 후 ${PASSIVE_SETTINGS.openingSeconds}초간 공격력 +${PERCENT(value)}`,
     },
     {
         id: 'helper',
@@ -87,7 +87,7 @@ export const PASSIVE_CARDS = Object.freeze([
         id: 'undying',
         name: '불사',
         values: [0.05, 0.15, 0.3],
-        text: (value) => `유닛마다 전투에 한 번, 쓰러질 피해를 견디고 체력 ${PERCENT(value)}로 남음`,
+        text: (value) => `아군마다 전투당 한 번, 치명적인 피해를 견디고 체력 ${PERCENT(value)}로 남음`,
     },
 ]);
 

@@ -6,7 +6,7 @@ export const DEFINITION = Object.freeze({
     name: '뇌운',
     condition: 'hits',
     required: 75,
-    description: `${DURATION}초 동안 ${PULSE_INTERVAL}초마다 전기 아크 ${PULSE_DAMAGE} 피해 (${(DURATION / PULSE_INTERVAL) * PULSE_DAMAGE} 피해).`,
+    description: `${DURATION}초 동안 ${PULSE_INTERVAL}초마다 번개로 피해 ${PULSE_DAMAGE}을 줘요 (총 피해 ${(DURATION / PULSE_INTERVAL) * PULSE_DAMAGE}).`,
     upgradeAxis: '지속시간 +1초',
     pulseInterval: PULSE_INTERVAL,
     pulseDamage: PULSE_DAMAGE,

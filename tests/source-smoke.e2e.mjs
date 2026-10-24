@@ -358,6 +358,34 @@ try {
     assert.ok(REQUESTS.has(`${ORIGIN}/src/farm-app.js`), 'the browser loaded the native source app');
     assert.ok(![...REQUESTS].some((url) => new URL(url).pathname === '/src/game.js'), 'no generated bundle was used');
     assert.deepEqual(ERRORS, [], 'the source boot is free of page, console and network errors');
+    // A small real-UI copy check after the unchanged combat assertions, not a form matrix.
+    await PAGE.screenshot({ path: path.join(OUTPUT, 'mixed-combat.png'), fullPage: true });
+    await PAGE.locator('#upgradeMenu').click();
+    await PAGE.locator('#menuTabAbilities').click();
+    REPORT.wording = [];
+    for (const [SPECIES, TITLE] of [
+        [0, '연속 박치기'],
+        [8, '도리깨 공격과 방어 깨기'],
+        [5, '방어와 망치 반격'],
+    ]) {
+        await PAGE.locator(`[data-ability-species="${SPECIES}"]`).click();
+        const CARD = PAGE.locator('[data-growth-tree]');
+        await CARD.waitFor();
+        assert.equal(await CARD.locator('h3').textContent(), TITLE);
+        const TEXT = await CARD.innerText();
+        assert.doesNotMatch(TEXT, /RAW|예산|슬롯|스윕|공속|후딜|런/);
+        if (SPECIES === 5) {
+            assert.match(TEXT, /기본 공격 총피해의 3배/);
+        }
+        await CARD.locator('h3').scrollIntoViewIfNeeded();
+        const FILE = `wording-${SPECIES}.png`;
+        await PAGE.screenshot({ path: path.join(OUTPUT, FILE), fullPage: true });
+        REPORT.wording.push({ species: SPECIES, title: TITLE, screenshot: FILE });
+    }
+    await PAGE.setViewportSize({ width: 390, height: 844 });
+    await PAGE.locator('[data-growth-node="specialty-2"]').scrollIntoViewIfNeeded();
+    await PAGE.screenshot({ path: path.join(OUTPUT, 'wording-walnut-mobile.png'), fullPage: true });
+    assert.deepEqual(ERRORS, [], 'the representative growth menus remain free of runtime errors');
     REPORT.status = 'passed';
     REPORT.state = STATE;
     console.log(

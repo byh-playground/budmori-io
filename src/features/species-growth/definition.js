@@ -12,14 +12,14 @@ export const SPECIES_GROWTH_DEFINITIONS = Object.freeze(
             id === 1
                 ? {
                       available: true,
-                      basic: ['평타 위력', '부착 폭발 위력', '공격 속도'],
-                      specialty: ['연쇄 가열', '마무리 파열', '추가 알'],
+                      basic: ['기본 공격 위력', '부착 폭발 위력', '공격 속도'],
+                      specialty: ['연쇄 폭발 강화', '마지막 폭발', '추가 알'],
                   }
                 : id === 0
                   ? {
                         available: true,
-                        basic: ['박치기 위력', '첫 재돌진 위력', '후딜 감소'],
-                        specialty: ['재접근 가속', '첫 충돌', '마지막 충돌'],
+                        basic: ['박치기 위력', '밀려난 뒤 공격 강화', '공격 후 대기 감소'],
+                        specialty: ['빠른 복귀', '첫 충돌', '마지막 충돌'],
                     }
                   : id === 2
                     ? {
@@ -31,37 +31,37 @@ export const SPECIES_GROWTH_DEFINITIONS = Object.freeze(
                       ? {
                             available: true,
                             basic: ['가시 위력', '최대 체력', '공격 속도'],
-                            specialty: ['가시 밀도', '가시 사거리', '집중 마무리'],
+                            specialty: ['가시 추가', '가시 사거리', '마지막 가시'],
                         }
                       : id === 4
                         ? {
                               available: true,
                               basic: ['협공 위력', '최대 체력', '공격 속도'],
-                              specialty: ['협공 범위', '중앙 마무리', '분열체 강화'],
+                              specialty: ['협공 범위', '마지막 협공', '분열체 강화'],
                           }
                         : id === 5
                           ? {
                                 available: true,
                                 basic: ['망치 위력', '최대 체력', '공격 속도'],
-                                specialty: ['방어력', '저장 피해 전환', '강타 위력'],
+                                specialty: ['방어력', '반격 피해', '마지막 망치'],
                             }
                           : id === 6
                             ? {
                                   available: true,
                                   basic: ['낫 위력', '최대 체력', '공격 속도'],
-                                  specialty: ['수확 치명', '낫 범위', '마지막 수확'],
+                                  specialty: ['치명타 확률', '낫 범위', '마지막 낫베기'],
                               }
                             : id === 7
                               ? {
                                     available: true,
                                     basic: ['지휘봉 위력', '최대 체력', '공격 속도'],
-                                    specialty: ['지휘 공속', '지휘 반경', '마무리 강세'],
+                                    specialty: ['지휘 공격 속도', '지휘 반경', '마지막 지휘봉'],
                                 }
                               : id === 8
                                 ? {
                                       available: true,
                                       basic: ['도리깨 위력', '최대 체력', '공격 속도'],
-                                      specialty: ['방어 파쇄', '파쇄 지속', '마무리 강타'],
+                                      specialty: ['방어 감소', '방어 감소 시간', '마지막 도리깨'],
                                   }
                                 : {},
         ),

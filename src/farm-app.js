@@ -94,7 +94,7 @@ function rewardReceiptSummary(reward) {
     }
     if (reward.status === 'calculating') {
         const DONE = reward.calculation?.jobState?.processedTrials ?? 0;
-        return '보상 상자 계산 중 (' + DONE + '/' + reward.boxCount + ')';
+        return '보상 준비 중 (' + DONE + '/' + reward.boxCount + ')';
     }
     const ACQUIRED = reward.acquiredCount ?? reward.successCount ?? 0,
         PLACED = reward.placedCount ?? reward.grantedCount ?? 0,
@@ -115,7 +115,7 @@ function bossRewardSummary(reward) {
     }
     if (reward.status === 'calculating') {
         const DONE = reward.calculation?.jobState?.processedTrials ?? 0;
-        return '보상 상자 계산 중 (' + DONE + '/' + reward.boxCount + ')';
+        return '보상 준비 중 (' + DONE + '/' + reward.boxCount + ')';
     }
     const ACQUIRED = reward.acquiredCount ?? reward.successCount ?? 0,
         PLACED = reward.placedCount ?? reward.grantedCount ?? 0,
@@ -171,10 +171,10 @@ function renderBossRewardBoxes(receipt) {
                   '% (편성 반영 ' +
                   Math.round(receipt.chance * 100) +
                   '%)'
-                : '이미 확정된 보상 합계';
+                : '획득한 보상 합계';
     DOLLAR('bossRewardTotals').textContent =
         receipt.status === 'calculating'
-            ? '추첨 계산 ' + PROCESSED + '/' + COUNT
+            ? '보상 준비 ' + PROCESSED + '/' + COUNT
             : [bossRewardMasteryLine(receipt), '현재 합계 ' + CUMULATIVE + '마리 · ' + bossRewardSummary(receipt)]
                   .filter(Boolean)
                   .join('\n');
@@ -362,7 +362,7 @@ function syncBossRewardDialog(world, { receiptKey = null } = {}) {
         stopBossRewardCalculation();
         return;
     }
-    BUTTON.textContent = RECEIPT.status === 'calculating' ? '보상 계산 중…' : '보상 상자 열기';
+    BUTTON.textContent = RECEIPT.status === 'calculating' ? '보상 준비 중…' : '보상 상자 열기';
     // A reward that was already fully opened (every box revealed, e.g. after a reload) is not shown again.
     if (
         RECEIPT.status === 'ready' &&
@@ -436,7 +436,7 @@ DOLLAR('exportDiagnostics').onclick = () => {
     TEXT.hidden = false;
     TEXT.focus();
     TEXT.select();
-    DOLLAR('diagnosticStatus').textContent = '명시적으로 요청한 상세 JSON이에요. 저장 데이터는 포함하지 않아요.';
+    DOLLAR('diagnosticStatus').textContent = '상세 진단 정보예요. 저장 데이터는 포함하지 않아요.';
 };
 const FAIL = (error) => {
     DOLLAR('error').hidden = false;
@@ -658,13 +658,13 @@ install(new Garden());
 active.paused = true;
 function raidStartBlockReason() {
     if (!personalGarden) {
-        return '내 정원에서만 보스에 도전할 수 있어요.';
+        return '농장에서만 보스에 도전할 수 있어요.';
     }
     if (personalGarden.farmBossEvent?.phase !== 'idle') {
         return '이미 전투 중이에요.';
     }
     if (!personalGarden.units.some((unit) => !unit.isBattleOnlySummon && unit.hp > 0)) {
-        return '싸울 유닛이 없어요. 유닛을 먼저 키워 주세요.';
+        return '싸울 병력이 없어요. 먼저 모리를 키워 주세요.';
     }
     return '';
 }
@@ -933,7 +933,7 @@ DOLLAR('saveFile').onchange = async () => {
         const { validateSave: VALIDATE_SAVE } = await import('./farm-storage.js');
         VALIDATE_SAVE(TEXT);
         imported = TEXT;
-        DOLLAR('importConfirmText').textContent = '현재 형식의 저장 데이터로 진행 상태를 바꿀까요?';
+        DOLLAR('importConfirmText').textContent = '선택한 파일로 현재 저장을 바꿀까요?';
         DOLLAR('confirmImport').textContent = '이 저장 불러오기';
         DOLLAR('importConfirm').hidden = false;
     } catch (e) {
@@ -1168,14 +1168,14 @@ function mountGrowthPreview(species, tier) {
         return;
     }
     const FRAME = document.createElement('iframe');
-    FRAME.title = `${{ pea: '콩', corn: '옥수수', redbean: '팥', chestnut: '밤톨', peanut: '땅콩', walnut: '호두', rice: '쌀', wheat: '밀', barley: '보리' }[species]} T${tier} 실제 공격 미리보기`;
+    FRAME.title = `${{ pea: '콩', corn: '옥수수', redbean: '팥', chestnut: '밤톨', peanut: '땅콩', walnut: '호두', rice: '쌀', wheat: '밀', barley: '보리' }[species]} T${tier} 공격 미리보기`;
     FRAME.src = new URL(`?help=${species}-t${tier}`, location.href).href.split('#')[0];
     HOST.replaceChildren(FRAME);
     for (const BUTTON of DOLLAR('abilityNodes').querySelectorAll('[data-growth-preview-tier]')) {
         BUTTON.setAttribute('aria-pressed', String(Number(BUTTON.dataset.growthPreviewTier) === tier));
     }
     DOLLAR('abilityNodes').querySelector('[data-growth-preview-caption]').textContent =
-        `T${tier} · 실제 공격 0.6배속 · 같은 단계를 누르면 다시 재생`;
+        `T${tier} · 공격 미리보기 0.6배속 · 같은 단계를 누르면 다시 재생`;
 }
 function drawAbilityTree() {
     stopGrowthPreview();
@@ -1508,7 +1508,7 @@ const NEXT_FLOOR_TEXT = {
 };
 function statDoorCard(door, cards, index) {
     const CARD = statCard(door.id);
-    return `<button type="button" class="door door--stat door--rarity-${door.rarity}" data-door="${index}"><b>${CARD.name} ${statCardText(CARD, door.rarity)}</b><small>${RARITY_NAMES[door.rarity]} · 모든 유닛 · ${cardStacks(cards, door.id)}/${TOWER_RUN_SETTINGS.cardCap}장</small></button>`;
+    return `<button type="button" class="door door--stat door--rarity-${door.rarity}" data-door="${index}"><b>${CARD.name} ${statCardText(CARD, door.rarity)}</b><small>${RARITY_NAMES[door.rarity]} · 모든 아군 · ${cardStacks(cards, door.id)}/${TOWER_RUN_SETTINGS.cardCap}장</small></button>`;
 }
 function passiveDoorCard(door, cards, index) {
     const CARD = passiveCard(door.id);
@@ -1518,7 +1518,7 @@ function skillDoorCard(tower, door, index) {
     const DEFINITION = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === door.id),
         LEVEL = tower.relics.get(door.id) || 0,
         VALUE = Math.round(formationUpgradeValue(DEFINITION, LEVEL + 1) * 10) / 10,
-        GAIN = LEVEL ? `Lv.${LEVEL} → ${LEVEL + 1}` : '새 스킬';
+        GAIN = LEVEL ? `Lv.${LEVEL} → ${LEVEL + 1}` : '새 기술';
     return `<button type="button" class="door door--skill" data-door="${index}"><b>${RELIC_ICONS[door.id]} ${DEFINITION.name}</b><small>${GAIN} · ${DEFINITION.description || ''}${LEVEL ? ` (→ ${VALUE}${DEFINITION.upgradeUnit})` : ''}</small></button>`;
 }
 function eventDoorCard(door, index) {

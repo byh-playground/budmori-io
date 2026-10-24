@@ -3,7 +3,8 @@ export const DEFINITION = Object.freeze({
     name: '복사',
     condition: 'hits',
     required: 100,
-    description: '가장 밀집한 원본 아군을 복사. 복사체 체력은 1이며 전투 종료까지 생존.',
+    description:
+        '아군이 가장 많이 모인 곳에 분신을 만들어요. 분신의 체력은 1이며, 전투가 끝나면 사라져요. 소환된 아군은 복사하지 않아요.',
     upgradeAxis: '반경 ×1.5',
     upgradeBase: 3,
     upgradeFactor: 1.5,
