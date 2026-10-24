@@ -183,6 +183,33 @@ try {
                 trace: [],
                 initialHp: WORLD.boss.hp,
             };
+            const NATIVE_FRAMES = new WeakMap();
+            import('./src/features/unit-attacks/rice/presentation.js').then(
+                ({ RiceAttackPresentation: presentation }) => {
+                    const CONTACT = presentation.prototype.drawContact;
+                    presentation.prototype.drawContact = function (renderer, unit, player, matrix) {
+                        const RESULT = CONTACT.call(this, renderer, unit, player, matrix),
+                            TIP = player.getSocket('weapon-tip'),
+                            GROUND = player.getSocket('ground');
+                        // This callback receives the exact matrix immediately after
+                        // the live native player.draw, not a reconstructed expected pose.
+                        NATIVE_FRAMES.set(player, {
+                            tip: {
+                                x: matrix[0] * TIP.x + matrix[2] * TIP.y + matrix[4],
+                                y: matrix[1] * TIP.x + matrix[3] * TIP.y + matrix[5],
+                            },
+                            ground: {
+                                x: matrix[0] * GROUND.x + matrix[2] * GROUND.y + matrix[4],
+                                y: matrix[1] * GROUND.x + matrix[3] * GROUND.y + matrix[5],
+                            },
+                            root: renderer.project(unit.x, unit.y, 0),
+                            displayPosition: { x: unit.x, y: unit.y },
+                            matrix: [...matrix],
+                        });
+                        return RESULT;
+                    };
+                },
+            );
             RENDERER.render = function (...args) {
                 const RESULT = RENDER.apply(this, args),
                     STATE = globalThis.__riceMotion,
@@ -211,7 +238,7 @@ try {
                 if (!A?.riceForm || RECORD?.id !== A?.riceActionId) {
                     STATE.rejected.displayMismatch++;
                 }
-                if (!PLAYER || !A?.riceForm || !RECORD || RECORD.id !== A.riceActionId) {
+                if (!NATIVE_FRAMES.has(PLAYER) || !A?.riceForm || !RECORD || RECORD.id !== A.riceActionId) {
                     return RESULT;
                 }
                 if (STATE.actionId === null && A.phase === 'windup') {
@@ -227,10 +254,24 @@ try {
                     REQUEST = STATE.request,
                     MATCH =
                         A.phase === REQUEST.phase &&
-                        (A.phase !== 'active' || (A.riceSlot === REQUEST.slot && A.riceStageProgress >= 0.3));
+                        (A.phase !== 'active' ||
+                            (A.riceSlot === REQUEST.slot &&
+                                A.riceStageProgress >= (REQUEST.moment === 'contact' ? 0.9 : 0.3)));
                 if (MATCH) {
                     const SAMPLE = {
                         phase: A.phase,
+                        moment: REQUEST.moment || A.phase,
+                        nativeTip: NATIVE_FRAMES.get(PLAYER).tip,
+                        nativeGround: NATIVE_FRAMES.get(PLAYER).ground,
+                        groundRoot: NATIVE_FRAMES.get(PLAYER).root,
+                        displayPosition: NATIVE_FRAMES.get(PLAYER).displayPosition,
+                        sourcePosition: { x: UNIT.x, y: UNIT.y },
+                        authoritativeSlotTick: RECORD.launchTick + (RECORD.shots[A.riceSlot]?.tick || 0),
+                        worldTick: WORLD.simulationTick,
+                        nativeMatrix: NATIVE_FRAMES.get(PLAYER).matrix,
+                        contactPoint: this.project(A.ricePointX, A.ricePointY, 0),
+                        shotDeltaMs:
+                            A.phase === 'active' ? (A.elapsed * 20 - RECORD.shots[A.riceSlot].tick) * 50 : null,
                         stage: A.riceStage,
                         slot: A.riceSlot,
                         progress: A.riceStageProgress,
@@ -336,12 +377,24 @@ try {
             await previewWait(FRAME, PAGE, tier, `capture-${capture}`, () => globalThis.__riceMotion.ready);
             state = await FRAME.evaluate(() => structuredClone(globalThis.__riceMotion));
             const SAMPLE = state.trace.at(-1);
-            await PAGE.screenshot({ path: path.join(OUTPUT, `t${tier}-${SAMPLE.phase}-${SAMPLE.slot}.png`) });
+            await PAGE.screenshot({
+                path: path.join(
+                    OUTPUT,
+                    `t${tier}-${SAMPLE.moment === 'contact' ? 'contact' : SAMPLE.phase}-${SAMPLE.slot}.png`,
+                ),
+            });
             assert.equal(await FRAME.evaluate(() => BUDMORI.sim.simulationTick), state.tick);
             if (SAMPLE.phase === 'recover') {
                 break;
             }
-            const NEXT = capture < state.expected.length ? { phase: 'active', slot: capture } : { phase: 'recover' };
+            const NEXT =
+                SAMPLE.phase === 'windup'
+                    ? { phase: 'active', slot: 0, moment: 'early' }
+                    : SAMPLE.moment === 'early'
+                      ? { phase: 'active', slot: SAMPLE.slot, moment: 'contact' }
+                      : SAMPLE.slot + 1 < state.expected.length
+                        ? { phase: 'active', slot: SAMPLE.slot + 1, moment: 'early' }
+                        : { phase: 'recover' };
             await FRAME.evaluate((request) => {
                 const SESSION = BUDMORI.runtime,
                     DURATION = SESSION.pausedDurationMs + globalThis.__riceInputClock - SESSION.pauseStartedAt;
@@ -373,12 +426,16 @@ try {
             'windup, every slot and recovery belong to one action',
         );
         assert.deepEqual(
-            state.trace.filter((sample) => sample.phase === 'active').map((sample) => sample.stage),
+            state.trace
+                .filter((sample) => sample.phase === 'active' && sample.moment === 'early')
+                .map((sample) => sample.stage),
             state.expected,
         );
         assert.equal(
             new Set(
-                state.trace.filter((sample) => sample.phase === 'active').map((sample) => JSON.stringify(sample.pose)),
+                state.trace
+                    .filter((sample) => sample.phase === 'active' && sample.moment === 'early')
+                    .map((sample) => JSON.stringify(sample.pose)),
             ).size,
             state.expected.length,
             'each slot has a distinct actual sickle pose',
@@ -387,6 +444,17 @@ try {
             assert.ok(SAMPLE.sickleVisible);
             assert.equal(SAMPLE.recordId, SAMPLE.displayId);
             assert.deepEqual(SAMPLE.point, SAMPLE.actualPoint);
+            if (SAMPLE.moment === 'contact') {
+                const DISTANCE = Math.hypot(
+                    SAMPLE.nativeTip.x - SAMPLE.contactPoint.x,
+                    SAMPLE.nativeTip.y - SAMPLE.contactPoint.y,
+                );
+                assert.ok(
+                    SAMPLE.shotDeltaMs >= -50 && SAMPLE.shotDeltaMs <= 50,
+                    'contact observed within one native simulation frame of its real slot',
+                );
+                assert.ok(DISTANCE <= 12, `native tip reaches committed contact: ${DISTANCE.toFixed(3)}px`);
+            }
             if (SAMPLE.phase === 'active') {
                 assert.ok(Math.abs(SAMPLE.time - SAMPLE.progress * 1000) < 1e-5);
                 assert.match(SAMPLE.clip, /fire-rice-/);

@@ -848,9 +848,11 @@ const DIORAMA = class Diorama {
             clearColor: [0.9, 0.92, 0.87, 1],
         });
         this.terrain(sim2, now);
+        this.unitPresentation.prepareUnits(sim2.units, sim2.time, sim2);
         const SIDES = sim2.insideTower || sim2.scene !== 'farm';
-        for (const U of sim2.units) {
-            const A = clamp(0.22 / (1 + U.z * 0.3), 0.045, 0.22),
+        for (const SOURCE of sim2.units) {
+            const U = this.unitPresentation.displayUnit(SOURCE),
+                A = clamp(0.22 / (1 + U.z * 0.3), 0.045, 0.22),
                 SHADOW = (U.size * 0.66) / (1 + U.z * 0.65);
             this.groundEllipse(U.x, U.y, SHADOW, SHADOW * 0.62, `rgba(42,61,35,${A})`);
             // Grade is a ground ring batched with the shadows, so each unit needs one native vector draw.
@@ -874,7 +876,8 @@ const DIORAMA = class Diorama {
             ACTORS = this.actors;
         ACTORS.length = 0;
         PRESENTATION.drawMergeBlackHoles?.(this, sim2);
-        for (const U of sim2.units) {
+        for (const SOURCE of sim2.units) {
+            const U = this.unitPresentation.displayUnit(SOURCE);
             if (!HIDDEN_MERGE_RESULT_IDS.has(U.id)) {
                 this.addActor(
                     this.unitPresentation,
@@ -1005,6 +1008,9 @@ const DIORAMA = class Diorama {
         this.actors.length = 0;
         this.actorPool.length = 0;
         this.liveUnitIds.clear();
+        this.unitPresentation.riceDisplayUnits.clear();
+        this.unitPresentation.riceDisplayWorld = null;
+        this.unitPresentation.riceDisplayTime = 0;
         this.joyEffects.length = 0;
         this.ctx.dispose();
         this.device.dispose();

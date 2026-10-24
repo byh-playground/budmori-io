@@ -134,7 +134,7 @@ const AUTHORED_BODIES = [
         species: 6,
         asset: 'assets/troops/rice.svg',
         shapeId: 'rice-body-outline',
-        sourceSha256: '0dcf7edc14c1c388f42b26cdc86711c152274e8d5a558c083bc524594448e278',
+        sourceSha256: '7e7ea9c78e56c16853cd94cfdbd382c694a6811c44801a43d8b9af7cc29bf2e4',
         viewBox: [0.0, 0.0, 320.0, 350.0],
         bounds: {
             left: 70.60885389809643,
