@@ -42,6 +42,9 @@ const SERVER = http.createServer((request, response) => {
     response.end(fs.readFileSync(FILE));
 });
 await new Promise((resolve) => SERVER.listen(0, '127.0.0.1', resolve));
+async function activate(locator) {
+    await (VIEWPORT === 'landscape' ? locator.tap() : locator.click());
+}
 let browser;
 try {
     browser = await chromium.launch({
@@ -97,9 +100,44 @@ try {
             });
     });
     for (let tier = 1; tier <= 6; tier++) {
-        await PAGE.goto(`${ORIGIN}/index.html?help=walnut-t${tier}`);
-        await PAGE.waitForFunction(() => globalThis.BUDMORI?.renderer?.vectorPlayers.size > 0);
-        await PAGE.evaluate(() => {
+        await PAGE.goto(`${ORIGIN}/index.html`);
+        await PAGE.waitForFunction(() => globalThis.BUDMORI);
+        await activate(PAGE.locator('#newGame'));
+        if (await PAGE.locator('#newConfirm').isVisible()) {
+            await activate(PAGE.locator('#confirmNew'));
+        }
+        await PAGE.waitForFunction(() => document.body.dataset.home === 'false');
+        await activate(PAGE.locator('#upgradeMenu'));
+        await activate(PAGE.locator('[data-ability-species="5"]'));
+        await activate(PAGE.locator(`[data-walnut-preview-tier="${tier}"]`));
+        const HOST = PAGE.locator('.growth-evolution-preview iframe');
+        await HOST.scrollIntoViewIfNeeded();
+        const HANDLE = await HOST.elementHandle(),
+            FRAME = await HANDLE.contentFrame(),
+            VISIBLE = await HOST.evaluate((element) => {
+                const BOX = element.getBoundingClientRect(),
+                    PANE = document
+                        .getElementById(
+                            getComputedStyle(document.getElementById('abilityPanel')).overflowY === 'auto'
+                                ? 'abilityPanel'
+                                : 'abilityNodes',
+                        )
+                        .getBoundingClientRect();
+                return {
+                    height: BOX.height,
+                    visibleHeight: Math.min(innerHeight, PANE.bottom, BOX.bottom) - Math.max(0, PANE.top, BOX.top),
+                };
+            });
+        assert.ok(
+            VISIBLE.height >= 160 && VISIBLE.visibleHeight >= VISIBLE.height - 3,
+            'actual modal iframe is fully visible through its scroll pane',
+        );
+        REPORT.push({ kind: 'modal-preview-viewport', tier, ...VISIBLE });
+        await FRAME.waitForFunction(() => globalThis.BUDMORI?.sim?.units[0]?.species === 5);
+        await FRAME.goto(FRAME.url());
+        await FRAME.waitForFunction(() => globalThis.BUDMORI?.renderer?.vectorPlayers.size > 0);
+        assert.equal(await FRAME.locator('#bossbar').evaluate((element) => getComputedStyle(element).display), 'none');
+        await FRAME.evaluate(() => {
             const RENDERER = BUDMORI.renderer,
                 RENDER = RENDERER.render,
                 WORLD = BUDMORI.sim,
@@ -184,16 +222,16 @@ try {
         });
         let state;
         for (let capture = 0; ; capture++) {
-            await PAGE.waitForFunction(() => globalThis.__walnutMotion.ready, null, { timeout: 30000 });
-            state = await PAGE.evaluate(() => structuredClone(globalThis.__walnutMotion));
+            await FRAME.waitForFunction(() => globalThis.__walnutMotion.ready, null, { timeout: 30000 });
+            state = await FRAME.evaluate(() => structuredClone(globalThis.__walnutMotion));
             const SAMPLE = state.trace.at(-1);
             await PAGE.screenshot({ path: path.join(OUTPUT, `t${tier}-${SAMPLE.phase}-${SAMPLE.slot}.png`) });
-            assert.equal(await PAGE.evaluate(() => BUDMORI.sim.simulationTick), state.tick);
+            assert.equal(await FRAME.evaluate(() => BUDMORI.sim.simulationTick), state.tick);
             if (SAMPLE.phase === 'recover') {
                 break;
             }
             const NEXT = capture < state.expected.length ? { phase: 'active', slot: capture } : { phase: 'recover' };
-            await PAGE.evaluate((request) => {
+            await FRAME.evaluate((request) => {
                 const SESSION = BUDMORI.runtime,
                     DURATION = SESSION.pausedDurationMs + globalThis.__walnutInputClock - SESSION.pauseStartedAt;
                 globalThis.__walnutMotion.request = request;
@@ -203,7 +241,7 @@ try {
                 SESSION.loop.resetTiming();
             }, NEXT);
         }
-        assert.ok(await PAGE.evaluate(() => BUDMORI.runtime.__walnutObservationClock.maxDelta <= 25));
+        assert.ok(await FRAME.evaluate(() => BUDMORI.runtime.__walnutObservationClock.maxDelta <= 25));
         REPORT.push(state);
         assert.equal(state.form, tier);
         assert.equal(state.units, 1);
@@ -234,7 +272,7 @@ try {
             }
         }
         // Interrupt the real action while paused, then resume the ordinary clock.
-        await PAGE.evaluate(() => {
+        await FRAME.evaluate(() => {
             const SESSION = BUDMORI.runtime,
                 DURATION = SESSION.pausedDurationMs + globalThis.__walnutInputClock - SESSION.pauseStartedAt;
             BUDMORI.sim.units[0].ability.interrupt();
@@ -243,11 +281,11 @@ try {
             SESSION.pausedDurationMs = DURATION;
             SESSION.loop.resetTiming();
         });
-        await PAGE.waitForFunction(() => !BUDMORI.runtime.presentationView.units[0].ability.walnutForm, null, {
+        await FRAME.waitForFunction(() => !BUDMORI.runtime.presentationView.units[0].ability.walnutForm, null, {
             timeout: 5000,
         });
         assert.equal(
-            await PAGE.evaluate(() => BUDMORI.runtime.presentationView.units[0].ability.walnutImpactLife),
+            await FRAME.evaluate(() => BUDMORI.runtime.presentationView.units[0].ability.walnutImpactLife),
             0,
             'interruption clears pending contact presentation',
         );
@@ -270,6 +308,11 @@ try {
             const STATE = globalThis.__walnutMain,
                 UNIT = WORLD.units[0],
                 RECORD = UNIT.ability.action?.walnutAttack;
+            if (STATE.awaitGuard && notice.kind === 'walnut-guard-start' && notice.unit === UNIT.id) {
+                STATE.awaitGuard = false;
+                STATE.guardReleaseTick = WORLD.simulationTick;
+                WORLD.boss.stun = 0;
+            }
             if (notice.kind !== 'boss-hit' || !RECORD || notice.attackId !== RECORD.id) {
                 return;
             }
@@ -335,6 +378,9 @@ try {
                 RESULT = RECEIVE.call(this, world, rawDamage, ...rest),
                 AFTER = UNIT.walnutStoredRawDamage;
             if (AFTER > BEFORE) {
+                // The incoming hit remains real. Freeze only subsequent boss AI
+                // to separately verify the reserved budget on a controlled target.
+                world.boss.stun = 10000;
                 globalThis.__walnutMain.incoming.push({
                     tick: world.simulationTick,
                     rawDamage,
@@ -346,12 +392,39 @@ try {
             return RESULT;
         };
         WORLD.configureBossStage(1, 0);
-        Object.assign(WORLD.boss, { z: 0, hp: 1e10, maxHp: 1e10, stun: 0 });
+        Object.assign(WORLD.boss, { z: 0, hp: 1e10, maxHp: 1e10, stun: 10000 });
+        globalThis.__walnutMain.awaitGuard = true;
         BUDMORI.runtime.paused = false;
     });
-    await PAGE.waitForFunction(() => globalThis.__walnutMain.rawHits.length === 4 && BUDMORI.runtime.paused, null, {
-        timeout: 90000,
-    });
+    try {
+        await PAGE.waitForFunction(() => globalThis.__walnutMain.rawHits.length === 4 && BUDMORI.runtime.paused, null, {
+            timeout: 90000,
+        });
+    } finally {
+        REPORT.push(
+            await PAGE.evaluate(() => ({
+                kind: 'raw-live-ledger',
+                observer: structuredClone(globalThis.__walnutMain),
+                tick: BUDMORI.sim.simulationTick,
+                paused: BUDMORI.runtime.paused,
+                phase: BUDMORI.sim.farmBossEvent.phase,
+                unit: {
+                    hp: BUDMORI.sim.units[0]?.hp,
+                    z: BUDMORI.sim.units[0]?.z,
+                    stun: BUDMORI.sim.units[0]?.stun,
+                    guardUntil: BUDMORI.sim.units[0]?.walnutGuardUntilTick,
+                    storedRaw: BUDMORI.sim.units[0]?.walnutStoredRawDamage,
+                    action: structuredClone(BUDMORI.sim.units[0]?.ability.action?.walnutAttack),
+                },
+                boss: {
+                    hp: BUDMORI.sim.boss.hp,
+                    active: BUDMORI.sim.boss.active,
+                    stun: BUDMORI.sim.boss.stun,
+                    pattern: structuredClone(BUDMORI.sim.boss.patternRuntime),
+                },
+            })),
+        );
+    }
     const RAW = await PAGE.evaluate(() => structuredClone(globalThis.__walnutMain));
     assert.ok(RAW.incoming.length > 0);
     assert.ok(
@@ -367,7 +440,8 @@ try {
         RAW.rawHits.map((notice) => notice.strikeIndex),
         [0, 1, 2, 3],
     );
-    REPORT.push({ kind: 'natural-boss-raw', incoming: RAW.incoming, reserved: RAW.reserved, hits: RAW.rawHits });
+    REPORT.push({ kind: 'natural-boss-raw-input', incoming: RAW.incoming, guardReleaseTick: RAW.guardReleaseTick });
+    REPORT.push({ kind: 'stunned-target-raw-budget-four-slots', reserved: RAW.reserved, hits: RAW.rawHits });
     await PAGE.screenshot({ path: path.join(OUTPUT, 'main-natural-raw.png') });
     assert.deepEqual(ERRORS, []);
     console.log(`PASS walnut six-form actual native motion (${VIEWPORT})`);

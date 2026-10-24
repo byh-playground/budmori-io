@@ -49,14 +49,16 @@ assert.ok(['desktop', 'mobile', 'landscape'].includes(VIEWPORT));
 fs.mkdirSync(OUTPUT, { recursive: true });
 let browser, page;
 async function activate(locator) {
-    await locator.scrollIntoViewIfNeeded();
     await (MOBILE ? locator.tap() : locator.click());
 }
 async function openTree() {
     if (!(await page.locator('#gameMenuOverlay').isVisible())) {
         await activate(page.locator('#upgradeMenu'));
     }
-    await activate(page.locator('#menuTabAbilities'));
+    // upgradeMenu already opens the abilities panel, including its locked run view.
+    // Do not click the redundant tab: it may be disabled while the panel is selected.
+    assert.equal(await page.locator('#menuTabAbilities').getAttribute('aria-selected'), 'true');
+    assert.equal(await page.locator('#abilityPanel').isVisible(), true);
     await activate(page.locator('[data-ability-species="5"]'));
     await page.locator('[data-growth-tree]').waitFor();
 }
@@ -168,10 +170,21 @@ try {
         await activate(page.locator('#deckGo'));
     }
     await page.waitForFunction(() => BUDMORI.sim.tower.active);
-    const SNAPSHOT = await page.evaluate(() => JSON.stringify(BUDMORI.sim.runProgressionSnapshot));
+    const SNAPSHOT = await page.evaluate(() => JSON.stringify(BUDMORI.sim.runProgressionSnapshot)),
+        RUN_BUILD = await page.evaluate(() =>
+            structuredClone(BUDMORI.sim.playerProgression.abilities['walnut-raw-guard']),
+        );
     await openTree();
+    const TAB_DISABLED = await page.locator('#menuTabAbilities').isDisabled();
+    assert.equal(await page.locator('#menuTabAbilities').getAttribute('aria-selected'), 'true');
     assert.equal(await NODE('basic-2').getAttribute('aria-disabled'), 'true');
     assert.equal(await page.locator('[data-ability-action="reset"]').getAttribute('aria-disabled'), 'true');
+    assert.deepEqual(
+        await page.evaluate(() => BUDMORI.sim.playerProgression.abilities['walnut-raw-guard']),
+        RUN_BUILD,
+        'opening the real locked upgrade menu cannot change live investment',
+    );
+    REPORT.runMenu = { abilitiesTabDisabled: TAB_DISABLED, selected: true, purchaseLocked: true, resetLocked: true };
     assert.equal(await page.evaluate(() => JSON.stringify(BUDMORI.sim.runProgressionSnapshot)), SNAPSHOT);
     await page.reload();
     await page.waitForFunction(() => globalThis.BUDMORI?.sim?.scene === 'farm');

@@ -535,7 +535,11 @@ const DIORAMA = class Diorama {
             this.fitJumpPreview(world);
             return;
         }
-        if (this.attackPreviewSpecies === 4 || this.attackPreviewSpecies === 5) {
+        if (this.attackPreviewSpecies === 5) {
+            this.fitWalnutPreview(world);
+            return;
+        }
+        if (this.attackPreviewSpecies === 4) {
             this.fitPeanutPreview(world);
             return;
         }
@@ -554,6 +558,25 @@ const DIORAMA = class Diorama {
                 this.baseY() -
                 (this.canvas.height * 0.76) / this.scale -
                 FOCUS_Y * WORLD_DEPTH_PROJECTION;
+        this.panLimits.minX = Math.min(this.panLimits.minX, PAN_X);
+        this.panLimits.maxX = Math.max(this.panLimits.maxX, PAN_X);
+        this.panLimits.minY = Math.min(this.panLimits.minY, PAN_Y);
+        this.panLimits.maxY = Math.max(this.panLimits.maxY, PAN_Y);
+        this.setPan(PAN_X, PAN_Y);
+    }
+    fitWalnutPreview(world) {
+        const UNIT = world.units[0],
+            BODY = unitBodyDefinition(UNIT.species),
+            BASE = this.scenePresentation.cameraView(this.aspect),
+            ART = UNIT.bodyScale * Math.max(BODY.viewBox[2], BODY.viewBox[3]),
+            SCALE = Math.min((124 * this.pixelRatio) / ART, (this.canvas.height - 40 * this.pixelRatio) / ART),
+            GROUND_Y = this.canvas.height * 0.5 + ART * SCALE * 0.25;
+        this.zoom = (2 * BASE[0] * SCALE) / this.canvas.width;
+        this.configure(this.scene, true);
+        // Keep both the raised hammer and the below-foot guard/contact ring in
+        // the center of the isolated help canvas, including the180px modal.
+        const PAN_X = (this.canvas.width * 0.44) / this.scale - UNIT.x - this.view[0],
+            PAN_Y = this.view[1] - this.baseY() - GROUND_Y / this.scale - UNIT.y * WORLD_DEPTH_PROJECTION;
         this.panLimits.minX = Math.min(this.panLimits.minX, PAN_X);
         this.panLimits.maxX = Math.max(this.panLimits.maxX, PAN_X);
         this.panLimits.minY = Math.min(this.panLimits.minY, PAN_Y);

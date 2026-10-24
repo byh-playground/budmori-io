@@ -226,7 +226,10 @@ export function resolveWalnutSlots(world, unit, action, elapsed, geometry) {
             if (!Object.hasOwn(R.criticalRolls, KEY)) {
                 R.criticalRolls[KEY] = world.random();
             }
-            const SOURCE = R.source;
+            // Read the serializable target-key cache through the generic builtin.
+            // A keyed load here repeatedly deoptimized on new boss generations.
+            const CRITICAL_ROLL = Reflect.get(R.criticalRolls, KEY),
+                SOURCE = R.source;
             world.damageCombatTarget(unit, { id: action.id, hit: false }, T, HIT, {
                 attackKind: ATTACK_KIND,
                 suppressBasicProc: !A.claimOnce('basic-proc'),
@@ -246,7 +249,7 @@ export function resolveWalnutSlots(world, unit, action, elapsed, geometry) {
                     buffed: false,
                     sourceStatOverrides: SOURCE.attackerStats,
                     area: true,
-                    criticalRoll: R.criticalRolls[KEY],
+                    criticalRoll: CRITICAL_ROLL,
                     hitTargets: null,
                 },
             });
