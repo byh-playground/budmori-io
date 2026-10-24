@@ -173,7 +173,15 @@ try {
         Object.assign(PEANUT, { x: -10, y: 0, hp: 1 });
         for (let species = 0; species < 9; species++) {
             WORLD.boss.species = species;
-            const ACTION = { released: 0, volleyCount: 1, aim: species, id: 'summon.mouth-t1' };
+            const ACTION = {
+                released: 0,
+                volleyCount: 1,
+                aim: species,
+                id: 'summon.mouth-t1',
+                phase: 'active',
+                phaseElapsed: 0,
+            };
+            WORLD.boss.patternRuntime.active = ACTION;
             if (!WORLD.spawnBossMouthUnit(ACTION)) {
                 throw new Error(`Could not create real enemy summon for species ${species}`);
             }
@@ -195,6 +203,7 @@ try {
             }
         }
         WORLD.boss.species = 7;
+        WORLD.boss.patternRuntime.active = null;
         // Existing farm labor can overlap combat. Seed its independent fire
         // clock, then let normal work/attack ticks reach wheat windup/recovery.
         const PILES = BUDMORI.CONFIG.farm.work.pileKind;
