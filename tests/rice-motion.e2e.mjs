@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const VIEWPORT = process.argv[2] || 'desktop',
+    SELECTION = process.argv[3] || 'all',
     ROOT = path.resolve(fileURLToPath(new URL('../', import.meta.url))),
     OUTPUT = path.join(ROOT, 'tests/output/rice-motion', VIEWPORT),
     SIZE = VIEWPORT === 'landscape' ? { width: 844, height: 390 } : { width: 1100, height: 850 },
@@ -31,6 +32,19 @@ const VIEWPORT = process.argv[2] || 'desktop',
     ERRORS = [],
     REPORT = [];
 assert.ok(['desktop', 'landscape'].includes(VIEWPORT));
+assert.ok(['all', 'forms', 'boundaries'].includes(SELECTION));
+const CASES = [
+    ...(SELECTION === 'boundaries'
+        ? []
+        : Array.from({ length: 6 }, (_value, index) => ({ id: `t${index + 1}`, tier: index + 1 }))),
+    ...(SELECTION === 'forms'
+        ? []
+        : [
+              { id: 'small-boss', tier: 1 },
+              { id: 'large-boss', tier: 6 },
+              { id: 'giant-card', tier: 6 },
+          ]),
+];
 fs.mkdirSync(OUTPUT, { recursive: true });
 const SERVER = http.createServer((request, response) => {
     const FILE = path.resolve(ROOT, '.' + decodeURIComponent(request.url.split('?')[0]));
@@ -157,6 +171,38 @@ try {
                 UNIT = WORLD.units[0],
                 SESSION = BUDMORI.runtime,
                 PRESENT = SESSION.presentation;
+            const CASE = new URLSearchParams(location.search).get('rice-case') || `t${UNIT.tier}`,
+                FIXTURE = { case: CASE, changedBoss: false, acquiredGiant: false };
+            if (CASE === 'small-boss' || CASE === 'large-boss') {
+                // Use the actual factory to find current roster extrema; no fake
+                // radius, hitbox or pose is assigned to the selected boss.
+                FIXTURE.bossRoster = Array.from({ length: BUDMORI.CONFIG.unit.speciesCount }, (_value, species) => {
+                    WORLD.configureBossStage(1, species);
+                    return { species, radius: WORLD.boss.radius, height: WORLD.boss.height };
+                });
+                const SORTED = [...FIXTURE.bossRoster].sort((a, b) => a.radius - b.radius),
+                    CHOSEN = CASE === 'small-boss' ? SORTED[0] : SORTED.at(-1);
+                WORLD.configureBossStage(1, CHOSEN.species);
+                Object.assign(WORLD.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
+                UNIT.x = -(WORLD.boss.radius + 1.35);
+                UNIT.y = 0;
+                WORLD._unitSpatialDirty = true;
+                FIXTURE.changedBoss = true;
+                FIXTURE.selectedBoss = CHOSEN;
+            }
+            if (CASE === 'giant-card') {
+                // Select a real skill-card offer through the production run-card
+                // application route. Charge and cast must come from real damage.
+                WORLD.farmBossEvent.phase = 'idle';
+                WORLD.tower.nextKind = 'power';
+                WORLD.tower.doors = [{ type: 'skill', id: 'giant' }];
+                FIXTURE.acquiredGiant = WORLD.chooseDoor(0);
+                if (!FIXTURE.acquiredGiant || WORLD.tower.relics.get('giant') !== 1) {
+                    throw new Error('The actual giant skill-card acquisition failed');
+                }
+                WORLD.farmBossEvent.phase = 'fighting';
+                WORLD.farmBossEvent.elapsed = 0;
+            }
             // One bounded RAF input reaches HELP.clock, scenario.pulse, session
             // pulse and presentation. Never rescale only one consumer downstream.
             SESSION.__riceObservationClock = globalThis.__ricePreviewClock;
@@ -167,6 +213,7 @@ try {
             SESSION.loop.resetTiming();
             globalThis.__riceMotion = {
                 stages: {},
+                fixture: FIXTURE,
                 renderCalls: 0,
                 installedAt: {
                     tick: WORLD.simulationTick,
@@ -204,6 +251,17 @@ try {
                             },
                             root: renderer.project(unit.x, unit.y, 0),
                             displayPosition: { x: unit.x, y: unit.y },
+                            footprint: {
+                                radiusX: Math.max(unit.size * 0.66 * 1.12, unit.radius + 0.1) * renderer.scale,
+                                radiusY: Math.max(unit.size * 0.66 * 1.12, unit.radius + 0.1) * renderer.scale * 0.62,
+                                stroke: 0.06 * renderer.scale,
+                            },
+                            canvas: { width: renderer.canvas.width, height: renderer.canvas.height },
+                            drawScale: Math.abs(matrix[0]),
+                            authoredScale: unit.bodyScale * renderer.scale,
+                            minimumScale:
+                                (2 * renderer.minimumUnitPixels() * (unit.giantUntil > WORLD.time ? 3 : 1)) / 350,
+                            giantEndedAt: unit.giantEndedAt,
                             matrix: [...matrix],
                         });
                         return RESULT;
@@ -241,10 +299,30 @@ try {
                 if (!NATIVE_FRAMES.has(PLAYER) || !A?.riceForm || !RECORD || RECORD.id !== A.riceActionId) {
                     return RESULT;
                 }
-                if (STATE.actionId === null && A.phase === 'windup') {
+                if (
+                    STATE.actionId === null &&
+                    A.phase === 'windup' &&
+                    (CASE !== 'giant-card' || (UNIT.giantUntil > WORLD.time && DISPLAY.giantUntil > WORLD.time))
+                ) {
                     STATE.actionId = RECORD.id;
                     STATE.expected = RECORD.shots.map((shot) => shot.stage);
                     STATE.form = RECORD.form;
+                    STATE.geometry = {
+                        bossSpecies: WORLD.boss.species,
+                        bossRadius: WORLD.boss.radius,
+                        bossHeight: WORLD.boss.height,
+                        unitRadius: UNIT.radius,
+                        bodyScale: UNIT.bodyScale,
+                        sourceTier: UNIT.tier,
+                        surfaceGap: Math.hypot(UNIT.x - WORLD.boss.x, UNIT.y - WORLD.boss.y) - WORLD.boss.radius,
+                        contactDistance: Math.hypot(RECORD.point.x - RECORD.origin.x, RECORD.point.y - RECORD.origin.y),
+                        giantUntil: UNIT.giantUntil,
+                        giantActive: UNIT.giantUntil > WORLD.time,
+                        giantLevel: WORLD.tower.relics.get('giant') || 0,
+                        giantCasts: WORLD.notices
+                            .filter((notice) => notice.kind === 'formation-cast' && notice.skillId === 'giant')
+                            .map((notice) => ({ ...notice })),
+                    };
                     STATE.initialHp = WORLD.boss.hp;
                 }
                 if (STATE.actionId !== RECORD.id || STATE.ready || !STATE.request) {
@@ -264,10 +342,21 @@ try {
                         nativeTip: NATIVE_FRAMES.get(PLAYER).tip,
                         nativeGround: NATIVE_FRAMES.get(PLAYER).ground,
                         groundRoot: NATIVE_FRAMES.get(PLAYER).root,
+                        footprint: NATIVE_FRAMES.get(PLAYER).footprint,
+                        canvas: NATIVE_FRAMES.get(PLAYER).canvas,
+                        drawScale: NATIVE_FRAMES.get(PLAYER).drawScale,
+                        authoredScale: NATIVE_FRAMES.get(PLAYER).authoredScale,
+                        minimumScale: NATIVE_FRAMES.get(PLAYER).minimumScale,
+                        giantEndedAt: NATIVE_FRAMES.get(PLAYER).giantEndedAt,
                         displayPosition: NATIVE_FRAMES.get(PLAYER).displayPosition,
                         sourcePosition: { x: UNIT.x, y: UNIT.y },
                         authoritativeSlotTick: RECORD.launchTick + (RECORD.shots[A.riceSlot]?.tick || 0),
                         worldTick: WORLD.simulationTick,
+                        bossRadius: WORLD.boss.radius,
+                        unitRadius: UNIT.radius,
+                        bodyScale: UNIT.bodyScale,
+                        giantActive: UNIT.giantUntil > WORLD.time,
+                        displayGiantActive: DISPLAY.giantUntil > WORLD.time,
                         nativeMatrix: NATIVE_FRAMES.get(PLAYER).matrix,
                         contactPoint: this.project(A.ricePointX, A.ricePointY, 0),
                         shotDeltaMs:
@@ -284,6 +373,10 @@ try {
                         point: [A.ricePointX, A.ricePointY],
                         actualPoint: [RECORD.point.x, RECORD.point.y],
                     };
+                    SAMPLE.socketDistancePixels = Math.hypot(
+                        SAMPLE.nativeTip.x - SAMPLE.contactPoint.x,
+                        SAMPLE.nativeTip.y - SAMPLE.contactPoint.y,
+                    );
                     STATE.trace.push(SAMPLE);
                     STATE.units = WORLD.units.length;
                     STATE.projectiles = WORLD.projectiles.length;
@@ -317,7 +410,10 @@ try {
                     // forward the same bounded domain through every HELP consumer.
                     CLOCK.current = Math.max(now, performance.now());
                 } else if (CLOCK.last !== now) {
-                    const DELTA = globalThis.BUDMORI?.runtime?.paused ? 0 : Math.min(25, Math.max(0, now - CLOCK.last));
+                    // The final10% of a one-tick strike is5ms of simulation.
+                    // A5ms input pulse at the real HELP0.6 rate cannot skip it;
+                    // the same timestamp still reaches model and presentation.
+                    const DELTA = globalThis.BUDMORI?.runtime?.paused ? 0 : Math.min(5, Math.max(0, now - CLOCK.last));
                     CLOCK.current += DELTA;
                     CLOCK.maxDelta = Math.max(CLOCK.maxDelta, DELTA);
                 }
@@ -330,8 +426,10 @@ try {
                 callback(CLOCK.current);
             });
     });
-    for (let tier = 1; tier <= 6; tier++) {
-        activePreview = { frame: PAGE.mainFrame(), page: PAGE, tier };
+    for (const CASE of CASES) {
+        const TIER = CASE.tier,
+            LABEL = CASE.id;
+        activePreview = { frame: PAGE.mainFrame(), page: PAGE, tier: TIER };
         await PAGE.goto(`${ORIGIN}/index.html`);
         await PAGE.waitForFunction(() => globalThis.BUDMORI);
         await activate(PAGE.locator('#newGame'));
@@ -341,7 +439,7 @@ try {
         await PAGE.waitForFunction(() => document.body.dataset.home === 'false');
         await activate(PAGE.locator('#upgradeMenu'));
         await activate(PAGE.locator('[data-ability-species="6"]'));
-        await activate(PAGE.locator(`[data-rice-preview-tier="${tier}"]`));
+        await activate(PAGE.locator(`[data-rice-preview-tier="${TIER}"]`));
         const HOST = PAGE.locator('.growth-evolution-preview iframe');
         await HOST.scrollIntoViewIfNeeded();
         const HANDLE = await HOST.elementHandle(),
@@ -365,22 +463,24 @@ try {
             VISIBLE.height >= 160 && VISIBLE.visibleHeight >= VISIBLE.height - 3,
             'actual modal iframe is fully visible through its scroll pane',
         );
-        REPORT.push({ kind: 'modal-preview-viewport', tier, ...VISIBLE });
-        await previewWait(FRAME, PAGE, tier, 'initial-scene', () => globalThis.BUDMORI?.sim?.units[0]?.species === 6);
-        await FRAME.goto(FRAME.url());
+        REPORT.push({ kind: 'modal-preview-viewport', tier: TIER, ...VISIBLE });
+        await previewWait(FRAME, PAGE, TIER, 'initial-scene', () => globalThis.BUDMORI?.sim?.units[0]?.species === 6);
+        const PREVIEW_URL = new URL(FRAME.url());
+        PREVIEW_URL.searchParams.set('rice-case', LABEL);
+        await FRAME.goto(PREVIEW_URL.href);
         // Install observation before asynchronous SVG players finish loading.
-        await previewWait(FRAME, PAGE, tier, 'reloaded-scene', () => globalThis.BUDMORI?.sim?.units[0]?.species === 6);
+        await previewWait(FRAME, PAGE, TIER, 'reloaded-scene', () => globalThis.BUDMORI?.sim?.units[0]?.species === 6);
         assert.equal(await FRAME.locator('#bossbar').evaluate((element) => getComputedStyle(element).display), 'none');
 
         let state;
         for (let capture = 0; ; capture++) {
-            await previewWait(FRAME, PAGE, tier, `capture-${capture}`, () => globalThis.__riceMotion.ready);
+            await previewWait(FRAME, PAGE, TIER, `capture-${capture}`, () => globalThis.__riceMotion.ready);
             state = await FRAME.evaluate(() => structuredClone(globalThis.__riceMotion));
             const SAMPLE = state.trace.at(-1);
             await PAGE.screenshot({
                 path: path.join(
                     OUTPUT,
-                    `t${tier}-${SAMPLE.moment === 'contact' ? 'contact' : SAMPLE.phase}-${SAMPLE.slot}.png`,
+                    `${LABEL}-${SAMPLE.moment === 'contact' ? 'contact' : SAMPLE.phase}-${SAMPLE.slot}.png`,
                 ),
             });
             assert.equal(await FRAME.evaluate(() => BUDMORI.sim.simulationTick), state.tick);
@@ -405,13 +505,27 @@ try {
                 SESSION.loop.resetTiming();
             }, NEXT);
         }
-        assert.ok(await FRAME.evaluate(() => BUDMORI.runtime.__riceObservationClock.maxDelta <= 25));
+        assert.ok(await FRAME.evaluate(() => BUDMORI.runtime.__riceObservationClock.maxDelta <= 5));
         REPORT.push(state);
         assert.ok(
             state.installedAt.clock.current >= state.installedAt.initialCaptureClock,
             'first bounded input must not precede the session constructor capture',
         );
-        assert.equal(state.form, tier);
+        assert.equal(state.form, TIER);
+        assert.equal(state.fixture.case, LABEL);
+        if (LABEL === 'small-boss' || LABEL === 'large-boss') {
+            assert.equal(state.fixture.changedBoss, true);
+            const RADII = state.fixture.bossRoster.map((boss) => boss.radius);
+            assert.equal(state.geometry.bossRadius, LABEL === 'small-boss' ? Math.min(...RADII) : Math.max(...RADII));
+            assert.equal(state.geometry.bossSpecies, state.fixture.selectedBoss.species);
+        }
+        if (LABEL === 'giant-card') {
+            assert.equal(state.fixture.acquiredGiant, true);
+            assert.equal(state.geometry.giantLevel, 1);
+            assert.equal(state.geometry.giantActive, true);
+            assert.ok(state.geometry.giantCasts.length > 0, 'actual combat charged and cast the acquired giant card');
+            assert.ok(state.trace.every((sample) => sample.giantActive && sample.displayGiantActive));
+        }
         assert.equal(state.units, 1);
         assert.equal(state.projectiles, 0);
         assert.ok(state.bossHp < state.initialHp);
@@ -441,6 +555,27 @@ try {
             'each slot has a distinct actual sickle pose',
         );
         for (const SAMPLE of state.trace) {
+            const FOOT = SAMPLE.footprint,
+                ROOT = SAMPLE.groundRoot;
+            assert.ok(
+                SAMPLE.authoredScale >= SAMPLE.minimumScale - 1e-9,
+                'HELP envelope fit includes the actual giant/minimum pixel clamp',
+            );
+            assert.ok(
+                ROOT.x - FOOT.radiusX - FOOT.stroke >= 0 && ROOT.x + FOOT.radiusX + FOOT.stroke <= SAMPLE.canvas.width,
+                'whole foot ring remains inside the actual iframe width',
+            );
+            assert.ok(
+                ROOT.y - FOOT.radiusY - FOOT.stroke >= 0 && ROOT.y + FOOT.radiusY + FOOT.stroke <= SAMPLE.canvas.height,
+                'whole foot ring/shadow remains inside the actual iframe height',
+            );
+            assert.ok(
+                SAMPLE.nativeTip.x >= 0 &&
+                    SAMPLE.nativeTip.x <= SAMPLE.canvas.width &&
+                    SAMPLE.nativeTip.y >= 0 &&
+                    SAMPLE.nativeTip.y <= SAMPLE.canvas.height,
+                'native scythe endpoint stays inside the actual iframe',
+            );
             assert.ok(SAMPLE.sickleVisible);
             assert.equal(SAMPLE.recordId, SAMPLE.displayId);
             assert.deepEqual(SAMPLE.point, SAMPLE.actualPoint);
@@ -473,7 +608,7 @@ try {
         await previewWait(
             FRAME,
             PAGE,
-            tier,
+            TIER,
             'interruption',
             () => !BUDMORI.runtime.presentationView.units[0].ability.riceForm,
             5000,

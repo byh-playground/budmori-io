@@ -6,7 +6,7 @@ import { UnitAttackPresentation } from '../presentation-base.js';
 export function updateRicePresentation(output, action, phase, elapsed) {
     const RECORD = action?.riceAttack,
         TICK = phase === 'active' ? elapsed * 20 : 0,
-        INDEX = RECORD ? RECORD.shots.findIndex((shot) => TICK <= shot.tick) : -1,
+        INDEX = RECORD ? RECORD.shots.findIndex((shot) => TICK <= shot.tick + 1e-9) : -1,
         SLOT = RECORD ? (INDEX < 0 ? RECORD.shots.length - 1 : INDEX) : 0,
         SHOT = RECORD?.shots[SLOT],
         START = SLOT > 0 ? RECORD.shots[SLOT - 1].tick : 0;
@@ -48,6 +48,34 @@ function contactSocket(record, stage) {
         }
     }
     return cache.get(stage);
+}
+const PREVIEW_LIFT = new WeakMap();
+export function ricePreviewEnvelope(renderer, unit) {
+    const BODY = unitBodyDefinition(6),
+        ART = unit.bodyScale * Math.max(BODY.viewBox[2], BODY.viewBox[3]),
+        RECORD = renderer.vectorAssets.get(6);
+    let lift = 0.55 * ART;
+    if (RECORD) {
+        if (!PREVIEW_LIFT.has(RECORD)) {
+            const STAGES = new Set(
+                Object.keys(RECORD.compiled.metadata.clips)
+                    .filter((name) => name.startsWith('fire-rice-'))
+                    .map((name) => name.split('-').at(-1)),
+            );
+            PREVIEW_LIFT.set(
+                RECORD,
+                Math.max(0, ...[...STAGES].map((stage) => BODY.ground.y - contactSocket(RECORD, stage).y)),
+            );
+        }
+        lift = PREVIEW_LIFT.get(RECORD) * unit.bodyScale;
+    }
+    // The preview is grounded at y=0. Reserve every contact lunge, the whole
+    // authored upper body/hat, and the widest foot/grade ring including stroke.
+    const FOOTPRINT = Math.max(unit.size * 0.66 * 1.12, unit.radius + 0.1);
+    // Reserve the full possible12% post-giant body rebound too. At the
+    // supported160px+ modal height the fitted art remains above the66px
+    // giant minimum (11px radius ×2 ×3), so no hidden clamp enlarges it.
+    return { above: ART * 1.05 * 1.12, below: lift * 1.12 + FOOTPRINT * WORLD_DEPTH_PROJECTION + 0.06 };
 }
 const SMOOTH = (value) => (1 - Math.cos(Math.PI * Math.max(0, Math.min(1, value)))) / 2;
 

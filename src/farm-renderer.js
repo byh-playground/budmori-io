@@ -1,3 +1,4 @@
+import { ricePreviewEnvelope } from './features/unit-attacks/rice/presentation.js';
 import { sampleChestnutShards } from './features/projectiles/spike/presentation.js';
 import { unitBodyDefinition } from './features/unit-body/definition.js';
 import { includeCornProjectileBounds } from './features/projectiles/corn/presentation.js';
@@ -535,7 +536,11 @@ const DIORAMA = class Diorama {
             this.fitJumpPreview(world);
             return;
         }
-        if (this.attackPreviewSpecies === 5 || this.attackPreviewSpecies === 6) {
+        if (this.attackPreviewSpecies === 6) {
+            this.fitRicePreview(world);
+            return;
+        }
+        if (this.attackPreviewSpecies === 5) {
             this.fitWalnutPreview(world);
             return;
         }
@@ -558,6 +563,27 @@ const DIORAMA = class Diorama {
                 this.baseY() -
                 (this.canvas.height * 0.76) / this.scale -
                 FOCUS_Y * WORLD_DEPTH_PROJECTION;
+        this.panLimits.minX = Math.min(this.panLimits.minX, PAN_X);
+        this.panLimits.maxX = Math.max(this.panLimits.maxX, PAN_X);
+        this.panLimits.minY = Math.min(this.panLimits.minY, PAN_Y);
+        this.panLimits.maxY = Math.max(this.panLimits.maxY, PAN_Y);
+        this.setPan(PAN_X, PAN_Y);
+    }
+    fitRicePreview(world) {
+        const UNIT = world.units[0],
+            BASE = this.scenePresentation.cameraView(this.aspect),
+            ENVELOPE = ricePreviewEnvelope(this, UNIT),
+            ART = UNIT.bodyScale * 350,
+            PAD = 12 * this.pixelRatio,
+            SCALE = Math.min(
+                (124 * this.pixelRatio) / ART,
+                (this.canvas.height - 2 * PAD) / (ENVELOPE.above + ENVELOPE.below),
+            ),
+            GROUND_Y = PAD + ENVELOPE.above * SCALE;
+        this.zoom = (2 * BASE[0] * SCALE) / this.canvas.width;
+        this.configure(this.scene, true);
+        const PAN_X = (this.canvas.width * 0.4) / this.scale - UNIT.x - this.view[0],
+            PAN_Y = this.view[1] - this.baseY() - GROUND_Y / this.scale - UNIT.y * WORLD_DEPTH_PROJECTION;
         this.panLimits.minX = Math.min(this.panLimits.minX, PAN_X);
         this.panLimits.maxX = Math.max(this.panLimits.maxX, PAN_X);
         this.panLimits.minY = Math.min(this.panLimits.minY, PAN_Y);
