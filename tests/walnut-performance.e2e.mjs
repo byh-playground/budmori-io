@@ -10,8 +10,22 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { sourceGraph } from '../scripts/source-graph.mjs';
 
-const SPECIES = process.env.PERFORMANCE_SPECIES || 'walnut',
+const FUNCTIONAL = process.env.FUNCTIONAL_GROWTH_PERFORMANCE === '1',
+    SPECIES = process.env.PERFORMANCE_SPECIES || 'walnut',
+    SPLIT = process.env.PERFORMANCE_SPLIT === '1',
     SETTINGS = {
+        corn: {
+            id: 1,
+            ability: 'corn-kernel-chain',
+            base: '3c4debd892ca47fb4ac01165390fa591c9c38000',
+            equalTree: true,
+        },
+        peanut: {
+            id: 4,
+            ability: 'peanut-death-split',
+            base: '3c4debd892ca47fb4ac01165390fa591c9c38000',
+            equalTree: true,
+        },
         chestnut: {
             id: 3,
             ability: 'chestnut-target-thorns',
@@ -22,12 +36,21 @@ const SPECIES = process.env.PERFORMANCE_SPECIES || 'walnut',
         rice: { id: 6, ability: 'rice-low-health-harvest', base: '7fac7631be682d3750beeab16981fccd83898195' },
         walnut: { id: 5, ability: 'walnut-raw-guard', base: 'bde28685e3ef0dc15934cde9d41a6b9b5e42ec7f' },
     };
-assert.ok(Object.hasOwn(SETTINGS, SPECIES), 'Choose chestnut, wheat, rice or walnut performance');
+assert.ok(Object.hasOwn(SETTINGS, SPECIES), 'Choose a supported performance species');
+assert.ok(
+    !FUNCTIONAL || ['corn', 'peanut', 'walnut'].includes(SPECIES),
+    'Functional comparison covers corn, peanut and walnut',
+);
+if (FUNCTIONAL) {
+    SETTINGS[SPECIES].base = '3c4debd892ca47fb4ac01165390fa591c9c38000';
+    SETTINGS[SPECIES].equalTree = true;
+}
+assert.ok(!SPLIT || (FUNCTIONAL && SPECIES === 'peanut'), 'Split scene requires functional peanut');
 const SPECIES_ID = SETTINGS[SPECIES].id,
     ABILITY_ID = SETTINGS[SPECIES].ability;
 const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     BASE_COMMIT = SETTINGS[SPECIES].base,
-    OUTPUT = path.join(ROOT, `tests/output/${SPECIES}-performance`),
+    OUTPUT = path.join(ROOT, `tests/output/${SPECIES}${SPLIT ? '-split' : ''}-performance`),
     HASH = (bytes) => createHash('sha256').update(bytes).digest('hex'),
     MEDIAN = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)],
     P95 = (values) => [...values].sort((a, b) => a - b)[Math.ceil(values.length * 0.95) - 1],
@@ -58,6 +81,9 @@ const ROOTS = { base: fs.realpathSync(process.env.WALNUT_PERFORMANCE_BASE_ROOT),
         scope: 'One Chromium process, real production simulation and render. SwiftShader/touch emulation, not hardware or physical-device FPS.',
         protocol: {
             units: 200,
+            split: SPLIT,
+            livingUnits: SPLIT ? 400 : 200,
+            renderedUnits: SPLIT ? 600 : 200,
             species: SPECIES_ID,
             tier: 6,
             seed: 731,
@@ -66,7 +92,7 @@ const ROOTS = { base: fs.realpathSync(process.env.WALNUT_PERFORMANCE_BASE_ROOT),
             sampleFrames: 120,
             p95Limit: 1.2,
             order: 'base/candidate, candidate/base, base/candidate',
-            fixture: `Stationary 1e12 HP boss stunned for10000s, all200 T6 ${SPECIES} bodies deployed in identical radial layout. ${SETTINGS[SPECIES].equalTree ? 'Both arms have identical T2–T6 research and density rank5; no other investments.' : 'Candidate only has T2–T6 research; no basic/specialty investments.'} No incoming RAW in this isolated maximum-army rendering fixture.`,
+            fixture: `Stationary 1e12 HP boss stunned for10000s, all200 T6 ${SPECIES} bodies deployed in identical radial layout. ${FUNCTIONAL ? 'Both arms have the same legal 50P: all evolution, b1/b2/b3 rank10 and specialty2 rank5.' : SETTINGS[SPECIES].equalTree ? 'Both arms have identical T2–T6 research and density rank5; no other investments.' : 'Candidate only has T2–T6 research; no basic/specialty investments.'} ${SPLIT ? 'After positioning, controlled lethal HP and the real death handler split all200 parents into400 T1 children; 200 corpses remain rendered. Not boss-AI damage coverage.' : ''} No incoming RAW in this isolated maximum-army rendering fixture.`,
             timing: 'rAF intervals retain all120 raw samples. CPU uses the production detailed profiler last30 completed frames, not the whole rAF window; nested stages are not added. Equal frame windows may cover different wall/simulation durations.',
         },
         runs: [],
@@ -153,7 +179,7 @@ async function run(variant, viewport, round, origin) {
         await PAGE.goto(`${origin}/${variant}/index.html`);
         await PAGE.waitForFunction(() => globalThis.BUDMORI?.renderer?.assetsReady);
         RUN.initial = await PAGE.evaluate(
-            ({ build, speciesId, abilityId, equalTree }) => {
+            ({ build, speciesId, abilityId, equalTree, functional, split }) => {
                 document.getElementById('newGame').click();
                 const WORLD = BUDMORI.sim,
                     INVESTMENT = WORLD.playerProgression.abilities[abilityId];
@@ -168,7 +194,14 @@ async function run(variant, viewport, round, origin) {
                     }
                     INVESTMENT.masteryLevel = 50;
                     INVESTMENT.nodeRanks = Object.fromEntries([2, 3, 4, 5, 6].map((tier) => [`evolution-${tier}`, 1]));
-                    if (equalTree) {
+                    if (functional) {
+                        Object.assign(INVESTMENT.nodeRanks, {
+                            'basic-1': 10,
+                            'basic-2': 10,
+                            'basic-3': 10,
+                            'specialty-2': 5,
+                        });
+                    } else if (equalTree) {
                         INVESTMENT.nodeRanks['specialty-1'] = 5;
                     }
                 } else if (INVESTMENT.treeVersion) {
@@ -197,6 +230,15 @@ async function run(variant, viewport, round, origin) {
                         dropLanded: true,
                     });
                 });
+                if (split) {
+                    for (const PARENT of [...WORLD.units]) {
+                        PARENT.hp = 0;
+                        WORLD.handleUnitDeath(PARENT);
+                    }
+                    if (WORLD.units.filter((unit) => unit.isBattleOnlySummon).length !== 400) {
+                        throw Error('Expected exactly400 real split children');
+                    }
+                }
                 WORLD._unitSpatialDirty = true;
                 globalThis.__walnutPerformanceActivity = { hits: 0, damage: 0 };
                 WORLD.onCombatResolved.on((event) => {
@@ -217,7 +259,14 @@ async function run(variant, viewport, round, origin) {
                     build: structuredClone(INVESTMENT),
                 };
             },
-            { build: variant, speciesId: SPECIES_ID, abilityId: ABILITY_ID, equalTree: !!SETTINGS[SPECIES].equalTree },
+            {
+                build: variant,
+                speciesId: SPECIES_ID,
+                abilityId: ABILITY_ID,
+                equalTree: !!SETTINGS[SPECIES].equalTree,
+                functional: FUNCTIONAL,
+                split: SPLIT,
+            },
         );
         RUN.measurement = await PAGE.evaluate(async () => {
             const FRAMES = [],
@@ -226,6 +275,7 @@ async function run(variant, viewport, round, origin) {
                     tick: BUDMORI.sim.simulationTick,
                     units: BUDMORI.sim.units.length,
                     living: BUDMORI.sim.units.filter((unit) => unit.hp > 0).length,
+                    children: BUDMORI.sim.units.filter((unit) => unit.isBattleOnlySummon).length,
                     actors: BUDMORI.renderer.actors.filter(
                         (actor) => actor.presentation === BUDMORI.renderer.unitPresentation,
                     ).length,
@@ -245,6 +295,8 @@ async function run(variant, viewport, round, origin) {
                 previous = NOW;
                 for (const UNIT of BUDMORI.sim.units) {
                     const FORM = (
+                        UNIT.ability.action?.cornAttack ||
+                        UNIT.ability.action?.peanutAttack ||
                         UNIT.ability.action?.chestnutAttack ||
                         UNIT.ability.action?.wheatAttack ||
                         UNIT.ability.action?.riceAttack ||
@@ -275,17 +327,18 @@ async function run(variant, viewport, round, origin) {
         RUN.frameP95Ms = P95(SAMPLE.framesMs);
         RUN.simulationP95Ms = P95(CPU);
         for (const STATE of [SAMPLE.before, SAMPLE.after]) {
-            assert.equal(STATE.units, 200);
-            assert.equal(STATE.living, 200);
-            assert.equal(STATE.actors, 200);
+            assert.equal(STATE.units, SPLIT ? 600 : 200);
+            assert.equal(STATE.living, SPLIT ? 400 : 200);
+            assert.equal(STATE.children, SPLIT ? 400 : 0);
+            assert.equal(STATE.actors, SPLIT ? 600 : 200);
             assert.equal(STATE.paused, false);
             assert.equal(STATE.phase, 'fighting');
         }
         assert.ok(SAMPLE.after.tick > SAMPLE.before.tick);
         assert.ok(SAMPLE.after.activity.hits > SAMPLE.before.activity.hits);
         assert.ok(SAMPLE.after.bossHp < SAMPLE.before.bossHp);
-        if (variant === 'candidate') {
-            assert.ok(SAMPLE.forms.includes(6));
+        if (variant === 'candidate' || FUNCTIONAL) {
+            assert.ok(SAMPLE.forms.includes(SPLIT ? 1 : 6));
         }
         assert.deepEqual(RUN.errors, []);
         RUN.status = 'passed';

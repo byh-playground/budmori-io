@@ -61,21 +61,28 @@ export function createPeanutAttack(world, unit, action, commandSpeed = 1) {
         return null;
     }
     const CHILD = !!unit.isBattleOnlySummon;
-    const R = CHILD ? {} : BUILD.nodeRanks;
+    const R = CHILD
+        ? { 'basic-1': unit.peanutInheritedPowerRank, 'basic-3': unit.peanutInheritedSpeedRank }
+        : BUILD.nodeRanks;
     const FORM = CHILD ? 1 : growthForAbility('peanut-death-split').attackTier(BUILD, unit.tier);
     const C = world.createAttackContext(unit, { attackKind: DUAL_STRIKE_FEATURE.id, attackMultiplier: 1 });
     const SPEED = Math.min(
         4,
         Math.max(0.05, C.attackerStats.attackSpeed * commandSpeed * (1 + 0.02 * (R['basic-3'] || 0))),
     );
-    const INPUTS = { one: baseUnitStatsFor(1, 4).attackPower, current: baseUnitStatsFor(unit.tier, 4).attackPower };
+    const INPUTS = {
+        one: baseUnitStatsFor(1, 4).attackPower,
+        current: baseUnitStatsFor(unit.tier, 4).attackPower,
+        speedRank: R['basic-3'] || 0,
+        commandSpeed,
+    };
     const TARGET = world.attackTarget(unit, action);
     const DX = (TARGET?.x ?? action.target.x) - unit.x,
         DY = (TARGET?.y ?? action.target.y) - unit.y;
     const DIST = Math.hypot(DX, DY) || 1;
     const TRAVEL = Math.max(0, DIST - (TARGET?.radius || 0) * 0.98);
     return {
-        version: 1,
+        version: 2,
         id: action.id,
         owner: unit.id,
         ownerGeneration: unit.generation,
@@ -284,7 +291,7 @@ export function isPeanutAttackRecord(r) {
             r,
             'version id owner ownerGeneration tier form child speed windupSeconds durationSeconds recoverySeconds ranks budgetInputs multiplier source origin point targetId targetGeneration shots launchTick motionTick attack criticalRolls',
         ) ||
-        r.version !== 1 ||
+        r.version !== 2 ||
         !['id', 'owner', 'ownerGeneration', 'targetGeneration'].every((k) => Number.isSafeInteger(r[k]) && r[k] > 0) ||
         attackTargetKey(r.targetId, r.targetGeneration) === null ||
         !Number.isInteger(r.tier) ||
@@ -302,9 +309,23 @@ export function isPeanutAttackRecord(r) {
         r.recoverySeconds !== 1 / r.speed ||
         !EXACT(r.ranks, 'power range finish') ||
         !Object.entries(r.ranks).every(([k, v]) => Number.isInteger(v) && v >= 0 && v <= (k === 'power' ? 10 : 5)) ||
-        (r.child && (r.form !== 1 || r.tier !== 1 || Object.values(r.ranks).some((v) => v !== 0))) ||
-        !EXACT(r.budgetInputs, 'one current') ||
+        (r.child && (r.form !== 1 || r.tier !== 1 || r.ranks.range !== 0 || r.ranks.finish !== 0)) ||
+        !EXACT(r.budgetInputs, 'one current speedRank commandSpeed') ||
         !Object.values(r.budgetInputs).every(Number.isFinite) ||
+        !Number.isInteger(r.budgetInputs.speedRank) ||
+        r.budgetInputs.speedRank < 0 ||
+        r.budgetInputs.speedRank > 10 ||
+        r.budgetInputs.commandSpeed <= 0 ||
+        r.speed !==
+            Math.min(
+                4,
+                Math.max(
+                    0.05,
+                    r.source?.attackerStats?.attackSpeed *
+                        r.budgetInputs.commandSpeed *
+                        (1 + 0.02 * r.budgetInputs.speedRank),
+                ),
+            ) ||
         r.multiplier !==
             (r.child ? 1 : peanutBudgetMultiplier(r.tier, r.budgetInputs.one, r.budgetInputs.current)) *
                 (1 + 0.03 * r.ranks.power) ||
@@ -316,6 +337,15 @@ export function isPeanutAttackRecord(r) {
         !Number.isFinite(r.source.sourceDamageScale) ||
         r.source.sourceDamageScale < 0 ||
         !['direct', 'enemy'].includes(r.source.sourceKind) ||
+        !Number.isFinite(
+            r.source.attackerStats.attackPower *
+                r.source.attackPowerMultiplier *
+                r.multiplier *
+                (1 + 0.08 * r.ranks.finish) *
+                r.source.sourceDamageScale *
+                Math.max(1, r.source.attackerStats.critMultiplier),
+        ) ||
+        !Number.isFinite(((1 + 0.04 * r.ranks.range) * r.source.attackerStats.attackArea) ** 2) ||
         ![r.origin, r.point].every(
             (p) =>
                 EXACT(p, 'x y z') &&

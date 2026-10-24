@@ -10,6 +10,8 @@ export class PeanutDeathSplitModel {
             return {
                 childCount: PEANUT_DEATH_SPLIT_FEATURE.definition.childCount,
                 statMultiplier: 1 + 0.25 * (BUILD.nodeRanks['specialty-3'] || 0),
+                powerRank: BUILD.nodeRanks['basic-1'] || 0,
+                speedRank: BUILD.nodeRanks['basic-3'] || 0,
             };
         }
         const EFFECT = getAbilityEffects(progression, ABILITY_ID, tier);
@@ -54,6 +56,8 @@ export class PeanutDeathSplitModel {
             usesPersistentSleep: false,
             lifetime: 'until-death-or-battle-end',
             permanentStatMultiplier: CONFIG.statMultiplier,
+            peanutInheritedPowerRank: CONFIG.powerRank || 0,
+            peanutInheritedSpeedRank: CONFIG.speedRank || 0,
         }));
     }
 }

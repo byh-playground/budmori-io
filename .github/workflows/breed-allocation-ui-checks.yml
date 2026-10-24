@@ -17,16 +17,16 @@ permissions:
     contents: read
 jobs:
     browser:
-        if: ${{ github.event_name == 'workflow_dispatch' || ((contains(github.event.pull_request.labels.*.name, 'verify-gameplay') || contains(github.event.pull_request.labels.*.name, 'verify-peanut-desktop') || (contains(github.event.pull_request.labels.*.name, 'verify-walnut') || (contains(github.event.pull_request.labels.*.name, 'verify-rice') || (contains(github.event.pull_request.labels.*.name, 'verify-wheat') || contains(github.event.pull_request.labels.*.name, 'verify-chestnut'))))) && (github.event.action != 'labeled' || github.event.label.name == 'verify-gameplay' || github.event.label.name == 'verify-peanut-desktop' || github.event.label.name == 'verify-walnut' || github.event.label.name == 'verify-rice' || github.event.label.name == 'verify-wheat' || github.event.label.name == 'verify-chestnut')) }}
+        if: ${{ github.event_name == 'workflow_dispatch' || ((contains(github.event.pull_request.labels.*.name, 'verify-functional-growth') || contains(github.event.pull_request.labels.*.name, 'verify-gameplay') || contains(github.event.pull_request.labels.*.name, 'verify-peanut-desktop') || (contains(github.event.pull_request.labels.*.name, 'verify-walnut') || (contains(github.event.pull_request.labels.*.name, 'verify-rice') || (contains(github.event.pull_request.labels.*.name, 'verify-wheat') || contains(github.event.pull_request.labels.*.name, 'verify-chestnut'))))) && (github.event.action != 'labeled' || github.event.label.name == 'verify-functional-growth' || github.event.label.name == 'verify-gameplay' || github.event.label.name == 'verify-peanut-desktop' || github.event.label.name == 'verify-walnut' || github.event.label.name == 'verify-rice' || github.event.label.name == 'verify-wheat' || github.event.label.name == 'verify-chestnut')) }}
         runs-on: ubuntu-24.04
-        timeout-minutes: 30
+        timeout-minutes: ${{ contains(github.event.pull_request.labels.*.name, 'verify-functional-growth') && 75 || 30 }}
         env:
             FOCUSED_PEANUT_DESKTOP: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'verify-peanut-desktop') && !contains(github.event.pull_request.labels.*.name, 'verify-gameplay') }}
         strategy:
             fail-fast: false
             matrix:
-                species: ${{ fromJSON((github.event_name == 'pull_request' && (contains(github.event.pull_request.labels.*.name, 'verify-walnut') || (contains(github.event.pull_request.labels.*.name, 'verify-rice') || (contains(github.event.pull_request.labels.*.name, 'verify-wheat') || contains(github.event.pull_request.labels.*.name, 'verify-chestnut')))) && !contains(github.event.pull_request.labels.*.name, 'verify-gameplay')) && (contains(github.event.pull_request.labels.*.name, 'verify-chestnut') && '["chestnut"]' || contains(github.event.pull_request.labels.*.name, 'verify-wheat') && '["wheat"]' || contains(github.event.pull_request.labels.*.name, 'verify-rice') && '["rice"]' || '["walnut"]') || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'verify-peanut-desktop') && !contains(github.event.pull_request.labels.*.name, 'verify-gameplay')) && '["peanut"]' || (github.event_name == 'workflow_dispatch' && inputs.species != 'all' && format('["{0}"]', inputs.species) || '["corn","pea","redbean","chestnut","peanut"]')) }}
-                viewport: ${{ fromJSON(((github.event_name == 'pull_request' && (contains(github.event.pull_request.labels.*.name, 'verify-walnut') || (contains(github.event.pull_request.labels.*.name, 'verify-rice') || (contains(github.event.pull_request.labels.*.name, 'verify-wheat') || contains(github.event.pull_request.labels.*.name, 'verify-chestnut')))) && !contains(github.event.pull_request.labels.*.name, 'verify-gameplay')) || (github.event_name == 'workflow_dispatch' && (inputs.species == 'walnut' || inputs.species == 'rice' || inputs.species == 'wheat' || inputs.species == 'chestnut'))) && '["desktop","landscape"]' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'verify-peanut-desktop') && !contains(github.event.pull_request.labels.*.name, 'verify-gameplay')) && '["desktop"]' || '["desktop","mobile","landscape"]') }}
+                species: ${{ fromJSON((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'verify-functional-growth') && !contains(github.event.pull_request.labels.*.name, 'verify-gameplay')) && '["functional"]' || (github.event_name == 'pull_request' && (contains(github.event.pull_request.labels.*.name, 'verify-walnut') || (contains(github.event.pull_request.labels.*.name, 'verify-rice') || (contains(github.event.pull_request.labels.*.name, 'verify-wheat') || contains(github.event.pull_request.labels.*.name, 'verify-chestnut')))) && !contains(github.event.pull_request.labels.*.name, 'verify-gameplay')) && (contains(github.event.pull_request.labels.*.name, 'verify-chestnut') && '["chestnut"]' || contains(github.event.pull_request.labels.*.name, 'verify-wheat') && '["wheat"]' || contains(github.event.pull_request.labels.*.name, 'verify-rice') && '["rice"]' || '["walnut"]') || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'verify-peanut-desktop') && !contains(github.event.pull_request.labels.*.name, 'verify-gameplay')) && '["peanut"]' || (github.event_name == 'workflow_dispatch' && inputs.species != 'all' && format('["{0}"]', inputs.species) || '["corn","pea","redbean","chestnut","peanut"]')) }}
+                viewport: ${{ fromJSON((github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'verify-functional-growth') && !contains(github.event.pull_request.labels.*.name, 'verify-gameplay')) && '["desktop","landscape"]' || ((github.event_name == 'pull_request' && (contains(github.event.pull_request.labels.*.name, 'verify-walnut') || (contains(github.event.pull_request.labels.*.name, 'verify-rice') || (contains(github.event.pull_request.labels.*.name, 'verify-wheat') || contains(github.event.pull_request.labels.*.name, 'verify-chestnut')))) && !contains(github.event.pull_request.labels.*.name, 'verify-gameplay')) || (github.event_name == 'workflow_dispatch' && (inputs.species == 'walnut' || inputs.species == 'rice' || inputs.species == 'wheat' || inputs.species == 'chestnut'))) && '["desktop","landscape"]' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'verify-peanut-desktop') && !contains(github.event.pull_request.labels.*.name, 'verify-gameplay')) && '["desktop"]' || '["desktop","mobile","landscape"]') }}
         steps:
             - uses: actions/checkout@v4
             - uses: actions/setup-node@v4
@@ -62,24 +62,41 @@ jobs:
                   echo 'Focused check: peanut desktop previews-low, previews-high and continuity only.' >> "$GITHUB_STEP_SUMMARY"
                   echo 'UI, battle, battle-extra, migration and common regressions are skipped, not passed by this run.' >> "$GITHUB_STEP_SUMMARY"
             # Corn's existing landscape scenario is combat-only; its seven established cases remain.
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'walnut' && matrix.species != 'rice' && matrix.species != 'wheat' && matrix.species != 'chestnut' && env.FOCUSED_PEANUT_DESKTOP != 'true' && (matrix.species != 'corn' || matrix.viewport != 'landscape') }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'functional' && matrix.species != 'walnut' && matrix.species != 'rice' && matrix.species != 'wheat' && matrix.species != 'chestnut' && env.FOCUSED_PEANUT_DESKTOP != 'true' && (matrix.species != 'corn' || matrix.viewport != 'landscape') }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- ui ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'walnut' && matrix.species != 'rice' && matrix.species != 'wheat' && matrix.species != 'chestnut' && env.FOCUSED_PEANUT_DESKTOP != 'true' && (matrix.species != 'corn' || matrix.viewport != 'landscape') && matrix.species != 'redbean' && matrix.species != 'chestnut' && matrix.species != 'peanut' }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'functional' && matrix.species != 'walnut' && matrix.species != 'rice' && matrix.species != 'wheat' && matrix.species != 'chestnut' && env.FOCUSED_PEANUT_DESKTOP != 'true' && (matrix.species != 'corn' || matrix.viewport != 'landscape') && matrix.species != 'redbean' && matrix.species != 'chestnut' && matrix.species != 'peanut' }}
               run: timeout 300s npm run test:${{ matrix.species }}-growth:case -- previews ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'walnut' && matrix.species != 'rice' && matrix.species != 'wheat' && matrix.species != 'chestnut' && env.FOCUSED_PEANUT_DESKTOP != 'true' }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'functional' && matrix.species != 'walnut' && matrix.species != 'rice' && matrix.species != 'wheat' && matrix.species != 'chestnut' && env.FOCUSED_PEANUT_DESKTOP != 'true' }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- battle ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'walnut' && matrix.species != 'rice' && matrix.species != 'wheat' && matrix.species != 'chestnut' && env.FOCUSED_PEANUT_DESKTOP != 'true' && matrix.species == 'pea' }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'functional' && matrix.species != 'walnut' && matrix.species != 'rice' && matrix.species != 'wheat' && matrix.species != 'chestnut' && env.FOCUSED_PEANUT_DESKTOP != 'true' && matrix.species == 'pea' }}
               run: timeout 180s npm run test:pea-growth:case -- migration ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'walnut' && matrix.species != 'rice' && matrix.species != 'wheat' && matrix.species != 'chestnut' && (matrix.species == 'redbean' || matrix.species == 'peanut') }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'functional' && matrix.species != 'walnut' && matrix.species != 'rice' && matrix.species != 'wheat' && matrix.species != 'chestnut' && (matrix.species == 'redbean' || matrix.species == 'peanut') }}
               run: timeout ${{ matrix.species == 'peanut' && '300s' || '180s' }} npm run test:${{ matrix.species }}-growth:case -- previews-low ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'walnut' && matrix.species != 'rice' && matrix.species != 'wheat' && matrix.species != 'chestnut' && (matrix.species == 'redbean' || matrix.species == 'peanut') }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'functional' && matrix.species != 'walnut' && matrix.species != 'rice' && matrix.species != 'wheat' && matrix.species != 'chestnut' && (matrix.species == 'redbean' || matrix.species == 'peanut') }}
               run: timeout ${{ matrix.species == 'peanut' && '300s' || '180s' }} npm run test:${{ matrix.species }}-growth:case -- previews-high ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'walnut' && matrix.species != 'rice' && matrix.species != 'wheat' && matrix.species != 'chestnut' && env.FOCUSED_PEANUT_DESKTOP != 'true' && (matrix.species == 'redbean' || matrix.species == 'peanut') }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'functional' && matrix.species != 'walnut' && matrix.species != 'rice' && matrix.species != 'wheat' && matrix.species != 'chestnut' && env.FOCUSED_PEANUT_DESKTOP != 'true' && (matrix.species == 'redbean' || matrix.species == 'peanut') }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- battle-extra ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'walnut' && matrix.species != 'rice' && matrix.species != 'wheat' && matrix.species != 'chestnut' && (matrix.species == 'redbean' || matrix.species == 'peanut') }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'functional' && matrix.species != 'walnut' && matrix.species != 'rice' && matrix.species != 'wheat' && matrix.species != 'chestnut' && (matrix.species == 'redbean' || matrix.species == 'peanut') }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- continuity ${{ matrix.viewport }}
-            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'walnut' && matrix.species != 'rice' && matrix.species != 'wheat' && matrix.species != 'chestnut' && env.FOCUSED_PEANUT_DESKTOP != 'true' && (matrix.species == 'redbean' || matrix.species == 'peanut') }}
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species != 'functional' && matrix.species != 'walnut' && matrix.species != 'rice' && matrix.species != 'wheat' && matrix.species != 'chestnut' && env.FOCUSED_PEANUT_DESKTOP != 'true' && (matrix.species == 'redbean' || matrix.species == 'peanut') }}
               run: timeout 180s npm run test:${{ matrix.species }}-growth:case -- migration ${{ matrix.viewport }}
+            - name: Focused functional growth integration
+              if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species == 'functional' }}
+              run: timeout 300s node tests/functional-growth.e2e.mjs ${{ matrix.viewport }}
+            - name: Paired functional growth performance (once, both viewports)
+              if: ${{ !cancelled() && steps.check.outcome == 'success' && matrix.species == 'functional' && matrix.viewport == 'desktop' }}
+              env:
+                  BASE_COMMIT: 3c4debd892ca47fb4ac01165390fa591c9c38000
+              run: |
+                  git fetch --no-tags --depth=1 origin "$BASE_COMMIT"
+                  test "$(git rev-parse FETCH_HEAD)" = "$BASE_COMMIT"
+                  BASE_ROOT="$(mktemp -d /tmp/budmori-functional-base.XXXXXX)"
+                  trap 'rm -rf -- "$BASE_ROOT"' EXIT
+                  git archive "$BASE_COMMIT" | tar -x -C "$BASE_ROOT"
+                  for species in corn peanut walnut; do
+                      FUNCTIONAL_GROWTH_PERFORMANCE=1 PERFORMANCE_SPECIES="$species" WALNUT_PERFORMANCE_BASE_ROOT="$BASE_ROOT" timeout 960s node tests/walnut-performance.e2e.mjs || exit $?
+                  done
+                  FUNCTIONAL_GROWTH_PERFORMANCE=1 PERFORMANCE_SPECIES=peanut PERFORMANCE_SPLIT=1 WALNUT_PERFORMANCE_BASE_ROOT="$BASE_ROOT" timeout 960s node tests/walnut-performance.e2e.mjs
             - name: Focused growth inputs
               if: ${{ !cancelled() && steps.check.outcome == 'success' && (matrix.species == 'walnut' || matrix.species == 'rice' || matrix.species == 'wheat' || matrix.species == 'chestnut') }}
               run: timeout 180s node tests/${{ matrix.species }}-growth.e2e.mjs ${{ matrix.viewport }}
@@ -107,6 +124,10 @@ jobs:
                       tests/output/${{ matrix.species }}-motion/
                       tests/output/${{ matrix.species }}-performance/
                       tests/output/browser-setup/
+                      tests/output/corn-performance/
+                      tests/output/peanut-performance/
+                      tests/output/peanut-split-performance/
+                      tests/output/walnut-performance/
                   if-no-files-found: error
     # The focus label alone does not opt into common regressions; verify-gameplay keeps full coverage.
     regression:

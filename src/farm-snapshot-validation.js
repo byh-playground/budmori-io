@@ -649,6 +649,8 @@ export function validateSnapshot(raw) {
                 typeof U.splitUsedThisBattle === 'boolean' &&
                 typeof U.deathSplitHandled === 'boolean' &&
                 INTEGER(U.battleSummonParentGeneration, 0, 1e12) &&
+                INTEGER(U.peanutInheritedPowerRank, 0, 10) &&
+                INTEGER(U.peanutInheritedSpeedRank, 0, 10) &&
                 INTEGER(U.chestnutNextThornTick, 0, 1e12),
         );
         ASSERT(!!specialAbilityCompositionFor(U.species) === (U.specialAbility !== null));
@@ -701,6 +703,9 @@ export function validateSnapshot(raw) {
         ASSERT(!IDS.has(U.id));
         IDS.add(U.id);
         UNITS_BY_ID.set(U.id, U);
+        if (!U.isBattleOnlySummon || U.battleSummonKind !== 'peanut-death-split') {
+            ASSERT(U.peanutInheritedPowerRank === 0 && U.peanutInheritedSpeedRank === 0);
+        }
         if (U.isBattleOnlySummon) {
             if (U.isFormationClone) {
                 ASSERT(
@@ -814,6 +819,9 @@ export function validateSnapshot(raw) {
                         R.ownerGeneration === U.generation &&
                         R.tier === U.tier &&
                         R.child === U.isBattleOnlySummon &&
+                        (!R.child ||
+                            (R.ranks.power === U.peanutInheritedPowerRank &&
+                                R.budgetInputs.speedRank === U.peanutInheritedSpeedRank)) &&
                         U.hp > 0 &&
                         (R.launchTick === null
                             ? U.ability.phase === 'windup' && A.path === null
@@ -825,8 +833,9 @@ export function validateSnapshot(raw) {
                                       : Math.min(10, Math.round(U.ability.elapsed * 20))) &&
                               A.path?.duration === R.durationSeconds &&
                               A.path.height === 0 &&
-                              sameCheckpointValue(A.path.from, R.origin) &&
-                              sameCheckpointValue(A.path.to, R.origin)) &&
+                              A.path.from.z === 0 &&
+                              [A.path.from.x, A.path.from.y].every((v) => Number.isFinite(v) && Math.abs(v) <= 100) &&
+                              sameCheckpointValue(A.path.from, A.path.to)) &&
                         R.targetId === A.targetId &&
                         R.targetGeneration === A.targetGeneration,
                 );
@@ -1035,6 +1044,13 @@ export function validateSnapshot(raw) {
     }
     for (const [PARENT_ID, CHILDREN] of SUMMONS_BY_PARENT) {
         ASSERT(CHILDREN.length <= MAX_PEANUT_SPLIT_CHILDREN);
+        ASSERT(
+            CHILDREN.every(
+                (child) =>
+                    child.peanutInheritedPowerRank === CHILDREN[0].peanutInheritedPowerRank &&
+                    child.peanutInheritedSpeedRank === CHILDREN[0].peanutInheritedSpeedRank,
+            ),
+        );
         const PARENT = UNITS_BY_ID.get(PARENT_ID);
         ASSERT(PARENT && PARENT.ownerId === CHILDREN[0].ownerId && PARENT.farmId === CHILDREN[0].farmId);
     }
