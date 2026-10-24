@@ -12,7 +12,18 @@
         <link rel="stylesheet" href="./src/formation-skills.css" />
         <link rel="stylesheet" href="./src/styles/boss-reward.css" />
         <link rel="stylesheet" href="./src/styles/boss-reward-dialog.css" />
-    </head>
+    <script>
+// Showcase frames are disposable: normal game saves and preferences remain untouched.
+if (new URLSearchParams(location.search).get('showcaseDemo') === '1') {
+  const stores = new WeakMap();
+  const storage = self => { if (!stores.has(self)) stores.set(self, new Map()); return stores.get(self); };
+  Storage.prototype.getItem = function(key) { return storage(this).get(String(key)) ?? null; };
+  Storage.prototype.setItem = function(key,value) { storage(this).set(String(key), String(value)); };
+  Storage.prototype.removeItem = function(key) { storage(this).delete(String(key)); };
+  Storage.prototype.clear = function() { storage(this).clear(); };
+}
+</script>
+</head>
     <body>
         <canvas id="world" aria-label="드래그해서 농장 둘러보기"></canvas>
         <div class="tower-tint" id="towerTint" aria-hidden="true"></div>
@@ -450,5 +461,6 @@
         <!-- Generated bootstrap integrity. -->
         <!-- prettier-ignore -->
         <script type="module" src="./src/bootstrap.js" data-bloom-bootstrap></script>
-    </body>
+    <script type="module" src="./src/showcase.js"></script>
+</body>
 </html>
