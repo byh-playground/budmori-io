@@ -304,3 +304,117 @@
         transform: none;
     }
 }
+
+/* Commands are one persistent selection, not three unrelated actions. */
+.battle-commands {
+    display: grid;
+    justify-items: center;
+    gap: 5px;
+    width: min(340px, 100%);
+    pointer-events: auto;
+}
+.battle-commands__choices {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+    width: 100%;
+}
+.battle-commands label {
+    position: relative;
+    cursor: pointer;
+}
+.battle-commands input {
+    position: absolute;
+    opacity: 0;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    cursor: pointer;
+}
+.battle-commands label span {
+    display: grid;
+    place-content: center;
+    min-height: 42px;
+    padding: 8px 12px;
+    border: 2px solid var(--ui-line);
+    border-radius: var(--ui-r-m);
+    background: var(--ui-panel);
+    color: var(--ui-ink);
+    font-weight: var(--ui-fw-b);
+}
+.battle-commands input:checked + span {
+    border-color: var(--ui-primary);
+    background: var(--ui-primary);
+    color: var(--ui-primary-ink);
+}
+.battle-commands input:focus-visible + span {
+    outline: 3px solid var(--ui-focus);
+    outline-offset: 3px;
+}
+.battle-commands__status {
+    text-shadow:
+        0 0 3px var(--ui-panel),
+        0 0 8px var(--ui-panel),
+        0 0 12px var(--ui-panel);
+    font-weight: var(--ui-fw-b);
+    font-size: var(--ui-fs-1);
+}
+.tower-summit {
+    position: fixed;
+    inset: 0;
+    z-index: calc(var(--ui-z-dock) + 20);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: max(8vh, var(--ui-safe-top)) 24px max(8vh, var(--ui-safe-bottom));
+    text-align: center;
+    color: #fff5d8;
+    background: linear-gradient(#182943dd, transparent 36%, transparent 62%, #182943ee);
+    text-shadow: 0 2px 9px #172642;
+}
+.tower-summit__title {
+    animation: doors-rise 1.4s ease both;
+}
+.tower-summit__title h1 {
+    font-size: clamp(26px, 7vw, 52px);
+    margin: 10px 0;
+}
+.tower-summit__title p {
+    margin: 0;
+}
+.tower-summit__footer {
+    display: grid;
+    gap: 14px;
+    max-width: 100%;
+}
+.tower-summit__footer button {
+    min-height: 44px;
+}
+@media (max-width: 500px) {
+    .chip--growth small {
+        display: none;
+    }
+}
+@media (max-height: 550px) {
+    .battle-commands {
+        gap: 2px;
+    }
+    .battle-commands label span {
+        min-height: 36px;
+        padding: 4px 12px;
+    }
+    #battleCommandNote {
+        display: none;
+    }
+    .tower-summit {
+        padding-top: 20px;
+        padding-bottom: 20px;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .tower-summit__title {
+        animation: none;
+    }
+}

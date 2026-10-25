@@ -189,7 +189,7 @@ export function launchCornAttack(world, unit, action) {
                 x: action.target.x - (DY / DISTANCE) * OFFSET,
                 y: action.target.y + (DX / DISTANCE) * OFFSET,
             },
-            TARGET = action.targetId === 'boss' ? world.boss : world._unitForId(action.targetId),
+            TARGET = world._unitForId(action.targetId),
             TARGET_BODY = targetBodyDimensions(TARGET),
             SKY_SPREAD = RECORD.form === 6 ? (SHOT.slot - 1) * 3.4 : 0,
             SKY_Z = TARGET_BODY.topZ + Math.max(4.8, TARGET_BODY.bodyHeight * 0.4) + SHOT.slot * 0.6,
@@ -221,7 +221,7 @@ export function cornActionFor(world, id) {
 }
 
 export function cornCriticalRoll(world, record, target) {
-    const KEY = attackTargetKey(target === world.boss ? 'boss' : target.id, target.generation);
+    const KEY = attackTargetKey(target.id, target.generation);
     if (!Object.hasOwn(record.criticalRolls, KEY)) {
         record.criticalRolls[KEY] = world.random();
     }

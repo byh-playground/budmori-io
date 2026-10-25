@@ -31,8 +31,8 @@ export class FormationSkills {
         this.bossContext.role = 'boss';
         this.members = new Set(world.units);
         this.injuredByFaction = new Map();
-        this.trackedBoss = null;
-        this.bossHealthOff = null;
+        this.trackedBosses = new Map();
+        this.bossContexts = new Map();
         this.rebuildInjured();
         this.scratch = [];
         this.air = new FixedSpatialGrid();
@@ -86,8 +86,8 @@ export class FormationSkills {
         for (const UNIT of this.members) {
             this.trackHealth(UNIT);
         }
-        if (this.trackedBoss) {
-            this.trackHealth(this.trackedBoss);
+        for (const BOSS of this.trackedBosses.keys()) {
+            this.trackHealth(BOSS);
         }
     }
     resetMembers() {
@@ -95,23 +95,30 @@ export class FormationSkills {
         this.rebuildInjured();
     }
     releaseBossHealth() {
-        this.bossHealthOff?.();
-        this.bossHealthOff = null;
-        if (this.trackedBoss) {
-            this.untrackHealth(this.trackedBoss);
+        for (const [BOSS, OFF] of this.trackedBosses) {
+            OFF();
+            this.untrackHealth(BOSS);
         }
-        this.trackedBoss = null;
+        this.trackedBosses.clear();
+        this.bossContexts.clear();
     }
     synchronizeBossHealth() {
-        const BOSS = this.active && this.world.boss?.active ? this.world.boss : null;
-        if (BOSS === this.trackedBoss) {
-            return;
+        const BOSSES = this.active ? this.world.bosses : [];
+        for (const [BOSS, OFF] of this.trackedBosses) {
+            if (!BOSSES.includes(BOSS)) {
+                OFF();
+                this.untrackHealth(BOSS);
+                this.trackedBosses.delete(BOSS);
+            }
         }
-        this.releaseBossHealth();
-        if (BOSS) {
-            this.trackedBoss = BOSS;
-            this.bossHealthOff = BOSS.onHealthChanged.on(() => this.trackHealth(BOSS));
-            this.trackHealth(BOSS);
+        for (const BOSS of BOSSES) {
+            if (!this.trackedBosses.has(BOSS)) {
+                this.trackedBosses.set(
+                    BOSS,
+                    BOSS.onHealthChanged.on(() => this.trackHealth(BOSS)),
+                );
+                this.trackHealth(BOSS);
+            }
         }
     }
     injuredAllies(out = []) {
@@ -124,11 +131,24 @@ export class FormationSkills {
         }
         return out;
     }
-    contextFor(role) {
-        return role === 'boss' ? this.bossContext : this;
+    contextFor(role, casterId = null) {
+        if (role !== 'boss') {
+            return this;
+        }
+        if (!casterId) {
+            return this.bossContext;
+        }
+        if (!this.bossContexts.has(casterId)) {
+            const CONTEXT = Object.create(this.bossContext);
+            CONTEXT.casterId = casterId;
+            this.bossContexts.set(casterId, CONTEXT);
+        }
+        return this.bossContexts.get(casterId);
     }
     get caster() {
-        return this.role === 'boss' ? this.world.boss : null;
+        return this.role === 'boss'
+            ? this.world._unitForId(this.casterId || this.runtime.bossCast?.casterId || this.world.boss.id)
+            : null;
     }
     get friendlyFaction() {
         return this.role === 'boss' ? 'enemy' : 'player';
@@ -168,7 +188,7 @@ export class FormationSkills {
     }
     end() {
         this.releaseBossHealth();
-        for (const UNIT of [...this.members, this.world.boss]) {
+        for (const UNIT of [...this.members, ...this.world.bosses]) {
             UNIT.giantUntil = 0;
             UNIT.giantSizeMultiplier = MODELS.get('giant').definition.sizeMultiplier;
             UNIT.giantEndedAt = -10;
@@ -212,10 +232,10 @@ export class FormationSkills {
         const COUNT = this.effects.length;
         for (let i = 0; i < COUNT; i++) {
             const EFFECT = this.effects[i];
-            if (EFFECT.encounterId !== undefined && EFFECT.encounterId !== this.world.boss.encounterId) {
+            if (EFFECT.encounterId !== undefined && EFFECT.encounterId !== this.world.farmBossEvent.encounterId) {
                 continue;
             }
-            if (MODELS.get(EFFECT.kind).update(this.contextFor(EFFECT.role), EFFECT, dt)) {
+            if (MODELS.get(EFFECT.kind).update(this.contextFor(EFFECT.role, EFFECT.casterId), EFFECT, dt)) {
                 this.effects[write++] = EFFECT;
             }
         }
@@ -237,10 +257,29 @@ export class FormationSkills {
         }
     }
     updateBossCast(dt) {
-        const BOSS = this.world.boss;
         let cast = this.runtime.bossCast;
+        const BOSS = cast
+                ? this.world._unitForId(cast.casterId)
+                : this.world.bosses.find(
+                      (boss) =>
+                          boss.active &&
+                          boss.hp > 0 &&
+                          boss.stun <= 0 &&
+                          !boss.patternRuntime.active &&
+                          boss.ability.phase === 'idle' &&
+                          (!boss.specialAbility || boss.specialAbility.phase === 'idle') &&
+                          boss.z <= 0.1 &&
+                          boss.landingRecovery <= 0,
+                  ),
+            CONTEXT = BOSS ? this.contextFor('boss', BOSS.id) : null;
         let failedId = null;
-        if (!this.world.tower.active || !BOSS.active || BOSS.hp <= 0 || BOSS.stun > 0) {
+        if (
+            !this.world.tower.active ||
+            !BOSS?.active ||
+            BOSS.hp <= 0 ||
+            BOSS.stun > 0 ||
+            (cast && BOSS.generation !== cast.casterGeneration)
+        ) {
             // Before release the charge remains reserved, not consumed. Existing effects have their own lifetime.
             this.runtime.bossCast = null;
             return;
@@ -253,7 +292,7 @@ export class FormationSkills {
             if (cast.phase === 'prepare') {
                 const SLOT = this.slots.find((slot) => slot.role === 'boss' && slot.id === cast.id),
                     MODEL = SLOT && MODELS.get(SLOT.id);
-                if (MODEL && MODEL.canCast(this.bossContext, SLOT) && MODEL.cast(this.bossContext, SLOT)) {
+                if (MODEL && MODEL.canCast(CONTEXT, SLOT) && MODEL.cast(CONTEXT, SLOT)) {
                     SLOT.charge = 0;
                     SLOT.cooldown = FORMATION_COOLDOWN_SECONDS;
                     this.world.combat('formation-cast', {
@@ -283,7 +322,7 @@ export class FormationSkills {
             (BOSS.specialAbility && BOSS.specialAbility.phase !== 'idle') ||
             BOSS.z > 0.1 ||
             BOSS.landingRecovery > 0 ||
-            !this.bossContext.enemy()
+            !CONTEXT.enemy()
         ) {
             return;
         }
@@ -300,11 +339,19 @@ export class FormationSkills {
                 slot.id !== failedId &&
                 slot.id !== RETRY_ID &&
                 slot.cooldown < 1e-9 &&
-                slot.charge >= MODELS.get(slot.id).profile(this.bossContext).required &&
-                MODELS.get(slot.id).canCast(this.bossContext, slot),
+                slot.charge >= MODELS.get(slot.id).profile(CONTEXT).required &&
+                MODELS.get(slot.id).canCast(CONTEXT, slot),
         );
         if (SLOT) {
-            cast = { id: SLOT.id, phase: 'prepare', elapsed: 0, duration: 0.8, serial: ++this.runtime.serial };
+            cast = {
+                id: SLOT.id,
+                casterId: BOSS.id,
+                casterGeneration: BOSS.generation,
+                phase: 'prepare',
+                elapsed: 0,
+                duration: 0.8,
+                serial: ++this.runtime.serial,
+            };
             this.runtime.bossCast = cast;
             BOSS.chaseVx = BOSS.chaseVy = 0;
         }
@@ -314,7 +361,8 @@ export class FormationSkills {
             id: ++this.runtime.serial,
             kind,
             role: this.role,
-            encounterId: this.world.boss.encounterId,
+            encounterId: this.world.farmBossEvent.encounterId,
+            ...(this.role === 'boss' ? { casterId: this.caster.id, casterGeneration: this.caster.generation } : {}),
             age: 0,
             x: 0,
             y: 0,
@@ -328,9 +376,7 @@ export class FormationSkills {
         // Preserve the formation's existing allied roster (including waiting
         // troops); hostile selection separately uses the deployed combat view.
         const ALLIES = [...this.members];
-        if (this.world.boss?.active) {
-            ALLIES.unshift(this.world.boss);
-        }
+        ALLIES.unshift(...this.world.bosses.filter((boss) => boss.active));
         return ALLIES.filter((unit) => unit.faction === this.friendlyFaction && unit.hp > 0);
     }
     targetId(target) {
@@ -372,7 +418,7 @@ export class FormationSkills {
                     unit.dropLanded &&
                     !this.world._benched.has(unit),
             );
-        const CENTER = origin || this.world.boss;
+        const CENTER = origin || this.caster || this.world.boss;
         return TARGETS.filter((target) => Math.hypot(target.x - CENTER.x, target.y - CENTER.y) <= range)
             .sort(
                 (a, b) =>
@@ -405,10 +451,11 @@ export class FormationSkills {
         this.world.passiveUndying(target);
         target.flash = 0.3;
         // A skill hit reads like any other hit: a burst on the body, a recoil, a shake. Bigger hits are stronger.
-        const IS_BOSS = target === this.world.boss,
+        const IS_BOSS = this.world.isBoss(target),
             MAX = Math.max(1, target.maxHp || target.hp || 1),
             STRENGTH = Math.min(3, 1 + (amount / MAX) * 8);
         this.world.combat(IS_BOSS ? 'boss-hit' : 'unit-hit', {
+            targetId: target.id,
             unit: IS_BOSS ? 0 : target.id,
             ownerId: 0,
             species: 0,
@@ -465,7 +512,7 @@ export class FormationSkills {
         }
     }
     canClone(count) {
-        return this.world.units.length + count <= this.world.battleCapacity;
+        return this.world.unitCollection.items.length + count <= this.world.battleCapacity;
     }
     separateAir(effect, dt) {
         for (const OTHER of this.air.queryAABB(

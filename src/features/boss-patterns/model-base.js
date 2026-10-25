@@ -9,8 +9,8 @@ export class BossPattern {
         this.dependencies = dependencies;
         this.physicalActive = false;
     }
-    target(world, living) {
-        return world.nearestBossTarget(living, true);
+    target(world, living, boss) {
+        return world.nearestBossTarget(living, true, boss);
     }
     selectedTarget(_world, targets, _fallback) {
         return targets.nearest;
@@ -27,12 +27,10 @@ export class BossPattern {
     reachFor(boss) {
         return this.attackExtentFor(boss, this.config.reach);
     }
-    eligible(world, targets, _aliveAdds) {
-        const TARGET = this.selectedTarget(world, targets);
+    eligible(world, targets, _aliveAdds, boss) {
+        const TARGET = this.selectedTarget(world, targets, undefined, boss);
         return (
-            !!TARGET &&
-            Math.hypot(TARGET.x - world.boss.x, TARGET.y - world.boss.y) <=
-                this.reachFor(world.boss) + TARGET.radius + 1e-9
+            !!TARGET && Math.hypot(TARGET.x - boss.x, TARGET.y - boss.y) <= this.reachFor(boss) + TARGET.radius + 1e-9
         );
     }
     // How many units this attack would hit right now; null for an attack that does no damage.

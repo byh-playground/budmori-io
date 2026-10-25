@@ -423,7 +423,7 @@ export function composeUnitAttackCycles(cycle, { ArenaGeometry: arenaGeometry, B
                     if (RESULT) {
                         sim.combat('barley-shred', {
                             sourceUnit: U.id,
-                            unit: target === sim.boss ? 'boss' : target.id,
+                            unit: target.id,
                             amount: RESULT.amount,
                             x: target.x,
                             y: target.y,

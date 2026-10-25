@@ -3,6 +3,7 @@
 // touches the simulation.
 import { WORLD_HEIGHT_PROJECTION } from './vector-sockets.js';
 import { CONFIG } from './farm-model.js';
+import { towerTheme } from './tower-theme.js';
 
 const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena;
 const TAU = Math.PI * 2;
@@ -82,7 +83,7 @@ const SKY_STOPS = [
     { at: 1, top: [16, 22, 58], bottom: [52, 52, 108] },
 ];
 function skyAt(floor) {
-    const T = Math.min(1, Math.max(0, (floor - 1) / 50));
+    const T = Math.min(1, Math.max(0, (floor - 1) / 99));
     const B = T <= SKY_STOPS[1].at ? 1 : 2,
         A = B - 1,
         K = (T - SKY_STOPS[A].at) / (SKY_STOPS[B].at - SKY_STOPS[A].at);
@@ -92,13 +93,6 @@ function skyAt(floor) {
         night: T,
     };
 }
-const HALL_TINTS = {
-    battle: { floor: [96, 92, 112], wall: [52, 48, 70], accent: [255, 176, 96] },
-    elite: { floor: [116, 82, 92], wall: [70, 46, 56], accent: [255, 122, 96] },
-    mid: { floor: [90, 76, 124], wall: [54, 44, 84], accent: [190, 150, 255] },
-    rest: { floor: [112, 104, 88], wall: [66, 58, 46], accent: [255, 214, 130] },
-    relic: { floor: [112, 104, 88], wall: [66, 58, 46], accent: [150, 230, 200] },
-};
 
 class Painter {
     constructor(renderer) {
@@ -564,18 +558,97 @@ function drawHallWall(paint, tint, sky, now) {
     C.fillRect(A.x, A.y - 0.2 * S, B.x - A.x, 0.2 * S);
 }
 
+function drawOpenSky(paint, sky, now, summit) {
+    const C = paint.c,
+        W = paint.r.canvas.width,
+        H = paint.r.canvas.height;
+    for (let index = 0; index < 12; index++) {
+        C.fillStyle = rgb(mix(sky.top, sky.bottom, index / 11));
+        C.fillRect(0, (H * index) / 12, W, H / 12 + 1);
+    }
+    for (let index = 0; index < 16; index++) {
+        const X = ((index * 173 + now * 0.002) % (W + 120)) - 60,
+            Y = (H * (0.1 + ((index * 29) % 35) / 100)) / 2;
+        paint.r.ellipse(X, Y, ((25 + (index % 3) * 12) * paint.s) / 12, (7 * paint.s) / 12, '#ffffff28');
+    }
+    if (summit) {
+        const POINT = paint.p(0, RY, 10);
+        paint.r.ellipse(POINT.x, POINT.y, 3.2 * paint.s, 3.2 * paint.s, '#fff0ba44');
+        paint.r.ellipse(POINT.x, POINT.y, 1.8 * paint.s, 1.8 * paint.s, '#ffe7a4');
+    }
+}
+
+function drawThemeDecorations(paint, theme, now) {
+    const C = paint.c,
+        S = paint.s;
+    // Wall-mounted or painted decoration: none of these shapes are simulation obstacles.
+    if (theme.id === 'royal') {
+        paint.groundRect(-3.8, -RY, 3.8, RY, '#7e375c66');
+        paint.groundRect(-3.9, -RY, -3.75, RY, '#edcc8b99');
+        paint.groundRect(3.75, -RY, 3.9, RY, '#edcc8b99');
+    }
+    for (const X of [-18, -10, 10, 18]) {
+        const BASE = paint.p(X, RY, 2.5),
+            TOP = paint.p(X, RY, 7.5);
+        if (theme.id === 'garden') {
+            C.strokeStyle = '#93b978';
+            C.lineWidth = Math.max(1, S * 0.13);
+            C.beginPath();
+            C.moveTo(BASE.x, BASE.y);
+            C.lineTo(TOP.x + Math.sin(now * 0.0008 + X) * S * 0.12, TOP.y);
+            C.stroke();
+            for (let index = 0; index < 5; index++) {
+                paint.r.ellipse(
+                    BASE.x + (index % 2 ? -0.4 : 0.4) * S,
+                    BASE.y - index * 0.7 * S,
+                    S * 0.5,
+                    S * 0.23,
+                    '#a5c68c',
+                );
+            }
+        } else if (theme.id === 'armory') {
+            paint.r.ellipse(BASE.x, BASE.y - S * 1.1, S * 0.8, S, '#8da5b7');
+            for (const SIDE of [-1, 1]) {
+                paint.r.line(
+                    { x: BASE.x + SIDE * S, y: TOP.y + S },
+                    { x: BASE.x - SIDE * S, y: BASE.y },
+                    0.14,
+                    '#d4e1e6',
+                );
+            }
+        } else if (theme.id === 'royal' || theme.id === 'entrance') {
+            paint.poly(
+                [
+                    { x: TOP.x - S, y: TOP.y },
+                    { x: TOP.x + S, y: TOP.y },
+                    { x: BASE.x + S, y: BASE.y - S },
+                    { x: BASE.x, y: BASE.y },
+                    { x: BASE.x - S, y: BASE.y - S },
+                ],
+                theme.id === 'royal' ? '#b96887' : '#b68b58',
+                '#ead39e',
+                Math.max(1, S * 0.06),
+            );
+        }
+    }
+}
+
 export function drawTowerHall(renderer, world, now) {
     const P = new Painter(renderer),
         S = P.s,
         C = P.c,
         W = renderer.canvas.width,
         H = renderer.canvas.height,
-        KIND = world.tower?.kind || 'battle',
-        TINT = HALL_TINTS[KIND] || HALL_TINTS.battle,
-        SKY = skyAt(world.tower?.floor || 1);
+        TINT = towerTheme(world.tower?.floor || 1),
+        SUMMIT = world.tower?.phase === 'summit',
+        SKY = SUMMIT ? { top: [107, 159, 195], bottom: [255, 219, 161], night: 0 } : skyAt(world.tower?.floor || 1);
     C.fillStyle = '#15111d';
     C.fillRect(0, 0, W, H);
-    drawHallWall(P, TINT, SKY, now);
+    if (TINT.id === 'terrace' || SUMMIT) {
+        drawOpenSky(P, SKY, now, SUMMIT);
+    } else {
+        drawHallWall(P, TINT, SKY, now);
+    }
     // flagstones laid in running bond, not a grid
     P.groundRect(-RX, -RY, RX, RY, rgb(TINT.floor));
     const ROW = 3,
@@ -618,6 +691,7 @@ export function drawTowerHall(renderer, world, now) {
         }
     }
     C.stroke();
+    drawThemeDecorations(P, TINT, now);
     // a rune circle where the guardian of the floor lands
     for (const [R, ALPHA, WIDTH] of [
         [8, 0.3, 0.14],
@@ -643,6 +717,13 @@ export function drawTowerHall(renderer, world, now) {
         C.moveTo(P0.x, P0.y);
         C.lineTo(P1.x, P1.y);
         C.stroke();
+    }
+    if (TINT.id === 'terrace' || SUMMIT) {
+        for (let x = -RX; x <= RX; x += 2.5) {
+            const POINT = P.p(x, RY, 0);
+            C.fillStyle = rgb(TINT.wall);
+            C.fillRect(POINT.x - S * 0.8, POINT.y - S * 0.9, S * 1.6, S * 0.9);
+        }
     }
     // the low wall around the hall
     const EDGE = rgb(mix(TINT.wall, [255, 255, 255], 0.1));

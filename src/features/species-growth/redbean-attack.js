@@ -209,7 +209,7 @@ export function resolveRedbeanSlots(world, unit, action, geometry) {
         if (PRIMARY) {
             CANDIDATES.push(PRIMARY);
         }
-        for (const TARGET of [world.boss, ...world.units]) {
+        for (const TARGET of world.combatUnits()) {
             if (TARGET !== PRIMARY && TARGET.hp > 0 && areOpposingFactions(unit, TARGET)) {
                 CANDIDATES.push(TARGET);
             }
@@ -226,7 +226,7 @@ export function resolveRedbeanSlots(world, unit, action, geometry) {
             ) {
                 continue;
             }
-            const ID = TARGET === world.boss ? 'boss' : TARGET.id;
+            const ID = TARGET.id;
             if (!ATTACK.claimHit(STRIKE.slot, ID, TARGET.generation)) {
                 continue;
             }

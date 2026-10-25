@@ -143,10 +143,10 @@ export function resolvePeaContacts(world, unit, action, target, hit) {
             break;
         }
         RECORD.slot = STRIKE.slot;
-        if (!hit || !ATTACK.claimHit(STRIKE.slot, target === world.boss ? 'boss' : target.id, target.generation)) {
+        if (!hit || !ATTACK.claimHit(STRIKE.slot, target.id, target.generation)) {
             continue;
         }
-        const KEY = attackTargetKey(target === world.boss ? 'boss' : target.id, target.generation);
+        const KEY = attackTargetKey(target.id, target.generation);
         if (!Object.hasOwn(RECORD.criticalRolls, KEY)) {
             RECORD.criticalRolls[KEY] = world.random();
         }

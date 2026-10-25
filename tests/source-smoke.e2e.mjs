@@ -689,7 +689,7 @@ try {
                 BOSS.patternPhase === 'active' &&
                 BOSS.patternPhaseElapsed >= 0.25
             ) {
-                const INSTANCE = this.renderer.bossPlayers.get(BOSS.species);
+                const INSTANCE = this.renderer.bossPlayers.get(BOSS.id + ':' + BOSS.generation);
                 OBS.sweepFrame = {
                     sessionDto: world !== WORLD && BOSS !== WORLD.boss,
                     clip: INSTANCE.player.currentClip,
@@ -1191,7 +1191,7 @@ try {
                 BOSS = world.boss;
             if (!OBS.complete && BOSS.generation === CASE.generation && this.basicAttackVisible(BOSS, world)) {
                 CASE.nativeFrames++;
-                const DISPLAY = this.attackDisplay.unit;
+                const DISPLAY = this.attackDisplays.get(BOSS.id).unit;
                 CASE.maxRenderedBodyShift = Math.max(
                     CASE.maxRenderedBodyShift,
                     Math.hypot(DISPLAY.x - BOSS.x, DISPLAY.y - BOSS.y),
@@ -1200,7 +1200,7 @@ try {
                     CASE.nativeAttackFrames++;
                 }
                 CASE.sessionDto &&= world !== WORLD && BOSS !== WORLD.boss && BOSS.ability !== WORLD.boss.ability;
-                ADD(CASE.clips, this.renderer.bossPlayers.get(BOSS.species)?.player.currentClip);
+                ADD(CASE.clips, this.renderer.bossPlayers.get(BOSS.id + ':' + BOSS.generation)?.player.currentClip);
                 if (
                     capture &&
                     BOSS.ability.phase === 'active' &&

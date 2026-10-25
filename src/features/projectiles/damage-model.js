@@ -15,9 +15,7 @@ export class DamageProjectile extends BallisticProjectile {
             if (RECORD) {
                 const ACTION = AttackAction.fromDTO(RECORD.attack);
                 ACTION.advance(world.simulationTick);
-                const CLAIMED =
-                    hit &&
-                    ACTION.claimHit(projectile.cornSlot, target === world.boss ? 'boss' : target.id, target.generation);
+                const CLAIMED = hit && ACTION.claimHit(projectile.cornSlot, target.id, target.generation);
                 RECORD.attack = ACTION.toDTO();
                 if (CLAIMED) {
                     const CONTEXT = cornAttackContext(

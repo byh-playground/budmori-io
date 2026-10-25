@@ -34,65 +34,65 @@ export class ChargeBossPattern extends BossPattern {
         area.x = SX;
         area.y = SY;
     }
-    activate(world, action) {
+    activate(_world, action, boss) {
         action.start = {
-            x: world.boss.x,
-            y: world.boss.y,
-            z: world.boss.z,
+            x: boss.x,
+            y: boss.y,
+            z: boss.z,
         };
         action.traveled = 0;
         return;
     }
     // The units in the lane the boss runs along, as wide as its body.
-    expectedHits(world, targets) {
-        const TARGET = this.selectedTarget(world, targets),
-            BOSS = world.boss,
+    expectedHits(world, targets, boss) {
+        const TARGET = this.selectedTarget(world, targets, undefined, boss),
+            BOSS = boss,
             AIM = Math.atan2(TARGET.y - BOSS.y, TARGET.x - BOSS.x),
             DX = Math.cos(AIM),
             DY = Math.sin(AIM);
-        return world.bossGroundUnitsNear(BOSS.x, BOSS.y, this.reachFor(world.boss)).filter((unit) => {
+        return world.bossGroundUnitsNear(BOSS.x, BOSS.y, this.reachFor(boss), boss).filter((unit) => {
             const AHEAD = (unit.x - BOSS.x) * DX + (unit.y - BOSS.y) * DY,
                 SIDE = Math.abs((unit.x - BOSS.x) * DY - (unit.y - BOSS.y) * DX);
             return AHEAD >= 0 && SIDE <= BOSS.radius + unit.radius;
         }).length;
     }
-    updateActive(world, action, dt) {
+    updateActive(world, action, dt, boss) {
         const { ARENA_GEOMETRY } = this.dependencies;
         const DIRECTION = {
                 x: Math.cos(action.aim),
                 y: Math.sin(action.aim),
             },
-            REMAINING = Math.max(0, this.reachFor(world.boss) - action.traveled),
+            REMAINING = Math.max(0, this.reachFor(boss) - action.traveled),
             DISTANCE = Math.min(this.config.speed * dt, REMAINING),
             OLD = {
-                x: world.boss.x,
-                y: world.boss.y,
-                z: world.boss.z,
+                x: boss.x,
+                y: boss.y,
+                z: boss.z,
             },
             CANDIDATE = {
-                x: world.boss.x + DIRECTION.x * DISTANCE,
-                y: world.boss.y + DIRECTION.y * DISTANCE,
+                x: boss.x + DIRECTION.x * DISTANCE,
+                y: boss.y + DIRECTION.y * DISTANCE,
             },
-            BOUNDED = ARENA_GEOMETRY.clamp(CANDIDATE, world.scene, world.boss.radius + 0.25),
+            BOUNDED = ARENA_GEOMETRY.clamp(CANDIDATE, world.scene, boss.radius + 0.25),
             HIT_BOUNDARY = Math.hypot(CANDIDATE.x - BOUNDED.x, CANDIDATE.y - BOUNDED.y) > 1e-8;
-        world.boss.x = BOUNDED.x;
-        world.boss.y = BOUNDED.y;
-        const MOVED = Math.hypot(world.boss.x - OLD.x, world.boss.y - OLD.y);
+        boss.x = BOUNDED.x;
+        boss.y = BOUNDED.y;
+        const MOVED = Math.hypot(boss.x - OLD.x, boss.y - OLD.y);
         action.traveled += MOVED;
-        world.boss.travel += MOVED;
-        world.sweepBossBody(OLD, action.id);
-        if (HIT_BOUNDARY || action.traveled >= this.reachFor(world.boss) - 1e-8 || MOVED < 1e-8) {
+        boss.travel += MOVED;
+        world.sweepBossBody(OLD, action.id, boss);
+        if (HIT_BOUNDARY || action.traveled >= this.reachFor(boss) - 1e-8 || MOVED < 1e-8) {
             world.enterBossPatternRecovery(action);
         }
     }
-    target(world, living) {
-        return world.chargeBossTarget(living);
+    target(world, living, boss) {
+        return world.chargeBossTarget(living, undefined, boss);
     }
     selectedTarget(_world, targets, _fallback) {
         return targets.charge;
     }
-    eligible(world, targets, _aliveAdds) {
-        return !!this.selectedTarget(world, targets);
+    eligible(world, targets, _aliveAdds, boss) {
+        return !!this.selectedTarget(world, targets, undefined, boss);
     }
     sweepNormal(boss) {
         return { x: Math.cos(boss.patternRuntime.active.aim), y: Math.sin(boss.patternRuntime.active.aim) };

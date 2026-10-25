@@ -1,3 +1,4 @@
+import { isBossActorId } from './combat-identity.js';
 import { DEFINITION as SKILL_0 } from './features/formation-skills/giant/definition.js';
 import { DEFINITION as SKILL_1 } from './features/formation-skills/lightning/definition.js';
 import { DEFINITION as SKILL_2 } from './features/formation-skills/meteor/definition.js';
@@ -112,6 +113,9 @@ export function isValidFormationRuntime(runtime) {
     if (
         CAST != null &&
         (!BOSS_SKILL_IDS.includes(CAST.id) ||
+            !isBossActorId(CAST.casterId) ||
+            !Number.isSafeInteger(CAST.casterGeneration) ||
+            CAST.casterGeneration < 1 ||
             !['prepare', 'recover'].includes(CAST.phase) ||
             !Number.isFinite(CAST.elapsed) ||
             CAST.elapsed < 0 ||

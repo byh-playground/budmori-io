@@ -8,15 +8,20 @@ import { isRedbeanAttackRecord } from './features/species-growth/redbean-attack.
 import { isPeaAttackRecord } from './features/species-growth/pea-attack.js';
 import { isValidFormationRuntime } from './formation-skill-state.js';
 import { CONFIG } from './farm-model.js';
-import { isValidPlayerProgressionState } from './player-progression.js';
+import { isValidPlayerProgressionState, FARM_BOSS_EVENT_MAX_STAGE } from './player-progression.js';
 import { hasUnitCapability, specialAbilityCompositionFor } from './unit-abilities.js';
 import { mergeMaterialCostForTier } from './unit-grades.js';
 import { BOSS_PATTERN_IDS, BOSS_PATTERN_CONFIG } from './boss-patterns.js';
 import { BOSS_REWARD_SETTINGS, bossStageStats } from './boss-rewards.js';
 import { resolveUnitStats } from './unit-stats.js';
 import { FACTION_CONFIG, hasFaction } from './factions.js';
-import { FARM_SNAPSHOT_SHAPE as GARDEN_SHAPE, UNIT_SNAPSHOT_SHAPE as UNIT_SHAPE } from './farm-snapshot.js';
+import {
+    FARM_SNAPSHOT_SHAPE as GARDEN_SHAPE,
+    UNIT_SNAPSHOT_SHAPE as UNIT_SHAPE,
+    BOSS_SNAPSHOT_SHAPE,
+} from './farm-snapshot.js';
 import { attackGeometryScale } from './features/species-growth/attack-profile.js';
+import { isBossActorId } from './combat-identity.js';
 import { attackTargetKey } from './features/species-growth/attack-action.js';
 import { isCornAttackRecord, cornKernelMultiplier } from './features/species-growth/corn-attack.js';
 import { CORN_ATTACHMENT_FEATURE } from './features/abilities/corn-attachment/definition.js';
@@ -29,6 +34,9 @@ const INTEGER = (v, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInte
 const VALID_BATTLE_UNIT_ID = (id, bossSummonSerial) =>
     INTEGER(id, 1, CONFIG.farm.maxUnitId) ||
     INTEGER(id, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + bossSummonSerial);
+function validActorId(raw, id) {
+    return raw.bosses.some((boss) => boss.id === id) || VALID_BATTLE_UNIT_ID(id, raw.bossSummonSerial);
+}
 export { VALID_BATTLE_UNIT_ID as validBattleUnitId };
 function assertSnapshot(ok) {
     if (!ok) {
@@ -66,7 +74,7 @@ function finiteTree(v, depth = 0, key = '', progression = false) {
     } else if (Array.isArray(v)) {
         const MAX =
             key === 'units'
-                ? CONFIG.battle.capacity.battleUnits
+                ? CONFIG.farm.capacity.battleUnits
                 : key === 'projectiles' || key === 'actions' || key === 'groups' || key === 'chestnutAttacks'
                   ? CONFIG.battle.capacity.projectiles
                   : key === 'bossRewardReceipts' || key === 'processedBossKillReceipts'
@@ -176,14 +184,7 @@ function validateAttackCycle(cycle) {
     }
 }
 function validateProgression(progression) {
-    ASSERT(
-        progression &&
-            Object.keys(progression).length === 4 &&
-            ['schemaVersion', 'abilities', 'towerBest', 'processedBossKillReceipts'].every((key) =>
-                Object.hasOwn(progression, key),
-            ) &&
-            isValidPlayerProgressionState(progression),
-    );
+    ASSERT(isValidPlayerProgressionState(progression));
 }
 function validWheatCommandBuffs(buffs, tick) {
     return (
@@ -549,7 +550,7 @@ function validateActorAttackState(actor, raw, cornActions, chestnutActions, allo
         if (U.species === 3 && A.thornShotsRemaining !== undefined) {
             ASSERT(
                 INTEGER(A.thornTargetGeneration, 1, 1e12) &&
-                    (A.thornTargetId === 'boss' || VALID_BATTLE_UNIT_ID(A.thornTargetId, raw.bossSummonSerial)) &&
+                    validActorId(raw, A.thornTargetId) &&
                     INTEGER(A.thornShotsRemaining, 0, 2) &&
                     INTEGER(A.thornNextShotTick, 0, 1e12) &&
                     INTEGER(A.thornShotIndex, 0, 2) &&
@@ -598,7 +599,27 @@ function validateActorAttackState(actor, raw, cornActions, chestnutActions, allo
 export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
     finiteTree(raw);
     shape(raw, GARDEN_SHAPE);
+    ASSERT(
+        Array.isArray(raw.bosses) &&
+            raw.bosses.length >= 1 &&
+            raw.bosses.length <= 5 &&
+            raw.bosses[0].id === 'boss' &&
+            new Set(raw.bosses.map((boss) => boss.id)).size === raw.bosses.length,
+    );
+    validateTowerCheckpoint(raw);
+
     ASSERT(isValidFormationRuntime(raw.formationRuntime));
+    const CAST = raw.formationRuntime.bossCast;
+    if (CAST) {
+        ASSERT(raw.bosses.some((boss) => boss.id === CAST.casterId && boss.generation === CAST.casterGeneration));
+    }
+    for (const EFFECT of raw.formationRuntime.effects) {
+        if (EFFECT.role === 'boss') {
+            ASSERT(
+                raw.bosses.some((boss) => boss.id === EFFECT.casterId && boss.generation === EFFECT.casterGeneration),
+            );
+        }
+    }
     ASSERT(
         INTEGER(raw.seed, 0, 0xffffffff) &&
             INTEGER(raw.rng.state, 0, 0xffffffff) &&
@@ -729,7 +750,7 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
     );
     ASSERT(
         raw.farmBossEvent &&
-            ['idle', 'dropping', 'fighting', 'celebrating', 'fading'].includes(raw.farmBossEvent.phase) &&
+            ['idle', 'marching', 'dropping', 'fighting', 'celebrating', 'fading'].includes(raw.farmBossEvent.phase) &&
             ['idle', 'fighting', 'victory', 'defeat'].includes(raw.farmBossEvent.outcome) &&
             Number.isFinite(raw.farmBossEvent.elapsed) &&
             raw.farmBossEvent.elapsed >= 0,
@@ -752,13 +773,15 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
                 FARM_EVENT.rewardUnitId === 0,
         );
         if (raw.scene === 'farm') {
-            ASSERT(!raw.boss.active);
+            ASSERT(raw.bosses.every((boss) => !boss.active));
         }
+    } else if (FARM_EVENT.phase === 'marching') {
+        ASSERT(raw.tower.active && FARM_EVENT.outcome === 'fighting');
     } else if (FARM_EVENT.phase === 'dropping' || FARM_EVENT.phase === 'fighting') {
         ASSERT(
             raw.scene === 'farm' &&
                 FARM_EVENT.outcome === 'fighting' &&
-                raw.boss.active &&
+                raw.bosses.some((boss) => boss.active) &&
                 INTEGER(FARM_EVENT.encounterId, 1, raw.nextBossEncounterId - 1) &&
                 FARM_EVENT.rewardStatus === 'unresolved' &&
                 FARM_EVENT.rewardChance === 0 &&
@@ -769,10 +792,14 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
         ASSERT(
             raw.scene === 'farm' &&
                 ['victory', 'defeat'].includes(FARM_EVENT.outcome) &&
-                !raw.boss.active &&
+                raw.bosses.every((boss) => !boss.active) &&
                 INTEGER(FARM_EVENT.encounterId, 1, raw.nextBossEncounterId - 1),
         );
-        ASSERT(FARM_EVENT.outcome === 'victory' ? raw.boss.hp === 0 : raw.boss.hp > 0);
+        ASSERT(
+            FARM_EVENT.outcome === 'victory'
+                ? raw.bosses.every((boss) => boss.hp === 0)
+                : raw.bosses.some((boss) => boss.hp > 0),
+        );
         ASSERT(
             FARM_EVENT.outcome === 'victory'
                 ? ['calculating', 'ready'].includes(FARM_EVENT.rewardStatus)
@@ -952,7 +979,7 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
             RECEIPT &&
                 RECEIPT.status === FARM_EVENT.rewardStatus &&
                 RECEIPT.chance === FARM_EVENT.rewardChance &&
-                RECEIPT.roll === FARM_EVENT.rewardRoll &&
+                (RECEIPT.roll ?? 0) === FARM_EVENT.rewardRoll &&
                 RECEIPT.unitId === FARM_EVENT.rewardUnitId,
         );
     }
@@ -1069,8 +1096,9 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
                     U.battleSummonKind === 'boss-mouth-t1' &&
                         U.battleSummonParentId === 0 &&
                         INTEGER(U.battleSummonEncounterId, 1, 1e12) &&
-                        U.battleSummonEncounterId === raw.boss.encounterId &&
-                        U.species === raw.boss.species &&
+                        raw.bosses.some(
+                            (boss) => boss.encounterId === U.battleSummonEncounterId && boss.species === U.species,
+                        ) &&
                         U.tier === 1 &&
                         U.ownerId === 'boss' &&
                         U.farmId === 0 &&
@@ -1105,7 +1133,9 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
         }
         validateActorAttackState(U, raw, CORN_ACTIONS, CHESTNUT_ACTIONS, allowLegacyBarleyShred);
     }
-    validateActorAttackState(raw.boss, raw, CORN_ACTIONS, CHESTNUT_ACTIONS, allowLegacyBarleyShred);
+    for (const BOSS of raw.bosses) {
+        validateActorAttackState(BOSS, raw, CORN_ACTIONS, CHESTNUT_ACTIONS, allowLegacyBarleyShred);
+    }
     for (const [PARENT_ID, CHILDREN] of SUMMONS_BY_PARENT) {
         ASSERT(CHILDREN.length <= MAX_PEANUT_SPLIT_CHILDREN);
         ASSERT(
@@ -1119,13 +1149,13 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
         ASSERT(PARENT && PARENT.ownerId === CHILDREN[0].ownerId && PARENT.farmId === CHILDREN[0].farmId);
     }
     const GENERATIONS = new Set();
-    for (const U of raw.units) {
+    for (const U of [...raw.units, ...raw.bosses]) {
         ASSERT(!GENERATIONS.has(U.generation));
         GENERATIONS.add(U.generation);
     }
     ASSERT(
         INTEGER(raw.entityGenerationSerial, 1, 1e12) &&
-            raw.entityGenerationSerial >= raw.boss.generation &&
+            raw.bosses.every((boss) => boss.generation <= raw.entityGenerationSerial) &&
             raw.units.every((unit) => unit.generation <= raw.entityGenerationSerial),
     );
     for (const F of raw.food) {
@@ -1142,14 +1172,12 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
         ASSERT(INTEGER(P.id, 1, raw.projectileSerial) && !PROJECTILE_IDS.has(P.id));
         PROJECTILE_IDS.add(P.id);
         ASSERT(
-            P.owner === 'boss' ||
+            raw.bosses.some((boss) => boss.id === P.owner) ||
                 INTEGER(P.owner, 1, raw.nextId - 1) ||
                 INTEGER(P.owner, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + raw.bossSummonSerial),
         );
-        ASSERT(P.owner !== 'boss' || (P.faction === FACTION_CONFIG.ENEMY && P.ownerId === 'boss'));
-        ASSERT(
-            P.targetId === undefined || P.targetId === 'boss' || VALID_BATTLE_UNIT_ID(P.targetId, raw.bossSummonSerial),
-        );
+        ASSERT(!isBossActorId(P.owner) || (P.faction === FACTION_CONFIG.ENEMY && P.ownerId === 'boss'));
+        ASSERT(P.targetId === undefined || validActorId(raw, P.targetId));
         if (P.chestnutActionId !== undefined) {
             const R = CHESTNUT_ACTIONS.get(P.chestnutActionId),
                 S = R?.shots[P.chestnutSlot],
@@ -1226,7 +1254,9 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
                 Number.isFinite(P.attackMultiplier) &&
                 P.attackMultiplier > 0 &&
                 P.attackMultiplier <= 10 &&
-                INTEGER(P.shotIndex, 0, 4),
+                (P.projectileKind === 'chestnut-spike'
+                    ? P.species === 3 && P.shotIndex === undefined && INTEGER(P.fanIndex, 0, 2)
+                    : INTEGER(P.shotIndex, 0, 4)),
         );
         ASSERT(
             INTEGER(P.ownerGeneration, 1, 1e12) &&
@@ -1272,7 +1302,7 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
             ASSERT(!CORN_GROUP_TARGETS.has(GROUP_KEY) && GROUP.firstAttachTick === RECORD.firstAttachTick);
             CORN_GROUP_TARGETS.add(GROUP_KEY);
             const PENDING = GROUP.attachments.filter((attachment) => attachment.status === 'attached');
-            const TARGET = GROUP.targetId === 'boss' ? raw.boss : UNITS_BY_ID.get(GROUP.targetId);
+            const TARGET = raw.bosses.find((boss) => boss.id === GROUP.targetId) || UNITS_BY_ID.get(GROUP.targetId);
             ASSERT(
                 GROUP.status !== 'cancelled' ||
                     !TARGET ||
@@ -1300,7 +1330,7 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
         ASSERT(
             INTEGER(GROUP.id, 1, raw.cornAttachments.nextGroupId - 1) &&
                 INTEGER(GROUP.targetGeneration, 1, 1e12) &&
-                (GROUP.targetId === 'boss' || VALID_BATTLE_UNIT_ID(GROUP.targetId, raw.bossSummonSerial)) &&
+                validActorId(raw, GROUP.targetId) &&
                 ['collecting', 'exploding', 'complete', 'cancelled'].includes(GROUP.status) &&
                 Number.isFinite(GROUP.targetX) &&
                 Number.isFinite(GROUP.targetY) &&
@@ -1325,8 +1355,9 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
                     ATTACHMENT.groupId === GROUP.id &&
                     ATTACHMENT.targetId === GROUP.targetId &&
                     ATTACHMENT.targetGeneration === GROUP.targetGeneration &&
-                    (ATTACHMENT.ownerId === 'boss' || INTEGER(ATTACHMENT.ownerId, 1, 1e12)) &&
-                    (ATTACHMENT.ownerId !== 'boss' ||
+                    (raw.bosses.some((boss) => boss.id === ATTACHMENT.ownerId) ||
+                        INTEGER(ATTACHMENT.ownerId, 1, 1e12)) &&
+                    (!isBossActorId(ATTACHMENT.ownerId) ||
                         (ATTACHMENT.payload?.faction === FACTION_CONFIG.ENEMY &&
                             ATTACHMENT.payload.ownerId === 'boss')) &&
                     INTEGER(ATTACHMENT.ownerGeneration, 1, 1e12) &&
@@ -1366,46 +1397,185 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
         }
     }
     ASSERT(INTEGER(raw.projectileSerial, 0, 1e12) && INTEGER(raw.bossSummonSerial, 0, 1e12));
-    ASSERT(
-        raw.boss.id === 'boss' &&
-            raw.boss.ownerId === 'boss' &&
-            raw.boss.tier === 1 &&
-            raw.boss.farmId === 0 &&
-            raw.boss.canSplit === false &&
-            raw.boss.isBattleOnlySummon === false &&
-            raw.boss.isFormationClone === false &&
-            raw.boss.peanutInheritedPowerRank === 0 &&
-            raw.boss.peanutInheritedSpeedRank === 0 &&
-            raw.boss.growth === 3 &&
-            raw.boss.growthElapsed === 1 &&
-            raw.boss.growthDuration === 1 &&
-            hasFaction(raw.boss, FACTION_CONFIG.ENEMY) &&
-            INTEGER(raw.boss.generation, 1, 1e12) &&
-            raw.boss.hp >= 0 &&
-            raw.boss.hp <= raw.boss.maxHp &&
-            INTEGER(raw.boss.species, 0, CONFIG.unit.speciesCount - 1) &&
-            raw.boss.maxHp > 0 &&
-            INTEGER(raw.boss.stage, 0, BOSS_REWARD_SETTINGS.maxStage) &&
-            Number.isFinite(raw.boss.attackPower) &&
-            raw.boss.attackPower >= 4 &&
-            Number.isFinite(raw.boss.moveSpeed) &&
-            raw.boss.moveSpeed > 0 &&
-            INTEGER(raw.boss.encounterId, 0, 1e12),
-    );
-    if (raw.boss.statProfile) {
-        const EFFECTIVE = resolveUnitStats(raw.boss);
-        ASSERT(
-            raw.boss.maxHp === EFFECTIVE.maxHp &&
-                raw.boss.attackPower === EFFECTIVE.attackPower &&
-                raw.boss.moveSpeed === EFFECTIVE.moveSpeed,
-        );
-    } else if (raw.boss.stage === 0) {
-        ASSERT(raw.boss.attackPower === 4);
-    } else {
-        const STAGE_STATS = bossStageStats(raw.boss.stage);
-        ASSERT(raw.boss.maxHp === STAGE_STATS.hp && raw.boss.attackPower === STAGE_STATS.attackPower);
+    for (const BOSS of raw.bosses) {
+        validateBoss(BOSS, raw);
     }
-    const RUNTIME = raw.boss.patternRuntime;
+    return true;
+}
+function validateTowerCheckpoint(raw) {
+    ASSERT(
+        ['engage', 'scatter', 'retreat'].includes(raw.battleCommand) &&
+            INTEGER(raw.frontlineLimit, 1, 500) &&
+            typeof raw.insideTower === 'boolean' &&
+            Array.isArray(raw.deployOrder) &&
+            raw.deployOrder.length === CONFIG.unit.speciesCount &&
+            new Set(raw.deployOrder).size === raw.deployOrder.length &&
+            raw.deployOrder.every((species) => INTEGER(species, 0, CONFIG.unit.speciesCount - 1)) &&
+            Array.isArray(raw.benchedIds) &&
+            new Set(raw.benchedIds).size === raw.benchedIds.length &&
+            raw.benchedIds.every((id) => raw.units.some((unit) => unit.id === id)) &&
+            Array.isArray(raw.ejectQueue) &&
+            new Set(raw.ejectQueue.map((entry) => entry.unitId)).size === raw.ejectQueue.length &&
+            raw.ejectQueue.every(
+                (entry) =>
+                    entry &&
+                    Object.keys(entry).length === 3 &&
+                    raw.benchedIds.includes(entry.unitId) &&
+                    Number.isFinite(entry.at) &&
+                    entry.at >= 0 &&
+                    entry.target &&
+                    Object.keys(entry.target).length === 2 &&
+                    Number.isFinite(entry.target.x) &&
+                    Number.isFinite(entry.target.y),
+            ) &&
+            Number.isFinite(raw.deployReadyTime) &&
+            raw.deployReadyTime >= 0 &&
+            INTEGER(raw.deployCount, 0, CONFIG.farm.capacity.battleUnits),
+    );
+    const TOWER = raw.tower;
+    ASSERT(
+        TOWER &&
+            typeof TOWER === 'object' &&
+            !Array.isArray(TOWER) &&
+            typeof TOWER.active === 'boolean' &&
+            INTEGER(TOWER.floor, 0, FARM_BOSS_EVENT_MAX_STAGE) &&
+            ['battle', 'elite', 'mid', 'power', 'event'].includes(TOWER.kind) &&
+            Array.isArray(TOWER.cards) &&
+            Array.isArray(TOWER.bossCards) &&
+            Array.isArray(TOWER.doors) &&
+            TOWER.doors.length <= 3 &&
+            Array.isArray(TOWER.relics) &&
+            Array.isArray(TOWER.bossRelics) &&
+            Array.isArray(TOWER.undyingUsed) &&
+            Array.isArray(TOWER.sleepUntil) &&
+            TOWER.sleepUntil.every(
+                (entry) =>
+                    Array.isArray(entry) &&
+                    entry.length === 2 &&
+                    INTEGER(entry[0], 1) &&
+                    INTEGER(entry[1], 0, FARM_BOSS_EVENT_MAX_STAGE + CONFIG.farm.tower.sleepMax),
+            ) &&
+            new Set(TOWER.sleepUntil.map(([id]) => id)).size === TOWER.sleepUntil.length &&
+            (!TOWER.active || (TOWER.floor >= 1 && raw.runProgressionSnapshot !== null)),
+    );
+    for (const ENTRIES of [TOWER.relics, TOWER.bossRelics]) {
+        ASSERT(
+            ENTRIES.length <= CONFIG.farm.tower.relicSlots &&
+                ENTRIES.every(
+                    (entry) =>
+                        Array.isArray(entry) &&
+                        entry.length === 2 &&
+                        typeof entry[0] === 'string' &&
+                        INTEGER(entry[1], 1, CONFIG.farm.tower.relicMaxLevel),
+                ) &&
+                new Set(ENTRIES.map(([id]) => id)).size === ENTRIES.length,
+        );
+    }
+    if (TOWER.phase !== undefined) {
+        ASSERT(['climbing', 'summit', 'complete'].includes(TOWER.phase));
+    }
+    if (TOWER.summitElapsed !== undefined) {
+        ASSERT(Number.isFinite(TOWER.summitElapsed) && TOWER.summitElapsed >= 0);
+    }
+    if (TOWER.startFloor !== undefined) {
+        ASSERT(INTEGER(TOWER.startFloor, 0, FARM_BOSS_EVENT_MAX_STAGE));
+    }
+    if (TOWER.rewardRunId !== undefined) {
+        ASSERT(INTEGER(TOWER.rewardRunId, 0, raw.playerProgression.towerRewards.runId));
+    }
+    const ENCOUNTER = raw.bossEncounter;
+    if (ENCOUNTER === null) {
+        ASSERT(raw.bosses.length === 1);
+        return;
+    }
+    ASSERT(
+        ENCOUNTER &&
+            Object.keys(ENCOUNTER).length === 8 &&
+            ['roster', 'nextIndex', 'elapsed', 'nextJoinAt', 'clearedIds', 'floor', 'rewardSpecies', 'completed'].every(
+                (key) => Object.hasOwn(ENCOUNTER, key),
+            ) &&
+            Array.isArray(ENCOUNTER.roster) &&
+            ENCOUNTER.roster.length >= 1 &&
+            ENCOUNTER.roster.length <= 5 &&
+            ENCOUNTER.roster.every(
+                (entry) =>
+                    entry &&
+                    Object.keys(entry).length === 4 &&
+                    INTEGER(entry.species, 0, CONFIG.unit.speciesCount - 1) &&
+                    Number.isFinite(entry.hpShare) &&
+                    entry.hpShare > 0 &&
+                    entry.hpShare <= 1 &&
+                    Number.isFinite(entry.attackShare) &&
+                    entry.attackShare > 0 &&
+                    entry.attackShare <= 1 &&
+                    typeof entry.final === 'boolean',
+            ) &&
+            INTEGER(ENCOUNTER.nextIndex, 1, ENCOUNTER.roster.length) &&
+            ENCOUNTER.nextIndex === raw.bosses.length &&
+            raw.bosses.every(
+                (boss, index) =>
+                    boss.id === (index === 0 ? 'boss' : `boss-${index}`) &&
+                    boss.species === ENCOUNTER.roster[index].species &&
+                    boss.isFinalBoss === ENCOUNTER.roster[index].final &&
+                    boss.stage === ENCOUNTER.floor &&
+                    boss.encounterId === raw.farmBossEvent.encounterId,
+            ) &&
+            Number.isFinite(ENCOUNTER.elapsed) &&
+            ENCOUNTER.elapsed >= 0 &&
+            Number.isFinite(ENCOUNTER.nextJoinAt) &&
+            ENCOUNTER.nextJoinAt >= 0 &&
+            Array.isArray(ENCOUNTER.clearedIds) &&
+            new Set(ENCOUNTER.clearedIds).size === ENCOUNTER.clearedIds.length &&
+            ENCOUNTER.clearedIds.every((id) => raw.bosses.some((boss) => boss.id === id && boss.hp <= 0)) &&
+            INTEGER(ENCOUNTER.floor, 1, FARM_BOSS_EVENT_MAX_STAGE) &&
+            INTEGER(ENCOUNTER.rewardSpecies, 0, CONFIG.unit.speciesCount - 1) &&
+            typeof ENCOUNTER.completed === 'boolean' &&
+            (!ENCOUNTER.completed ||
+                (ENCOUNTER.nextIndex === ENCOUNTER.roster.length && raw.bosses.every((boss) => boss.hp <= 0))),
+    );
+}
+function validateBoss(boss, raw) {
+    shape(boss, BOSS_SNAPSHOT_SHAPE, `bosses.${boss.id}`);
+    ASSERT(
+        isBossActorId(boss.id) &&
+            boss.ownerId === 'boss' &&
+            boss.tier === 1 &&
+            boss.farmId === 0 &&
+            boss.canSplit === false &&
+            boss.isBattleOnlySummon === false &&
+            boss.isFormationClone === false &&
+            boss.peanutInheritedPowerRank === 0 &&
+            boss.peanutInheritedSpeedRank === 0 &&
+            boss.growth === 3 &&
+            boss.growthElapsed === 1 &&
+            boss.growthDuration === 1 &&
+            hasFaction(boss, FACTION_CONFIG.ENEMY) &&
+            INTEGER(boss.generation, 1, 1e12) &&
+            boss.hp >= 0 &&
+            boss.hp <= boss.maxHp &&
+            INTEGER(boss.species, 0, CONFIG.unit.speciesCount - 1) &&
+            boss.maxHp > 0 &&
+            INTEGER(boss.stage, 0, BOSS_REWARD_SETTINGS.maxStage) &&
+            Number.isFinite(boss.attackPower) &&
+            boss.attackPower > 0 &&
+            Number.isFinite(boss.moveSpeed) &&
+            boss.moveSpeed > 0 &&
+            INTEGER(boss.encounterId, 0, 1e12),
+    );
+    if (boss.statProfile) {
+        const EFFECTIVE = resolveUnitStats(boss);
+        ASSERT(
+            boss.maxHp === EFFECTIVE.maxHp &&
+                boss.attackPower === EFFECTIVE.attackPower &&
+                boss.moveSpeed === EFFECTIVE.moveSpeed,
+        );
+    } else if (boss.stage === 0) {
+        ASSERT(boss.attackPower === 4);
+    } else {
+        const STAGE_STATS = bossStageStats(boss.stage);
+        ASSERT(boss.maxHp === STAGE_STATS.hp && boss.attackPower === STAGE_STATS.attackPower);
+    }
+    const RUNTIME = boss.patternRuntime;
     ASSERT(
         RUNTIME &&
             Number.isFinite(RUNTIME.encounterElapsed) &&
@@ -1451,7 +1621,7 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
             validatePath(A.path);
         }
     }
-    return true;
+    ASSERT(typeof boss.isFinalBoss === 'boolean' && typeof boss.dropLanded === 'boolean');
 }
 function validatePath(p) {
     ASSERT(p && p.from && p.to && p.duration > 0 && Number.isFinite(p.height));

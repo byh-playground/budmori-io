@@ -53,7 +53,8 @@ class FarmStorage {
                         const { text: TEXT } = encodeFarmSave(null, this.savedProgress);
                         this.writeVerified(TEXT, this.raw, { source: this.raw });
                         this.raw = TEXT;
-                        this.notice = '출시된 병종의 성장 트리를 적용했어요. 기존 투자와 원본 저장은 보존했어요.';
+                        this.notice =
+                            '전체 성장과 최신 병종 트리를 적용했어요. 기존 병력·투자와 원본 저장은 보존했어요.';
                     }
                 } catch (error) {
                     this.incompatible = true;

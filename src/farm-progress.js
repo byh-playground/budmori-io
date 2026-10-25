@@ -1,6 +1,10 @@
 import { Garden, Unit, CONFIG } from './farm-model.js';
-import { createPlayerProgressionState, isValidPlayerProgressionState } from './player-progression.js';
-import { migrateAbilityProgressionState } from './features/species-growth/state.js';
+import {
+    createPlayerProgressionState,
+    isValidPlayerProgressionState,
+    migratePlayerProgressionState,
+    OVERALL_PROGRESSION_SETTINGS,
+} from './player-progression.js';
 import { BOSS_REWARD_SETTINGS } from './boss-rewards.js';
 const FAIL = () => {
     throw new TypeError('올바른 농장 진행 저장 데이터가 아니에요.');
@@ -171,7 +175,11 @@ export function validateFarmProgress(data, { allowLegacy = false } = {}) {
     );
     const PLAYER = data.player,
         DEFAULTS = createPlayerProgressionState();
-    keys(PLAYER, Object.keys(DEFAULTS));
+    keys(
+        PLAYER,
+        Object.keys(DEFAULTS).filter((key) => !allowLegacy || !['overallXp', 'towerRewards'].includes(key)),
+        allowLegacy ? ['overallXp', 'towerRewards'] : [],
+    );
     keys(PLAYER.abilities, Object.keys(DEFAULTS.abilities));
     ASSERT(
         isValidPlayerProgressionState(PLAYER, { allowLegacy }) &&
@@ -224,7 +232,7 @@ export function validateFarmProgress(data, { allowLegacy = false } = {}) {
         ASSERT(!COHORTS.has(SIGNATURE));
         COHORTS.add(SIGNATURE);
     }
-    ASSERT(RESIDENT_IDS.size <= CONFIG.farm.capacity.max);
+    ASSERT(RESIDENT_IDS.size <= OVERALL_PROGRESSION_SETTINGS.maxCapacity);
     ASSERT(data.nextId > maxResidentId);
     keys(data.food, ['produced', 'count']);
     ASSERT(INTEGER(data.food.produced) && INTEGER(data.food.count, 0, 140));
@@ -447,7 +455,7 @@ function position(index, count, seed, scale) {
 export function migrateFarmProgress(data) {
     // Species rollouts can migrate v4 to v4. Read only known entries before validating
     // the resulting current-schema container; never mutate or write the source on failure.
-    const PLAYER = migrateAbilityProgressionState(data?.player),
+    const PLAYER = migratePlayerProgressionState(data?.player),
         NEXT = structuredClone(data);
     NEXT.player = PLAYER;
     validateFarmProgress(NEXT);

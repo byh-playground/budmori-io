@@ -185,8 +185,10 @@ export function resolveRiceSlots(world, unit, action, elapsed, geometry) {
             TARGET = world.attackTarget(unit, action),
             PRIMARY = TARGET?.hp > 0 ? TARGET : null;
         const CANDIDATES = PRIMARY ? [PRIMARY] : [];
-        if (world.boss !== PRIMARY && world.boss.hp > 0 && areOpposingFactions(unit, world.boss)) {
-            CANDIDATES.push(world.boss);
+        for (const BOSS of world.bosses) {
+            if (BOSS !== PRIMARY && BOSS.active && BOSS.hp > 0 && areOpposingFactions(unit, BOSS)) {
+                CANDIDATES.push(BOSS);
+            }
         }
         // The same live-faction index used by sensing is current after the owner
         // lookup. A boss-only battle needs no scan of every allied body per slot.
@@ -217,7 +219,7 @@ export function resolveRiceSlots(world, unit, action, elapsed, geometry) {
             if (!HIT) {
                 continue;
             }
-            const ID = T === world.boss ? 'boss' : T.id;
+            const ID = T.id;
             if (!A.claimHit(S.slot, ID, T.generation)) {
                 continue;
             }

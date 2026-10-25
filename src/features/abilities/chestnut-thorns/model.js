@@ -17,9 +17,6 @@ export class ChestnutThornsModel {
         };
     }
     static resolveTarget(world, targetId, generation) {
-        if (targetId === 'boss') {
-            return world.boss?.generation === generation ? world.boss : null;
-        }
         const TARGET = world._unitForId(targetId);
         return TARGET?.generation === generation ? TARGET : null;
     }

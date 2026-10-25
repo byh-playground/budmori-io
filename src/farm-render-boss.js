@@ -43,11 +43,14 @@ export class BossPresentation {
     constructor(renderer) {
         this.renderer = renderer;
         this.bossAttackPose = new BossAttackPose();
-        this.attackDisplay = null;
+        this.attackDisplays = new Map();
+    }
+    sourceBoss(boss) {
+        const ENTRY = this.attackDisplays.get(boss.id);
+        return boss === ENTRY?.unit ? ENTRY.source : boss;
     }
     basicAttackVisible(boss, world) {
-        const SOURCE = boss === this.attackDisplay?.unit ? this.attackDisplay.source : boss,
-            EVENT = SOURCE === world.boss ? world.farmBossEvent : null;
+        const EVENT = world.farmBossEvent;
         return (
             boss.hp > 0 &&
             (!EVENT || EVENT.phase === 'fighting') &&
@@ -57,8 +60,8 @@ export class BossPresentation {
         );
     }
     displayBoss(boss, world) {
-        const SOURCE = boss === this.attackDisplay?.unit ? this.attackDisplay.source : boss;
-        let entry = this.attackDisplay;
+        const SOURCE = this.sourceBoss(boss);
+        let entry = this.attackDisplays.get(SOURCE.id);
         if (
             !entry ||
             entry.world !== world ||
@@ -67,7 +70,7 @@ export class BossPresentation {
             entry.revision !== world.presentationRevision ||
             entry.time > this.renderer.displayTimeMs
         ) {
-            entry = this.attackDisplay = {
+            entry = {
                 world,
                 generation: SOURCE.generation,
                 species: SOURCE.species,
@@ -76,6 +79,7 @@ export class BossPresentation {
                 offset: { x: 0, y: 0 },
                 releasedAt: null,
             };
+            this.attackDisplays.set(SOURCE.id, entry);
         }
         entry.source = SOURCE;
         entry.time = this.renderer.displayTimeMs;
@@ -102,7 +106,7 @@ export class BossPresentation {
                           y: 0,
                           squash: 0,
                       }
-                    : this.renderer.feel?.boss(this.renderer.displayTimeMs) || {
+                    : this.renderer.feel?.boss(this.renderer.displayTimeMs, B.id) || {
                           x: 0,
                           y: 0,
                           squash: 0,
@@ -118,7 +122,7 @@ export class BossPresentation {
             k: K,
         };
     }
-    bossMotion(b, world, event = b === world.boss ? world.farmBossEvent : null) {
+    bossMotion(b, world, event = world.farmBossEvent) {
         const EVENT = event;
         if (EVENT?.phase === 'celebrating' && EVENT.outcome === 'defeat') {
             return 'idle';
@@ -149,10 +153,10 @@ export class BossPresentation {
     }
     draw(source, world) {
         // A boss standing on its tile of the map is drawn from its own record; the fighting one is the world's.
-        const SOURCE = source === this.attackDisplay?.unit ? this.attackDisplay.source : source,
+        const SOURCE = this.sourceBoss(source),
             BOSS = SOURCE && SOURCE.radius ? SOURCE : world.boss,
             { b: B, p: P, k: K } = this.bossPose(world, this.displayBoss(BOSS, world)),
-            EVENT = BOSS === world.boss ? world.farmBossEvent : null,
+            EVENT = world.farmBossEvent,
             SPECIES = B.species,
             CAST = !EVENT || EVENT.phase === 'fighting' ? visibleSkillCast(B) : null,
             BASIC = this.basicAttackVisible(B, world),
@@ -162,7 +166,8 @@ export class BossPresentation {
         if (!RECORD) {
             throw new Error('Missing required boss vector asset for species ' + SPECIES);
         }
-        let instance = this.renderer.bossPlayers.get(SPECIES);
+        const INSTANCE_KEY = B.id + ':' + B.generation;
+        let instance = this.renderer.bossPlayers.get(INSTANCE_KEY);
         if (!instance) {
             const PLAYER = RECORD.asset.createPlayer({
                 clip: 'idle',
@@ -172,7 +177,7 @@ export class BossPresentation {
                 record: RECORD,
                 player: PLAYER,
             };
-            this.renderer.bossPlayers.set(SPECIES, instance);
+            this.renderer.bossPlayers.set(INSTANCE_KEY, instance);
         }
         const PLAYER = instance.player;
         this.renderer.bossPlayer = PLAYER;
@@ -187,7 +192,12 @@ export class BossPresentation {
         const PHASE_TIME_MS = BASIC ? ATTACK.clipElapsedMs?.(B, NAME) : null,
             HAS_PHASE_CLOCK = Number.isFinite(PHASE_TIME_MS),
             TIMED = ['windup', 'strike', 'sweep', 'recover', 'hit', 'death', 'fire', 'airborne'].includes(NAME),
-            ELAPSED = B.patternId ? B.patternPhaseElapsed : B.clock;
+            ELAPSED =
+                B.hp <= 0 && EVENT?.phase === 'fighting'
+                    ? CLIP.durationMs / 1000
+                    : B.patternId
+                      ? B.patternPhaseElapsed
+                      : B.clock;
         const CLIP_START_AT_MS = BASIC
             ? HAS_PHASE_CLOCK
                 ? 0
@@ -291,8 +301,8 @@ export class BossPresentation {
             applyUnitAttackPose(MATRIX, B, GROUND);
             drawUnitAttackGround(this.renderer, B);
         }
-        if (BOSS === world.boss && this.renderer.cornAttachmentBodies.has('boss')) {
-            this.renderer.captureCornAttachmentBody(B, 'boss', PLAYER, MATRIX);
+        if (this.renderer.cornAttachmentBodies.has(B.id)) {
+            this.renderer.captureCornAttachmentBody(B, B.id, PLAYER, MATRIX);
         }
         const MOUTH_SOCKET = PLAYER.getSocket('mouth'),
             MOUTH_SCREEN = {

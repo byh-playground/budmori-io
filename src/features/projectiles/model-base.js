@@ -45,7 +45,7 @@ export class BallisticProjectile {
             }
             projectile.elapsed = projectile.path.duration;
             const AREA = projectile.cornForm >= 4,
-                TARGETS = [world.boss, ...world.units],
+                TARGETS = world.combatUnits(),
                 ELIGIBLE = (target) =>
                     target &&
                     target.hp > 0 &&
@@ -53,12 +53,12 @@ export class BallisticProjectile {
                     // A new generation of the named target is not a substitute
                     // for its predecessor; other collision targets remain eligible.
                     (target.id !== projectile.targetId || target.generation === projectile.targetGeneration) &&
-                    (target !== world.boss || projectile.faction === 'player') &&
+                    (!world.isBoss(target) || projectile.faction === 'player') &&
                     (target.z || 0) <= projectile.height &&
                     (target.z || 0) + target.height >= 0 &&
                     Math.hypot(target.x - projectile.path.to.x, target.y - projectile.path.to.y) <=
                         target.radius + (AREA ? 0.8 : projectile.radius),
-                PRIMARY = projectile.targetId === 'boss' ? world.boss : world._unitForId(projectile.targetId),
+                PRIMARY = world._unitForId(projectile.targetId),
                 TARGET =
                     PRIMARY?.generation === projectile.targetGeneration && ELIGIBLE(PRIMARY)
                         ? PRIMARY
@@ -83,14 +83,9 @@ export class BallisticProjectile {
             }
             return;
         }
-        const CANDIDATE =
-            projectile.targetId && projectile.targetId !== 'boss' ? world._unitForId(projectile.targetId) : world.boss;
+        const CANDIDATE = world._unitForId(projectile.targetId);
         const TARGET =
-            CANDIDATE &&
-            CANDIDATE.generation === projectile.targetGeneration &&
-            (CANDIDATE === world.boss || CANDIDATE.hp > 0)
-                ? CANDIDATE
-                : null;
+            CANDIDATE && CANDIDATE.generation === projectile.targetGeneration && CANDIDATE.hp > 0 ? CANDIDATE : null;
         const HIT = TARGET ? ARENA_GEOMETRY.sweep(OLD, projectile, projectile.radius, projectile.height, TARGET) : null;
         this.impact(world, projectile, TARGET, HIT);
     }

@@ -136,6 +136,50 @@ const PATTERN_VALUES = (value) =>
             'summon.mouth-t1',
         ].map((id) => [id, value]),
     );
+export const BOSS_SNAPSHOT_SHAPE = {
+    ...ACTOR_ATTACK_SNAPSHOT_SHAPE,
+    id: 'boss',
+    isFinalBoss: false,
+    dropLanded: true,
+    ownerId: 'boss',
+    canSplit: false,
+    growth: 3,
+    growthElapsed: 1,
+    growthDuration: 1,
+    faction: 'enemy',
+    generation: 3,
+    radius: 4.4,
+    height: 5.2,
+    hp: 2000,
+    maxHp: 2000,
+    species: 3,
+    attackPower: 4,
+    stage: 0,
+    moveSpeed: 2.65,
+    encounterId: 0,
+    active: false,
+    facing: 0,
+    swings: 0,
+    basicCount: 0,
+    attackId: 0,
+    sweepClock: 0,
+    startAngle: 0,
+    travel: 0,
+    patternRuntime: {
+        weights: PATTERN_VALUES(1),
+        cooldowns: PATTERN_VALUES(0),
+        active: null,
+        encounterElapsed: 0,
+    },
+    knockVx: 0,
+    knockVy: 0,
+    airborneRecovery: 0,
+    summonMouth: {
+        x: 0,
+        y: 0,
+        z: 0,
+    },
+};
 export const FARM_SNAPSHOT_SHAPE = {
     seed: 731,
     notices: [],
@@ -198,48 +242,17 @@ export const FARM_SNAPSHOT_SHAPE = {
         rewardRoll: 0,
         rewardUnitId: 0,
     },
-    boss: {
-        ...ACTOR_ATTACK_SNAPSHOT_SHAPE,
-        id: 'boss',
-        ownerId: 'boss',
-        canSplit: false,
-        growth: 3,
-        growthElapsed: 1,
-        growthDuration: 1,
-        faction: 'enemy',
-        generation: 3,
-        radius: 4.4,
-        height: 5.2,
-        hp: 2000,
-        maxHp: 2000,
-        species: 3,
-        attackPower: 4,
-        stage: 0,
-        moveSpeed: 2.65,
-        encounterId: 0,
-        active: false,
-        facing: 0,
-        swings: 0,
-        basicCount: 0,
-        attackId: 0,
-        sweepClock: 0,
-        startAngle: 0,
-        travel: 0,
-        patternRuntime: {
-            weights: PATTERN_VALUES(1),
-            cooldowns: PATTERN_VALUES(0),
-            active: null,
-            encounterElapsed: 0,
-        },
-        knockVx: 0,
-        knockVy: 0,
-        airborneRecovery: 0,
-        summonMouth: {
-            x: 0,
-            y: 0,
-            z: 0,
-        },
-    },
+    bosses: [],
+    bossEncounter: null,
+    battleCommand: 'engage',
+    frontlineLimit: 100,
+    insideTower: false,
+    tower: null,
+    deployOrder: [],
+    benchedIds: [],
+    ejectQueue: [],
+    deployReadyTime: 0,
+    deployCount: 0,
     metrics: {
         births: 0,
         merges: 0,
@@ -338,7 +351,7 @@ const ACTOR_ATTACK_FIELDS = {
 };
 const UNIT = shapeFields(UNIT_SNAPSHOT_SHAPE, ACTOR_ATTACK_FIELDS);
 const BOSS_ACTION = FIELDS(
-    'id phase phaseElapsed targetId aim locked traveled volleyCount released nextRelease criticalRoll',
+    'id phase phaseElapsed motionDelay targetId aim locked traveled volleyCount released nextRelease criticalRoll',
     {
         target: POINT,
         start: POINT,
@@ -347,9 +360,9 @@ const BOSS_ACTION = FIELDS(
         landingPoints: [POINT],
     },
 );
-const BOSS = shapeFields(FARM_SNAPSHOT_SHAPE.boss, {
+const BOSS = shapeFields(BOSS_SNAPSHOT_SHAPE, {
     ...ACTOR_ATTACK_FIELDS,
-    patternRuntime: shapeFields(FARM_SNAPSHOT_SHAPE.boss.patternRuntime, {
+    patternRuntime: shapeFields(BOSS_SNAPSHOT_SHAPE.patternRuntime, {
         active: BOSS_ACTION,
     }),
 });
@@ -387,7 +400,12 @@ const SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
     food: [FIELDS('x y z vx vy vz seed phase tx ty')],
     formationRuntime: JSON_PAYLOAD,
     units: [UNIT],
-    boss: BOSS,
+    bosses: [BOSS],
+    bossEncounter: JSON_PAYLOAD,
+    tower: JSON_PAYLOAD,
+    benchedIds: [true],
+    ejectQueue: [FIELDS('unitId at', { target: FIELDS('x y') })],
+    deployOrder: [true],
     playerProgression: PROGRESSION,
     runProgressionSnapshot: PROGRESSION,
     projectiles: [PROJECTILE],
@@ -464,7 +482,22 @@ function copyFields(value, recipe) {
 }
 export function snapshot(world) {
     // Raid settlement and save checkpoints copy the resident set from the collection's single owner.
-    const SOURCE =
-        world?.unitCollection && world.scene === 'farm' ? { ...world, units: world.unitCollection.items } : world;
+    const SOURCE = {
+        ...world,
+        units: world?.unitCollection ? world.unitCollection.items : world.units,
+        tower: world.tower
+            ? {
+                  ...world.tower,
+                  relics: [...world.tower.relics],
+                  bossRelics: [...world.tower.bossRelics],
+                  undyingUsed: [...world.tower.undyingUsed],
+                  sleepUntil: [...world.tower.sleepUntil],
+              }
+            : null,
+        benchedIds: [...world._benched].map((unit) => unit.id),
+        ejectQueue: world._ejectQueue.map(({ unit, at, target }) => ({ unitId: unit.id, at, target })),
+        deployReadyTime: world._deployReadyTime,
+        deployCount: world._deployCount,
+    };
     return copyFields(SOURCE, SNAPSHOT_FIELDS);
 }
