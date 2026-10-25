@@ -14,13 +14,9 @@ export function scatterDestination(unit, neighbors, threats, gap, bounds, enemy,
         DY = unit.y - (enemy?.y ?? 0),
         BEARING = Math.hypot(DX, DY) > 0.01 ? Math.atan2(DY, DX) : unit.seed * Math.PI * 2,
         CURRENT = crowdCost(unit.x, unit.y, NEIGHBORS, gap, 0.08),
-        CROWDED = CURRENT > 0.08;
-    if (!CROWDED && (!enemy || Math.hypot(DX, DY) <= attackDistance)) {
-        return null;
-    }
-    const FORWARD_X = unit.x - Math.cos(BEARING) * LOOK_AHEAD,
-        FORWARD_Y = unit.y - Math.sin(BEARING) * LOOK_AHEAD;
-    if (!CROWDED && crowdCost(FORWARD_X, FORWARD_Y, NEIGHBORS, gap, 0.08) <= 0.08) {
+        CROWDED = CURRENT > 0.08,
+        CLEAR_DISTANCE = attackDistance + gap * 2;
+    if (!CROWDED && (!enemy || Math.hypot(DX, DY) >= CLEAR_DISTANCE)) {
         return null;
     }
     let best = null,
@@ -34,13 +30,16 @@ export function scatterDestination(unit, neighbors, threats, gap, bounds, enemy,
             continue;
         }
         let score = crowdCost(X, Y, NEIGHBORS, gap, bestScore + 0.05);
+        if (enemy) {
+            const BLOCKING_APPROACH = Math.max(0, CLEAR_DISTANCE - Math.hypot(X - enemy.x, Y - enemy.y));
+            score += BLOCKING_APPROACH * BLOCKING_APPROACH;
+        }
         for (const THREAT of threats) {
             const OVERLAP = Math.max(0, THREAT.radius + RADIUS - Math.hypot(X - THREAT.x, Y - THREAT.y));
             score += OVERLAP * OVERLAP * 4;
         }
-        // A dense, symmetric cluster must expand. Once spaced, flow around a
-        // blocked approach instead of waiting forever behind the same allies.
-        score += (CROWDED ? -1 : 1) * Math.cos(ANGLE - BEARING) * 0.05;
+        // Wait outside the approach space and leave room for the next attackers.
+        score -= Math.cos(ANGLE - BEARING) * 0.05;
         score += (1 - TRAVEL / LOOK_AHEAD) * 0.05;
         if (score < bestScore) {
             bestScore = score;

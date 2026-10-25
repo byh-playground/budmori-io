@@ -264,6 +264,7 @@ function validateActorAttackState(actor, raw, cornActions, chestnutActions, allo
                     Math.abs((U.growthMaxHpMultiplier - 1) / 0.04 - Math.round((U.growthMaxHpMultiplier - 1) / 0.04)) <
                         1e-9)) &&
             INTEGER(U.walnutNextGuardTick, 0, 1e12) &&
+            INTEGER(U.scatterAttackCount, 0, 1e12) &&
             INTEGER(U.walnutGuardUntilTick, 0, 1e12) &&
             Number.isFinite(U.walnutStoredRawDamage) &&
             U.walnutStoredRawDamage >= 0 &&

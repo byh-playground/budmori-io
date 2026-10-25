@@ -32,6 +32,7 @@ const ROOT = path.resolve(fileURLToPath(new URL('../', import.meta.url))),
         fixture: 'Seed 731; mature T1 mixed nine species, equal reserves, durable low-damage native bosses',
         samples: {},
         captures: [],
+        captureEvidence: {},
     },
     TYPES = {
         '.html': 'text/html',
@@ -152,12 +153,51 @@ const SERVER = http.createServer((request, response) => {
 });
 let browser;
 let page;
+async function restoreComparison() {
+    await page.evaluate(() => globalThis.__scatterRestore());
+    await page.waitForFunction(() => BUDMORI.runtime.paused && globalThis.__scatterWarmupTicks === 20);
+    const START = await page.evaluate(() => {
+        BUDMORI.runtime.capturePresentation('reset');
+        return {
+            tick: BUDMORI.sim.simulationTick,
+            points: BUDMORI.sim.units.map((unit) => [unit.id, unit.x, unit.y, unit.z]),
+            capacity: BUDMORI.sim.capacity,
+        };
+    });
+    await page.waitForFunction(
+        (capacity) => document.getElementById('capacity').textContent === String(capacity),
+        START.capacity,
+    );
+    if (REPORT.comparisonStart) {
+        assert.deepEqual(START, REPORT.comparisonStart, 'both commands start from the same native warmup state');
+    } else {
+        REPORT.comparisonStart = START;
+    }
+}
 async function capture(file) {
     assert.equal(await page.evaluate(() => BUDMORI.runtime.paused), true);
     await page.evaluate(() => {
         BUDMORI.runtime.capturePresentation('reset');
+        globalThis.__scatterCaptureEvidence = null;
+        globalThis.__scatterCaptureRequested = true;
     });
-    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await page.waitForFunction(() => Boolean(globalThis.__scatterCaptureEvidence));
+    const EVIDENCE = await page.evaluate(() => globalThis.__scatterCaptureEvidence);
+    assert.equal(EVIDENCE.tick, await page.evaluate(() => BUDMORI.sim.simulationTick));
+    assert.equal(EVIDENCE.terrainDraws, 1, 'native terrain must draw in the captured frame');
+    assert.ok(EVIDENCE.unitDraws >= EVIDENCE.expectedUnits, 'native troop bodies must draw in the captured frame');
+    assert.equal(EVIDENCE.bossDraws, EVIDENCE.expectedBosses, 'native bosses must draw in the captured frame');
+    assert.ok(EVIDENCE.fadeAgeMs >= 700, 'native tower entry fade must finish before capture');
+    assert.ok(EVIDENCE.brightPixelFraction > 0.1, 'battlefield pixels must be visible beyond the fade color');
+    assert.ok(EVIDENCE.uniqueColors > 100, 'the captured framebuffer must contain actual scene detail');
+    if (file.startsWith('scatter-') && REPORT.captureEvidence[file.replace('scatter-', 'engage-')]) {
+        assert.deepEqual(
+            EVIDENCE.camera,
+            REPORT.captureEvidence[file.replace('scatter-', 'engage-')].camera,
+            'paired screenshots must use the same native camera',
+        );
+    }
+    REPORT.captureEvidence[file] = EVIDENCE;
     await page.evaluate(() => document.fonts.ready.then(() => true));
     await page.clock.pauseAt(await page.evaluate(() => Date.now() + 60_000));
     try {
@@ -215,6 +255,73 @@ try {
     await page.goto(ORIGIN);
     await page.waitForFunction(() => Boolean(globalThis.BUDMORI));
     await page.locator('#newGame').click();
+    await page.evaluate(() => {
+        const RENDERER = BUDMORI.renderer,
+            RENDER = RENDERER.render,
+            TERRAIN = RENDERER.terrain,
+            UNIT_DRAW = RENDERER.unitPresentation.draw,
+            BOSS_DRAW = RENDERER.bossPresentation.draw;
+        let frame = null;
+        RENDERER.terrain = function (...args) {
+            if (frame) {
+                frame.terrainDraws++;
+            }
+            return TERRAIN.apply(this, args);
+        };
+        RENDERER.unitPresentation.draw = function (...args) {
+            if (frame) {
+                frame.unitDraws++;
+            }
+            return UNIT_DRAW.apply(this, args);
+        };
+        RENDERER.bossPresentation.draw = function (...args) {
+            if (frame) {
+                frame.bossDraws++;
+            }
+            return BOSS_DRAW.apply(this, args);
+        };
+        RENDERER.render = function (world, feel, now) {
+            const CAPTURE = Boolean(globalThis.__scatterCaptureRequested);
+            frame = CAPTURE ? { terrainDraws: 0, unitDraws: 0, bossDraws: 0 } : null;
+            const RESULT = RENDER.call(this, world, feel, now);
+            if (CAPTURE) {
+                const GL = this.device.gl,
+                    WIDTH = GL.drawingBufferWidth,
+                    HEIGHT = GL.drawingBufferHeight,
+                    PIXELS = new Uint8Array(WIDTH * HEIGHT * 4),
+                    COLORS = new Set();
+                GL.readPixels(0, 0, WIDTH, HEIGHT, GL.RGBA, GL.UNSIGNED_BYTE, PIXELS);
+                let bright = 0;
+                let sampled = 0;
+                for (let y = Math.floor(HEIGHT * 0.2); y < HEIGHT * 0.8; y += 2) {
+                    for (let x = Math.floor(WIDTH * 0.1); x < WIDTH * 0.9; x += 2) {
+                        const OFFSET = (y * WIDTH + x) * 4,
+                            R = PIXELS[OFFSET],
+                            G = PIXELS[OFFSET + 1],
+                            B = PIXELS[OFFSET + 2];
+                        sampled++;
+                        if (Math.max(R, G, B) > 45) {
+                            bright++;
+                        }
+                        COLORS.add((R << 16) | (G << 8) | B);
+                    }
+                }
+                globalThis.__scatterCaptureEvidence = {
+                    ...frame,
+                    tick: world.simulationTick,
+                    expectedUnits: world.fieldFighterCount,
+                    expectedBosses: world.bosses.length,
+                    fadeAgeMs: now - this.sceneChangedAt,
+                    brightPixelFraction: bright / sampled,
+                    uniqueColors: COLORS.size,
+                    camera: { scale: this.scale, offset: [...this.offset], view: [...this.view] },
+                };
+                globalThis.__scatterCaptureRequested = false;
+            }
+            frame = null;
+            return RESULT;
+        };
+    });
     REPORT.initial = await page.evaluate(
         async ({ count, bosses, placement }) => {
             const { Garden: GARDEN } = await import('./src/farm-model.js'),
@@ -274,16 +381,28 @@ try {
             globalThis.__scatterSnapshot = SNAPSHOT(WORLD);
             // The existing internal checkpoint validator/hydrator must also accept this state.
             globalThis.__scatterRestore = () => {
-                const SESSION = BUDMORI.runtime;
-                SESSION.paused = true;
-                SESSION.world = RESTORE(globalThis.__scatterSnapshot);
-                SESSION.bindNoticeJournal();
-                SESSION.pending.length = 0;
-                SESSION.capturePresentation('reset');
-                SESSION.loop.resetTiming();
-                return SESSION.world;
+                // Use the product resume/install owner so personalGarden, HUD,
+                // save subscriptions and the active session all reference this world.
+                BUDMORI.runtime.dispose();
+                BUDMORI.storage.world = RESTORE(globalThis.__scatterSnapshot);
+                document.getElementById('continueGame').click();
+                const SESSION = BUDMORI.runtime,
+                    RESTORED = SESSION.world,
+                    STEP = RESTORED.step;
+                globalThis.__scatterWarmupTicks = 0;
+                RESTORED.step = function (dt) {
+                    const RESULT = STEP.call(this, dt);
+                    globalThis.__scatterWarmupTicks++;
+                    if (globalThis.__scatterWarmupTicks === 20) {
+                        SESSION.paused = true;
+                        RESTORED.step = STEP;
+                    }
+                    return RESULT;
+                };
+                // Let the native session clock and renderer complete the 700ms
+                // scene fade, using the same 20 real simulation ticks for each pair.
+                SESSION.paused = false;
             };
-            globalThis.__scatterRestore();
             return {
                 snapshot: globalThis.__scatterSnapshot,
                 count: WORLD.fieldFighterCount,
@@ -296,12 +415,14 @@ try {
     delete REPORT.initial.snapshot;
     assert.equal(REPORT.initial.count, COUNT);
     assert.equal(REPORT.initial.bosses, BOSSES);
+    await restoreComparison();
     saveReport();
     await capture('initial-desktop.png');
     for (const COMMAND of ['engage', 'scatter']) {
+        await restoreComparison();
         await page.evaluate(async () => {
             const { unitCapabilityComposition: COMPOSITION } = await import('./src/unit-abilities.js');
-            const WORLD = globalThis.__scatterRestore(),
+            const WORLD = BUDMORI.sim,
                 INITIAL = new Map(WORLD.units.map((unit) => [unit.id, { x: unit.x, y: unit.y }])),
                 STEP = WORLD.step,
                 OBS = (globalThis.__scatterObservation = {
@@ -529,8 +650,9 @@ try {
         assert.equal(REPORT.reserve.replacements[0].landed, true);
         assert.equal(REPORT.reserve.outside, 0);
         await capture('reserve-scatter-desktop.png');
-        // Longer native-model observation after the rendered comparison catches units
-        // stranded forever by a crowded approach path. It is not an FPS measurement.
+        // This short observation checks locomotion after switches/reserve joins.
+        // scatter-participation.test.mjs separately requires real launches and
+        // sustained melee/ranged damage for 120s; movement alone is not participation.
         REPORT.activity = await page.evaluate(() => {
             const WORLD = BUDMORI.sim,
                 POINTS = new Map(
