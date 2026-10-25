@@ -1202,7 +1202,8 @@ try {
                 BUDMORI.runtime.capturePresentation('reset');
                 return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
             });
-            const FILE = ROLE === 'boss' && ID === 'ufo' ? 'boss-skills-desktop.jpg' : null,
+            const HUD_CASE = ROLE === 'boss' && ID === 'ufo',
+                FILE = HUD_CASE && process.env.BUDMORI_CAPTURE_SHARED_HUD === '1' ? 'boss-skills-desktop.jpg' : null,
                 CAPTURE_STARTED = Date.now();
             REPORT.pendingCase = {
                 role: ROLE,
@@ -1211,7 +1212,7 @@ try {
                 elapsedMs: CAPTURE_STARTED - CASE_STARTED,
             };
             fs.writeFileSync(path.join(OUTPUT, 'report.json'), JSON.stringify(REPORT, null, 2));
-            if (FILE) {
+            if (HUD_CASE) {
                 // Layout-only fixture: retain the native UFO cast, add two legal idle model slots, then restore.
                 REPORT.bossCards.hudFixture = await PAGE.evaluate(() => {
                     const WORLD = BUDMORI.sim,
@@ -1346,7 +1347,9 @@ try {
                     BUDMORI.runtime.capturePresentation('reset');
                     return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
                 });
-                await CAPTURE_FRAME(FILE);
+                if (FILE) {
+                    await CAPTURE_FRAME(FILE);
+                }
                 await PAGE.evaluate(() => globalThis.__restoreBossHudFixture());
             }
             const CAPTURE_MS = Date.now() - CAPTURE_STARTED;
