@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
-const ROOT = fileURLToPath(new URL('../', import.meta.url)),
+const ROOT = path.resolve(fileURLToPath(new URL('../', import.meta.url))),
     OUTPUT = path.join(ROOT, 'tests/output/tower-army'),
     HTML = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'),
     MANIFEST = JSON.parse(
