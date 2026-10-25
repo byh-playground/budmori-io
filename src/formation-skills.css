@@ -106,6 +106,18 @@
 .formation-dock[data-role='boss'] .formation-charge i {
     background: var(--ui-gauge-enemy);
 }
+/* Keep a real HP lane even when names or health totals exceed their text columns. */
+.bossbar {
+    grid-template-columns: minmax(0, 1fr) minmax(80px, 1fr) minmax(0, 1fr);
+}
+.bossbar > *,
+.bossbar .bossbar__row > * {
+    min-width: 0;
+}
+.bossbar .bossbar__row > * {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
 #bossRelicHost {
     grid-area: 3 / 1 / 4 / -1;
     justify-self: center;
@@ -167,6 +179,9 @@
     margin: 0;
 }
 @media (max-height: 550px) {
+    .bossbar {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
     #bossRelicHost {
         grid-area: 6 / 1 / 7 / -1;
     }
@@ -175,6 +190,13 @@
     }
     .bossbar #fightRetreat {
         grid-area: 7 / 2;
+    }
+}
+/* Wide, short viewports have room beside the boss HUD: keep its live timing visible while inspecting. */
+@media (min-width: 700px) and (max-height: 550px) {
+    .relic-detail {
+        margin-inline-start: max(var(--ui-s3), env(safe-area-inset-left));
+        margin-inline-end: auto;
     }
 }
 /* One footer reserves real rows for skills, gameplay controls and utility actions. */

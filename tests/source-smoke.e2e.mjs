@@ -730,11 +730,7 @@ try {
                     LANDSCAPE.receipt.bottom <= LANDSCAPE.height,
                 'landscape candidate receipt remains fully inside the viewport',
             );
-            await PAGE.evaluate(() => (BUDMORI.runtime.paused = true));
-            await CAPTURE_FRAME('boss-cards-landscape.jpg');
-            await PAGE.clock.pauseAt(await PAGE.evaluate(() => Date.now() + 1000));
             await PAGE.setViewportSize({ width: 1000, height: 700 });
-            await PAGE.evaluate(() => (BUDMORI.runtime.paused = false));
         }
         await PAGE.clock.runFor(1000);
         await PAGE.locator('#towerDoors[data-owner="player"]').waitFor({ state: 'visible' });
@@ -922,6 +918,28 @@ try {
                     );
                 }
             }
+            const EXTRA = OBS.newSkills;
+            if (EXTRA && !EXTRA.complete) {
+                EXTRA.modelGiantScale = this.boss.giantScale;
+                EXTRA.modelRadius = this.boss.radius;
+                EXTRA.healed = Math.max(EXTRA.healed, this.boss.hp - EXTRA.initialHp);
+                for (const UNIT of this.units) {
+                    const BEFORE_HP = EXTRA.targetHp[UNIT.id];
+                    if (UNIT.stun > 0 && UNIT.hp < BEFORE_HP) {
+                        EXTRA.hammer = { id: UNIT.id, damage: BEFORE_HP - UNIT.hp, stun: UNIT.stun };
+                    }
+                }
+                if (
+                    EXTRA.healed > 0 &&
+                    EXTRA.hammer &&
+                    EXTRA.dtoHammerImpact &&
+                    ['giant', 'healing-rain', 'hammer'].every((id) => OBS.rendered[`boss:${id}`] > 0)
+                ) {
+                    EXTRA.complete = true;
+                    EXTRA.elapsedTicks = this.simulationTick - EXTRA.startTick;
+                    BUDMORI.runtime.paused = true;
+                }
+            }
             const REQUEST = OBS.checkpoint;
             if (REQUEST && !REQUEST.reached) {
                 const EFFECT =
@@ -979,6 +997,9 @@ try {
             ['meteor-shower', 'MeteorShowerPresentation'],
             ['ufo', 'UfoPresentation'],
             ['storm-cloud', 'StormCloudPresentation'],
+            ['giant', 'GiantPresentation'],
+            ['healing-rain', 'HealingRainPresentation'],
+            ['hammer', 'HammerPresentation'],
         ]) {
             const MODULE = await import(`./src/features/formation-skills/${ID}/presentation.js`),
                 TYPE = MODULE[NAME],
@@ -997,6 +1018,19 @@ try {
                     KEY = `${effect.role}:${effect.kind}`,
                     OBS = globalThis.__sharedSkills;
                 OBS.rendered[KEY] = (OBS.rendered[KEY] || 0) + 1;
+                const EXTRA = OBS.newSkills,
+                    DISPLAY = args[0];
+                if (EXTRA && effect.role === 'boss') {
+                    EXTRA.sessionDto = DISPLAY !== BUDMORI.sim && DISPLAY.boss !== BUDMORI.sim.boss;
+                    if (effect.kind === 'giant') {
+                        EXTRA.dtoGiantScale = DISPLAY.boss.giantScale;
+                        EXTRA.dtoRadius = DISPLAY.boss.radius;
+                    } else if (effect.kind === 'healing-rain') {
+                        EXTRA.dtoInjuredBoss = DISPLAY.formationInjuredAllies.get('boss').includes(DISPLAY.boss);
+                    } else if (effect.kind === 'hammer' && effect.impacted) {
+                        EXTRA.dtoHammerImpact = true;
+                    }
+                }
                 return RESULT;
             };
         }
@@ -1178,6 +1212,36 @@ try {
             };
             fs.writeFileSync(path.join(OUTPUT, 'report.json'), JSON.stringify(REPORT, null, 2));
             if (FILE) {
+                // Layout-only fixture: retain the native UFO cast, add two legal idle model slots, then restore.
+                REPORT.bossCards.hudFixture = await PAGE.evaluate(() => {
+                    const WORLD = BUDMORI.sim,
+                        RELICS = WORLD.tower.bossRelics,
+                        SLOTS = WORLD.formationRuntime.slots;
+                    WORLD.tower.bossRelics = new Map([...RELICS, ['lightning', 1], ['meteor', 1]]);
+                    WORLD.formationRuntime.slots = [
+                        ...SLOTS,
+                        ...['lightning', 'meteor'].map((id) => ({
+                            id,
+                            ownerId: 'boss',
+                            role: 'boss',
+                            level: 1,
+                            charge: 0,
+                            cooldown: 0,
+                        })),
+                    ];
+                    globalThis.__restoreBossHudFixture = () => {
+                        WORLD.tower.bossRelics = RELICS;
+                        WORLD.formationRuntime.slots = SLOTS;
+                    };
+                    BUDMORI.runtime.capturePresentation('reset');
+                    return {
+                        source: 'paused actual model; two idle slots added for layout only',
+                        skills: [...WORLD.tower.bossRelics.keys()],
+                    };
+                });
+                await PAGE.waitForFunction(
+                    () => document.querySelectorAll('#bossRelicHost [data-formation-slot]').length === 3,
+                );
                 const DOCK = PAGE.locator('#bossRelicHost .formation-dock[data-role="boss"]'),
                     SLOT = DOCK.locator('[data-formation-slot="ufo"]'),
                     DETAIL = PAGE.locator('#relicDetail-boss');
@@ -1188,6 +1252,7 @@ try {
                     slot: BUDMORI.runtime.presentationView.bossSlots.find((slot) => slot.id === 'ufo'),
                     dock: document.querySelector('#bossRelicHost .formation-dock').getBoundingClientRect().toJSON(),
                     health: document.querySelector('#bossbar .track--boss').getBoundingClientRect().toJSON(),
+                    allyHealth: document.querySelector('#bossbar .track--ally').getBoundingClientRect().toJSON(),
                     charge: document.querySelector('#bossRelicHost .formation-charge i').style.width,
                     cooldown: document
                         .querySelector('#bossRelicHost .formation-clock')
@@ -1198,11 +1263,67 @@ try {
                 assert.equal(HUD.slot.role, 'boss', 'the boss HUD uses its actual role-filtered session slot');
                 assert.equal(HUD.charge, '0%', 'charge resets visibly after release');
                 assert.ok(Math.abs(parseFloat(HUD.cooldown) - (HUD.slot.cooldown / 5) * 360) < 0.01);
+                for (const TRACK of [HUD.health, HUD.allyHealth]) {
+                    assert.ok(TRACK.width > 0 && TRACK.height > 0, 'both desktop health tracks remain visible');
+                }
                 assert.ok(HUD.dock.top >= HUD.health.bottom, 'the boss skill dock sits beneath boss health');
+                await PAGE.setViewportSize({ width: 844, height: 390 });
+                REPORT.bossCards.combatLandscape = await PAGE.evaluate(() => ({
+                    tracks: [...document.querySelectorAll('#bossbar .track')].map((track) =>
+                        track.getBoundingClientRect().toJSON(),
+                    ),
+                    dock: document.querySelector('#bossRelicHost .formation-dock').getBoundingClientRect().toJSON(),
+                    slots: [...document.querySelectorAll('#bossRelicHost [data-formation-slot]')].map((slot) => ({
+                        id: slot.dataset.formationSlot,
+                        box: slot.getBoundingClientRect().toJSON(),
+                        unclipped: [...slot.querySelectorAll('.formation-status, .formation-lv')].every(
+                            (label) =>
+                                label.scrollWidth <= label.clientWidth && label.scrollHeight <= label.clientHeight,
+                        ),
+                    })),
+                    width: innerWidth,
+                    height: innerHeight,
+                }));
+                const MOBILE = REPORT.bossCards.combatLandscape;
+                assert.equal(MOBILE.tracks.length, 2);
+                assert.equal(MOBILE.slots.length, 3, 'the actual paused boss model renders three owned skills');
+                assert.ok(
+                    MOBILE.slots.every((slot) => slot.unclipped),
+                    'all three mobile level and state labels fit',
+                );
+                for (const BOX of [...MOBILE.tracks, MOBILE.dock, ...MOBILE.slots.map((slot) => slot.box)]) {
+                    assert.ok(
+                        BOX.width > 0 &&
+                            BOX.height > 0 &&
+                            BOX.left >= 0 &&
+                            BOX.top >= 0 &&
+                            BOX.right <= MOBILE.width &&
+                            BOX.bottom <= MOBILE.height,
+                        'landscape health tracks and boss dock stay visible inside the viewport',
+                    );
+                }
+                assert.ok(MOBILE.dock.top >= MOBILE.tracks[1].bottom, 'landscape boss skills remain below boss health');
                 await SLOT.locator('[data-relic-detail]').tap();
                 await DETAIL.waitFor({ state: 'visible' });
                 assert.match(await DETAIL.locator('.relic-detail__condition').textContent(), /치명타 0 \/ 10/);
                 assert.match(await DETAIL.innerText(), /5초.*자동 발동/);
+                const DETAIL_BOX = await DETAIL.boundingBox();
+                assert.ok(
+                    DETAIL_BOX?.width > 0 &&
+                        DETAIL_BOX.height > 0 &&
+                        DETAIL_BOX.x >= 0 &&
+                        DETAIL_BOX.y >= 0 &&
+                        DETAIL_BOX.x + DETAIL_BOX.width <= 844 &&
+                        DETAIL_BOX.y + DETAIL_BOX.height <= 390,
+                    'the touch detail remains inside the landscape viewport',
+                );
+                const BOSS_BAR = await PAGE.locator('#bossbar').boundingBox();
+                assert.ok(
+                    BOSS_BAR && DETAIL_BOX.x + DETAIL_BOX.width <= BOSS_BAR.x,
+                    'the open touch detail does not cover the three boss skills',
+                );
+                REPORT.bossCards.combatLandscape.detail = DETAIL_BOX;
+                await CAPTURE_FRAME('boss-skills-landscape-detail.jpg');
                 await DETAIL.locator('.relic-detail__close').tap();
                 await DETAIL.waitFor({ state: 'hidden' });
                 await SLOT.locator('[data-relic-detail]').tap();
@@ -1214,7 +1335,9 @@ try {
                 assert.equal(await DETAIL.isVisible(), false, 'menu navigation leaves no stale detail overlay');
                 await PAGE.locator('#gameMenuClose').click();
                 await DOCK.waitFor({ state: 'visible' });
+                await PAGE.setViewportSize({ width: 1000, height: 700 });
                 await CAPTURE_FRAME(FILE);
+                await PAGE.evaluate(() => globalThis.__restoreBossHudFixture());
             }
             const CAPTURE_MS = Date.now() - CAPTURE_STARTED;
             const RESULT = await PAGE.evaluate(
@@ -1454,6 +1577,86 @@ try {
         REPORT.bossSkillDefense.hp > 0 && REPORT.bossSkillDefense.protected,
         'boss skills preserve the existing undying defense',
     );
+    // One continuation, not another matrix: the three newly shared boss skills run together in this live battle.
+    await PAGE.evaluate(() => {
+        const WORLD = BUDMORI.sim,
+            SKILLS = WORLD.formationSkills,
+            OBS = globalThis.__sharedSkills;
+        SKILLS.end();
+        WORLD.projectiles = [];
+        WORLD.effects = [];
+        WORLD.tower.relics = new Map();
+        WORLD.tower.bossRelics = new Map(['giant', 'healing-rain', 'hammer'].map((id) => [id, 1]));
+        WORLD.tower.passives = {};
+        Object.assign(WORLD.boss, { hp: WORLD.boss.maxHp - 250, x: 0, y: 0, z: 0, stun: 0 });
+        WORLD.boss.patternRuntime.active = null;
+        for (const ID of Object.keys(WORLD.boss.patternRuntime.cooldowns)) {
+            WORLD.boss.patternRuntime.cooldowns[ID] = 1000;
+        }
+        for (const [INDEX, UNIT] of WORLD.units.entries()) {
+            UNIT.maxHp = 1000;
+            Object.assign(UNIT, {
+                hp: 1000,
+                x: 12 + INDEX,
+                y: 0,
+                z: 0,
+                stun: 0,
+                landingRecovery: 10,
+                vx: 0,
+                vy: 0,
+                vz: 0,
+                dropLanded: true,
+            });
+            UNIT.ability.interrupt();
+        }
+        WORLD._unitSpatialDirty = true;
+        SKILLS.synchronize();
+        OBS.casts = [];
+        OBS.hits = [];
+        OBS.checkpoint = null;
+        OBS.newSkills = {
+            startTick: WORLD.simulationTick,
+            initialHp: WORLD.boss.hp,
+            baseRadius: WORLD.boss.radius,
+            targetHp: Object.fromEntries(WORLD.units.map((unit) => [unit.id, unit.hp])),
+            initialStun: WORLD.units.map((unit) => unit.stun),
+            healed: 0,
+            complete: false,
+        };
+        WORLD.onCombatResolved.emit({ role: 'boss', damageDealt: 200 });
+        WORLD.onCombatResolved.emit({ role: 'boss', damageTaken: 200 });
+        WORLD.onCombatResolved.emit({ role: 'boss', sourceFaction: 'enemy', allyDeaths: 3 });
+        BUDMORI.runtime.capturePresentation('reset');
+        BUDMORI.runtime.loop.resetTiming();
+        BUDMORI.runtime.paused = false;
+    });
+    await PAGE.waitForFunction(() => globalThis.__sharedSkills.newSkills.complete);
+    REPORT.newBossSkills = await PAGE.evaluate(() => ({
+        ...globalThis.__sharedSkills.newSkills,
+        casts: globalThis.__sharedSkills.casts,
+        hits: globalThis.__sharedSkills.hits,
+        nativeDraws: Object.fromEntries(
+            ['giant', 'healing-rain', 'hammer'].map((id) => [id, globalThis.__sharedSkills.rendered[`boss:${id}`]]),
+        ),
+    }));
+    const NEW_SKILLS = REPORT.newBossSkills;
+    assert.deepEqual(
+        NEW_SKILLS.casts,
+        ['giant', 'healing-rain', 'hammer'].map((id) => ({ id, role: 'boss' })),
+    );
+    assert.equal(NEW_SKILLS.sessionDto, true, 'new skills render the actual FarmSession DTO, not the model');
+    assert.equal(NEW_SKILLS.modelGiantScale, 1.25);
+    assert.equal(NEW_SKILLS.dtoGiantScale, 1.25);
+    assert.ok(Math.abs(NEW_SKILLS.modelRadius / NEW_SKILLS.baseRadius - 1.25) < 1e-9);
+    assert.ok(Math.abs(NEW_SKILLS.dtoRadius / NEW_SKILLS.baseRadius - 1.25) < 1e-9);
+    assert.ok(NEW_SKILLS.healed > 0 && NEW_SKILLS.dtoInjuredBoss, 'native rain draws over and heals the actual boss');
+    assert.ok(NEW_SKILLS.initialStun.every((stun) => stun === 0));
+    assert.ok(NEW_SKILLS.hammer.damage > 0 && NEW_SKILLS.hammer.stun > 0 && NEW_SKILLS.dtoHammerImpact);
+    assert.ok(
+        NEW_SKILLS.hits.some((hit) => hit.unit === NEW_SKILLS.hammer.id),
+        'native hammer emits the actual damaging hit',
+    );
+    assert.ok(Object.values(NEW_SKILLS.nativeDraws).every((count) => count > 0));
     assert.deepEqual(ERRORS, [], 'card and shared-skill scenarios remain free of runtime errors');
     REPORT.instrumentationRestored = await PAGE.evaluate(() =>
         globalThis.__sharedSkillRestores
@@ -1541,6 +1744,7 @@ try {
                 globalThis.__restoreBossTelegraphObservation?.();
                 globalThis.__restoreBossUnitHealthObservation?.();
                 globalThis.__restoreBossCardHit?.();
+                globalThis.__restoreBossHudFixture?.();
                 globalThis.__restoreUnitCoreEndObservation?.();
             })
             .catch(() => null);
