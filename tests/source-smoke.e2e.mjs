@@ -10,8 +10,9 @@ import { chromium } from 'playwright';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     OUTPUT = path.join(ROOT, 'tests/output/source-smoke'),
-    // First review run captures two native frames; return the default to 0 after pixel review.
+    // The first CI already captured the shared-rig sweep; only the basic frame still needs review.
     CAPTURE_BOSS_BASICS = (process.env.BUDMORI_CAPTURE_BOSS_BASICS ?? '1') === '1',
+    CAPTURE_BOSS_SWEEP = process.env.BUDMORI_CAPTURE_BOSS_SWEEP === '1',
     HTML = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'),
     MANIFEST = JSON.parse(
         HTML.match(/<script id="bloom-runtime-manifest" type="application\/json">(.*?)<\/script>/s)?.[1] || 'null',
@@ -463,7 +464,7 @@ try {
     );
     // The original full-health boss exposes its single-target front-slam special pattern.
     // After every nine-species condition is proven, arrange a crowd for one native unlocked sweep.
-    if (CAPTURE_BOSS_BASICS) {
+    if (CAPTURE_BOSS_SWEEP) {
         await PAGE.setViewportSize({ width: 1000, height: 700 });
     }
     REPORT.physicalAoeFixture = await PAGE.evaluate((capture) => {
@@ -510,7 +511,13 @@ try {
                 launches: 0,
                 hits: 0,
                 recovery: [],
-                healing: { prepared: false, released: 0 },
+                healing: {
+                    prepared: false,
+                    released: 0,
+                    pendingTicks: 0,
+                    pendingOnlyWhileBusy: true,
+                    pendingUnspent: true,
+                },
             });
         for (const UNIT of [PROBE, TARGET]) {
             UNIT.setBaseStats({ maxHp: 1e6 });
@@ -558,7 +565,15 @@ try {
                 }
             });
         WORLD.step = function (dt) {
-            const ABILITY = PROBE.ability;
+            const ABILITY = PROBE.ability,
+                RETRY_BEFORE = this.formationRuntime.bossRetrySkillId,
+                BUSY_BEFORE = !!(
+                    this.boss.patternRuntime.active ||
+                    this.boss.ability.phase !== 'idle' ||
+                    (this.boss.specialAbility && this.boss.specialAbility.phase !== 'idle') ||
+                    this.boss.z > 0.1 ||
+                    this.boss.landingRecovery > 0
+                );
             if (
                 !OBS.ccStarted &&
                 ABILITY.phase === 'recover' &&
@@ -623,12 +638,9 @@ try {
                 };
                 // Make healing eligible again before the next normal decision. It must still yield once.
                 this.boss.setHealth(this.boss.maxHp * 0.3);
-            } else if (
-                OBS.healing.failed &&
-                !OBS.healing.nextDecision &&
-                this.simulationTick > OBS.healing.failed.tick
-            ) {
-                OBS.healing.nextDecision = {
+            } else if (OBS.healing.failed && this.simulationTick > OBS.healing.failed.tick) {
+                const DECISION = {
+                    tick: this.simulationTick,
                     cast: CAST?.id || null,
                     retry: this.formationRuntime.bossRetrySkillId,
                     pattern: this.boss.patternRuntime.active?.id || null,
@@ -637,6 +649,22 @@ try {
                     charge: HEAL.charge,
                     cooldown: HEAL.cooldown,
                 };
+                OBS.healing.nextTick ||= DECISION;
+                if (RETRY_BEFORE === 'healing-rain' && !OBS.healing.nextDecision) {
+                    if (DECISION.retry === null) {
+                        // Observe the real token consumption, not the first tick of an already-busy basic action.
+                        OBS.healing.nextDecision = { ...DECISION, eligible: !BUSY_BEFORE };
+                    } else {
+                        OBS.healing.pendingTicks++;
+                        OBS.healing.pendingOnlyWhileBusy &&= BUSY_BEFORE;
+                        OBS.healing.pendingUnspent &&=
+                            DECISION.retry === 'healing-rain' &&
+                            !CAST &&
+                            HEAL.charge === 200 &&
+                            HEAL.cooldown === 0 &&
+                            !this.formationRuntime.effects.some((effect) => effect.kind === 'healing-rain');
+                    }
+                }
             }
             return RESULT;
         };
@@ -684,7 +712,12 @@ try {
             pattern: 'attack.sweep-360',
             chargeSource: 'native physical settlement; no injected combat events',
         };
-    }, CAPTURE_BOSS_BASICS);
+    }, CAPTURE_BOSS_SWEEP);
+    REPORT.physicalAoeFixture.previousCapture = {
+        run: '40166029010',
+        file: 'boss-special-sweep-desktop.jpg',
+        captureMs: 4858,
+    };
     for (;;) {
         await PAGE.waitForFunction(() => {
             const OBS = globalThis.__mixedCombat;
@@ -744,6 +777,23 @@ try {
         'eligibility loss releases the failed heal without spending or recovery',
     );
     assert.equal(FLOW.healing.released, 0);
+    assert.equal(
+        FLOW.healing.pendingOnlyWhileBusy,
+        true,
+        'the retry token is held only while the boss cannot select a new action',
+    );
+    assert.equal(FLOW.healing.pendingUnspent, true, 'busy ticks never spend healing charge or start cooldown/effects');
+    assert.equal(FLOW.healing.nextTick.cast, null, 'the immediately following tick cannot restart the failed heal');
+    assert.ok(
+        FLOW.healing.nextTick.pattern ||
+            FLOW.healing.nextTick.pursuit > 0 ||
+            FLOW.healing.nextTick.basicPhase !== 'idle',
+    );
+    assert.equal(
+        FLOW.healing.nextDecision.eligible,
+        true,
+        'the token is consumed at the next eligible selection, after the busy gate',
+    );
     assert.equal(FLOW.healing.nextDecision.cast, null);
     assert.equal(FLOW.healing.nextDecision.retry, null);
     assert.equal(FLOW.healing.nextDecision.charge, 200);
@@ -843,6 +893,9 @@ try {
     assert.equal(REPORT.bossHitObservationRestored, true);
     assert.equal(await PAGE.evaluate(() => globalThis.__restoreMixedObservation()), true);
     CHECKPOINT('mixedCombatAssertions');
+    if (CAPTURE_BOSS_BASICS) {
+        await PAGE.setViewportSize({ width: 1000, height: 700 });
+    }
     // Continue the same real session with two bodies, retaining every mixed-roster
     // assertion above. One seeded automatic rotation, not nine boot/cast scenarios.
     await PAGE.evaluate(async (capture) => {
