@@ -235,7 +235,7 @@ try {
         WORLD.tower.cards.push({ id: 'regen-flat', rarity: 0 }, { id: 'regen-pct', rarity: 0 });
         WORLD._applyRunStats();
         WORLD.boss.controller.configureStage(WORLD.boss.stage, 0);
-        Object.assign(WORLD.boss, { z: 0, hp: 1e9, maxHp: 1e9, stun: 0 });
+        Object.assign(WORLD.boss, { z: 0, dropLanded: true, hp: 1e9, maxHp: 1e9, stun: 0 });
         ALLIES.forEach((unit, index) => {
             const ANGLE = (index * Math.PI * 2) / (ALLIES.length - 1),
                 DISTANCE = WORLD.boss.radius + 1.2 + (index % 2) * 0.8;
@@ -488,7 +488,17 @@ try {
         for (const [INDEX, UNIT] of WORLD.units.entries()) {
             Object.assign(UNIT, { x: INDEX % 2 ? -18 : 18, y: 10, z: 0, vx: 0, vy: 0, vz: 0, stun: 1000 });
         }
-        Object.assign(WORLD.boss, { x: 0, y: 0, z: 0, hp: 3e8, maxHp: 1e9, stun: 0, knockVx: 0, knockVy: 0 });
+        Object.assign(WORLD.boss, {
+            x: 0,
+            y: 0,
+            z: 0,
+            dropLanded: true,
+            hp: 3e8,
+            maxHp: 1e9,
+            stun: 0,
+            knockVx: 0,
+            knockVy: 0,
+        });
         WORLD.boss.patternRuntime.active = null;
         for (const ID of Object.keys(WORLD.boss.patternRuntime.cooldowns)) {
             WORLD.boss.patternRuntime.cooldowns[ID] = ID === 'attack.sweep-360' ? 0 : 1000;
@@ -989,6 +999,7 @@ try {
                 const BOSS = WORLD.boss;
                 Object.assign(BOSS, {
                     active: true,
+                    dropLanded: true,
                     x: 0,
                     y: 0,
                     z: 0,
@@ -1815,7 +1826,7 @@ try {
         WORLD.farmBossEvent.elapsed = 0;
         WORLD._benched.clear();
         WORLD._benchRevision++;
-        Object.assign(WORLD.boss, { hp: WORLD.boss.maxHp, x: 0, y: 0, z: 0, stun: 0 });
+        Object.assign(WORLD.boss, { hp: WORLD.boss.maxHp, x: 0, y: 0, z: 0, dropLanded: true, stun: 0 });
         WORLD.boss.patternRuntime.active = null;
         for (const ID of Object.keys(WORLD.boss.patternRuntime.cooldowns)) {
             WORLD.boss.patternRuntime.cooldowns[ID] = ID === 'attack.front-slam' ? 0 : 1000;
@@ -1918,7 +1929,7 @@ try {
         WORLD.tower.cards = [];
         WORLD._applyRunStats();
         WORLD.farmBossEvent.phase = 'fighting';
-        Object.assign(WORLD.boss, { active: true, hp: 1e9, maxHp: 1e9, x: 0, y: 0, z: 0, stun: 0 });
+        Object.assign(WORLD.boss, { active: true, hp: 1e9, maxHp: 1e9, x: 0, y: 0, z: 0, dropLanded: true, stun: 0 });
         for (let index = 0; index < 3; index++) {
             const UNIT = WORLD.spawn(0, 1, 4 + index * 0.1, 0);
             Object.assign(UNIT, {
@@ -2206,6 +2217,7 @@ try {
                         x: 0,
                         y: 0,
                         z: 0,
+                        dropLanded: true,
                         stun: role === 'player' ? 1000 : 0,
                         knockVx: 0,
                         knockVy: 0,
@@ -2878,7 +2890,7 @@ try {
         WORLD.tower.relics = new Map();
         WORLD.tower.bossRelics = new Map(['giant', 'healing-rain', 'hammer'].map((id) => [id, 1]));
         WORLD.tower.passives = {};
-        Object.assign(WORLD.boss, { hp: WORLD.boss.maxHp - 250, x: 0, y: 0, z: 0, stun: 0 });
+        Object.assign(WORLD.boss, { hp: WORLD.boss.maxHp - 250, x: 0, y: 0, z: 0, dropLanded: true, stun: 0 });
         WORLD.boss.patternRuntime.active = null;
         for (const ID of Object.keys(WORLD.boss.patternRuntime.cooldowns)) {
             WORLD.boss.patternRuntime.cooldowns[ID] = 1000;
