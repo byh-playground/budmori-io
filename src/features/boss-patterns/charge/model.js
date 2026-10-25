@@ -25,7 +25,7 @@ export class ChargeBossPattern extends BossPattern {
             0,
             (-B_LOCAL + Math.sqrt(Math.max(0, B_LOCAL * B_LOCAL - 4 * A_LOCAL * C_LOCAL))) / (2 * A_LOCAL),
         );
-        const DISTANCE = Math.min(this.config.reach, EXIT);
+        const DISTANCE = Math.min(this.reachFor(boss), EXIT);
         const EX = SX + DX * DISTANCE,
             EY = SY + DY * DISTANCE,
             K = Math.max(1, Math.hypot(EX / RX, EY / RY));
@@ -50,7 +50,7 @@ export class ChargeBossPattern extends BossPattern {
             AIM = Math.atan2(TARGET.y - BOSS.y, TARGET.x - BOSS.x),
             DX = Math.cos(AIM),
             DY = Math.sin(AIM);
-        return world.bossGroundUnitsNear(BOSS.x, BOSS.y, this.config.reach).filter((unit) => {
+        return world.bossGroundUnitsNear(BOSS.x, BOSS.y, this.reachFor(world.boss)).filter((unit) => {
             const AHEAD = (unit.x - BOSS.x) * DX + (unit.y - BOSS.y) * DY,
                 SIDE = Math.abs((unit.x - BOSS.x) * DY - (unit.y - BOSS.y) * DX);
             return AHEAD >= 0 && SIDE <= BOSS.radius + unit.radius;
@@ -62,7 +62,7 @@ export class ChargeBossPattern extends BossPattern {
                 x: Math.cos(action.aim),
                 y: Math.sin(action.aim),
             },
-            REMAINING = Math.max(0, this.config.reach - action.traveled),
+            REMAINING = Math.max(0, this.reachFor(world.boss) - action.traveled),
             DISTANCE = Math.min(this.config.speed * dt, REMAINING),
             OLD = {
                 x: world.boss.x,
@@ -81,7 +81,7 @@ export class ChargeBossPattern extends BossPattern {
         action.traveled += MOVED;
         world.boss.travel += MOVED;
         world.sweepBossBody(OLD, action.id);
-        if (HIT_BOUNDARY || action.traveled >= this.config.reach - 1e-8 || MOVED < 1e-8) {
+        if (HIT_BOUNDARY || action.traveled >= this.reachFor(world.boss) - 1e-8 || MOVED < 1e-8) {
             world.enterBossPatternRecovery(action);
         }
     }

@@ -160,7 +160,8 @@ try {
     // vector draws. Only the starting roster/encounter is arranged; never step or
     // render a synthetic world, and never replace attack/clip implementations.
     await PAGE.evaluate(async () => {
-        const { unitMaxHpFor: MAX_HP_FOR } = await import('./src/unit-stats.js');
+        const { unitMaxHpFor: MAX_HP_FOR } = await import('./src/unit-stats.js'),
+            { Unit: UNIT_TYPE, bossAttackArea: BOSS_ATTACK_AREA } = await import('./src/farm-model.js');
         const WORLD = BUDMORI.sim,
             SESSION = BUDMORI.runtime,
             RENDERER = BUDMORI.renderer,
@@ -210,6 +211,19 @@ try {
         if (!WORLD.startTower(1) || !WORLD.finishMarch()) {
             throw new Error('Mixed combat must start through the real tower encounter');
         }
+        OBS.unitCore = {
+            validationScope:
+                'live encounter identity, health and lifecycle; detailed stat/buff math is checked separately',
+            sameClass: WORLD.boss instanceof UNIT_TYPE && WORLD.boss.constructor === ALLIES[0].constructor,
+            sharedLookup: WORLD._unitForId(WORLD.boss.id) === WORLD.boss,
+            liveHealthChanges: 0,
+        };
+        const OFF_BOSS_HEALTH = WORLD.boss.onHealthChanged.on(({ previousHp, hp }) => {
+            if (hp < previousHp) {
+                OBS.unitCore.liveHealthChanges++;
+            }
+        });
+        globalThis.__restoreBossUnitHealthObservation = OFF_BOSS_HEALTH;
         WORLD._benched.clear();
         WORLD._benchRevision++;
         WORLD.farmBossEvent.phase = 'fighting';
@@ -379,6 +393,32 @@ try {
             }
             return RESULT;
         };
+        const DRAW_DANGER = RENDERER.drawDanger;
+        WORLD.boss.setStatModifiers({ attackArea: { flat: 0, pct: 1 } });
+        globalThis.__restoreBossTelegraphObservation = () => {
+            WORLD.boss.setStatModifiers({});
+            RENDERER.drawDanger = DRAW_DANGER;
+        };
+        RENDERER.drawDanger = function (renderWorld) {
+            const RESULT = DRAW_DANGER.call(this, renderWorld),
+                MODEL = BOSS_ATTACK_AREA(WORLD.boss, 0, WORLD.scene);
+            if (
+                this.bossTelegraph &&
+                renderWorld.boss.patternPhase === 'windup' &&
+                MODEL?.patternId === renderWorld.boss.patternId &&
+                Number.isFinite(MODEL.reach) &&
+                Number.isFinite(this.bossTelegraph.reach)
+            ) {
+                OBS.telegraph = {
+                    scalar: renderWorld.boss.attackArea,
+                    pattern: MODEL.patternId,
+                    reach: this.bossTelegraph.reach,
+                    modelReach: MODEL.reach,
+                };
+                globalThis.__restoreBossTelegraphObservation();
+            }
+            return RESULT;
+        };
         SESSION.capturePresentation('reset');
         SESSION.loop.resetTiming();
         SESSION.paused = false;
@@ -395,6 +435,7 @@ try {
             OBS.workOverlap.windup &&
             OBS.hits > 0 &&
             OBS.bossSlams > 0 &&
+            OBS.telegraph &&
             [2, 4, 8].every((species) => OBS.regenerated.includes(species)) &&
             OBS.splitCount > 0 &&
             OBS.splitChildren.length === OBS.splitCount &&
@@ -458,7 +499,29 @@ try {
         units: BUDMORI.sim.units.length,
     }));
     const COMBAT = REPORT.mixedCombat;
+    assert.equal(COMBAT.telegraph.scalar, 2, 'the real boss presentation DTO carries its common attack-area stat');
+    assert.equal(
+        COMBAT.telegraph.reach,
+        COMBAT.telegraph.modelReach,
+        'the native telegraph uses the same reach as its live model',
+    );
     assert.ok(COMBAT.bossSlams > 0, 'the oversized pea boss selects and lands its basic attack');
+    assert.equal(COMBAT.unitCore.sameClass, true, 'the real tower boss and ordinary troop are the same Unit class');
+    assert.equal(COMBAT.unitCore.sharedLookup, true, 'boss identity resolves through the common unit lookup');
+    assert.ok(COMBAT.unitCore.liveHealthChanges > 0, 'actual mixed-combat damage emits the boss Unit health signal');
+    REPORT.unitCoreHealing = await PAGE.evaluate(async () => {
+        const { applyHealing: HEAL } = await import('./src/unit-stats.js'),
+            BOSS = BUDMORI.sim.boss,
+            BEFORE = BOSS.hp,
+            HEALED = HEAL(BOSS, 10);
+        return { healed: HEALED, gain: BOSS.hp - BEFORE };
+    });
+    assert.ok(
+        REPORT.unitCoreHealing.healed > 0 && REPORT.unitCoreHealing.gain === REPORT.unitCoreHealing.healed,
+        'the damaged live boss recovers through common healing',
+    );
+    await PAGE.evaluate(() => globalThis.__restoreBossUnitHealthObservation());
+
     assert.ok(
         COMBAT.bossHitBatches.some((batch) => new Set(batch.targets).size > 1),
         'a real boss attack settles multiple distinct targets',
@@ -1265,6 +1328,65 @@ try {
         true,
         'native step, presentation methods and observation listener are restored',
     );
+    // Victory celebration and fading use 0.5s each; no extra encounter or screenshots.
+    const END_STARTED = Date.now();
+    // Finish this same encounter through real lethal damage and normal RAF, not a direct victory call.
+    await PAGE.evaluate(async () => {
+        const WORLD = BUDMORI.sim,
+            { applyDamage: DAMAGE } = await import('./src/unit-stats.js'),
+            OLD_BOSS = WORLD.boss,
+            OBS = (globalThis.__unitCoreEnd = {
+                generation: OLD_BOSS.generation,
+                victories: 0,
+                rewards: 0,
+                damage: null,
+                startedTime: WORLD.time,
+            });
+        globalThis.__restoreUnitCoreEndObservation = WORLD.onNotice.on((notice) => {
+            if (notice.kind === 'farm-boss-victory') {
+                OBS.victories++;
+            }
+            if (notice.kind === 'farm-boss-reward') {
+                OBS.rewards++;
+            }
+        });
+        OBS.damage = DAMAGE(OLD_BOSS, OLD_BOSS.hp + 1, { armor: 0 }).actualLoss;
+        BUDMORI.runtime.loop.resetTiming();
+        BUDMORI.runtime.paused = false;
+    });
+    await PAGE.waitForFunction(
+        () =>
+            BUDMORI.sim.farmBossEvent.phase === 'idle' &&
+            BUDMORI.sim.boss.generation !== globalThis.__unitCoreEnd.generation,
+    );
+    REPORT.unitCoreEnd = await PAGE.evaluate(async () => {
+        const WORLD = BUDMORI.sim,
+            { Unit: UNIT_TYPE } = await import('./src/farm-model.js'),
+            REPEATED = WORLD.finishFarmBossEvent('victory');
+        BUDMORI.runtime.paused = true;
+        globalThis.__restoreUnitCoreEndObservation();
+        return {
+            ...globalThis.__unitCoreEnd,
+            repeated: REPEATED,
+            replacementUnit: WORLD.boss instanceof UNIT_TYPE && WORLD._unitForId('boss') === WORLD.boss,
+            replacementGeneration: WORLD.boss.generation,
+            clean:
+                !WORLD.boss.active &&
+                !WORLD.formationRuntime.active &&
+                WORLD.formationRuntime.effects.length === 0 &&
+                WORLD.formationRuntime.slots.length === 0,
+            elapsedSimulationSeconds: WORLD.time - globalThis.__unitCoreEnd.startedTime,
+        };
+    });
+    assert.ok(REPORT.unitCoreEnd.damage > 0);
+    assert.equal(REPORT.unitCoreEnd.victories, 1, 'real boss death settles victory once');
+    assert.equal(REPORT.unitCoreEnd.rewards, 1, 'real boss death issues one reward settlement');
+    assert.equal(REPORT.unitCoreEnd.repeated, false, 'a repeated finish cannot settle another victory');
+    assert.equal(REPORT.unitCoreEnd.replacementUnit, true, 'encounter cleanup creates another ordinary Unit body');
+    assert.notEqual(REPORT.unitCoreEnd.replacementGeneration, REPORT.unitCoreEnd.generation);
+    assert.equal(REPORT.unitCoreEnd.clean, true, 'encounter cleanup removes active boss skills and effects');
+    REPORT.unitCoreEnd.elapsedWallMs = Date.now() - END_STARTED;
+    assert.deepEqual(ERRORS, [], 'same-Unit lifecycle remains free of runtime errors');
     CHECKPOINT('cancellationAndDefenseAssertions');
     REPORT.status = 'passed';
     REPORT.state = STATE;
@@ -1275,6 +1397,13 @@ try {
     REPORT.status = 'failed';
     REPORT.failure = String(error.stack || error);
     if (page && !page.isClosed()) {
+        await page
+            .evaluate(() => {
+                globalThis.__restoreBossTelegraphObservation?.();
+                globalThis.__restoreBossUnitHealthObservation?.();
+                globalThis.__restoreUnitCoreEndObservation?.();
+            })
+            .catch(() => null);
         REPORT.mixedCombat = await page.evaluate(() => globalThis.__mixedCombat).catch(() => null);
         REPORT.bossHitObservationRestored = await page
             .evaluate(() => globalThis.__restoreBossHitObservation?.() ?? true)

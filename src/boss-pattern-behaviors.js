@@ -1,3 +1,4 @@
+import { scaleAttackRecovery } from './unit-stats.js';
 import { SweepBossPattern } from './features/boss-patterns/sweep-360/model.js';
 import { SlamBossPattern } from './features/boss-patterns/front-slam/model.js';
 import { ChargeBossPattern } from './features/boss-patterns/charge/model.js';
@@ -72,7 +73,7 @@ export function createBossPatternBehaviors(dependencies) {
     }
     class RecoverBossPatternPhase extends BossPatternPhase {
         update(world, action, _dt, _living) {
-            if (action.phaseElapsed >= BOSS_PATTERN_CONFIG[action.id].recover) {
+            if (action.phaseElapsed >= scaleAttackRecovery(BOSS_PATTERN_CONFIG[action.id].recover, world.boss)) {
                 world.boss.patternRuntime.active = null;
             }
         }

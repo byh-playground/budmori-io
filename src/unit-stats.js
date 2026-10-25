@@ -42,16 +42,16 @@ export const COMMON_UNIT_STAT_PROFILES = Object.freeze(
 // One tower run's stat cards change every unit alike: {stat: {flat, pct}}. A stat is (base + flat) * (1 + pct); regen's
 // pct is a share of max HP per second. The run sets them and the end of the run clears them.
 const RUN_MODS = {};
-function withRunMods(stats) {
+function withRunMods(stats, modifiers = RUN_MODS) {
     const OUT = { ...stats };
-    for (const [STAT, MOD] of Object.entries(RUN_MODS)) {
+    for (const [STAT, MOD] of Object.entries(modifiers)) {
         if (STAT !== 'regen') {
             OUT[STAT] = (OUT[STAT] + MOD.flat) * (1 + MOD.pct);
         }
     }
     OUT.maxHp = Math.round(OUT.maxHp);
-    if (RUN_MODS.regen) {
-        OUT.regen += RUN_MODS.regen.flat + OUT.maxHp * RUN_MODS.regen.pct;
+    if (modifiers.regen) {
+        OUT.regen += modifiers.regen.flat + OUT.maxHp * modifiers.regen.pct;
     }
     return OUT;
 }
@@ -106,7 +106,12 @@ export function baseUnitStatsFor(tier, species) {
 
 // Preserve the public mutable-result contract; callers never receive the cache.
 export function resolveUnitStats(unit, overrides) {
-    const BASE = baseUnitStatsFor(unit?.tier, unit?.species),
+    const BASE = withRunMods(
+            unit?.statProfile
+                ? { ...COMMON_UNIT_STAT_DEFAULTS, ...unit.statProfile }
+                : baseUnitStatsFor(unit?.tier, unit?.species),
+            unit?.statModifiers || {},
+        ),
         MULTIPLIER = Number.isFinite(unit?.permanentStatMultiplier) ? Math.max(0, unit.permanentStatMultiplier) : 1;
     const RESULT = {
         ...BASE,
@@ -118,7 +123,9 @@ export function resolveUnitStats(unit, overrides) {
     // Percentage regeneration follows effective max HP for every body, including growth and summons.
     // Flat regeneration and explicit caller overrides remain unchanged.
     if (!Object.hasOwn(overrides || {}, 'regen')) {
-        RESULT.regen += (RESULT.maxHp - BASE.maxHp) * (RUN_MODS.regen?.pct || 0);
+        RESULT.regen +=
+            (RESULT.maxHp - BASE.maxHp) *
+            ((unit?.statProfile ? 0 : RUN_MODS.regen?.pct || 0) + (unit?.statModifiers?.regen?.pct || 0));
     }
     return RESULT;
 }
@@ -128,6 +135,9 @@ function growthHealthMultiplierFor(unit) {
 }
 // Legacy base-HP consumers retain their established semantics for all other species.
 export function unitMaxHpFor(unit) {
+    if (unit.statProfile || Object.keys(unit.statModifiers || {}).length) {
+        return resolveUnitStats(unit).maxHp;
+    }
     const SPLIT_MULTIPLIER =
         unit.species === 4 && unit.isBattleOnlySummon && Number.isFinite(unit.permanentStatMultiplier)
             ? Math.max(0, unit.permanentStatMultiplier)
@@ -177,6 +187,8 @@ export function applyRunGrowthHealth(unit, progression, { preserveRatio = false 
 }
 function combatStats(unit, overrides) {
     return overrides === undefined &&
+        !unit?.statProfile &&
+        !Object.keys(unit?.statModifiers || {}).length &&
         !unit?.isFormationClone &&
         (unit?.permanentStatMultiplier ?? 1) === 1 &&
         growthHealthMultiplierFor(unit) === 1
@@ -322,7 +334,8 @@ function setHealth(target, value) {
     if (typeof target.setHealth === 'function') {
         target.setHealth(value);
     } else {
-        // Plain boss/checkpoint records use the same numeric helper contract.
+        // Numeric DTO/fixture consumers retain the public helper contract.
+        // All live combatants, including the boss, use Unit.setHealth.
         target.hp = value;
     }
 }

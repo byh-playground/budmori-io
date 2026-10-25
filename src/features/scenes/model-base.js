@@ -54,6 +54,6 @@ export class SimulationScene {
         if (!world.boss.active) {
             return;
         }
-        world.updateBoss(dt);
+        world.boss.controller.update(world, dt);
     }
 }

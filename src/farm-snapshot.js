@@ -31,6 +31,8 @@ export const UNIT_SNAPSHOT_SHAPE = {
     generation: 1,
     species: 0,
     tier: 1,
+    statProfile: null,
+    statModifiers: null,
     permanentStatMultiplier: 1,
     growthMaxHpMultiplier: 1,
     faction: 'player',
@@ -177,6 +179,11 @@ export const FARM_SNAPSHOT_SHAPE = {
         rewardUnitId: 0,
     },
     boss: {
+        statProfile: null,
+        statModifiers: null,
+        giantUntil: 0,
+        giantEndedAt: -10,
+        deathSplitHandled: false,
         x: 0,
         y: 0,
         faction: 'enemy',
@@ -297,6 +304,8 @@ const ATTACK = FIELDS(
     },
 );
 const UNIT = shapeFields(UNIT_SNAPSHOT_SHAPE, {
+    statProfile: JSON_PAYLOAD,
+    statModifiers: JSON_PAYLOAD,
     ability: {
         phase: true,
         elapsed: true,
@@ -310,14 +319,19 @@ const UNIT = shapeFields(UNIT_SNAPSHOT_SHAPE, {
     wheatCommandBuffs: [FIELDS('level bonus tier powerRank appliedAtTick expiresAtTick')],
     barleyArmorShredBuckets: [FIELDS('expiresAtTick amount')],
 });
-const BOSS_ACTION = FIELDS('id phase phaseElapsed targetId aim locked traveled volleyCount released nextRelease', {
-    target: POINT,
-    start: POINT,
-    path: PATH,
-    hitIds: [true],
-    landingPoints: [POINT],
-});
+const BOSS_ACTION = FIELDS(
+    'id phase phaseElapsed targetId aim locked traveled volleyCount released nextRelease criticalRoll',
+    {
+        target: POINT,
+        start: POINT,
+        path: PATH,
+        hitIds: [true],
+        landingPoints: [POINT],
+    },
+);
 const BOSS = shapeFields(FARM_SNAPSHOT_SHAPE.boss, {
+    statProfile: JSON_PAYLOAD,
+    statModifiers: JSON_PAYLOAD,
     patternRuntime: shapeFields(FARM_SNAPSHOT_SHAPE.boss.patternRuntime, {
         active: BOSS_ACTION,
     }),
@@ -426,7 +440,7 @@ function copyFields(value, recipe) {
     }
     const RESULT = {};
     for (const [KEY, CHILD] of Object.entries(recipe)) {
-        if (Object.hasOwn(value, KEY) && value[KEY] !== undefined) {
+        if (KEY in value && value[KEY] !== undefined) {
             RESULT[KEY] = copyFields(value[KEY], CHILD);
         }
     }

@@ -52,6 +52,7 @@ function renderedBossAttackArea(boss, scene, scratch, area) {
     scratch.angle = boss.angle;
     scratch.radius = boss.radius;
     scratch.height = boss.height;
+    scratch.attackArea = boss.attackArea;
     ACTION.id = boss.patternId;
     ACTION.phase = boss.patternPhase;
     ACTION.phaseElapsed = boss.patternPhaseElapsed;

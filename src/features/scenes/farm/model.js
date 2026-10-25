@@ -89,6 +89,6 @@ export class FarmSimulationScene extends SimulationScene {
             super.updateBattle(world, dt);
             return;
         }
-        world.updateBoss(dt);
+        world.boss.controller.update(world, dt);
     }
 }

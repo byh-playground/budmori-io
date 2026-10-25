@@ -13,6 +13,7 @@ import { hasUnitCapability, specialAbilityCompositionFor } from './unit-abilitie
 import { mergeMaterialCostForTier } from './unit-grades.js';
 import { BOSS_PATTERN_IDS } from './boss-patterns.js';
 import { BOSS_REWARD_SETTINGS, bossStageStats } from './boss-rewards.js';
+import { resolveUnitStats } from './unit-stats.js';
 import { FACTION_CONFIG, hasFaction } from './factions.js';
 import { FARM_SNAPSHOT_SHAPE as GARDEN_SHAPE, UNIT_SNAPSHOT_SHAPE as UNIT_SHAPE } from './farm-snapshot.js';
 import { attackTargetKey } from './features/species-growth/attack-action.js';
@@ -1362,7 +1363,14 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
             raw.boss.barleyArmorBreakReduction <= 0.75 &&
             validBarleyArmorShredBuckets(raw.boss.barleyArmorShredBuckets, raw.simulationTick, allowLegacyBarleyShred),
     );
-    if (raw.boss.stage === 0) {
+    if (raw.boss.statProfile) {
+        const EFFECTIVE = resolveUnitStats(raw.boss);
+        ASSERT(
+            raw.boss.maxHp === EFFECTIVE.maxHp &&
+                raw.boss.attackPower === EFFECTIVE.attackPower &&
+                raw.boss.moveSpeed === EFFECTIVE.moveSpeed,
+        );
+    } else if (raw.boss.stage === 0) {
         ASSERT(raw.boss.attackPower === 4);
     } else {
         const STAGE_STATS = bossStageStats(raw.boss.stage);

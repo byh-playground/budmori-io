@@ -62,7 +62,7 @@ export function isValidFormationRuntime(runtime) {
             SLOT.charge > DEFINITION.required ||
             !Number.isFinite(SLOT.cooldown) ||
             SLOT.cooldown < 0 ||
-            SLOT.cooldown > (SLOT.role === 'boss' ? 0 : FORMATION_COOLDOWN_SECONDS) ||
+            SLOT.cooldown > FORMATION_COOLDOWN_SECONDS ||
             typeof SLOT.ownerId !== 'string'
         ) {
             return false;
