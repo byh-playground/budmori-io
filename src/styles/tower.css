@@ -197,3 +197,110 @@
         padding: var(--ui-s2);
     }
 }
+
+/* The result stays inside the same choice surface; animation never owns acquisition or unlock. */
+.doors {
+    box-sizing: border-box;
+    max-height: calc(100dvh - var(--ui-nav-h) - var(--ui-safe-bottom) - var(--ui-s3) * 2);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+}
+.doors[data-owner='boss'] .door {
+    transition:
+        opacity 160ms ease,
+        transform 160ms ease;
+}
+.door[data-player-receipt='true'] {
+    animation: card-received 180ms ease-out;
+}
+.door[data-boss-offer] {
+    animation: card-offer 160ms ease-out;
+}
+.doors[data-owner='boss'] .door[data-selected='true'] {
+    transform: translateY(-2px);
+}
+.doors[data-owner='boss'][data-phase='outcome'] .door[data-selected='false'] {
+    opacity: 0.6;
+}
+/* Once chosen, the full-width actual effect replaces repeated preview descriptions. */
+.doors[data-phase='outcome'] .door small {
+    display: none;
+}
+.doors__receipts {
+    display: grid;
+    gap: var(--ui-s1);
+    text-align: start;
+    border-top: var(--ui-bw) solid var(--ui-line);
+    padding-top: var(--ui-s2);
+    font-size: var(--ui-fs-2);
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+.doors__receipts[hidden] {
+    display: none;
+}
+.doors__receipts p {
+    margin: 0;
+}
+.doors__receipts b {
+    margin-right: var(--ui-s2);
+}
+.doors__receipts span {
+    color: var(--ui-ink-2);
+}
+.formation-slot[data-acquired='new'] .formation-icon,
+.formation-slot[data-acquired='upgrade'] .formation-icon {
+    outline: 2px solid var(--ui-focus);
+    outline-offset: 2px;
+}
+.formation-acquired {
+    color: var(--ui-focus);
+    padding: 1px var(--ui-s1);
+    border-radius: var(--ui-r-s);
+    background: var(--ui-panel);
+    font-size: var(--ui-fs-1);
+    font-weight: var(--ui-fw-b);
+    white-space: nowrap;
+}
+@keyframes card-received {
+    from {
+        transform: scale(0.98);
+    }
+    to {
+        transform: none;
+    }
+}
+@keyframes card-offer {
+    from {
+        opacity: 0.45;
+        transform: translateY(5px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+@media (max-height: 550px) and (min-aspect-ratio: 4/3) {
+    #gameplayDock > div.bottom:has(#towerDoors:not([hidden])) {
+        width: min(620px, calc(100vw - var(--ui-s3) * 2));
+    }
+    .doors__receipts[data-phase='summary'] [data-role='player'] {
+        display: none;
+    }
+    .doors__receipts {
+        padding-top: var(--ui-s1);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .doors[data-owner='boss'] .door,
+    .door[data-player-receipt='true'],
+    .door[data-boss-offer] {
+        animation: none;
+        transition: none;
+        transform: none;
+    }
+    .doors[data-owner='boss'] .door[data-selected='true'] {
+        transform: none;
+    }
+}

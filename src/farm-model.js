@@ -2695,8 +2695,9 @@ const GARDEN = class Garden {
         if (DOOR.type === 'fight') {
             return this._beginFloor(DOOR.kind);
         }
+        let playerReceipt = null;
         if (['skill', 'stat', 'passive'].includes(DOOR.type)) {
-            applyTowerCard(T, DOOR);
+            playerReceipt = applyTowerCard(T, DOOR);
             this._applyRunStats();
         } else {
             TOWER_EVENTS.find((event) => event.id === DOOR.id).apply(this);
@@ -2708,6 +2709,7 @@ const GARDEN = class Garden {
                 this.time,
                 CONFIG.farm.tower.relicSlots,
                 CONFIG.farm.tower.relicMaxLevel,
+                playerReceipt,
             );
             this._applyBossRunStats();
         }
