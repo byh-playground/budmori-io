@@ -10,13 +10,13 @@ export class SweepBossPattern extends BossPattern {
         super(FEATURE, dependencies);
         this.physicalActive = true;
     }
-    writeArea(_boss, _action, _scene, pad, area) {
+    writeArea(boss, _action, _scene, pad, area) {
         area.kind = 'sweep';
-        area.reach = this.config.reach + pad;
+        area.reach = this.reachFor(boss) + pad;
         area.angle = 0;
     }
     expectedHits(world, _targets) {
-        return world.bossGroundUnitsNear(world.boss.x, world.boss.y, this.config.reach).length;
+        return world.bossGroundUnitsNear(world.boss.x, world.boss.y, this.reachFor(world.boss)).length;
     }
     updateActive(world, action, dt) {
         const Q0 = Math.max(0, (action.phaseElapsed - dt) / this.config.active),
@@ -25,7 +25,7 @@ export class SweepBossPattern extends BossPattern {
             world.resolveBossWedge(
                 action,
                 action.id,
-                this.config.reach,
+                this.reachFor(world.boss),
                 ARM_START + Math.PI * Q0,
                 ARM_START + Math.PI * Q1,
             );

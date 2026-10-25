@@ -44,6 +44,7 @@ import {
     applyHealing,
     resolveStatusDuration,
     resolveKnockback,
+    resolveCritical,
     scaleMoveSpeed,
     scaleAttackRecovery,
     scaleAttackArea,
@@ -593,6 +594,10 @@ const ATTACKING_BODY = (baseLocal) =>
             this.ability = null;
         } // Assigned after the unit profile is known.
         knock(...args) {
+            if (this.controller) {
+                this.controller.knock(...args);
+                return;
+            }
             const SOURCE = args[4] || null;
             this.ability.interrupt();
             this.specialAbility?.interrupt();
@@ -649,33 +654,187 @@ function walnutMatureGeometry(unit) {
         ? WALNUT_MATURE_GEOMETRY[unit.tier - 1]
         : null;
 }
+// A controller owns behavior, never a second body/HP/stat record. Encounter
+// state stays on the Unit and is captured once by the existing checkpoint.
+class BossController {
+    constructor(unit) {
+        this.unit = unit;
+    }
+    configureStage(stage, species = this.unit.species) {
+        const STATS = bossStageStats(stage),
+            UNIT = this.unit;
+        UNIT.generation = ++UNIT._world.entityGenerationSerial;
+        UNIT.species = CLAMP(species, 0, CONFIG.unit.speciesCount - 1);
+        UNIT.stage = STATS.stage;
+        UNIT.setBaseStats({ maxHp: STATS.hp, attackPower: STATS.attackPower });
+        UNIT.setHealth(UNIT.maxHp);
+        return UNIT;
+    }
+    armorModifier() {
+        const UNIT = this.unit;
+        return (1 - CLAMP(UNIT.hp / Math.max(1, UNIT.maxHp), 0, 1)) * 100;
+    }
+    knock(nx, ny, power, _lift, source) {
+        const UNIT = this.unit,
+            POWER = resolveKnockback(power, source, UNIT);
+        UNIT.knockVx += nx * POWER;
+        UNIT.knockVy += ny * POWER;
+    }
+    updatePattern(world, dt, living) {
+        const B_LOCAL = world.boss,
+            RUNTIME = B_LOCAL.patternRuntime;
+        RUNTIME.encounterElapsed += dt;
+        for (const ID of BOSS_PATTERN_IDS) {
+            RUNTIME.cooldowns[ID] = Math.max(0, (RUNTIME.cooldowns[ID] || 0) - dt);
+        }
+        let action = RUNTIME.active;
+        if (!action) {
+            const TARGETS = world.bossPatternTargets(living),
+                TARGET = TARGETS.nearest || world.nearestBossTarget(living),
+                ELIGIBLE = world.eligibleBossPatterns(living, TARGETS),
+                SELECTED = chooseBossPattern(RUNTIME, ELIGIBLE, () => world.random());
+            if (SELECTED) {
+                const BEHAVIOR = BOSS_BEHAVIORS.forId(SELECTED),
+                    PICK = BEHAVIOR.selectedTarget(world, TARGETS, TARGET);
+                world.beginBossPattern(SELECTED, PICK);
+                action = RUNTIME.active;
+                BEHAVIOR.selected(world);
+            } else {
+                if (TARGET) {
+                    const DX = TARGET.x - B_LOCAL.x,
+                        DY = TARGET.y - B_LOCAL.y,
+                        D_LOCAL = Math.hypot(DX, DY) || 1;
+                    B_LOCAL.angle = B_LOCAL.facing = Math.atan2(DY, DX);
+                    const CONTACT = B_LOCAL.radius + TARGET.radius + BOSS_CONTACT_MARGIN;
+                    if (D_LOCAL > CONTACT) {
+                        const SPEED = Math.min(B_LOCAL.moveSpeed, (D_LOCAL - CONTACT) / dt);
+                        B_LOCAL.chaseVx = (DX / D_LOCAL) * SPEED;
+                        B_LOCAL.chaseVy = (DY / D_LOCAL) * SPEED;
+                    }
+                }
+                return;
+            }
+        }
+        if (!action) {
+            return;
+        }
+        if (action.phase === 'active' && BOSS_BEHAVIORS.forId(action.id).physicalActive) {
+            return;
+        }
+        action.phaseElapsed += dt;
+        BOSS_BEHAVIORS.update(world, action, dt, living);
+    }
+    integrateKnockback(world, dt) {
+        const BOSS = world.boss;
+        if (Math.hypot(BOSS.knockVx, BOSS.knockVy) < 1e-6) {
+            return;
+        }
+        BOSS.x += BOSS.knockVx * dt;
+        BOSS.y += BOSS.knockVy * dt;
+        const RX = CONFIG.battle.arena.radiusX - BOSS.radius,
+            RY = CONFIG.battle.arena.radiusY - BOSS.radius,
+            EDGE = Math.hypot(BOSS.x / RX, BOSS.y / RY);
+        if (EDGE > 1) {
+            BOSS.x /= EDGE;
+            BOSS.y /= EDGE;
+        }
+        BOSS.knockVx *= Math.exp(-dt * 6);
+        BOSS.knockVy *= Math.exp(-dt * 6);
+    }
+    integrate(world, dt) {
+        const BOSS = world.boss;
+        if (!BOSS.active) {
+            return;
+        }
+        this.integrateKnockback(world, dt);
+        if (BOSS.stun > 0 || world.formationRuntime.bossCast) {
+            return;
+        }
+        const ACTION = BOSS.patternRuntime.active;
+        if (ACTION?.phase === 'active' && BOSS_BEHAVIORS.forId(ACTION.id).physicalActive) {
+            const DELAY = Math.min(dt, ACTION.motionDelay || 0);
+            ACTION.motionDelay = Math.max(0, (ACTION.motionDelay || 0) - DELAY);
+            const ACTIVE_DT = dt - DELAY;
+            if (ACTIVE_DT > 0) {
+                ACTION.phaseElapsed += ACTIVE_DT;
+                BOSS_BEHAVIORS.forId(ACTION.id).updateActive(world, ACTION, ACTIVE_DT);
+            }
+        } else if (!ACTION) {
+            const X = BOSS.x,
+                Y = BOSS.y;
+            BOSS.x += (BOSS.chaseVx || 0) * dt;
+            BOSS.y += (BOSS.chaseVy || 0) * dt;
+            world.boundBody(BOSS, world.scene, BOSS.radius + 0.25);
+            BOSS.travel += Math.hypot(BOSS.x - X, BOSS.y - Y);
+        }
+    }
+    update(world, dt) {
+        const B_LOCAL = world.boss;
+        B_LOCAL.chaseVx = B_LOCAL.chaseVy = 0;
+        if (SIMULATION_SCENES[world.scene].updateBossPhase(world, dt)) {
+            return;
+        }
+        if (!B_LOCAL.active) {
+            return;
+        }
+        if (B_LOCAL.hp <= 0) {
+            B_LOCAL.active = false;
+            B_LOCAL.patternRuntime.active = null;
+            return;
+        }
+        const STATS = resolveUnitStats(B_LOCAL);
+        if (STATS.regen > 0) {
+            applyHealing(B_LOCAL, STATS.regen * dt, STATS);
+        }
+        if (B_LOCAL.stun > 0) {
+            B_LOCAL.stun = Math.max(0, B_LOCAL.stun - dt);
+            return;
+        }
+        if (world.formationRuntime.bossCast) {
+            return;
+        }
+        const LIVING = world.livingBossTargets();
+        if (!LIVING.length) {
+            return;
+        }
+        this.updatePattern(world, dt, LIVING);
+        world._settleBossHits();
+    }
+}
+function initializeFarmLifecycle(unit, x, y) {
+    Object.assign(unit, {
+        meals: 0,
+        growth: 0,
+        growthElapsed: 0,
+        growthDuration: CONFIG.farm.breeding.growthSeconds,
+        age: 0,
+        cooldown: 0,
+        cooldownDuration: 0,
+        mateId: 0,
+        perceptionRange: CONFIG.unit.perceptionRange,
+        home: {
+            x,
+            y,
+        },
+    });
+}
 const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
-    constructor(id, species, tier, x, y) {
+    constructor(id, species, tier, x, y, { statProfile = null, bodyProfile = null, controller = null } = {}) {
         super(x, y);
         Object.assign(this, {
             id,
+            statProfile,
+            statModifiers: {},
+            bodyProfile,
             generation: 0,
             species,
             tier,
             permanentStatMultiplier: 1,
             growthMaxHpMultiplier: 1,
             faction: FACTION_CONFIG.PLAYER,
-            meals: 0,
-            growth: 0,
-            growthElapsed: 0,
-            growthDuration: CONFIG.farm.breeding.growthSeconds,
-            age: 0,
-            cooldown: 0,
-            cooldownDuration: 0,
-            mateId: 0,
-            perceptionRange: CONFIG.unit.perceptionRange,
-            home: {
-                x,
-                y,
-            },
-            hp: STATS(tier, species).maxHp,
+            hp: statProfile?.maxHp ?? STATS(tier, species).maxHp,
             down: 0,
-            seed: id * 2.39996,
+            seed: typeof id === 'number' ? id * 2.39996 : 0,
             ownerId: '',
             farmId: 0,
             dropLanded: true,
@@ -718,13 +877,67 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
             isFormationClone: false,
             cloneBornAt: -10,
         });
-        this.ability = CREATE_UNIT_ATTACK_CYCLE(this);
-        this.specialAbility = CREATE_UNIT_ATTACK_CYCLE.createSpecial(this);
+        if (!controller) {
+            initializeFarmLifecycle(this, x, y);
+        }
+        this.controller = controller ? new controller(this) : null;
+        this.initializeActions();
         Object.defineProperties(this, {
             onDied: { value: new Signal() },
             onRevived: { value: new Signal() },
             onHealthChanged: { value: new Signal() },
         });
+    }
+    initializeActions() {
+        this.ability = this.controller ? null : CREATE_UNIT_ATTACK_CYCLE(this);
+        this.specialAbility = this.controller ? null : CREATE_UNIT_ATTACK_CYCLE.createSpecial(this);
+    }
+    attachWorld(world) {
+        Object.defineProperty(this, '_world', { value: world, writable: true, configurable: true });
+        for (const SIGNAL of [this.onDied, this.onRevived, this.onHealthChanged]) {
+            SIGNAL.scope = world.mutationNotifications;
+            SIGNAL.immediate = true;
+        }
+    }
+    notifyHealthCapacity(previousMaxHp) {
+        const MAX_HP = this.maxHp;
+        if (MAX_HP !== previousMaxHp) {
+            this.onHealthChanged.emit({
+                unitId: this.id,
+                previousHp: this.hp,
+                hp: this.hp,
+                previousMaxHp,
+                maxHp: MAX_HP,
+            });
+        }
+    }
+    setBaseStats(values) {
+        const PREVIOUS_MAX_HP = this.maxHp;
+        this.statProfile = { ...(this.statProfile ?? baseUnitStatsFor(this.tier, this.species)), ...values };
+        this.notifyHealthCapacity(PREVIOUS_MAX_HP);
+    }
+    setStatModifiers(modifiers) {
+        const PREVIOUS_MAX_HP = this.maxHp;
+        this.statModifiers = structuredClone(modifiers);
+        this.notifyHealthCapacity(PREVIOUS_MAX_HP);
+    }
+    get maxHp() {
+        return resolveUnitStats(this).maxHp;
+    }
+    set maxHp(value) {
+        this.setBaseStats({ maxHp: value });
+    }
+    get attackPower() {
+        return resolveUnitStats(this).attackPower;
+    }
+    set attackPower(value) {
+        this.setBaseStats({ attackPower: value });
+    }
+    get moveSpeed() {
+        return resolveUnitStats(this).moveSpeed;
+    }
+    set moveSpeed(value) {
+        this.setBaseStats({ moveSpeed: value });
     }
     setHealth(value) {
         const PREVIOUS = this.hp;
@@ -735,7 +948,7 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
     }
     die() {
         this.barleyArmorShredBuckets = createBarleyArmorShredBuckets();
-        this.ability.resetCombatEffects?.();
+        this.ability?.resetCombatEffects?.();
         if (this.deathSplitHandled) {
             return false;
         }
@@ -758,8 +971,7 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
             angle: 0,
             deathSplitHandled: false,
         });
-        this.ability = CREATE_UNIT_ATTACK_CYCLE(this);
-        this.specialAbility = CREATE_UNIT_ATTACK_CYCLE.createSpecial(this);
+        this.initializeActions();
         this.peaRecoveryPending = false;
         this.peaCounterExpiresAtTick = 0;
         this.peaCounterPending = false;
@@ -768,7 +980,7 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         this.onRevived.emit({ unitId: this.id, x: this.x, y: this.y, hp: this.hp });
     }
     dispose() {
-        this.ability.resetCombatEffects?.();
+        this.ability?.resetCombatEffects?.();
         this.onDied.clear();
         this.onRevived.clear();
         this.onHealthChanged.clear();
@@ -779,8 +991,10 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
     }
     get radius() {
         return (
-            (peanutMatureGeometry(this)?.radius ?? walnutMatureGeometry(this)?.radius ?? unitBodyRadius(this)) *
-            this.giantScale
+            (this.bodyProfile?.radius(this) ??
+                peanutMatureGeometry(this)?.radius ??
+                walnutMatureGeometry(this)?.radius ??
+                unitBodyRadius(this)) * this.giantScale
         );
     }
     get mature() {
@@ -797,8 +1011,10 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
     }
     get height() {
         return (
-            (peanutMatureGeometry(this)?.height ?? walnutMatureGeometry(this)?.height ?? unitBodyHeight(this)) *
-            this.giantScale
+            (this.bodyProfile?.height(this) ??
+                peanutMatureGeometry(this)?.height ??
+                walnutMatureGeometry(this)?.height ??
+                unitBodyHeight(this)) * this.giantScale
         );
     }
     get bodyHeight() {
@@ -1232,6 +1448,9 @@ const GARDEN = class Garden {
         }
     }
     _syncUnitAliveCount(unit) {
+        if (unit === this.boss) {
+            return;
+        }
         const WAS_ALIVE = this._unitAliveState?.get(unit);
         const IS_ALIVE = unit.hp > 0;
         if (WAS_ALIVE === IS_ALIVE) {
@@ -1245,7 +1464,13 @@ const GARDEN = class Garden {
             this._adjustFactionCount(unit.faction, IS_ALIVE ? 1 : -1);
         }
     }
+    combatUnits({ includeInactive = false } = {}) {
+        return this.boss && (includeInactive || this.boss.active) ? [this.boss, ...this.units] : [...this.units];
+    }
     _unitForId(id) {
+        if (id === this.boss?.id) {
+            return this.boss;
+        }
         // Outside a controlled step/batch, public callers may have replaced units
         // or edited their IDs directly. Rebuild rather than trusting a dirty bit.
         if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
@@ -1254,7 +1479,7 @@ const GARDEN = class Garden {
         return this._unitById.get(id);
     }
     _unitIsActive(unit) {
-        return this._unitById.get(unit?.id) === unit;
+        return unit === this.boss ? unit.active : this._unitById.get(unit?.id) === unit;
     }
     _beginSpatialQueryBatch() {
         if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
@@ -1401,6 +1626,7 @@ const GARDEN = class Garden {
             rewardRoll: 0,
             rewardUnitId: 0,
         };
+        this.boss?.dispose();
         this.boss = this.createBoss();
         this.metrics = {
             births: 0,
@@ -1730,6 +1956,9 @@ const GARDEN = class Garden {
         return this.mutateUnits(this._handleUnitDeath, unit);
     }
     _handleUnitDeath(unit) {
+        if (unit === this.boss) {
+            return unit.hp <= 0 && unit.die();
+        }
         if (!this.unitCollection.has(unit)) {
             return false;
         }
@@ -2531,8 +2760,9 @@ const GARDEN = class Garden {
             }
         }
         const SPECIES = this.randomBossSpecies();
+        this.boss.dispose();
         this.boss = this.createBoss(SPECIES);
-        this.configureBossStage(T.floor, SPECIES);
+        this.boss.controller.configureStage(T.floor, SPECIES);
         const KIND = CONFIG.farm.tower[kind];
         this.boss.maxHp = this.boss.hp = Math.round(this.boss.hp * KIND.hp);
         this.boss.attackPower *= KIND.attack;
@@ -2672,26 +2902,22 @@ const GARDEN = class Garden {
         });
     }
     createBoss(species = 3) {
-        const HP = 2000;
-        return {
-            x: 0,
-            y: 0,
-            faction: FACTION_CONFIG.ENEMY,
-            z: 0,
+        const BOSS = new UNIT('boss', CLAMP(species, 0, CONFIG.unit.speciesCount - 1), 1, 0, 0, {
+            statProfile: { maxHp: 2000, attackPower: 4, moveSpeed: CONFIG.boss.chaseSpeed },
+            bodyProfile: { radius: bossBodyRadius, height: bossBodyHeight },
+            controller: BossController,
+        });
+        BOSS.attachWorld(this);
+        Object.assign(BOSS, {
             generation: ++this.entityGenerationSerial,
-            // The hit volume is the drawn body of the species, exactly as for a unit.
-            get radius() {
-                return bossBodyRadius(this);
-            },
-            get height() {
-                return bossBodyHeight(this);
-            },
-            hp: HP,
-            maxHp: HP,
-            species: CLAMP(species, 0, CONFIG.unit.speciesCount - 1),
-            attackPower: 4,
+            faction: FACTION_CONFIG.ENEMY,
+            ownerId: 'boss',
+            countsTowardPermanentRoster: false,
+            breedingEligible: false,
+            mergeEligible: false,
+            canSplit: false,
+            usesPersistentSleep: false,
             stage: 0,
-            moveSpeed: CONFIG.boss.chaseSpeed,
             encounterId: 0,
             active: false,
             angle: 0,
@@ -2716,7 +2942,8 @@ const GARDEN = class Garden {
                 y: 0,
                 z: 0,
             },
-        };
+        });
+        return BOSS;
     }
     // Past the time limit the boss enrages instead of ending the fight; only a wipe or a retreat loses.
     get bossEnraged() {
@@ -2735,15 +2962,7 @@ const GARDEN = class Garden {
     battleTimeLimit() {
         return 90 + 10 * Math.max(0, (this.boss.stage ?? 1) - 1);
     }
-    configureBossStage(stage, species = this.boss.species) {
-        const STATS = bossStageStats(stage);
-        this.boss.generation = ++this.entityGenerationSerial;
-        this.boss.species = CLAMP(species, 0, CONFIG.unit.speciesCount - 1);
-        this.boss.stage = STATS.stage;
-        this.boss.hp = this.boss.maxHp = STATS.hp;
-        this.boss.attackPower = STATS.attackPower;
-        return this.boss;
-    }
+
     canBreedPair(a, b, requireContact = false) {
         const BATCH = !this._spatialStepActive;
         if (BATCH) {
@@ -3661,7 +3880,7 @@ const GARDEN = class Garden {
                 continue;
             }
             U.age += dt;
-            if (STATS(U.tier, U.species).regen > 0) {
+            if ((U.statProfile?.regen ?? STATS(U.tier, U.species).regen) > 0 || U.statModifiers.regen) {
                 const UNIT_STATS = resolveUnitStats(U);
                 applyHealing(U, UNIT_STATS.regen * dt, UNIT_STATS);
             }
@@ -3817,7 +4036,7 @@ const GARDEN = class Garden {
             this.boundBody(U, this.scene, U.radius);
             this.updateUnitSpatial(U);
         }
-        this.integrateBossMotion(dt);
+        this.boss.controller.integrate(this, dt);
         if (this.boss.active) {
             this.updateProjectiles(dt);
             scene.separateBossUnits(this, units);
@@ -4754,26 +4973,17 @@ const GARDEN = class Garden {
         return resolveUnitStats(unit);
     }
     combatTargetDefense(target) {
-        if (target !== this.boss) {
-            const TARGET_STATS = resolveUnitStats(target),
-                ABILITY_ARMOR = target.ability?.armorModifier?.(this, this.simulationTick) || 0;
-            return {
-                maxHp: TARGET_STATS.maxHp,
-                armor: BarleyArmorShredModel.effectiveArmor(
-                    target,
-                    TARGET_STATS.armor,
-                    (target.giantUntil > this.time ? 100 : 0) + ABILITY_ARMOR,
-                    this.simulationTick,
-                ),
-            };
-        }
-        const HP_RATIO =
-            Number.isFinite(target.hp) && Number.isFinite(target.maxHp) && target.maxHp > 0
-                ? CLAMP(target.hp / target.maxHp, 0, 1)
-                : 1;
+        const STATS = resolveUnitStats(target),
+            ABILITY_ARMOR = target.ability?.armorModifier?.(this, this.simulationTick) || 0,
+            ROLE_ARMOR = target.controller?.armorModifier?.() || 0;
         return {
-            maxHp: target.maxHp,
-            armor: BarleyArmorShredModel.effectiveArmor(target, (1 - HP_RATIO) * 100, 0, this.simulationTick),
+            maxHp: STATS.maxHp,
+            armor: BarleyArmorShredModel.effectiveArmor(
+                target,
+                STATS.armor,
+                (target.giantUntil > this.time ? 100 : 0) + ABILITY_ARMOR + ROLE_ARMOR,
+                this.simulationTick,
+            ),
         };
     }
     damageCombatTarget(u, action, target, point, options = {}) {
@@ -4874,6 +5084,9 @@ const GARDEN = class Garden {
         return true;
     }
     finishBossHit(u, action, point, { kind, strikeIndex, buffed }, damage, strength) {
+        if (this.boss.hp <= 0) {
+            this.handleUnitDeath(this.boss);
+        }
         this.boss.flash = 0.13;
         const DX = point.x - this.boss.x,
             DY = point.y - this.boss.y,
@@ -5534,12 +5747,26 @@ const GARDEN = class Garden {
         if (!BATCH.length) {
             return;
         }
-        const SHARE = BOSS_HIT_SPLIT.everyone + (1 - BOSS_HIT_SPLIT.everyone) / BATCH.length;
+        const SHARE = BOSS_HIT_SPLIT.everyone + (1 - BOSS_HIT_SPLIT.everyone) / BATCH.length,
+            STATS = resolveUnitStats(B_LOCAL),
+            ACTION = B_LOCAL.patternRuntime.active;
+        let criticalRoll = ACTION?.criticalRoll;
+        const ROLL = () => {
+            if (criticalRoll == null) {
+                criticalRoll = this.random();
+                if (ACTION) {
+                    ACTION.criticalRoll = criticalRoll;
+                }
+            }
+            return criticalRoll;
+        };
+        const CRITICAL = STATS.critChance > 0 && resolveCritical(STATS, ROLL());
         for (const HIT of BATCH) {
             const UNIT_LOCAL = HIT.unit,
                 CONFIG_LOCAL = BOSS_PATTERN_CONFIG[HIT.patternId];
             const RAW_DAMAGE =
                 B_LOCAL.attackPower *
+                (B_LOCAL.giantUntil > this.time ? 3 : 1) *
                 CONFIG_LOCAL.damageMultiplier *
                 SHARE *
                 (this.bossEnraged ? BOSS_ENRAGE.damageMultiplier : 1) *
@@ -5547,11 +5774,18 @@ const GARDEN = class Garden {
                 this.passiveReceivedScale(UNIT_LOCAL);
             // The guard observes this unit's allocated pre-armor damage once,
             // before lethal damage can clear its guard state.
-            UNIT_LOCAL.ability?.receiveRawDamage?.(this, RAW_DAMAGE, B_LOCAL, HIT);
-            const RECEIVED = applyDamageToTargets(null, [UNIT_LOCAL], {
+            UNIT_LOCAL.ability?.receiveRawDamage?.(
+                this,
+                RAW_DAMAGE * (CRITICAL ? STATS.critMultiplier : 1),
+                B_LOCAL,
+                HIT,
+            );
+            const RECEIVED = applyDamageToTargets(B_LOCAL, [UNIT_LOCAL], {
                 armorForTarget: () => this.combatTargetDefense(UNIT_LOCAL).armor,
                 rawDamage: RAW_DAMAGE,
-                sourceKind: 'enemy',
+                sourceKind: 'direct',
+                area: true,
+                roll: ROLL,
             });
             this.passiveUndying(UNIT_LOCAL);
             this.onCombatResolved.emit({
@@ -5565,6 +5799,7 @@ const GARDEN = class Garden {
                     sourceActor: 'boss',
                     targetFaction: UNIT_LOCAL.faction,
                     hits: 1,
+                    critHits: RECEIVED.critical ? 1 : 0,
                     damageDealt: RECEIVED.totalActualLoss,
                 });
             }
@@ -5584,7 +5819,8 @@ const GARDEN = class Garden {
                 z: Math.max(0.15, UNIT_LOCAL.z + 0.25),
                 nx: HIT.nx,
                 ny: HIT.ny,
-                strength: CONFIG_LOCAL.damageMultiplier,
+                strength: CONFIG_LOCAL.damageMultiplier * (RECEIVED.critical ? STATS.critMultiplier : 1),
+                critical: RECEIVED.critical,
             });
         }
         BATCH.length = 0;
@@ -5800,122 +6036,6 @@ const GARDEN = class Garden {
     enterBossPatternRecovery(action) {
         action.phase = 'recover';
         action.phaseElapsed = 0;
-    }
-    updateBossPattern(dt, living) {
-        const B_LOCAL = this.boss,
-            RUNTIME = B_LOCAL.patternRuntime;
-        RUNTIME.encounterElapsed += dt;
-        for (const ID of BOSS_PATTERN_IDS) {
-            RUNTIME.cooldowns[ID] = Math.max(0, (RUNTIME.cooldowns[ID] || 0) - dt);
-        }
-        let action = RUNTIME.active;
-        if (!action) {
-            const TARGETS = this.bossPatternTargets(living),
-                TARGET = TARGETS.nearest || this.nearestBossTarget(living),
-                ELIGIBLE = this.eligibleBossPatterns(living, TARGETS),
-                SELECTED = chooseBossPattern(RUNTIME, ELIGIBLE, () => this.random());
-            if (SELECTED) {
-                const BEHAVIOR = BOSS_BEHAVIORS.forId(SELECTED),
-                    PICK = BEHAVIOR.selectedTarget(this, TARGETS, TARGET);
-                this.beginBossPattern(SELECTED, PICK);
-                action = RUNTIME.active;
-                BEHAVIOR.selected(this);
-            } else {
-                if (TARGET) {
-                    const DX = TARGET.x - B_LOCAL.x,
-                        DY = TARGET.y - B_LOCAL.y,
-                        D_LOCAL = Math.hypot(DX, DY) || 1;
-                    B_LOCAL.angle = B_LOCAL.facing = Math.atan2(DY, DX);
-                    const CONTACT = B_LOCAL.radius + TARGET.radius + BOSS_CONTACT_MARGIN;
-                    if (D_LOCAL > CONTACT) {
-                        const SPEED = Math.min(B_LOCAL.moveSpeed, (D_LOCAL - CONTACT) / dt);
-                        B_LOCAL.chaseVx = (DX / D_LOCAL) * SPEED;
-                        B_LOCAL.chaseVy = (DY / D_LOCAL) * SPEED;
-                    }
-                }
-                return;
-            }
-        }
-        if (!action) {
-            return;
-        }
-        if (action.phase === 'active' && BOSS_BEHAVIORS.forId(action.id).physicalActive) {
-            return;
-        }
-        action.phaseElapsed += dt;
-        BOSS_BEHAVIORS.update(this, action, dt, living);
-    }
-    integrateBossKnockback(dt) {
-        const BOSS = this.boss;
-        if (Math.hypot(BOSS.knockVx, BOSS.knockVy) < 1e-6) {
-            return;
-        }
-        BOSS.x += BOSS.knockVx * dt;
-        BOSS.y += BOSS.knockVy * dt;
-        const RX = CONFIG.battle.arena.radiusX - BOSS.radius,
-            RY = CONFIG.battle.arena.radiusY - BOSS.radius,
-            EDGE = Math.hypot(BOSS.x / RX, BOSS.y / RY);
-        if (EDGE > 1) {
-            BOSS.x /= EDGE;
-            BOSS.y /= EDGE;
-        }
-        BOSS.knockVx *= Math.exp(-dt * 6);
-        BOSS.knockVy *= Math.exp(-dt * 6);
-    }
-    integrateBossMotion(dt) {
-        const BOSS = this.boss;
-        if (!BOSS.active) {
-            return;
-        }
-        this.integrateBossKnockback(dt);
-        if (BOSS.stun > 0 || this.formationRuntime.bossCast) {
-            return;
-        }
-        const ACTION = BOSS.patternRuntime.active;
-        if (ACTION?.phase === 'active' && BOSS_BEHAVIORS.forId(ACTION.id).physicalActive) {
-            const DELAY = Math.min(dt, ACTION.motionDelay || 0);
-            ACTION.motionDelay = Math.max(0, (ACTION.motionDelay || 0) - DELAY);
-            const ACTIVE_DT = dt - DELAY;
-            if (ACTIVE_DT > 0) {
-                ACTION.phaseElapsed += ACTIVE_DT;
-                BOSS_BEHAVIORS.forId(ACTION.id).updateActive(this, ACTION, ACTIVE_DT);
-            }
-        } else if (!ACTION) {
-            const X = BOSS.x,
-                Y = BOSS.y;
-            BOSS.x += (BOSS.chaseVx || 0) * dt;
-            BOSS.y += (BOSS.chaseVy || 0) * dt;
-            this.boundBody(BOSS, this.scene, BOSS.radius + 0.25);
-            BOSS.travel += Math.hypot(BOSS.x - X, BOSS.y - Y);
-        }
-    }
-    updateBoss(dt) {
-        const B_LOCAL = this.boss;
-        B_LOCAL.chaseVx = B_LOCAL.chaseVy = 0;
-        if (SIMULATION_SCENES[this.scene].updateBossPhase(this, dt)) {
-            return;
-        }
-        if (!B_LOCAL.active) {
-            return;
-        }
-        if (B_LOCAL.hp <= 0) {
-            B_LOCAL.active = false;
-            B_LOCAL.patternRuntime.active = null;
-            return;
-        }
-        if (B_LOCAL.stun > 0) {
-            B_LOCAL.stun = Math.max(0, B_LOCAL.stun - dt);
-            return;
-        }
-        if (this.formationRuntime.bossCast) {
-            return;
-        }
-        const LIVING = this.livingBossTargets();
-        if (!LIVING.length) {
-            return;
-        }
-        this.updateBossPattern(dt, LIVING);
-        this._settleBossHits();
     }
 };
 export {

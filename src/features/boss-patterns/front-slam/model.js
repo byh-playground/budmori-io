@@ -8,7 +8,7 @@ export class SlamBossPattern extends BossPattern {
         super(FEATURE, dependencies);
     }
     reachFor(boss) {
-        return Math.max(this.config.reach, boss.radius + BOSS_CONTACT_MARGIN);
+        return this.attackExtentFor(boss, Math.max(this.config.reach, boss.radius + BOSS_CONTACT_MARGIN));
     }
     writeArea(boss, _action, _scene, pad, area) {
         area.kind = 'sector';

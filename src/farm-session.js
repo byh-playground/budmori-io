@@ -311,6 +311,7 @@ class BossRender extends RENDER_OBJECT {
         hp: R.LINEAR,
         maxHp: R.STEP,
         radius: R.STEP,
+        giantScale: R.STEP,
         height: R.STEP,
         flash: R.LINEAR,
         species: R.STEP,
@@ -367,6 +368,7 @@ class BossRender extends RENDER_OBJECT {
         this.hp = b.hp;
         this.maxHp = b.maxHp;
         this.radius = b.radius;
+        this.giantScale = b.giantScale;
         this.height = b.height;
         this.flash = b.flash;
         this.species = b.species ?? 3;

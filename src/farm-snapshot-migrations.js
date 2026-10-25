@@ -5,6 +5,13 @@ import { migrateLegacyBarleyArmorShredBuckets } from './features/abilities/barle
 // Disk save compatibility remains at the separate user-facing import boundary.
 export function normalizeSnapshot(raw, { clone = true } = {}) {
     const SNAPSHOT = clone ? structuredClone(raw) : raw;
+    for (const TARGET of [...SNAPSHOT.units, SNAPSHOT.boss]) {
+        TARGET.statProfile ??= null;
+        TARGET.statModifiers ??= {};
+    }
+    SNAPSHOT.boss.giantUntil ??= 0;
+    SNAPSHOT.boss.giantEndedAt ??= -10;
+    SNAPSHOT.boss.deathSplitHandled ??= false;
     validateSnapshot(SNAPSHOT, { allowLegacyBarleyShred: true });
     for (const TARGET of [...SNAPSHOT.units, SNAPSHOT.boss]) {
         TARGET.barleyArmorShredBuckets = migrateLegacyBarleyArmorShredBuckets(

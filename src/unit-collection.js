@@ -157,17 +157,7 @@ export class UnitCollection {
         return this.reservations.delete(typeof unitOrId === 'object' ? unitOrId?.id : unitOrId);
     }
     attach(unit) {
-        Object.defineProperty(unit, '_world', {
-            value: this.world,
-            writable: true,
-            configurable: true,
-        });
-        for (const SIGNAL of [unit.onDied, unit.onRevived, unit.onHealthChanged]) {
-            SIGNAL.scope = this.world.mutationNotifications;
-            // Domain lifecycle reactions remain synchronous. Observer failures
-            // are reported only once the enclosing command is fully committed.
-            SIGNAL.immediate = true;
-        }
+        unit.attachWorld(this.world);
         const OFF_DIED = unit.onDied.on(() => {
                 if (this.has(unit)) {
                     this.world.processUnitDeath(unit);

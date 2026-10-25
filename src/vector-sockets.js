@@ -47,11 +47,11 @@ const BOSS_VECTOR_DIAMETER = 220,
     WORLD_DEPTH_PROJECTION = 0.62;
 // Every boss is the troop art of its species at this one size; its hit volume is then measured from the drawn body.
 const BOSS_ART_RADIUS = 4.4;
-function bossVectorScale() {
-    return (2 * BOSS_ART_RADIUS * BOSS_VECTOR_RADIUS_SCALE) / BOSS_VECTOR_DIAMETER;
+function bossVectorScale(boss = null) {
+    return ((2 * BOSS_ART_RADIUS * BOSS_VECTOR_RADIUS_SCALE) / BOSS_VECTOR_DIAMETER) * (boss?.giantScale ?? 1);
 }
 function socketWorldPoint(boss, socket, ground) {
-    const SCALE = bossVectorScale();
+    const SCALE = bossVectorScale(boss);
     // Boss art is a screen-facing billboard. Its canvas x is world x, not facing
     // distance. Keep the static ground baseline fixed to the world's shadow root.
     return {

@@ -1,3 +1,5 @@
+import { scaleAttackArea } from '../../unit-stats.js';
+
 // Shared contract only; concrete pattern behavior lives with its presentation.
 export class BossPattern {
     constructor(feature, dependencies) {
@@ -13,8 +15,11 @@ export class BossPattern {
     selectedTarget(_world, targets, _fallback) {
         return targets.nearest;
     }
-    reachFor(_boss) {
-        return this.config.reach;
+    attackExtentFor(boss, extent) {
+        return scaleAttackArea(extent, boss);
+    }
+    reachFor(boss) {
+        return this.attackExtentFor(boss, this.config.reach);
     }
     eligible(world, targets, _aliveAdds) {
         const TARGET = this.selectedTarget(world, targets);

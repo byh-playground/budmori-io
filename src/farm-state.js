@@ -10,9 +10,21 @@ export function restore(raw) {
     raw = normalizeSnapshot(raw);
     validateSnapshot(raw);
     const G = new Garden();
-    const { units: UNIT_DATA, ...WORLD_DATA } = structuredClone(raw);
+    const { units: UNIT_DATA, boss: BOSS_DATA, ...WORLD_DATA } = structuredClone(raw);
     G.resetUnits();
     Object.assign(G, WORLD_DATA);
+    G.boss.dispose();
+    G.boss = G.createBoss(BOSS_DATA.species);
+    const { maxHp: MAX_HP, attackPower: ATTACK_POWER, moveSpeed: MOVE_SPEED, statProfile: STAT_PROFILE } = BOSS_DATA;
+    const BOSS_STATE = Object.fromEntries(
+        Object.entries(BOSS_DATA).filter(
+            ([key]) => !['radius', 'height', 'maxHp', 'attackPower', 'moveSpeed', 'statProfile'].includes(key),
+        ),
+    );
+    G.boss.setBaseStats(STAT_PROFILE || { maxHp: MAX_HP, attackPower: ATTACK_POWER, moveSpeed: MOVE_SPEED });
+    Object.assign(G.boss, BOSS_STATE);
+    // Hydration does not allocate a new logical generation.
+    G.entityGenerationSerial = raw.entityGenerationSerial;
     G.bossRewardReceipts = G.bossRewardReceipts.map((reward) => ({
         ...reward,
         boxes: [],

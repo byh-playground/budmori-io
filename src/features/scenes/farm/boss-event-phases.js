@@ -55,6 +55,7 @@ export function createFarmBossEventPhases(config) {
         update(world, dt) {
             world.farmBossEvent.elapsed += dt;
             if (world.boss.hp <= 0) {
+                world.boss.die();
                 world.finishFarmBossEvent('victory');
                 return true;
             }
@@ -93,6 +94,7 @@ export function createFarmBossEventPhases(config) {
                     rewardRoll: 0,
                     rewardUnitId: 0,
                 };
+                world.boss.dispose();
                 world.boss = world.createBoss();
                 world.markProgressChanged();
                 world.afterFloor();

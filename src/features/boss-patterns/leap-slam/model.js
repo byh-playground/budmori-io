@@ -6,20 +6,23 @@ export class LeapBossPattern extends BossPattern {
         super(FEATURE, dependencies);
         this.physicalActive = true;
     }
+    landingRadiusFor(boss) {
+        return this.attackExtentFor(boss, this.config.landingRadius);
+    }
     writeArea(boss, action, scene, pad, area) {
         const { CONFIG, CLAMP } = this.dependencies;
         area.kind = 'leap';
         area.width = boss.radius + pad;
-        area.reach = this.config.landingRadius + pad;
+        area.reach = this.landingRadiusFor(boss) + pad;
         let x = action.target?.x ?? boss.x;
         let y = action.target?.y ?? boss.y;
         if (action.phase === 'windup') {
             const DX = x - boss.x,
                 DY = y - boss.y,
                 D_LOCAL = Math.hypot(DX, DY);
-            if (D_LOCAL > this.config.reach) {
-                x = boss.x + (DX / D_LOCAL) * this.config.reach;
-                y = boss.y + (DY / D_LOCAL) * this.config.reach;
+            if (D_LOCAL > this.reachFor(boss)) {
+                x = boss.x + (DX / D_LOCAL) * this.reachFor(boss);
+                y = boss.y + (DY / D_LOCAL) * this.reachFor(boss);
             }
             const RX = CONFIG[scene].arena.radiusX - boss.radius - 0.25,
                 RY = CONFIG[scene].arena.radiusY - boss.radius - 0.25,
@@ -44,9 +47,9 @@ export class LeapBossPattern extends BossPattern {
         const DX = x - world.boss.x;
         const DY = y - world.boss.y;
         const D_LOCAL = Math.hypot(DX, DY);
-        if (D_LOCAL > this.config.reach) {
-            x = world.boss.x + (DX / D_LOCAL) * this.config.reach;
-            y = world.boss.y + (DY / D_LOCAL) * this.config.reach;
+        if (D_LOCAL > this.reachFor(world.boss)) {
+            x = world.boss.x + (DX / D_LOCAL) * this.reachFor(world.boss);
+            y = world.boss.y + (DY / D_LOCAL) * this.reachFor(world.boss);
         }
         const LAND = ARENA_GEOMETRY.clamp(
             {
@@ -74,7 +77,7 @@ export class LeapBossPattern extends BossPattern {
     }
     expectedHits(world, targets) {
         const TARGET = this.selectedTarget(world, targets);
-        return world.bossGroundUnitsNear(TARGET.x, TARGET.y, this.config.landingRadius).length;
+        return world.bossGroundUnitsNear(TARGET.x, TARGET.y, this.landingRadiusFor(world.boss)).length;
     }
     updateActive(world, action, _dt) {
         const { CONFIG, BALLISTICS } = this.dependencies;
@@ -92,7 +95,8 @@ export class LeapBossPattern extends BossPattern {
             world.boss.x = action.path.to.x;
             world.boss.y = action.path.to.y;
             world.boss.z = 0;
-            const EXTENT = this.config.landingRadius + CONFIG.unit.maxRadius;
+            const RADIUS = this.landingRadiusFor(world.boss),
+                EXTENT = RADIUS + CONFIG.unit.maxRadius;
             for (const UNIT_LOCAL of world._collectBossTargets(
                 world.boss.x - EXTENT,
                 world.boss.y - EXTENT,
@@ -107,7 +111,7 @@ export class LeapBossPattern extends BossPattern {
                 const DX = UNIT_LOCAL.x - world.boss.x,
                     DY = UNIT_LOCAL.y - world.boss.y,
                     D_LOCAL = Math.hypot(DX, DY);
-                if (D_LOCAL <= this.config.landingRadius + UNIT_LOCAL.radius) {
+                if (D_LOCAL <= RADIUS + UNIT_LOCAL.radius) {
                     world.hitBossPatternUnit(
                         UNIT_LOCAL,
                         action.id,

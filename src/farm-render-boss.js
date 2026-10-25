@@ -142,7 +142,7 @@ export class BossPresentation {
         } else {
             PRESENTATION.play(instance, METADATA, B, CLIP_NAME, CLIP_START_AT_MS);
         }
-        const CAST_POSE = CAST ? sampleSkillCastPose(CAST, B.radius / bossVectorScale()) : null;
+        const CAST_POSE = CAST ? sampleSkillCastPose(CAST, B.radius / bossVectorScale(B)) : null;
         const SUMMON_OPEN = PRESENTATION.mouthOpen(B);
         const EXPRESSION =
             B.hp <= 0
@@ -170,7 +170,7 @@ export class BossPresentation {
         if (!CAST) {
             PRESENTATION.seek(PLAYER, this.renderer.displayTimeMs);
         }
-        const S_LOCAL = this.renderer.scale * bossVectorScale(),
+        const S_LOCAL = this.renderer.scale * bossVectorScale(B),
             GROUND = RECORD.anchors.ground,
             MATRIX = [S_LOCAL, 0, 0, S_LOCAL, P.x - GROUND.x * S_LOCAL, P.y - GROUND.y * S_LOCAL];
         const DEFEAT_BOUNCE =
@@ -194,7 +194,7 @@ export class BossPresentation {
             opacity: FADE,
         });
         // The hands float: each is moved round the body, and the weapon a species holds goes with its hand.
-        const TO_SVG = 1 / bossVectorScale(),
+        const TO_SVG = 1 / bossVectorScale(B),
             HELD = speciesById(SPECIES).heldItem;
         for (const [PART, HAND] of Object.entries(POSE.hands)) {
             const AT = { x: HAND.x * TO_SVG, y: HAND.y * TO_SVG + POSE.body.y };

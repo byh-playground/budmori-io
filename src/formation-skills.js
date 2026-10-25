@@ -1,5 +1,5 @@
 import { createFormationRuntime, FORMATION_COOLDOWN_SECONDS } from './formation-skill-state.js';
-import { applyDamage, resolveKnockback, unitMaxHpFor } from './unit-stats.js';
+import { applyDamage, unitMaxHpFor } from './unit-stats.js';
 import { FixedSpatialGrid } from './spatial-grid.js';
 import { GiantSkill } from './features/formation-skills/giant/model.js';
 import { LightningSkill } from './features/formation-skills/lightning/model.js';
@@ -30,7 +30,9 @@ export class FormationSkills {
         this.bossContext = Object.create(this);
         this.bossContext.role = 'boss';
         this.members = new Set(world.units);
-        this.injured = new Set();
+        this.injuredByFaction = new Map();
+        this.trackedBoss = null;
+        this.bossHealthOff = null;
         this.rebuildInjured();
         this.scratch = [];
         this.air = new FixedSpatialGrid();
@@ -47,18 +49,12 @@ export class FormationSkills {
                 for (const UNIT of this.members) {
                     if (UNIT.id === unitId) {
                         this.members.delete(UNIT);
-                        this.injured.delete(UNIT);
+                        this.untrackHealth(UNIT);
                     }
                 }
             }),
-            world.unitCollection.onReset.on(() => {
-                this.members = new Set(world.units);
-                this.rebuildInjured();
-            }),
-            world.unitCollection.onReplaced.on(() => {
-                this.members = new Set(world.units);
-                this.rebuildInjured();
-            }),
+            world.unitCollection.onReset.on(() => this.resetMembers()),
+            world.unitCollection.onReplaced.on(() => this.resetMembers()),
             world.unitCollection.onHealthChanged.on(({ unitId }) => {
                 const UNIT = world._unitForId(unitId);
                 if (UNIT) {
@@ -68,24 +64,63 @@ export class FormationSkills {
             world.onCombatResolved.on((event) => this.contribute(event)),
         ];
     }
-    trackHealth(unit) {
-        const MAX_HP = unitMaxHpFor(unit);
-        if (unit.faction === 'player' && unit.hp > 0 && unit.hp < MAX_HP) {
-            this.injured.add(unit);
-        } else {
-            this.injured.delete(unit);
+    untrackHealth(unit) {
+        for (const INJURED of this.injuredByFaction.values()) {
+            INJURED.delete(unit);
         }
     }
+    trackHealth(unit) {
+        this.untrackHealth(unit);
+        if (unit.hp <= 0 || unit.hp >= unitMaxHpFor(unit)) {
+            return;
+        }
+        let injured = this.injuredByFaction.get(unit.faction);
+        if (!injured) {
+            injured = new Set();
+            this.injuredByFaction.set(unit.faction, injured);
+        }
+        injured.add(unit);
+    }
     rebuildInjured() {
-        this.injured.clear();
+        this.injuredByFaction.clear();
         for (const UNIT of this.members) {
             this.trackHealth(UNIT);
+        }
+        if (this.trackedBoss) {
+            this.trackHealth(this.trackedBoss);
+        }
+    }
+    resetMembers() {
+        this.members = new Set(this.world.units);
+        this.rebuildInjured();
+    }
+    releaseBossHealth() {
+        this.bossHealthOff?.();
+        this.bossHealthOff = null;
+        if (this.trackedBoss) {
+            this.untrackHealth(this.trackedBoss);
+        }
+        this.trackedBoss = null;
+    }
+    synchronizeBossHealth() {
+        const BOSS = this.active && this.world.boss?.active ? this.world.boss : null;
+        if (BOSS === this.trackedBoss) {
+            return;
+        }
+        this.releaseBossHealth();
+        if (BOSS) {
+            this.trackedBoss = BOSS;
+            this.bossHealthOff = BOSS.onHealthChanged.on(() => this.trackHealth(BOSS));
+            this.trackHealth(BOSS);
         }
     }
     injuredAllies(out = []) {
         out.length = 0;
-        for (const UNIT of this.injured) {
-            out.push(UNIT);
+        const INJURED = this.injuredByFaction.get(this.friendlyFaction);
+        if (INJURED) {
+            for (const UNIT of INJURED) {
+                out.push(UNIT);
+            }
         }
         return out;
     }
@@ -111,11 +146,11 @@ export class FormationSkills {
         return this.world.farmBossEvent?.phase === 'fighting';
     }
     synchronize() {
+        this.synchronizeBossHealth();
         if (this.active && !this.runtime.active) {
             const SERIAL = this.runtime.serial;
             this.world.formationRuntime = createFormationRuntime();
             this.runtime.serial = SERIAL;
-            this.rebuildInjured();
             this.runtime.active = true;
             // The relics won on this climb are the skills of every fight in it.
             for (const [ID, LEVEL] of this.world.tower.active ? this.world.tower.relics : []) {
@@ -129,7 +164,8 @@ export class FormationSkills {
         }
     }
     end() {
-        for (const UNIT of this.members) {
+        this.releaseBossHealth();
+        for (const UNIT of this.world.combatUnits({ includeInactive: true })) {
             UNIT.giantUntil = 0;
             UNIT.giantEndedAt = -10;
         }
@@ -178,12 +214,14 @@ export class FormationSkills {
             }
         }
         this.effects.length = write;
+        for (const SLOT of this.slots) {
+            SLOT.cooldown = Math.max(0, SLOT.cooldown - dt);
+        }
         this.updateBossCast(dt);
         for (const SLOT of this.slots) {
             if (SLOT.role === 'boss') {
                 continue;
             }
-            SLOT.cooldown = Math.max(0, SLOT.cooldown - dt);
             const MODEL = MODELS.get(SLOT.id);
             if (SLOT.cooldown < 1e-9 && SLOT.charge >= MODEL.definition.required && MODEL.cast(this, SLOT)) {
                 SLOT.charge = 0;
@@ -210,6 +248,7 @@ export class FormationSkills {
                     MODEL = SLOT && MODELS.get(SLOT.id);
                 if (MODEL && MODEL.cast(this.bossContext, SLOT)) {
                     SLOT.charge = 0;
+                    SLOT.cooldown = FORMATION_COOLDOWN_SECONDS;
                     this.world.combat('formation-cast', {
                         skillId: SLOT.id,
                         role: 'boss',
@@ -230,7 +269,10 @@ export class FormationSkills {
             return;
         }
         const SLOT = this.slots.find(
-            (slot) => slot.role === 'boss' && slot.charge >= MODELS.get(slot.id).profile(this.bossContext).required,
+            (slot) =>
+                slot.role === 'boss' &&
+                slot.cooldown < 1e-9 &&
+                slot.charge >= MODELS.get(slot.id).profile(this.bossContext).required,
         );
         if (SLOT) {
             cast = { id: SLOT.id, phase: 'prepare', elapsed: 0, duration: 0.8, serial: ++this.runtime.serial };
@@ -254,16 +296,16 @@ export class FormationSkills {
         return EFFECT;
     }
     allies() {
-        return [...this.members].filter((unit) => unit.faction === this.friendlyFaction && unit.hp > 0);
+        return this.world.combatUnits().filter((unit) => unit.faction === this.friendlyFaction && unit.hp > 0);
     }
     targetId(target) {
-        return target === this.world.boss ? 'boss' : target.id;
+        return target.id;
     }
     targetGeneration(target) {
         return target.generation;
     }
     target(id, generation) {
-        const TARGET = id === 'boss' ? this.world.boss : this.world._unitForId(id);
+        const TARGET = this.world._unitForId(id);
         return TARGET?.hp > 0 &&
             TARGET.faction === this.hostileFaction &&
             (generation === undefined || TARGET.generation === generation)
@@ -274,13 +316,9 @@ export class FormationSkills {
         if (this.role === 'boss') {
             return this.enemies(origin, 18, 1)[0] || null;
         }
-        const BOSS = this.world.boss;
-        if (BOSS.active && BOSS.hp > 0 && (!origin || Math.hypot(origin.x - BOSS.x, origin.y - BOSS.y) <= 18)) {
-            return BOSS;
-        }
-        for (const UNIT of this.members) {
+        for (const UNIT of this.world.combatUnits()) {
             if (
-                UNIT.faction === 'enemy' &&
+                UNIT.faction === this.hostileFaction &&
                 UNIT.hp > 0 &&
                 (!origin || Math.hypot(origin.x - UNIT.x, origin.y - UNIT.y) <= 18)
             ) {
@@ -290,16 +328,15 @@ export class FormationSkills {
         return null;
     }
     enemies(origin = null, range = Infinity, limit = Infinity) {
-        const TARGETS = [...this.members].filter(
-            (unit) =>
-                unit.faction === this.hostileFaction &&
-                unit.hp > 0 &&
-                unit.dropLanded &&
-                !this.world._benched.has(unit),
-        );
-        if (this.hostileFaction === 'enemy' && this.world.boss.active && this.world.boss.hp > 0) {
-            TARGETS.unshift(this.world.boss);
-        }
+        const TARGETS = this.world
+            .combatUnits()
+            .filter(
+                (unit) =>
+                    unit.faction === this.hostileFaction &&
+                    unit.hp > 0 &&
+                    unit.dropLanded &&
+                    !this.world._benched.has(unit),
+            );
         const CENTER = origin || this.world.boss;
         return TARGETS.filter((target) => Math.hypot(target.x - CENTER.x, target.y - CENTER.y) <= range)
             .sort(
@@ -358,33 +395,26 @@ export class FormationSkills {
             ny: 1,
             strength: STRENGTH,
         });
-        if (target !== this.world.boss) {
-            this.world._syncUnitAliveCount(target);
-            if (target.hp <= 0) {
-                this.world.handleUnitDeath(target);
-            }
+        this.world._syncUnitAliveCount(target);
+        if (target.hp <= 0) {
+            this.world.handleUnitDeath(target);
         }
     }
     verticalTarget(x, y) {
-        const BOSS = this.world.boss;
-        if (BOSS.active && BOSS.hp > 0 && BOSS.z <= 0.5 && Math.hypot(BOSS.x - x, BOSS.y - y) <= BOSS.radius + 0.12) {
-            return BOSS;
-        }
         return (
-            this.nearby(x, y, 6).find(
-                (unit) =>
-                    unit.faction === 'enemy' &&
-                    unit.hp > 0 &&
-                    unit.z <= 0.5 &&
-                    Math.hypot(unit.x - x, unit.y - y) <= unit.radius + 0.12,
-            ) || null
+            this.world
+                .combatUnits()
+                .find(
+                    (unit) =>
+                        unit.faction === this.hostileFaction &&
+                        unit.hp > 0 &&
+                        unit.z <= 0.5 &&
+                        Math.hypot(unit.x - x, unit.y - y) <= unit.radius + 0.12,
+                ) || null
         );
     }
     areaDamage(x, y, radius, amount, knock = false, vertical = false) {
-        const TARGETS = this.role === 'boss' ? this.enemies(null, Infinity) : [...this.nearby(x, y, radius + 6)];
-        if (this.world.boss.active && this.hostileFaction === 'enemy') {
-            TARGETS.push(this.world.boss);
-        }
+        const TARGETS = this.role === 'boss' ? this.enemies(null, Infinity) : this.world.combatUnits();
         for (const TARGET of TARGETS) {
             if (
                 TARGET.faction !== this.hostileFaction ||
@@ -399,13 +429,7 @@ export class FormationSkills {
                 const DX = TARGET.x - x,
                     DY = TARGET.y - y,
                     N = Math.hypot(DX, DY) || 1;
-                if (TARGET.knock) {
-                    TARGET.knock(DX / N, DY / N, 5, 2);
-                } else {
-                    const POWER = resolveKnockback(5, null, TARGET);
-                    TARGET.knockVx += (DX / N) * POWER;
-                    TARGET.knockVy += (DY / N) * POWER;
-                }
+                TARGET.knock(DX / N, DY / N, 5, 2);
             }
         }
     }
@@ -434,11 +458,12 @@ export class FormationSkills {
         this.air.update(effect);
     }
     dispose() {
+        this.releaseBossHealth();
         for (const OFF of this.subscriptions) {
             OFF();
         }
         this.air.clear();
         this.members.clear();
-        this.injured.clear();
+        this.injuredByFaction.clear();
     }
 }
