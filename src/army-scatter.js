@@ -7,7 +7,8 @@ export function scatterDestination(unit, neighbors, threats, gap, bounds, enemy,
         LOOK_AHEAD = gap * 1.5;
     for (const OTHER of neighbors) {
         if (OTHER !== unit && OTHER.hp > 0 && OTHER.faction === unit.faction && OTHER.z <= 0.1) {
-            NEIGHBORS.push({ x: OTHER.x, y: OTHER.y, distance: RADIUS + (radii.get(OTHER) ?? OTHER.radius) + gap });
+            const DISTANCE = RADIUS + (radii.get(OTHER) ?? OTHER.radius) + gap;
+            NEIGHBORS.push({ x: OTHER.x, y: OTHER.y, distance: DISTANCE, distanceSquared: DISTANCE * DISTANCE });
         }
     }
     const DX = unit.x - (enemy?.x ?? 0),
@@ -52,7 +53,14 @@ export function scatterDestination(unit, neighbors, threats, gap, bounds, enemy,
 function crowdCost(x, y, neighbors, gap, cutoff) {
     let cost = 0;
     for (const OTHER of neighbors) {
-        const DEFICIT = Math.max(0, OTHER.distance - Math.hypot(x - OTHER.x, y - OTHER.y)) / gap;
+        const DX = x - OTHER.x,
+            DY = y - OTHER.y;
+        // Most queried neighbours cannot overlap this candidate. Keep the exact
+        // hypot-based deficit for contributors and avoid it for zero-cost pairs.
+        if (DX * DX + DY * DY >= OTHER.distanceSquared) {
+            continue;
+        }
+        const DEFICIT = Math.max(0, OTHER.distance - Math.hypot(DX, DY)) / gap;
         cost += DEFICIT * DEFICIT;
         if (cost > cutoff) {
             break;
