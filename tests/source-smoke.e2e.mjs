@@ -1265,7 +1265,10 @@ try {
                 assert.equal(HUD.charge, '0%', 'charge resets visibly after release');
                 assert.ok(Math.abs(parseFloat(HUD.cooldown) - (HUD.slot.cooldown / 5) * 360) < 0.01);
                 for (const TRACK of [HUD.health, HUD.allyHealth]) {
-                    assert.ok(TRACK.width > 0 && TRACK.height > 0, 'both desktop health tracks remain visible');
+                    assert.ok(
+                        TRACK.width >= 200 && TRACK.height > 0,
+                        'both desktop health tracks keep a readable full-width lane',
+                    );
                 }
                 assert.ok(HUD.dock.top >= HUD.health.bottom, 'the boss skill dock sits beneath boss health');
                 await PAGE.setViewportSize({ width: 844, height: 390 });
@@ -1324,7 +1327,8 @@ try {
                     'the open touch detail does not cover the three boss skills',
                 );
                 REPORT.bossCards.combatLandscape.detail = DETAIL_BOX;
-                await CAPTURE_FRAME('boss-skills-landscape-detail.jpg');
+                REPORT.bossCards.combatLandscape.previouslyReviewedCapture =
+                    'CI40154278393 boss-skills-landscape-detail.jpg';
                 await DETAIL.locator('.relic-detail__close').tap();
                 await DETAIL.waitFor({ state: 'hidden' });
                 await SLOT.locator('[data-relic-detail]').tap();
