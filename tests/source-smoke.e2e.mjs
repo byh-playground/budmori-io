@@ -1155,6 +1155,13 @@ try {
     );
 
     await PAGE.locator('#doorReceipts').waitFor({ state: 'hidden' });
+    // Receipts were already hidden during the preceding battle. Wait for the next
+    // native UI frame to observe the new tower, rather than reading the old dock DOM.
+    await PAGE.waitForFunction(() =>
+        [...document.querySelectorAll('.formation-acquired')].every(
+            (badge) => badge.getClientRects().length === 0 || getComputedStyle(badge).visibility === 'hidden',
+        ),
+    );
     assert.equal(
         await PAGE.locator('.formation-acquired:visible').count(),
         0,
