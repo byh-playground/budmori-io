@@ -658,7 +658,45 @@ try {
             }),
         FEEDBACK_FRAME = () =>
             PAGE.evaluate(() => {
-                const PANEL = document.getElementById('towerDoors');
+                const PANEL = document.getElementById('towerDoors'),
+                    BANNER = document.getElementById('floorBanner'),
+                    STYLE = (element, pseudo = null) => {
+                        const CSS = getComputedStyle(element, pseudo);
+                        return Object.fromEntries(
+                            [
+                                'opacity',
+                                'color',
+                                'webkitTextFillColor',
+                                'backgroundColor',
+                                'borderTopColor',
+                                'borderTopWidth',
+                                'outlineColor',
+                                'outlineWidth',
+                                'outlineStyle',
+                                'outlineOffset',
+                                'boxShadow',
+                                'transform',
+                                'filter',
+                                'animationName',
+                                'animationDuration',
+                                'animationPlayState',
+                                'transitionProperty',
+                                'transitionDuration',
+                                'zIndex',
+                            ].map((property) => [property, CSS[property]]),
+                        );
+                    },
+                    ANIMATIONS = (element) =>
+                        element.getAnimations({ subtree: true }).map((animation) => ({
+                            name: animation.animationName || animation.transitionProperty || '',
+                            target: animation.effect?.target?.id || animation.effect?.target?.className || '',
+                            playState: animation.playState,
+                            pending: animation.pending,
+                            currentTime: animation.currentTime,
+                            startTime: animation.startTime,
+                            timing: animation.effect?.getComputedTiming(),
+                            keyframes: animation.effect?.getKeyframes(),
+                        }));
                 return {
                     phase: PANEL.dataset.phase,
                     owner: PANEL.dataset.owner,
@@ -666,9 +704,25 @@ try {
                     title: document.getElementById('doorsTitle').textContent,
                     note: document.getElementById('doorsNote').textContent,
                     text: PANEL.innerText,
+                    clocks: {
+                        simulation: BUDMORI.sim.time,
+                        performance: performance.now(),
+                        documentTimeline: document.timeline.currentTime,
+                    },
+                    panel: { style: STYLE(PANEL), animations: ANIMATIONS(PANEL) },
+                    floorBanner: {
+                        hidden: BANNER.hidden,
+                        style: STYLE(BANNER),
+                        before: STYLE(BANNER, '::before'),
+                        animations: ANIMATIONS(BANNER),
+                    },
                     offers: [...PANEL.querySelectorAll('[data-boss-offer]')].map((offer) => ({
                         selected: offer.dataset.selected,
                         text: offer.innerText,
+                        disabled: offer.disabled,
+                        style: STYLE(offer),
+                        titleStyle: STYLE(offer.querySelector('b')),
+                        previewStyle: STYLE(offer.querySelector('small')),
                     })),
                 };
             }),
@@ -801,9 +855,6 @@ try {
             await PAGE.locator('#doorCards [data-selected="true"]').getAttribute('data-boss-offer'),
             String(SELECTED),
         );
-        if (TYPE === 'stat') {
-            await CAPTURE_FEEDBACK('card-choice-selected-desktop.jpg');
-        }
         await PAGE.clock.runFor(250);
         await PAGE.locator('#towerDoors[data-owner="boss"][data-phase="outcome"]').waitFor({ state: 'visible' });
         PHASES.push(await FEEDBACK_FRAME());
@@ -829,6 +880,39 @@ try {
         assert.deepEqual(await CARD_STATE(), APPLIED, 'presentation phases never reapply either acquired card');
         DRAW.phases = PHASES;
         REPORT.bossCards.draws.push(DRAW);
+        if (TYPE === 'stat') {
+            // The JS clock does not drive Chromium's CSS document timeline. Observe finite native
+            // animations settling without finishing/cancelling them or advancing the 1.8-second model lock.
+            const START = Date.now();
+            await PAGE.waitForFunction(
+                () =>
+                    ['towerDoors', 'floorBanner'].every((id) =>
+                        document
+                            .getElementById(id)
+                            .getAnimations({ subtree: true })
+                            .every(
+                                (animation) =>
+                                    !animation.pending && !['running', 'paused'].includes(animation.playState),
+                            ),
+                    ),
+                null,
+                { polling: 50, timeout: 5000 },
+            );
+            DRAW.settledOutcome = await FEEDBACK_FRAME();
+            DRAW.cssSettlementMs = Date.now() - START;
+            assert.equal(
+                DRAW.settledOutcome.phase,
+                'outcome',
+                'native CSS settlement preserves the actual outcome phase',
+            );
+            assert.equal(
+                DRAW.settledOutcome.elapsed,
+                PHASES.at(-1).elapsed,
+                'CSS settlement does not advance the model receipt',
+            );
+            assert.ok(DRAW.settledOutcome.elapsed < 1.8, 'the stable desktop capture remains within the original lock');
+            await CAPTURE_FEEDBACK('card-choice-outcome-desktop.jpg');
+        }
         if (TYPE === 'skill') {
             await PAGE.setViewportSize({ width: 844, height: 390 });
             await PAGE.clock.runFor(32);
@@ -874,7 +958,11 @@ try {
             assert.equal(LANDSCAPE.reducedMotion, true);
             assert.equal(LANDSCAPE.selectedMotion, 'none', 'reduced motion keeps the selected card static');
             assert.equal(LANDSCAPE.phase, 'outcome', 'rotation and reduced motion preserve the readable result');
-            await CAPTURE_FEEDBACK('card-choice-outcome-landscape.jpg');
+            REPORT.bossCards.landscape.previouslyReviewedCapture = {
+                run: '40159742526',
+                file: 'card-choice-outcome-landscape.jpg',
+                scope: 'UI layout only; native canvas repaint after rotation was not verified',
+            };
             await PAGE.setViewportSize({ width: 667, height: 375 });
             await PAGE.clock.runFor(32);
             REPORT.bossCards.compactLandscape = await PAGE.evaluate(() =>
