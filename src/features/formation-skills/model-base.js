@@ -1,5 +1,13 @@
 import { unitBodyRadius } from '../unit-body/definition.js';
 export const T1_DIAMETER = unitBodyRadius({ species: 0, tier: 1, growthElapsed: 1, growthDuration: 1 }) * 2;
+// A size reference changes parameters, never the shared skill's targeting or damage algorithm.
+export const CASTER_SIZE_PROFILE = Object.freeze({ sizeReference: 'caster', sizeScale: 0.8 });
+
+// Ratios are shares of the resolved diameter. Radius and full-width parameters remain distinct.
+export function sizeValue(profile, size, name) {
+    const RATIO = profile[`${name}Ratio`];
+    return Number.isFinite(RATIO) ? size.sizeRadius * 2 * RATIO : (profile[name] ?? 0);
+}
 
 // The size effects are drawn against: a unit's and a boss's hit volume is its drawn body.
 export function targetBodyDimensions(target) {
@@ -27,6 +35,14 @@ export class FormationSkill {
     profile(owner) {
         return owner.role === 'boss' ? { ...this.definition, ...this.definition.boss } : this.definition;
     }
+    sizeState(owner, target) {
+        const PROFILE = this.profile(owner),
+            REFERENCE = PROFILE.sizeReference === 'caster' ? owner.caster : target,
+            BODY = targetBodyDimensions(REFERENCE),
+            SCALE = PROFILE.sizeScale ?? 1;
+        // radius/height already include the reference's current giant scale. Do not apply it again.
+        return { sizeRadius: BODY.bodyRadius * SCALE, sizeHeight: BODY.bodyHeight * SCALE };
+    }
     power(level, base) {
         return base * (this.definition.upgradeFactor ?? 1.5) ** (level - 1);
     }
@@ -45,9 +61,11 @@ export class MeteorSkill extends FormationSkill {
             return false;
         }
         const PROFILE = this.profile(owner),
+            SIZE = this.sizeState(owner, TARGET),
             ANGLE = owner.world.random() * Math.PI * 2,
             DISTANCE =
-                Math.sqrt(owner.world.random()) * (targetBodyDimensions(TARGET).bodyRadius + PROFILE.scatterRadius);
+                Math.sqrt(owner.world.random()) *
+                (targetBodyDimensions(TARGET).bodyRadius + sizeValue(PROFILE, SIZE, 'scatterRadius'));
         owner.addEffect(this.definition.id, {
             x: TARGET.x + Math.cos(ANGLE) * DISTANCE,
             y: TARGET.y + Math.sin(ANGLE) * DISTANCE,
@@ -55,7 +73,8 @@ export class MeteorSkill extends FormationSkill {
             delay: index * PROFILE.shotInterval,
             fallSeconds: PROFILE.fallSeconds,
             duration: index * PROFILE.shotInterval + PROFILE.fallSeconds + 0.5,
-            radius: PROFILE.aoeRadius,
+            ...SIZE,
+            radius: sizeValue(PROFILE, SIZE, 'aoeRadius'),
             damage: PROFILE.shotDamage ?? this.power(slot.level, PROFILE.upgradeBase),
             impacted: false,
         });
@@ -84,6 +103,16 @@ export class FlyingSkill extends FormationSkill {
         owner.addEffect(this.definition.id, STATE);
         return true;
     }
+    flyingSizeState(owner, target) {
+        const PROFILE = this.profile(owner),
+            SIZE = this.sizeState(owner, target);
+        return {
+            ...SIZE,
+            visualWidth: sizeValue(PROFILE, SIZE, 'visualWidth'),
+            beamWidth: sizeValue(PROFILE, SIZE, 'beamWidth'),
+            targetRange: sizeValue(PROFILE, SIZE, 'targetRange'),
+        };
+    }
     effectState(owner, target, slot, angle) {
         const PROFILE = this.profile(owner),
             BODY = targetBodyDimensions(target),
@@ -92,6 +121,7 @@ export class FlyingSkill extends FormationSkill {
             x: target.x + Math.cos(angle) * 0.6,
             y: target.y + Math.sin(angle) * 0.6,
             z: TARGET_Z + 2,
+            ...this.flyingSizeState(owner, target),
             bodyHeight: BODY.bodyHeight,
             bodyRadius: BODY.bodyRadius,
             targetId: owner.targetId(target),
@@ -130,6 +160,7 @@ export class FlyingSkill extends FormationSkill {
             effect.targetZ = TARGET_Z;
             effect.bodyHeight = BODY.bodyHeight;
             effect.bodyRadius = BODY.bodyRadius;
+            Object.assign(effect, this.flyingSizeState(owner, TARGET));
         }
         return TARGET;
     }

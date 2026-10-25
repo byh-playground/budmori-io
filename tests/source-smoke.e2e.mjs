@@ -589,7 +589,6 @@ try {
     assert.equal(REPORT.bossHitObservationRestored, true);
     CHECKPOINT('mixedCombatAssertions');
     await PAGE.locator('#upgradeMenu').click();
-    await PAGE.locator('#menuTabAbilities').click();
     REPORT.wording = [];
     for (const [SPECIES, TITLE] of [
         [0, '연속 박치기'],
@@ -605,7 +604,6 @@ try {
         if (SPECIES === 5) {
             assert.match(TEXT, /기본 공격 총피해의 3배/);
         }
-        await CARD.locator('h3').scrollIntoViewIfNeeded();
         REPORT.wording.push({ species: SPECIES, title: TITLE });
     }
     await PAGE.setViewportSize({ width: 390, height: 844 });
@@ -889,6 +887,7 @@ try {
             rendered: {},
             recoveries: {},
             preparations: {},
+            geometry: {},
             checkpoint: null,
         };
         // Browser polls can skip an entire short recovery during catch-up. Observe every native step.
@@ -1014,12 +1013,50 @@ try {
                 return true;
             });
             TYPE.prototype.draw = function (renderer, effect, ...args) {
-                const RESULT = DRAW.call(this, renderer, effect, ...args),
-                    KEY = `${effect.role}:${effect.kind}`,
-                    OBS = globalThis.__sharedSkills;
+                const OBS = globalThis.__sharedSkills,
+                    DISPLAY = args[0],
+                    GEOMETRY = {
+                        sessionDto: DISPLAY !== BUDMORI.sim && !BUDMORI.sim.formationRuntime.effects.includes(effect),
+                        age: effect.age,
+                        dimensions: Object.fromEntries(
+                            [
+                                'radius',
+                                'bodyRadius',
+                                'bodyHeight',
+                                'sizeRadius',
+                                'sizeHeight',
+                                'visualWidth',
+                                'beamWidth',
+                                'cloudSize',
+                                'targetRange',
+                            ].map((key) => [key, effect[key] ?? 0]),
+                        ),
+                        groundRadii: [],
+                        saucerWidth: 0,
+                    },
+                    GROUND = renderer.groundEllipse,
+                    ELLIPSE = renderer.ellipse;
+                renderer.groundEllipse = function (x, y, radius, ...rest) {
+                    GEOMETRY.groundRadii.push(radius);
+                    return GROUND.call(this, x, y, radius, ...rest);
+                };
+                renderer.ellipse = function (x, y, width, height, color, ...rest) {
+                    if (color === '#718695') {
+                        GEOMETRY.saucerWidth = (width * 2) / this.scale;
+                    }
+                    return ELLIPSE.call(this, x, y, width, height, color, ...rest);
+                };
+                let result;
+                try {
+                    result = DRAW.call(this, renderer, effect, ...args);
+                } finally {
+                    renderer.groundEllipse = GROUND;
+                    renderer.ellipse = ELLIPSE;
+                    OBS.geometry[effect.id] = GEOMETRY;
+                }
+                const KEY = `${effect.role}:${effect.kind}`;
                 OBS.rendered[KEY] = (OBS.rendered[KEY] || 0) + 1;
-                const EXTRA = OBS.newSkills,
-                    DISPLAY = args[0];
+                const EXTRA = OBS.newSkills;
                 if (EXTRA && effect.role === 'boss') {
                     EXTRA.sessionDto = DISPLAY !== BUDMORI.sim && DISPLAY.boss !== BUDMORI.sim.boss;
                     if (effect.kind === 'giant') {
@@ -1031,7 +1068,7 @@ try {
                         EXTRA.dtoHammerImpact = true;
                     }
                 }
-                return RESULT;
+                return result;
             };
         }
         const { StormCloudPresentation: CLOUD } =
@@ -1042,11 +1079,20 @@ try {
             return CLOUD.prototype.draw === DRAW;
         });
         CLOUD.prototype.draw = function (renderer, effect, ...args) {
-            const OBS = { role: effect.role, age: effect.age, widths: [], arcStrokes: 0 },
+            const OBS = {
+                    role: effect.role,
+                    age: effect.age,
+                    widths: [],
+                    arcStrokes: 0,
+                    left: Infinity,
+                    right: -Infinity,
+                },
                 ELLIPSE = renderer.ellipse,
                 STROKE = renderer.ctx.stroke;
             renderer.ellipse = function (x, y, width, ...rest) {
                 OBS.widths.push(width);
+                OBS.left = Math.min(OBS.left, x - width);
+                OBS.right = Math.max(OBS.right, x + width);
                 return ELLIPSE.call(this, x, y, width, ...rest);
             };
             renderer.ctx.stroke = function (...strokeArgs) {
@@ -1060,6 +1106,7 @@ try {
             } finally {
                 renderer.ellipse = ELLIPSE;
                 renderer.ctx.stroke = STROKE;
+                OBS.visibleWidth = (OBS.right - OBS.left) / renderer.scale;
                 globalThis.__sharedSkills.cloudDraw = OBS;
             }
         };
@@ -1103,7 +1150,13 @@ try {
                     }
                     for (const [INDEX, UNIT] of WORLD.units.entries()) {
                         Object.assign(UNIT, {
-                            x: role === 'boss' ? 8 + INDEX * 0.75 : 4 + INDEX * 0.1,
+                            x:
+                                role === 'boss'
+                                    ? 8 +
+                                      [0, WORLD.boss.radius * 0.8 * 0.8, WORLD.boss.radius * 0.8 + UNIT.radius + 0.75][
+                                          INDEX
+                                      ]
+                                    : 4 + INDEX * 0.1,
                             y: 0,
                             z: 0,
                             stun: 1000,
@@ -1124,6 +1177,15 @@ try {
                     OBS.recoveries = {};
                     OBS.preparations = {};
                     OBS.impactFixture = null;
+                    OBS.geometry = {};
+                    OBS.targetFixture = WORLD.units.map((unit, index) => ({
+                        id: unit.id,
+                        hp: unit.hp,
+                        x: unit.x,
+                        y: unit.y,
+                        radius: unit.radius,
+                        inside: index < 2,
+                    }));
                     OBS.checkpoint = {
                         kind: 'effect',
                         role,
@@ -1149,7 +1211,13 @@ try {
                     BUDMORI.runtime.capturePresentation('reset');
                     BUDMORI.runtime.loop.resetTiming();
                     BUDMORI.runtime.paused = false;
-                    return { required: LIMIT, condition: KEY, bossRequired: PROFILE.required };
+                    return {
+                        required: LIMIT,
+                        condition: KEY,
+                        bossRequired: PROFILE.required,
+                        playerRadius: DEFINITION.aoeRadius ?? null,
+                        playerBeamWidth: DEFINITION.beamWidth ?? null,
+                    };
                 },
                 { role: ROLE, id: ID, required: REQUIRED, condition: CONDITION },
             );
@@ -1173,7 +1241,7 @@ try {
                     };
                     for (const [INDEX, UNIT] of WORLD.units.entries()) {
                         Object.assign(UNIT, {
-                            x: EFFECT.x + (INDEX - 1) * EFFECT.radius * 0.2,
+                            x: EFFECT.x + [0, EFFECT.radius * 0.8, EFFECT.radius + UNIT.radius + 0.75][INDEX],
                             y: EFFECT.y,
                             z: 0,
                             vx: 0,
@@ -1182,7 +1250,12 @@ try {
                             stun: 1000,
                             dropLanded: true,
                         });
-                        OBS.impactFixture.targets.push({ id: UNIT.id, hp: UNIT.hp, x: UNIT.x, y: UNIT.y });
+                        const TARGET = { id: UNIT.id, hp: UNIT.hp, x: UNIT.x, y: UNIT.y, radius: UNIT.radius };
+                        if (INDEX < 2) {
+                            OBS.impactFixture.targets.push(TARGET);
+                        } else {
+                            OBS.impactFixture.outside = TARGET;
+                        }
                     }
                     WORLD._unitSpatialDirty = true;
                     OBS.checkpoint = {
@@ -1203,7 +1276,15 @@ try {
                 return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
             });
             const HUD_CASE = ROLE === 'boss' && ID === 'ufo',
-                FILE = HUD_CASE && process.env.BUDMORI_CAPTURE_SHARED_HUD === '1' ? 'boss-skills-desktop.jpg' : null,
+                SCALE_CAPTURE =
+                    ROLE === 'boss' &&
+                    ['lightning', 'ufo'].includes(ID) &&
+                    process.env.BUDMORI_CAPTURE_BOSS_SCALE !== '0',
+                FILE = SCALE_CAPTURE
+                    ? `boss-${ID}-scale-desktop.jpg`
+                    : HUD_CASE && process.env.BUDMORI_CAPTURE_SHARED_HUD === '1'
+                      ? 'boss-skills-desktop.jpg'
+                      : null,
                 CAPTURE_STARTED = Date.now();
             REPORT.pendingCase = {
                 role: ROLE,
@@ -1342,15 +1423,17 @@ try {
                 await PAGE.locator('#gameMenuClose').click();
                 await DOCK.waitFor({ state: 'visible' });
                 await PAGE.setViewportSize({ width: 1000, height: 700 });
-                // Resizing clears the canvas; let the normal paused-scene RAF repaint before freezing the image.
-                await PAGE.evaluate(() => {
-                    BUDMORI.runtime.capturePresentation('reset');
-                    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-                });
                 if (FILE) {
+                    // Resizing clears the canvas; repaint only when an image will be read back.
+                    await PAGE.evaluate(() => {
+                        BUDMORI.runtime.capturePresentation('reset');
+                        return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                    });
                     await CAPTURE_FRAME(FILE);
                 }
                 await PAGE.evaluate(() => globalThis.__restoreBossHudFixture());
+            } else if (FILE) {
+                await CAPTURE_FRAME(FILE);
             }
             const CAPTURE_MS = Date.now() - CAPTURE_STARTED;
             const RESULT = await PAGE.evaluate(
@@ -1367,6 +1450,8 @@ try {
                         releaseCooldown: globalThis.__sharedSkills.releaseCooldown,
                         hits: globalThis.__sharedSkills.hits,
                         effect: EFFECT,
+                        drawGeometry: globalThis.__sharedSkills.geometry[EFFECT.id],
+                        targetFixture: globalThis.__sharedSkills.targetFixture,
                         impactFixture: globalThis.__sharedSkills.impactFixture,
                         targetBodies: WORLD.units.map((unit) => ({
                             id: unit.id,
@@ -1375,7 +1460,12 @@ try {
                             radius: unit.radius,
                             hp: unit.hp,
                         })),
-                        bossBody: { x: WORLD.boss.x, y: WORLD.boss.y, radius: WORLD.boss.radius },
+                        bossBody: {
+                            x: WORLD.boss.x,
+                            y: WORLD.boss.y,
+                            radius: WORLD.boss.radius,
+                            height: WORLD.boss.height,
+                        },
                         otherCharge: OTHER.charge,
                         ownCharge: WORLD.formationRuntime.slots.find((slot) => slot !== OTHER).charge,
                         targetBody:
@@ -1392,6 +1482,111 @@ try {
                 { role: ROLE, id: ID },
             );
             assert.ok(RESULT.nativeDraws > 0, 'every role and skill reaches its actual native presentation');
+            assert.equal(
+                RESULT.drawGeometry.sessionDto,
+                true,
+                'the native renderer receives a copied production session DTO',
+            );
+            for (const [KEY, VALUE] of Object.entries(RESULT.drawGeometry.dimensions)) {
+                assert.equal(VALUE, RESULT.effect[KEY] ?? 0, `the production DTO preserves ${ID} ${KEY}`);
+            }
+            if (ROLE === 'boss') {
+                const DIAMETER = RESULT.bossBody.radius * 2 * 0.8,
+                    RADIUS = DIAMETER / 2,
+                    FIXTURE = RESULT.impactFixture,
+                    INSIDE = FIXTURE ? FIXTURE.targets : RESULT.targetFixture.filter((target) => target.inside),
+                    OUTSIDE = FIXTURE ? FIXTURE.outside : RESULT.targetFixture.find((target) => !target.inside);
+                assert.ok(DIAMETER < RESULT.bossBody.radius * 2, 'boss attacks are slightly smaller than their caster');
+                if (['lightning', 'meteor', 'meteor-shower'].includes(ID)) {
+                    assert.equal(
+                        RESULT.effect.radius,
+                        RADIUS,
+                        'the real boss impact radius follows the caster, not a tier-1 unit',
+                    );
+                }
+                assert.equal(RESULT.effect.sizeRadius, RADIUS, 'the visual size reference uses the live boss radius');
+                assert.equal(
+                    RESULT.effect.sizeHeight,
+                    RESULT.bossBody.height * 0.8,
+                    'visual height follows the same boss size profile',
+                );
+                if (['lightning', 'ufo'].includes(ID)) {
+                    assert.ok(
+                        RESULT.drawGeometry.groundRadii.some((radius) => Math.abs(radius - RADIUS) < 1e-9),
+                        'the native ground footprint draws the same radius used for damage',
+                    );
+                }
+                if (ID === 'ufo') {
+                    assert.equal(
+                        RESULT.effect.beamWidth,
+                        DIAMETER,
+                        'the live UFO collision beam spans 80 percent of boss diameter',
+                    );
+                    assert.equal(RESULT.effect.visualWidth, DIAMETER);
+                    assert.ok(
+                        Math.abs(RESULT.drawGeometry.saucerWidth - DIAMETER) < 1e-9,
+                        'the native saucer silhouette matches its boss-relative beam',
+                    );
+                }
+                if (ID === 'storm-cloud') {
+                    assert.equal(
+                        RESULT.effect.visualWidth,
+                        DIAMETER,
+                        'the actual cloud DTO carries the caster-relative width',
+                    );
+                    assert.equal(RESULT.effect.targetRange, RADIUS, 'cloud reach uses the same caster-relative radius');
+                    assert.ok(
+                        Math.abs(RESULT.cloudDraw.visibleWidth - DIAMETER) < 1e-9,
+                        'the native settled cloud is 80 percent of boss diameter',
+                    );
+                    assert.deepEqual(
+                        RESULT.effect.targets.map((target) => target.id).sort(),
+                        INSIDE.map((target) => target.id).sort(),
+                        'the native cloud selects only targets inside its caster-relative reach',
+                    );
+                }
+                assert.ok(
+                    INSIDE.every((target) => RESULT.targetBodies.find((unit) => unit.id === target.id)?.hp < target.hp),
+                    'native boss skill damage reaches both the center and outer footprint target',
+                );
+                assert.equal(
+                    RESULT.targetBodies.find((unit) => unit.id === OUTSIDE.id)?.hp,
+                    OUTSIDE.hp,
+                    'a target beyond the actual boss footprint remains undamaged',
+                );
+                assert.ok(
+                    INSIDE.every((target) =>
+                        RESULT.hits.some((hit) => hit.kind === 'unit-hit' && hit.unit === target.id),
+                    ) && !RESULT.hits.some((hit) => hit.unit === OUTSIDE.id),
+                    'real hit events agree with the inside/outside health geometry',
+                );
+            } else {
+                if (START.playerRadius !== null) {
+                    assert.equal(
+                        RESULT.effect.radius,
+                        START.playerRadius,
+                        'player impact radii retain their original skill definition',
+                    );
+                }
+                assert.equal(
+                    RESULT.effect.sizeRadius,
+                    RESULT.targetBody.radius,
+                    'player visual size still follows its actual target',
+                );
+                assert.equal(
+                    RESULT.effect.sizeHeight,
+                    RESULT.targetBody.height,
+                    'player visual height remains unchanged',
+                );
+                if (ID === 'ufo') {
+                    assert.equal(
+                        RESULT.effect.beamWidth || 0,
+                        START.playerBeamWidth,
+                        'the player UFO keeps its original narrow targeting',
+                    );
+                    assert.ok(!RESULT.effect.visualWidth, 'the player saucer keeps its target-body rendering rule');
+                }
+            }
             assert.deepEqual(RESULT.casts, [{ id: ID, role: ROLE }], 'one release per cast');
             assert.equal(RESULT.otherCharge, 0, 'skill effects never recharge the opposite owner');
             assert.equal(RESULT.ownCharge, 0, 'released skills do not recharge themselves');
@@ -1443,7 +1638,7 @@ try {
                     'native meteor impact emits a real skill hit',
                 );
             }
-            if (ROLE === 'boss' && ['ufo', 'storm-cloud'].includes(ID)) {
+            if (ROLE === 'boss' && ['lightning', 'ufo', 'storm-cloud'].includes(ID)) {
                 assert.ok(
                     RESULT.targetBodies.every(
                         (target) =>

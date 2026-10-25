@@ -127,6 +127,9 @@ export class FormationSkills {
     contextFor(role) {
         return role === 'boss' ? this.bossContext : this;
     }
+    get caster() {
+        return this.role === 'boss' ? this.world.boss : null;
+    }
     get friendlyFaction() {
         return this.role === 'boss' ? 'enemy' : 'player';
     }

@@ -19,8 +19,9 @@ export class UfoPresentation extends FormationPresentation {
             EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5,
             Z = effect.z + (1 - ENTER) * (1 - ENTER) * 4 + EXIT * 4 + Math.sin(effect.age * 5) * 0.08,
             P = renderer.project(effect.x, effect.y, Z),
-            BODY_RADIUS = Math.max(0.2, effect.bodyRadius || 0.3),
-            BODY_SCALE = Math.max(1, BODY_RADIUS * 2.6),
+            BODY_RADIUS = Math.max(0.2, effect.sizeRadius || effect.bodyRadius || 0.3),
+            // The saucer's widest ellipse has a 0.72 radius, hence a 1.44 full width.
+            BODY_SCALE = effect.visualWidth > 0 ? effect.visualWidth / 1.44 : Math.max(1, BODY_RADIUS * 2.6),
             S = renderer.scale * BODY_SCALE * Math.max(0.08, ENTER) * (1 - Math.min(1, EXIT)),
             C = renderer.ctx;
         const PULSE_AGE = effect.age - effect.lastPulse,

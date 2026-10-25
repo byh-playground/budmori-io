@@ -1,4 +1,4 @@
-import { T1_DIAMETER } from '../model-base.js';
+import { CASTER_SIZE_PROFILE } from '../model-base.js';
 const DURATION = 5,
     PULSE_INTERVAL = 0.2,
     PULSE_DAMAGE = 3;
@@ -12,11 +12,12 @@ export const DEFINITION = Object.freeze({
     targetRange: 18,
     retargetDelaySeconds: 0,
     boss: Object.freeze({
+        ...CASTER_SIZE_PROFILE,
         condition: 'hits',
         required: 75,
         targetCount: 3,
-        targetRange: T1_DIAMETER * 6,
-        cloudWidthCap: T1_DIAMETER * 8,
+        targetRangeRatio: 0.5,
+        visualWidthRatio: 1,
         retargetDelaySeconds: 0.5,
     }),
     upgradeAxis: '지속시간 +1초',

@@ -24,11 +24,11 @@ export class LightningPresentation extends FormationPresentation {
                 `rgba(190,225,255,${Math.max(0, 0.5 - AGE)})`,
             );
         }
-        const BODY_HEIGHT = Math.max(0.5, effect.bodyHeight || 0.7),
-            BODY_RADIUS = Math.max(0.2, effect.bodyRadius || 0.3),
+        const BODY_HEIGHT = Math.max(0.5, effect.sizeHeight || effect.bodyHeight || 0.7),
+            BODY_RADIUS = Math.max(0.2, effect.sizeRadius || effect.bodyRadius || 0.3),
             // A bolt reaches three body heights up for a small body; a tall one stays within a screen's sky.
             RISE = Math.min(BODY_HEIGHT * 3.4, BODY_HEIGHT * 0.5 + 2.4),
-            HIT_Z = effect.radius > 0 ? effect.z : effect.z + BODY_HEIGHT;
+            HIT_Z = effect.radius > 0 ? effect.z : effect.z + Math.max(0.5, effect.bodyHeight || 0.7);
         bolt(renderer, effect.x, effect.y, HIT_Z, RISE, AGE, effect.id, BODY_RADIUS);
         if (AGE < 0.5) {
             burst(renderer, effect.x, effect.y, HIT_Z, BODY_RADIUS, AGE, effect.id, '190,225,255');

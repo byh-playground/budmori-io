@@ -1,4 +1,4 @@
-import { T1_DIAMETER } from '../model-base.js';
+import { CASTER_SIZE_PROFILE, T1_DIAMETER } from '../model-base.js';
 export const DEFINITION = Object.freeze({
     id: 'meteor-shower',
     name: '유성우',
@@ -10,7 +10,13 @@ export const DEFINITION = Object.freeze({
     fallSeconds: 0.75,
     shotInterval: 0.25,
     shotDamage: 25,
-    boss: Object.freeze({ condition: 'hits', required: 100 }),
+    boss: Object.freeze({
+        ...CASTER_SIZE_PROFILE,
+        condition: 'hits',
+        required: 100,
+        aoeRadiusRatio: 0.5,
+        scatterRadiusRatio: 0.5,
+    }),
     upgradeAxis: '유성 +1개',
     upgradeBase: 5,
     upgradeFactor: 1,
