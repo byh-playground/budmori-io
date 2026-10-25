@@ -41,6 +41,9 @@ jobs:
                   ./node_modules/.bin/playwright --version >> tests/output/browser-setup/setup.txt
             - name: Boot the unbuilt source once
               run: timeout 120s npm run test:source-smoke
+            - name: Play the tower army flow
+              if: success() || failure()
+              run: timeout 180s npm run test:tower-army
             - uses: actions/upload-artifact@v4
               if: always()
               with:
@@ -48,4 +51,5 @@ jobs:
                   path: |
                       tests/output/source-smoke/
                       tests/output/browser-setup/
+                      tests/output/tower-army/
                   if-no-files-found: warn

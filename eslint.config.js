@@ -16,6 +16,8 @@ const MODEL_FILES = [
     'src/factions.js',
     'src/farm-boss-stages.js',
     'src/farm-model.js',
+    'src/combat-identity.js',
+    'src/tower-encounter.js',
     'src/formation-skills.js',
     'src/formation-skill-state.js',
     'src/features/species-growth/*.js',

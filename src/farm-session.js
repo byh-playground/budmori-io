@@ -303,6 +303,8 @@ class UnitRender extends RENDER_OBJECT {
 }
 class BossRender extends RENDER_OBJECT {
     static renderSchema = Object.freeze({
+        active: R.STEP,
+        isFinalBoss: R.STEP,
         ...UNIT_ATTACK_SCHEMA,
         id: R.STEP,
         tier: R.STEP,
@@ -365,6 +367,8 @@ class BossRender extends RENDER_OBJECT {
         this.ability = {};
     }
     update(b, world) {
+        this.active = b.active;
+        this.isFinalBoss = !!b.isFinalBoss;
         updateUnitAttackRender(this, b, world);
         this.id = b.id;
         this.tier = b.tier;
@@ -377,7 +381,8 @@ class BossRender extends RENDER_OBJECT {
         this.giantUntil = b.giantUntil;
         this.giantSizeMultiplier = b.giantSizeMultiplier;
         this.giantEndedAt = b.giantEndedAt;
-        const CAST = world.formationRuntime.bossCast;
+        const FACTION_CAST = world.formationRuntime.bossCast,
+            CAST = FACTION_CAST?.casterId === b.id ? FACTION_CAST : null;
         Object.assign(this.skillCast, {
             id: CAST?.id || '',
             phase: CAST?.phase || '',
@@ -844,6 +849,10 @@ class FarmSession {
                 return W.scene === 'farm' && W.startTower(c.floor);
             case 'tower-door':
                 return W.scene === 'farm' && W.chooseDoor(c.index);
+            case 'battle-command':
+                return W.scene === 'farm' && W.setBattleCommand(c.mode);
+            case 'tower-summit-skip':
+                return W.scene === 'farm' && W.finishTowerSummit();
             case 'tower-leave':
                 return W.scene === 'farm' && W.leaveTower();
             case 'farm-sort':
@@ -941,7 +950,9 @@ class FarmSession {
         for (const U of WORLD.units) {
             ENTITIES.push(this.presentationEntity('unit:' + U.id, U, UnitRender));
         }
-        ENTITIES.push(this.presentationEntity('boss', WORLD.boss, BossRender));
+        for (const BOSS of WORLD.bosses) {
+            ENTITIES.push(this.presentationEntity('boss:' + BOSS.id, BOSS, BossRender));
+        }
         for (const F of WORLD.food) {
             // Settled food has no movement or animated fields. Keep it in the
             // live view; snapshot only flight/bounce food that needs interpolation.
@@ -1027,6 +1038,8 @@ class FarmSession {
                     // Shadow the model's collection accessor without invoking
                     // its setter: presentation owns only this borrowed buffer.
                     units: { value: [], writable: true, enumerable: true, configurable: true },
+                    bosses: { value: [], writable: true, enumerable: true, configurable: true },
+                    boss: { value: null, writable: true, enumerable: true, configurable: true },
                 }),
                 {
                     food: [],
@@ -1042,6 +1055,8 @@ class FarmSession {
             this.collectPresentationModel = (model, id) => {
                 if (id.startsWith('formation:')) {
                     VIEW.formationEffects.push(model);
+                } else if (id.startsWith('boss:')) {
+                    VIEW.bosses.push(model);
                 } else if (id.startsWith('unit:')) {
                     VIEW.units.push(model);
                 } else if (id.startsWith('food:')) {
@@ -1056,6 +1071,7 @@ class FarmSession {
         }
         const VIEW = this.presentationView;
         VIEW.units.length = 0;
+        VIEW.bosses.length = 0;
         VIEW.food.length = 0;
         VIEW.presentationFoodIds.clear();
         VIEW.projectiles.length = 0;
@@ -1073,8 +1089,10 @@ class FarmSession {
             }
         }
         VIEW.time = (FRAME.sample('clock', 0)?.gameTimeMs ?? WORLD.time * 1000) / 1000;
-        VIEW.boss = FRAME.sample('boss', 0) || this.presentationEntity('boss', WORLD.boss, BossRender).source;
-        VIEW.bossCast = VIEW.boss.skillCast?.id ? VIEW.boss.skillCast : null;
+        VIEW.boss =
+            VIEW.bosses.find((boss) => boss.id === WORLD.boss.id) ||
+            this.presentationEntity('boss:' + WORLD.boss.id, WORLD.boss, BossRender).source;
+        VIEW.bossCast = VIEW.bosses.find((boss) => boss.skillCast?.id)?.skillCast || null;
         VIEW.formationInjuredAllies ||= new Map([
             ['player', []],
             ['boss', []],
@@ -1088,7 +1106,9 @@ class FarmSession {
             ALLIES.length = 0;
             if (INJURED?.size) {
                 for (const UNIT of INJURED) {
-                    const RENDER = UNIT === WORLD.boss ? VIEW.boss : VIEW.units.find((item) => item.id === UNIT.id);
+                    const RENDER =
+                        VIEW.bosses.find((item) => item.id === UNIT.id) ||
+                        VIEW.units.find((item) => item.id === UNIT.id);
                     if (RENDER) {
                         ALLIES.push(RENDER);
                     }

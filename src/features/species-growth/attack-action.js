@@ -1,3 +1,4 @@
+import { isBossActorId, isCombatActorId } from '../../combat-identity.js';
 // One basic attack owns a finite set of slots. Presentation particles are never slots.
 // Timings use the simulation tick; probability/RAW/command decisions are sampled by the caller once at launch.
 export const MAX_ACTION_STRIKES = 32;
@@ -160,14 +161,10 @@ export class AttackAction {
 
 // Type and generation are part of identity; a new boss encounter cannot reuse old hit/critical claims.
 export function attackTargetKey(targetId, generation) {
-    if (
-        (targetId !== 'boss' && (!Number.isSafeInteger(targetId) || targetId < 0)) ||
-        !Number.isSafeInteger(generation) ||
-        generation < 0
-    ) {
+    if (!isCombatActorId(targetId, true) || !Number.isSafeInteger(generation) || generation < 0) {
         return null;
     }
-    return JSON.stringify([targetId === 'boss' ? 'boss' : 'unit', targetId, generation]);
+    return JSON.stringify([isBossActorId(targetId) ? 'boss' : 'unit', targetId, generation]);
 }
 
 function validHitKey(key) {
@@ -182,7 +179,7 @@ function validHitKey(key) {
         return (
             Array.isArray(PARTS) &&
             PARTS.length === 3 &&
-            PARTS[0] === (PARTS[1] === 'boss' ? 'boss' : 'unit') &&
+            PARTS[0] === (isBossActorId(PARTS[1]) ? 'boss' : 'unit') &&
             attackTargetKey(PARTS[1], PARTS[2]) === key
         );
     } catch {

@@ -9,9 +9,21 @@ import {
 const MAX_BYTES = 2 * 1024 * 1024;
 const COMPATIBILITY_LOCAL = (version) => (typeof version === 'string' ? version.split('.').slice(0, 2).join('.') : '');
 const IS_READABLE_COMPATIBILITY = (version) =>
-    [COMPATIBILITY, '0.40', '0.39', '0.38', '0.37', '0.36', '0.35', '0.34', '0.33', '0.32', '0.31', '0.30'].includes(
-        COMPATIBILITY_LOCAL(version),
-    );
+    [
+        COMPATIBILITY,
+        '0.41',
+        '0.40',
+        '0.39',
+        '0.38',
+        '0.37',
+        '0.36',
+        '0.35',
+        '0.34',
+        '0.33',
+        '0.32',
+        '0.31',
+        '0.30',
+    ].includes(COMPATIBILITY_LOCAL(version));
 export { IS_READABLE_COMPATIBILITY as isReadableCompatibility };
 export function readFarmSave(text) {
     if (typeof text !== 'string' || text.length > MAX_BYTES) {

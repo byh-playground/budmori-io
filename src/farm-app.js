@@ -21,6 +21,8 @@ import { FarmStorage } from './farm-storage.js';
 import { FarmAutosave } from './farm-autosave.js';
 import { snapshot, restore } from './farm-state.js';
 import { PRODUCT_VERSION } from './version.js';
+import { highestTowerStartFloor, overallLevel, overallXpForLevel } from './player-progression.js';
+import { towerTheme } from './tower-theme.js';
 import { FoodFeel } from './food-feel.js';
 import { CombatFeel } from './combat-feel.js';
 import { renderAbilityTreeMarkup, renderAbilitySpeciesTabsMarkup } from './ability-tree.js';
@@ -351,7 +353,7 @@ function syncBossRewardDialog(world, { receiptKey = null } = {}) {
             : latestBossReward(world),
         BUTTON = DOLLAR('bossRewardOpen'),
         DIALOG = DOLLAR('bossRewardDialog');
-    if (home) {
+    if (home || world?.tower.phase === 'summit') {
         DIALOG.hidden = true;
         BUTTON.hidden = true;
         clearInterval(bossRewardRevealTimer);
@@ -571,6 +573,10 @@ function replacePersonalGarden(world) {
     unsubscribeProgress =
         world?.onProgressChanged.on(() => {
             AUTOSAVE.markDirty();
+            if (world.tower.phase === 'summit') {
+                // The final receipt is durable before the next frame can offer Skip.
+                AUTOSAVE.flush();
+            }
             // Purchases/reset publish their new state before this signal. A wall-time
             // delay can run before the queued command; refresh only committed state.
             // Other farm progress keeps the same identity and must not kill previews.
@@ -858,11 +864,28 @@ DOLLAR('fightRetreat').onclick = () => {
     personalGarden?.retreatFromFight();
 };
 DOLLAR('bossChallenge').onclick = beginChallenge;
-// The climb starts at the best floor by default; the slider can start lower, never higher.
+DOLLAR('battleCommands').addEventListener('change', (event) => {
+    if (event.target.matches('input[name="battleCommand"]') && active && !home) {
+        active.queue('battle-command', { mode: event.target.value });
+        active.flushQueuedCommands();
+    }
+});
+DOLLAR('summitSkip').onclick = () => active?.queue('tower-summit-skip', {});
+DOLLAR('towerSummit').addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        active?.queue('tower-summit-skip', {});
+    } else if (event.key === 'Tab') {
+        event.preventDefault();
+        DOLLAR('summitSkip').focus();
+    }
+});
+// A fresh run starts 20% below the record by default, leaving room for its first cards.
 let startFloorChoice = 0;
 function startFloorValue(garden) {
-    const BEST = Math.max(1, garden.playerProgression.towerBest);
-    return startFloorChoice >= 1 && startFloorChoice <= BEST ? startFloorChoice : BEST;
+    const HIGHEST = highestTowerStartFloor(garden.playerProgression.towerBest);
+    return startFloorChoice >= 1 && startFloorChoice <= HIGHEST ? startFloorChoice : HIGHEST;
 }
 DOLLAR('startFloor').oninput = (e) => {
     startFloorChoice = Number(e.target.value);
@@ -1531,7 +1554,7 @@ document.addEventListener('contextmenu', (event) => {
 // Compare with the actual DOM so event handlers and route changes remain authoritative.
 const FLOOR_KIND = { battle: '전투', elite: '정예', mid: '중간 보스', power: '강화', event: '이벤트' };
 const DOOR_TEXT = {
-    battle: '보스 한 마리',
+    battle: '보스 전원 처치',
     elite: '더 세지만 보상 ×2',
     mid: '피할 수 없어요 · 보상 ×3',
 };
@@ -1695,7 +1718,19 @@ function syncCardReceipts(tower, draw, phase) {
 function syncTower(garden, home, event) {
     const T = garden.tower,
         CLIMBING = T.active && !home,
-        BEST = garden.playerProgression.towerBest;
+        BEST = garden.playerProgression.towerBest,
+        SUMMIT = CLIMBING && T.phase === 'summit';
+    const SUMMIT_DIALOG = DOLLAR('towerSummit');
+    if (SUMMIT_DIALOG.hidden === SUMMIT) {
+        SUMMIT_DIALOG.hidden = !SUMMIT;
+        if (SUMMIT) {
+            stopWorldInput();
+            DOLLAR('summitSkip').focus();
+        } else if (!home) {
+            DOLLAR('bossChallenge').focus();
+        }
+    }
+    syncFlag('gameplayDock', 'hidden', SUMMIT);
     const TINT = DOLLAR('towerTint');
     if (TINT.dataset.on !== String(CLIMBING)) {
         TINT.dataset.on = String(CLIMBING);
@@ -1707,7 +1742,7 @@ function syncTower(garden, home, event) {
     const SLEEPERS = T.sleepUntil.size;
     syncFlag('floorChip', 'hidden', !CLIMBING);
     if (CLIMBING) {
-        syncText('floorNow', `${T.floor}층 · ${FLOOR_KIND[T.kind]}`);
+        syncText('floorNow', `${T.floor}층 · ${towerTheme(T.floor).name}`);
     }
     // A banner announces each new floor as the boss drops in, and the rest stop.
     const NEXT_BANNER = !CLIMBING
@@ -1719,7 +1754,7 @@ function syncTower(garden, home, event) {
             : '';
     if (NEXT_BANNER && NEXT_BANNER !== bannerKey) {
         DOLLAR('floorBannerNum').textContent = `${T.floor}층`;
-        DOLLAR('floorBannerKind').textContent = FLOOR_KIND[T.kind];
+        DOLLAR('floorBannerKind').textContent = `${towerTheme(T.floor).name} · ${FLOOR_KIND[T.kind]}`;
         const BANNER = DOLLAR('floorBanner');
         BANNER.hidden = false;
         clearTimeout(bannerTimer);
@@ -1870,6 +1905,26 @@ function ownedCounts(garden) {
     return COUNTS;
 }
 // In a fight: the species still waiting, front first.
+const BATTLE_COMMAND_NOTES = Object.freeze({
+    engage: '사거리까지 접근해 공격해요',
+    scatter: '간격을 넓히며 공격해요',
+    retreat: '공격을 멈추고 적에게서 물러나요',
+});
+function syncBattleCommands(garden, visible) {
+    syncFlag('battleCommands', 'hidden', !visible);
+    if (!visible) {
+        return;
+    }
+    let reserves = 0;
+    for (const COUNT of garden.handCounts.values()) {
+        reserves += COUNT;
+    }
+    syncText('frontlineStatus', `전선 ${garden.fieldFighterCount}/${garden.frontlineLimit} · 예비대 ${reserves}`);
+    syncText('battleCommandNote', BATTLE_COMMAND_NOTES[garden.battleCommand]);
+    for (const INPUT of DOLLAR('battleCommands').querySelectorAll('input')) {
+        INPUT.checked = INPUT.value === garden.battleCommand;
+    }
+}
 function syncHand(garden, visible) {
     const COUNTS = visible ? garden.handCounts : new Map(),
         IDS = garden.deployOrder.filter((id) => COUNTS.has(id)),
@@ -2139,16 +2194,12 @@ function sync(display, now, notices) {
     syncFlag('mergeNotice', 'hidden', home || FARM_EVENT_ACTIVE);
     syncAttribute('merge', 'aria-label', `합성${MERGE_STATUS.available ? '' : ' 불가'} · ${MERGE_STATUS.reason}`);
     syncText('mergeNotice', MERGE_STATUS.reason);
-    let displayedCount = 0;
     let worldCount = 0;
     let armyCurrent = 0;
     let armyMax = 0;
     let armyLiving = 0;
     let armyTotal = 0;
     for (const UNIT of display.units) {
-        if (!UNIT.isBattleOnlySummon) {
-            displayedCount++;
-        }
         if (UNIT.faction === CONFIG.factions.PLAYER) {
             armyCurrent += Math.max(0, Math.min(UNIT.maxHp, UNIT.hp));
             armyMax += UNIT.maxHp;
@@ -2156,7 +2207,7 @@ function sync(display, now, notices) {
             armyTotal++;
         }
     }
-    for (const UNIT of W.units) {
+    for (const UNIT of W.unitCollection.items) {
         if (!UNIT.isBattleOnlySummon) {
             worldCount++;
         }
@@ -2164,10 +2215,31 @@ function sync(display, now, notices) {
     syncFlag('farmControls', 'hidden', FARM_EVENT_ACTIVE || home || W.tower.active);
     syncFlag('workHud', 'hidden', FARM_EVENT_ACTIVE || home || W.tower.active);
     syncTower(W, home, FARM_EVENT);
-    syncFlag('bossbar', 'hidden', !FARM_EVENT_ACTIVE || home || FARM_EVENT.phase === 'marching');
+    syncFlag(
+        'bossbar',
+        'hidden',
+        !FARM_EVENT_ACTIVE || home || FARM_EVENT.phase === 'marching' || W.tower.phase === 'summit',
+    );
+    syncBattleCommands(W, !home && fightActive());
     syncHand(W, !home && fightActive());
-    syncText('count', displayedCount);
+    syncText('count', worldCount);
     syncText('capacity', personalGarden?.capacity ?? CONFIG.farm.capacity.max);
+    const PROGRESSION = (personalGarden || W).playerProgression,
+        LEVEL = overallLevel(PROGRESSION),
+        LEVEL_START = overallXpForLevel(LEVEL),
+        NEXT_LEVEL = overallXpForLevel(LEVEL + 1);
+    syncText('overallLevel', `전체 Lv.${LEVEL}`);
+    syncText(
+        'overallXp',
+        NEXT_LEVEL > LEVEL_START
+            ? `${PROGRESSION.overallXp - LEVEL_START}/${NEXT_LEVEL - LEVEL_START} XP`
+            : '정원 최대',
+    );
+    syncAttribute(
+        'overallGrowth',
+        'title',
+        `전체 XP ${PROGRESSION.overallXp} · 농장 정원 ${W.capacity} · 다음 전선 ${Math.floor(W.capacity / 2)}`,
+    );
     syncText(
         'starter',
         PENDING_REWARD
@@ -2184,6 +2256,13 @@ function sync(display, now, notices) {
         Math.ceil(armyCurrent) + '/' + Math.ceil(armyMax) + ' · ' + armyLiving + '/' + armyTotal + '마리',
     );
     const BOSS = display.boss,
+        BOSSES = display.bosses,
+        BOSS_HP = BOSSES.reduce((total, boss) => total + Math.max(0, boss.hp), 0),
+        BOSS_MAX_HP = BOSSES.reduce((total, boss) => total + boss.maxHp, 0),
+        ENCOUNTER = W.bossEncounter,
+        BOSS_TOTAL = ENCOUNTER?.roster.length || 1,
+        BOSS_LIVING = BOSSES.filter((boss) => boss.hp > 0).length,
+        BOSS_PENDING = ENCOUNTER ? Math.max(0, BOSS_TOTAL - ENCOUNTER.nextIndex) : 0,
         FARM_REWARD =
             FARM_EVENT?.outcome === 'victory'
                 ? W.bossRewardReceipts.find(
@@ -2195,12 +2274,12 @@ function sync(display, now, notices) {
         FIRST_MEETING = FARM_EVENT_ACTIVE && !bossSpeciesOwned(W, BOSS.species) ? ' · 첫 조우' : '';
     syncText(
         'bossName',
-        (BOSS.stage
-            ? `${BOSS.stage}층 · ${W.tower.kind === 'battle' ? '' : FLOOR_KIND[W.tower.kind] + ' '}${ENCOUNTER_NAME}`
+        (W.tower.active
+            ? `${BOSS.stage}층 · ${BOSS.isFinalBoss ? '최종 수호자' : `보스 ${BOSS_LIVING}/${BOSS_TOTAL}`}`
             : ENCOUNTER_NAME) + FIRST_MEETING,
     );
-    syncAttribute('bossHealth', 'aria-label', `${ENCOUNTER_NAME} 체력`);
-    syncText('bossHealthText', Math.ceil(BOSS.hp) + '/' + Math.round(BOSS.maxHp));
+    syncAttribute('bossHealth', 'aria-label', '등장한 보스 합계 체력');
+    syncText('bossHealthText', Math.ceil(BOSS_HP) + '/' + Math.round(BOSS_MAX_HP));
     syncText(
         'bossHealthNote',
         FARM_EVENT_ACTIVE && FARM_EVENT.phase === 'dropping'
@@ -2208,7 +2287,9 @@ function sync(display, now, notices) {
             : FARM_EVENT_ACTIVE && FARM_EVENT.phase === 'fighting'
               ? W.bossEnraged
                   ? '격노! 피해 2배, 공격이 빨라져요'
-                  : `${W.bossPhase}페이즈 · 격노까지 ${Math.max(0, Math.ceil(W.battleTimeLimit() - FARM_EVENT.elapsed))}초`
+                  : BOSS_PENDING > 0
+                    ? `남은 합류 ${BOSS_PENDING} · ${Math.max(0, Math.ceil(ENCOUNTER.nextJoinAt - ENCOUNTER.elapsed))}초 후 증원`
+                    : `전원 등장 · 격노까지 ${Math.max(0, Math.ceil(W.battleTimeLimit() - FARM_EVENT.elapsed))}초`
               : FARM_EVENT_ACTIVE
                 ? ''
                 : '쓰러진 병력 포함 최대 체력',
@@ -2216,9 +2297,9 @@ function sync(display, now, notices) {
     syncFlag('fightRetreat', 'hidden', !(FARM_EVENT_ACTIVE && ['dropping', 'fighting'].includes(FARM_EVENT.phase)));
     syncAttribute('allyHealth', 'aria-valuenow', armyCurrent);
     syncAttribute('allyHealth', 'aria-valuemax', armyMax);
-    syncAttribute('bossHealth', 'aria-valuenow', BOSS.hp);
-    syncAttribute('bossHealth', 'aria-valuemax', BOSS.maxHp);
-    syncWidth('bossHealth', BOSS.maxHp ? (BOSS.hp / BOSS.maxHp) * 100 + '%' : '0%');
+    syncAttribute('bossHealth', 'aria-valuenow', BOSS_HP);
+    syncAttribute('bossHealth', 'aria-valuemax', BOSS_MAX_HP);
+    syncWidth('bossHealth', BOSS_MAX_HP ? (BOSS_HP / BOSS_MAX_HP) * 100 + '%' : '0%');
     syncText(
         'battleOutcome',
         BATTLE_OUTCOME === 'victory'
@@ -2228,7 +2309,7 @@ function sync(display, now, notices) {
                   ? `${BOSS.stage}층 돌파 · 새 기록! ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요`
                   : W.tower.record
                     ? `${BOSS.stage}층 돌파 · 새 기록!`
-                    : `${BOSS.stage}층 돌파 · 이미 오른 층이라 보상은 없어요`
+                    : `${BOSS.stage}층 돌파 · 전체 성장 XP 획득`
             : BATTLE_OUTCOME === 'defeat'
               ? `${BOSS.stage}층에서 쓰러졌어요 · 최고 ${W.playerProgression.towerBest}층 · 쓰러진 병력은 농장에서 쉬어요`
               : '',
@@ -2241,12 +2322,15 @@ function sync(display, now, notices) {
     const BEST_FLOOR = W.playerProgression.towerBest,
         START_FLOOR = startFloorValue(W);
     syncFlag('startFloorBox', 'hidden', BEST_FLOOR < 2 || FARM_EVENT_ACTIVE || home);
-    syncAttribute('startFloor', 'max', Math.max(1, BEST_FLOOR));
+    syncAttribute('startFloor', 'max', highestTowerStartFloor(BEST_FLOOR));
     if (document.activeElement !== DOLLAR('startFloor') && DOLLAR('startFloor').value !== String(START_FLOOR)) {
         DOLLAR('startFloor').value = String(START_FLOOR);
     }
     paintRange(DOLLAR('startFloor'));
-    syncText('startFloorValue', `시작 ${START_FLOOR} / ${BEST_FLOOR}층`);
+    syncText(
+        'startFloorValue',
+        `시작 ${START_FLOOR}층 · 최고 시작 ${highestTowerStartFloor(BEST_FLOOR)} · 기록 ${BEST_FLOOR}층`,
+    );
     syncText('bossChallenge', '탑 오르기');
     syncFlag('bossChallenge', 'hidden', FARM_EVENT_ACTIVE || home);
     syncAttribute('bossChallenge', 'aria-disabled', String(raidStartBlockReason() !== ''));

@@ -46,8 +46,8 @@ export class FarmScenePresentation {
         }
         return IDS;
     }
-    victorious() {
-        return false;
+    victorious(world) {
+        return world.tower.phase === 'summit';
     }
     unitMood(unit, joyEffects) {
         if (unit.cooldown > 0 && unit.ability?.phase === 'idle') {

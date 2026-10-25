@@ -775,13 +775,18 @@ const DIORAMA = class Diorama {
         }
     }
     drawDanger(sim2) {
-        const PRESENTATION = this.scenePresentation;
-        const AREA = PRESENTATION.dangerVisible(sim2)
-            ? renderedBossAttackArea(sim2.boss, sim2.scene, this.telegraphBoss, this.dangerArea)
-            : null;
-        this.bossTelegraph = AREA;
-        if (AREA) {
-            this.drawBossTelegraph(AREA);
+        this.bossTelegraph = null;
+        if (!this.scenePresentation.dangerVisible(sim2)) {
+            return;
+        }
+        for (const BOSS of sim2.bosses) {
+            const AREA = renderedBossAttackArea(BOSS, sim2.scene, this.telegraphBoss, this.dangerArea);
+            if (AREA) {
+                this.drawBossTelegraph(AREA);
+                if (BOSS.id === sim2.boss.id) {
+                    this.bossTelegraph = AREA;
+                }
+            }
         }
     }
     drawWorkShadows(sim2) {
@@ -896,18 +901,20 @@ const DIORAMA = class Diorama {
         }
         this.drawDanger(sim2);
         feel?.drawGround(this, this.displayTimeMs);
-        const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2),
-            DISPLAY_BOSS = BOSS_VISIBLE ? this.bossPresentation.displayBoss(sim2.boss, sim2) : null;
+        const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2) && sim2.tower.phase !== 'summit',
+            DISPLAY_BOSSES = this.displayBosses || (this.displayBosses = []);
+        DISPLAY_BOSSES.length = 0;
         if (BOSS_VISIBLE) {
-            this.groundEllipse(
-                DISPLAY_BOSS.x,
-                DISPLAY_BOSS.y,
-                DISPLAY_BOSS.radius * 1.05,
-                DISPLAY_BOSS.radius * 0.75,
-                '#38472c33',
-            );
-            if (SIDES) {
-                this.ring(DISPLAY_BOSS.x, DISPLAY_BOSS.y, DISPLAY_BOSS.radius * 1.05, '#f0463c', 0.12);
+            for (const SOURCE of sim2.bosses) {
+                const BOSS = this.bossPresentation.displayBoss(SOURCE, sim2);
+                DISPLAY_BOSSES.push(BOSS);
+                this.groundEllipse(BOSS.x, BOSS.y, BOSS.radius * 1.05, BOSS.radius * 0.75, '#38472c33');
+                if (SIDES) {
+                    this.ring(BOSS.x, BOSS.y, BOSS.radius * 1.05, BOSS.isFinalBoss ? '#f5cc67' : '#f0463c', 0.12);
+                    if (BOSS.isFinalBoss) {
+                        this.ring(BOSS.x, BOSS.y, BOSS.radius * 1.15, '#fff1b788', 0.06);
+                    }
+                }
             }
         }
         const HIDDEN_MERGE_RESULT_IDS = PRESENTATION.hiddenUnitIds?.(sim2) || EMPTY_UNIT_IDS,
@@ -926,14 +933,9 @@ const DIORAMA = class Diorama {
                 );
             }
         }
-        if (BOSS_VISIBLE) {
-            this.addActor(
-                this.bossPresentation,
-                DISPLAY_BOSS,
-                0.785 * DISPLAY_BOSS.y - 0.62 * (DISPLAY_BOSS.z || 0),
-                0,
-                true,
-            );
+        for (let index = 0; index < DISPLAY_BOSSES.length; index++) {
+            const BOSS = DISPLAY_BOSSES[index];
+            this.addActor(this.bossPresentation, BOSS, 0.785 * BOSS.y - 0.62 * (BOSS.z || 0), -10000 - index, true);
         }
         if (!sim2.insideTower) {
             PRESENTATION.collectFood(this, sim2);
@@ -994,6 +996,18 @@ const DIORAMA = class Diorama {
             if (!LIVE_UNIT_IDS.has(ID)) {
                 PLAYER.dispose();
                 this.vectorPlayers.delete(ID);
+            }
+        }
+        const LIVE_BOSS_KEYS = new Set(sim2.bosses.map((boss) => boss.id + ':' + boss.generation));
+        for (const [KEY, INSTANCE] of this.bossPlayers) {
+            if (!LIVE_BOSS_KEYS.has(KEY)) {
+                INSTANCE.player.dispose();
+                this.bossPlayers.delete(KEY);
+            }
+        }
+        for (const ID of this.bossPresentation.attackDisplays.keys()) {
+            if (!sim2.bosses.some((boss) => boss.id === ID)) {
+                this.bossPresentation.attackDisplays.delete(ID);
             }
         }
         feel?.draw(this, this.displayTimeMs);
@@ -1063,7 +1077,7 @@ const DIORAMA = class Diorama {
         }
         this.bossAssets?.clear();
         this.bossSpeciesAssets.clear();
-        this.bossPresentation.attackDisplay = null;
+        this.bossPresentation.attackDisplays.clear();
         this.actors.length = 0;
         this.actorPool.length = 0;
         this.liveUnitIds.clear();

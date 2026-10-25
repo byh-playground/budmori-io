@@ -160,7 +160,7 @@ export function launchChestnutAttack(world, unit, action) {
     }
     R.launchTick = world.simulationTick;
     R.origin = { x: unit.x, y: unit.y, z: 0.35 * attackGeometryScale(R) };
-    const CANDIDATE = R.targetId === 'boss' ? world.boss : world._unitForId(R.targetId);
+    const CANDIDATE = world._unitForId(R.targetId);
     const T = action.prepareAim ?? (CANDIDATE?.generation === R.targetGeneration ? CANDIDATE : null);
     // A committed near-face point includes projectile radius, not the body's
     // contact radius. Never pursue a target after this point is captured.
@@ -264,7 +264,7 @@ export function resolveChestnutImpact(world, p, geometry, old) {
         return;
     }
     const AREA = ['fan', 'spread', 'converge'].includes(p.chestnutStage);
-    const PRIMARY = p.targetId === 'boss' ? world.boss : world._unitForId(p.targetId);
+    const PRIMARY = world._unitForId(p.targetId);
     const END = p.elapsed + 1e-9 >= p.path.duration;
     const DIRECT =
         PRIMARY?.generation === p.targetGeneration && PRIMARY.hp > 0 && areOpposingFactions(R.source, PRIMARY)
@@ -277,14 +277,14 @@ export function resolveChestnutImpact(world, p, geometry, old) {
     }
     const A = AttackAction.fromDTO(R.attack);
     A.advance(world.simulationTick);
-    const TARGETS = AREA ? [PRIMARY, world.boss, ...world.units] : [DIRECT ? PRIMARY : null];
+    const TARGETS = AREA ? [PRIMARY, ...world.combatUnits()] : [DIRECT ? PRIMARY : null];
     const SEEN = new Set();
     let secondary = 0;
     for (const T of TARGETS) {
         if (!T || T.hp <= 0 || !areOpposingFactions(R.source, T)) {
             continue;
         }
-        const ID = T === world.boss ? 'boss' : T.id,
+        const ID = T.id,
             KEY = attackTargetKey(ID, T.generation);
         if (SEEN.has(KEY)) {
             continue;

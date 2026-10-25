@@ -77,6 +77,9 @@ export class FarmSimulationScene extends SimulationScene {
         world.resolveFarmContacts(units, dt);
     }
     resolveLifeContacts(world, units) {
+        if (world.tower.active || world.farmBossEvent.phase !== 'idle') {
+            return;
+        }
         const { FARM_MODES } = this.dependencies;
         FARM_MODES.breed.resolveContacts(world, units);
     }
@@ -89,6 +92,11 @@ export class FarmSimulationScene extends SimulationScene {
             super.updateBattle(world, dt);
             return;
         }
-        world.boss.controller.update(world, dt);
+        if (this.updateBossPhase(world, dt)) {
+            return;
+        }
+        for (const BOSS of world.bosses) {
+            BOSS.controller.update(world, dt);
+        }
     }
 }

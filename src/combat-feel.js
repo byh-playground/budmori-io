@@ -14,7 +14,7 @@ export const COMBAT_FEEL_CONFIG = Object.freeze({
 });
 const BARLEY_SHRED_PRESENTATION = new BarleyArmorShredPresentation();
 // Only these primitive unit-land notice copies are owned by the display queue.
-// Garden notices, interpolation history and the longer-lived bossHit alias are not pooled.
+// Garden notices, interpolation history and the longer-lived boss hit records are not pooled.
 const CREATE_LANDING_EFFECT = () => ({
     sequence: 0,
     kind: 'unit-land',
@@ -156,7 +156,7 @@ class BossHitPresentation extends HitPresentation {
     color = '245,199,102';
     observe(feel, event, displayEvent) {
         feel.counts.hits++;
-        feel.bossHit = displayEvent;
+        feel.bossHits.set(event.targetId, displayEvent);
         feel.kick(event.strength, displayEvent.at);
         this.spawnNumber(feel, event, displayEvent.at, 'dealt');
     }
@@ -252,7 +252,7 @@ class CombatFeel {
         this.effects = [];
         this.landingPool = new OBJECT_POOL(CREATE_LANDING_EFFECT, resetLandingEffect, 48);
         this.poses = new Map();
-        this.bossHit = null;
+        this.bossHits = new Map();
         this.shakeAt = -1e9;
         this.shakePower = 0;
         this.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -299,7 +299,7 @@ class CombatFeel {
             }
             this.effects.length = 0;
             this.poses.clear();
-            this.bossHit = null;
+            this.bossHits.clear();
             return;
         }
         for (const E of notices) {
@@ -326,6 +326,11 @@ class CombatFeel {
             }
         }
         this.effects.length = retained;
+        for (const [ID, EVENT] of this.bossHits) {
+            if (displayTimeMs - EVENT.at >= 240) {
+                this.bossHits.delete(ID);
+            }
+        }
         for (const [ID, P] of this.poses) {
             if (displayTimeMs > P.until) {
                 this.poses.delete(ID);
@@ -338,8 +343,8 @@ class CombatFeel {
             ? 0
             : Math.sin(Math.min(1, (displayTimeMs - P.at) / 180) * Math.PI) * Math.min(0.2, P.strength * 0.12);
     }
-    boss(displayTimeMs) {
-        const E = this.bossHit;
+    boss(displayTimeMs, id) {
+        const E = this.bossHits.get(id);
         if (!E || this.reduced) {
             return {
                 x: 0,

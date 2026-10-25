@@ -15,19 +15,21 @@ export class SweepBossPattern extends BossPattern {
         area.reach = this.reachFor(boss) + pad;
         area.angle = 0;
     }
-    expectedHits(world, _targets) {
-        return world.bossGroundUnitsNear(world.boss.x, world.boss.y, this.reachFor(world.boss)).length;
+    expectedHits(world, _targets, boss) {
+        return world.bossGroundUnitsNear(boss.x, boss.y, this.reachFor(boss), boss).length;
     }
-    updateActive(world, action, dt) {
+    updateActive(world, action, dt, boss) {
         const Q0 = Math.max(0, (action.phaseElapsed - dt) / this.config.active),
             Q1 = Math.min(1, action.phaseElapsed / this.config.active);
         for (const ARM_START of Object.values(SWEEP_HAND_STARTS)) {
             world.resolveBossWedge(
                 action,
                 action.id,
-                this.reachFor(world.boss),
+                this.reachFor(boss),
                 ARM_START + Math.PI * Q0,
                 ARM_START + Math.PI * Q1,
+                undefined,
+                boss,
             );
         }
         if (action.phaseElapsed >= this.config.active - 1e-9) {

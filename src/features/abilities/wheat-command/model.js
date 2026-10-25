@@ -66,7 +66,7 @@ export class WheatCommandModel {
         // Preserve the field roster and its order; the active encounter body is
         // another same-faction recipient, not a separate buff implementation.
         const UNITS = sim.units || [],
-            RECIPIENTS = sim.boss?.active && !UNITS.includes(sim.boss) ? [...UNITS, sim.boss] : UNITS;
+            RECIPIENTS = [...UNITS, ...sim.bosses.filter((boss) => boss.active && !UNITS.includes(boss))];
         let affected = 0;
         for (const UNIT of RECIPIENTS) {
             const DX = UNIT.x - source.x,

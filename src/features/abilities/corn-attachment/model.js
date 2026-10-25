@@ -39,7 +39,7 @@ export class CornAttachmentModel {
             return null;
         }
         const TICK = world.simulationTick,
-            TARGET_ID = target === world.boss ? 'boss' : target.id,
+            TARGET_ID = target.id,
             TARGET_GENERATION = target.generation,
             MANAGER = world.cornAttachments || (world.cornAttachments = this.createManager());
         let group = [...MANAGER.groups]
@@ -89,7 +89,7 @@ export class CornAttachmentModel {
     }
     static attachEvolved(world, target, projectile, record, damageScale = 1) {
         const MANAGER = world.cornAttachments,
-            TARGET_ID = target === world.boss ? 'boss' : target.id,
+            TARGET_ID = target.id,
             SHOT = record.shots[projectile.cornSlot];
         if (record.firstAttachTick === null) {
             record.firstAttachTick = world.simulationTick;
@@ -225,9 +225,6 @@ export class CornAttachmentModel {
         }
     }
     static resolveTarget(world, targetId, generation) {
-        if (targetId === 'boss') {
-            return world.boss?.generation === generation ? world.boss : null;
-        }
         const TARGET = world._unitForId(targetId);
         return TARGET?.generation === generation ? TARGET : null;
     }
@@ -256,7 +253,7 @@ export class CornAttachmentModel {
         );
         world.combat('corn-attachment-explosion', {
             sourceUnit: RECORD.owner,
-            targetUnit: target === world.boss ? 'boss' : target.id,
+            targetUnit: target.id,
             x: target.x,
             y: target.y,
             multiplier: attachment.damageMultiplier,
@@ -306,7 +303,7 @@ export class CornAttachmentModel {
         );
         world.combat('corn-attachment-explosion', {
             sourceUnit: ATTACKER.id,
-            targetUnit: target === world.boss ? 'boss' : target.id,
+            targetUnit: target.id,
             x: target.x,
             y: target.y,
             multiplier: attachment.damageMultiplier,

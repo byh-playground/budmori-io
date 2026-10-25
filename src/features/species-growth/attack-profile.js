@@ -1,3 +1,4 @@
+import { isBossActorId, isCombatActorId } from '../../combat-identity.js';
 import { baseUnitStatsFor } from '../../unit-stats.js';
 
 const EXACT_KEYS = (value, keys) =>
@@ -51,7 +52,7 @@ export function attackGeometryScale(record) {
 export function attackRecordShape(record, keys) {
     if (
         !EXACT_KEYS(record, `${keys}${Object.hasOwn(record || {}, 'geometryScale') ? ' geometryScale' : ''}`) ||
-        (record.owner !== 'boss' && (!Number.isSafeInteger(record.owner) || record.owner < 1)) ||
+        !isCombatActorId(record.owner) ||
         !Number.isFinite(attackGeometryScale(record)) ||
         attackGeometryScale(record) <= 0 ||
         !Number.isFinite(attackGeometryScale(record) ** 2) ||
@@ -62,13 +63,13 @@ export function attackRecordShape(record, keys) {
     const INPUTS = record.budgetInputs,
         PROFILE = INPUTS?.profile;
     if (!Object.hasOwn(INPUTS || {}, 'profile')) {
-        return record.owner !== 'boss';
+        return !isBossActorId(record.owner);
     }
     if (
         !EXACT_KEYS(PROFILE, 'attackPower flat pct permanentMultiplier') ||
         !Object.values(PROFILE).every(Number.isFinite) ||
         PROFILE.permanentMultiplier < 0 ||
-        (record.owner === 'boss' && record.source?.faction !== undefined && record.source.faction !== 'enemy')
+        (isBossActorId(record.owner) && record.source?.faction !== undefined && record.source.faction !== 'enemy')
     ) {
         return false;
     }

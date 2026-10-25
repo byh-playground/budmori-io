@@ -30,11 +30,11 @@ export function createBossPatternBehaviors(dependencies) {
         }
     }
     class WindupBossPatternPhase extends BossPatternPhase {
-        update(world, action, dt, living) {
+        update(world, action, dt, living, boss) {
             const CONFIG_LOCAL = BOSS_PATTERN_CONFIG[action.id],
                 REMAINING = CONFIG_LOCAL.windup - action.phaseElapsed;
             if (!action.locked) {
-                const TARGET = world.bossTargetForPattern(action.id, living);
+                const TARGET = world.bossTargetForPattern(action.id, living, boss);
                 if (TARGET) {
                     action.targetId = TARGET.id;
                     action.target = {
@@ -42,39 +42,39 @@ export function createBossPatternBehaviors(dependencies) {
                         y: TARGET.y,
                         z: TARGET.z || 0,
                     };
-                    const DESIRED = Math.atan2(TARGET.y - world.boss.y, TARGET.x - world.boss.x),
+                    const DESIRED = Math.atan2(TARGET.y - boss.y, TARGET.x - boss.x),
                         DELTA = Math.atan2(Math.sin(DESIRED - action.aim), Math.cos(DESIRED - action.aim));
                     action.aim += CLAMP(DELTA, -BOSS_AIM_TURN_RATE * dt, BOSS_AIM_TURN_RATE * dt);
-                    world.boss.angle = world.boss.facing = action.aim;
+                    boss.angle = boss.facing = action.aim;
                 }
                 if (REMAINING <= 0.25 + 1e-9) {
                     action.locked = true;
                     world.combat('boss-pattern-lock', {
                         patternId: action.id,
-                        attackId: world.boss.attackId + 1,
+                        attackId: boss.attackId + 1,
                         targetId: action.targetId || 0,
-                        x: action.target?.x ?? world.boss.x,
-                        y: action.target?.y ?? world.boss.y,
+                        x: action.target?.x ?? boss.x,
+                        y: action.target?.y ?? boss.y,
                         angle: action.aim,
                     });
                 }
             }
             if (action.phaseElapsed >= CONFIG_LOCAL.windup - 1e-9) {
                 action.motionDelay = Math.max(0, dt + REMAINING);
-                world.activateBossPattern(action);
+                world.activateBossPattern(action, boss);
             }
             return;
         }
     }
     class ActiveBossPatternPhase extends BossPatternPhase {
-        update(world, action, dt, _living) {
-            PATTERNS[action.id].updateActive(world, action, dt);
+        update(world, action, dt, _living, boss) {
+            PATTERNS[action.id].updateActive(world, action, dt, boss);
         }
     }
     class RecoverBossPatternPhase extends BossPatternPhase {
-        update(world, action, _dt, _living) {
-            if (action.phaseElapsed >= scaleAttackRecovery(BOSS_PATTERN_CONFIG[action.id].recover, world.boss)) {
-                world.boss.patternRuntime.active = null;
+        update(_world, action, _dt, _living, boss) {
+            if (action.phaseElapsed >= scaleAttackRecovery(BOSS_PATTERN_CONFIG[action.id].recover, boss)) {
+                boss.patternRuntime.active = null;
             }
         }
     }
@@ -88,8 +88,8 @@ export function createBossPatternBehaviors(dependencies) {
         forId(id) {
             return PATTERNS[id];
         },
-        update(world, action, dt, living) {
-            (PHASES[action.phase] || UNKNOWN_PHASE).update(world, action, dt, living);
+        update(world, action, dt, living, boss) {
+            (PHASES[action.phase] || UNKNOWN_PHASE).update(world, action, dt, living, boss);
         },
     });
 }
