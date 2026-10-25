@@ -1,12 +1,8 @@
 .formation-dock {
-    position: static;
     align-self: end;
-    height: auto;
-    min-height: 0;
     justify-self: center;
     max-width: 100%;
     display: grid;
-    gap: 7px;
     pointer-events: none;
 }
 .formation-dock[hidden] {
@@ -14,97 +10,171 @@
 }
 .formation-slots {
     display: flex;
-    gap: 9px;
-    align-items: center;
+    flex-wrap: wrap;
+    align-items: start;
+    justify-content: center;
+    gap: var(--ui-s2);
+    max-width: min(100%, 720px);
 }
 .formation-slot {
     display: grid;
-    grid-template-columns: 42px minmax(70px, 1fr);
-    gap: 7px;
-    padding: 6px;
-    background: #fcf8eaf0;
-    border: 1px solid #bcc9ae;
-    border-radius: 12px;
-    align-items: center;
-    min-width: 124px;
+    justify-items: center;
+    width: 64px;
+    min-width: 0;
+    gap: var(--ui-s1);
+    font-variant-numeric: tabular-nums;
 }
 .formation-icon {
-    width: 42px;
-    height: 42px;
-    border-radius: 8px;
-    background: #597357;
+    position: relative;
     display: grid;
     place-items: center;
-    position: relative;
+    width: var(--ui-tap);
+    height: var(--ui-tap);
+    padding: 0;
+    border: var(--ui-bw) solid var(--ui-primary);
+    border-radius: var(--ui-r-s);
+    background: var(--ui-primary);
+    color: var(--ui-primary-ink);
+    font-size: 26px;
+    line-height: 1;
     overflow: hidden;
-    color: #fff5cb;
-    font-size: 28px;
+    pointer-events: auto;
+    cursor: pointer;
+    text-shadow: none;
+}
+.formation-icon:focus-visible {
+    outline: 3px solid var(--ui-focus);
+    outline-offset: 3px;
 }
 .formation-clock {
     position: absolute;
     inset: 0;
-    background: conic-gradient(#14282dcc 0deg, #14282dcc var(--cooldown, 0deg), transparent var(--cooldown, 0deg));
+    background: conic-gradient(
+        var(--ui-dim) 0deg,
+        var(--ui-dim) var(--cooldown, 0deg),
+        transparent var(--cooldown, 0deg)
+    );
+    pointer-events: none;
 }
-.formation-readout {
-    display: contents;
-}
-.formation-readout strong {
-    grid-column: 2;
-    grid-row: 1;
-    font-size: 11px;
-    color: #344834;
-}
-.formation-readout small {
-    grid-column: 2;
-    grid-row: 2;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 1px;
-    font-size: 9px;
-    text-align: right;
-    white-space: nowrap;
-    color: #53614c;
-    font-variant-numeric: tabular-nums;
+.formation-lv {
+    position: absolute;
+    right: 2px;
+    bottom: 2px;
+    padding: 1px 2px;
+    background: var(--ui-primary);
+    color: var(--ui-primary-ink);
+    border-radius: 2px;
+    font-style: normal;
+    font-size: var(--ui-fs-1);
+    font-weight: var(--ui-fw-b);
 }
 .formation-charge {
-    grid-column: 1;
-    grid-row: 2;
-    background: #d9dfca;
+    width: var(--ui-tap);
     height: 5px;
+    background: var(--ui-gauge-track);
+    border-radius: var(--ui-r-pill);
     overflow: hidden;
-    border-radius: 5px;
 }
 .formation-charge i {
     display: block;
     width: 0;
     height: 100%;
-    background: #7c9b58;
+    background: var(--ui-gauge-ally);
 }
-.formation-slot[data-ready='true'] {
-    border-color: var(--ui-primary);
-    border-width: var(--ui-bw);
+.formation-slot .formation-status {
+    color: var(--ui-ink);
+    font-size: var(--ui-fs-1);
+    font-weight: var(--ui-fw-b);
+    line-height: 1.25;
+    text-align: center;
+    white-space: nowrap;
+    text-shadow:
+        0 0 2px var(--ui-panel),
+        0 0 4px var(--ui-panel);
 }
-@media (max-width: 620px) {
-    .formation-dock {
-        gap: 4px;
+.formation-slot[data-state='ready'] .formation-icon,
+.formation-slot[data-state='prepare'] .formation-icon {
+    outline: 2px solid var(--ui-focus);
+    outline-offset: 2px;
+}
+.formation-slot[data-state='prepare'] .formation-icon {
+    border-style: dashed;
+}
+.formation-slot[data-state='recover'] .formation-icon {
+    border-color: var(--ui-focus);
+}
+.formation-dock[data-role='boss'] .formation-charge i {
+    background: var(--ui-gauge-enemy);
+}
+#bossRelicHost {
+    grid-area: 3 / 1 / 4 / -1;
+    justify-self: center;
+    margin-top: var(--ui-s1);
+}
+.bossbar #bossHealthNote {
+    grid-area: 4 / 1 / 5 / 3;
+}
+.bossbar #fightRetreat {
+    grid-area: 4 / 3;
+}
+.relic-detail {
+    position: fixed;
+    width: min(360px, calc(100vw - 32px));
+    max-height: calc(100dvh - 32px);
+    margin: auto;
+    padding: var(--ui-s4);
+    border: var(--ui-bw) solid var(--ui-line);
+    border-radius: var(--ui-r-l);
+    background: var(--ui-card);
+    color: var(--ui-ink);
+    overflow: auto;
+    text-shadow: none;
+}
+.relic-detail::backdrop {
+    background: var(--ui-dim);
+}
+.relic-detail__heading {
+    display: flex;
+    align-items: center;
+    gap: var(--ui-s2);
+}
+.relic-detail h2 {
+    flex: 1;
+    margin: 0;
+    font-size: var(--ui-fs-3);
+}
+.relic-detail__close {
+    flex: 0 0 var(--ui-tap);
+    min-height: var(--ui-tap);
+    border: var(--ui-bw) solid var(--ui-line);
+    border-radius: var(--ui-r-s);
+    background: var(--ui-panel);
+    color: var(--ui-ink);
+    font-size: 24px;
+    cursor: pointer;
+}
+.relic-detail p,
+.relic-detail dl {
+    margin: var(--ui-s3) 0 0;
+    font-size: var(--ui-fs-2);
+    line-height: 1.5;
+}
+.relic-detail dt {
+    margin-top: var(--ui-s2);
+    font-weight: var(--ui-fw-b);
+}
+.relic-detail dd {
+    margin: 0;
+}
+@media (max-height: 550px) {
+    #bossRelicHost {
+        grid-area: 6 / 1 / 7 / -1;
     }
-    .formation-slot {
-        grid-template-columns: 32px minmax(50px, 1fr);
-        min-width: 0;
-        gap: 4px;
-        padding: 4px;
+    .bossbar #bossHealthNote {
+        grid-area: 7 / 1;
     }
-    .formation-icon {
-        width: 32px;
-        height: 32px;
-        font-size: 23px;
-    }
-    .formation-readout {
-        min-width: 0;
-    }
-    .formation-slots {
-        gap: 4px;
+    .bossbar #fightRetreat {
+        grid-area: 7 / 2;
     }
 }
 /* One footer reserves real rows for skills, gameplay controls and utility actions. */
@@ -200,61 +270,5 @@
         padding-inline: 8px;
         font-size: 11px;
         white-space: nowrap;
-    }
-}
-/* 최소 UI: 아직 장착하지 않은 빈 칸은 전투 화면에 두지 않고, 장착한 스킬도 판 없이 보여 준다. */
-.formation-slot[data-empty='true'] {
-    display: none;
-}
-.formation-slot {
-    background: transparent;
-    border-color: transparent;
-}
-/* 스킬 칸은 아이콘, 레벨, 충전 막대만. 많아지면 줄바꿈해서 화면 밖으로 나가지 않는다. */
-.formation-slots {
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 8px;
-    max-width: min(100%, 520px);
-}
-.formation-slot {
-    display: grid;
-    grid-template-columns: 1fr;
-    width: 48px;
-    min-width: 0;
-    padding: 0;
-    gap: 4px;
-}
-.formation-icon {
-    width: 48px;
-    height: 48px;
-    font-size: 26px;
-}
-.formation-lv {
-    position: absolute;
-    right: 2px;
-    bottom: 1px;
-    font-style: normal;
-    font-size: 11px;
-    font-weight: 800;
-    line-height: 1;
-    color: #fff;
-    text-shadow: 0 1px 2px #000a;
-}
-.formation-charge {
-    grid-column: 1;
-    grid-row: 2;
-}
-.formation-slot[data-ready='true'] .formation-icon {
-    box-shadow: 0 0 0 3px #f2d36b;
-}
-@media (max-width: 620px) {
-    .formation-slot {
-        width: 40px;
-    }
-    .formation-icon {
-        width: 40px;
-        height: 40px;
-        font-size: 22px;
     }
 }

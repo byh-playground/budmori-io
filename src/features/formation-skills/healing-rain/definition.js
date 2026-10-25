@@ -9,4 +9,5 @@ export const DEFINITION = Object.freeze({
     upgradeFactor: 1.5,
     upgradeStep: 0,
     upgradeUnit: ' 회복',
+    durationSeconds: 3,
 });

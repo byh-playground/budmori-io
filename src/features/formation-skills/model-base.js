@@ -96,6 +96,7 @@ export class FlyingSkill extends FormationSkill {
             bodyRadius: BODY.bodyRadius,
             targetId: owner.targetId(target),
             targetGeneration: owner.targetGeneration?.(target),
+            targetCount: PROFILE.targetCount,
             duration: PROFILE.upgradeBase + PROFILE.upgradeStep * (slot.level - 1),
             pulse: 0,
             lastPulse: -10,
@@ -112,8 +113,8 @@ export class FlyingSkill extends FormationSkill {
             const BODY = targetBodyDimensions(TARGET);
             const ID = owner.targetId(TARGET),
                 GENERATION = owner.targetGeneration?.(TARGET);
-            if (owner.role === 'boss' && (ID !== effect.targetId || GENERATION !== effect.targetGeneration)) {
-                effect.readyAt = effect.age + 0.5;
+            if (ID !== effect.targetId || GENERATION !== effect.targetGeneration) {
+                effect.readyAt = effect.age + this.profile(owner).retargetDelaySeconds;
             }
             effect.targetId = ID;
             effect.targetGeneration = GENERATION;

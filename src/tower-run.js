@@ -33,6 +33,9 @@ export function freshTowerRun() {
         passives: {},
         relics: new Map(),
         bossRelics: new Map(),
+        bossCards: [],
+        bossPassives: {},
+        bossFallen: 0,
         bossCardDraw: null,
         since: { battle: 0, power: 1, event: 1 },
         // This fight's: allies fallen so far and the units whose undying card is already spent.
@@ -99,12 +102,17 @@ export function passiveCard(id) {
 }
 
 // The run's passive cards as one {id: total} table: the sum of the taken cards' values.
-export function passiveTotals(cards) {
+export const BOSS_CARD_PROFILE = Object.freeze({ 'regen-pct': 0.25, 'lifesteal-flat': 0.25, helper: 0.25 });
+export function cardValue(card, rarity, role = 'player') {
+    return card.values[rarity] * (role === 'boss' ? (BOSS_CARD_PROFILE[card.id] ?? 1) : 1);
+}
+
+export function passiveTotals(cards, role = 'player') {
     const TOTALS = {};
     for (const TAKEN of cards) {
         const CARD = passiveCard(TAKEN.id);
         if (CARD) {
-            TOTALS[CARD.id] = (TOTALS[CARD.id] || 0) + CARD.values[TAKEN.rarity];
+            TOTALS[CARD.id] = (TOTALS[CARD.id] || 0) + cardValue(CARD, TAKEN.rarity, role);
         }
     }
     return TOTALS;
@@ -131,8 +139,8 @@ export const STAT_CARDS = Object.freeze([
 ]);
 
 // What the player sees: "+10%", "+2", "+5%p", "+0.5% 체력/초".
-export function statCardText(card, rarity) {
-    const VALUE = card.values[rarity];
+export function statCardText(card, rarity, role = 'player') {
+    const VALUE = cardValue(card, rarity, role);
     if (card.stat === 'critChance' || card.stat === 'lifesteal') {
         return `+${Math.round(VALUE * 1000) / 10}%p`;
     }
@@ -150,13 +158,13 @@ export function statCard(id) {
 }
 
 // The run's cards as one {stat: {flat, pct}} table for the stat resolver.
-export function runStatModifiers(cards) {
+export function runStatModifiers(cards, role = 'player') {
     const MODS = {};
     for (const TAKEN of cards) {
         const CARD = statCard(TAKEN.id);
         if (CARD) {
             MODS[CARD.stat] ??= { flat: 0, pct: 0 };
-            MODS[CARD.stat][CARD.mode] += CARD.values[TAKEN.rarity];
+            MODS[CARD.stat][CARD.mode] += cardValue(CARD, TAKEN.rarity, role);
         }
     }
     return MODS;
@@ -261,25 +269,42 @@ export function rollEventOffers({ world, random }) {
     return OFFERS;
 }
 
-// Exactly one receipt per successful strengthening-card selection, including an exhausted pool.
-export function drawBossCard(tower, random, time, slots = 3, maxLevel = 5) {
-    const POOL = BOSS_SKILL_IDS.filter(
-            (id) =>
-                (tower.bossRelics.get(id) || 0) < maxLevel &&
-                (tower.bossRelics.has(id) || tower.bossRelics.size < slots),
-        ),
-        ID = POOL.length ? POOL[Math.floor(random() * POOL.length)] : '',
-        PREVIOUS = tower.bossRelics.get(ID) || 0;
-    if (ID) {
-        tower.bossRelics.set(ID, PREVIOUS + 1);
+// One shared acquisition rule; receipt timing never owns the card state.
+export function applyTowerCard({ cards, relics }, card) {
+    const PREVIOUS = card.type === 'skill' ? relics.get(card.id) || 0 : cardStacks(cards, card.id);
+    if (card.type === 'skill') {
+        relics.set(card.id, PREVIOUS + 1);
+    } else {
+        cards.push({ id: card.id, rarity: card.rarity });
     }
+    return { level: PREVIOUS + 1, status: PREVIOUS ? 'upgraded' : 'acquired' };
+}
+
+// Same offers, rarity and limits as the player, with only explicit content exclusions.
+export function drawBossCard(tower, random, time, slots = 3, maxLevel = 5) {
+    const STATE = { cards: tower.bossCards, relics: tower.bossRelics },
+        OFFERS = rollCardOffers({
+            ...STATE,
+            floor: tower.floor,
+            skillIds: BOSS_SKILL_IDS,
+            passiveIds: PASSIVE_CARDS.filter((card) => card.id !== 'undying').map((card) => card.id),
+            relicSlots: slots,
+            relicMaxLevel: maxLevel,
+            random,
+        }),
+        SELECTED_INDEX = OFFERS.length ? Math.floor(random() * OFFERS.length) : -1,
+        CARD = OFFERS[SELECTED_INDEX] || null,
+        RESULT = CARD ? applyTowerCard(STATE, CARD) : { level: 0, status: 'maxed' };
     tower.bossCardDraw = {
         serial: (tower.bossCardDraw?.serial || 0) + 1,
         floor: tower.floor,
-        id: ID,
-        level: ID ? PREVIOUS + 1 : 0,
-        status: ID ? (PREVIOUS ? 'upgraded' : 'acquired') : 'maxed',
-        until: time + 1.2,
+        offers: OFFERS,
+        selectedIndex: SELECTED_INDEX,
+        card: CARD,
+        id: CARD?.id || '',
+        ...RESULT,
+        startedAt: time,
+        until: time + (CARD ? 1.8 : 0),
     };
     return tower.bossCardDraw;
 }

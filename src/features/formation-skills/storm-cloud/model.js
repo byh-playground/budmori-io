@@ -27,7 +27,7 @@ export class StormCloudSkill extends FlyingSkill {
                 z: BODY.topZ,
                 bodyRadius: BODY.bodyRadius,
                 bodyHeight: BODY.bodyHeight,
-                readyAt: OLD?.readyAt ?? effect.age + 0.5,
+                readyAt: OLD?.readyAt ?? effect.age + PROFILE.retargetDelaySeconds,
             };
         });
         if (TARGETS.length === 0) {

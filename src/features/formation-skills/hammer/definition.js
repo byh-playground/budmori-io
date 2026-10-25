@@ -9,4 +9,6 @@ export const DEFINITION = Object.freeze({
     upgradeFactor: 1.5,
     upgradeStep: 0,
     upgradeUnit: ' 피해',
+    stunSeconds: 1,
+    durationSeconds: 1.2,
 });

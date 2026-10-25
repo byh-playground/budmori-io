@@ -431,7 +431,7 @@ export class UnitPresentation {
                 u.z + BOB,
             );
         const BODY = unitBodyDefinition(u.species),
-            GIANT_SCALE = u.giantUntil > sim.time ? 3 : 1,
+            GIANT_SCALE = u.giantUntil > sim.time ? (u.giantSizeMultiplier ?? 3) : 1,
             SCALE = unitDisplayScale(
                 BODY,
                 u.bodyScale,
