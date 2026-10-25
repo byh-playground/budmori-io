@@ -1799,6 +1799,14 @@ try {
     REPORT.errors = ERRORS;
     REPORT.requests = [...REQUESTS];
     fs.writeFileSync(path.join(OUTPUT, 'report.json'), JSON.stringify(REPORT, null, 2));
+    // Assertions have finished; stop accepting work and close remaining HTTP keep-alive sockets
+    // while Chromium shuts down, rather than spending the same deadline on sequential idle drains.
+    const SERVER_CLOSED = new Promise((resolve) => SERVER.close(resolve));
+    SERVER.closeAllConnections();
     await browser?.close();
-    await new Promise((resolve) => SERVER.close(resolve));
+    REPORT.cleanupBrowserClosedAt = new Date().toISOString();
+    fs.writeFileSync(path.join(OUTPUT, 'report.json'), JSON.stringify(REPORT, null, 2));
+    await SERVER_CLOSED;
+    REPORT.cleanupFinishedAt = new Date().toISOString();
+    fs.writeFileSync(path.join(OUTPUT, 'report.json'), JSON.stringify(REPORT, null, 2));
 }
