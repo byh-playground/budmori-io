@@ -2194,16 +2194,12 @@ function sync(display, now, notices) {
     syncFlag('mergeNotice', 'hidden', home || FARM_EVENT_ACTIVE);
     syncAttribute('merge', 'aria-label', `합성${MERGE_STATUS.available ? '' : ' 불가'} · ${MERGE_STATUS.reason}`);
     syncText('mergeNotice', MERGE_STATUS.reason);
-    let displayedCount = 0;
     let worldCount = 0;
     let armyCurrent = 0;
     let armyMax = 0;
     let armyLiving = 0;
     let armyTotal = 0;
     for (const UNIT of display.units) {
-        if (!UNIT.isBattleOnlySummon) {
-            displayedCount++;
-        }
         if (UNIT.faction === CONFIG.factions.PLAYER) {
             armyCurrent += Math.max(0, Math.min(UNIT.maxHp, UNIT.hp));
             armyMax += UNIT.maxHp;
@@ -2211,7 +2207,7 @@ function sync(display, now, notices) {
             armyTotal++;
         }
     }
-    for (const UNIT of W.units) {
+    for (const UNIT of W.unitCollection.items) {
         if (!UNIT.isBattleOnlySummon) {
             worldCount++;
         }
@@ -2226,7 +2222,7 @@ function sync(display, now, notices) {
     );
     syncBattleCommands(W, !home && fightActive());
     syncHand(W, !home && fightActive());
-    syncText('count', displayedCount);
+    syncText('count', worldCount);
     syncText('capacity', personalGarden?.capacity ?? CONFIG.farm.capacity.max);
     const PROGRESSION = (personalGarden || W).playerProgression,
         LEVEL = overallLevel(PROGRESSION),

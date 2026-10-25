@@ -165,6 +165,7 @@ try {
     });
     await page.waitForFunction(() => document.querySelector('#startFloor').max === '80');
     assert.match(await page.locator('#startFloorValue').innerText(), /80/);
+    assert.equal(await page.locator('#count').innerText(), '1000', 'the farm header counts owned regular troops');
     await page.locator('#bossChallenge').click();
     await page.locator('#deckGo').click();
     await page.evaluate(() => {
@@ -191,12 +192,14 @@ try {
     REPORT.stages.deployment = await page.evaluate(() => ({
         field: BUDMORI.sim.fieldFighterCount,
         cap: BUDMORI.sim.frontlineLimit,
+        owned: Number(document.querySelector('#count').textContent),
         reserves: [...BUDMORI.sim.handCounts.values()].reduce((sum, count) => sum + count, 0),
         rendered: globalThis.__towerRenderedIds.size,
         elapsed: (globalThis.__towerDeploymentEnd - globalThis.__towerDeploymentStart) / 20,
         mode: BUDMORI.sim.battleCommand,
     }));
     assert.equal(REPORT.stages.deployment.cap, 500);
+    assert.equal(REPORT.stages.deployment.owned, 1000, 'benching must not shrink the owned-population header');
     assert.equal(REPORT.stages.deployment.reserves, 500);
     assert.equal(REPORT.stages.deployment.mode, 'engage');
     // Native post-step observation includes the boss drop but excludes browser polling/render latency.
@@ -246,6 +249,7 @@ try {
         const WORLD = BUDMORI.sim;
         return {
             mode: WORLD.battleCommand,
+            owned: Number(document.querySelector('#count').textContent),
             moved: before.filter((point) => {
                 const UNIT = WORLD.units.find((unit) => unit.id === point.id);
                 return UNIT && Math.hypot(UNIT.x - point.x, UNIT.y - point.y) > 0.05;
@@ -256,6 +260,7 @@ try {
         };
     }, BEFORE);
     assert.equal(REPORT.stages.retreat.mode, 'retreat');
+    assert.equal(REPORT.stages.retreat.owned, 1000, 'command switches preserve the owned-population header');
     assert.ok(REPORT.stages.retreat.moved > 0, 'retreat must move actual frontline bodies');
     assert.deepEqual(REPORT.stages.retreat.selected, ['retreat']);
     await capture('500-frontline-retreat-landscape.png');
