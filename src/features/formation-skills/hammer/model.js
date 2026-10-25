@@ -10,7 +10,8 @@ export class HammerSkill extends FormationSkill {
         if (!TARGET) {
             return false;
         }
-        const BODY = targetBodyDimensions(TARGET);
+        const PROFILE = this.profile(owner),
+            BODY = targetBodyDimensions(TARGET);
         owner.addEffect(DEFINITION.id, {
             x: TARGET.x,
             y: TARGET.y,
@@ -18,15 +19,17 @@ export class HammerSkill extends FormationSkill {
             bodyHeight: BODY.bodyHeight,
             bodyRadius: BODY.bodyRadius,
             targetId: owner.targetId(TARGET),
-            damage: this.power(slot.level, this.definition.upgradeBase),
+            targetGeneration: owner.targetGeneration?.(TARGET),
+            damage: this.power(slot.level, PROFILE.upgradeBase),
+            stunSeconds: PROFILE.stunSeconds,
             impacted: false,
-            duration: 1.2,
+            duration: PROFILE.durationSeconds,
         });
         return true;
     }
     update(owner, effect, dt) {
         effect.age += dt;
-        const TARGET = owner.target(effect.targetId);
+        const TARGET = owner.target(effect.targetId, effect.targetGeneration);
         if (TARGET && !effect.impacted) {
             const BODY = targetBodyDimensions(TARGET);
             effect.x = TARGET.x;
@@ -39,7 +42,7 @@ export class HammerSkill extends FormationSkill {
             effect.impacted = true;
             if (TARGET) {
                 owner.damage(TARGET, effect.damage);
-                TARGET.stun = Math.max(TARGET.stun || 0, 1);
+                TARGET.stun = Math.max(TARGET.stun || 0, effect.stunSeconds ?? this.definition.stunSeconds);
             }
         }
         return effect.age < effect.duration;

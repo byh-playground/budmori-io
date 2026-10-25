@@ -10,11 +10,12 @@ export class HealingRainSkill extends FormationSkill {
         if (owner.injuredAllies().length === 0) {
             return false;
         }
+        const PROFILE = this.profile(owner);
         owner.addEffect(DEFINITION.id, {
             x: 0,
             y: 0,
-            duration: 3,
-            total: this.power(slot.level, this.definition.upgradeBase),
+            duration: PROFILE.durationSeconds,
+            total: this.power(slot.level, PROFILE.upgradeBase),
         });
         return true;
     }

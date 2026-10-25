@@ -165,8 +165,9 @@ export class FormationSkills {
     }
     end() {
         this.releaseBossHealth();
-        for (const UNIT of this.world.combatUnits({ includeInactive: true })) {
+        for (const UNIT of [...this.members, this.world.boss]) {
             UNIT.giantUntil = 0;
+            UNIT.giantSizeMultiplier = MODELS.get('giant').definition.sizeMultiplier;
             UNIT.giantEndedAt = -10;
         }
         this.world.unitCollection.removeWhere((unit) => unit.isFormationClone, { markProgress: false });
@@ -181,12 +182,14 @@ export class FormationSkills {
             return;
         }
         for (const SLOT of this.slots) {
-            const ROLE = SLOT.role || 'player';
-            if (ROLE !== (event.role || 'player')) {
+            const ROLE = SLOT.role || 'player',
+                CONTEXT = this.contextFor(ROLE),
+                ALLY_FACTION = event.allyDeaths > 0 ? event.sourceFaction : null;
+            if (ALLY_FACTION ? ALLY_FACTION !== CONTEXT.friendlyFaction : ROLE !== (event.role || 'player')) {
                 continue;
             }
             const MODEL = MODELS.get(SLOT.id),
-                DEFINITION = ROLE === 'boss' ? MODEL.profile(this.bossContext) : MODEL.definition;
+                DEFINITION = MODEL.profile(CONTEXT);
             SLOT.charge = Math.min(DEFINITION.required, SLOT.charge + Math.max(0, event[DEFINITION.condition] || 0));
         }
     }
@@ -369,15 +372,11 @@ export class FormationSkills {
         if (!target || target.hp <= 0 || target.faction !== this.hostileFaction) {
             return;
         }
-        if (this.role === 'boss') {
-            const GUARD = target.ability?.receiveGuard?.(this.world);
-            amount *= (GUARD?.receivedDamageMultiplier ?? 1) * this.world.passiveReceivedScale(target);
-            target.ability?.receiveRawDamage?.(this.world, amount, this.world.boss, null);
-        }
+        const GUARD = target.ability?.receiveGuard?.(this.world);
+        amount *= (GUARD?.receivedDamageMultiplier ?? 1) * this.world.passiveReceivedScale(target);
+        target.ability?.receiveRawDamage?.(this.world, amount);
         applyDamage(target, amount, { armor: this.world.combatTargetDefense(target).armor });
-        if (this.role === 'boss') {
-            this.world.passiveUndying(target);
-        }
+        this.world.passiveUndying(target);
         target.flash = 0.3;
         // A skill hit reads like any other hit: a burst on the body, a recoil, a shake. Bigger hits are stronger.
         const IS_BOSS = target === this.world.boss,

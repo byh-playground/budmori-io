@@ -18,7 +18,9 @@ export const FORMATION_SKILL_DEFINITIONS = Object.freeze([
     SKILL_7,
     SKILL_8,
 ]);
-export const BOSS_SKILL_IDS = Object.freeze(['lightning', 'meteor', 'meteor-shower', 'ufo', 'storm-cloud']);
+export const BOSS_SKILL_IDS = Object.freeze(
+    FORMATION_SKILL_DEFINITIONS.filter((definition) => definition.id !== 'copy').map((definition) => definition.id),
+);
 export const FORMATION_MAX_LEVEL = 10;
 export const FORMATION_COOLDOWN_SECONDS = 5;
 export function formationUpgradeValue(definition, level) {
@@ -74,6 +76,11 @@ export function isValidFormationRuntime(runtime) {
             !FORMATION_SKILL_DEFINITIONS.some(({ id }) => id === EFFECT.kind) ||
             (EFFECT.role !== undefined && !['player', 'boss'].includes(EFFECT.role)) ||
             (EFFECT.role === 'boss' && !BOSS_SKILL_IDS.includes(EFFECT.kind)) ||
+            ['unitGeneration', 'targetGeneration'].some(
+                (key) => EFFECT[key] !== undefined && (!Number.isSafeInteger(EFFECT[key]) || EFFECT[key] < 0),
+            ) ||
+            (EFFECT.targetCount !== undefined &&
+                (!Number.isInteger(EFFECT.targetCount) || EFFECT.targetCount < 1 || EFFECT.targetCount > 3)) ||
             (EFFECT.targets !== undefined &&
                 (!Array.isArray(EFFECT.targets) ||
                     EFFECT.targets.length > 3 ||

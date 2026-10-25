@@ -7,4 +7,6 @@ export const DEFINITION = Object.freeze({
     upgradeAxis: '대상 3 → 5 → 8마리 (4레벨부터 8마리)',
     upgradeValues: Object.freeze([3, 5, 8]),
     durationSeconds: 20,
+    sizeMultiplier: 3,
+    boss: Object.freeze({ sizeMultiplier: 1.25 }),
 });

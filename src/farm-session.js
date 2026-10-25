@@ -141,6 +141,7 @@ class UnitRender extends RENDER_OBJECT {
         isBattleOnlySummon: R.STEP,
         isFormationClone: R.STEP,
         giantUntil: R.STEP,
+        giantSizeMultiplier: R.STEP,
         giantEndedAt: R.STEP,
         cloneParentId: R.STEP,
         cloneBornAt: R.STEP,
@@ -270,6 +271,7 @@ class UnitRender extends RENDER_OBJECT {
         this.isBattleOnlySummon = u.isBattleOnlySummon;
         this.isFormationClone = u.isFormationClone;
         this.giantUntil = u.giantUntil;
+        this.giantSizeMultiplier = u.giantSizeMultiplier;
         this.giantEndedAt = u.giantEndedAt;
         this.cloneParentId = u.battleSummonParentId;
         this.cloneBornAt = u.cloneBornAt;
@@ -280,12 +282,11 @@ class UnitRender extends RENDER_OBJECT {
     // The tower's passive cards as flags the marks draw from: which condition each card is in for this unit right now.
     updatePassiveMarks(u, world) {
         const TOWER = world.tower,
-            TOTALS = TOWER.passives,
-            LIVE = TOWER.active && u.hp > 0 && !u.isBattleOnlySummon;
+            { totals: TOTALS, fallen: FALLEN } = world.passiveState(u),
+            LIVE = TOWER.active && u.hp > 0 && !u.isFormationClone && (!u.isBattleOnlySummon || u.faction === 'enemy');
         this.lastStandOn = LIVE && !!TOTALS['last-stand'] && u.hp <= this.maxHp * PASSIVE_SETTINGS.lastStandBelow;
         this.resolveOn = LIVE && !!TOTALS.resolve && u.hp <= this.maxHp * PASSIVE_SETTINGS.resolveBelow;
-        this.vengeanceStacks =
-            LIVE && TOTALS.vengeance ? Math.min(TOWER.fallen, PASSIVE_SETTINGS.vengeanceMaxFallen) : 0;
+        this.vengeanceStacks = LIVE && TOTALS.vengeance ? Math.min(FALLEN, PASSIVE_SETTINGS.vengeanceMaxFallen) : 0;
         this.openingLeft =
             LIVE && TOTALS.opening && world.farmBossEvent.phase === 'fighting'
                 ? Math.max(0, PASSIVE_SETTINGS.openingSeconds - world.farmBossEvent.elapsed)
@@ -517,6 +518,7 @@ class EffectRender extends RENDER_OBJECT {
 class FormationEffectRender extends RENDER_OBJECT {
     static renderSchema = Object.freeze({
         role: R.STEP,
+        targetCount: R.STEP,
         beamWidth: R.STEP,
         cloudSize: R.LINEAR,
         targets: R.STEP,
@@ -547,7 +549,15 @@ class FormationEffectRender extends RENDER_OBJECT {
         for (const KEY of Object.keys(FormationEffectRender.renderSchema)) {
             this[KEY] =
                 effect[KEY] ??
-                (KEY === 'kind' || KEY === 'role' ? '' : KEY === 'targets' ? [] : KEY === 'fallSeconds' ? 0.75 : 0);
+                (KEY === 'kind' || KEY === 'role'
+                    ? ''
+                    : KEY === 'targets'
+                      ? []
+                      : KEY === 'targetCount'
+                        ? 1
+                        : KEY === 'fallSeconds'
+                          ? 0.75
+                          : 0);
         }
     }
 }
@@ -1015,6 +1025,7 @@ class FarmSession {
         VIEW.effects.length = 0;
         VIEW.formationEffects.length = 0;
         VIEW.formationSlots = WORLD.formationRuntime.slots.filter((slot) => slot.role !== 'boss');
+        VIEW.bossSlots = WORLD.formationRuntime.slots.filter((slot) => slot.role === 'boss');
         FRAME.forEach(this.collectPresentationModel);
         for (const FOOD of WORLD.food) {
             if (FOOD.phase === 'grounded') {
@@ -1026,6 +1037,27 @@ class FarmSession {
         }
         VIEW.time = (FRAME.sample('clock', 0)?.gameTimeMs ?? WORLD.time * 1000) / 1000;
         VIEW.boss = FRAME.sample('boss', 0) || this.presentationEntity('boss', WORLD.boss, BossRender).source;
+        VIEW.bossCast = VIEW.boss.skillCast?.id ? VIEW.boss.skillCast : null;
+        VIEW.formationInjuredAllies ||= new Map([
+            ['player', []],
+            ['boss', []],
+        ]);
+        for (const [ROLE, FACTION] of [
+            ['player', 'player'],
+            ['boss', 'enemy'],
+        ]) {
+            const ALLIES = VIEW.formationInjuredAllies.get(ROLE),
+                INJURED = WORLD.formationSkills.injuredByFaction.get(FACTION);
+            ALLIES.length = 0;
+            if (INJURED?.size) {
+                for (const UNIT of INJURED) {
+                    const RENDER = UNIT === WORLD.boss ? VIEW.boss : VIEW.units.find((item) => item.id === UNIT.id);
+                    if (RENDER) {
+                        ALLIES.push(RENDER);
+                    }
+                }
+            }
+        }
         VIEW.displayTimeMs = FRAME.timeMs;
         VIEW.presentationRevision = this.presentationRevision;
         const PREVIOUS = this.previousCaptureTimeMs,

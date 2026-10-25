@@ -8,6 +8,7 @@ export function normalizeSnapshot(raw, { clone = true } = {}) {
     for (const TARGET of [...SNAPSHOT.units, SNAPSHOT.boss]) {
         TARGET.statProfile ??= null;
         TARGET.statModifiers ??= {};
+        TARGET.giantSizeMultiplier ??= 3;
     }
     SNAPSHOT.boss.giantUntil ??= 0;
     SNAPSHOT.boss.giantEndedAt ??= -10;

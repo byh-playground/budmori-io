@@ -26,7 +26,7 @@ function cloudGeometry(effect) {
     const RADIUS = Math.max(0.2, (effect.bodyRadius || 0.3) * 0.55);
     return {
         radius: RADIUS,
-        size: effect.role === 'boss' && effect.cloudSize > 0 ? effect.cloudSize : RADIUS * 2.6,
+        size: effect.cloudSize > 0 ? effect.cloudSize : RADIUS * 2.6,
         z: Math.max(effect.z, effect.targetZ + 2) + RADIUS * 1.9,
     };
 }
@@ -91,7 +91,7 @@ export class StormCloudPresentation extends FormationPresentation {
                 ARCS = BUFFERS.arcs,
                 BRANCHES = BUFFERS.branches;
             const TARGETS =
-                effect.role === 'boss'
+                effect.targetCount > 1
                     ? effect.targets || []
                     : [{ x: effect.targetX, y: effect.targetY, z: effect.targetZ, bodyRadius: effect.bodyRadius }];
             for (const TARGET of TARGETS) {

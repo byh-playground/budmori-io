@@ -2,10 +2,7 @@ import { FormationPresentation, bodyScale, cloud, stroke } from '../presentation
 export class HealingRainPresentation extends FormationPresentation {
     draw(renderer, effect, world) {
         const FADE = Math.min(1, effect.age * 3, (effect.duration - effect.age) * 3);
-        for (const UNIT of world.units) {
-            if (UNIT.hp <= 0 || UNIT.faction !== 'player' || UNIT.hp >= UNIT.maxHp) {
-                continue;
-            }
+        for (const UNIT of world.formationInjuredAllies.get(effect.role || 'player') || []) {
             const SCALE = bodyScale(UNIT.radius);
             cloud(renderer, UNIT.x, UNIT.y, UNIT.height + 1.6 * SCALE, 1.3 * SCALE, FADE * 0.7);
             for (let i = 0; i < 4; i++) {

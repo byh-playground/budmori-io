@@ -55,7 +55,7 @@ function withRunMods(stats, modifiers = RUN_MODS) {
     }
     return OUT;
 }
-function createBaseStats(tier, speciesProfile) {
+function createBaseStats(tier, speciesProfile, modifiers = RUN_MODS) {
     let maxHp = TIER_HP;
     let attackPower = TIER_ATTACK;
     for (let resultTier = 2; resultTier <= tier; resultTier++) {
@@ -64,21 +64,31 @@ function createBaseStats(tier, speciesProfile) {
         attackPower *= TIER_ATTACK_SCALE * TRANSITION_MULTIPLIER;
     }
     return Object.freeze(
-        withRunMods({
-            maxHp,
-            attackPower,
-            ...COMMON_UNIT_STAT_DEFAULTS,
-            ...speciesProfile,
-        }),
+        withRunMods(
+            {
+                maxHp,
+                attackPower,
+                ...COMMON_UNIT_STAT_DEFAULTS,
+                ...speciesProfile,
+            },
+            modifiers,
+        ),
     );
 }
 
 // Only frozen definition inputs are cached. Unit state and caller overrides are
 // read anew, so tier/species changes, buffs, and restored objects cannot go stale.
 const BASE_STATS_BY_PROFILE = new Map();
+const UNMODIFIED_STATS_BY_PROFILE = new Map();
 function fillBaseStats() {
     BASE_STATS_BY_PROFILE.clear();
     for (const PROFILE of [COMMON_UNIT_STAT_DEFAULTS, ...COMMON_UNIT_STAT_PROFILES]) {
+        if (!UNMODIFIED_STATS_BY_PROFILE.has(PROFILE)) {
+            UNMODIFIED_STATS_BY_PROFILE.set(
+                PROFILE,
+                Array.from({ length: MAX_UNIT_TIER }, (_, index) => createBaseStats(index + 1, PROFILE, {})),
+            );
+        }
         BASE_STATS_BY_PROFILE.set(
             PROFILE,
             Array.from(
@@ -98,10 +108,10 @@ export function setRunStatMods(mods) {
     Object.assign(RUN_MODS, mods);
     fillBaseStats();
 }
-export function baseUnitStatsFor(tier, species) {
+export function baseUnitStatsFor(tier, species, includePlayerRun = true) {
     tier = Math.max(1, Math.min(MAX_UNIT_TIER, Number.isInteger(tier) ? tier : 1));
     const PROFILE = COMMON_UNIT_STAT_PROFILES[species] || COMMON_UNIT_STAT_DEFAULTS;
-    return BASE_STATS_BY_PROFILE.get(PROFILE)?.[tier - 1] || createBaseStats(tier, PROFILE);
+    return (includePlayerRun ? BASE_STATS_BY_PROFILE : UNMODIFIED_STATS_BY_PROFILE).get(PROFILE)[tier - 1];
 }
 
 // Preserve the public mutable-result contract; callers never receive the cache.
@@ -109,7 +119,7 @@ export function resolveUnitStats(unit, overrides) {
     const BASE = withRunMods(
             unit?.statProfile
                 ? { ...COMMON_UNIT_STAT_DEFAULTS, ...unit.statProfile }
-                : baseUnitStatsFor(unit?.tier, unit?.species),
+                : baseUnitStatsFor(unit?.tier, unit?.species, unit?.faction !== 'enemy'),
             unit?.statModifiers || {},
         ),
         MULTIPLIER = Number.isFinite(unit?.permanentStatMultiplier) ? Math.max(0, unit.permanentStatMultiplier) : 1;
@@ -125,7 +135,8 @@ export function resolveUnitStats(unit, overrides) {
     if (!Object.hasOwn(overrides || {}, 'regen')) {
         RESULT.regen +=
             (RESULT.maxHp - BASE.maxHp) *
-            ((unit?.statProfile ? 0 : RUN_MODS.regen?.pct || 0) + (unit?.statModifiers?.regen?.pct || 0));
+            ((unit?.statProfile || unit?.faction === 'enemy' ? 0 : RUN_MODS.regen?.pct || 0) +
+                (unit?.statModifiers?.regen?.pct || 0));
     }
     return RESULT;
 }
@@ -144,7 +155,9 @@ export function unitMaxHpFor(unit) {
             : 1;
     return unit.isFormationClone
         ? 1
-        : baseUnitStatsFor(unit.tier, unit.species).maxHp * growthHealthMultiplierFor(unit) * SPLIT_MULTIPLIER;
+        : baseUnitStatsFor(unit.tier, unit.species, unit.faction !== 'enemy').maxHp *
+              growthHealthMultiplierFor(unit) *
+              SPLIT_MULTIPLIER;
 }
 // Capture run growth on each body; independent worlds and later permanent XP cannot leak into it.
 export function applyRunGrowthHealth(unit, progression, { preserveRatio = false } = {}) {
@@ -192,7 +205,7 @@ function combatStats(unit, overrides) {
         !unit?.isFormationClone &&
         (unit?.permanentStatMultiplier ?? 1) === 1 &&
         growthHealthMultiplierFor(unit) === 1
-        ? baseUnitStatsFor(unit?.tier, unit?.species)
+        ? baseUnitStatsFor(unit?.tier, unit?.species, unit?.faction !== 'enemy')
         : resolveUnitStats(unit, overrides);
 }
 export function resolveDamage(
