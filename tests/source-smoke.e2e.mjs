@@ -1232,6 +1232,7 @@ try {
                     globalThis.__restoreBossHudFixture = () => {
                         WORLD.tower.bossRelics = RELICS;
                         WORLD.formationRuntime.slots = SLOTS;
+                        globalThis.__restoreBossHudFixture = null;
                     };
                     BUDMORI.runtime.capturePresentation('reset');
                     return {
