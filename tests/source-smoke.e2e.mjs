@@ -161,7 +161,7 @@ try {
     // render a synthetic world, and never replace attack/clip implementations.
     await PAGE.evaluate(async () => {
         const { unitMaxHpFor: MAX_HP_FOR } = await import('./src/unit-stats.js'),
-            { Unit: UNIT_TYPE } = await import('./src/farm-model.js');
+            { Unit: UNIT_TYPE, bossAttackArea: BOSS_ATTACK_AREA } = await import('./src/farm-model.js');
         const WORLD = BUDMORI.sim,
             SESSION = BUDMORI.runtime,
             RENDERER = BUDMORI.renderer,
@@ -393,6 +393,29 @@ try {
             }
             return RESULT;
         };
+        const DRAW_DANGER = RENDERER.drawDanger;
+        WORLD.boss.setStatModifiers({ attackArea: { flat: 0, pct: 1 } });
+        globalThis.__restoreBossTelegraphObservation = () => {
+            WORLD.boss.setStatModifiers({});
+            RENDERER.drawDanger = DRAW_DANGER;
+        };
+        RENDERER.drawDanger = function (renderWorld) {
+            const RESULT = DRAW_DANGER.call(this, renderWorld),
+                MODEL = BOSS_ATTACK_AREA(WORLD.boss, 0, WORLD.scene);
+            if (
+                this.bossTelegraph &&
+                renderWorld.boss.patternPhase === 'windup' &&
+                MODEL?.patternId === renderWorld.boss.patternId
+            ) {
+                OBS.telegraph = {
+                    scalar: renderWorld.boss.attackArea,
+                    reach: this.bossTelegraph.reach,
+                    modelReach: MODEL.reach,
+                };
+                globalThis.__restoreBossTelegraphObservation();
+            }
+            return RESULT;
+        };
         SESSION.capturePresentation('reset');
         SESSION.loop.resetTiming();
         SESSION.paused = false;
@@ -409,6 +432,7 @@ try {
             OBS.workOverlap.windup &&
             OBS.hits > 0 &&
             OBS.bossSlams > 0 &&
+            OBS.telegraph &&
             [2, 4, 8].every((species) => OBS.regenerated.includes(species)) &&
             OBS.splitCount > 0 &&
             OBS.splitChildren.length === OBS.splitCount &&
@@ -472,6 +496,12 @@ try {
         units: BUDMORI.sim.units.length,
     }));
     const COMBAT = REPORT.mixedCombat;
+    assert.equal(COMBAT.telegraph.scalar, 2, 'the real boss presentation DTO carries its common attack-area stat');
+    assert.equal(
+        COMBAT.telegraph.reach,
+        COMBAT.telegraph.modelReach,
+        'the native telegraph uses the same reach as its live model',
+    );
     assert.ok(COMBAT.bossSlams > 0, 'the oversized pea boss selects and lands its basic attack');
     assert.equal(COMBAT.unitCore.sameClass, true, 'the real tower boss and ordinary troop are the same Unit class');
     assert.equal(COMBAT.unitCore.sharedLookup, true, 'boss identity resolves through the common unit lookup');
@@ -1366,6 +1396,7 @@ try {
     if (page && !page.isClosed()) {
         await page
             .evaluate(() => {
+                globalThis.__restoreBossTelegraphObservation?.();
                 globalThis.__restoreBossUnitHealthObservation?.();
                 globalThis.__restoreUnitCoreEndObservation?.();
             })

@@ -16,7 +16,13 @@ export class BossPattern {
         return targets.nearest;
     }
     attackExtentFor(boss, extent) {
-        return scaleAttackArea(extent, boss);
+        // Render projections carry the resolved scalar, while live Units own
+        // their base profile/modifiers. Both use the same geometry calculation.
+        return scaleAttackArea(
+            extent,
+            boss,
+            Number.isFinite(boss.attackArea) ? { attackArea: boss.attackArea } : undefined,
+        );
     }
     reachFor(boss) {
         return this.attackExtentFor(boss, this.config.reach);

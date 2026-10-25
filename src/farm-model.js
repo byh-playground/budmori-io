@@ -615,6 +615,10 @@ const ATTACKING_BODY = (baseLocal) =>
             return this.moveControlActive && this.stun <= 0 && this.down <= 0 && this.z <= 0.04 ? 0 : super.dragRate();
         }
         integrate(dt) {
+            if (this.controller) {
+                this.controller.integrate(this._world, dt);
+                return;
+            }
             if (this.moveControlActive && this.stun <= 0 && this.down <= 0) {
                 const RATE = 1 - Math.exp(-dt * 3);
                 this.vx += (this.moveControlVx - this.vx) * RATE;
@@ -4036,7 +4040,7 @@ const GARDEN = class Garden {
             this.boundBody(U, this.scene, U.radius);
             this.updateUnitSpatial(U);
         }
-        this.boss.controller.integrate(this, dt);
+        this.boss.integrate(dt);
         if (this.boss.active) {
             this.updateProjectiles(dt);
             scene.separateBossUnits(this, units);

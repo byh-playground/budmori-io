@@ -5,7 +5,7 @@ import { WheatCommandModel } from './features/abilities/wheat-command/model.js';
 import { updateRicePresentation } from './features/unit-attacks/rice/presentation.js';
 import { updateWalnutPresentation } from './features/unit-attacks/walnut/presentation.js';
 import { Garden, bindPresentationClock } from './farm-model.js';
-import { unitMaxHpFor } from './unit-stats.js';
+import { unitMaxHpFor, resolveUnitStats } from './unit-stats.js';
 import { PASSIVE_SETTINGS } from './tower-run.js';
 import { BarleyArmorShredModel } from './features/abilities/barley-shred/model.js';
 const { PresentationRuntime: PRESENTATION_RUNTIME, RenderObject: RENDER_OBJECT } = globalThis.BloomGamekitInterpolation;
@@ -312,6 +312,7 @@ class BossRender extends RENDER_OBJECT {
         maxHp: R.STEP,
         radius: R.STEP,
         giantScale: R.STEP,
+        attackArea: R.STEP,
         height: R.STEP,
         flash: R.LINEAR,
         species: R.STEP,
@@ -369,6 +370,7 @@ class BossRender extends RENDER_OBJECT {
         this.maxHp = b.maxHp;
         this.radius = b.radius;
         this.giantScale = b.giantScale;
+        this.attackArea = resolveUnitStats(b).attackArea;
         this.height = b.height;
         this.flash = b.flash;
         this.species = b.species ?? 3;
