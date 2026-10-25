@@ -10,6 +10,15 @@ export function normalizeSnapshot(raw, { clone = true } = {}) {
         TARGET.statModifiers ??= {};
         TARGET.giantSizeMultiplier ??= 3;
     }
+    // Older runtime checkpoints have no interrupted-recovery cache or aim
+    // state. Preserve their original action rather than reopening preparation.
+    for (const UNIT of SNAPSHOT.units) {
+        UNIT.ability.interruptedRecoverySeconds ??= null;
+        if (UNIT.specialAbility) {
+            UNIT.specialAbility.interruptedRecoverySeconds ??= null;
+        }
+    }
+    SNAPSHOT.formationRuntime.bossRetrySkillId ??= null;
     SNAPSHOT.boss.giantUntil ??= 0;
     SNAPSHOT.boss.giantEndedAt ??= -10;
     SNAPSHOT.boss.deathSplitHandled ??= false;

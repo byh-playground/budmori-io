@@ -46,6 +46,10 @@ export class FormationSkill {
     power(level, base) {
         return base * (this.definition.upgradeFactor ?? 1.5) ** (level - 1);
     }
+    canCast(owner) {
+        // Offensive skills share target eligibility; allied skills override it without rolling targets.
+        return Boolean(owner.enemy());
+    }
     cast(_owner, _slot) {
         return false;
     }

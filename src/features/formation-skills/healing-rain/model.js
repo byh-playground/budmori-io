@@ -6,8 +6,11 @@ export class HealingRainSkill extends FormationSkill {
         super(DEFINITION);
         this.injuredScratch = [];
     }
+    canCast(owner) {
+        return owner.injuredAllies().length > 0;
+    }
     cast(owner, slot) {
-        if (owner.injuredAllies().length === 0) {
+        if (!this.canCast(owner)) {
             return false;
         }
         const PROFILE = this.profile(owner);

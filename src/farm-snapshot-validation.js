@@ -11,7 +11,7 @@ import { CONFIG } from './farm-model.js';
 import { isValidPlayerProgressionState } from './player-progression.js';
 import { hasUnitCapability, specialAbilityCompositionFor } from './unit-abilities.js';
 import { mergeMaterialCostForTier } from './unit-grades.js';
-import { BOSS_PATTERN_IDS } from './boss-patterns.js';
+import { BOSS_PATTERN_IDS, BOSS_PATTERN_CONFIG } from './boss-patterns.js';
 import { BOSS_REWARD_SETTINGS, bossStageStats } from './boss-rewards.js';
 import { resolveUnitStats } from './unit-stats.js';
 import { FACTION_CONFIG, hasFaction } from './factions.js';
@@ -148,6 +148,30 @@ function sameCheckpointValue(left, right) {
         KEYS.length === Object.keys(right).length &&
         KEYS.every((key) => Object.hasOwn(right, key) && sameCheckpointValue(left[key], right[key]))
     );
+}
+function validateAttackCycle(cycle) {
+    ASSERT(
+        cycle.interruptedRecoverySeconds === null ||
+            (cycle.phase === 'recover' &&
+                cycle.action === null &&
+                Number.isFinite(cycle.interruptedRecoverySeconds) &&
+                cycle.interruptedRecoverySeconds > 0 &&
+                cycle.interruptedRecoverySeconds <= 100000),
+    );
+    const AIM = cycle.action?.prepareAim;
+    if (AIM !== undefined) {
+        ASSERT(
+            AIM &&
+                Object.keys(AIM).sort().join(',') === 'locked,originX,originY,radius,reacquired,startX,startY,x,y' &&
+                ['originX', 'originY', 'startX', 'startY', 'x', 'y', 'radius'].every((key) =>
+                    Number.isFinite(AIM[key]),
+                ) &&
+                AIM.radius >= 0 &&
+                typeof AIM.reacquired === 'boolean' &&
+                typeof AIM.locked === 'boolean' &&
+                (cycle.phase === 'windup' || AIM.locked),
+        );
+    }
 }
 function validateProgression(progression) {
     ASSERT(
@@ -582,6 +606,7 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
         SUMMONS_BY_PARENT = new Map();
     for (const U of raw.units) {
         shape(U, UNIT_SHAPE);
+        validateAttackCycle(U.ability);
         ASSERT(
             Number.isFinite(U.growthElapsed) &&
                 U.growthElapsed >= 0 &&
@@ -671,6 +696,7 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
         );
         ASSERT(!!specialAbilityCompositionFor(U.species) === (U.specialAbility !== null));
         if (U.specialAbility) {
+            validateAttackCycle(U.specialAbility);
             ASSERT(
                 ['idle', 'windup', 'active', 'recover'].includes(U.specialAbility.phase) &&
                     Number.isFinite(U.specialAbility.elapsed) &&
@@ -1391,7 +1417,7 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
                 RUNTIME.weights[ID] <= 3 &&
                 Number.isFinite(RUNTIME.cooldowns[ID]) &&
                 RUNTIME.cooldowns[ID] >= 0 &&
-                RUNTIME.cooldowns[ID] <= 10,
+                RUNTIME.cooldowns[ID] <= BOSS_PATTERN_CONFIG[ID].cooldown,
         );
     }
     ASSERT(

@@ -365,6 +365,9 @@ try {
                 CLIP = RENDERER.vectorPlayers.get(unit.id)?.currentClip,
                 SWING = world.workSwingOf?.(unit.id);
             OBS.nativeDraws++;
+            if (unit.id === OBS.attackFlow?.unitId) {
+                OBS.attackFlow.nativeFrames++;
+            }
             ADD(OBS.rendered[unit.faction], unit.species);
             if (
                 unit.faction === 'player' &&
@@ -444,6 +447,10 @@ try {
         );
     });
     CHECKPOINT('nineSpeciesCombat');
+    assert.ok(
+        await PAGE.evaluate(() => globalThis.__mixedCombat.unitCore.liveHealthChanges > 0),
+        'native mixed-combat hits emit boss health changes before the later HP fixture',
+    );
     // The original full-health boss only unlocks its single-target basic attack.
     // After every nine-species condition is proven, arrange a crowd for one native unlocked sweep.
     REPORT.physicalAoeFixture = await PAGE.evaluate(() => {
@@ -480,6 +487,150 @@ try {
             TARGETS.push(UNIT.id);
         }
         WORLD._benchRevision++;
+        // Reuse this live encounter and its native sweep: one isolated ordinary attack
+        // probes prepare/commit/recovery while a charged heal must yield to that sweep.
+        const PROBE = WORLD.spawn(0, 1, -14, -8),
+            TARGET = WORLD.spawn(0, 1, -12, -8),
+            OBS = (globalThis.__mixedCombat.attackFlow = {
+                unitId: PROBE.id,
+                nativeFrames: 0,
+                launches: 0,
+                hits: 0,
+                recovery: [],
+                healing: { prepared: false, released: 0 },
+            });
+        for (const UNIT of [PROBE, TARGET]) {
+            UNIT.setBaseStats({ maxHp: 1e6 });
+            UNIT.setStatModifiers({});
+            Object.assign(UNIT, {
+                hp: UNIT.maxHp,
+                growth: 3,
+                growthElapsed: UNIT.growthDuration,
+                z: 0,
+                vx: 0,
+                vy: 0,
+                vz: 0,
+                dropLanded: true,
+                landingRecovery: 0,
+            });
+            WORLD._benched.delete(UNIT);
+        }
+        TARGET.faction = 'enemy';
+        TARGET.stun = 1000;
+        TARGET.x = PROBE.x + TARGET.radius + PROBE.ability.attackRange(WORLD) - 0.3;
+        if (!PROBE.ability.begin(WORLD, { id: TARGET.id, generation: TARGET.generation, x: TARGET.x, y: TARGET.y })) {
+            throw new Error('The live prepare/commit probe must begin through its ordinary Unit attack');
+        }
+        const ACTION = PROBE.ability.action,
+            BUDGET = JSON.stringify(ACTION.peaAttack.source),
+            TARGET_HP = TARGET.hp;
+        TARGET.y += 0.2;
+        WORLD.formationSkills.end();
+        WORLD.tower.bossRelics = new Map([['healing-rain', 1]]);
+        WORLD.formationSkills.synchronize();
+        const HEAL = WORLD.formationRuntime.slots.find((slot) => slot.role === 'boss' && slot.id === 'healing-rain');
+        HEAL.charge = 200;
+        const STEP = WORLD.step,
+            OFF = WORLD.onNotice.on((notice) => {
+                if (notice.kind === 'attack-launch' && notice.unit === PROBE.id) {
+                    OBS.launches++;
+                }
+                if (notice.kind === 'unit-hit' && notice.sourceUnit === PROBE.id) {
+                    OBS.hits++;
+                }
+                if (notice.kind === 'formation-cast' && notice.role === 'boss' && notice.skillId === 'healing-rain') {
+                    OBS.healing.released++;
+                }
+            });
+        WORLD.step = function (dt) {
+            const ABILITY = PROBE.ability;
+            if (
+                !OBS.ccStarted &&
+                ABILITY.phase === 'recover' &&
+                ABILITY.attackRecoverySeconds(this) - ABILITY.elapsed <= dt + 1e-9
+            ) {
+                OBS.ccStarted = {
+                    elapsed: ABILITY.elapsed,
+                    duration: ABILITY.attackRecoverySeconds(this),
+                    tick: this.simulationTick,
+                };
+            }
+            if (OBS.ccStarted) {
+                PROBE.stun = 1;
+            }
+            const RESULT = STEP.call(this, dt);
+            if (!OBS.corrected && ACTION.prepareAim.y === TARGET.y) {
+                OBS.corrected = {
+                    actionStable: ABILITY.action === ACTION,
+                    budgetStable: JSON.stringify(ACTION.peaAttack.source) === BUDGET,
+                    movement: ACTION.prepareAim.y - ACTION.prepareAim.startY,
+                };
+            }
+            if (!OBS.lockedAim && ACTION.prepareAim.locked) {
+                OBS.lockedAim = JSON.stringify(ACTION.prepareAim);
+                TARGET.y += 6;
+                this._unitSpatialDirty = true;
+            }
+            if (OBS.ccStarted && OBS.recovery.length < 3) {
+                OBS.recovery.push({
+                    phase: ABILITY.phase,
+                    elapsed: ABILITY.elapsed,
+                    action: ABILITY.action?.id || null,
+                    stun: PROBE.stun,
+                });
+                if (OBS.recovery.length === 3) {
+                    OBS.finished = true;
+                    OBS.committedAimStable = JSON.stringify(ACTION.prepareAim) === OBS.lockedAim;
+                    OBS.targetHealthUnchanged = TARGET.hp === TARGET_HP;
+                }
+            }
+            const CAST = this.formationRuntime.bossCast;
+            if (!OBS.healing.prepared && CAST?.id === 'healing-rain' && CAST.phase === 'prepare') {
+                OBS.healing.prepared = true;
+                OBS.healing.serial = CAST.serial;
+                for (const ALLY of this.formationSkills.bossContext.allies()) {
+                    ALLY.setHealth(ALLY.maxHp);
+                }
+                OBS.healing.injuredAfterFill = this.formationSkills.bossContext.injuredAllies().length;
+                if (OBS.healing.injuredAfterFill !== 0) {
+                    throw new Error(
+                        'The live healing invalidation fixture must leave no injured same-faction beneficiary',
+                    );
+                }
+            }
+            if (!OBS.healing.failed && this.formationRuntime.bossRetrySkillId === 'healing-rain') {
+                OBS.healing.failed = {
+                    tick: this.simulationTick,
+                    cast: CAST,
+                    charge: HEAL.charge,
+                    cooldown: HEAL.cooldown,
+                    effects: this.formationRuntime.effects.filter((effect) => effect.kind === 'healing-rain').length,
+                };
+                // Make healing eligible again before the next normal decision. It must still yield once.
+                this.boss.setHealth(this.boss.maxHp * 0.3);
+            } else if (
+                OBS.healing.failed &&
+                !OBS.healing.nextDecision &&
+                this.simulationTick > OBS.healing.failed.tick
+            ) {
+                OBS.healing.nextDecision = {
+                    cast: CAST?.id || null,
+                    retry: this.formationRuntime.bossRetrySkillId,
+                    pattern: this.boss.patternRuntime.active?.id || null,
+                    pursuit: Math.hypot(this.boss.chaseVx, this.boss.chaseVy),
+                    charge: HEAL.charge,
+                    cooldown: HEAL.cooldown,
+                };
+            }
+            return RESULT;
+        };
+        globalThis.__restoreAttackFlowObservation = () => {
+            WORLD.step = STEP;
+            OFF();
+            PROBE.stun = 1000;
+            globalThis.__restoreAttackFlowObservation = null;
+            return WORLD.step === STEP;
+        };
         WORLD._unitSpatialDirty = true;
         BUDMORI.runtime.capturePresentation('reset');
         BUDMORI.runtime.loop.resetTiming();
@@ -491,15 +642,53 @@ try {
             chargeSource: 'native physical settlement; no injected combat events',
         };
     });
-    await PAGE.waitForFunction(() =>
-        globalThis.__mixedCombat.bossHitBatches.some((batch) => new Set(batch.targets).size > 1),
+    await PAGE.waitForFunction(
+        () =>
+            globalThis.__mixedCombat.bossHitBatches.some((batch) => new Set(batch.targets).size > 1) &&
+            globalThis.__mixedCombat.attackFlow.finished &&
+            globalThis.__mixedCombat.attackFlow.healing.nextDecision,
     );
+    assert.equal(await PAGE.evaluate(() => globalThis.__restoreAttackFlowObservation()), true);
     REPORT.mixedCombat = await PAGE.evaluate(() => ({
         ...globalThis.__mixedCombat,
         endTick: BUDMORI.sim.simulationTick,
         units: BUDMORI.sim.units.length,
     }));
-    const COMBAT = REPORT.mixedCombat;
+    const COMBAT = REPORT.mixedCombat,
+        FLOW = COMBAT.attackFlow;
+    assert.ok(FLOW.nativeFrames > 0, 'the ordinary probe Unit reaches native presentation in the same encounter');
+    assert.ok(FLOW.corrected.actionStable && FLOW.corrected.budgetStable);
+    assert.ok(
+        Math.abs(FLOW.corrected.movement - 0.2) < 1e-9,
+        'precommit follows a small real target reposition without restarting',
+    );
+    assert.ok(
+        FLOW.committedAimStable && FLOW.targetHealthUnchanged,
+        'postcommit dodge preserves saved aim and actually misses',
+    );
+    assert.equal(FLOW.launches, 1, 'CC cannot start a second ordinary attack');
+    assert.equal(FLOW.hits, 0);
+    assert.ok(FLOW.ccStarted.elapsed > FLOW.ccStarted.duration * 0.8, 'CC lands near the end of actual recovery');
+    assert.ok(
+        FLOW.recovery.every((sample) => sample.phase === 'idle' && sample.action === null && sample.stun > 0),
+        'repeated CC finishes existing recovery and blocks new actions',
+    );
+    assert.equal(FLOW.healing.prepared, true, 'charged healing really entered preparation');
+    assert.equal(FLOW.healing.injuredAfterFill, 0, 'all actual healing beneficiaries lose eligibility during prepare');
+    assert.deepEqual(
+        { ...FLOW.healing.failed, tick: 0 },
+        { tick: 0, cast: null, charge: 200, cooldown: 0, effects: 0 },
+        'eligibility loss releases the failed heal without spending or recovery',
+    );
+    assert.equal(FLOW.healing.released, 0);
+    assert.equal(FLOW.healing.nextDecision.cast, null);
+    assert.equal(FLOW.healing.nextDecision.retry, null);
+    assert.equal(FLOW.healing.nextDecision.charge, 200);
+    assert.equal(FLOW.healing.nextDecision.cooldown, 0);
+    assert.ok(
+        FLOW.healing.nextDecision.pattern || FLOW.healing.nextDecision.pursuit > 0,
+        'the failed charged slot yields a real physical attack or pursuit opportunity',
+    );
     assert.equal(COMBAT.telegraph.scalar, 2, 'the real boss presentation DTO carries its common attack-area stat');
     assert.equal(
         COMBAT.telegraph.reach,
@@ -727,6 +916,10 @@ try {
                 };
             }),
         CAPTURE_FEEDBACK = async (file) => {
+            // The same product UI was pixel-reviewed in PR354; keep recapture opt-in.
+            if (process.env.BUDMORI_CAPTURE_CARD_FEEDBACK !== '1') {
+                return;
+            }
             // The existing UI clock is already stopped at a normally rendered transition frame.
             // Do not advance time, mutate the receipt, or freeze/replace the production renderer.
             const START = Date.now();
@@ -2278,6 +2471,7 @@ try {
                 globalThis.__restoreBossTelegraphObservation?.();
                 globalThis.__restoreBossUnitHealthObservation?.();
                 globalThis.__restoreBossCardHit?.();
+                globalThis.__restoreAttackFlowObservation?.();
                 globalThis.__restoreBossHudFixture?.();
                 globalThis.__restoreUnitCoreEndObservation?.();
             })
