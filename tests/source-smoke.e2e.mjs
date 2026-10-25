@@ -325,7 +325,7 @@ try {
                 const UNIT = WORLD.units.find((unit) => unit.id === notice.unit);
                 if (UNIT) {
                     ADD(OBS.launches[UNIT.faction], UNIT.species);
-                    if (UNIT.species === 3) {
+                    if (UNIT.species === 3 && notice.attackKind === 'chestnut-spike') {
                         const TARGET = WORLD.attackTarget(UNIT, UNIT.ability.action);
                         OBS.chestnutShots.push({
                             faction: UNIT.faction,
