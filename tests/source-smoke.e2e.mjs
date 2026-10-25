@@ -405,10 +405,13 @@ try {
             if (
                 this.bossTelegraph &&
                 renderWorld.boss.patternPhase === 'windup' &&
-                MODEL?.patternId === renderWorld.boss.patternId
+                MODEL?.patternId === renderWorld.boss.patternId &&
+                Number.isFinite(MODEL.reach) &&
+                Number.isFinite(this.bossTelegraph.reach)
             ) {
                 OBS.telegraph = {
                     scalar: renderWorld.boss.attackArea,
+                    pattern: MODEL.patternId,
                     reach: this.bossTelegraph.reach,
                     modelReach: MODEL.reach,
                 };
