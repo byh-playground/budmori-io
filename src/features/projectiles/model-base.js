@@ -50,6 +50,9 @@ export class BallisticProjectile {
                     target &&
                     target.hp > 0 &&
                     target.faction !== projectile.faction &&
+                    // A new generation of the named target is not a substitute
+                    // for its predecessor; other collision targets remain eligible.
+                    (target.id !== projectile.targetId || target.generation === projectile.targetGeneration) &&
                     (target !== world.boss || projectile.faction === 'player') &&
                     (target.z || 0) <= projectile.height &&
                     (target.z || 0) + target.height >= 0 &&

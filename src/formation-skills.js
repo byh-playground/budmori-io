@@ -277,7 +277,14 @@ export class FormationSkills {
                 return;
             }
         }
-        if (BOSS.patternRuntime.active || !this.bossContext.enemy()) {
+        if (
+            BOSS.patternRuntime.active ||
+            BOSS.ability.phase !== 'idle' ||
+            (BOSS.specialAbility && BOSS.specialAbility.phase !== 'idle') ||
+            BOSS.z > 0.1 ||
+            BOSS.landingRecovery > 0 ||
+            !this.bossContext.enemy()
+        ) {
             return;
         }
         // A failed preparation yields this tick and one subsequent selection,

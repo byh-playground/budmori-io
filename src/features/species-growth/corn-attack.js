@@ -1,3 +1,10 @@
+import {
+    attackBudgetInputs,
+    attackBudgetShape,
+    attackRecordShape,
+    attackGeometryScale,
+    captureAttackGeometry,
+} from './attack-profile.js';
 import { targetBodyDimensions } from '../formation-skills/model-base.js';
 import { AttackAction, attackTargetKey, isAttackActionDTO } from './attack-action.js';
 import { speciesGrowthDefinition } from './definition.js';
@@ -71,7 +78,8 @@ export function createCornAttack(world, unit, action, commandSpeed = 1) {
             1.63 / 0.35,
             Math.max(0.05, CONTEXT.attackerStats.attackSpeed * commandSpeed * (1 + 0.02 * (RANKS['basic-3'] || 0))),
         ),
-        GRADE = cornMergeBudgetMultiplier(unit.tier, unit.species),
+        INPUTS = attackBudgetInputs(unit),
+        GRADE = cornBudgetFromInputs(unit.tier, INPUTS.one, INPUTS.current),
         BASE_KERNELS = CONFIG.kernels.reduce((total, count) => total + count, 0),
         EXTRA = (RANKS['specialty-3'] || 0) > 0 && world.random() < 0.08 * RANKS['specialty-3'];
     let kernelStart = 0;
@@ -91,14 +99,16 @@ export function createCornAttack(world, unit, action, commandSpeed = 1) {
         id: action.id,
         owner: unit.id,
         ownerGeneration: unit.generation,
+        ...captureAttackGeometry(unit),
         tier: unit.tier,
         form: FORM,
         launchTick: null,
         firstAttachTick: null,
         speed: SPEED,
         budgetInputs: {
-            tierOneAttack: baseUnitStatsFor(1, unit.species).attackPower,
-            tierAttack: baseUnitStatsFor(unit.tier, unit.species).attackPower,
+            tierOneAttack: INPUTS.one,
+            tierAttack: INPUTS.current,
+            ...(INPUTS.profile ? { profile: INPUTS.profile } : {}),
             gradeMultiplier: GRADE,
             permanentMultiplier: Number.isFinite(unit.permanentStatMultiplier)
                 ? Math.max(0, unit.permanentStatMultiplier)
@@ -137,12 +147,7 @@ export function createCornAttack(world, unit, action, commandSpeed = 1) {
             sourceKind: CONTEXT.sourceKind,
             attackerStats: structuredClone(CONTEXT.attackerStats),
             attackPowerMultiplier: CONTEXT.attackPowerMultiplier,
-            sourceDamageScale: world.passiveDamageScale(
-                unit,
-                CONTEXT.attackerStats.maxHp,
-                world.boss,
-                world.boss.maxHp,
-            ),
+            sourceDamageScale: world.passiveAttackScale(unit, CONTEXT.attackerStats.maxHp),
             buffed: CONTEXT.buffed,
         },
         attack: null,
@@ -173,11 +178,12 @@ export function launchCornAttack(world, unit, action) {
         if (!PROJECTILE) {
             continue;
         }
-        const METEOR = RECORD.form >= 5,
+        const SCALE = attackGeometryScale(RECORD),
+            METEOR = RECORD.form >= 5,
             DX = action.target.x - unit.x,
             DY = action.target.y - unit.y,
             DISTANCE = Math.hypot(DX, DY) || 1,
-            OFFSET = RECORD.form === 6 ? (SHOT.slot - 1) * 0.08 : 0,
+            OFFSET = RECORD.form === 6 ? (SHOT.slot - 1) * 0.08 * SCALE : 0,
             TO = {
                 ...action.target,
                 x: action.target.x - (DY / DISTANCE) * OFFSET,
@@ -187,14 +193,14 @@ export function launchCornAttack(world, unit, action) {
             TARGET_BODY = targetBodyDimensions(TARGET),
             SKY_SPREAD = RECORD.form === 6 ? (SHOT.slot - 1) * 3.4 : 0,
             SKY_Z = TARGET_BODY.topZ + Math.max(4.8, TARGET_BODY.bodyHeight * 0.4) + SHOT.slot * 0.6,
-            HEIGHT = RECORD.form >= 4 ? 0.7 : RECORD.form === 3 ? 0.45 : PROJECTILE.height;
+            HEIGHT = RECORD.form >= 4 ? 0.7 * SCALE : RECORD.form === 3 ? 0.45 * SCALE : PROJECTILE.height;
         PROJECTILE.cornActionId = RECORD.id;
         PROJECTILE.cornSlot = SHOT.slot;
         PROJECTILE.cornForm = RECORD.form;
         PROJECTILE.path = {
-            from: METEOR ? { x: TO.x + SKY_SPREAD, y: TO.y, z: SKY_Z } : { x: unit.x, y: unit.y, z: 0.45 },
+            from: METEOR ? { x: TO.x + SKY_SPREAD, y: TO.y, z: SKY_Z } : { x: unit.x, y: unit.y, z: 0.45 * SCALE },
             to: TO,
-            height: FORMS[RECORD.form].height,
+            height: FORMS[RECORD.form].height * SCALE,
             duration: SHOT.duration,
         };
         PROJECTILE.x = PROJECTILE.path.from.x;
@@ -257,7 +263,7 @@ export function cornKernelMultiplier(record, index) {
 export function isCornAttackRecord(record, { pending = false } = {}) {
     if (
         !record ||
-        !exactKeys(
+        !attackRecordShape(
             record,
             'version id owner ownerGeneration tier form launchTick firstAttachTick speed budgetInputs windupSeconds recoverySeconds shots baseKernelCount extraKernel terminalIndex ranks directMultiplier attachmentMultiplier source attack criticalRolls',
         ) ||
@@ -270,8 +276,6 @@ export function isCornAttackRecord(record, { pending = false } = {}) {
         !Number.isInteger(record.tier) ||
         record.tier < record.form ||
         record.tier > 6 ||
-        !Number.isSafeInteger(record.owner) ||
-        record.owner < 1 ||
         !Number.isSafeInteger(record.ownerGeneration) ||
         record.ownerGeneration < 1 ||
         !Number.isFinite(record.speed) ||
@@ -318,7 +322,7 @@ export function isCornAttackRecord(record, { pending = false } = {}) {
     }
     const INPUTS = record.budgetInputs;
     if (
-        !exactKeys(
+        !attackBudgetShape(
             INPUTS,
             'tierOneAttack tierAttack gradeMultiplier permanentMultiplier directRank attachmentRank speedRank commandSpeed',
         ) ||
@@ -334,7 +338,8 @@ export function isCornAttackRecord(record, { pending = false } = {}) {
         record.directMultiplier !== 1.6 * INPUTS.gradeMultiplier * (1 + 0.03 * INPUTS.directRank) ||
         record.attachmentMultiplier !==
             0.5 * INPUTS.gradeMultiplier * (1 + 0.03 * INPUTS.directRank) * (1 + 0.03 * INPUTS.attachmentRank) ||
-        record.source.attackerStats.attackPower !== INPUTS.tierAttack * INPUTS.permanentMultiplier ||
+        (!INPUTS.profile &&
+            record.source.attackerStats.attackPower !== INPUTS.tierAttack * INPUTS.permanentMultiplier) ||
         record.speed !==
             Math.min(
                 1.63 / 0.35,

@@ -23,6 +23,160 @@ const CLOSED = Object.freeze({
     status: 'closed',
 });
 
+// Both roles expose the same committed attack record to the native SVG presentation.
+const UNIT_ATTACK_SCHEMA = Object.freeze({
+    'ability.phase': R.STATE_KEY,
+    'ability.elapsed': R.LINEAR,
+    'ability.peanutStrikeCount': R.STEP,
+    'ability.peanutForm': R.STEP,
+    'ability.peanutActionId': R.STATE_KEY,
+    'ability.peanutSlot': R.STEP,
+    'ability.peanutStage': R.STATE_KEY,
+    'ability.peanutStageProgress': R.LINEAR,
+    'ability.peanutWindupDuration': R.STEP,
+    'ability.chestnutForm': R.STEP,
+    'ability.chestnutSlot': R.STEP,
+    'ability.chestnutStage': R.STATE_KEY,
+    'ability.chestnutStageProgress': R.LINEAR,
+    'ability.chestnutWindupDuration': R.STEP,
+    'ability.redbeanForm': R.STEP,
+    'ability.redbeanSlot': R.STEP,
+    'ability.redbeanLeg': R.STEP,
+    'ability.redbeanStage': R.STATE_KEY,
+    'ability.redbeanStageProgress': R.LINEAR,
+    'ability.redbeanWindupDuration': R.STEP,
+    'ability.peaForm': R.STEP,
+    'ability.peaSlot': R.STEP,
+    'ability.peaStage': R.STATE_KEY,
+    'ability.peaStageProgress': R.LINEAR,
+    'ability.peaWindupDuration': R.STEP,
+    'ability.walnutForm': R.STEP,
+    'ability.walnutActionId': R.STATE_KEY,
+    'ability.walnutSlot': R.STATE_KEY,
+    'ability.walnutStage': R.STATE_KEY,
+    'ability.walnutFirstStage': R.STEP,
+    'ability.walnutLastStage': R.STEP,
+    'ability.walnutStageProgress': R.LINEAR,
+    'ability.walnutMotionTick': R.STEP,
+    'ability.walnutWindupDuration': R.STEP,
+    'ability.walnutRecoveryDuration': R.STEP,
+    'ability.walnutPointX': R.STEP,
+    'ability.walnutPointY': R.STEP,
+    'ability.walnutRawBudget': R.STEP,
+    'ability.walnutImpactLife': R.LINEAR,
+    'ability.riceForm': R.STEP,
+    'ability.riceActionId': R.STATE_KEY,
+    'ability.riceSlot': R.STATE_KEY,
+    'ability.riceStage': R.STATE_KEY,
+    'ability.ricePreviousStage': R.STEP,
+    'ability.riceFirstStage': R.STEP,
+    'ability.riceLastStage': R.STEP,
+    'ability.riceStageProgress': R.LINEAR,
+    'ability.riceWindupDuration': R.STEP,
+    'ability.riceRecoveryDuration': R.STEP,
+    'ability.ricePointX': R.STEP,
+    'ability.ricePointY': R.STEP,
+    'ability.barleyForm': R.STEP,
+    'ability.barleyActionId': R.STATE_KEY,
+    'ability.barleySlot': R.STATE_KEY,
+    'ability.barleyStage': R.STATE_KEY,
+    'ability.barleyPreviousStage': R.STEP,
+    'ability.barleyFirstStage': R.STEP,
+    'ability.barleyLastStage': R.STEP,
+    'ability.barleyStageProgress': R.LINEAR,
+    'ability.barleyWindupDuration': R.STEP,
+    'ability.barleyRecoveryDuration': R.STEP,
+    'ability.barleyPointX': R.STEP,
+    'ability.barleyPointY': R.STEP,
+    'ability.barleyFace': R.STEP,
+    'ability.wheatForm': R.STEP,
+    'ability.wheatActionId': R.STATE_KEY,
+    'ability.wheatSlot': R.STATE_KEY,
+    'ability.wheatStage': R.STATE_KEY,
+    'ability.wheatPreviousStage': R.STEP,
+    'ability.wheatFirstStage': R.STEP,
+    'ability.wheatLastStage': R.STEP,
+    'ability.wheatStageProgress': R.LINEAR,
+    'ability.wheatWindupDuration': R.STEP,
+    'ability.wheatRecoveryDuration': R.STEP,
+    'ability.wheatPointX': R.STEP,
+    'ability.wheatPointY': R.STEP,
+    'ability.wheatFace': R.STEP,
+    'ability.wheatLongBaton': R.STEP,
+    walnutGuarding: R.STEP,
+});
+function updateUnitAttackRender(output, u, world) {
+    output.ability.phase = u.ability.phase;
+    output.ability.elapsed = u.ability.elapsed;
+    output.ability.peanutStrikeCount = u.ability.action?.peanutStrikeCount || 2;
+    const PEANUT = u.ability.action?.peanutAttack,
+        PEANUT_TICK = u.ability.phase === 'active' ? u.ability.elapsed * 20 : 0,
+        PEANUT_INDEX =
+            PEANUT?.shots.findIndex(
+                (shot, index, shots) => !shots[index + 1] || PEANUT_TICK < (shot.tick + shots[index + 1].tick) / 2,
+            ) ?? -1,
+        PEANUT_SHOT = PEANUT?.shots[Math.max(0, PEANUT_INDEX)],
+        PEANUT_START = PEANUT_INDEX > 0 ? (PEANUT.shots[PEANUT_INDEX - 1].tick + PEANUT_SHOT.tick) / 2 : 0,
+        PEANUT_END = PEANUT_SHOT
+            ? PEANUT.shots[PEANUT_INDEX + 1]
+                ? (PEANUT_SHOT.tick + PEANUT.shots[PEANUT_INDEX + 1].tick) / 2
+                : PEANUT.durationSeconds * 20
+            : 1;
+    output.ability.peanutForm = PEANUT?.form || 0;
+    output.ability.peanutActionId = PEANUT?.id || 0;
+    output.ability.peanutSlot = PEANUT_SHOT?.slot || 0;
+    output.ability.peanutStage = u.ability.phase === 'active' ? PEANUT_SHOT?.stage || 'active' : u.ability.phase;
+    output.ability.peanutStageProgress = Math.max(
+        0,
+        Math.min(1, (PEANUT_TICK - PEANUT_START) / (PEANUT_END - PEANUT_START)),
+    );
+    output.ability.peanutWindupDuration = PEANUT?.windupSeconds || 0.25;
+    const CHESTNUT = u.ability.action?.chestnutAttack,
+        CHESTNUT_TICK = CHESTNUT?.motionTick || 0,
+        CHESTNUT_SHOT = CHESTNUT?.shots.findLast((shot) => shot.tick <= CHESTNUT_TICK),
+        CHESTNUT_FLIGHT = Math.max(0.1, 0.3 / (CHESTNUT?.speed || 1));
+    output.ability.chestnutForm = CHESTNUT?.form || 0;
+    output.ability.chestnutSlot = CHESTNUT_SHOT?.slot || 0;
+    output.ability.chestnutStage =
+        CHESTNUT && u.ability.phase === 'recover' && CHESTNUT_TICK < (CHESTNUT_SHOT?.tick || 0) + CHESTNUT_FLIGHT * 20
+            ? CHESTNUT_SHOT?.stage || 'thrust'
+            : u.ability.phase;
+    output.ability.chestnutStageProgress = CHESTNUT_SHOT
+        ? Math.max(0, Math.min(1, (CHESTNUT_TICK - CHESTNUT_SHOT.tick) / (CHESTNUT_FLIGHT * 20)))
+        : 0;
+    output.ability.chestnutWindupDuration = CHESTNUT?.windupSeconds || 0.28;
+    const REDBEAN = u.ability.action?.redbeanAttack;
+    output.ability.redbeanForm = REDBEAN?.form || 0;
+    output.ability.redbeanSlot = REDBEAN?.slot || 0;
+    output.ability.redbeanLeg = REDBEAN?.leg || 0;
+    output.ability.redbeanStage = REDBEAN?.stage || u.ability.phase;
+    output.ability.redbeanStageProgress = REDBEAN?.progress || 0;
+    output.ability.redbeanWindupDuration = REDBEAN?.windupSeconds || 0.32;
+    const PEA = u.ability.action?.peaAttack;
+    output.ability.peaForm = PEA?.form || 0;
+    output.ability.peaSlot = PEA?.slot || 0;
+    output.ability.peaStage = PEA?.stage || u.ability.phase;
+    output.ability.peaStageProgress =
+        PEA && u.ability.phase === 'active' && PEA.contactTick === null
+            ? Math.min(1, u.ability.elapsed / (u.ability.action.path?.duration || 0.12))
+            : PEA?.stageProgress || 0;
+    output.ability.peaWindupDuration = PEA?.windupSeconds || 0.28;
+    updateWalnutPresentation(output.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
+    updateRicePresentation(output.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
+    updateWheatPresentation(output.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
+    updateBarleyPresentation(output.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
+    // Enemy summons intentionally have no player progression. Keep their base
+    // baton unless an active attack supplies a form; never borrow player upgrades.
+    const WHEAT_PROGRESSION = u.species === 7 ? world.abilityProgressionFor(u) : null,
+        WHEAT_BUILD = WHEAT_PROGRESSION ? WHEAT_PROGRESSION.abilities['wheat-command-crit'] : null;
+    output.ability.wheatLongBaton =
+        (output.ability.wheatForm ||
+            (WHEAT_BUILD?.treeVersion === 1
+                ? growthForAbility('wheat-command-crit').attackTier(growthBuildOf(WHEAT_BUILD), u.tier)
+                : 1)) >= 4;
+    output.walnutGuarding = !!u.ability.isGuarding?.(world.simulationTick);
+}
+
 // Health changes can interpolate while alive; death/revival must snap as one
 // state boundary so a 0→60 down reset never looks like half-completed sleep.
 class UnitRender extends RENDER_OBJECT {
@@ -41,86 +195,8 @@ class UnitRender extends RENDER_OBJECT {
         stun: R.LINEAR,
         flash: R.LINEAR,
         bounce: R.LINEAR,
-        'ability.phase': R.STATE_KEY,
-        'ability.elapsed': R.LINEAR,
-        'ability.peanutStrikeCount': R.STEP,
-        'ability.peanutForm': R.STEP,
-        'ability.peanutActionId': R.STATE_KEY,
-        'ability.peanutSlot': R.STEP,
-        'ability.peanutStage': R.STATE_KEY,
-        'ability.peanutStageProgress': R.LINEAR,
-        'ability.peanutWindupDuration': R.STEP,
-        'ability.chestnutForm': R.STEP,
-        'ability.chestnutSlot': R.STEP,
-        'ability.chestnutStage': R.STATE_KEY,
-        'ability.chestnutStageProgress': R.LINEAR,
-        'ability.chestnutWindupDuration': R.STEP,
-        'ability.redbeanForm': R.STEP,
-        'ability.redbeanSlot': R.STEP,
-        'ability.redbeanLeg': R.STEP,
-        'ability.redbeanStage': R.STATE_KEY,
-        'ability.redbeanStageProgress': R.LINEAR,
-        'ability.redbeanWindupDuration': R.STEP,
-        'ability.peaForm': R.STEP,
-        'ability.peaSlot': R.STEP,
-        'ability.peaStage': R.STATE_KEY,
-        'ability.peaStageProgress': R.LINEAR,
-        'ability.peaWindupDuration': R.STEP,
-        'ability.walnutForm': R.STEP,
-        'ability.walnutActionId': R.STATE_KEY,
-        'ability.walnutSlot': R.STATE_KEY,
-        'ability.walnutStage': R.STATE_KEY,
-        'ability.walnutFirstStage': R.STEP,
-        'ability.walnutLastStage': R.STEP,
-        'ability.walnutStageProgress': R.LINEAR,
-        'ability.walnutMotionTick': R.STEP,
-        'ability.walnutWindupDuration': R.STEP,
-        'ability.walnutRecoveryDuration': R.STEP,
-        'ability.walnutPointX': R.STEP,
-        'ability.walnutPointY': R.STEP,
-        'ability.walnutRawBudget': R.STEP,
-        'ability.walnutImpactLife': R.LINEAR,
-        'ability.riceForm': R.STEP,
-        'ability.riceActionId': R.STATE_KEY,
-        'ability.riceSlot': R.STATE_KEY,
-        'ability.riceStage': R.STATE_KEY,
-        'ability.ricePreviousStage': R.STEP,
-        'ability.riceFirstStage': R.STEP,
-        'ability.riceLastStage': R.STEP,
-        'ability.riceStageProgress': R.LINEAR,
-        'ability.riceWindupDuration': R.STEP,
-        'ability.riceRecoveryDuration': R.STEP,
-        'ability.ricePointX': R.STEP,
-        'ability.ricePointY': R.STEP,
-        'ability.barleyForm': R.STEP,
-        'ability.barleyActionId': R.STATE_KEY,
-        'ability.barleySlot': R.STATE_KEY,
-        'ability.barleyStage': R.STATE_KEY,
-        'ability.barleyPreviousStage': R.STEP,
-        'ability.barleyFirstStage': R.STEP,
-        'ability.barleyLastStage': R.STEP,
-        'ability.barleyStageProgress': R.LINEAR,
-        'ability.barleyWindupDuration': R.STEP,
-        'ability.barleyRecoveryDuration': R.STEP,
-        'ability.barleyPointX': R.STEP,
-        'ability.barleyPointY': R.STEP,
-        'ability.barleyFace': R.STEP,
-        'ability.wheatForm': R.STEP,
-        'ability.wheatActionId': R.STATE_KEY,
-        'ability.wheatSlot': R.STATE_KEY,
-        'ability.wheatStage': R.STATE_KEY,
-        'ability.wheatPreviousStage': R.STEP,
-        'ability.wheatFirstStage': R.STEP,
-        'ability.wheatLastStage': R.STEP,
-        'ability.wheatStageProgress': R.LINEAR,
-        'ability.wheatWindupDuration': R.STEP,
-        'ability.wheatRecoveryDuration': R.STEP,
-        'ability.wheatPointX': R.STEP,
-        'ability.wheatPointY': R.STEP,
-        'ability.wheatFace': R.STEP,
-        'ability.wheatLongBaton': R.STEP,
+        ...UNIT_ATTACK_SCHEMA,
         commandBeatLife: R.LINEAR,
-        walnutGuarding: R.STEP,
         cooldown: R.LINEAR,
         cooldownDuration: R.STEP,
         meals: R.STEP,
@@ -171,77 +247,7 @@ class UnitRender extends RENDER_OBJECT {
         this.stun = u.stun;
         this.flash = u.flash;
         this.bounce = u.bounce;
-        this.ability.phase = u.ability.phase;
-        this.ability.elapsed = u.ability.elapsed;
-        this.ability.peanutStrikeCount = u.ability.action?.peanutStrikeCount || 2;
-        const PEANUT = u.ability.action?.peanutAttack,
-            PEANUT_TICK = u.ability.phase === 'active' ? u.ability.elapsed * 20 : 0,
-            PEANUT_INDEX =
-                PEANUT?.shots.findIndex(
-                    (shot, index, shots) => !shots[index + 1] || PEANUT_TICK < (shot.tick + shots[index + 1].tick) / 2,
-                ) ?? -1,
-            PEANUT_SHOT = PEANUT?.shots[Math.max(0, PEANUT_INDEX)],
-            PEANUT_START = PEANUT_INDEX > 0 ? (PEANUT.shots[PEANUT_INDEX - 1].tick + PEANUT_SHOT.tick) / 2 : 0,
-            PEANUT_END = PEANUT_SHOT
-                ? PEANUT.shots[PEANUT_INDEX + 1]
-                    ? (PEANUT_SHOT.tick + PEANUT.shots[PEANUT_INDEX + 1].tick) / 2
-                    : PEANUT.durationSeconds * 20
-                : 1;
-        this.ability.peanutForm = PEANUT?.form || 0;
-        this.ability.peanutActionId = PEANUT?.id || 0;
-        this.ability.peanutSlot = PEANUT_SHOT?.slot || 0;
-        this.ability.peanutStage = u.ability.phase === 'active' ? PEANUT_SHOT?.stage || 'active' : u.ability.phase;
-        this.ability.peanutStageProgress = Math.max(
-            0,
-            Math.min(1, (PEANUT_TICK - PEANUT_START) / (PEANUT_END - PEANUT_START)),
-        );
-        this.ability.peanutWindupDuration = PEANUT?.windupSeconds || 0.25;
-        const CHESTNUT = u.ability.action?.chestnutAttack,
-            CHESTNUT_TICK = CHESTNUT?.motionTick || 0,
-            CHESTNUT_SHOT = CHESTNUT?.shots.findLast((shot) => shot.tick <= CHESTNUT_TICK),
-            CHESTNUT_FLIGHT = Math.max(0.1, 0.3 / (CHESTNUT?.speed || 1));
-        this.ability.chestnutForm = CHESTNUT?.form || 0;
-        this.ability.chestnutSlot = CHESTNUT_SHOT?.slot || 0;
-        this.ability.chestnutStage =
-            CHESTNUT &&
-            u.ability.phase === 'recover' &&
-            CHESTNUT_TICK < (CHESTNUT_SHOT?.tick || 0) + CHESTNUT_FLIGHT * 20
-                ? CHESTNUT_SHOT?.stage || 'thrust'
-                : u.ability.phase;
-        this.ability.chestnutStageProgress = CHESTNUT_SHOT
-            ? Math.max(0, Math.min(1, (CHESTNUT_TICK - CHESTNUT_SHOT.tick) / (CHESTNUT_FLIGHT * 20)))
-            : 0;
-        this.ability.chestnutWindupDuration = CHESTNUT?.windupSeconds || 0.28;
-        const REDBEAN = u.ability.action?.redbeanAttack;
-        this.ability.redbeanForm = REDBEAN?.form || 0;
-        this.ability.redbeanSlot = REDBEAN?.slot || 0;
-        this.ability.redbeanLeg = REDBEAN?.leg || 0;
-        this.ability.redbeanStage = REDBEAN?.stage || u.ability.phase;
-        this.ability.redbeanStageProgress = REDBEAN?.progress || 0;
-        this.ability.redbeanWindupDuration = REDBEAN?.windupSeconds || 0.32;
-        const PEA = u.ability.action?.peaAttack;
-        this.ability.peaForm = PEA?.form || 0;
-        this.ability.peaSlot = PEA?.slot || 0;
-        this.ability.peaStage = PEA?.stage || u.ability.phase;
-        this.ability.peaStageProgress =
-            PEA && u.ability.phase === 'active' && PEA.contactTick === null
-                ? Math.min(1, u.ability.elapsed / (u.ability.action.path?.duration || 0.12))
-                : PEA?.stageProgress || 0;
-        this.ability.peaWindupDuration = PEA?.windupSeconds || 0.28;
-        updateWalnutPresentation(this.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
-        updateRicePresentation(this.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
-        updateWheatPresentation(this.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
-        updateBarleyPresentation(this.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
-        // Enemy summons intentionally have no player progression. Keep their base
-        // baton unless an active attack supplies a form; never borrow player upgrades.
-        const WHEAT_PROGRESSION = u.species === 7 ? world.abilityProgressionFor(u) : null,
-            WHEAT_BUILD = WHEAT_PROGRESSION ? WHEAT_PROGRESSION.abilities['wheat-command-crit'] : null;
-        this.ability.wheatLongBaton =
-            (this.ability.wheatForm ||
-                (WHEAT_BUILD?.treeVersion === 1
-                    ? growthForAbility('wheat-command-crit').attackTier(growthBuildOf(WHEAT_BUILD), u.tier)
-                    : 1)) >= 4;
-        this.walnutGuarding = !!u.ability.isGuarding?.(world.simulationTick);
+        updateUnitAttackRender(this, u, world);
         this.cooldown = u.cooldown;
         this.cooldownDuration = u.cooldownDuration;
         this.meals = u.meals;
@@ -295,6 +301,17 @@ class UnitRender extends RENDER_OBJECT {
 }
 class BossRender extends RENDER_OBJECT {
     static renderSchema = Object.freeze({
+        ...UNIT_ATTACK_SCHEMA,
+        id: R.STEP,
+        tier: R.STEP,
+        seed: R.STEP,
+        bodyScale: R.LINEAR,
+        bounce: R.LINEAR,
+        dropLanded: R.STEP,
+        stun: R.LINEAR,
+        giantUntil: R.STEP,
+        giantSizeMultiplier: R.STEP,
+        giantEndedAt: R.STEP,
         'skillCast.id': R.STATE_KEY,
         'skillCast.phase': R.STATE_KEY,
         'skillCast.serial': R.STATE_KEY,
@@ -342,8 +359,20 @@ class BossRender extends RENDER_OBJECT {
     constructor() {
         super();
         this.skillCast = {};
+        this.ability = {};
     }
     update(b, world) {
+        updateUnitAttackRender(this, b, world);
+        this.id = b.id;
+        this.tier = b.tier;
+        this.seed = b.seed;
+        this.bodyScale = b.bodyScale;
+        this.bounce = b.bounce;
+        this.dropLanded = b.dropLanded;
+        this.stun = b.stun;
+        this.giantUntil = b.giantUntil;
+        this.giantSizeMultiplier = b.giantSizeMultiplier;
+        this.giantEndedAt = b.giantEndedAt;
         const CAST = world.formationRuntime.bossCast;
         Object.assign(this.skillCast, {
             id: CAST?.id || '',

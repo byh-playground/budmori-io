@@ -16,6 +16,7 @@ import { BOSS_REWARD_SETTINGS, bossStageStats } from './boss-rewards.js';
 import { resolveUnitStats } from './unit-stats.js';
 import { FACTION_CONFIG, hasFaction } from './factions.js';
 import { FARM_SNAPSHOT_SHAPE as GARDEN_SHAPE, UNIT_SNAPSHOT_SHAPE as UNIT_SHAPE } from './farm-snapshot.js';
+import { attackGeometryScale } from './features/species-growth/attack-profile.js';
 import { attackTargetKey } from './features/species-growth/attack-action.js';
 import { isCornAttackRecord, cornKernelMultiplier } from './features/species-growth/corn-attack.js';
 import { CORN_ATTACHMENT_FEATURE } from './features/abilities/corn-attachment/definition.js';
@@ -150,6 +151,7 @@ function sameCheckpointValue(left, right) {
     );
 }
 function validateAttackCycle(cycle) {
+    shape(cycle, UNIT_SHAPE.ability, 'actor.attackCycle');
     ASSERT(
         cycle.interruptedRecoverySeconds === null ||
             (cycle.phase === 'recover' &&
@@ -232,6 +234,366 @@ function validBarleyArmorShredBuckets(buckets, tick, allowLegacy) {
                       bucket.expiresAtTick <= tick + HORIZON),
         )
     );
+}
+function validateActorAttackState(actor, raw, cornActions, chestnutActions, allowLegacyBarleyShred) {
+    const U = actor;
+    validateAttackCycle(U.ability);
+    ASSERT(
+        Number.isFinite(U.landingRecovery) &&
+            U.landingRecovery >= 0 &&
+            U.landingRecovery <= 0.25 + 1e-9 &&
+            INTEGER(U.generation, 1, 1e12) &&
+            Number.isFinite(U.permanentStatMultiplier) &&
+            U.permanentStatMultiplier >= 1 &&
+            U.permanentStatMultiplier <= 2.25 &&
+            Number.isFinite(U.growthMaxHpMultiplier) &&
+            (U.growthMaxHpMultiplier === 1 ||
+                ((U.species === 2 ||
+                    U.species === 3 ||
+                    U.species === 4 ||
+                    U.species === 5 ||
+                    U.species === 6 ||
+                    U.species === 7 ||
+                    U.species === 8) &&
+                    !U.isBattleOnlySummon &&
+                    !U.isFormationClone &&
+                    hasFaction(U, FACTION_CONFIG.PLAYER) &&
+                    U.growthMaxHpMultiplier >= 1 &&
+                    U.growthMaxHpMultiplier <= 1.4 &&
+                    Math.abs((U.growthMaxHpMultiplier - 1) / 0.04 - Math.round((U.growthMaxHpMultiplier - 1) / 0.04)) <
+                        1e-9)) &&
+            INTEGER(U.walnutNextGuardTick, 0, 1e12) &&
+            INTEGER(U.walnutGuardUntilTick, 0, 1e12) &&
+            Number.isFinite(U.walnutStoredRawDamage) &&
+            U.walnutStoredRawDamage >= 0 &&
+            Number.isFinite(U.wheatCommandUntil) &&
+            U.wheatCommandUntil >= 0 &&
+            U.wheatCommandUntil <= 1e12 &&
+            Number.isFinite(U.wheatCommandCritBonus) &&
+            U.wheatCommandCritBonus >= 0 &&
+            U.wheatCommandCritBonus <= 0.5 &&
+            Number.isFinite(U.barleyArmorBreakUntil) &&
+            U.barleyArmorBreakUntil >= 0 &&
+            U.barleyArmorBreakUntil <= 1e12 &&
+            Number.isFinite(U.barleyArmorBreakReduction) &&
+            U.barleyArmorBreakReduction >= 0 &&
+            U.barleyArmorBreakReduction <= 0.75 &&
+            INTEGER(U.kidneyLeapReadyTick, 0, 1e12) &&
+            INTEGER(U.kidneyLeapLastUseTick, 0, 1e12) &&
+            typeof U.peaRecoveryPending === 'boolean' &&
+            INTEGER(U.peaCounterExpiresAtTick, 0, 1e12) &&
+            typeof U.peaCounterPending === 'boolean' &&
+            INTEGER(U.peaRecoveryBoostExpiresAtTick, 0, 1e12) &&
+            Number.isFinite(U.peaRecoveryBoostMultiplier) &&
+            U.peaRecoveryBoostMultiplier >= 0 &&
+            U.peaRecoveryBoostMultiplier <= 2 &&
+            validWheatCommandBuffs(U.wheatCommandBuffs, raw.simulationTick) &&
+            validBarleyArmorShredBuckets(U.barleyArmorShredBuckets, raw.simulationTick, allowLegacyBarleyShred),
+    );
+    ASSERT(
+        INTEGER(U.species, 0, CONFIG.unit.speciesCount - 1) &&
+            INTEGER(U.tier, 1, CONFIG.unit.maxTier) &&
+            ['idle', 'windup', 'active', 'recover'].includes(U.ability.phase) &&
+            typeof U.ownerId === 'string' &&
+            Number.isSafeInteger(U.farmId) &&
+            Object.values(FACTION_CONFIG).includes(U.faction) &&
+            typeof U.isBattleOnlySummon === 'boolean' &&
+            typeof U.splitUsedThisBattle === 'boolean' &&
+            typeof U.deathSplitHandled === 'boolean' &&
+            INTEGER(U.peanutInheritedPowerRank, 0, 10) &&
+            INTEGER(U.peanutInheritedSpeedRank, 0, 10) &&
+            INTEGER(U.chestnutNextThornTick, 0, 1e12),
+    );
+    ASSERT(!!specialAbilityCompositionFor(U.species) === (U.specialAbility !== null));
+    if (U.specialAbility) {
+        validateAttackCycle(U.specialAbility);
+        ASSERT(
+            ['idle', 'windup', 'active', 'recover'].includes(U.specialAbility.phase) &&
+                Number.isFinite(U.specialAbility.elapsed) &&
+                U.specialAbility.elapsed >= 0,
+        );
+        if (U.specialAbility.action) {
+            ASSERT(
+                INTEGER(U.specialAbility.action.id, 1, raw.attackSerial) &&
+                    typeof U.specialAbility.action.hit === 'boolean' &&
+                    U.specialAbility.action.target &&
+                    Number.isFinite(U.specialAbility.action.target.x) &&
+                    Number.isFinite(U.specialAbility.action.target.y),
+            );
+            if (U.specialAbility.action.leapDepartureCommitted !== undefined) {
+                ASSERT(typeof U.specialAbility.action.leapDepartureCommitted === 'boolean');
+            }
+            if (U.specialAbility.action.leapCooldownResetApplied !== undefined) {
+                ASSERT(typeof U.specialAbility.action.leapCooldownResetApplied === 'boolean');
+            }
+            if (U.specialAbility.action.path) {
+                validatePath(U.specialAbility.action.path);
+            }
+        }
+        if (['active', 'windup'].includes(U.specialAbility.phase)) {
+            ASSERT(U.specialAbility.action !== null);
+        }
+        if (U.specialAbility.phase === 'active') {
+            validatePath(U.specialAbility.action.path);
+        }
+    }
+    if (U.ability.action) {
+        const A = U.ability.action;
+        ASSERT(
+            INTEGER(A.id, 1, raw.attackSerial) &&
+                INTEGER(A.targetGeneration, 1, 1e12) &&
+                typeof A.hit === 'boolean' &&
+                A.target &&
+                Number.isFinite(A.target.x) &&
+                Number.isFinite(A.target.y),
+        );
+        if (A.peanutAttack !== undefined) {
+            const R = A.peanutAttack;
+            ASSERT(
+                U.species === 4 &&
+                    isPeanutAttackRecord(R) &&
+                    R.id === A.id &&
+                    R.owner === U.id &&
+                    R.ownerGeneration === U.generation &&
+                    R.tier === U.tier &&
+                    R.child === U.isBattleOnlySummon &&
+                    (!R.child ||
+                        (R.ranks.power === U.peanutInheritedPowerRank &&
+                            R.budgetInputs.speedRank === U.peanutInheritedSpeedRank)) &&
+                    U.hp > 0 &&
+                    (R.launchTick === null
+                        ? U.ability.phase === 'windup' && A.path === null
+                        : (U.ability.phase === 'active' || U.ability.phase === 'recover') &&
+                          R.launchTick <= raw.simulationTick &&
+                          R.motionTick ===
+                              (U.ability.phase === 'recover' ? 10 : Math.min(10, Math.round(U.ability.elapsed * 20))) &&
+                          A.path?.duration === R.durationSeconds &&
+                          A.path.height === 0 &&
+                          A.path.from.z === 0 &&
+                          [A.path.from.x, A.path.from.y].every((v) => Number.isFinite(v) && Math.abs(v) <= 100) &&
+                          sameCheckpointValue(A.path.from, A.path.to)) &&
+                    R.targetId === A.targetId &&
+                    R.targetGeneration === A.targetGeneration,
+            );
+        }
+        if (A.walnutAttack !== undefined) {
+            const R = A.walnutAttack;
+            ASSERT(
+                U.species === 5 &&
+                    isWalnutAttackRecord(R) &&
+                    R.id === A.id &&
+                    R.owner === U.id &&
+                    R.ownerGeneration === U.generation &&
+                    R.tier === U.tier &&
+                    U.hp > 0 &&
+                    (R.launchTick === null
+                        ? U.ability.phase === 'windup' && A.path === null
+                        : (U.ability.phase === 'active' || U.ability.phase === 'recover') &&
+                          R.launchTick <= raw.simulationTick &&
+                          R.motionTick ===
+                              (U.ability.phase === 'recover' ? 10 : Math.min(10, Math.round(U.ability.elapsed * 20))) &&
+                          A.path?.duration === R.durationSeconds &&
+                          A.path.height === 0 &&
+                          sameCheckpointValue(A.path.from, R.origin) &&
+                          sameCheckpointValue(A.path.to, R.origin)) &&
+                    R.targetId === A.targetId &&
+                    R.targetGeneration === A.targetGeneration,
+            );
+        }
+        if (A.riceAttack !== undefined) {
+            const R = A.riceAttack;
+            ASSERT(
+                U.species === 6 &&
+                    isRiceAttackRecord(R) &&
+                    R.id === A.id &&
+                    R.owner === U.id &&
+                    R.ownerGeneration === U.generation &&
+                    R.tier === U.tier &&
+                    U.hp > 0 &&
+                    (R.launchTick === null
+                        ? U.ability.phase === 'windup' && A.path === null
+                        : (U.ability.phase === 'active' || U.ability.phase === 'recover') &&
+                          R.launchTick <= raw.simulationTick &&
+                          R.motionTick ===
+                              (U.ability.phase === 'recover'
+                                  ? Math.round(R.durationSeconds * 20)
+                                  : Math.min(Math.round(R.durationSeconds * 20), Math.round(U.ability.elapsed * 20))) &&
+                          A.path?.duration === R.durationSeconds &&
+                          A.path.height === 0 &&
+                          sameCheckpointValue(A.path.from, R.origin) &&
+                          sameCheckpointValue(A.path.to, R.origin)) &&
+                    R.targetId === A.targetId &&
+                    R.targetGeneration === A.targetGeneration,
+            );
+        }
+        if (A.wheatAttack !== undefined) {
+            const R = A.wheatAttack;
+            ASSERT(
+                U.species === 7 &&
+                    isWheatAttackRecord(R) &&
+                    R.id === A.id &&
+                    R.owner === U.id &&
+                    R.ownerGeneration === U.generation &&
+                    R.tier === U.tier &&
+                    U.hp > 0 &&
+                    (R.launchTick === null
+                        ? U.ability.phase === 'windup' && A.path === null
+                        : (U.ability.phase === 'active' || U.ability.phase === 'recover') &&
+                          R.launchTick <= raw.simulationTick &&
+                          R.motionTick ===
+                              (U.ability.phase === 'recover'
+                                  ? Math.round(R.durationSeconds * 20)
+                                  : Math.min(Math.round(R.durationSeconds * 20), Math.round(U.ability.elapsed * 20))) &&
+                          A.path?.duration === R.durationSeconds &&
+                          A.path.height === 0 &&
+                          sameCheckpointValue(A.path.from, R.origin) &&
+                          sameCheckpointValue(A.path.to, R.origin)) &&
+                    R.targetId === A.targetId &&
+                    R.targetGeneration === A.targetGeneration,
+            );
+        }
+        if (A.barleyAttack !== undefined) {
+            const R = A.barleyAttack;
+            ASSERT(
+                U.species === 8 &&
+                    isBarleyAttackRecord(R) &&
+                    R.id === A.id &&
+                    R.owner === U.id &&
+                    R.ownerGeneration === U.generation &&
+                    R.tier === U.tier &&
+                    U.hp > 0 &&
+                    (R.launchTick === null
+                        ? U.ability.phase === 'windup' && A.path === null
+                        : (U.ability.phase === 'active' || U.ability.phase === 'recover') &&
+                          R.launchTick <= raw.simulationTick &&
+                          R.motionTick ===
+                              (U.ability.phase === 'recover'
+                                  ? Math.round(R.durationSeconds * 20)
+                                  : Math.min(Math.round(R.durationSeconds * 20), Math.round(U.ability.elapsed * 20))) &&
+                          A.path?.duration === R.durationSeconds &&
+                          A.path.height === 0 &&
+                          sameCheckpointValue(A.path.from, R.origin) &&
+                          sameCheckpointValue(A.path.to, R.origin)) &&
+                    R.targetId === A.targetId &&
+                    R.targetGeneration === A.targetGeneration,
+            );
+        }
+        if (A.redbeanAttack !== undefined) {
+            ASSERT(
+                U.species === 2 &&
+                    isRedbeanAttackRecord(A.redbeanAttack) &&
+                    A.redbeanAttack.id === A.id &&
+                    A.redbeanAttack.owner === U.id &&
+                    A.redbeanAttack.ownerGeneration === U.generation &&
+                    A.redbeanAttack.tier === U.tier,
+            );
+        }
+        if (A.peaAttack !== undefined) {
+            ASSERT(
+                U.species === 0 &&
+                    isPeaAttackRecord(A.peaAttack) &&
+                    A.peaAttack.id === A.id &&
+                    A.peaAttack.owner === U.id &&
+                    A.peaAttack.ownerGeneration === U.generation &&
+                    A.peaAttack.tier === U.tier,
+            );
+        }
+        if (A.chestnutAttack !== undefined) {
+            const R = A.chestnutAttack,
+                C = chestnutActions.get(A.id);
+            ASSERT(
+                U.species === 3 &&
+                    isChestnutAttackRecord(R, { pending: true }) &&
+                    R.id === A.id &&
+                    R.owner === U.id &&
+                    R.ownerGeneration === U.generation &&
+                    R.tier === U.tier &&
+                    R.targetId === A.targetId &&
+                    R.targetGeneration === A.targetGeneration &&
+                    (R.launchTick === null ? C === undefined : C && sameCheckpointValue(R, C)),
+            );
+        }
+        if (A.cornAttack !== undefined) {
+            const CANONICAL = cornActions.get(A.id);
+            ASSERT(
+                A.cornAttack.launchTick === null
+                    ? !CANONICAL &&
+                          Object.keys(A.cornAttack.criticalRolls).length === 0 &&
+                          A.cornAttack.firstAttachTick === null
+                    : CANONICAL && sameCheckpointValue(A.cornAttack, CANONICAL),
+            );
+            ASSERT(
+                U.species === 1 &&
+                    isCornAttackRecord(A.cornAttack, { pending: true }) &&
+                    A.cornAttack.id === A.id &&
+                    A.cornAttack.owner === U.id &&
+                    A.cornAttack.ownerGeneration === U.generation &&
+                    A.cornAttack.tier === U.tier,
+            );
+        }
+        if (hasUnitCapability(U.species, 'repeatedStrike') && !A.peanutAttack) {
+            ASSERT(
+                INTEGER(A.peanutStrikeCount, 2, 5) &&
+                    Number.isFinite(A.peanutAttackMultiplier) &&
+                    A.peanutAttackMultiplier > 0 &&
+                    A.peanutAttackMultiplier <= 10 &&
+                    Number.isFinite(A.peanutSpreadRadians) &&
+                    A.peanutSpreadRadians >= 0 &&
+                    A.peanutSpreadRadians <= Math.PI / 6,
+            );
+            const MASK = (1 << A.peanutStrikeCount) - 1;
+            ASSERT(
+                INTEGER(A.resolvedMask, 0, MASK) && INTEGER(A.hitMask, 0, MASK) && (A.hitMask & ~A.resolvedMask) === 0,
+            );
+        }
+        if (U.species === 3 && A.thornShotsRemaining !== undefined) {
+            ASSERT(
+                INTEGER(A.thornTargetGeneration, 1, 1e12) &&
+                    (A.thornTargetId === 'boss' || VALID_BATTLE_UNIT_ID(A.thornTargetId, raw.bossSummonSerial)) &&
+                    INTEGER(A.thornShotsRemaining, 0, 2) &&
+                    INTEGER(A.thornNextShotTick, 0, 1e12) &&
+                    INTEGER(A.thornShotIndex, 0, 2) &&
+                    A.thornConfig?.projectileCount >= 1 &&
+                    A.thornConfig.projectileCount <= 3,
+            );
+        }
+        if (A.path) {
+            validatePath(A.path);
+        }
+        if (A.pendingShots !== undefined) {
+            ASSERT(
+                Array.isArray(A.pendingShots) &&
+                    A.pendingShots.length <= 3 &&
+                    A.pendingShots.every(
+                        (shot) =>
+                            INTEGER(shot.shotIndex, 1, 4) &&
+                            Number.isFinite(shot.delaySeconds) &&
+                            shot.delaySeconds >= 0 &&
+                            Number.isFinite(shot.attackMultiplier) &&
+                            shot.attackMultiplier > 0 &&
+                            shot.attackMultiplier <= 10,
+                    ),
+            );
+        }
+        if (A.projectileAbility !== undefined) {
+            ASSERT(A.projectileAbility && Object.hasOwn(A.projectileAbility, 'effect'));
+            if (A.projectileAbility.effect) {
+                ASSERT(
+                    A.projectileAbility.effect.abilityId === 'corn-kernel-chain' &&
+                        Number.isFinite(A.projectileAbility.effect.config.damageMultiplier) &&
+                        A.projectileAbility.effect.config.damageMultiplier >= 0.5 &&
+                        A.projectileAbility.effect.config.damageMultiplier <= 1,
+                );
+            }
+        }
+    }
+    if (U.ability.phase === 'active' || U.ability.phase === 'windup') {
+        ASSERT(U.ability.action !== null);
+    }
+    if (U.ability.phase === 'active') {
+        validatePath(U.ability.action.path);
+    }
+    ASSERT(Number.isFinite(U.ability.elapsed) && U.ability.elapsed >= 0);
 }
 export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
     finiteTree(raw);
@@ -606,7 +968,6 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
         SUMMONS_BY_PARENT = new Map();
     for (const U of raw.units) {
         shape(U, UNIT_SHAPE);
-        validateAttackCycle(U.ability);
         ASSERT(
             Number.isFinite(U.growthElapsed) &&
                 U.growthElapsed >= 0 &&
@@ -625,108 +986,9 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
                 Number.isFinite(U.down) &&
                 U.down >= 0 &&
                 U.down <= CONFIG.unit.corpseRecoverySeconds &&
-                INTEGER(U.battleSummonEncounterId, 0, 1e12) &&
-                Number.isFinite(U.landingRecovery) &&
-                U.landingRecovery >= 0 &&
-                U.landingRecovery <= 0.25 + 1e-9 &&
-                INTEGER(U.generation, 1, 1e12) &&
-                Number.isFinite(U.permanentStatMultiplier) &&
-                U.permanentStatMultiplier >= 1 &&
-                U.permanentStatMultiplier <= 2.25 &&
-                Number.isFinite(U.growthMaxHpMultiplier) &&
-                (U.growthMaxHpMultiplier === 1 ||
-                    ((U.species === 2 ||
-                        U.species === 3 ||
-                        U.species === 4 ||
-                        U.species === 5 ||
-                        U.species === 6 ||
-                        U.species === 7 ||
-                        U.species === 8) &&
-                        !U.isBattleOnlySummon &&
-                        !U.isFormationClone &&
-                        hasFaction(U, FACTION_CONFIG.PLAYER) &&
-                        U.growthMaxHpMultiplier >= 1 &&
-                        U.growthMaxHpMultiplier <= 1.4 &&
-                        Math.abs(
-                            (U.growthMaxHpMultiplier - 1) / 0.04 - Math.round((U.growthMaxHpMultiplier - 1) / 0.04),
-                        ) < 1e-9)) &&
-                INTEGER(U.walnutNextGuardTick, 0, 1e12) &&
-                INTEGER(U.walnutGuardUntilTick, 0, 1e12) &&
-                Number.isFinite(U.walnutStoredRawDamage) &&
-                U.walnutStoredRawDamage >= 0 &&
-                Number.isFinite(U.wheatCommandUntil) &&
-                U.wheatCommandUntil >= 0 &&
-                U.wheatCommandUntil <= 1e12 &&
-                Number.isFinite(U.wheatCommandCritBonus) &&
-                U.wheatCommandCritBonus >= 0 &&
-                U.wheatCommandCritBonus <= 0.5 &&
-                Number.isFinite(U.barleyArmorBreakUntil) &&
-                U.barleyArmorBreakUntil >= 0 &&
-                U.barleyArmorBreakUntil <= 1e12 &&
-                Number.isFinite(U.barleyArmorBreakReduction) &&
-                U.barleyArmorBreakReduction >= 0 &&
-                U.barleyArmorBreakReduction <= 0.75 &&
-                INTEGER(U.kidneyLeapReadyTick, 0, 1e12) &&
-                INTEGER(U.kidneyLeapLastUseTick, 0, 1e12) &&
-                typeof U.peaRecoveryPending === 'boolean' &&
-                INTEGER(U.peaCounterExpiresAtTick, 0, 1e12) &&
-                typeof U.peaCounterPending === 'boolean' &&
-                INTEGER(U.peaRecoveryBoostExpiresAtTick, 0, 1e12) &&
-                Number.isFinite(U.peaRecoveryBoostMultiplier) &&
-                U.peaRecoveryBoostMultiplier >= 0 &&
-                U.peaRecoveryBoostMultiplier <= 2 &&
-                validWheatCommandBuffs(U.wheatCommandBuffs, raw.simulationTick) &&
-                validBarleyArmorShredBuckets(U.barleyArmorShredBuckets, raw.simulationTick, allowLegacyBarleyShred),
+                INTEGER(U.battleSummonEncounterId, 0, 1e12),
         );
-        ASSERT(
-            INTEGER(U.species, 0, CONFIG.unit.speciesCount - 1) &&
-                INTEGER(U.tier, 1, CONFIG.unit.maxTier) &&
-                ['idle', 'windup', 'active', 'recover'].includes(U.ability.phase) &&
-                typeof U.ownerId === 'string' &&
-                Number.isSafeInteger(U.farmId) &&
-                Object.values(FACTION_CONFIG).includes(U.faction) &&
-                typeof U.dropLanded === 'boolean' &&
-                typeof U.isBattleOnlySummon === 'boolean' &&
-                typeof U.splitUsedThisBattle === 'boolean' &&
-                typeof U.deathSplitHandled === 'boolean' &&
-                INTEGER(U.battleSummonParentGeneration, 0, 1e12) &&
-                INTEGER(U.peanutInheritedPowerRank, 0, 10) &&
-                INTEGER(U.peanutInheritedSpeedRank, 0, 10) &&
-                INTEGER(U.chestnutNextThornTick, 0, 1e12),
-        );
-        ASSERT(!!specialAbilityCompositionFor(U.species) === (U.specialAbility !== null));
-        if (U.specialAbility) {
-            validateAttackCycle(U.specialAbility);
-            ASSERT(
-                ['idle', 'windup', 'active', 'recover'].includes(U.specialAbility.phase) &&
-                    Number.isFinite(U.specialAbility.elapsed) &&
-                    U.specialAbility.elapsed >= 0,
-            );
-            if (U.specialAbility.action) {
-                ASSERT(
-                    INTEGER(U.specialAbility.action.id, 1, raw.attackSerial) &&
-                        typeof U.specialAbility.action.hit === 'boolean' &&
-                        U.specialAbility.action.target &&
-                        Number.isFinite(U.specialAbility.action.target.x) &&
-                        Number.isFinite(U.specialAbility.action.target.y),
-                );
-                if (U.specialAbility.action.leapDepartureCommitted !== undefined) {
-                    ASSERT(typeof U.specialAbility.action.leapDepartureCommitted === 'boolean');
-                }
-                if (U.specialAbility.action.leapCooldownResetApplied !== undefined) {
-                    ASSERT(typeof U.specialAbility.action.leapCooldownResetApplied === 'boolean');
-                }
-                if (U.specialAbility.action.path) {
-                    validatePath(U.specialAbility.action.path);
-                }
-            }
-            if (['active', 'windup'].includes(U.specialAbility.phase)) {
-                ASSERT(U.specialAbility.action !== null);
-            }
-            if (U.specialAbility.phase === 'active') {
-                validatePath(U.specialAbility.action.path);
-            }
-        }
+        ASSERT(typeof U.dropLanded === 'boolean' && INTEGER(U.battleSummonParentGeneration, 0, 1e12));
         if (U.hp <= 0) {
             ASSERT(U.down > 0 && !U.isBattleOnlySummon);
         } else {
@@ -841,278 +1103,9 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
             );
             ASSERT(INTEGER(U.id, 1, raw.nextId - 1));
         }
-        if (U.ability.action) {
-            const A = U.ability.action;
-            ASSERT(
-                INTEGER(A.id, 1, raw.attackSerial) &&
-                    INTEGER(A.targetGeneration, 1, 1e12) &&
-                    typeof A.hit === 'boolean' &&
-                    A.target &&
-                    Number.isFinite(A.target.x) &&
-                    Number.isFinite(A.target.y),
-            );
-            if (A.peanutAttack !== undefined) {
-                const R = A.peanutAttack;
-                ASSERT(
-                    U.species === 4 &&
-                        isPeanutAttackRecord(R) &&
-                        R.id === A.id &&
-                        R.owner === U.id &&
-                        R.ownerGeneration === U.generation &&
-                        R.tier === U.tier &&
-                        R.child === U.isBattleOnlySummon &&
-                        (!R.child ||
-                            (R.ranks.power === U.peanutInheritedPowerRank &&
-                                R.budgetInputs.speedRank === U.peanutInheritedSpeedRank)) &&
-                        U.hp > 0 &&
-                        (R.launchTick === null
-                            ? U.ability.phase === 'windup' && A.path === null
-                            : (U.ability.phase === 'active' || U.ability.phase === 'recover') &&
-                              R.launchTick <= raw.simulationTick &&
-                              R.motionTick ===
-                                  (U.ability.phase === 'recover'
-                                      ? 10
-                                      : Math.min(10, Math.round(U.ability.elapsed * 20))) &&
-                              A.path?.duration === R.durationSeconds &&
-                              A.path.height === 0 &&
-                              A.path.from.z === 0 &&
-                              [A.path.from.x, A.path.from.y].every((v) => Number.isFinite(v) && Math.abs(v) <= 100) &&
-                              sameCheckpointValue(A.path.from, A.path.to)) &&
-                        R.targetId === A.targetId &&
-                        R.targetGeneration === A.targetGeneration,
-                );
-            }
-            if (A.walnutAttack !== undefined) {
-                const R = A.walnutAttack;
-                ASSERT(
-                    U.species === 5 &&
-                        isWalnutAttackRecord(R) &&
-                        R.id === A.id &&
-                        R.owner === U.id &&
-                        R.ownerGeneration === U.generation &&
-                        R.tier === U.tier &&
-                        U.hp > 0 &&
-                        (R.launchTick === null
-                            ? U.ability.phase === 'windup' && A.path === null
-                            : (U.ability.phase === 'active' || U.ability.phase === 'recover') &&
-                              R.launchTick <= raw.simulationTick &&
-                              R.motionTick ===
-                                  (U.ability.phase === 'recover'
-                                      ? 10
-                                      : Math.min(10, Math.round(U.ability.elapsed * 20))) &&
-                              A.path?.duration === R.durationSeconds &&
-                              A.path.height === 0 &&
-                              sameCheckpointValue(A.path.from, R.origin) &&
-                              sameCheckpointValue(A.path.to, R.origin)) &&
-                        R.targetId === A.targetId &&
-                        R.targetGeneration === A.targetGeneration,
-                );
-            }
-            if (A.riceAttack !== undefined) {
-                const R = A.riceAttack;
-                ASSERT(
-                    U.species === 6 &&
-                        isRiceAttackRecord(R) &&
-                        R.id === A.id &&
-                        R.owner === U.id &&
-                        R.ownerGeneration === U.generation &&
-                        R.tier === U.tier &&
-                        U.hp > 0 &&
-                        (R.launchTick === null
-                            ? U.ability.phase === 'windup' && A.path === null
-                            : (U.ability.phase === 'active' || U.ability.phase === 'recover') &&
-                              R.launchTick <= raw.simulationTick &&
-                              R.motionTick ===
-                                  (U.ability.phase === 'recover'
-                                      ? Math.round(R.durationSeconds * 20)
-                                      : Math.min(
-                                            Math.round(R.durationSeconds * 20),
-                                            Math.round(U.ability.elapsed * 20),
-                                        )) &&
-                              A.path?.duration === R.durationSeconds &&
-                              A.path.height === 0 &&
-                              sameCheckpointValue(A.path.from, R.origin) &&
-                              sameCheckpointValue(A.path.to, R.origin)) &&
-                        R.targetId === A.targetId &&
-                        R.targetGeneration === A.targetGeneration,
-                );
-            }
-            if (A.wheatAttack !== undefined) {
-                const R = A.wheatAttack;
-                ASSERT(
-                    U.species === 7 &&
-                        isWheatAttackRecord(R) &&
-                        R.id === A.id &&
-                        R.owner === U.id &&
-                        R.ownerGeneration === U.generation &&
-                        R.tier === U.tier &&
-                        U.hp > 0 &&
-                        (R.launchTick === null
-                            ? U.ability.phase === 'windup' && A.path === null
-                            : (U.ability.phase === 'active' || U.ability.phase === 'recover') &&
-                              R.launchTick <= raw.simulationTick &&
-                              R.motionTick ===
-                                  (U.ability.phase === 'recover'
-                                      ? Math.round(R.durationSeconds * 20)
-                                      : Math.min(
-                                            Math.round(R.durationSeconds * 20),
-                                            Math.round(U.ability.elapsed * 20),
-                                        )) &&
-                              A.path?.duration === R.durationSeconds &&
-                              A.path.height === 0 &&
-                              sameCheckpointValue(A.path.from, R.origin) &&
-                              sameCheckpointValue(A.path.to, R.origin)) &&
-                        R.targetId === A.targetId &&
-                        R.targetGeneration === A.targetGeneration,
-                );
-            }
-            if (A.barleyAttack !== undefined) {
-                const R = A.barleyAttack;
-                ASSERT(
-                    U.species === 8 &&
-                        isBarleyAttackRecord(R) &&
-                        R.id === A.id &&
-                        R.owner === U.id &&
-                        R.ownerGeneration === U.generation &&
-                        R.tier === U.tier &&
-                        U.hp > 0 &&
-                        (R.launchTick === null
-                            ? U.ability.phase === 'windup' && A.path === null
-                            : (U.ability.phase === 'active' || U.ability.phase === 'recover') &&
-                              R.launchTick <= raw.simulationTick &&
-                              R.motionTick ===
-                                  (U.ability.phase === 'recover'
-                                      ? Math.round(R.durationSeconds * 20)
-                                      : Math.min(
-                                            Math.round(R.durationSeconds * 20),
-                                            Math.round(U.ability.elapsed * 20),
-                                        )) &&
-                              A.path?.duration === R.durationSeconds &&
-                              A.path.height === 0 &&
-                              sameCheckpointValue(A.path.from, R.origin) &&
-                              sameCheckpointValue(A.path.to, R.origin)) &&
-                        R.targetId === A.targetId &&
-                        R.targetGeneration === A.targetGeneration,
-                );
-            }
-            if (A.redbeanAttack !== undefined) {
-                ASSERT(
-                    U.species === 2 &&
-                        isRedbeanAttackRecord(A.redbeanAttack) &&
-                        A.redbeanAttack.id === A.id &&
-                        A.redbeanAttack.owner === U.id &&
-                        A.redbeanAttack.ownerGeneration === U.generation &&
-                        A.redbeanAttack.tier === U.tier,
-                );
-            }
-            if (A.peaAttack !== undefined) {
-                ASSERT(
-                    U.species === 0 &&
-                        isPeaAttackRecord(A.peaAttack) &&
-                        A.peaAttack.id === A.id &&
-                        A.peaAttack.owner === U.id &&
-                        A.peaAttack.ownerGeneration === U.generation &&
-                        A.peaAttack.tier === U.tier,
-                );
-            }
-            if (A.chestnutAttack !== undefined) {
-                const R = A.chestnutAttack,
-                    C = CHESTNUT_ACTIONS.get(A.id);
-                ASSERT(
-                    U.species === 3 &&
-                        isChestnutAttackRecord(R, { pending: true }) &&
-                        R.id === A.id &&
-                        R.owner === U.id &&
-                        R.ownerGeneration === U.generation &&
-                        R.tier === U.tier &&
-                        R.targetId === A.targetId &&
-                        R.targetGeneration === A.targetGeneration &&
-                        (R.launchTick === null ? C === undefined : C && sameCheckpointValue(R, C)),
-                );
-            }
-            if (A.cornAttack !== undefined) {
-                const CANONICAL = CORN_ACTIONS.get(A.id);
-                ASSERT(
-                    A.cornAttack.launchTick === null
-                        ? !CANONICAL &&
-                              Object.keys(A.cornAttack.criticalRolls).length === 0 &&
-                              A.cornAttack.firstAttachTick === null
-                        : CANONICAL && sameCheckpointValue(A.cornAttack, CANONICAL),
-                );
-                ASSERT(
-                    U.species === 1 &&
-                        isCornAttackRecord(A.cornAttack, { pending: true }) &&
-                        A.cornAttack.id === A.id &&
-                        A.cornAttack.owner === U.id &&
-                        A.cornAttack.ownerGeneration === U.generation &&
-                        A.cornAttack.tier === U.tier,
-                );
-            }
-            if (hasUnitCapability(U.species, 'repeatedStrike') && !A.peanutAttack) {
-                ASSERT(
-                    INTEGER(A.peanutStrikeCount, 2, 5) &&
-                        Number.isFinite(A.peanutAttackMultiplier) &&
-                        A.peanutAttackMultiplier > 0 &&
-                        A.peanutAttackMultiplier <= 10 &&
-                        Number.isFinite(A.peanutSpreadRadians) &&
-                        A.peanutSpreadRadians >= 0 &&
-                        A.peanutSpreadRadians <= Math.PI / 6,
-                );
-                const MASK = (1 << A.peanutStrikeCount) - 1;
-                ASSERT(
-                    INTEGER(A.resolvedMask, 0, MASK) &&
-                        INTEGER(A.hitMask, 0, MASK) &&
-                        (A.hitMask & ~A.resolvedMask) === 0,
-                );
-            }
-            if (U.species === 3 && A.thornShotsRemaining !== undefined) {
-                ASSERT(
-                    INTEGER(A.thornTargetGeneration, 1, 1e12) &&
-                        (A.thornTargetId === 'boss' || VALID_BATTLE_UNIT_ID(A.thornTargetId, raw.bossSummonSerial)) &&
-                        INTEGER(A.thornShotsRemaining, 0, 2) &&
-                        INTEGER(A.thornNextShotTick, 0, 1e12) &&
-                        INTEGER(A.thornShotIndex, 0, 2) &&
-                        A.thornConfig?.projectileCount >= 1 &&
-                        A.thornConfig.projectileCount <= 3,
-                );
-            }
-            if (A.path) {
-                validatePath(A.path);
-            }
-            if (A.pendingShots !== undefined) {
-                ASSERT(
-                    Array.isArray(A.pendingShots) &&
-                        A.pendingShots.length <= 3 &&
-                        A.pendingShots.every(
-                            (shot) =>
-                                INTEGER(shot.shotIndex, 1, 4) &&
-                                Number.isFinite(shot.delaySeconds) &&
-                                shot.delaySeconds >= 0 &&
-                                Number.isFinite(shot.attackMultiplier) &&
-                                shot.attackMultiplier > 0 &&
-                                shot.attackMultiplier <= 10,
-                        ),
-                );
-            }
-            if (A.projectileAbility !== undefined) {
-                ASSERT(A.projectileAbility && Object.hasOwn(A.projectileAbility, 'effect'));
-                if (A.projectileAbility.effect) {
-                    ASSERT(
-                        A.projectileAbility.effect.abilityId === 'corn-kernel-chain' &&
-                            Number.isFinite(A.projectileAbility.effect.config.damageMultiplier) &&
-                            A.projectileAbility.effect.config.damageMultiplier >= 0.5 &&
-                            A.projectileAbility.effect.config.damageMultiplier <= 1,
-                    );
-                }
-            }
-        }
-        if (U.ability.phase === 'active' || U.ability.phase === 'windup') {
-            ASSERT(U.ability.action !== null);
-        }
-        if (U.ability.phase === 'active') {
-            validatePath(U.ability.action.path);
-        }
+        validateActorAttackState(U, raw, CORN_ACTIONS, CHESTNUT_ACTIONS, allowLegacyBarleyShred);
     }
+    validateActorAttackState(raw.boss, raw, CORN_ACTIONS, CHESTNUT_ACTIONS, allowLegacyBarleyShred);
     for (const [PARENT_ID, CHILDREN] of SUMMONS_BY_PARENT) {
         ASSERT(CHILDREN.length <= MAX_PEANUT_SPLIT_CHILDREN);
         ASSERT(
@@ -1149,9 +1142,11 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
         ASSERT(INTEGER(P.id, 1, raw.projectileSerial) && !PROJECTILE_IDS.has(P.id));
         PROJECTILE_IDS.add(P.id);
         ASSERT(
-            INTEGER(P.owner, 1, raw.nextId - 1) ||
+            P.owner === 'boss' ||
+                INTEGER(P.owner, 1, raw.nextId - 1) ||
                 INTEGER(P.owner, CONFIG.boss.summonIdBase + 1, CONFIG.boss.summonIdBase + raw.bossSummonSerial),
         );
+        ASSERT(P.owner !== 'boss' || (P.faction === FACTION_CONFIG.ENEMY && P.ownerId === 'boss'));
         ASSERT(
             P.targetId === undefined || P.targetId === 'boss' || VALID_BATTLE_UNIT_ID(P.targetId, raw.bossSummonSerial),
         );
@@ -1177,8 +1172,8 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
                     P.isFormationClone === R.source.isFormationClone &&
                     P.projectileKind === 'chestnut-spike' &&
                     P.attackMultiplier === 1 &&
-                    P.radius === 0.12 &&
-                    P.height === 0.5 &&
+                    P.radius === 0.12 * attackGeometryScale(R) &&
+                    P.height === 0.5 * attackGeometryScale(R) &&
                     P.path.height === 0 &&
                     P.path.duration === Math.max(0.1, 0.3 / R.speed) &&
                     sameCheckpointValue(P.path.from, R.origin) &&
@@ -1330,7 +1325,10 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
                     ATTACHMENT.groupId === GROUP.id &&
                     ATTACHMENT.targetId === GROUP.targetId &&
                     ATTACHMENT.targetGeneration === GROUP.targetGeneration &&
-                    INTEGER(ATTACHMENT.ownerId, 1, 1e12) &&
+                    (ATTACHMENT.ownerId === 'boss' || INTEGER(ATTACHMENT.ownerId, 1, 1e12)) &&
+                    (ATTACHMENT.ownerId !== 'boss' ||
+                        (ATTACHMENT.payload?.faction === FACTION_CONFIG.ENEMY &&
+                            ATTACHMENT.payload.ownerId === 'boss')) &&
                     INTEGER(ATTACHMENT.ownerGeneration, 1, 1e12) &&
                     Number.isFinite(ATTACHMENT.damageMultiplier) &&
                     (RECORD
@@ -1369,7 +1367,19 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
     }
     ASSERT(INTEGER(raw.projectileSerial, 0, 1e12) && INTEGER(raw.bossSummonSerial, 0, 1e12));
     ASSERT(
-        hasFaction(raw.boss, FACTION_CONFIG.ENEMY) &&
+        raw.boss.id === 'boss' &&
+            raw.boss.ownerId === 'boss' &&
+            raw.boss.tier === 1 &&
+            raw.boss.farmId === 0 &&
+            raw.boss.canSplit === false &&
+            raw.boss.isBattleOnlySummon === false &&
+            raw.boss.isFormationClone === false &&
+            raw.boss.peanutInheritedPowerRank === 0 &&
+            raw.boss.peanutInheritedSpeedRank === 0 &&
+            raw.boss.growth === 3 &&
+            raw.boss.growthElapsed === 1 &&
+            raw.boss.growthDuration === 1 &&
+            hasFaction(raw.boss, FACTION_CONFIG.ENEMY) &&
             INTEGER(raw.boss.generation, 1, 1e12) &&
             raw.boss.hp >= 0 &&
             raw.boss.hp <= raw.boss.maxHp &&
@@ -1380,14 +1390,7 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
             raw.boss.attackPower >= 4 &&
             Number.isFinite(raw.boss.moveSpeed) &&
             raw.boss.moveSpeed > 0 &&
-            INTEGER(raw.boss.encounterId, 0, 1e12) &&
-            Number.isFinite(raw.boss.barleyArmorBreakUntil) &&
-            raw.boss.barleyArmorBreakUntil >= 0 &&
-            raw.boss.barleyArmorBreakUntil <= 1e12 &&
-            Number.isFinite(raw.boss.barleyArmorBreakReduction) &&
-            raw.boss.barleyArmorBreakReduction >= 0 &&
-            raw.boss.barleyArmorBreakReduction <= 0.75 &&
-            validBarleyArmorShredBuckets(raw.boss.barleyArmorShredBuckets, raw.simulationTick, allowLegacyBarleyShred),
+            INTEGER(raw.boss.encounterId, 0, 1e12),
     );
     if (raw.boss.statProfile) {
         const EFFECTIVE = resolveUnitStats(raw.boss);

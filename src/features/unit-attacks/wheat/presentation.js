@@ -1,4 +1,5 @@
-import { unitBodyDefinition, unitDisplayScale } from '../../unit-body/definition.js';
+import { unitAttackDisplayScale } from '../presentation-geometry.js';
+import { unitBodyDefinition } from '../../unit-body/definition.js';
 import { WORLD_DEPTH_PROJECTION } from '../../../vector-sockets.js';
 import { UnitAttackPresentation } from '../presentation-base.js';
 
@@ -95,20 +96,14 @@ export function wheatPreviewEnvelope(renderer, unit) {
 const SMOOTH = (value) => (1 - Math.cos(Math.PI * Math.max(0, Math.min(1, value)))) / 2;
 
 export class WheatAttackPresentation extends UnitAttackPresentation {
-    contactOffset(renderer, unit, stage, time) {
-        const RECORD = renderer.vectorAssets.get(7);
+    contactOffset(renderer, unit, stage, time, record) {
+        const RECORD = record || renderer.vectorAssets.get(7);
         if (!RECORD) {
             return { x: 0, y: 0 };
         }
         const BODY = unitBodyDefinition(7),
             TIP = contactSocket(RECORD, stage, unit.ability.wheatLongBaton),
-            GIANT = unit.giantUntil > time ? 3 : 1,
-            SCALE =
-                unitDisplayScale(BODY, unit.bodyScale, renderer.scale, renderer.minimumUnitPixels() * GIANT) *
-                (1 +
-                    Math.sin((time - unit.giantEndedAt) * 30) *
-                        0.12 *
-                        Math.max(0, 1 - (time - unit.giantEndedAt) / 0.35)),
+            SCALE = unitAttackDisplayScale(renderer, unit, time),
             FACE = unit.ability.wheatFace,
             POINT = renderer.project(unit.ability.wheatPointX, unit.ability.wheatPointY, 0),
             ORIGIN = renderer.project(unit.x, unit.y, unit.z),
@@ -116,7 +111,7 @@ export class WheatAttackPresentation extends UnitAttackPresentation {
             DY = POINT.y - ORIGIN.y - (TIP.y - BODY.ground.y) * SCALE;
         return { x: DX / renderer.scale, y: -DY / (renderer.scale * WORLD_DEPTH_PROJECTION) };
     }
-    groundOffset(renderer, unit, time) {
+    groundOffset(renderer, unit, time, record) {
         const A = unit.ability;
         if (!A.wheatForm || unit.hp <= 0 || unit.stun > 0) {
             return null;
@@ -125,7 +120,7 @@ export class WheatAttackPresentation extends UnitAttackPresentation {
             return { x: 0, y: 0 };
         }
         if (A.phase === 'recover') {
-            const END = this.contactOffset(renderer, unit, A.wheatLastStage, time),
+            const END = this.contactOffset(renderer, unit, A.wheatLastStage, time, record),
                 LEFT = 1 - SMOOTH(A.elapsed / A.wheatRecoveryDuration);
             return { x: END.x * LEFT, y: END.y * LEFT };
         }
@@ -135,8 +130,8 @@ export class WheatAttackPresentation extends UnitAttackPresentation {
         const START =
                 A.wheatPreviousStage === 'ready'
                     ? { x: 0, y: 0 }
-                    : this.contactOffset(renderer, unit, A.wheatPreviousStage, time),
-            END = this.contactOffset(renderer, unit, A.wheatStage, time),
+                    : this.contactOffset(renderer, unit, A.wheatPreviousStage, time, record),
+            END = this.contactOffset(renderer, unit, A.wheatStage, time, record),
             T = SMOOTH(A.wheatStageProgress);
         return { x: START.x + (END.x - START.x) * T, y: START.y + (END.y - START.y) * T };
     }

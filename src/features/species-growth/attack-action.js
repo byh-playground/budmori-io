@@ -2,6 +2,20 @@
 // Timings use the simulation tick; probability/RAW/command decisions are sampled by the caller once at launch.
 export const MAX_ACTION_STRIKES = 32;
 
+// Body-bound strike slots belong to this live incarnation and this exact cycle.
+// Already emitted projectiles have their own snapshot/generation lifecycle.
+export function attackOwnerCanContinue(world, unit, action, record) {
+    return (
+        unit.hp > 0 &&
+        unit.stun <= 0 &&
+        unit.down <= 0 &&
+        unit.generation === record.ownerGeneration &&
+        world._unitForId(record.owner) === unit &&
+        unit.ability?.action === action &&
+        unit.ability.phase === 'active'
+    );
+}
+
 export function defineAttackAction({ durationTicks, strikes }) {
     if (
         !Number.isSafeInteger(durationTicks) ||

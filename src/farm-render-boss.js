@@ -1,6 +1,18 @@
-import { visibleSkillCast, sampleSkillCastPose, skillCastPartPoses } from './features/skill-cast/presentation.js';
+import {
+    unitAttackPresentation,
+    unitAttackMotion,
+    unitCombatMotion,
+    unitCombatExpression,
+    motionElapsedMs,
+    prepareUnitAttackPlayer,
+    applyUnitAttackPose,
+    updateUnitAttackDisplay,
+    drawUnitAttackGround,
+    drawUnitAttackContact,
+} from './features/unit-attacks/presentation.js';
+import { unitAttackDisplayScale } from './features/unit-attacks/presentation-geometry.js';
+import { visibleSkillCast, sampleSkillCastPose } from './features/skill-cast/presentation.js';
 import { bossVectorScale } from './vector-sockets.js';
-import { speciesById } from './species-catalog.js';
 import { CONFIG, clamp } from './farm-model.js';
 import { BossAttackPose, BossAttackPresentation } from './features/boss-patterns/presentation-base.js';
 import { FrontSlamPresentation } from './features/boss-patterns/front-slam/presentation.js';
@@ -31,6 +43,55 @@ export class BossPresentation {
     constructor(renderer) {
         this.renderer = renderer;
         this.bossAttackPose = new BossAttackPose();
+        this.attackDisplay = null;
+    }
+    basicAttackVisible(boss, world) {
+        const SOURCE = boss === this.attackDisplay?.unit ? this.attackDisplay.source : boss,
+            EVENT = SOURCE === world.boss ? world.farmBossEvent : null;
+        return (
+            boss.hp > 0 &&
+            (!EVENT || EVENT.phase === 'fighting') &&
+            !visibleSkillCast(boss) &&
+            (!boss.patternPhase || boss.patternPhase === 'idle') &&
+            !!unitAttackMotion(boss)
+        );
+    }
+    displayBoss(boss, world) {
+        const SOURCE = boss === this.attackDisplay?.unit ? this.attackDisplay.source : boss;
+        let entry = this.attackDisplay;
+        if (
+            !entry ||
+            entry.world !== world ||
+            entry.generation !== SOURCE.generation ||
+            entry.species !== SOURCE.species ||
+            entry.revision !== world.presentationRevision ||
+            entry.time > this.renderer.displayTimeMs
+        ) {
+            entry = this.attackDisplay = {
+                world,
+                generation: SOURCE.generation,
+                species: SOURCE.species,
+                revision: world.presentationRevision,
+                unit: {},
+                offset: { x: 0, y: 0 },
+                releasedAt: null,
+            };
+        }
+        entry.source = SOURCE;
+        entry.time = this.renderer.displayTimeMs;
+        // A special pattern or card cast owns its pose exclusively. Do not carry
+        // an interrupted melee lunge into the existing overlay's socket space.
+        if (visibleSkillCast(SOURCE) || (SOURCE.patternPhase && SOURCE.patternPhase !== 'idle')) {
+            entry.offset = { x: 0, y: 0 };
+        }
+        return updateUnitAttackDisplay(
+            this.renderer,
+            entry,
+            SOURCE,
+            world.time,
+            this.renderer.bossSpeciesAssets.get(SOURCE.species),
+            this.basicAttackVisible(SOURCE, world),
+        );
     }
     bossPose(world, boss = world.boss) {
         const B = boss,
@@ -57,8 +118,8 @@ export class BossPresentation {
             k: K,
         };
     }
-    bossMotion(b, world) {
-        const EVENT = b === world.boss ? world.farmBossEvent : null;
+    bossMotion(b, world, event = b === world.boss ? world.farmBossEvent : null) {
+        const EVENT = event;
         if (EVENT?.phase === 'celebrating' && EVENT.outcome === 'defeat') {
             return 'idle';
         }
@@ -67,6 +128,9 @@ export class BossPresentation {
         }
         if (visibleSkillCast(b)) {
             return 'idle';
+        }
+        if (this.basicAttackVisible(b, world)) {
+            return unitCombatMotion(b);
         }
         if (b.flash > 0.09 && b.patternPhase === 'idle') {
             return 'hit';
@@ -85,12 +149,15 @@ export class BossPresentation {
     }
     draw(source, world) {
         // A boss standing on its tile of the map is drawn from its own record; the fighting one is the world's.
-        const BOSS = source && source.radius ? source : world.boss,
-            { b: B, p: P, k: K } = this.bossPose(world, BOSS),
+        const SOURCE = source === this.attackDisplay?.unit ? this.attackDisplay.source : source,
+            BOSS = SOURCE && SOURCE.radius ? SOURCE : world.boss,
+            { b: B, p: P, k: K } = this.bossPose(world, this.displayBoss(BOSS, world)),
             EVENT = BOSS === world.boss ? world.farmBossEvent : null,
             SPECIES = B.species,
             CAST = !EVENT || EVENT.phase === 'fighting' ? visibleSkillCast(B) : null,
-            PRESENTATION = CAST ? IDLE_PRESENTATION : bossAttackPresentation(B);
+            BASIC = this.basicAttackVisible(B, world),
+            ATTACK = unitAttackPresentation(B),
+            PRESENTATION = CAST || BASIC ? IDLE_PRESENTATION : bossAttackPresentation(B);
         const RECORD = this.renderer.bossSpeciesAssets.get(SPECIES);
         if (!RECORD) {
             throw new Error('Missing required boss vector asset for species ' + SPECIES);
@@ -111,33 +178,35 @@ export class BossPresentation {
         this.renderer.bossPlayer = PLAYER;
         this.renderer.bossPlayerAsset = RECORD;
         const METADATA = RECORD.compiled.metadata,
-            NAME = this.bossMotion(B, world),
-            FALLBACK_CLIP =
-                NAME === 'airborne'
-                    ? METADATA.clips.strike
-                        ? 'strike'
-                        : METADATA.clips.fire
-                          ? 'fire'
-                          : 'idle'
-                    : ['strike', 'sweep', 'fire'].includes(NAME) && !METADATA.clips[NAME]
-                      ? METADATA.clips.fire
-                          ? 'fire'
-                          : 'idle'
-                      : 'idle',
-            CLIP_NAME = METADATA.clips[NAME] ? NAME : FALLBACK_CLIP,
+            NAME = this.bossMotion(B, world, EVENT),
+            CLIP_NAME = ['strike', 'sweep'].includes(NAME) && !METADATA.clips[NAME] ? 'fire' : NAME,
             CLIP = METADATA.clips[CLIP_NAME];
-        const TIMED = ['windup', 'strike', 'sweep', 'recover', 'hit', 'death', 'fire', 'airborne'].includes(NAME),
+        if (!CLIP) {
+            throw new Error(`Missing shared species clip ${CLIP_NAME} for boss ${SPECIES}`);
+        }
+        const PHASE_TIME_MS = BASIC ? ATTACK.clipElapsedMs?.(B, NAME) : null,
+            HAS_PHASE_CLOCK = Number.isFinite(PHASE_TIME_MS),
+            TIMED = ['windup', 'strike', 'sweep', 'recover', 'hit', 'death', 'fire', 'airborne'].includes(NAME),
             ELAPSED = B.patternId ? B.patternPhaseElapsed : B.clock;
-        const CLIP_START_AT_MS = TIMED
-            ? this.renderer.displayTimeMs - Math.min(CLIP.durationMs, Math.max(0, ELAPSED || 0) * 1000)
-            : NAME === 'walk'
-              ? this.renderer.displayTimeMs - Math.max(0, B.travel || 0) * 110
-              : this.renderer.displayTimeMs - (((B.travel || 0) * 37) % CLIP.durationMs);
+        const CLIP_START_AT_MS = BASIC
+            ? HAS_PHASE_CLOCK
+                ? 0
+                : this.renderer.displayTimeMs - motionElapsedMs(B, NAME, CLIP)
+            : TIMED
+              ? this.renderer.displayTimeMs - Math.min(CLIP.durationMs, Math.max(0, ELAPSED || 0) * 1000)
+              : NAME === 'walk'
+                ? this.renderer.displayTimeMs - Math.max(0, B.travel || 0) * 110
+                : this.renderer.displayTimeMs - (((B.travel || 0) * 37) % CLIP.durationMs);
         if (CAST) {
             // Freeze the neutral authored frame so cast pose and release use only
             // the simulation clock, including restore and repeated same-skill casts.
             PLAYER.play('idle', 0);
             PLAYER.seek(0);
+            instance.summoning = false;
+        } else if (BASIC) {
+            if (instance.summoning || PLAYER.currentClip !== CLIP_NAME) {
+                PLAYER.play(CLIP_NAME, CLIP_START_AT_MS);
+            }
             instance.summoning = false;
         } else {
             PRESENTATION.play(instance, METADATA, B, CLIP_NAME, CLIP_START_AT_MS);
@@ -151,15 +220,17 @@ export class BossPresentation {
                   ? 'happy'
                   : CAST_POSE
                     ? CAST_POSE.expression
-                    : SUMMON_OPEN
-                      ? 'attack'
-                      : B.patternPhase === 'windup'
-                        ? 'focused'
-                        : B.patternPhase === 'active'
-                          ? 'attack'
-                          : B.flash > 0.07
-                            ? 'hurt'
-                            : 'neutral';
+                    : BASIC
+                      ? unitCombatExpression(B) || 'neutral'
+                      : SUMMON_OPEN
+                        ? 'attack'
+                        : B.patternPhase === 'windup'
+                          ? 'focused'
+                          : B.patternPhase === 'active'
+                            ? 'attack'
+                            : B.flash > 0.07
+                              ? 'hurt'
+                              : 'neutral';
         if (!METADATA.expressions?.[EXPRESSION] && !METADATA.expressions?.neutral) {
             throw new Error('Boss asset is missing a supported expression');
         }
@@ -167,10 +238,15 @@ export class BossPresentation {
         if (PLAYER.currentExpression !== SAFE_EXPRESSION) {
             PLAYER.setExpression(SAFE_EXPRESSION);
         }
-        if (!CAST) {
+        prepareUnitAttackPlayer(PLAYER, B);
+        if (BASIC) {
+            PLAYER.seek(HAS_PHASE_CLOCK ? clamp(PHASE_TIME_MS, 0, CLIP.durationMs) : this.renderer.displayTimeMs);
+        } else if (!CAST) {
             PRESENTATION.seek(PLAYER, this.renderer.displayTimeMs);
         }
-        const S_LOCAL = this.renderer.scale * bossVectorScale(B),
+        const S_LOCAL = BASIC
+                ? unitAttackDisplayScale(this.renderer, B, world.time)
+                : this.renderer.scale * bossVectorScale(B),
             GROUND = RECORD.anchors.ground,
             MATRIX = [S_LOCAL, 0, 0, S_LOCAL, P.x - GROUND.x * S_LOCAL, P.y - GROUND.y * S_LOCAL];
         const DEFEAT_BOUNCE =
@@ -193,14 +269,17 @@ export class BossPresentation {
             scaleY: POSE.body.scaleY * (1 - (K.squash || 0)) * (1 + 0.06 * DEFEAT_BOUNCE),
             opacity: FADE,
         });
-        // The hands float: each is moved round the body, and the weapon a species holds goes with its hand.
-        const TO_SVG = 1 / bossVectorScale(B),
-            HELD = speciesById(SPECIES).heldItem;
-        for (const [PART, HAND] of Object.entries(POSE.hands)) {
-            const AT = { x: HAND.x * TO_SVG, y: HAND.y * TO_SVG + POSE.body.y };
-            PLAYER.setBasePose(PART, AT);
-            if (HELD?.hand === PART && PARTS.has(HELD.part)) {
-                PLAYER.setBasePose(HELD.part, AT);
+        // The same authored rig is retained through idle, basic attacks, special
+        // patterns and cards. Root parts receive body translation exactly once;
+        // parented limbs/items already inherit it from the native SVG hierarchy.
+        const TO_SVG = 1 / bossVectorScale(B);
+        for (const [SIDE, HAND] of Object.entries(POSE.hands)) {
+            const OFFSET = CAST_POSE?.hands[SIDE] || { x: HAND.x * TO_SVG, y: HAND.y * TO_SVG };
+            for (const CHANNEL of RECORD.hands.channels[SIDE]) {
+                PLAYER.setBasePose(CHANNEL.part, {
+                    x: OFFSET.x,
+                    y: OFFSET.y + (CHANNEL.followsBody ? 0 : POSE.body.y),
+                });
             }
         }
         for (const [PART, PART_POSE] of Object.entries(POSE.extras)) {
@@ -208,12 +287,9 @@ export class BossPresentation {
                 PLAYER.setBasePose(PART, PART_POSE);
             }
         }
-        if (CAST_POSE) {
-            for (const [PART, PART_POSE] of Object.entries(skillCastPartPoses(CAST_POSE, METADATA.parts, HELD))) {
-                if (PART !== 'body') {
-                    PLAYER.setBasePose(PART, PART_POSE);
-                }
-            }
+        if (BASIC) {
+            applyUnitAttackPose(MATRIX, B, GROUND);
+            drawUnitAttackGround(this.renderer, B);
         }
         if (BOSS === world.boss && this.renderer.cornAttachmentBodies.has('boss')) {
             this.renderer.captureCornAttachmentBody(B, 'boss', PLAYER, MATRIX);
@@ -229,6 +305,7 @@ export class BossPresentation {
             matrix: MATRIX,
         });
         PRESENTATION.drawRelease(this.renderer, B, POSE, MOUTH_SCREEN);
+        drawUnitAttackContact(this.renderer, B, PLAYER, MATRIX);
         BARLEY_SHRED_PRESENTATION.drawStatus(this.renderer, B);
     }
 }

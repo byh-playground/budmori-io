@@ -1,4 +1,11 @@
-import { AttackAction, attackTargetKey, isAttackActionDTO } from './attack-action.js';
+import {
+    attackBudgetInputs,
+    attackBudgetShape,
+    attackRecordShape,
+    captureAttackGeometry,
+    attackBudgetValues,
+} from './attack-profile.js';
+import { AttackAction, attackTargetKey, isAttackActionDTO, attackOwnerCanContinue } from './attack-action.js';
 import { growthForAbility, growthBuildOf } from './state.js';
 import { baseUnitStatsFor, COMMON_UNIT_STAT_DEFAULTS } from '../../unit-stats.js';
 import { mergeMaterialCostForTier } from '../../unit-grades.js';
@@ -48,6 +55,7 @@ export function createPeaAttack(world, unit, action, recoverySeconds) {
         FORM = GROWTH.attackTier(BUILD, unit.tier),
         RECOVERY = recoverySeconds * (1 - 0.015 * (RANKS['basic-3'] || 0)),
         CONTEXT = world.createAttackContext(unit, { attackMultiplier: 1, attackKind: 'ram' }),
+        INPUTS = attackBudgetInputs(unit),
         COUNTER = unit.peaCounterExpiresAtTick > 0 && world.simulationTick <= unit.peaCounterExpiresAtTick;
     // Consumption is at action start, even if this action misses or is interrupted.
     unit.peaCounterExpiresAtTick = 0;
@@ -56,6 +64,7 @@ export function createPeaAttack(world, unit, action, recoverySeconds) {
         id: action.id,
         owner: unit.id,
         ownerGeneration: unit.generation,
+        ...captureAttackGeometry(unit),
         tier: unit.tier,
         form: FORM,
         slot: 0,
@@ -77,23 +86,19 @@ export function createPeaAttack(world, unit, action, recoverySeconds) {
             last: RANKS['specialty-3'] || 0,
         },
         budgetInputs: {
-            tierOneAttack: baseUnitStatsFor(1, 0).attackPower,
-            tierAttack: baseUnitStatsFor(unit.tier, 0).attackPower,
+            tierOneAttack: INPUTS.one,
+            tierAttack: INPUTS.current,
+            ...(INPUTS.profile ? { profile: INPUTS.profile } : {}),
             baseRecovery: recoverySeconds,
         },
         directMultiplier:
-            peaMergeBudgetMultiplier(unit.tier, FORM, RECOVERY) *
+            peaBudgetFromInputs(unit.tier, FORM, RECOVERY, INPUTS.one, INPUTS.current) *
             (1 + 0.03 * (RANKS['basic-1'] || 0)) *
             (COUNTER ? 1 + 0.05 * (RANKS['basic-2'] || 0) : 1),
         source: {
             attackerStats: structuredClone(CONTEXT.attackerStats),
             attackPowerMultiplier: CONTEXT.attackPowerMultiplier,
-            sourceDamageScale: world.passiveDamageScale(
-                unit,
-                CONTEXT.attackerStats.maxHp,
-                world.boss,
-                world.boss.maxHp,
-            ),
+            sourceDamageScale: world.passiveAttackScale(unit, CONTEXT.attackerStats.maxHp),
             sourceKind: CONTEXT.sourceKind,
         },
         attack: null,
@@ -123,14 +128,20 @@ export function startPeaContacts(world, unit, action, hit) {
 }
 
 export function resolvePeaContacts(world, unit, action, target, hit) {
-    const RECORD = action.peaAttack,
-        NEXT = RECORD.attack.plan.strikes[RECORD.attack.nextSlot];
+    const RECORD = action.peaAttack;
+    if (!RECORD?.attack || !attackOwnerCanContinue(world, unit, action, RECORD)) {
+        return;
+    }
+    const NEXT = RECORD.attack.plan.strikes[RECORD.attack.nextSlot];
     if (!NEXT || world.simulationTick < RECORD.attack.startTick + NEXT.tick) {
         return;
     }
     const ATTACK = AttackAction.fromDTO(RECORD.attack),
         READY = ATTACK.advance(world.simulationTick);
     for (const STRIKE of READY) {
+        if (!attackOwnerCanContinue(world, unit, action, RECORD)) {
+            break;
+        }
         RECORD.slot = STRIKE.slot;
         if (!hit || !ATTACK.claimHit(STRIKE.slot, target === world.boss ? 'boss' : target.id, target.generation)) {
             continue;
@@ -171,15 +182,13 @@ export function resolvePeaContacts(world, unit, action, target, hit) {
 export function isPeaAttackRecord(record) {
     if (
         !record ||
-        !exactKeys(
+        !attackRecordShape(
             record,
             'version id owner ownerGeneration tier form slot launchTick contactTick comboTicks windupSeconds recoverySeconds stage stageProgress contact direction counter ranks budgetInputs directMultiplier source attack criticalRolls',
         ) ||
         record.version !== 1 ||
         !Number.isSafeInteger(record.id) ||
         record.id < 1 ||
-        !Number.isSafeInteger(record.owner) ||
-        record.owner < 1 ||
         !Number.isSafeInteger(record.ownerGeneration) ||
         record.ownerGeneration < 1 ||
         !Number.isInteger(record.tier) ||
@@ -228,8 +237,8 @@ export function isPeaAttackRecord(record) {
     }
     const INPUTS = record.budgetInputs;
     if (
-        !exactKeys(INPUTS, 'tierOneAttack tierAttack baseRecovery') ||
-        !Object.values(INPUTS).every(Number.isFinite) ||
+        !attackBudgetShape(INPUTS, 'tierOneAttack tierAttack baseRecovery') ||
+        !attackBudgetValues(INPUTS).every(Number.isFinite) ||
         INPUTS.baseRecovery <= 0 ||
         record.recoverySeconds !== INPUTS.baseRecovery * (1 - 0.015 * record.ranks.recovery) ||
         record.directMultiplier !==

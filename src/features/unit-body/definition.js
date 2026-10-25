@@ -255,6 +255,10 @@ function bossBodyHeight(boss) {
 function bossBodyRadius(boss) {
     return bodyRadiusAtScale(unitBodyDefinition(boss.species), BOSS_VECTOR_SCALE());
 }
+function bossTorsoHeight(boss) {
+    const BODY = unitBodyDefinition(boss.species);
+    return ((BODY.bounds.bottom - BODY.bounds.top) * BOSS_VECTOR_SCALE()) / WORLD_HEIGHT_PROJECTION;
+}
 function unitTorsoHeight(unit) {
     const BODY = unitBodyDefinition(unit.species);
     return ((BODY.bounds.bottom - BODY.bounds.top) * unitVectorScale(unit)) / WORLD_HEIGHT_PROJECTION;
@@ -294,6 +298,7 @@ export {
     unitBodyHeight,
     bossBodyHeight,
     bossBodyRadius,
+    bossTorsoHeight,
     unitTorsoHeight,
     maximumUnitRadius,
     unitDisplayScale,

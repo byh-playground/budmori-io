@@ -287,12 +287,20 @@ export function sourceGraph(root = DEFAULT_ROOT) {
         VISIT_NODE(DOCUMENT.documentElement);
         assert.equal(DOCUMENT.documentElement.nodeName, 'svg');
         const METADATA = validateAssetMetadata(JSON.parse(IDS.get('vector-asset')?.textContent), IDS);
-        for (const NAME of [
-            'mouth',
-            'ground',
-            ...(SPEC.kind === 'boss' ? ['hand-left', 'hand-right', 'hand-edge', 'hand-centre'] : []),
-        ]) {
+        for (const NAME of ['mouth', 'ground']) {
             assert.ok(METADATA.sockets[NAME], `Missing SVG socket ${NAME}: ${SPEC.file}`);
+        }
+        if (SPEC.kind === 'boss') {
+            const SPECIES = Number(SPEC.id.replace(/^species-/, '')),
+                TROOP = MANIFEST.vectorAssets.find((entry) => entry.kind === 'troop' && entry.id === SPECIES);
+            assert.ok(TROOP, `Missing shared species source for ${SPEC.id}`);
+            assert.equal(SPEC.file, TROOP.file, `Boss and troop must use one authored rig: ${SPEC.id}`);
+            assert.equal(SPEC.sha256, TROOP.sha256, `Shared species source identity: ${SPEC.id}`);
+            assert.equal(SPEC.qualityPreset, 'standard', `Boss quality remains standard: ${SPEC.id}`);
+            assert.equal(TROOP.qualityPreset, 'smallAsset', `Troop quality remains smallAsset: ${SPEC.id}`);
+            for (const NAME of ['idle', 'walk', 'windup', 'fire', 'recover', 'hit', 'airborne', 'landing', 'death']) {
+                assert.ok(METADATA.clips[NAME], `Missing shared combat clip ${NAME}: ${SPEC.file}`);
+            }
         }
         VECTOR_METADATA.push({
             file: SPEC.file,

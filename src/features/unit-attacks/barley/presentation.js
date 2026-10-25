@@ -1,4 +1,5 @@
-import { unitBodyDefinition, unitDisplayScale } from '../../unit-body/definition.js';
+import { unitAttackDisplayScale } from '../presentation-geometry.js';
+import { unitBodyDefinition } from '../../unit-body/definition.js';
 import { WORLD_DEPTH_PROJECTION } from '../../../vector-sockets.js';
 import { UnitAttackPresentation } from '../presentation-base.js';
 
@@ -84,20 +85,14 @@ export function barleyPreviewEnvelope(renderer, unit) {
 const SMOOTH = (value) => (1 - Math.cos(Math.PI * Math.max(0, Math.min(1, value)))) / 2;
 
 export class BarleyAttackPresentation extends UnitAttackPresentation {
-    contactOffset(renderer, unit, stage, time) {
-        const RECORD = renderer.vectorAssets.get(8);
+    contactOffset(renderer, unit, stage, time, record) {
+        const RECORD = record || renderer.vectorAssets.get(8);
         if (!RECORD) {
             return { x: 0, y: 0 };
         }
         const BODY = unitBodyDefinition(8),
             TIP = contactSocket(RECORD, stage),
-            GIANT = unit.giantUntil > time ? 3 : 1,
-            SCALE =
-                unitDisplayScale(BODY, unit.bodyScale, renderer.scale, renderer.minimumUnitPixels() * GIANT) *
-                (1 +
-                    Math.sin((time - unit.giantEndedAt) * 30) *
-                        0.12 *
-                        Math.max(0, 1 - (time - unit.giantEndedAt) / 0.35)),
+            SCALE = unitAttackDisplayScale(renderer, unit, time),
             // The authored flail is in the left hand, so face its weapon side toward the target.
             FACE = -unit.ability.barleyFace,
             POINT = renderer.project(unit.ability.barleyPointX, unit.ability.barleyPointY, 0),
@@ -106,7 +101,7 @@ export class BarleyAttackPresentation extends UnitAttackPresentation {
             DY = POINT.y - ORIGIN.y - (TIP.y - BODY.ground.y) * SCALE;
         return { x: DX / renderer.scale, y: -DY / (renderer.scale * WORLD_DEPTH_PROJECTION) };
     }
-    groundOffset(renderer, unit, time) {
+    groundOffset(renderer, unit, time, record) {
         const A = unit.ability;
         if (!A?.barleyForm || unit.hp <= 0 || unit.stun > 0) {
             return null;
@@ -115,7 +110,7 @@ export class BarleyAttackPresentation extends UnitAttackPresentation {
             return { x: 0, y: 0 };
         }
         if (A.phase === 'recover') {
-            const END = this.contactOffset(renderer, unit, A.barleyLastStage, time),
+            const END = this.contactOffset(renderer, unit, A.barleyLastStage, time, record),
                 LEFT = 1 - SMOOTH(A.elapsed / A.barleyRecoveryDuration);
             return { x: END.x * LEFT, y: END.y * LEFT };
         }
@@ -125,8 +120,8 @@ export class BarleyAttackPresentation extends UnitAttackPresentation {
         const START =
                 A.barleyPreviousStage === 'ready'
                     ? { x: 0, y: 0 }
-                    : this.contactOffset(renderer, unit, A.barleyPreviousStage, time),
-            END = this.contactOffset(renderer, unit, A.barleyStage, time),
+                    : this.contactOffset(renderer, unit, A.barleyPreviousStage, time, record),
+            END = this.contactOffset(renderer, unit, A.barleyStage, time, record),
             T = SMOOTH(A.barleyStageProgress);
         return { x: START.x + (END.x - START.x) * T, y: START.y + (END.y - START.y) * T };
     }

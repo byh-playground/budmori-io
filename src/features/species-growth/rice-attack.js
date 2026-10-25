@@ -1,6 +1,14 @@
-import { AttackAction, attackTargetKey, isAttackActionDTO } from './attack-action.js';
+import {
+    attackBudgetInputs,
+    attackBudgetShape,
+    attackRecordShape,
+    attackGeometryScale,
+    captureAttackGeometry,
+    attackBudgetValues,
+} from './attack-profile.js';
+import { AttackAction, attackTargetKey, isAttackActionDTO, attackOwnerCanContinue } from './attack-action.js';
 import { growthBuildOf, growthForAbility } from './state.js';
-import { baseUnitStatsFor, COMMON_UNIT_STAT_DEFAULTS } from '../../unit-stats.js';
+import { COMMON_UNIT_STAT_DEFAULTS } from '../../unit-stats.js';
 import { mergeMaterialCostForTier } from '../../unit-grades.js';
 import { areOpposingFactions } from '../../factions.js';
 const ATTACK_KIND = 'ram';
@@ -71,7 +79,7 @@ export function createRiceAttack(world, unit, action, commandSpeed = 1) {
     const FORM = growthForAbility('rice-low-health-harvest').attackTier(BUILD, unit.tier);
     const C = world.createAttackContext(unit, { attackKind: ATTACK_KIND, attackMultiplier: 1 });
     const SPEED = Math.max(0.05, C.attackerStats.attackSpeed * commandSpeed * (1 + 0.02 * (R['basic-3'] || 0)));
-    const INPUTS = { one: baseUnitStatsFor(1, 6).attackPower, current: baseUnitStatsFor(unit.tier, 6).attackPower };
+    const INPUTS = attackBudgetInputs(unit);
     const TARGET = world.attackTarget(unit, action);
     const DX = (TARGET?.x ?? action.target.x) - unit.x,
         DY = (TARGET?.y ?? action.target.y) - unit.y;
@@ -83,6 +91,7 @@ export function createRiceAttack(world, unit, action, commandSpeed = 1) {
         id: action.id,
         owner: unit.id,
         ownerGeneration: unit.generation,
+        ...captureAttackGeometry(unit),
         tier: unit.tier,
         form: FORM,
         speed: SPEED,
@@ -102,7 +111,7 @@ export function createRiceAttack(world, unit, action, commandSpeed = 1) {
             statMultiplier: unit.permanentStatMultiplier ?? 1,
             attackPowerMultiplier: C.attackPowerMultiplier,
             sourceKind: C.sourceKind,
-            sourceDamageScale: world.passiveDamageScale(unit, C.attackerStats.maxHp, world.boss, world.boss.maxHp),
+            sourceDamageScale: world.passiveAttackScale(unit, C.attackerStats.maxHp),
         },
         origin: { x: unit.x, y: unit.y, z: 0 },
         point: { x: unit.x + (DX / DIST) * TRAVEL, y: unit.y + (DY / DIST) * TRAVEL, z: 0 },
@@ -135,12 +144,12 @@ export function riceSlotGeometry(r, slot) {
     const STAGE = r.shots[slot].stage;
     const WIDE = STAGE === 'wide' || STAGE === 'semicircle';
     const NARROW = STAGE === 'inward' || STAGE === 'harvest';
-    const SCALE = r.source.attackerStats.attackArea * (1 + 0.04 * r.ranks.range);
+    const SCALE = r.source.attackerStats.attackArea * (1 + 0.04 * r.ranks.range) * attackGeometryScale(r);
     return {
         from: r.origin,
         to: r.point,
         radius: (WIDE ? 0.65 : NARROW ? 0.22 : 0.38) * SCALE,
-        height: STAGE === 'diagonal' ? 0.8 : 0.5,
+        height: (STAGE === 'diagonal' ? 0.8 : 0.5) * attackGeometryScale(r),
     };
 }
 // Runtime sets are derived from the validated transport record once per action.
@@ -155,20 +164,9 @@ function riceRuntime(record) {
     }
     return runtime;
 }
-function riceOwnerCanContinue(world, unit, action, record) {
-    return (
-        unit.hp > 0 &&
-        unit.stun <= 0 &&
-        unit.down <= 0 &&
-        unit.generation === record.ownerGeneration &&
-        world._unitForId(record.owner) === unit &&
-        unit.ability.action === action &&
-        unit.ability.phase === 'active'
-    );
-}
 export function resolveRiceSlots(world, unit, action, elapsed, geometry) {
     const R = action.riceAttack;
-    if (!R || R.launchTick === null || !riceOwnerCanContinue(world, unit, action, R)) {
+    if (!R || R.launchTick === null || !attackOwnerCanContinue(world, unit, action, R)) {
         return;
     }
     R.motionTick = Math.min(Math.round(R.durationSeconds * 20), Math.max(0, Math.round(elapsed * 20)));
@@ -180,7 +178,7 @@ export function resolveRiceSlots(world, unit, action, elapsed, geometry) {
         return;
     }
     for (const S of READY) {
-        if (!riceOwnerCanContinue(world, unit, action, R)) {
+        if (!attackOwnerCanContinue(world, unit, action, R)) {
             break;
         }
         const G = riceSlotGeometry(R, S.slot),
@@ -208,7 +206,7 @@ export function resolveRiceSlots(world, unit, action, elapsed, geometry) {
         }
         let secondary = 0;
         for (const T of CANDIDATES) {
-            if (!riceOwnerCanContinue(world, unit, action, R)) {
+            if (!attackOwnerCanContinue(world, unit, action, R)) {
                 break;
             }
             const MAIN = T === PRIMARY;
@@ -288,12 +286,12 @@ const EXACT = (v, keys) =>
     Object.keys(v).sort().join(' ') === keys.split(' ').sort().join(' ');
 export function isRiceAttackRecord(r) {
     if (
-        !EXACT(
+        !attackRecordShape(
             r,
             'version id owner ownerGeneration tier form speed windupSeconds durationSeconds recoverySeconds ranks budgetInputs multiplier source origin point targetId targetGeneration shots launchTick motionTick attack criticalRolls criticalChances',
         ) ||
         r.version !== 1 ||
-        !['id', 'owner', 'ownerGeneration', 'targetGeneration'].every((k) => Number.isSafeInteger(r[k]) && r[k] > 0) ||
+        !['id', 'ownerGeneration', 'targetGeneration'].every((k) => Number.isSafeInteger(r[k]) && r[k] > 0) ||
         attackTargetKey(r.targetId, r.targetGeneration) === null ||
         !Number.isInteger(r.tier) ||
         r.tier < 1 ||
@@ -308,8 +306,8 @@ export function isRiceAttackRecord(r) {
         r.recoverySeconds !== riceTiming(r.speed).recoveryTicks / 20 ||
         !EXACT(r.ranks, 'power critical range finish') ||
         !Object.entries(r.ranks).every(([k, v]) => Number.isInteger(v) && v >= 0 && v <= (k === 'power' ? 10 : 5)) ||
-        !EXACT(r.budgetInputs, 'one current') ||
-        !Object.values(r.budgetInputs).every((v) => Number.isFinite(v) && v >= 0) ||
+        !attackBudgetShape(r.budgetInputs, 'one current') ||
+        !attackBudgetValues(r.budgetInputs).every((v) => Number.isFinite(v) && v >= 0) ||
         r.budgetInputs.one > r.budgetInputs.current ||
         (r.tier === 1 && r.budgetInputs.one !== r.budgetInputs.current) ||
         !Number.isFinite(r.multiplier) ||
@@ -322,7 +320,8 @@ export function isRiceAttackRecord(r) {
         r.source.attackerStats.maxHp <= 0 ||
         !Number.isFinite(r.source.statMultiplier) ||
         r.source.statMultiplier < 0 ||
-        r.source.attackerStats.attackPower !== r.budgetInputs.current * r.source.statMultiplier ||
+        (!r.budgetInputs.profile &&
+            r.source.attackerStats.attackPower !== r.budgetInputs.current * r.source.statMultiplier) ||
         ![1, 3].includes(r.source.attackPowerMultiplier) ||
         !Number.isFinite(r.source.sourceDamageScale) ||
         r.source.sourceDamageScale < 0 ||
