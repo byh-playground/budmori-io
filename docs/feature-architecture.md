@@ -120,3 +120,13 @@ Signals·구독·컬렉션은 저장 스키마에 포함하지 않습니다.
 요구·비교·검증 순서는 [AI 개발 규칙](https://github.com/byh-playground/bloom-reference/blob/main/rules/ai-development.html),
 클래스와 메서드 공유는 [JavaScript classes](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes)를
 확인했습니다. 버전·배포와 테스트 운용 정책은 기존 프로젝트 관리 규칙과 README를 따릅니다.
+
+## 병종 평타의 공통 실행·표현
+
+보스 본체와 병력은 같은 Unit이며, 병종 평타는 동일 AttackCycle과 species-growth 공격 레코드를 사용한다.
+역할별 controller는 행동 선택을 소유하고, 모델·피해 판정·공통 attack presentation은 역할별 복제 없이 재사용한다.
+FarmSession의 공격 DTO와 checkpoint의 cycle 직렬화·검증·재수화도 병력/보스가 같은 helper를 사용한다.
+몸체·스탯 profile은 같은 객체의 단일 원본이며 HUD·렌더·저장용 별도 HP/스탯 객체를 만들지 않는다.
+
+보스의 모든 동작은 병력과 동일한 SVG 원본을 standard 품질로 읽는다. 평타·특수 패턴·카드 시전 사이에
+리그를 바꾸지 않으며, 실제 part/socket과 공통 몸체 profile을 사용한다. 농장 병력의 노동 리그와 동작은 유지한다.

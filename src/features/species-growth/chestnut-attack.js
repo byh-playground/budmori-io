@@ -1,6 +1,14 @@
+import {
+    attackBudgetInputs,
+    attackBudgetShape,
+    attackRecordShape,
+    attackGeometryScale,
+    captureAttackGeometry,
+    attackBudgetValues,
+} from './attack-profile.js';
 import { AttackAction, attackTargetKey, isAttackActionDTO } from './attack-action.js';
 import { growthBuildOf, growthForAbility } from './state.js';
-import { baseUnitStatsFor, COMMON_UNIT_STAT_DEFAULTS } from '../../unit-stats.js';
+import { COMMON_UNIT_STAT_DEFAULTS } from '../../unit-stats.js';
 import { mergeMaterialCostForTier } from '../../unit-grades.js';
 import { areOpposingFactions } from '../../factions.js';
 
@@ -87,13 +95,14 @@ export function createChestnutAttack(world, unit, action, commandSpeed = 1) {
         FORM = growthForAbility('chestnut-target-thorns').attackTier(BUILD, unit.tier);
     const C = world.createAttackContext(unit, { attackKind: 'chestnut-spike', attackMultiplier: 1 });
     const SPEED = Math.max(0.05, C.attackerStats.attackSpeed * commandSpeed * (1 + 0.02 * (R['basic-3'] || 0)));
-    const INPUTS = { one: baseUnitStatsFor(1, 3).attackPower, current: baseUnitStatsFor(unit.tier, 3).attackPower };
+    const INPUTS = attackBudgetInputs(unit);
     const SHOTS = chestnutShots(FORM, R['specialty-1'] || 0, SPEED);
     return {
         version: 2,
         id: action.id,
         owner: unit.id,
         ownerGeneration: unit.generation,
+        ...captureAttackGeometry(unit),
         tier: unit.tier,
         form: FORM,
         speed: SPEED,
@@ -121,7 +130,7 @@ export function createChestnutAttack(world, unit, action, commandSpeed = 1) {
             sourceKind: C.sourceKind,
             attackerStats: structuredClone(C.attackerStats),
             attackPowerMultiplier: C.attackPowerMultiplier,
-            sourceDamageScale: world.passiveDamageScale(unit, C.attackerStats.maxHp, world.boss, world.boss.maxHp),
+            sourceDamageScale: world.passiveAttackScale(unit, C.attackerStats.maxHp),
         },
         launchTick: null,
         origin: null,
@@ -143,7 +152,7 @@ export function launchChestnutAttack(world, unit, action) {
         return false;
     }
     R.launchTick = world.simulationTick;
-    R.origin = { x: unit.x, y: unit.y, z: 0.35 };
+    R.origin = { x: unit.x, y: unit.y, z: 0.35 * attackGeometryScale(R) };
     const CANDIDATE = R.targetId === 'boss' ? world.boss : world._unitForId(R.targetId);
     const T = action.prepareAim ?? (CANDIDATE?.generation === R.targetGeneration ? CANDIDATE : null);
     // A committed near-face point includes projectile radius, not the body's
@@ -206,8 +215,8 @@ function emitChestnutShots(world, r) {
             path: { from: { ...r.origin }, to: { ...r.point }, height: 0, duration: DURATION },
             elapsed: 0,
             ...r.origin,
-            radius: 0.12,
-            height: 0.5,
+            radius: 0.12 * attackGeometryScale(r),
+            height: 0.5 * attackGeometryScale(r),
             hit: false,
             attackMultiplier: 1,
             projectileKind: 'chestnut-spike',
@@ -291,9 +300,16 @@ export function resolveChestnutImpact(world, p, geometry, old) {
                 ? FORWARD >= -T.radius &&
                   SIDE <= FORWARD + T.radius * Math.SQRT2 &&
                   Math.hypot(TX, TY) <= LENGTH + T.radius &&
-                  (T.z || 0) <= 0.7 &&
+                  (T.z || 0) <= 0.7 * attackGeometryScale(R) &&
                   (T.z || 0) + T.height >= 0
-                : geometry.overlaps({ ...R.point, radius: 0.65 * (1 + 0.04 * R.ranks.range), height: 0.7 }, T);
+                : geometry.overlaps(
+                      {
+                          ...R.point,
+                          radius: 0.65 * (1 + 0.04 * R.ranks.range) * attackGeometryScale(R),
+                          height: 0.7 * attackGeometryScale(R),
+                      },
+                      T,
+                  );
             if (!INSIDE) {
                 continue;
             }
@@ -352,15 +368,13 @@ function exactKeys(value, keys) {
 }
 export function isChestnutAttackRecord(r, { pending = false } = {}) {
     if (
-        !exactKeys(
+        !attackRecordShape(
             r,
             'version id owner ownerGeneration tier form speed windupSeconds recoverySeconds budgetInputs multiplier ranks source launchTick origin point targetId targetGeneration shots motionTick nextShot completedSlots cancelled attack criticalRolls',
         ) ||
         r.version !== 2 ||
         !Number.isSafeInteger(r.id) ||
         r.id < 1 ||
-        !Number.isSafeInteger(r.owner) ||
-        r.owner < 1 ||
         !Number.isSafeInteger(r.ownerGeneration) ||
         r.ownerGeneration < 1 ||
         !Number.isSafeInteger(r.targetGeneration) ||
@@ -391,8 +405,8 @@ export function isChestnutAttackRecord(r, { pending = false } = {}) {
     if (
         !exactKeys(r.ranks, 'power density range finish') ||
         !Object.entries(r.ranks).every(([k, v]) => Number.isInteger(v) && v >= 0 && v <= (k === 'power' ? 10 : 5)) ||
-        !exactKeys(r.budgetInputs, 'one current') ||
-        !Object.values(r.budgetInputs).every(Number.isFinite) ||
+        !attackBudgetShape(r.budgetInputs, 'one current') ||
+        !attackBudgetValues(r.budgetInputs).every(Number.isFinite) ||
         r.multiplier !==
             chestnutBudgetMultiplier(r.tier, r.budgetInputs.one, r.budgetInputs.current) * (1 + 0.03 * r.ranks.power)
     ) {

@@ -88,6 +88,23 @@ export const UNIT_SNAPSHOT_SHAPE = {
     isFormationClone: false,
     cloneBornAt: -10,
 };
+// Both resident units and the boss own the same combat state. Keep one
+// field/default contract without copying farm-only lifecycle fields to the boss.
+export const ACTOR_ATTACK_SNAPSHOT_SHAPE = Object.fromEntries(
+    [
+        'x y z vx vy vz angle stun flash bounce ability specialAbility',
+        'kidneyLeapReadyTick kidneyLeapLastUseTick peaRecoveryPending peaCounterExpiresAtTick peaCounterPending',
+        'peaRecoveryBoostExpiresAtTick peaRecoveryBoostMultiplier id generation species tier statProfile statModifiers',
+        'permanentStatMultiplier growthMaxHpMultiplier faction growth growthElapsed growthDuration hp ownerId farmId',
+        'isBattleOnlySummon peanutInheritedPowerRank peanutInheritedSpeedRank canSplit splitUsedThisBattle deathSplitHandled',
+        'chestnutNextThornTick landingRecovery walnutNextGuardTick walnutGuardUntilTick walnutStoredRawDamage',
+        'wheatCommandUntil wheatCommandCritBonus wheatCommandBuffs barleyArmorBreakUntil barleyArmorBreakReduction',
+        'barleyArmorShredBuckets giantUntil giantSizeMultiplier giantEndedAt isFormationClone cloneBornAt',
+    ]
+        .join(' ')
+        .split(' ')
+        .map((key) => [key, UNIT_SNAPSHOT_SHAPE[key]]),
+);
 const STARTER_UNIT = (id, x, y) => ({
     ...UNIT_SNAPSHOT_SHAPE,
     id,
@@ -182,16 +199,14 @@ export const FARM_SNAPSHOT_SHAPE = {
         rewardUnitId: 0,
     },
     boss: {
-        statProfile: null,
-        statModifiers: null,
-        giantUntil: 0,
-        giantSizeMultiplier: 3,
-        giantEndedAt: -10,
-        deathSplitHandled: false,
-        x: 0,
-        y: 0,
+        ...ACTOR_ATTACK_SNAPSHOT_SHAPE,
+        id: 'boss',
+        ownerId: 'boss',
+        canSplit: false,
+        growth: 3,
+        growthElapsed: 1,
+        growthDuration: 1,
         faction: 'enemy',
-        z: 0,
         generation: 3,
         radius: 4.4,
         height: 5.2,
@@ -203,9 +218,7 @@ export const FARM_SNAPSHOT_SHAPE = {
         moveSpeed: 2.65,
         encounterId: 0,
         active: false,
-        angle: 0,
         facing: 0,
-        flash: 0,
         swings: 0,
         basicCount: 0,
         attackId: 0,
@@ -218,13 +231,9 @@ export const FARM_SNAPSHOT_SHAPE = {
             active: null,
             encounterElapsed: 0,
         },
-        stun: 0,
         knockVx: 0,
         knockVy: 0,
         airborneRecovery: 0,
-        barleyArmorBreakUntil: 0,
-        barleyArmorBreakReduction: 0,
-        barleyArmorShredBuckets: createBarleyArmorShredBuckets(),
         summonMouth: {
             x: 0,
             y: 0,
@@ -274,12 +283,13 @@ const CORN_SOURCE = FIELDS(
     { attackerStats: JSON_PAYLOAD },
 );
 const CORN_ACTION = FIELDS(
-    'version id owner ownerGeneration tier form launchTick firstAttachTick speed windupSeconds recoverySeconds baseKernelCount extraKernel terminalIndex directMultiplier attachmentMultiplier',
+    'version id owner ownerGeneration tier form geometryScale launchTick firstAttachTick speed windupSeconds recoverySeconds baseKernelCount extraKernel terminalIndex directMultiplier attachmentMultiplier',
     {
         shots: [FIELDS('slot weight duration kernelStart kernelCount')],
         ranks: FIELDS('heating finish extra'),
         budgetInputs: FIELDS(
             'tierOneAttack tierAttack gradeMultiplier permanentMultiplier directRank attachmentRank speedRank commandSpeed',
+            { profile: FIELDS('attackPower flat pct permanentMultiplier') },
         ),
         source: CORN_SOURCE,
         attack: JSON_PAYLOAD,
@@ -308,7 +318,7 @@ const ATTACK = FIELDS(
         chestnutAttack: JSON_PAYLOAD,
     },
 );
-const UNIT = shapeFields(UNIT_SNAPSHOT_SHAPE, {
+const ACTOR_ATTACK_FIELDS = {
     statProfile: JSON_PAYLOAD,
     statModifiers: JSON_PAYLOAD,
     ability: {
@@ -325,7 +335,8 @@ const UNIT = shapeFields(UNIT_SNAPSHOT_SHAPE, {
     },
     wheatCommandBuffs: [FIELDS('level bonus tier powerRank appliedAtTick expiresAtTick')],
     barleyArmorShredBuckets: [FIELDS('expiresAtTick amount')],
-});
+};
+const UNIT = shapeFields(UNIT_SNAPSHOT_SHAPE, ACTOR_ATTACK_FIELDS);
 const BOSS_ACTION = FIELDS(
     'id phase phaseElapsed targetId aim locked traveled volleyCount released nextRelease criticalRoll',
     {
@@ -337,12 +348,10 @@ const BOSS_ACTION = FIELDS(
     },
 );
 const BOSS = shapeFields(FARM_SNAPSHOT_SHAPE.boss, {
-    statProfile: JSON_PAYLOAD,
-    statModifiers: JSON_PAYLOAD,
+    ...ACTOR_ATTACK_FIELDS,
     patternRuntime: shapeFields(FARM_SNAPSHOT_SHAPE.boss.patternRuntime, {
         active: BOSS_ACTION,
     }),
-    barleyArmorShredBuckets: [FIELDS('expiresAtTick amount')],
 });
 const REWARD = FIELDS(
     'encounterId source receiptKey acquisitionMultiplier stage species tier x y firstClear chance baselineChance roll unitId rollBudget bonusRollChance rollCount boxCount successCount acquiredCount grantedCount placedCount queuedCount status xpReceiptKey xpStatus xpAmount levelsGained pointsAwarded',

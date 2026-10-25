@@ -38,6 +38,9 @@ export class WheatCommandModel {
         };
     }
     static trigger(sim, source, action, config) {
+        // A configured body keeps the same reach beyond its surface. Ordinary
+        // troop radii and the shared command's effect/recipient rules are unchanged.
+        const RADIUS = config?.radius + (source?.attackRangeOffset ?? 0);
         if (
             !sim ||
             !source ||
@@ -45,8 +48,8 @@ export class WheatCommandModel {
             !config ||
             action.wheatCommandResolved ||
             action.wheatAttack?.commandResolved ||
-            !Number.isFinite(config.radius * config.radius) ||
-            config.radius < 0 ||
+            !Number.isFinite(RADIUS * RADIUS) ||
+            RADIUS < 0 ||
             typeof sim.random !== 'function'
         ) {
             return false;
@@ -58,10 +61,14 @@ export class WheatCommandModel {
         if (sim.random() >= DEFINITION.triggerChance) {
             return false;
         }
-        const RADIUS_SQUARED = config.radius * config.radius,
+        const RADIUS_SQUARED = RADIUS * RADIUS,
             TICK = sim.simulationTick;
+        // Preserve the field roster and its order; the active encounter body is
+        // another same-faction recipient, not a separate buff implementation.
+        const UNITS = sim.units || [],
+            RECIPIENTS = sim.boss?.active && !UNITS.includes(sim.boss) ? [...UNITS, sim.boss] : UNITS;
         let affected = 0;
-        for (const UNIT of sim.units || []) {
+        for (const UNIT of RECIPIENTS) {
             const DX = UNIT.x - source.x,
                 DY = UNIT.y - source.y;
             if (UNIT.hp > 0 && UNIT.faction === source.faction && DX * DX + DY * DY <= RADIUS_SQUARED) {
@@ -85,7 +92,7 @@ export class WheatCommandModel {
                 x: source.x,
                 y: source.y,
                 z: source.z || 0,
-                radius: config.radius,
+                radius: RADIUS,
                 level: config.level,
                 affected,
             });

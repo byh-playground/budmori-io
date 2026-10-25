@@ -4,6 +4,32 @@ import { validateSnapshot } from './farm-snapshot-validation.js';
 export { snapshot } from './farm-snapshot.js';
 export { normalizeSnapshot, validateSnapshot };
 
+function hydrateAttackCycle(cycle, data) {
+    cycle.phase = data.phase;
+    cycle.elapsed = data.elapsed;
+    cycle.interruptedRecoverySeconds = data.interruptedRecoverySeconds;
+    cycle.action = structuredClone(data.action);
+    return cycle;
+}
+function hydrateActorActions(actor, data, world) {
+    actor.ability = hydrateAttackCycle(createUnitAttackCycle(actor), data.ability);
+    for (const [KEY, RECORDS] of [
+        ['cornAttack', world.cornAttachments.actions],
+        ['chestnutAttack', world.chestnutAttacks],
+    ]) {
+        const ACTION = actor.ability.action?.[KEY];
+        if (ACTION && ACTION.launchTick !== null) {
+            const RECORD = RECORDS.find((record) => record.id === ACTION.id);
+            if (RECORD) {
+                actor.ability.action[KEY] = RECORD;
+            }
+        }
+    }
+    const SPECIAL = CREATE_UNIT_SPECIAL_ABILITY(actor);
+    actor.specialAbility = SPECIAL ? hydrateAttackCycle(SPECIAL, data.specialAbility) : null;
+    return actor;
+}
+
 // Only hydration constructs runtime owners. DTO shapes and validation do not
 // inspect constructors or copy caches back into the persisted field contract.
 export function restore(raw) {
@@ -18,11 +44,22 @@ export function restore(raw) {
     const { maxHp: MAX_HP, attackPower: ATTACK_POWER, moveSpeed: MOVE_SPEED, statProfile: STAT_PROFILE } = BOSS_DATA;
     const BOSS_STATE = Object.fromEntries(
         Object.entries(BOSS_DATA).filter(
-            ([key]) => !['radius', 'height', 'maxHp', 'attackPower', 'moveSpeed', 'statProfile'].includes(key),
+            ([key]) =>
+                ![
+                    'radius',
+                    'height',
+                    'maxHp',
+                    'attackPower',
+                    'moveSpeed',
+                    'statProfile',
+                    'ability',
+                    'specialAbility',
+                ].includes(key),
         ),
     );
     G.boss.setBaseStats(STAT_PROFILE || { maxHp: MAX_HP, attackPower: ATTACK_POWER, moveSpeed: MOVE_SPEED });
     Object.assign(G.boss, BOSS_STATE);
+    hydrateActorActions(G.boss, BOSS_DATA, G);
     // Hydration does not allocate a new logical generation.
     G.entityGenerationSerial = raw.entityGenerationSerial;
     G.bossRewardReceipts = G.bossRewardReceipts.map((reward) => ({
@@ -36,23 +73,9 @@ export function restore(raw) {
     }
     G.resetUnits(
         UNIT_DATA.map((data) => {
-            const U = Object.assign(new Unit(data.id, data.species, data.tier, data.x, data.y), structuredClone(data));
-            U.ability = Object.assign(createUnitAttackCycle(U), structuredClone(data.ability));
-            if (U.ability.action?.cornAttack?.launchTick !== null && U.ability.action?.cornAttack) {
-                const RECORD = G.cornAttachments.actions.find((action) => action.id === U.ability.action.cornAttack.id);
-                if (RECORD) {
-                    U.ability.action.cornAttack = RECORD;
-                }
-            }
-            if (U.ability.action?.chestnutAttack?.launchTick !== null && U.ability.action?.chestnutAttack) {
-                const RECORD = G.chestnutAttacks.find((record) => record.id === U.ability.action.chestnutAttack.id);
-                if (RECORD) {
-                    U.ability.action.chestnutAttack = RECORD;
-                }
-            }
-            const SPECIAL = CREATE_UNIT_SPECIAL_ABILITY(U);
-            U.specialAbility = SPECIAL ? Object.assign(SPECIAL, structuredClone(data.specialAbility || {})) : null;
-            return U;
+            const { ability: ABILITY, specialAbility: SPECIAL_ABILITY, ...STATE } = data;
+            const U = Object.assign(new Unit(data.id, data.species, data.tier, data.x, data.y), STATE);
+            return hydrateActorActions(U, { ability: ABILITY, specialAbility: SPECIAL_ABILITY }, G);
         }),
     );
     G.reconcileMateReservations();

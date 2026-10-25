@@ -219,7 +219,7 @@ export class CornAttachmentModel {
                     .filter((projectile) => !projectile.hit)
                     .map((projectile) => projectile.cornActionId),
                 ...MANAGER.groups.map((group) => group.cornActionId),
-                ...world.units.map((unit) => unit.ability?.action?.cornAttack?.id),
+                ...world.combatUnits().map((unit) => unit.ability?.action?.cornAttack?.id),
             ]);
             MANAGER.actions = MANAGER.actions.filter((action) => REFERENCED.has(action.id));
         }

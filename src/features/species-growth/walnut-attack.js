@@ -1,6 +1,14 @@
-import { AttackAction, attackTargetKey, isAttackActionDTO } from './attack-action.js';
+import {
+    attackBudgetInputs,
+    attackBudgetShape,
+    attackRecordShape,
+    attackGeometryScale,
+    captureAttackGeometry,
+    attackBudgetValues,
+} from './attack-profile.js';
+import { AttackAction, attackTargetKey, isAttackActionDTO, attackOwnerCanContinue } from './attack-action.js';
 import { growthBuildOf, growthForAbility } from './state.js';
-import { baseUnitStatsFor, COMMON_UNIT_STAT_DEFAULTS } from '../../unit-stats.js';
+import { COMMON_UNIT_STAT_DEFAULTS } from '../../unit-stats.js';
 import { mergeMaterialCostForTier } from '../../unit-grades.js';
 import { areOpposingFactions } from '../../factions.js';
 const ATTACK_KIND = 'walnut-hammer';
@@ -71,7 +79,7 @@ export function createWalnutAttack(world, unit, action, commandSpeed = 1) {
         4,
         Math.max(0.05, C.attackerStats.attackSpeed * commandSpeed * (1 + 0.02 * (R['basic-3'] || 0))),
     );
-    const INPUTS = { one: baseUnitStatsFor(1, 5).attackPower, current: baseUnitStatsFor(unit.tier, 5).attackPower };
+    const INPUTS = attackBudgetInputs(unit);
     const TARGET = world.attackTarget(unit, action);
     const DX = (TARGET?.x ?? action.target.x) - unit.x,
         DY = (TARGET?.y ?? action.target.y) - unit.y;
@@ -79,7 +87,7 @@ export function createWalnutAttack(world, unit, action, commandSpeed = 1) {
     const TRAVEL = Math.max(0, DIST - (TARGET?.radius || 0) * 0.98);
     const ATTACK_POWER = C.attackerStats.attackPower * C.attackPowerMultiplier * (1 + 0.03 * (R['basic-1'] || 0));
     const MULTIPLIER = walnutBudgetMultiplier(unit.tier, INPUTS.one, INPUTS.current) * (1 + 0.03 * (R['basic-1'] || 0));
-    const SOURCE_DAMAGE_SCALE = world.passiveDamageScale(unit, C.attackerStats.maxHp, world.boss, world.boss.maxHp);
+    const SOURCE_DAMAGE_SCALE = world.passiveAttackScale(unit, C.attackerStats.maxHp);
     // The cap follows the complete pre-critical direct budget. Stored RAW itself is never grade-scaled.
     const DIRECT_BUDGET = C.attackerStats.attackPower * C.attackPowerMultiplier * MULTIPLIER * SOURCE_DAMAGE_SCALE;
     const STORED = Math.max(0, unit.walnutStoredRawDamage || 0);
@@ -90,6 +98,7 @@ export function createWalnutAttack(world, unit, action, commandSpeed = 1) {
         id: action.id,
         owner: unit.id,
         ownerGeneration: unit.generation,
+        ...captureAttackGeometry(unit),
         tier: unit.tier,
         form: FORM,
         attackPower: ATTACK_POWER,
@@ -135,12 +144,12 @@ export function launchWalnutAttack(world, action) {
 export function walnutSlotGeometry(r, slot) {
     const STAGE = r.shots[slot].stage,
         LOCAL = STAGE === 'impact' || STAGE === 'wedge';
-    const SCALE = r.source.attackerStats.attackArea;
+    const SCALE = r.source.attackerStats.attackArea * attackGeometryScale(r);
     return {
         from: LOCAL ? r.point : r.origin,
         to: r.point,
         radius: (LOCAL ? 0.65 : STAGE === 'sweep' || STAGE === 'block' ? 0.45 : 0.25) * SCALE,
-        height: 0.5,
+        height: 0.5 * attackGeometryScale(r),
     };
 }
 // Runtime sets are derived from the validated transport record once per action.
@@ -155,20 +164,9 @@ function walnutRuntime(record) {
     }
     return runtime;
 }
-function walnutOwnerCanContinue(world, unit, action, record) {
-    return (
-        unit.hp > 0 &&
-        unit.stun <= 0 &&
-        unit.down <= 0 &&
-        unit.generation === record.ownerGeneration &&
-        world._unitForId(record.owner) === unit &&
-        unit.ability.action === action &&
-        unit.ability.phase === 'active'
-    );
-}
 export function resolveWalnutSlots(world, unit, action, elapsed, geometry) {
     const R = action.walnutAttack;
-    if (!R || R.launchTick === null || !walnutOwnerCanContinue(world, unit, action, R)) {
+    if (!R || R.launchTick === null || !attackOwnerCanContinue(world, unit, action, R)) {
         return;
     }
     R.motionTick = Math.min(10, Math.max(0, Math.round(elapsed * 20)));
@@ -180,7 +178,7 @@ export function resolveWalnutSlots(world, unit, action, elapsed, geometry) {
         return;
     }
     for (const S of READY) {
-        if (!walnutOwnerCanContinue(world, unit, action, R)) {
+        if (!attackOwnerCanContinue(world, unit, action, R)) {
             break;
         }
         const G = walnutSlotGeometry(R, S.slot),
@@ -208,7 +206,7 @@ export function resolveWalnutSlots(world, unit, action, elapsed, geometry) {
         }
         let secondary = 0;
         for (const T of CANDIDATES) {
-            if (!walnutOwnerCanContinue(world, unit, action, R)) {
+            if (!attackOwnerCanContinue(world, unit, action, R)) {
                 break;
             }
             const MAIN = T === PRIMARY;
@@ -283,12 +281,12 @@ const EXACT = (v, keys) =>
     Object.keys(v).sort().join(' ') === keys.split(' ').sort().join(' ');
 export function isWalnutAttackRecord(r) {
     if (
-        !EXACT(
+        !attackRecordShape(
             r,
             'version id owner ownerGeneration tier form attackPower storedRaw rawBudget speed windupSeconds durationSeconds recoverySeconds ranks budgetInputs multiplier source origin point targetId targetGeneration shots launchTick motionTick attack criticalRolls',
         ) ||
         r.version !== 2 ||
-        !['id', 'owner', 'ownerGeneration', 'targetGeneration'].every((k) => Number.isSafeInteger(r[k]) && r[k] > 0) ||
+        !['id', 'ownerGeneration', 'targetGeneration'].every((k) => Number.isSafeInteger(r[k]) && r[k] > 0) ||
         attackTargetKey(r.targetId, r.targetGeneration) === null ||
         !Number.isInteger(r.tier) ||
         r.tier < 1 ||
@@ -328,8 +326,8 @@ export function isWalnutAttackRecord(r) {
         r.recoverySeconds !== 1 / r.speed ||
         !EXACT(r.ranks, 'power conversion finish') ||
         !Object.entries(r.ranks).every(([k, v]) => Number.isInteger(v) && v >= 0 && v <= (k === 'power' ? 10 : 5)) ||
-        !EXACT(r.budgetInputs, 'one current') ||
-        !Object.values(r.budgetInputs).every((v) => Number.isFinite(v) && v >= 0) ||
+        !attackBudgetShape(r.budgetInputs, 'one current') ||
+        !attackBudgetValues(r.budgetInputs).every((v) => Number.isFinite(v) && v >= 0) ||
         r.budgetInputs.one > r.budgetInputs.current ||
         (r.tier === 1 && r.budgetInputs.one !== r.budgetInputs.current) ||
         !Number.isFinite(r.multiplier) ||
@@ -342,7 +340,8 @@ export function isWalnutAttackRecord(r) {
         r.source.attackerStats.maxHp <= 0 ||
         !Number.isFinite(r.source.statMultiplier) ||
         r.source.statMultiplier < 0 ||
-        r.source.attackerStats.attackPower !== r.budgetInputs.current * r.source.statMultiplier ||
+        (!r.budgetInputs.profile &&
+            r.source.attackerStats.attackPower !== r.budgetInputs.current * r.source.statMultiplier) ||
         ![1, 3].includes(r.source.attackPowerMultiplier) ||
         !Number.isFinite(r.source.sourceDamageScale) ||
         r.source.sourceDamageScale < 0 ||

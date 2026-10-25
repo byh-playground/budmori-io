@@ -896,11 +896,18 @@ const DIORAMA = class Diorama {
         }
         this.drawDanger(sim2);
         feel?.drawGround(this, this.displayTimeMs);
-        const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2);
+        const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2),
+            DISPLAY_BOSS = BOSS_VISIBLE ? this.bossPresentation.displayBoss(sim2.boss, sim2) : null;
         if (BOSS_VISIBLE) {
-            this.groundEllipse(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, sim2.boss.radius * 0.75, '#38472c33');
+            this.groundEllipse(
+                DISPLAY_BOSS.x,
+                DISPLAY_BOSS.y,
+                DISPLAY_BOSS.radius * 1.05,
+                DISPLAY_BOSS.radius * 0.75,
+                '#38472c33',
+            );
             if (SIDES) {
-                this.ring(sim2.boss.x, sim2.boss.y, sim2.boss.radius * 1.05, '#f0463c', 0.12);
+                this.ring(DISPLAY_BOSS.x, DISPLAY_BOSS.y, DISPLAY_BOSS.radius * 1.05, '#f0463c', 0.12);
             }
         }
         const HIDDEN_MERGE_RESULT_IDS = PRESENTATION.hiddenUnitIds?.(sim2) || EMPTY_UNIT_IDS,
@@ -920,7 +927,13 @@ const DIORAMA = class Diorama {
             }
         }
         if (BOSS_VISIBLE) {
-            this.addActor(this.bossPresentation, sim2.boss, 0.785 * sim2.boss.y - 0.62 * (sim2.boss.z || 0), 0, true);
+            this.addActor(
+                this.bossPresentation,
+                DISPLAY_BOSS,
+                0.785 * DISPLAY_BOSS.y - 0.62 * (DISPLAY_BOSS.z || 0),
+                0,
+                true,
+            );
         }
         if (!sim2.insideTower) {
             PRESENTATION.collectFood(this, sim2);
@@ -1050,6 +1063,7 @@ const DIORAMA = class Diorama {
         }
         this.bossAssets?.clear();
         this.bossSpeciesAssets.clear();
+        this.bossPresentation.attackDisplay = null;
         this.actors.length = 0;
         this.actorPool.length = 0;
         this.liveUnitIds.clear();

@@ -1,4 +1,5 @@
-import { unitBodyDefinition, unitDisplayScale } from '../../unit-body/definition.js';
+import { unitAttackDisplayScale } from '../presentation-geometry.js';
+import { unitBodyDefinition } from '../../unit-body/definition.js';
 import { WORLD_DEPTH_PROJECTION } from '../../../vector-sockets.js';
 import { UnitAttackPresentation } from '../presentation-base.js';
 
@@ -80,20 +81,14 @@ export function ricePreviewEnvelope(renderer, unit) {
 const SMOOTH = (value) => (1 - Math.cos(Math.PI * Math.max(0, Math.min(1, value)))) / 2;
 
 export class RiceAttackPresentation extends UnitAttackPresentation {
-    contactOffset(renderer, unit, stage, time) {
-        const RECORD = renderer.vectorAssets.get(6);
+    contactOffset(renderer, unit, stage, time, record) {
+        const RECORD = record || renderer.vectorAssets.get(6);
         if (!RECORD) {
             return { x: 0, y: 0 };
         }
         const BODY = unitBodyDefinition(6),
             TIP = contactSocket(RECORD, stage),
-            GIANT = unit.giantUntil > time ? 3 : 1,
-            SCALE =
-                unitDisplayScale(BODY, unit.bodyScale, renderer.scale, renderer.minimumUnitPixels() * GIANT) *
-                (1 +
-                    Math.sin((time - unit.giantEndedAt) * 30) *
-                        0.12 *
-                        Math.max(0, 1 - (time - unit.giantEndedAt) / 0.35)),
+            SCALE = unitAttackDisplayScale(renderer, unit, time),
             FACE = unit.ability.ricePointX < unit.x ? -1 : 1,
             POINT = renderer.project(unit.ability.ricePointX, unit.ability.ricePointY, 0),
             ORIGIN = renderer.project(unit.x, unit.y, unit.z),
@@ -101,7 +96,7 @@ export class RiceAttackPresentation extends UnitAttackPresentation {
             DY = POINT.y - ORIGIN.y - (TIP.y - BODY.ground.y) * SCALE;
         return { x: DX / renderer.scale, y: -DY / (renderer.scale * WORLD_DEPTH_PROJECTION) };
     }
-    groundOffset(renderer, unit, time) {
+    groundOffset(renderer, unit, time, record) {
         const A = unit.ability;
         if (!A.riceForm || unit.hp <= 0 || unit.stun > 0) {
             return null;
@@ -110,7 +105,7 @@ export class RiceAttackPresentation extends UnitAttackPresentation {
             return { x: 0, y: 0 };
         }
         if (A.phase === 'recover') {
-            const END = this.contactOffset(renderer, unit, A.riceLastStage, time),
+            const END = this.contactOffset(renderer, unit, A.riceLastStage, time, record),
                 LEFT = 1 - SMOOTH(A.elapsed / A.riceRecoveryDuration);
             return { x: END.x * LEFT, y: END.y * LEFT };
         }
@@ -120,8 +115,8 @@ export class RiceAttackPresentation extends UnitAttackPresentation {
         const START =
                 A.ricePreviousStage === 'ready'
                     ? { x: 0, y: 0 }
-                    : this.contactOffset(renderer, unit, A.ricePreviousStage, time),
-            END = this.contactOffset(renderer, unit, A.riceStage, time),
+                    : this.contactOffset(renderer, unit, A.ricePreviousStage, time, record),
+            END = this.contactOffset(renderer, unit, A.riceStage, time, record),
             T = SMOOTH(A.riceStageProgress);
         return { x: START.x + (END.x - START.x) * T, y: START.y + (END.y - START.y) * T };
     }

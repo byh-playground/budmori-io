@@ -10,6 +10,9 @@ import { chromium } from 'playwright';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     OUTPUT = path.join(ROOT, 'tests/output/source-smoke'),
+    // The first CI already captured the shared-rig sweep; only the basic frame still needs review.
+    CAPTURE_BOSS_BASICS = process.env.BUDMORI_CAPTURE_BOSS_BASICS === '1',
+    CAPTURE_BOSS_SWEEP = process.env.BUDMORI_CAPTURE_BOSS_SWEEP === '1',
     HTML = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'),
     MANIFEST = JSON.parse(
         HTML.match(/<script id="bloom-runtime-manifest" type="application\/json">(.*?)<\/script>/s)?.[1] || 'null',
@@ -78,7 +81,7 @@ try {
         args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
     });
     const CONTEXT = await browser.newContext({
-            viewport: { width: 1000, height: 700 },
+            viewport: { width: 667, height: 375 },
             deviceScaleFactor: 0.75,
             hasTouch: true,
             serviceWorkers: 'block',
@@ -220,7 +223,7 @@ try {
             liveHealthChanges: 0,
         };
         const OFF_BOSS_HEALTH = WORLD.boss.onHealthChanged.on(({ previousHp, hp }) => {
-            if (hp < previousHp) {
+            if (!SESSION.paused && hp < previousHp) {
                 OBS.unitCore.liveHealthChanges++;
             }
         });
@@ -230,7 +233,8 @@ try {
         WORLD.farmBossEvent.phase = 'fighting';
         WORLD.tower.cards.push({ id: 'regen-flat', rarity: 0 }, { id: 'regen-pct', rarity: 0 });
         WORLD._applyRunStats();
-        Object.assign(WORLD.boss, { species: 0, z: 0, hp: 1e9, maxHp: 1e9, stun: 0 });
+        WORLD.boss.controller.configureStage(WORLD.boss.stage, 0);
+        Object.assign(WORLD.boss, { z: 0, hp: 1e9, maxHp: 1e9, stun: 0 });
         ALLIES.forEach((unit, index) => {
             const ANGLE = (index * Math.PI * 2) / (ALLIES.length - 1),
                 DISTANCE = WORLD.boss.radius + 1.2 + (index % 2) * 0.8;
@@ -249,7 +253,7 @@ try {
         // peanut remains alive long enough to prove its ordinary attacks render.
         Object.assign(PEANUT, { x: -10, y: 0, hp: 1 });
         for (let species = 0; species < 9; species++) {
-            WORLD.boss.species = species;
+            WORLD.boss.controller.configureStage(WORLD.boss.stage, species);
             const ACTION = {
                 released: 0,
                 volleyCount: 1,
@@ -279,8 +283,8 @@ try {
                 throw new Error('Boss-mouth summons must retain null player progression');
             }
         }
-        WORLD.boss.species = 0;
-        WORLD.boss.patternRuntime.active = null;
+        WORLD.boss.controller.configureStage(WORLD.boss.stage, 0);
+        Object.assign(WORLD.boss, { hp: 1e9, maxHp: 1e9 });
         // Existing farm labor can overlap combat. Seed its independent fire
         // clock, then let normal work/attack ticks reach wheat windup/recovery.
         const PILES = BUDMORI.CONFIG.farm.work.pileKind;
@@ -306,13 +310,13 @@ try {
             }
         }
         WORLD._unitSpatialDirty = true;
-        WORLD.unitCollection.onHealthChanged.on(({ unitId, previousHp, hp }) => {
+        const OFF_MIXED_HEALTH = WORLD.unitCollection.onHealthChanged.on(({ unitId, previousHp, hp }) => {
             const UNIT = ALLIES.find((unit) => unit.id === unitId);
             if (UNIT && UNIT !== PEANUT && hp > previousHp) {
                 ADD(OBS.regenerated, UNIT.species);
             }
         });
-        WORLD.onNotice.on((notice) => {
+        const OFF_MIXED_NOTICE = WORLD.onNotice.on((notice) => {
             if (notice.kind === 'unit-hit' && notice.attackKind === 'attack.front-slam') {
                 OBS.bossSlams++;
             }
@@ -397,6 +401,13 @@ try {
             }
             return RESULT;
         };
+        globalThis.__restoreMixedObservation = () => {
+            RENDERER.unitPresentation.drawVectorUnit = DRAW;
+            OFF_MIXED_HEALTH();
+            OFF_MIXED_NOTICE();
+            globalThis.__restoreMixedObservation = null;
+            return RENDERER.unitPresentation.drawVectorUnit === DRAW;
+        };
         const DRAW_DANGER = RENDERER.drawDanger;
         WORLD.boss.setStatModifiers({ attackArea: { flat: 0, pct: 1 } });
         globalThis.__restoreBossTelegraphObservation = () => {
@@ -451,9 +462,12 @@ try {
         await PAGE.evaluate(() => globalThis.__mixedCombat.unitCore.liveHealthChanges > 0),
         'native mixed-combat hits emit boss health changes before the later HP fixture',
     );
-    // The original full-health boss only unlocks its single-target basic attack.
+    // The original full-health boss exposes its single-target front-slam special pattern.
     // After every nine-species condition is proven, arrange a crowd for one native unlocked sweep.
-    REPORT.physicalAoeFixture = await PAGE.evaluate(() => {
+    if (CAPTURE_BOSS_SWEEP) {
+        await PAGE.setViewportSize({ width: 1000, height: 700 });
+    }
+    REPORT.physicalAoeFixture = await PAGE.evaluate((capture) => {
         const WORLD = BUDMORI.sim;
         BUDMORI.runtime.paused = true;
         WORLD.setWorkBasisPoints(0);
@@ -497,7 +511,13 @@ try {
                 launches: 0,
                 hits: 0,
                 recovery: [],
-                healing: { prepared: false, released: 0 },
+                healing: {
+                    prepared: false,
+                    released: 0,
+                    pendingTicks: 0,
+                    pendingOnlyWhileBusy: true,
+                    pendingUnspent: true,
+                },
             });
         for (const UNIT of [PROBE, TARGET]) {
             UNIT.setBaseStats({ maxHp: 1e6 });
@@ -531,6 +551,8 @@ try {
         const HEAL = WORLD.formationRuntime.slots.find((slot) => slot.role === 'boss' && slot.id === 'healing-rain');
         HEAL.charge = 200;
         const STEP = WORLD.step,
+            PRESENTATION = BUDMORI.renderer.bossPresentation,
+            DRAW = PRESENTATION.draw,
             OFF = WORLD.onNotice.on((notice) => {
                 if (notice.kind === 'attack-launch' && notice.unit === PROBE.id) {
                     OBS.launches++;
@@ -543,7 +565,15 @@ try {
                 }
             });
         WORLD.step = function (dt) {
-            const ABILITY = PROBE.ability;
+            const ABILITY = PROBE.ability,
+                RETRY_BEFORE = this.formationRuntime.bossRetrySkillId,
+                BUSY_BEFORE = !!(
+                    this.boss.patternRuntime.active ||
+                    this.boss.ability.phase !== 'idle' ||
+                    (this.boss.specialAbility && this.boss.specialAbility.phase !== 'idle') ||
+                    this.boss.z > 0.1 ||
+                    this.boss.landingRecovery > 0
+                );
             if (
                 !OBS.ccStarted &&
                 ABILITY.phase === 'recover' &&
@@ -608,24 +638,65 @@ try {
                 };
                 // Make healing eligible again before the next normal decision. It must still yield once.
                 this.boss.setHealth(this.boss.maxHp * 0.3);
-            } else if (
-                OBS.healing.failed &&
-                !OBS.healing.nextDecision &&
-                this.simulationTick > OBS.healing.failed.tick
-            ) {
-                OBS.healing.nextDecision = {
+            } else if (OBS.healing.failed && this.simulationTick > OBS.healing.failed.tick) {
+                const DECISION = {
+                    tick: this.simulationTick,
                     cast: CAST?.id || null,
                     retry: this.formationRuntime.bossRetrySkillId,
                     pattern: this.boss.patternRuntime.active?.id || null,
                     pursuit: Math.hypot(this.boss.chaseVx, this.boss.chaseVy),
+                    basicPhase: this.boss.ability.phase,
                     charge: HEAL.charge,
                     cooldown: HEAL.cooldown,
                 };
+                OBS.healing.nextTick ||= DECISION;
+                if (RETRY_BEFORE === 'healing-rain' && !OBS.healing.nextDecision) {
+                    if (DECISION.retry === null) {
+                        // Observe the real token consumption, not the first tick of an already-busy basic action.
+                        OBS.healing.nextDecision = { ...DECISION, eligible: !BUSY_BEFORE };
+                    } else {
+                        OBS.healing.pendingTicks++;
+                        OBS.healing.pendingOnlyWhileBusy &&= BUSY_BEFORE;
+                        OBS.healing.pendingUnspent &&=
+                            DECISION.retry === 'healing-rain' &&
+                            !CAST &&
+                            HEAL.charge === 200 &&
+                            HEAL.cooldown === 0 &&
+                            !this.formationRuntime.effects.some((effect) => effect.kind === 'healing-rain');
+                    }
+                }
+            }
+            return RESULT;
+        };
+        PRESENTATION.draw = function (source, world) {
+            const RESULT = DRAW.call(this, source, world),
+                BOSS = world.boss;
+            if (
+                !OBS.sweepFrame &&
+                BOSS.patternId === 'attack.sweep-360' &&
+                BOSS.patternPhase === 'active' &&
+                BOSS.patternPhaseElapsed >= 0.25
+            ) {
+                const INSTANCE = this.renderer.bossPlayers.get(BOSS.species);
+                OBS.sweepFrame = {
+                    sessionDto: world !== WORLD && BOSS !== WORLD.boss,
+                    clip: INSTANCE.player.currentClip,
+                    source: INSTANCE.record.compiled.sourcePath,
+                    sameSource:
+                        INSTANCE.record.compiled.sourcePath ===
+                        this.renderer.vectorAssets.get(BOSS.species).compiled.sourcePath,
+                    handRadius: INSTANCE.record.hands.radius,
+                };
+                if (capture) {
+                    OBS.capturePending = true;
+                    BUDMORI.runtime.paused = true;
+                }
             }
             return RESULT;
         };
         globalThis.__restoreAttackFlowObservation = () => {
             WORLD.step = STEP;
+            PRESENTATION.draw = DRAW;
             OFF();
             PROBE.stun = 1000;
             globalThis.__restoreAttackFlowObservation = null;
@@ -641,13 +712,34 @@ try {
             pattern: 'attack.sweep-360',
             chargeSource: 'native physical settlement; no injected combat events',
         };
-    });
-    await PAGE.waitForFunction(
-        () =>
-            globalThis.__mixedCombat.bossHitBatches.some((batch) => new Set(batch.targets).size > 1) &&
-            globalThis.__mixedCombat.attackFlow.finished &&
-            globalThis.__mixedCombat.attackFlow.healing.nextDecision,
-    );
+    }, CAPTURE_BOSS_SWEEP);
+    REPORT.physicalAoeFixture.previousCapture = {
+        run: '40166029010',
+        file: 'boss-special-sweep-desktop.jpg',
+        captureMs: 4858,
+    };
+    for (;;) {
+        await PAGE.waitForFunction(() => {
+            const OBS = globalThis.__mixedCombat;
+            return (
+                OBS.attackFlow.capturePending ||
+                (OBS.bossHitBatches.some((batch) => new Set(batch.targets).size > 1) &&
+                    OBS.attackFlow.finished &&
+                    OBS.attackFlow.healing.nextDecision &&
+                    OBS.attackFlow.sweepFrame)
+            );
+        });
+        if (!(await PAGE.evaluate(() => globalThis.__mixedCombat.attackFlow.capturePending))) {
+            break;
+        }
+        REPORT.clock ||= { installedBeforeNavigation: true, combatResumed: true };
+        await CAPTURE_FRAME('boss-special-sweep-desktop.jpg');
+        await PAGE.evaluate(() => {
+            globalThis.__mixedCombat.attackFlow.capturePending = false;
+            BUDMORI.runtime.loop.resetTiming();
+            BUDMORI.runtime.paused = false;
+        });
+    }
     assert.equal(await PAGE.evaluate(() => globalThis.__restoreAttackFlowObservation()), true);
     REPORT.mixedCombat = await PAGE.evaluate(() => ({
         ...globalThis.__mixedCombat,
@@ -657,6 +749,10 @@ try {
     const COMBAT = REPORT.mixedCombat,
         FLOW = COMBAT.attackFlow;
     assert.ok(FLOW.nativeFrames > 0, 'the ordinary probe Unit reaches native presentation in the same encounter');
+    assert.ok(
+        FLOW.sweepFrame.sessionDto && FLOW.sweepFrame.sameSource && FLOW.sweepFrame.handRadius > 0,
+        'the native special sweep uses the same body and hand rig as the shared basic attacks',
+    );
     assert.ok(FLOW.corrected.actionStable && FLOW.corrected.budgetStable);
     assert.ok(
         Math.abs(FLOW.corrected.movement - 0.2) < 1e-9,
@@ -681,12 +777,31 @@ try {
         'eligibility loss releases the failed heal without spending or recovery',
     );
     assert.equal(FLOW.healing.released, 0);
+    assert.equal(
+        FLOW.healing.pendingOnlyWhileBusy,
+        true,
+        'the retry token is held only while the boss cannot select a new action',
+    );
+    assert.equal(FLOW.healing.pendingUnspent, true, 'busy ticks never spend healing charge or start cooldown/effects');
+    assert.equal(FLOW.healing.nextTick.cast, null, 'the immediately following tick cannot restart the failed heal');
+    assert.ok(
+        FLOW.healing.nextTick.pattern ||
+            FLOW.healing.nextTick.pursuit > 0 ||
+            FLOW.healing.nextTick.basicPhase !== 'idle',
+    );
+    assert.equal(
+        FLOW.healing.nextDecision.eligible,
+        true,
+        'the token is consumed at the next eligible selection, after the busy gate',
+    );
     assert.equal(FLOW.healing.nextDecision.cast, null);
     assert.equal(FLOW.healing.nextDecision.retry, null);
     assert.equal(FLOW.healing.nextDecision.charge, 200);
     assert.equal(FLOW.healing.nextDecision.cooldown, 0);
     assert.ok(
-        FLOW.healing.nextDecision.pattern || FLOW.healing.nextDecision.pursuit > 0,
+        FLOW.healing.nextDecision.pattern ||
+            FLOW.healing.nextDecision.pursuit > 0 ||
+            FLOW.healing.nextDecision.basicPhase !== 'idle',
         'the failed charged slot yields a real physical attack or pursuit opportunity',
     );
     assert.equal(COMBAT.telegraph.scalar, 2, 'the real boss presentation DTO carries its common attack-area stat');
@@ -695,7 +810,7 @@ try {
         COMBAT.telegraph.modelReach,
         'the native telegraph uses the same reach as its live model',
     );
-    assert.ok(COMBAT.bossSlams > 0, 'the oversized pea boss selects and lands its basic attack');
+    assert.ok(COMBAT.bossSlams > 0, 'the oversized pea boss selects and lands its front-slam special pattern');
     assert.equal(COMBAT.unitCore.sameClass, true, 'the real tower boss and ordinary troop are the same Unit class');
     assert.equal(COMBAT.unitCore.sharedLookup, true, 'boss identity resolves through the common unit lookup');
     assert.ok(COMBAT.unitCore.liveHealthChanges > 0, 'actual mixed-combat damage emits the boss Unit health signal');
@@ -776,7 +891,386 @@ try {
     // A small real-UI copy check after the unchanged combat assertions, not a form matrix.
     REPORT.bossHitObservationRestored = await PAGE.evaluate(() => globalThis.__restoreBossHitObservation());
     assert.equal(REPORT.bossHitObservationRestored, true);
+    assert.equal(await PAGE.evaluate(() => globalThis.__restoreMixedObservation()), true);
     CHECKPOINT('mixedCombatAssertions');
+    if (CAPTURE_BOSS_BASICS) {
+        await PAGE.setViewportSize({ width: 1000, height: 700 });
+    }
+    // Continue the same real session with two bodies, retaining every mixed-roster
+    // assertion above. One seeded automatic rotation, not nine boot/cast scenarios.
+    await PAGE.evaluate(async (capture) => {
+        const WORLD = BUDMORI.sim,
+            SESSION = BUDMORI.runtime,
+            PRESENTATION = BUDMORI.renderer.bossPresentation,
+            { createBossPatternRuntime: PATTERNS } = await import('./src/boss-patterns.js'),
+            OBS = (globalThis.__bossBasics = {
+                order: [7, 5, 0, 1, 2, 3, 4, 6, 8],
+                cases: [],
+                transitions: [],
+                startTick: WORLD.simulationTick,
+                targetFixture: {
+                    count: 2,
+                    maxHp: 1e9,
+                    knockbackResistance: 1,
+                    purpose:
+                        'avoid repeated pursuit only; unchanged native aim, collision, damage and automatic selection',
+                },
+                exclusive: true,
+                specialLaunches: 0,
+                capture,
+                captured: [],
+                capturePending: null,
+                complete: false,
+            });
+        SESSION.paused = true;
+        WORLD.formationSkills.end();
+        WORLD.resetUnits();
+        WORLD.setWorkBasisPoints(0);
+        WORLD.projectiles = [];
+        WORLD.effects = [];
+        WORLD._bossHitBatch = [];
+        WORLD.tower.relics = new Map();
+        WORLD.tower.bossRelics = new Map();
+        WORLD.boss.controller.configureStage(1, 0);
+        // Restore the ordinary encounter input after the earlier isolated sweep fixture.
+        // Never change cooldowns, selection, attack timing, RNG calls or hit settlement during this rotation.
+        WORLD.boss.patternRuntime = PATTERNS();
+        WORLD.rng.state = 424242;
+        const TARGET = WORLD.spawn(0, 1, WORLD.boss.radius + 0.5, 0),
+            MOUTH = {
+                released: 0,
+                volleyCount: 1,
+                aim: Math.PI,
+                id: 'summon.mouth-t1',
+                phase: 'active',
+                phaseElapsed: 0,
+            };
+        WORLD.boss.patternRuntime.active = MOUTH;
+        if (!WORLD.spawnBossMouthUnit(MOUTH)) {
+            throw new Error('The automatic boss rotation needs one real same-faction summon');
+        }
+        const PEER = WORLD.units.findLast((unit) => unit.ownerId === 'boss');
+        for (const UNIT of [TARGET, PEER]) {
+            UNIT.setBaseStats({ maxHp: 1e9, knockbackResistance: 1 });
+            UNIT.setHealth(UNIT.maxHp);
+            Object.assign(UNIT, {
+                growth: 3,
+                growthElapsed: UNIT.growthDuration,
+                dropLanded: true,
+                landingRecovery: 0,
+            });
+        }
+        WORLD._benched.clear();
+        WORLD._benchRevision++;
+        WORLD.farmBossEvent.phase = 'fighting';
+        const ARRANGE = (species) => {
+                const PREVIOUS = WORLD.boss.generation,
+                    PREVIOUS_CYCLE = WORLD.boss.ability;
+                WORLD.boss.controller.configureStage(1, species);
+                const BOSS = WORLD.boss;
+                Object.assign(BOSS, {
+                    active: true,
+                    x: 0,
+                    y: 0,
+                    z: 0,
+                    vx: 0,
+                    vy: 0,
+                    vz: 0,
+                    stun: 0,
+                    knockVx: 0,
+                    knockVy: 0,
+                });
+                BOSS.setBaseStats({ maxHp: 1e9 });
+                BOSS.setHealth(BOSS.maxHp);
+                for (const [UNIT, DIRECTION] of [
+                    [TARGET, 1],
+                    [PEER, -1],
+                ]) {
+                    Object.assign(UNIT, {
+                        x: DIRECTION * (BOSS.radius + UNIT.radius + 0.25),
+                        y: 0,
+                        z: 0,
+                        vx: 0,
+                        vy: 0,
+                        vz: 0,
+                        stun: 0,
+                        down: 0,
+                        landingRecovery: 0,
+                        dropLanded: true,
+                    });
+                }
+                const BUILD = WORLD.abilityProgressionFor(BOSS),
+                    CASE = {
+                        species,
+                        generation: BOSS.generation,
+                        startTick: WORLD.simulationTick,
+                        prepared: 0,
+                        launches: 0,
+                        hits: 0,
+                        nativeFrames: 0,
+                        nativeAttackFrames: 0,
+                        phases: [],
+                        clips: [],
+                        records: [],
+                        effects: {},
+                        sessionDto: true,
+                        neutralBuild:
+                            BUILD !== WORLD.playerProgression &&
+                            Object.values(BUILD.abilities).every(
+                                (entry) =>
+                                    entry.treeVersion === 1 &&
+                                    Object.values(entry.nodeRanks).every((rank) => rank === 0),
+                            ),
+                    };
+                OBS.transitions.push({
+                    previous: PREVIOUS,
+                    generation: BOSS.generation,
+                    newCycle: BOSS.ability !== PREVIOUS_CYCLE,
+                    clearAction:
+                        BOSS.ability.phase === 'idle' &&
+                        BOSS.ability.action === null &&
+                        BOSS.patternRuntime.active === null,
+                });
+                OBS.cases.push(CASE);
+                WORLD._unitSpatialDirty = true;
+            },
+            ADD = (list, value) => {
+                if (!list.includes(value)) {
+                    list.push(value);
+                }
+            },
+            RECORD_KEYS = [
+                'peaAttack',
+                'cornAttack',
+                'redbeanAttack',
+                'chestnutAttack',
+                'peanutAttack',
+                'walnutAttack',
+                'riceAttack',
+                'wheatAttack',
+                'barleyAttack',
+            ],
+            READY = (sample) =>
+                sample.prepared > 0 &&
+                sample.launches > 0 &&
+                sample.hits > 0 &&
+                sample.nativeFrames > 0 &&
+                sample.nativeAttackFrames > 0 &&
+                (sample.species !== 1 || sample.effects.attachment) &&
+                (sample.species !== 3 || sample.effects.thorn) &&
+                (sample.species !== 5 || sample.effects.guard) &&
+                (sample.species !== 7 || sample.effects.command) &&
+                (sample.species !== 8 || sample.effects.shred);
+        ARRANGE(OBS.order[0]);
+        const STEP = WORLD.step,
+            DRAW = PRESENTATION.draw,
+            OFF = WORLD.onNotice.on((notice) => {
+                const CASE = OBS.cases.at(-1),
+                    BOSS = WORLD.boss;
+                if (OBS.complete || CASE.generation !== BOSS.generation) {
+                    return;
+                }
+                if (notice.kind === 'boss-pattern-launch') {
+                    OBS.specialLaunches++;
+                }
+                if (notice.kind === 'attack-launch' && notice.unit === 'boss') {
+                    CASE.launches++;
+                }
+                if (
+                    notice.kind === 'unit-hit' &&
+                    notice.sourceUnit === 'boss' &&
+                    !notice.attackKind?.startsWith('attack.')
+                ) {
+                    CASE.hits++;
+                    if (notice.attackKind === 'chestnut-spike') {
+                        CASE.effects.thorn = true;
+                    }
+                }
+                if (notice.kind === 'barley-shred' && notice.sourceUnit === 'boss') {
+                    const UNIT = WORLD._unitForId(notice.unit);
+                    CASE.effects.shred =
+                        notice.amount > 0 &&
+                        UNIT?.faction === 'player' &&
+                        UNIT.barleyArmorShredBuckets.some(
+                            (bucket) => bucket.amount > 0 && bucket.expiresAtTick > WORLD.simulationTick,
+                        );
+                }
+                if (notice.kind === 'wheat-command' && notice.unit === 'boss') {
+                    CASE.effects.command =
+                        BOSS.wheatCommandBuffs.some((buff) => buff.expiresAtTick > WORLD.simulationTick) &&
+                        PEER.wheatCommandBuffs.some((buff) => buff.expiresAtTick > WORLD.simulationTick);
+                }
+            });
+        WORLD.step = function (dt) {
+            const RESULT = STEP.call(this, dt),
+                BOSS = this.boss,
+                CASE = OBS.cases.at(-1),
+                ABILITY = BOSS.ability;
+            if (OBS.complete) {
+                return RESULT;
+            }
+            OBS.exclusive &&= !(
+                ABILITY.phase !== 'idle' &&
+                (BOSS.patternRuntime.active || this.formationRuntime.bossCast)
+            );
+            if (ABILITY.phase === 'windup') {
+                CASE.prepared++;
+            }
+            ADD(CASE.phases, ABILITY.phase);
+            for (const KEY of RECORD_KEYS) {
+                const RECORD = ABILITY.action?.[KEY];
+                if (RECORD && !CASE.records.some((entry) => entry.id === RECORD.id)) {
+                    CASE.records.push({
+                        id: RECORD.id,
+                        key: KEY,
+                        tier: RECORD.tier,
+                        form: RECORD.form,
+                        generation: RECORD.ownerGeneration,
+                    });
+                }
+                if (KEY === 'walnutAttack' && RECORD?.rawBudget > 0) {
+                    CASE.effects.raw = { stored: RECORD.storedRaw, budget: RECORD.rawBudget };
+                }
+            }
+            if (BOSS.species === 1) {
+                CASE.effects.attachment ||= this.cornAttachments.groups.some((group) =>
+                    group.attachments.some(
+                        (item) =>
+                            item.ownerId === 'boss' &&
+                            item.ownerGeneration === BOSS.generation &&
+                            item.status === 'attached',
+                    ),
+                );
+            }
+            if (BOSS.species === 5) {
+                CASE.effects.guard ||= BOSS.walnutGuardUntilTick > this.simulationTick;
+            }
+            if (READY(CASE) && !OBS.capturePending) {
+                CASE.elapsedTicks = this.simulationTick - CASE.startTick;
+                if (OBS.cases.length === OBS.order.length) {
+                    OBS.complete = true;
+                    OBS.elapsedTicks = this.simulationTick - OBS.startTick;
+                    SESSION.paused = true;
+                } else {
+                    ARRANGE(OBS.order[OBS.cases.length]);
+                }
+            }
+            return RESULT;
+        };
+        PRESENTATION.draw = function (source, world) {
+            const RESULT = DRAW.call(this, source, world),
+                CASE = OBS.cases.at(-1),
+                BOSS = world.boss;
+            if (!OBS.complete && BOSS.generation === CASE.generation && this.basicAttackVisible(BOSS, world)) {
+                CASE.nativeFrames++;
+                if (CASE.launches > 0 && BOSS.ability.phase !== 'windup') {
+                    CASE.nativeAttackFrames++;
+                }
+                CASE.sessionDto &&= world !== WORLD && BOSS !== WORLD.boss && BOSS.ability !== WORLD.boss.ability;
+                ADD(CASE.clips, this.renderer.bossPlayers.get(BOSS.species)?.player.currentClip);
+                if (
+                    capture &&
+                    BOSS.species === 7 &&
+                    BOSS.ability.phase === 'active' &&
+                    !OBS.captured.includes(BOSS.species)
+                ) {
+                    OBS.captured.push(BOSS.species);
+                    OBS.capturePending = BOSS.species;
+                    SESSION.paused = true;
+                }
+            }
+            return RESULT;
+        };
+        globalThis.__restoreBossBasicObservation = () => {
+            WORLD.step = STEP;
+            PRESENTATION.draw = DRAW;
+            OFF();
+            globalThis.__restoreBossBasicObservation = null;
+            return WORLD.step === STEP && PRESENTATION.draw === DRAW;
+        };
+        SESSION.capturePresentation('reset');
+        SESSION.loop.resetTiming();
+        SESSION.paused = false;
+    }, CAPTURE_BOSS_BASICS);
+    for (;;) {
+        await PAGE.waitForFunction(
+            () => globalThis.__bossBasics.complete || globalThis.__bossBasics.capturePending !== null,
+        );
+        const CAPTURE = await PAGE.evaluate(() => globalThis.__bossBasics.capturePending);
+        if (CAPTURE === null) {
+            break;
+        }
+        REPORT.clock ||= { installedBeforeNavigation: true, combatResumed: true };
+        await CAPTURE_FRAME(`boss-basic-${CAPTURE}-desktop.jpg`);
+        await PAGE.evaluate(() => {
+            globalThis.__bossBasics.capturePending = null;
+            BUDMORI.runtime.loop.resetTiming();
+            BUDMORI.runtime.paused = false;
+        });
+    }
+    REPORT.bossBasics = await PAGE.evaluate(() => {
+        const RESULT = { ...globalThis.__bossBasics, restored: globalThis.__restoreBossBasicObservation() };
+        BUDMORI.runtime.paused = false;
+        return RESULT;
+    });
+    assert.equal(
+        REPORT.bossBasics.restored,
+        true,
+        'automatic boss observations restore native step, draw and listener',
+    );
+    assert.equal(REPORT.bossBasics.exclusive, true, 'basic actions never run alongside a special pattern or card cast');
+    assert.ok(
+        REPORT.bossBasics.specialLaunches > 0,
+        'ordinary special selection remains enabled and does not starve basic attacks',
+    );
+    assert.deepEqual(REPORT.bossBasics.cases.map((sample) => sample.species).sort(), [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    for (const SAMPLE of REPORT.bossBasics.cases) {
+        assert.ok(
+            SAMPLE.prepared > 0 && SAMPLE.launches > 0 && SAMPLE.hits > 0,
+            `boss ${SAMPLE.species} automatically prepares, launches and hits`,
+        );
+        assert.ok(
+            SAMPLE.nativeFrames > 0 && SAMPLE.nativeAttackFrames > 0 && SAMPLE.sessionDto,
+            `boss ${SAMPLE.species} attacks through FarmSession DTO and native draw`,
+        );
+        assert.ok(SAMPLE.clips.length > 0 && SAMPLE.clips.every((clip) => clip && !['idle', 'walk'].includes(clip)));
+        assert.ok(SAMPLE.neutralBuild, `boss ${SAMPLE.species} does not inherit researched player ranks`);
+        assert.ok(
+            SAMPLE.records.length > 0 &&
+                SAMPLE.records.every(
+                    (record) => record.tier === 1 && record.form === 1 && record.generation === SAMPLE.generation,
+                ),
+        );
+    }
+    assert.ok(
+        REPORT.bossBasics.transitions.every(
+            (transition) =>
+                transition.previous !== transition.generation && transition.newCycle && transition.clearAction,
+        ),
+    );
+    assert.ok(
+        REPORT.bossBasics.cases.find((sample) => sample.species === 1).effects.attachment,
+        'corn really attaches a boss-owned kernel to its opposing target',
+    );
+    assert.ok(
+        REPORT.bossBasics.cases.find((sample) => sample.species === 3).effects.thorn,
+        'chestnut really hits through its thorn projectile',
+    );
+    assert.ok(
+        REPORT.bossBasics.cases.find((sample) => sample.species === 5).effects.guard,
+        'walnut retains its ordinary guard during automatic attacks',
+    );
+    assert.ok(
+        REPORT.bossBasics.cases.find((sample) => sample.species === 7).effects.command,
+        'wheat naturally buffs itself and a same-faction mouth summon',
+    );
+    assert.ok(
+        REPORT.bossBasics.cases.find((sample) => sample.species === 8).effects.shred,
+        'barley naturally leaves live armor-shred buckets on an opponent',
+    );
+    assert.deepEqual(ERRORS, [], 'automatic nine-boss combat stays free of runtime errors');
+    CHECKPOINT('nineBossBasicAssertions');
+    await PAGE.setViewportSize({ width: 1000, height: 700 });
     await PAGE.locator('#upgradeMenu').click();
     REPORT.wording = [];
     for (const [SPECIES, TITLE] of [
@@ -1363,6 +1857,7 @@ try {
     REPORT.bossCards.restart.clearedFeedback = true;
 
     CHECKPOINT('nextBattleAndRestartAssertions');
+    await PAGE.setViewportSize({ width: 667, height: 375 });
     // Controlled encounter fixtures, but real RAF simulation, model casts and native rendering.
     // Models are untouched; draw instrumentation below delegates to the native implementation.
     // Screenshots need human pixel review.
@@ -1536,6 +2031,7 @@ try {
                     GEOMETRY = {
                         sessionDto: DISPLAY !== BUDMORI.sim && !BUDMORI.sim.formationRuntime.effects.includes(effect),
                         age: effect.age,
+                        revision: DISPLAY.presentationRevision,
                         dimensions: Object.fromEntries(
                             [
                                 'radius',
@@ -1638,6 +2134,14 @@ try {
             ['ufo', 10, 'critHits'],
             ['storm-cloud', 75, 'hits'],
         ]) {
+            const DESKTOP =
+                ROLE === 'boss' &&
+                (ID === 'ufo' ||
+                    (ID === 'lightning' &&
+                        ['lightning', 'all'].includes(process.env.BUDMORI_CAPTURE_BOSS_SCALE ?? '')));
+            if (DESKTOP) {
+                await PAGE.setViewportSize({ width: 1000, height: 700 });
+            }
             const CASE_STARTED = Date.now();
             REPORT.pendingCase = { role: ROLE, id: ID, stage: 'simulate', startedAt: new Date().toISOString() };
             fs.writeFileSync(path.join(OUTPUT, 'report.json'), JSON.stringify(REPORT, null, 2));
@@ -1788,11 +2292,22 @@ try {
                 }, ID);
                 await PAGE.waitForFunction(() => globalThis.__sharedSkills.checkpoint.reached);
             }
-            await PAGE.evaluate(() => {
-                // Copy the actual paused model into the production session DTO; normal RAF draws it.
-                BUDMORI.runtime.capturePresentation('reset');
-                return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-            });
+            await PAGE.evaluate(() => BUDMORI.runtime.capturePresentation('reset'));
+            // Observe the actual new DTO draw instead of paying for two redundant fixed RAFs per case.
+            await PAGE.waitForFunction(
+                ({ role, id }) => {
+                    const EFFECT = BUDMORI.sim.formationRuntime.effects.find(
+                            (effect) => effect.role === role && effect.kind === id,
+                        ),
+                        GEOMETRY = globalThis.__sharedSkills.geometry[EFFECT?.id];
+                    return (
+                        GEOMETRY?.sessionDto &&
+                        GEOMETRY.revision === BUDMORI.runtime.presentationRevision &&
+                        Math.abs(GEOMETRY.age - EFFECT.age) < 1e-9
+                    );
+                },
+                { role: ROLE, id: ID },
+            );
             const HUD_CASE = ROLE === 'boss' && ID === 'ufo',
                 // Both unchanged model-scale images are reviewed. Recapture lightning/ufo/all only on demand.
                 SCALE_MODE = process.env.BUDMORI_CAPTURE_BOSS_SCALE ?? '',
@@ -2209,9 +2724,13 @@ try {
             });
             REPORT.pendingCase = null;
             fs.writeFileSync(path.join(OUTPUT, 'report.json'), JSON.stringify(REPORT, null, 2));
+            if (DESKTOP) {
+                await PAGE.setViewportSize({ width: 667, height: 375 });
+            }
         }
     }
     CHECKPOINT('sharedSkillsAssertions');
+    await PAGE.setViewportSize({ width: 1000, height: 700 });
     // Keep the already released cloud alive while a UFO releases, then cancel a third cast.
     await PAGE.evaluate(() => {
         const WORLD = BUDMORI.sim;
@@ -2402,16 +2921,21 @@ try {
     // Finish this same encounter through real lethal damage and normal RAF, not a direct victory call.
     await PAGE.evaluate(async () => {
         const WORLD = BUDMORI.sim,
-            { applyDamage: DAMAGE } = await import('./src/unit-stats.js'),
-            OLD_BOSS = WORLD.boss,
+            { applyDamage: DAMAGE } = await import('./src/unit-stats.js');
+        WORLD.boss.controller.configureStage(WORLD.boss.stage, 4);
+        const OLD_BOSS = WORLD.boss,
             OBS = (globalThis.__unitCoreEnd = {
                 generation: OLD_BOSS.generation,
                 victories: 0,
                 rewards: 0,
+                peanutSplits: 0,
                 damage: null,
                 startedTime: WORLD.time,
             });
         globalThis.__restoreUnitCoreEndObservation = WORLD.onNotice.on((notice) => {
+            if (notice.kind === 'peanut-split' && notice.unit === 'boss') {
+                OBS.peanutSplits++;
+            }
             if (notice.kind === 'farm-boss-victory') {
                 OBS.victories++;
             }
@@ -2448,6 +2972,7 @@ try {
         };
     });
     assert.ok(REPORT.unitCoreEnd.damage > 0);
+    assert.equal(REPORT.unitCoreEnd.peanutSplits, 0, 'the peanut boss preserves its no-death-split encounter policy');
     assert.equal(REPORT.unitCoreEnd.victories, 1, 'real boss death settles victory once');
     assert.equal(REPORT.unitCoreEnd.rewards, 1, 'real boss death issues one reward settlement');
     assert.equal(REPORT.unitCoreEnd.repeated, false, 'a repeated finish cannot settle another victory');
@@ -2470,6 +2995,8 @@ try {
             .evaluate(() => {
                 globalThis.__restoreBossTelegraphObservation?.();
                 globalThis.__restoreBossUnitHealthObservation?.();
+                globalThis.__restoreBossBasicObservation?.();
+                globalThis.__restoreMixedObservation?.();
                 globalThis.__restoreBossCardHit?.();
                 globalThis.__restoreAttackFlowObservation?.();
                 globalThis.__restoreBossHudFixture?.();
@@ -2477,6 +3004,7 @@ try {
             })
             .catch(() => null);
         REPORT.mixedCombat = await page.evaluate(() => globalThis.__mixedCombat).catch(() => null);
+        REPORT.bossBasics = await page.evaluate(() => globalThis.__bossBasics).catch(() => null);
         REPORT.bossHitObservationRestored = await page
             .evaluate(() => globalThis.__restoreBossHitObservation?.() ?? true)
             .catch(() => false);

@@ -1,57 +1,24 @@
-import { BarleyAttackPresentation } from './features/unit-attacks/barley/presentation.js';
-import { WheatAttackPresentation, setWheatBatonLength } from './features/unit-attacks/wheat/presentation.js';
-import { RiceAttackPresentation } from './features/unit-attacks/rice/presentation.js';
-import { WalnutAttackPresentation } from './features/unit-attacks/walnut/presentation.js';
-import { ChestnutAttackPresentation } from './features/unit-attacks/chestnut/presentation.js';
-import { RedbeanAttackPresentation } from './features/unit-attacks/redbean/presentation.js';
-import { unitBodyDefinition, unitDisplayScale } from './features/unit-body/definition.js';
+import {
+    unitAttackPresentation,
+    unitCombatMotion,
+    unitCombatExpression,
+    motionElapsedMs,
+    prepareUnitAttackPlayer,
+    applyUnitAttackPose,
+    updateUnitAttackDisplay,
+    drawUnitAttackGround,
+    drawUnitAttackContact,
+} from './features/unit-attacks/presentation.js';
+import { unitAttackDisplayScale } from './features/unit-attacks/presentation-geometry.js';
+import { unitBodyDefinition } from './features/unit-body/definition.js';
 import { BarleyArmorShredPresentation } from './features/abilities/barley-shred/presentation.js';
-import { UnitAttackPresentation } from './features/unit-attacks/presentation-base.js';
-import { PeaAttackPresentation } from './features/unit-attacks/pea/presentation.js';
-import { LobPresentation } from './features/unit-attacks/lob/presentation.js';
-import { DualStrikePresentation } from './features/unit-attacks/dual-strike/presentation.js';
 import { ATTACK_TYPES, CONFIG, clamp } from './farm-model.js';
 import { farmBreedingCooldown, unitRestPresentation } from './farm-indicators.js';
 import { scenePresentation } from './farm-render-scenes.js';
 import { PassiveMarksPresentation } from './tower-passive-presentations.js';
 
-const BARLEY_ATTACK = new BarleyAttackPresentation();
-const WHEAT_ATTACK = new WheatAttackPresentation();
-const RICE_ATTACK = new RiceAttackPresentation();
-const WALNUT_ATTACK = new WalnutAttackPresentation();
-const CHESTNUT_ATTACK = new ChestnutAttackPresentation();
-const REDBEAN_ATTACK = new RedbeanAttackPresentation();
-const PEA_ATTACK = new PeaAttackPresentation();
-const DEFAULT_ATTACK = new UnitAttackPresentation();
 const BARLEY_SHRED_PRESENTATION = new BarleyArmorShredPresentation();
 const PASSIVE_MARKS = new PassiveMarksPresentation();
-const ATTACK_PRESENTATIONS = new Map(
-    [new DualStrikePresentation(), new LobPresentation()].map((presentation) => [presentation.id, presentation]),
-);
-function unitAttackPresentation(unit) {
-    if (unit.species === 8 && unit.ability?.barleyForm) {
-        return BARLEY_ATTACK;
-    }
-    if (unit.species === 7 && unit.ability?.wheatForm) {
-        return WHEAT_ATTACK;
-    }
-    if (unit.species === 6 && unit.ability?.riceForm) {
-        return RICE_ATTACK;
-    }
-    if (unit.species === 5 && unit.ability?.walnutForm) {
-        return WALNUT_ATTACK;
-    }
-    if (unit.species === 3 && unit.ability?.chestnutForm) {
-        return CHESTNUT_ATTACK;
-    }
-    if (unit.species === 2 && unit.ability?.redbeanForm) {
-        return REDBEAN_ATTACK;
-    }
-    if (unit.species === 0 && unit.ability?.peaForm) {
-        return PEA_ATTACK;
-    }
-    return ATTACK_PRESENTATIONS.get(ATTACK_TYPES[unit.species]?.kind) || DEFAULT_ATTACK;
-}
 
 // Labor has its own clock, independent of an overlapping combat action. Use
 // the shared native work clips, never a form-specific combat stage from that action.
@@ -69,9 +36,7 @@ function workSwing(u, sim) {
         : { name: 'recover', elapsed: ELAPSED };
 }
 function unitMotion(u, sim, rest) {
-    const DEAD = u.hp <= 0 || u.down > 0,
-        AIRBORNE = !u.dropLanded || u.z > 0.1,
-        PHASE = u.ability?.phase || 'idle';
+    const DEAD = u.hp <= 0 || u.down > 0;
     const MOVING = Math.hypot(u.vx || 0, u.vy || 0) > 0.18;
     if (rest) {
         return rest.phase;
@@ -82,54 +47,14 @@ function unitMotion(u, sim, rest) {
     if (scenePresentation(sim.scene).victorious(sim)) {
         return 'victory';
     }
-    if (AIRBORNE) {
-        return 'airborne';
-    }
-    if (u.stun > 0) {
-        return 'hit';
-    }
-    if (u.bounce > 0.04) {
-        return 'landing';
-    }
-    if (PHASE === 'windup') {
-        return unitAttackPresentation(u).windupMotion?.(u) || 'windup';
-    }
-    if (PHASE === 'active') {
-        return unitAttackPresentation(u).activeMotion(u);
-    }
-    if (PHASE === 'recover') {
-        return unitAttackPresentation(u).recoverMotion(u);
+    const COMBAT_MOTION = unitCombatMotion(u);
+    if (COMBAT_MOTION) {
+        return COMBAT_MOTION;
     }
     return MOVING ? 'walk' : 'idle';
 }
-function motionElapsedMs(u, name, clip) {
-    if (name === 'idle' || name === 'walk' || name === 'airborne') {
-        return ((u.seed || 0) * 80) % clip.durationMs;
-    }
-    if (
-        name === 'windup' ||
-        name.startsWith('windup-') ||
-        name === 'fire' ||
-        name.startsWith('fire-') ||
-        name === 'recover'
-    ) {
-        return clamp((u.ability?.elapsed || 0) * 1000, 0, clip.durationMs);
-    }
-    if (name === 'hit') {
-        return clip.durationMs * (1 - clamp((u.stun || 0) / 0.5, 0, 1));
-    }
-    if (name === 'landing') {
-        return clip.durationMs * (1 - clamp((u.bounce || 0) / 0.22, 0, 1));
-    }
-    if (name === 'victory') {
-        return (Math.abs(u.seed || 0) * 97.531) % clip.durationMs;
-    }
-    return clip.durationMs;
-}
 function unitExpression(u, sim, joyEffects, rest) {
-    const DEAD = u.hp <= 0 || u.down > 0,
-        AIRBORNE = !u.dropLanded || u.z > 0.5;
-    const PHASE = u.ability?.phase;
+    const DEAD = u.hp <= 0 || u.down > 0;
     if (rest) {
         return rest.phase === 'defeat' ? 'dead' : rest.phase === 'wake' ? 'neutral' : 'sleep';
     }
@@ -139,22 +64,7 @@ function unitExpression(u, sim, joyEffects, rest) {
     if (scenePresentation(sim.scene).victorious(sim)) {
         return 'happy';
     }
-    if (u.stun > 0) {
-        return 'hurt';
-    }
-    if (AIRBORNE) {
-        return 'surprised';
-    }
-    if (u.walnutGuarding) {
-        return u.ability?.walnutForm && ['windup', 'active', 'recover'].includes(PHASE) ? 'guard-attack' : 'guard';
-    }
-    if (PHASE === 'windup') {
-        return 'focused';
-    }
-    if (PHASE === 'active') {
-        return 'attack';
-    }
-    return scenePresentation(sim.scene).unitMood(u, joyEffects);
+    return unitCombatExpression(u) || scenePresentation(sim.scene).unitMood(u, joyEffects);
 }
 const ATTACK_ACCENTS = ['#8fac68', '#dbb76b', '#b58b9c', '#9a6947', '#d7914f', '#a86b32'];
 
@@ -172,13 +82,18 @@ export class UnitPresentation {
         this.restIndicator = {};
     }
     prepareUnits(units, time, world) {
-        if (this.riceDisplayWorld !== world || this.riceDisplayTime > this.renderer.displayTimeMs) {
+        if (
+            this.riceDisplayWorld !== world ||
+            this.riceDisplayTime > this.renderer.displayTimeMs ||
+            this.riceDisplayRevision !== world.presentationRevision
+        ) {
             this.riceDisplayUnits.clear();
             this.wheatDisplayUnits.clear();
             this.barleyDisplayUnits.clear();
         }
         this.riceDisplayWorld = world;
         this.riceDisplayTime = this.renderer.displayTimeMs;
+        this.riceDisplayRevision = world.presentationRevision;
         const LIVE = new Set();
         for (const UNIT of units) {
             if (UNIT.species !== 6 && UNIT.species !== 7 && UNIT.species !== 8) {
@@ -186,29 +101,23 @@ export class UnitPresentation {
             }
             LIVE.add(UNIT.id);
             const CACHE =
-                    UNIT.species === 8
-                        ? this.barleyDisplayUnits
-                        : UNIT.species === 7
-                          ? this.wheatDisplayUnits
-                          : this.riceDisplayUnits,
-                ATTACK = UNIT.species === 8 ? BARLEY_ATTACK : UNIT.species === 7 ? WHEAT_ATTACK : RICE_ATTACK;
+                UNIT.species === 8
+                    ? this.barleyDisplayUnits
+                    : UNIT.species === 7
+                      ? this.wheatDisplayUnits
+                      : this.riceDisplayUnits;
             let entry = CACHE.get(UNIT.id);
-            if (!entry || entry.seed !== UNIT.seed) {
-                entry = { seed: UNIT.seed, unit: {}, offset: { x: 0, y: 0 }, releasedAt: null };
+            if (!entry || entry.seed !== UNIT.seed || entry.generation !== UNIT.generation) {
+                entry = {
+                    seed: UNIT.seed,
+                    generation: UNIT.generation,
+                    unit: {},
+                    offset: { x: 0, y: 0 },
+                    releasedAt: null,
+                };
                 CACHE.set(UNIT.id, entry);
             }
-            const OFFSET = ATTACK.groundOffset(this.renderer, UNIT, time);
-            if (OFFSET) {
-                entry.offset = OFFSET;
-                entry.releasedAt = null;
-            } else {
-                // Cancelled/stunned/dead attacks leave no active contact. Let the
-                // connected body/feet/shadow settle home over120ms, not teleport.
-                entry.releasedAt ??= this.renderer.displayTimeMs;
-            }
-            const LEFT =
-                entry.releasedAt === null ? 1 : Math.max(0, 1 - (this.renderer.displayTimeMs - entry.releasedAt) / 120);
-            Object.assign(entry.unit, UNIT, { x: UNIT.x + entry.offset.x * LEFT, y: UNIT.y + entry.offset.y * LEFT });
+            updateUnitAttackDisplay(this.renderer, entry, UNIT, time);
         }
         for (const CACHE of [this.riceDisplayUnits, this.wheatDisplayUnits, this.barleyDisplayUnits]) {
             for (const ID of CACHE.keys()) {
@@ -364,9 +273,7 @@ export class UnitPresentation {
         if (EXPRESSION !== player.currentExpression) {
             player.setExpression(EXPRESSION);
         }
-        if (u.species === 7) {
-            setWheatBatonLength(player, u.ability.wheatLongBaton);
-        }
+        prepareUnitAttackPlayer(player, u);
         player.seek(
             HAS_PHASE_CLOCK
                 ? clamp(PHASE_TIME_MS, 0, CLIP.durationMs)
@@ -378,26 +285,8 @@ export class UnitPresentation {
             GROUND = unitBodyDefinition(u.species).ground,
             SCALE = (2 * r) / Math.max(WIDTH, HEIGHT);
         const MATRIX = [SCALE, 0, 0, SCALE, p.x - GROUND.x * SCALE, p.y - GROUND.y * SCALE];
-        if (!SWING && !rest && u.species === 0 && u.hp > 0 && u.stun <= 0 && u.dropLanded && u.z === 0) {
-            PEA_ATTACK.applyGroundedPose(MATRIX, u, GROUND);
-        }
-        if (!SWING && !rest && u.species === 2 && u.hp > 0 && u.stun <= 0 && u.dropLanded) {
-            REDBEAN_ATTACK.applyPose(MATRIX, u, GROUND);
-        }
-        if (!SWING && !rest && u.species === 3 && u.hp > 0 && u.stun <= 0 && u.dropLanded) {
-            CHESTNUT_ATTACK.applyPose(MATRIX, u, GROUND);
-        }
-        if (!SWING && !rest && u.species === 5 && u.ability.walnutForm && u.hp > 0 && u.stun <= 0) {
-            WALNUT_ATTACK.applyPose(MATRIX, u, GROUND);
-        }
-        if (!SWING && !rest && u.species === 6 && u.ability.riceForm && u.hp > 0 && u.stun <= 0) {
-            RICE_ATTACK.applyPose(MATRIX, u, GROUND);
-        }
-        if (!SWING && !rest && u.species === 7 && u.ability.wheatForm && u.hp > 0 && u.stun <= 0) {
-            WHEAT_ATTACK.applyPose(MATRIX, u, GROUND);
-        }
-        if (!SWING && !rest && u.species === 8 && u.ability?.barleyForm && u.hp > 0 && u.stun <= 0) {
-            BARLEY_ATTACK.applyPose(MATRIX, u, GROUND);
+        if (!SWING && !rest) {
+            applyUnitAttackPose(MATRIX, u, GROUND);
         }
         if (this.renderer.cornAttachmentBodies.has(u.id)) {
             this.renderer.captureCornAttachmentBody(u, u.id, player, MATRIX);
@@ -410,15 +299,7 @@ export class UnitPresentation {
             alpha: u.isFormationClone ? 0.52 : 1,
             color: u.isFormationClone ? [0.55, 0.82, 1, 1] : [1, 1, 1, 1],
         });
-        if (u.species === 6) {
-            RICE_ATTACK.drawContact(this.renderer, u, player, MATRIX);
-        }
-        if (u.species === 7) {
-            WHEAT_ATTACK.drawContact(this.renderer, u, player, MATRIX);
-        }
-        if (u.species === 8) {
-            BARLEY_ATTACK.drawContact(this.renderer, u, player, MATRIX);
-        }
+        drawUnitAttackContact(this.renderer, u, player, MATRIX);
         return true;
     }
     drawUnit(u, sim, rest) {
@@ -431,21 +312,7 @@ export class UnitPresentation {
                 u.z + BOB,
             );
         const BODY = unitBodyDefinition(u.species),
-            GIANT_SCALE = u.giantUntil > sim.time ? (u.giantSizeMultiplier ?? 3) : 1,
-            SCALE = unitDisplayScale(
-                BODY,
-                u.bodyScale,
-                this.renderer.scale,
-                this.renderer.minimumUnitPixels() * GIANT_SCALE,
-            ),
-            R =
-                SCALE *
-                Math.max(BODY.viewBox[2], BODY.viewBox[3]) *
-                0.5 *
-                (1 +
-                    Math.sin((sim.time - u.giantEndedAt) * 30) *
-                        0.12 *
-                        Math.max(0, 1 - (sim.time - u.giantEndedAt) / 0.35));
+            R = unitAttackDisplayScale(this.renderer, u, sim.time) * Math.max(BODY.viewBox[2], BODY.viewBox[3]) * 0.5;
         this.drawVectorUnit(u, sim, P, R, rest);
         return {
             p: P,
@@ -456,11 +323,8 @@ export class UnitPresentation {
         const EFFECTS = this.unitRingEffects(u, sim);
         this.drawUnitRingLayer(u, EFFECTS, 'rear');
         const REST = unitRestPresentation(u, sim, CONFIG.unit.corpseRecoverySeconds, this.restIndicator);
-        if (!REST && u.species === 5) {
-            if (u.walnutGuarding && u.ability.walnutForm) {
-                this.renderer.ring(u.x, u.y, u.radius + 0.08, '#ebcc7a', 0.055);
-            }
-            WALNUT_ATTACK.drawContact(this.renderer, u);
+        if (!REST) {
+            drawUnitAttackGround(this.renderer, u);
         }
         const POSE = this.drawUnit(u, sim, REST);
         this.drawUnitRingLayer(u, EFFECTS, 'front');

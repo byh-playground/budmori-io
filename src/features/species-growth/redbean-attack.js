@@ -1,4 +1,12 @@
-import { AttackAction, attackTargetKey, isAttackActionDTO } from './attack-action.js';
+import {
+    attackBudgetInputs,
+    attackBudgetShape,
+    attackRecordShape,
+    attackGeometryScale,
+    captureAttackGeometry,
+    attackBudgetValues,
+} from './attack-profile.js';
+import { AttackAction, attackTargetKey, isAttackActionDTO, attackOwnerCanContinue } from './attack-action.js';
 import { growthBuildOf, growthForAbility } from './state.js';
 import { baseUnitStatsFor, COMMON_UNIT_STAT_DEFAULTS } from '../../unit-stats.js';
 import { mergeMaterialCostForTier } from '../../unit-grades.js';
@@ -82,18 +90,26 @@ export function createRedbeanAttack(world, unit, action, commandSpeed) {
     }
     const R = BUILD.nodeRanks,
         FORM = growthForAbility('kidney-continuous-leap').attackTier(BUILD, unit.tier);
+    const CONTEXT = world.createAttackContext(unit, { attackKind: 'leap', attackMultiplier: 1 });
     const SPEED = Math.max(
         0.05,
-        Math.min(4, baseUnitStatsFor(unit.tier, 2).attackSpeed * commandSpeed * (1 + 0.02 * (R['basic-3'] || 0))),
+        Math.min(
+            4,
+            (unit.statProfile
+                ? CONTEXT.attackerStats.attackSpeed
+                : baseUnitStatsFor(unit.tier, 2, unit.faction !== 'enemy').attackSpeed) *
+                commandSpeed *
+                (1 + 0.02 * (R['basic-3'] || 0)),
+        ),
     );
     const CHANCE = Math.min(0.65, 0.2 + 0.09 * (R['specialty-2'] || 0));
-    const CONTEXT = world.createAttackContext(unit, { attackKind: 'leap', attackMultiplier: 1 });
-    const INPUTS = { one: baseUnitStatsFor(1, 2).attackPower, current: baseUnitStatsFor(unit.tier, 2).attackPower };
+    const INPUTS = attackBudgetInputs(unit);
     return {
         version: 1,
         id: action.id,
         owner: unit.id,
         ownerGeneration: unit.generation,
+        ...captureAttackGeometry(unit),
         tier: unit.tier,
         form: FORM,
         speed: SPEED,
@@ -108,12 +124,7 @@ export function createRedbeanAttack(world, unit, action, commandSpeed) {
         source: {
             attackerStats: structuredClone(CONTEXT.attackerStats),
             attackPowerMultiplier: CONTEXT.attackPowerMultiplier,
-            sourceDamageScale: world.passiveDamageScale(
-                unit,
-                CONTEXT.attackerStats.maxHp,
-                world.boss,
-                world.boss.maxHp,
-            ),
+            sourceDamageScale: world.passiveAttackScale(unit, CONTEXT.attackerStats.maxHp),
             sourceKind: CONTEXT.sourceKind,
         },
         launchTick: null,
@@ -165,23 +176,30 @@ export function sampleRedbeanMotion(record, tick) {
     return {
         x: FROM.x + (TO.x - FROM.x) * Q,
         y: FROM.y + (TO.y - FROM.y) * Q,
-        z: Q === 0 || Q === 1 ? 0 : Math.sin(Math.PI * Q) * LEG.height,
+        z: Q === 0 || Q === 1 ? 0 : Math.sin(Math.PI * Q) * LEG.height * attackGeometryScale(record),
     };
 }
 export function resolveRedbeanSlots(world, unit, action, geometry) {
-    const R = action.redbeanAttack,
-        ATTACK = AttackAction.fromDTO(R.attack),
+    const R = action.redbeanAttack;
+    if (!R?.attack || !attackOwnerCanContinue(world, unit, action, R)) {
+        return;
+    }
+    const ATTACK = AttackAction.fromDTO(R.attack),
         READY = ATTACK.advance(
             Math.min(world.simulationTick, R.launchTick + redbeanPlan(R.form, R.speed).durationTicks),
         );
     for (const STRIKE of READY) {
+        if (!attackOwnerCanContinue(world, unit, action, R)) {
+            break;
+        }
         R.slot = STRIKE.slot;
         const FINAL = STRIKE.slot === REDBEAN_WEIGHTS[R.form].length - 1,
             POINT = sampleRedbeanMotion(R, redbeanPlan(R.form, R.speed).strikes[STRIKE.slot].tick),
             RADIUS =
                 (FINAL && [4, 6].includes(R.form) ? 0.8 : 0.65) *
                 (1 + 0.04 * R.ranks.radius) *
-                R.source.attackerStats.attackArea,
+                R.source.attackerStats.attackArea *
+                attackGeometryScale(R),
             PRIMARY = world.attackTarget(unit, action),
             CANDIDATES = [];
         if (PRIMARY) {
@@ -194,6 +212,9 @@ export function resolveRedbeanSlots(world, unit, action, geometry) {
         }
         let secondary = 0;
         for (const TARGET of CANDIDATES) {
+            if (!attackOwnerCanContinue(world, unit, action, R)) {
+                break;
+            }
             const IS_PRIMARY = TARGET === PRIMARY;
             if (
                 (!IS_PRIMARY && secondary >= 4) ||
@@ -257,12 +278,12 @@ const EXACT = (value, keys) =>
     Object.keys(value).sort().join(' ') === keys.split(' ').sort().join(' ');
 export function isRedbeanAttackRecord(r) {
     if (
-        !EXACT(
+        !attackRecordShape(
             r,
             'version id owner ownerGeneration tier form speed chance windupSeconds recoverySeconds ranks budgetInputs directMultiplier source launchTick motionTick slot leg progress stage origin points attack reset criticalRolls',
         ) ||
         r.version !== 1 ||
-        !['id', 'owner', 'ownerGeneration'].every((k) => Number.isSafeInteger(r[k]) && r[k] > 0) ||
+        !['id', 'ownerGeneration'].every((k) => Number.isSafeInteger(r[k]) && r[k] > 0) ||
         !Number.isInteger(r.tier) ||
         r.tier < 1 ||
         r.tier > 6 ||
@@ -280,8 +301,8 @@ export function isRedbeanAttackRecord(r) {
         r.recoverySeconds !== 0.5 / r.speed ||
         !EXACT(r.ranks, 'power radius finish') ||
         !Object.entries(r.ranks).every(([k, v]) => Number.isInteger(v) && v >= 0 && v <= (k === 'power' ? 10 : 5)) ||
-        !EXACT(r.budgetInputs, 'one current') ||
-        !Object.values(r.budgetInputs).every(Number.isFinite) ||
+        !attackBudgetShape(r.budgetInputs, 'one current') ||
+        !attackBudgetValues(r.budgetInputs).every(Number.isFinite) ||
         r.directMultiplier !==
             redbeanBudgetMultiplier(r.tier, r.form, r.speed, r.chance, r.budgetInputs.one, r.budgetInputs.current) *
                 (1 + 0.03 * r.ranks.power) ||
