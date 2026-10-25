@@ -1,5 +1,5 @@
 import { DEFINITION } from './definition.js';
-import { FormationSkill, targetBodyDimensions } from '../model-base.js';
+import { FormationSkill, sizeValue, targetBodyDimensions } from '../model-base.js';
 export class LightningSkill extends FormationSkill {
     constructor() {
         super(DEFINITION);
@@ -11,20 +11,23 @@ export class LightningSkill extends FormationSkill {
         }
         const PROFILE = this.profile(owner),
             BODY = targetBodyDimensions(TARGET),
+            SIZE = this.sizeState(owner, TARGET),
+            RADIUS = sizeValue(PROFILE, SIZE, 'aoeRadius'),
             DAMAGE = this.power(slot.level, PROFILE.upgradeBase);
         owner.addEffect(DEFINITION.id, {
             x: TARGET.x,
             y: TARGET.y,
-            z: PROFILE.aoeRadius > 0 ? 0 : BODY.z,
+            z: RADIUS > 0 ? 0 : BODY.z,
+            ...SIZE,
             bodyHeight: BODY.bodyHeight,
             bodyRadius: BODY.bodyRadius,
             duration: PROFILE.telegraphSeconds + 0.65,
             telegraphSeconds: PROFILE.telegraphSeconds,
-            radius: PROFILE.aoeRadius,
+            radius: RADIUS,
             damage: DAMAGE,
-            impacted: PROFILE.aoeRadius === 0,
+            impacted: RADIUS === 0,
         });
-        if (PROFILE.aoeRadius === 0) {
+        if (RADIUS === 0) {
             owner.damage(TARGET, DAMAGE);
         }
         return true;

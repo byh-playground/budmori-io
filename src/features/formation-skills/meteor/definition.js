@@ -1,4 +1,4 @@
-import { T1_DIAMETER } from '../model-base.js';
+import { CASTER_SIZE_PROFILE, T1_DIAMETER } from '../model-base.js';
 export const DEFINITION = Object.freeze({
     id: 'meteor',
     name: '운석 낙하',
@@ -9,7 +9,13 @@ export const DEFINITION = Object.freeze({
     scatterRadius: T1_DIAMETER * 3,
     fallSeconds: 0.75,
     shotInterval: 0.25,
-    boss: Object.freeze({ condition: 'damageDealt', required: 500 }),
+    boss: Object.freeze({
+        ...CASTER_SIZE_PROFILE,
+        condition: 'damageDealt',
+        required: 500,
+        aoeRadiusRatio: 0.5,
+        scatterRadiusRatio: 0.5,
+    }),
     upgradeAxis: '피해 ×1.5',
     upgradeBase: 150,
     upgradeFactor: 1.5,

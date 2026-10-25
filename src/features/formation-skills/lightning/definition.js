@@ -1,4 +1,4 @@
-import { T1_DIAMETER } from '../model-base.js';
+import { CASTER_SIZE_PROFILE } from '../model-base.js';
 export const DEFINITION = Object.freeze({
     id: 'lightning',
     name: '낙뢰',
@@ -7,7 +7,13 @@ export const DEFINITION = Object.freeze({
     description: '적 하나에게 벼락을 내려 피해 75를 줘요.',
     aoeRadius: 0,
     telegraphSeconds: 0,
-    boss: Object.freeze({ condition: 'hits', required: 50, aoeRadius: T1_DIAMETER * 2, telegraphSeconds: 0.7 }),
+    boss: Object.freeze({
+        ...CASTER_SIZE_PROFILE,
+        condition: 'hits',
+        required: 50,
+        aoeRadiusRatio: 0.5,
+        telegraphSeconds: 0.7,
+    }),
     upgradeAxis: '피해 ×1.5',
     upgradeBase: 75,
     upgradeFactor: 1.5,

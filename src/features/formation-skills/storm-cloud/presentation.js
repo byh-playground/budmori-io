@@ -1,7 +1,9 @@
 import { FormationPresentation, bodyScale, cloud, stroke } from '../presentation-base.js';
 import { WORLD_HEIGHT_PROJECTION, WORLD_DEPTH_PROJECTION } from '../../../vector-sockets.js';
 const POINT_BUFFERS = new WeakMap();
-const CLOUD_SPREAD_DEPTH = 0.35;
+const CLOUD_SPREAD_DEPTH = 0.35,
+    // Five lobes: centers span 1.0 size, plus a 0.34-size ellipse radius at each end.
+    CLOUD_WIDTH_FACTOR = 1.68;
 
 function pointBuffersFor(effect) {
     let buffers = POINT_BUFFERS.get(effect);
@@ -23,23 +25,30 @@ function visualOffset(effect, index, salt) {
 }
 
 function cloudGeometry(effect) {
-    const RADIUS = Math.max(0.2, (effect.bodyRadius || 0.3) * 0.55);
+    const RADIUS = Math.max(0.2, (effect.sizeRadius || effect.bodyRadius || 0.3) * 0.55);
     return {
         radius: RADIUS,
-        size: effect.cloudSize > 0 ? effect.cloudSize : RADIUS * 2.6,
+        size:
+            effect.visualWidth > 0
+                ? effect.visualWidth / CLOUD_WIDTH_FACTOR
+                : effect.cloudSize > 0
+                  ? effect.cloudSize
+                  : RADIUS * 2.6,
         z: Math.max(effect.z, effect.targetZ + 2) + RADIUS * 1.9,
     };
 }
 
 export class StormCloudPresentation extends FormationPresentation {
     includeBounds(effect, bounds) {
-        const { size: SIZE, z: Z } = cloudGeometry(effect);
+        const { radius: RADIUS, size: SIZE, z: Z } = cloudGeometry(effect),
+            SPREAD = RADIUS * 2.6,
+            HALF_WIDTH = SIZE * (CLOUD_WIDTH_FACTOR / 2) + SPREAD;
         // Reserve the complete entrance/exit spread, not the current pulse, to avoid camera pumping.
-        bounds.left = Math.min(bounds.left, effect.x - SIZE * 1.84 - 1);
-        bounds.right = Math.max(bounds.right, effect.x + SIZE * 1.84 + 1);
+        bounds.left = Math.min(bounds.left, effect.x - HALF_WIDTH - 1);
+        bounds.right = Math.max(bounds.right, effect.x + HALF_WIDTH + 1);
         bounds.top = Math.max(
             bounds.top,
-            (effect.y + SIZE * CLOUD_SPREAD_DEPTH) * WORLD_DEPTH_PROJECTION +
+            (effect.y + SPREAD * CLOUD_SPREAD_DEPTH) * WORLD_DEPTH_PROJECTION +
                 (Z + 0.1 + SIZE * 0.24) * WORLD_HEIGHT_PROJECTION +
                 SIZE * 0.26 +
                 1,
@@ -49,7 +58,7 @@ export class StormCloudPresentation extends FormationPresentation {
         const { radius: BODY_RADIUS, size: CLOUD_SIZE, z: CLOUD_Z } = cloudGeometry(effect),
             ENTER = Math.min(1, effect.age / 0.5),
             EXIT = Math.max(0, effect.age - 0.5 - effect.duration) / 0.5,
-            // The cloud's screen-facing lobes grow with the target. Keep their underside clear of the head;
+            // The cloud uses its resolved size reference. Keep its underside clear of the actual target's head;
             // this is presentation-only, so flying-skill targeting, range and pulse timing stay unchanged.
             Z = CLOUD_Z + Math.sin(effect.age * 3) * Math.min(0.1, BODY_RADIUS * 0.12),
             ARC_Z = Z - CLOUD_SIZE * 0.25,

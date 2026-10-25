@@ -62,7 +62,7 @@ export function relicEffectText(definition, level, role = 'player') {
     if (PROFILE.id === 'hammer') {
         return `${ENEMY} 하나에게 피해 ${NUMBER(VALUE)} · ${SECONDS(PROFILE.stunSeconds)} 기절`;
     }
-    return `${PROFILE.aoeRadius ? '범위' : '단일'} 피해 ${NUMBER(VALUE)}${PROFILE.id === 'meteor' ? ' · 밀쳐내기' : ''}`;
+    return `${PROFILE.aoeRadius > 0 || PROFILE.aoeRadiusRatio > 0 ? '범위' : '단일'} 피해 ${NUMBER(VALUE)}${PROFILE.id === 'meteor' ? ' · 밀쳐내기' : ''}`;
 }
 
 function slotState(definition, runtime, cast) {

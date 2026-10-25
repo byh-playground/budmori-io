@@ -12,8 +12,9 @@ export class StormCloudSkill extends FlyingSkill {
         }
         const PREVIOUS = effect.targets ?? [],
             PRIMARY = owner.target(effect.targetId, effect.targetGeneration) || owner.enemy(effect),
-            ORIGIN = PRIMARY ?? effect,
-            TARGETS = owner.enemies(ORIGIN, PROFILE.targetRange, PROFILE.targetCount);
+            ORIGIN = PRIMARY ?? effect;
+        Object.assign(effect, this.flyingSizeState(owner, PRIMARY));
+        const TARGETS = owner.enemies(ORIGIN, effect.targetRange, PROFILE.targetCount);
         effect.targets = TARGETS.map((target) => {
             const ID = owner.targetId(target),
                 GENERATION = owner.targetGeneration?.(target),
@@ -47,7 +48,7 @@ export class StormCloudSkill extends FlyingSkill {
         effect.z += (TOP + 2 - effect.z) * RATE;
         effect.targetZ = TOP;
         effect.bodyRadius = MAX_RADIUS;
-        effect.cloudSize = Math.min(PROFILE.cloudWidthCap / 3.68, Math.max(MAX_RADIUS * 1.43, (RIGHT - LEFT) / 2));
+        effect.bodyHeight = Math.max(...effect.targets.map((target) => target.bodyHeight));
         return TARGETS[0];
     }
     strike(owner, effect, target) {

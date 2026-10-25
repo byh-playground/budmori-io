@@ -6,9 +6,8 @@ export class UfoSkill extends FlyingSkill {
     }
     beamTargets(owner, effect) {
         const PROFILE = this.profile(owner);
-        if (PROFILE.beamWidth > 0) {
-            effect.beamWidth = PROFILE.beamWidth;
-            return owner.verticalTargets(effect.x, effect.y, PROFILE.beamWidth, PROFILE.targetCount);
+        if (effect.beamWidth > 0) {
+            return owner.verticalTargets(effect.x, effect.y, effect.beamWidth, PROFILE.targetCount);
         }
         const TARGET = owner.verticalTarget(effect.x, effect.y);
         return TARGET ? [TARGET] : [];
