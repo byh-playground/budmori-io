@@ -353,7 +353,7 @@ function syncBossRewardDialog(world, { receiptKey = null } = {}) {
             : latestBossReward(world),
         BUTTON = DOLLAR('bossRewardOpen'),
         DIALOG = DOLLAR('bossRewardDialog');
-    if (home) {
+    if (home || world?.tower.phase === 'summit') {
         DIALOG.hidden = true;
         BUTTON.hidden = true;
         clearInterval(bossRewardRevealTimer);
@@ -1554,7 +1554,7 @@ document.addEventListener('contextmenu', (event) => {
 // Compare with the actual DOM so event handlers and route changes remain authoritative.
 const FLOOR_KIND = { battle: '전투', elite: '정예', mid: '중간 보스', power: '강화', event: '이벤트' };
 const DOOR_TEXT = {
-    battle: '보스 한 마리',
+    battle: '보스 전원 처치',
     elite: '더 세지만 보상 ×2',
     mid: '피할 수 없어요 · 보상 ×3',
 };

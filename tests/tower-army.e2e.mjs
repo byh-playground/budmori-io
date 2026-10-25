@@ -85,6 +85,38 @@ async function defeatVisibleBosses() {
         return COUNT;
     });
 }
+async function openAndCloseReward() {
+    await page.locator('#bossRewardDialog').waitFor({ state: 'visible' });
+    await page.waitForFunction(
+        () =>
+            !document.querySelector('#bossRewardClose').hidden ||
+            (!document.querySelector('#bossRewardOpenAll').hidden &&
+                !document.querySelector('#bossRewardOpenAll').disabled),
+    );
+    if (await page.locator('#bossRewardOpenAll').isVisible()) {
+        try {
+            await page.locator('#bossRewardOpenAll').click({ timeout: 2000 });
+        } catch (error) {
+            // The normal automatic reveal can finish between the readiness check and click.
+            if (!(await page.locator('#bossRewardClose').isVisible())) {
+                throw error;
+            }
+        }
+    }
+    await page.locator('#bossRewardClose').click();
+    await page.locator('#bossRewardDialog').waitFor({ state: 'hidden' });
+    return page.evaluate(() => {
+        const RECEIPT = BUDMORI.sim.bossRewardReceipts.at(-1);
+        return {
+            key: RECEIPT.receiptKey,
+            status: RECEIPT.status,
+            revealed: RECEIPT.revealedCount,
+            boxes: RECEIPT.boxCount,
+            acquired: RECEIPT.acquiredCount,
+            xp: RECEIPT.xpAmount,
+        };
+    });
+}
 try {
     for (const MODULE of MANIFEST.modules) {
         const BYTES = fs.readFileSync(path.join(ROOT, 'vendor/upstream', `${MODULE.name}.js`));
@@ -299,7 +331,8 @@ try {
     assert.ok(REPORT.stages.reinforcements.players >= 2);
     await page.setViewportSize({ width: 1000, height: 700 });
     await capture('overlapping-bosses-desktop.png');
-    // Inspect each visual band on the same paused native scene. Theme is presentation-only.
+    // Let each real floor-transition fade finish before freezing its native frame.
+    REPORT.stages.themes = [];
     for (const [FLOOR, NAME] of [
         [1, 'entrance'],
         [21, 'garden'],
@@ -310,7 +343,22 @@ try {
         await page.evaluate((floor) => {
             BUDMORI.sim.tower.floor = floor;
         }, FLOOR);
+        await resume();
+        await page.waitForFunction(
+            (floor) =>
+                BUDMORI.renderer.sceneKey === `in${floor}` &&
+                BUDMORI.renderer.displayTimeMs - BUDMORI.renderer.sceneChangedAt >= 700,
+            FLOOR,
+        );
         await capture(`theme-${NAME}.png`);
+        const FRAME = await page.evaluate(() => ({
+            floor: BUDMORI.sim.tower.floor,
+            fadeAgeMs: BUDMORI.renderer.displayTimeMs - BUDMORI.renderer.sceneChangedAt,
+            units: BUDMORI.runtime.presentationView.units.length,
+            bosses: BUDMORI.runtime.presentationView.bosses.length,
+        }));
+        assert.ok(FRAME.fadeAgeMs >= 700 && FRAME.units >= 500 && FRAME.bosses >= 2);
+        REPORT.stages.themes.push(FRAME);
     }
     await page.evaluate(() => {
         BUDMORI.sim.tower.floor = 80;
@@ -337,6 +385,8 @@ try {
     assert.ok(REPORT.stages.floorReward.xp > XP_BEFORE);
     assert.equal(REPORT.stages.floorReward.afterRetry, REPORT.stages.floorReward.xp);
     assert.equal(REPORT.stages.floorReward.retryAccepted, false);
+    await openAndCloseReward();
+    REPORT.stages.floorReward.boxesClosedThroughUi = true;
     await page.evaluate(() => {
         // Arrange the last door of an otherwise completed climb. The actual door,
         // finite roster, final guardian, reward, skip and reload remain product paths.
@@ -358,25 +408,49 @@ try {
         await page.evaluate(() => BUDMORI.sim.bosses.filter((boss) => boss.hp > 0).every((boss) => boss.isFinalBoss)),
         true,
     );
+    await page.waitForFunction(() => {
+        const FINAL = BUDMORI.sim.bosses.find((boss) => boss.isFinalBoss && boss.hp > 0);
+        return (
+            FINAL?.dropLanded &&
+            BUDMORI.runtime.presentationView.bosses.some((boss) => boss.id === FINAL.id && boss.dropLanded) &&
+            BUDMORI.renderer.bossPlayers.has(FINAL.id + ':' + FINAL.generation)
+        );
+    });
     await capture('final-guardian-desktop.png');
     await resume();
     await defeatVisibleBosses();
-    await page.waitForFunction(() => BUDMORI.sim.tower.phase === 'summit');
+    await page.waitForFunction(
+        () =>
+            BUDMORI.sim.tower.phase === 'summit' &&
+            BUDMORI.sim.tower.summitElapsed >= 1.5 &&
+            !document.querySelector('#towerSummit').hidden,
+    );
     await capture('summit-desktop.png');
     REPORT.stages.summit = await page.evaluate(() => ({
         xp: BUDMORI.sim.playerProgression.overallXp,
         savedXp: BUDMORI.storage.savedProgress?.player.overallXp,
         phase: BUDMORI.sim.tower.phase,
         visible: !document.querySelector('#towerSummit').hidden,
+        rewardDialogHidden: document.querySelector('#bossRewardDialog').hidden,
     }));
     assert.equal(REPORT.stages.summit.savedXp, REPORT.stages.summit.xp, 'final permanent XP is saved before Skip');
     assert.equal(REPORT.stages.summit.visible, true);
+    assert.equal(REPORT.stages.summit.rewardDialogHidden, true, 'the chest dialog must not cover the summit');
     await page.setViewportSize({ width: 667, height: 375 });
     await capture('summit-landscape.png');
     await resume();
     await page.locator('#summitSkip').click();
     await page.waitForFunction(() => !BUDMORI.sim.tower.active && document.querySelector('#towerSummit').hidden);
     assert.equal(await page.evaluate(() => BUDMORI.sim.playerProgression.overallXp), REPORT.stages.summit.xp);
+    REPORT.stages.finalReward = await openAndCloseReward();
+    assert.equal(REPORT.stages.finalReward.status, 'ready');
+    assert.equal(REPORT.stages.finalReward.revealed, REPORT.stages.finalReward.boxes);
+    await page.waitForFunction((receipt) => {
+        const SAVED = BUDMORI.storage.savedProgress?.ledger.boss.pendingRewards.find(
+            (entry) => entry.receiptKey === receipt.key,
+        );
+        return SAVED?.status === 'ready' && SAVED.acquiredCount === receipt.acquired;
+    }, REPORT.stages.finalReward);
     await page.reload();
     await page.waitForFunction(() => Boolean(globalThis.BUDMORI));
     await page.locator('#continueGame').click();
@@ -386,11 +460,24 @@ try {
         towerActive: BUDMORI.sim.tower.active,
         farm: BUDMORI.sim.farmBossEvent.phase,
         cap: BUDMORI.sim.capacity,
+        rewards: BUDMORI.sim.bossRewardReceipts.map((receipt) => ({
+            key: receipt.receiptKey,
+            status: receipt.status,
+            revealed: receipt.revealedCount,
+            boxes: receipt.boxCount,
+            acquired: receipt.acquiredCount,
+            xp: receipt.xpAmount,
+        })),
     }));
     assert.equal(REPORT.stages.reload.xp, REPORT.stages.summit.xp);
     assert.equal(REPORT.stages.reload.towerActive, false);
     assert.equal(REPORT.stages.reload.farm, 'idle');
     assert.equal(REPORT.stages.reload.cap, 1000);
+    assert.deepEqual(
+        REPORT.stages.reload.rewards.filter((receipt) => receipt.key === REPORT.stages.finalReward.key),
+        [REPORT.stages.finalReward],
+        'reload restores the one resolved final receipt, without re-rolling or duplicating it',
+    );
     assert.deepEqual(ERRORS, []);
     REPORT.status = 'passed';
 } catch (error) {
