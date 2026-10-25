@@ -9,3 +9,13 @@ export function unitAttackDisplayScale(renderer, unit, time) {
         REBOUND = 1 + Math.sin((time - ENDED_AT) * 30) * 0.12 * Math.max(0, 1 - (time - ENDED_AT) / 0.35);
     return unitDisplayScale(BODY, unit.bodyScale, renderer.scale, renderer.minimumUnitPixels() * GIANT) * REBOUND;
 }
+
+// Bound the committed contact endpoint before its active/recovery easing.
+// Clamping an already-eased offset would flatten most of the motion, then snap
+// home at the end. Coordinates here are world-plane units, not screen pixels.
+export function unitAttackGroundOffset(unit, x, y) {
+    const LIMIT = unit.attackGroundOffsetLimit,
+        DISTANCE = Math.hypot(x, y),
+        SCALE = LIMIT != null && DISTANCE > LIMIT ? LIMIT / DISTANCE : 1;
+    return { x: x * SCALE, y: y * SCALE };
+}

@@ -1,4 +1,4 @@
-import { unitAttackDisplayScale } from '../presentation-geometry.js';
+import { unitAttackDisplayScale, unitAttackGroundOffset } from '../presentation-geometry.js';
 import { unitBodyDefinition } from '../../unit-body/definition.js';
 import { WORLD_DEPTH_PROJECTION } from '../../../vector-sockets.js';
 import { UnitAttackPresentation } from '../presentation-base.js';
@@ -94,7 +94,7 @@ export class RiceAttackPresentation extends UnitAttackPresentation {
             ORIGIN = renderer.project(unit.x, unit.y, unit.z),
             DX = POINT.x - ORIGIN.x - FACE * (TIP.x - BODY.ground.x) * SCALE,
             DY = POINT.y - ORIGIN.y - (TIP.y - BODY.ground.y) * SCALE;
-        return { x: DX / renderer.scale, y: -DY / (renderer.scale * WORLD_DEPTH_PROJECTION) };
+        return unitAttackGroundOffset(unit, DX / renderer.scale, -DY / (renderer.scale * WORLD_DEPTH_PROJECTION));
     }
     groundOffset(renderer, unit, time, record) {
         const A = unit.ability;

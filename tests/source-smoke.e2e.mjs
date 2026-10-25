@@ -10,7 +10,7 @@ import { chromium } from 'playwright';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     OUTPUT = path.join(ROOT, 'tests/output/source-smoke'),
-    // The first CI already captured the shared-rig sweep; only the basic frame still needs review.
+    // Optional representative native frames; the live observations always run.
     CAPTURE_BOSS_BASICS = process.env.BUDMORI_CAPTURE_BOSS_BASICS === '1',
     CAPTURE_BOSS_SWEEP = process.env.BUDMORI_CAPTURE_BOSS_SWEEP === '1',
     HTML = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'),
@@ -1009,6 +1009,10 @@ try {
                         hits: 0,
                         nativeFrames: 0,
                         nativeAttackFrames: 0,
+                        recovered: false,
+                        maxRenderedBodyShift: 0,
+                        maxBasicHeight: 0,
+                        bodyRadius: BOSS.radius,
                         phases: [],
                         clips: [],
                         records: [],
@@ -1056,6 +1060,7 @@ try {
                 sample.hits > 0 &&
                 sample.nativeFrames > 0 &&
                 sample.nativeAttackFrames > 0 &&
+                sample.recovered &&
                 (sample.species !== 1 || sample.effects.attachment) &&
                 (sample.species !== 3 || sample.effects.thorn) &&
                 (sample.species !== 5 || sample.effects.guard) &&
@@ -1116,6 +1121,10 @@ try {
             if (ABILITY.phase === 'windup') {
                 CASE.prepared++;
             }
+            if (ABILITY.phase === 'active') {
+                CASE.maxBasicHeight = Math.max(CASE.maxBasicHeight, BOSS.z);
+            }
+            CASE.recovered ||= ABILITY.phase === 'recover' && CASE.launches > 0;
             ADD(CASE.phases, ABILITY.phase);
             for (const KEY of RECORD_KEYS) {
                 const RECORD = ABILITY.action?.[KEY];
@@ -1163,6 +1172,11 @@ try {
                 BOSS = world.boss;
             if (!OBS.complete && BOSS.generation === CASE.generation && this.basicAttackVisible(BOSS, world)) {
                 CASE.nativeFrames++;
+                const DISPLAY = this.attackDisplay.unit;
+                CASE.maxRenderedBodyShift = Math.max(
+                    CASE.maxRenderedBodyShift,
+                    Math.hypot(DISPLAY.x - BOSS.x, DISPLAY.y - BOSS.y),
+                );
                 if (CASE.launches > 0 && BOSS.ability.phase !== 'windup') {
                     CASE.nativeAttackFrames++;
                 }
@@ -1170,8 +1184,9 @@ try {
                 ADD(CASE.clips, this.renderer.bossPlayers.get(BOSS.species)?.player.currentClip);
                 if (
                     capture &&
-                    BOSS.species === 7 &&
                     BOSS.ability.phase === 'active' &&
+                    ((BOSS.species === 7 && BOSS.ability.wheatStageProgress >= 0.7) ||
+                        (BOSS.species === 2 && BOSS.z > 0.3)) &&
                     !OBS.captured.includes(BOSS.species)
                 ) {
                     OBS.captured.push(BOSS.species);
@@ -1235,6 +1250,16 @@ try {
         );
         assert.ok(SAMPLE.clips.length > 0 && SAMPLE.clips.every((clip) => clip && !['idle', 'walk'].includes(clip)));
         assert.ok(SAMPLE.neutralBuild, `boss ${SAMPLE.species} does not inherit researched player ranks`);
+        assert.ok(
+            SAMPLE.maxRenderedBodyShift <= SAMPLE.bodyRadius * 0.25,
+            `boss ${SAMPLE.species} shifts its weight rather than sliding an entire body width to attack`,
+        );
+        if (SAMPLE.species === 2) {
+            assert.ok(
+                SAMPLE.maxBasicHeight > 0 && SAMPLE.maxBasicHeight <= SAMPLE.bodyRadius * 0.25,
+                'the redbean basic hop stays close to the floor while retaining its actual airborne motion',
+            );
+        }
         assert.ok(
             SAMPLE.records.length > 0 &&
                 SAMPLE.records.every(

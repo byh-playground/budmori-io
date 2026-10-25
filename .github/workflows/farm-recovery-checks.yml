@@ -40,7 +40,9 @@ jobs:
                   node --input-type=module -e "import {chromium} from 'playwright'; import {execFileSync} from 'node:child_process'; console.log(execFileSync(chromium.executablePath(), ['--version'], {encoding:'utf8'}));" >> tests/output/browser-setup/setup.txt
                   ./node_modules/.bin/playwright --version >> tests/output/browser-setup/setup.txt
             - name: Boot the unbuilt source once
-              run: timeout 120s npm run test:source-smoke
+              env:
+                  BUDMORI_CAPTURE_BOSS_BASICS: '1'
+              run: timeout 180s npm run test:source-smoke
             - uses: actions/upload-artifact@v4
               if: always()
               with:
