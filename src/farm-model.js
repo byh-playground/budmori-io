@@ -1821,6 +1821,9 @@ const GARDEN = class Garden {
         this.battleCommand = 'engage';
         this._armyThreatTick = -1;
         this._armyThreats.length = 0;
+        this._armySpacingTick = -1;
+        this._armySpacingNeighbors.length = 0;
+        this._armySpacingRadii.clear();
         // True while the troops are inside the tower: the battlefield is its hall, not the farm.
         this.insideTower = false;
         this.tower = {
