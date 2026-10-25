@@ -432,12 +432,20 @@ try {
         phase: BUDMORI.sim.tower.phase,
         visible: !document.querySelector('#towerSummit').hidden,
         rewardDialogHidden: document.querySelector('#bossRewardDialog').hidden,
+        normalHeaderHidden: getComputedStyle(document.querySelector('body > header')).display === 'none',
+        normalOutcomeHidden: getComputedStyle(document.querySelector('#battleOutcome')).display === 'none',
     }));
     assert.equal(REPORT.stages.summit.savedXp, REPORT.stages.summit.xp, 'final permanent XP is saved before Skip');
     assert.equal(REPORT.stages.summit.visible, true);
+    assert.equal(REPORT.stages.summit.normalHeaderHidden, true);
+    assert.equal(REPORT.stages.summit.normalOutcomeHidden, true);
     assert.equal(REPORT.stages.summit.rewardDialogHidden, true, 'the chest dialog must not cover the summit');
     await page.setViewportSize({ width: 667, height: 375 });
     await capture('summit-landscape.png');
+    assert.equal(
+        await page.evaluate(() => getComputedStyle(document.querySelector('.tower-summit__footer > small')).display),
+        'none',
+    );
     await resume();
     await page.locator('#summitSkip').click();
     await page.waitForFunction(() => !BUDMORI.sim.tower.active && document.querySelector('#towerSummit').hidden);
@@ -453,7 +461,10 @@ try {
     }, REPORT.stages.finalReward);
     await page.reload();
     await page.waitForFunction(() => Boolean(globalThis.BUDMORI));
-    await page.locator('#continueGame').click();
+    // #/farm restores the saved farm during boot; the home route uses Continue.
+    if (await page.evaluate(() => document.body.matches('[data-home="true"]'))) {
+        await page.locator('#continueGame').click();
+    }
     await page.waitForFunction(() => !document.body.matches('[data-home="true"]'));
     REPORT.stages.reload = await page.evaluate(() => ({
         xp: BUDMORI.sim.playerProgression.overallXp,

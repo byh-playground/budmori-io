@@ -392,6 +392,10 @@
 .tower-summit__footer button {
     min-height: 44px;
 }
+body:has(#towerSummit:not([hidden])) > header,
+body:has(#towerSummit:not([hidden])) #battleOutcome {
+    display: none;
+}
 @media (max-width: 500px) {
     .chip--growth small {
         display: none;
@@ -421,6 +425,9 @@
 
 /* Short landscape fights use the bottom edge, not another panel across the arena. */
 @media (max-height: 550px) and (min-aspect-ratio: 4/3) {
+    .tower-summit__footer > small {
+        display: none;
+    }
     #gameplayDock:has(#battleCommands:not([hidden])) {
         grid-template-columns: minmax(0, 1fr) 120px;
         gap: 4px;
