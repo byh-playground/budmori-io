@@ -1,7 +1,7 @@
 import { FEATURE as LOB_FEATURE } from './features/unit-attacks/lob/definition.js';
 import { FEATURE as DUAL_STRIKE_FEATURE } from './features/unit-attacks/dual-strike/definition.js';
 import { KIDNEY_CONTINUOUS_LEAP_FEATURE } from './features/abilities/kidney-continuous-leap.js';
-import { CHESTNUT_THORNS_FEATURE } from './features/abilities/chestnut-thorns/definition.js';
+import { CHESTNUT_THORNS_FEATURE, CHESTNUT_ATTACK_RANGE } from './features/abilities/chestnut-thorns/definition.js';
 // Species-specific attack behavior stays separate from common unit stats.
 // This ID-keyed object is the single profile lookup for all catalogued species.
 const ATTACK_DEFAULTS = Object.freeze({
@@ -41,7 +41,7 @@ export const UNIT_ABILITY_PROFILES = Object.freeze({
         projectileCount: 1,
     }),
     2: attackProfile('ram'),
-    3: attackProfile('chestnut-spike'),
+    3: attackProfile('chestnut-spike', { range: CHESTNUT_ATTACK_RANGE.base }),
     // One Peanut remains one world unit; its two kernels are presentation-only
     // and the two deterministic strike slots share the same active window.
     4: attackProfile(DUAL_STRIKE_FEATURE.id, {
@@ -94,6 +94,7 @@ export const UNIT_CAPABILITY_COMPOSITIONS = Object.freeze({
     2: COMPOSITION('redbean', [], { specialAbility: 'kidneyLeap' }),
     3: COMPOSITION('chestnut', [], {
         contactRecoil: true,
+        retreatWithinRange: true,
         specialAbility: 'chestnutThorns',
     }),
     4: COMPOSITION(DUAL_STRIKE_FEATURE.modelKey, ['deathSplit'], {

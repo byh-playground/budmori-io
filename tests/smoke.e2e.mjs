@@ -582,7 +582,7 @@ await check(
     async () => {
         const ATTACK = () => baseUnitStatsFor(1, 0).attackPower,
             HP = () => baseUnitStatsFor(1, 0).maxHp,
-            BEFORE = [ATTACK(), HP()];
+            BEFORE = [ATTACK(), HP(), baseUnitStatsFor(1, 0).armor];
         setRunStatMods(
             runStatModifiers([
                 { id: 'attack-flat', rarity: 0 },
@@ -595,10 +595,10 @@ await check(
         const DURING = baseUnitStatsFor(1, 0);
         setRunStatMods({});
         expect(
-            Math.abs(DURING.attackPower - (4 + 2) * (1 + 0.1 + 0.16)) < 1e-9 &&
-                DURING.armor === 25 &&
-                Math.abs(DURING.regen - 40 * 0.005) < 1e-9 &&
-                DURING.maxHp === 40,
+            Math.abs(DURING.attackPower - (BEFORE[0] + 2) * (1 + 0.1 + 0.16)) < 1e-9 &&
+                DURING.armor === BEFORE[2] + 25 &&
+                Math.abs(DURING.regen - BEFORE[1] * 0.005) < 1e-9 &&
+                DURING.maxHp === BEFORE[1],
             JSON.stringify(DURING),
         );
         expect(ATTACK() === BEFORE[0] && HP() === BEFORE[1], 'cleared');

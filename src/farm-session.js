@@ -205,6 +205,7 @@ class UnitRender extends RENDER_OBJECT {
         seed: R.STEP,
         size: R.LINEAR,
         bodyScale: R.LINEAR,
+        attackGroundOffsetLimit: R.STEP,
         height: R.LINEAR,
         radius: R.LINEAR,
         maxHp: R.STEP,
@@ -256,6 +257,7 @@ class UnitRender extends RENDER_OBJECT {
         this.seed = u.seed;
         this.size = u.size;
         this.bodyScale = u.bodyScale;
+        this.attackGroundOffsetLimit = u.attackMotionProfile?.groundOffsetLimit ?? null;
         this.height = u.height;
         this.radius = u.radius;
         this.maxHp = unitMaxHpFor(u);
@@ -306,6 +308,7 @@ class BossRender extends RENDER_OBJECT {
         tier: R.STEP,
         seed: R.STEP,
         bodyScale: R.LINEAR,
+        attackGroundOffsetLimit: R.STEP,
         bounce: R.LINEAR,
         dropLanded: R.STEP,
         stun: R.LINEAR,
@@ -367,6 +370,7 @@ class BossRender extends RENDER_OBJECT {
         this.tier = b.tier;
         this.seed = b.seed;
         this.bodyScale = b.bodyScale;
+        this.attackGroundOffsetLimit = b.attackMotionProfile?.groundOffsetLimit ?? null;
         this.bounce = b.bounce;
         this.dropLanded = b.dropLanded;
         this.stun = b.stun;

@@ -1019,13 +1019,21 @@ function initializeFarmLifecycle(unit, x, y) {
     });
 }
 const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
-    constructor(id, species, tier, x, y, { statProfile = null, bodyProfile = null, controller = null } = {}) {
+    constructor(
+        id,
+        species,
+        tier,
+        x,
+        y,
+        { statProfile = null, bodyProfile = null, attackMotionProfile = null, controller = null } = {},
+    ) {
         super(x, y);
         Object.assign(this, {
             id,
             statProfile,
             statModifiers: {},
             bodyProfile,
+            attackMotionProfile,
             generation: 0,
             species,
             tier,
@@ -3158,6 +3166,9 @@ const GARDEN = class Garden {
                 bodyHeight: bossTorsoHeight,
                 vectorScale: () => bossVectorScale(),
             },
+            // Enlarging a weapon/hit area must not multiply body travel. Keep
+            // the same shared attack clips, with a short grounded weight shift.
+            attackMotionProfile: { groundOffsetLimit: 0.65, heightScale: 1 },
             controller: BossController,
         });
         BOSS.attachWorld(this);

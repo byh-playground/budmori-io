@@ -110,6 +110,7 @@ export function createRedbeanAttack(world, unit, action, commandSpeed) {
         owner: unit.id,
         ownerGeneration: unit.generation,
         ...captureAttackGeometry(unit),
+        ...(unit.attackMotionProfile?.heightScale != null ? { heightScale: unit.attackMotionProfile.heightScale } : {}),
         tier: unit.tier,
         form: FORM,
         speed: SPEED,
@@ -176,7 +177,10 @@ export function sampleRedbeanMotion(record, tick) {
     return {
         x: FROM.x + (TO.x - FROM.x) * Q,
         y: FROM.y + (TO.y - FROM.y) * Q,
-        z: Q === 0 || Q === 1 ? 0 : Math.sin(Math.PI * Q) * LEG.height * attackGeometryScale(record),
+        z:
+            Q === 0 || Q === 1
+                ? 0
+                : Math.sin(Math.PI * Q) * LEG.height * (record.heightScale ?? attackGeometryScale(record)),
     };
 }
 export function resolveRedbeanSlots(world, unit, action, geometry) {
@@ -280,8 +284,11 @@ export function isRedbeanAttackRecord(r) {
     if (
         !attackRecordShape(
             r,
-            'version id owner ownerGeneration tier form speed chance windupSeconds recoverySeconds ranks budgetInputs directMultiplier source launchTick motionTick slot leg progress stage origin points attack reset criticalRolls',
+            'version id owner ownerGeneration tier form speed chance windupSeconds recoverySeconds ranks budgetInputs directMultiplier source launchTick motionTick slot leg progress stage origin points attack reset criticalRolls' +
+                (Object.hasOwn(r || {}, 'heightScale') ? ' heightScale' : ''),
         ) ||
+        (Object.hasOwn(r || {}, 'heightScale') &&
+            (!Number.isFinite(r.heightScale) || r.heightScale <= 0 || !Number.isFinite(r.heightScale ** 2))) ||
         r.version !== 1 ||
         !['id', 'ownerGeneration'].every((k) => Number.isSafeInteger(r[k]) && r[k] > 0) ||
         !Number.isInteger(r.tier) ||

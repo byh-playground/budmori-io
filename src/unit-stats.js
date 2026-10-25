@@ -25,18 +25,26 @@ export const COMMON_UNIT_STAT_DEFAULTS = Object.freeze({
     statusResistance: 0,
 });
 
-// Static profiles are the one production source for unit common-stat tuning.
-// All current species inherit neutral values; fixtures may override these to
-// exercise the shared math without changing live balance.
+// A ranged body keeps first-hit/safe-gap pressure but gives up durability.
+// Contact bodies gain health and power without changing tier material growth.
+// Profile multiplier metadata is resolved here, never copied into runtime stats.
+const SPECIES_STAT_OVERRIDES = [
+    { maxHpMultiplier: 1.35, attackPowerMultiplier: 1.2, armor: 20, moveSpeed: 1.12 }, // Pea frontline.
+    { maxHpMultiplier: 0.8, attackSpeed: 0.92 }, // Corn ranged pressure.
+    { maxHpMultiplier: 1.2, attackPowerMultiplier: 1.2, armor: 10, moveSpeed: 1.12 }, // Redbean diver.
+    { maxHpMultiplier: 0.9, armor: 8 }, // Chestnut ranged thorns.
+    { maxHpMultiplier: 1.25, attackPowerMultiplier: 1.15, armor: 15, moveSpeed: 1.08 }, // Peanut brawler.
+    { maxHpMultiplier: 1.5, attackPowerMultiplier: 1.1, armor: 25 }, // Walnut guard.
+    { maxHpMultiplier: 1.15, attackPowerMultiplier: 1.2, armor: 10, moveSpeed: 1.12 }, // Rice finisher.
+    { maxHpMultiplier: 1.25, attackPowerMultiplier: 1.05, armor: 15, moveSpeed: 1.08 }, // Wheat support.
+    { maxHpMultiplier: 1.35, attackPowerMultiplier: 1.15, armor: 20, moveSpeed: 1.08 }, // Barley breaker.
+];
 export const COMMON_UNIT_STAT_PROFILES = Object.freeze(
-    Array.from(
-        {
-            length: SPECIES_COUNT,
-        },
-        () =>
-            Object.freeze({
-                ...COMMON_UNIT_STAT_DEFAULTS,
-            }),
+    Array.from({ length: SPECIES_COUNT }, (_, species) =>
+        Object.freeze({
+            ...COMMON_UNIT_STAT_DEFAULTS,
+            ...SPECIES_STAT_OVERRIDES[species],
+        }),
     ),
 );
 // One tower run's stat cards change every unit alike: {stat: {flat, pct}}. A stat is (base + flat) * (1 + pct); regen's
@@ -56,8 +64,13 @@ function withRunMods(stats, modifiers = RUN_MODS) {
     return OUT;
 }
 function createBaseStats(tier, speciesProfile, modifiers = RUN_MODS) {
-    let maxHp = TIER_HP;
-    let attackPower = TIER_ATTACK;
+    const {
+        maxHpMultiplier: MAX_HP_MULTIPLIER = 1,
+        attackPowerMultiplier: ATTACK_POWER_MULTIPLIER = 1,
+        ...COMMON_STATS
+    } = speciesProfile;
+    let maxHp = TIER_HP * MAX_HP_MULTIPLIER;
+    let attackPower = TIER_ATTACK * ATTACK_POWER_MULTIPLIER;
     for (let resultTier = 2; resultTier <= tier; resultTier++) {
         const TRANSITION_MULTIPLIER = UNIT_GRADES[resultTier - 1].materialCost / 2;
         maxHp *= TIER_HP_SCALE * TRANSITION_MULTIPLIER;
@@ -69,7 +82,7 @@ function createBaseStats(tier, speciesProfile, modifiers = RUN_MODS) {
                 maxHp,
                 attackPower,
                 ...COMMON_UNIT_STAT_DEFAULTS,
-                ...speciesProfile,
+                ...COMMON_STATS,
             },
             modifiers,
         ),

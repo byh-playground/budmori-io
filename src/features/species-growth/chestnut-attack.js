@@ -11,6 +11,7 @@ import { growthBuildOf, growthForAbility } from './state.js';
 import { COMMON_UNIT_STAT_DEFAULTS } from '../../unit-stats.js';
 import { mergeMaterialCostForTier } from '../../unit-grades.js';
 import { areOpposingFactions } from '../../factions.js';
+import { CHESTNUT_ATTACK_RANGE } from '../abilities/chestnut-thorns/definition.js';
 
 export const CHESTNUT_WEIGHTS = Object.freeze([
     null,
@@ -30,6 +31,7 @@ const STAGES = [
     ['fan', 'central'],
     ['spread', 'converge', 'central'],
 ];
+const NEUTRAL_RANKS = Object.freeze({});
 export function chestnutGrowthBuild(progression) {
     const ENTRY = progression?.abilities?.['chestnut-target-thorns'];
     return ENTRY?.treeVersion === 1 ? growthBuildOf(ENTRY) : null;
@@ -43,7 +45,10 @@ export function chestnutRange(world, unit) {
         return null;
     }
     const FORM = growthForAbility('chestnut-target-thorns').attackTier(BUILD, unit.tier);
-    return (FORM >= 3 ? 2 : 1.45) * (1 + 0.04 * (BUILD.nodeRanks['specialty-2'] || 0));
+    return (
+        (FORM >= 3 ? CHESTNUT_ATTACK_RANGE.evolved : CHESTNUT_ATTACK_RANGE.base) *
+        (1 + 0.04 * (BUILD.nodeRanks['specialty-2'] || 0))
+    );
 }
 // All six forms share one actor cadence and one normalized basic-attack budget.
 export function chestnutBudgetMultiplier(tier, one, current) {
@@ -88,11 +93,13 @@ export function chestnutShots(form, density, speed) {
 }
 export function createChestnutAttack(world, unit, action, commandSpeed = 1) {
     const BUILD = chestnutGrowthBuild(world.abilityProgressionFor(unit));
-    if (!BUILD || unit.species !== 3) {
+    if (unit.species !== 3) {
         return null;
     }
-    const R = BUILD.nodeRanks,
-        FORM = growthForAbility('chestnut-target-thorns').attackTier(BUILD, unit.tier);
+    // An unresearched summon still fires the same basic thorn. No player build
+    // is granted, and no-growth actors must not fall back to a contact lunge.
+    const R = BUILD?.nodeRanks ?? NEUTRAL_RANKS,
+        FORM = BUILD ? growthForAbility('chestnut-target-thorns').attackTier(BUILD, unit.tier) : 1;
     const C = world.createAttackContext(unit, { attackKind: 'chestnut-spike', attackMultiplier: 1 });
     const SPEED = Math.max(0.05, C.attackerStats.attackSpeed * commandSpeed * (1 + 0.02 * (R['basic-3'] || 0)));
     const INPUTS = attackBudgetInputs(unit);
