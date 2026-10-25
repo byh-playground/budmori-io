@@ -104,6 +104,7 @@ import {
 } from './boss-patterns.js';
 import { FACTION_CONFIG, hasFaction, areOpposingFactions } from './factions.js';
 import { FixedSpatialGrid } from './spatial-grid.js';
+import { scatterDestination } from './army-scatter.js';
 // Bosses reuse the neutral, tier-one species kit, never the player's investments.
 export const BOSS_ATTACK_PROGRESSION = createAbilityProgressionState();
 for (const BUILD of Object.values(BOSS_ATTACK_PROGRESSION.abilities)) {
@@ -1369,6 +1370,10 @@ const GARDEN = class Garden {
         this._bossHitCandidates = [];
         this._armyThreats = [];
         this._armyThreatTick = -1;
+        this._armySpacingTick = -1;
+        this._armySpacingRadius = 0;
+        this._armySpacingNeighbors = [];
+        this._armySpacingRadii = new Map();
         this._mergeNearestScratch = [];
         this._mergeMaterialsScratch = [];
         this._mergeIdScratch = [];
@@ -1420,6 +1425,10 @@ const GARDEN = class Garden {
             '_bossHitCandidates',
             '_armyThreats',
             '_armyThreatTick',
+            '_armySpacingTick',
+            '_armySpacingRadius',
+            '_armySpacingNeighbors',
+            '_armySpacingRadii',
             '_mergeNearestScratch',
             '_mergeMaterialsScratch',
             '_mergeIdScratch',
@@ -3209,7 +3218,7 @@ const GARDEN = class Garden {
             return false;
         }
         this.battleCommand = command;
-        if (command === 'retreat') {
+        if (command === 'retreat' || command === 'scatter') {
             for (const UNIT_LOCAL of this.unitCollection.items) {
                 if (hasFaction(UNIT_LOCAL, FACTION_CONFIG.PLAYER) && UNIT_LOCAL.ability.phase === 'windup') {
                     // Do not cancel special skills, launched projectiles or committed leaps.
@@ -5734,6 +5743,44 @@ const GARDEN = class Garden {
         }
         this.steer(unit, bestX, bestY, dt, SPEED);
     }
+    _scatterArmyUnit(unit, dt, enemy, attackDistance) {
+        if (this._armySpacingTick !== this.simulationTick) {
+            this._armySpacingTick = this.simulationTick;
+            this._armySpacingRadius = 0;
+            this._armySpacingRadii.clear();
+            for (const ALLY of this.units) {
+                if (ALLY.hp > 0 && hasFaction(ALLY, FACTION_CONFIG.PLAYER)) {
+                    const RADIUS = ALLY.radius;
+                    this._armySpacingRadius = Math.max(this._armySpacingRadius, RADIUS);
+                    this._armySpacingRadii.set(ALLY, RADIUS);
+                }
+            }
+        }
+        const GAP = CONFIG.farm.deploy.scatterGap,
+            QUERY_RADIUS = unit.radius + this._armySpacingRadius + GAP * 2.5;
+        this.unitSpatial.queryAABB(
+            unit.x - QUERY_RADIUS,
+            unit.y - QUERY_RADIUS,
+            unit.x + QUERY_RADIUS,
+            unit.y + QUERY_RADIUS,
+            this._armySpacingNeighbors,
+        );
+        const DESTINATION = scatterDestination(
+            unit,
+            this._armySpacingNeighbors,
+            this._armyThreatsForTick(),
+            GAP,
+            ARENA_GEOMETRY.bounds(this.scene, unit.radius + 0.1),
+            enemy,
+            attackDistance,
+            this._armySpacingRadii,
+        );
+        if (!DESTINATION) {
+            return false;
+        }
+        this.steer(unit, DESTINATION.x, DESTINATION.y, dt, scaleMoveSpeed(unit.bodyProfile ? 1 : 4.1, unit));
+        return true;
+    }
     battleUnit(u, dt, enemy = null) {
         if (!u.dropLanded || (enemy && !areOpposingFactions(u, enemy))) {
             return;
@@ -5789,6 +5836,14 @@ const GARDEN = class Garden {
             STAND = B_LOCAL.radius + u.ability.attackRange(this),
             MIN = STAND - 0.55,
             MAX = STAND + BEHAVIOR.outerRangeSlack;
+        if (
+            this.tower.active &&
+            this.battleCommand === 'scatter' &&
+            hasFaction(u, FACTION_CONFIG.PLAYER) &&
+            this._scatterArmyUnit(u, dt, enemy, MAX)
+        ) {
+            return;
+        }
         if (N > MAX || (BEHAVIOR.retreatWithinRange && N < MIN)) {
             const SLOT = ARENA_GEOMETRY.clamp(
                 {
