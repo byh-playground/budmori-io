@@ -453,7 +453,7 @@ class AttackCycle {
     }
     attackRecoverySecondsFor(multiplier) {
         const U = this.owner,
-            BASE_ATTACK_SPEED = baseUnitStatsFor(U.tier, U.species).attackSpeed;
+            BASE_ATTACK_SPEED = resolveUnitStats(U).attackSpeed;
         return scaleAttackRecovery(this.spec.timing.recovery, U, {
             attackSpeed: BASE_ATTACK_SPEED * multiplier,
         });

@@ -296,7 +296,13 @@ export class FormationSkills {
         return EFFECT;
     }
     allies() {
-        return this.world.combatUnits().filter((unit) => unit.faction === this.friendlyFaction && unit.hp > 0);
+        // Preserve the formation's existing allied roster (including waiting
+        // troops); hostile selection separately uses the deployed combat view.
+        const ALLIES = [...this.members];
+        if (this.world.boss?.active) {
+            ALLIES.unshift(this.world.boss);
+        }
+        return ALLIES.filter((unit) => unit.faction === this.friendlyFaction && unit.hp > 0);
     }
     targetId(target) {
         return target.id;
