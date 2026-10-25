@@ -4,6 +4,7 @@
 // Other cases: 100/250/500 x 1/3 bosses, and 500 1 wall. Chromium SwiftShader is not device FPS.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -24,6 +25,8 @@ const ROOT = path.resolve(fileURLToPath(new URL('../', import.meta.url))),
     ERRORS = [],
     REPORT = {
         status: 'running',
+        sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim(),
+        startedAt: new Date().toISOString(),
         case: CASE,
         renderer: 'Playwright Chromium SwiftShader; functional/render evidence, not physical mobile FPS',
         fixture: 'Seed 731; mature T1 mixed nine species, equal reserves, durable low-damage native bosses',
@@ -450,15 +453,26 @@ try {
         [],
         'scatter must not extend the natural attack envelope',
     );
-    if (COUNT === 100 && BOSSES === 1 && PLACEMENT === 'center') {
+    const DAMAGE = REPORT.samples.scatter[10].damageBySpecies;
+    assert.ok(
+        [0, 2, 4, 5, 6, 7, 8].some((species) => DAMAGE[species] > 0),
+        'scattered melee troops deal actual damage',
+    );
+    assert.ok(
+        [1, 3].some((species) => DAMAGE[species] > 0),
+        'scattered ranged troops deal actual damage',
+    );
+    if (BOSSES === 1 && PLACEMENT === 'center' && COUNT !== 250) {
         REPORT.switches = [];
         for (const COMMAND of ['retreat', 'engage', 'scatter', 'engage', 'retreat', 'scatter']) {
             await page.locator(`input[name="battleCommand"][value="${COMMAND}"]`).check();
             await page.waitForFunction((command) => BUDMORI.sim.battleCommand === command, COMMAND);
             await page.evaluate(() => {
                 globalThis.__scatterObservation.targetTick = BUDMORI.sim.simulationTick + 10;
-                BUDMORI.runtime.loop.resetTiming();
-                BUDMORI.runtime.paused = false;
+                while (BUDMORI.sim.simulationTick < globalThis.__scatterObservation.targetTick) {
+                    BUDMORI.sim.step(0.05);
+                }
+                BUDMORI.runtime.capturePresentation('reset');
             });
             await page.waitForFunction(
                 () =>
@@ -484,8 +498,10 @@ try {
             VICTIM.setHealth(0);
             WORLD.handleUnitDeath(VICTIM);
             globalThis.__scatterObservation.targetTick = WORLD.simulationTick + 40;
-            BUDMORI.runtime.loop.resetTiming();
-            BUDMORI.runtime.paused = false;
+            while (WORLD.simulationTick < globalThis.__scatterObservation.targetTick) {
+                WORLD.step(0.05);
+            }
+            BUDMORI.runtime.capturePresentation('reset');
             return { ids: IDS, victim: VICTIM.id };
         });
         await page.waitForFunction(
@@ -549,6 +565,7 @@ try {
                 travelling: [...POINTS.values()].filter((point) => point.travel >= 0.5).length,
             };
         });
+        assert.deepEqual(REPORT.activity.inactive, [], 'spacing must not strand any troop without movement or attacks');
         saveReport();
     }
     // The 500-unit map is finite. Keep thresholds explicit and report every raw metric;
@@ -572,6 +589,7 @@ try {
     REPORT.error = String(error.stack || error);
     throw error;
 } finally {
+    REPORT.finishedAt = new Date().toISOString();
     REPORT.errors = ERRORS;
     saveReport();
     await browser?.close();
