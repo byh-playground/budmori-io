@@ -1,12 +1,15 @@
 import { PerformanceDiagnostics } from './performance-diagnostics.js';
-import { RelicDock, RELIC_ICONS, relicEffectText } from './relic-dock.js';
+import { RelicDock, RELIC_ICONS, relicEffectText, relicAcquisitionText } from './relic-dock.js';
 import { FORMATION_SKILL_DEFINITIONS } from './formation-skill-state.js';
 import {
     RARITY_NAMES,
     TOWER_EVENTS,
     TOWER_RUN_SETTINGS,
     cardStacks,
+    cardAcquisitionText,
     cardValue,
+    cardChoicePhase,
+    passiveEffectText,
     passiveCard,
     statCard,
     statCardText,
@@ -865,18 +868,38 @@ DOLLAR('startFloor').oninput = (e) => {
     startFloorChoice = Number(e.target.value);
     paintRange(e.target);
 };
-DOLLAR('doorCards').addEventListener('click', (e) => {
-    const BUTTON = e.target.closest('[data-door]');
-    if (BUTTON && !BUTTON.disabled && DOLLAR('towerDoors').dataset.owner !== 'boss') {
-        const PLAYER_CARD = BUTTON.querySelector('b')?.textContent || '강화 카드';
-        if (personalGarden?.chooseDoor(Number(BUTTON.dataset.door))) {
-            bossPlayerReceipt = {
-                tower: personalGarden.tower,
-                serial: personalGarden.tower.bossCardDraw?.serial,
-                label: PLAYER_CARD,
-            };
-            syncTower(personalGarden, home, personalGarden.farmBossEvent);
-        }
+let doorPointerPress = null;
+DOLLAR('doorCards').addEventListener('pointerdown', (event) => {
+    const BUTTON = event.target.closest('[data-door]');
+    doorPointerPress =
+        BUTTON && DOLLAR('towerDoors').dataset.owner === 'player'
+            ? { button: BUTTON, serial: personalGarden?.tower.bossCardDraw?.serial || 0 }
+            : null;
+});
+DOLLAR('doorCards').addEventListener('pointercancel', () => {
+    doorPointerPress = null;
+});
+DOLLAR('doorCards').addEventListener('keydown', (event) => {
+    if (['Enter', ' '].includes(event.key) && (event.repeat || DOLLAR('towerDoors').dataset.owner === 'boss')) {
+        event.preventDefault();
+    }
+});
+DOLLAR('doorCards').addEventListener('click', (event) => {
+    const BUTTON = event.target.closest('[data-door]'),
+        PRESS = doorPointerPress;
+    doorPointerPress = null;
+    if (
+        !BUTTON ||
+        BUTTON.disabled ||
+        DOLLAR('towerDoors').dataset.owner === 'boss' ||
+        (event.detail > 0 &&
+            (PRESS?.button !== BUTTON || PRESS.serial !== (personalGarden?.tower.bossCardDraw?.serial || 0)))
+    ) {
+        return;
+    }
+    if (personalGarden?.chooseDoor(Number(BUTTON.dataset.door))) {
+        stopWorldInput();
+        syncTower(personalGarden, home, personalGarden.farmBossEvent);
     }
 });
 DOLLAR('towerLeave').onclick = () => {
@@ -1518,21 +1541,20 @@ const NEXT_FLOOR_TEXT = {
     power: '강화 · 카드 한 장을 고르세요',
     event: '이벤트',
 };
-function statDoorCard(door, cards, index, role = 'player') {
-    const CARD = statCard(door.id);
-    return `<button type="button" class="door door--stat door--rarity-${door.rarity}" data-door="${index}"><b>${CARD.name} ${statCardText(CARD, door.rarity, role)}</b><small>${RARITY_NAMES[door.rarity]} · ${role === 'boss' ? '보스 진영' : '모든 아군'} · ${cardStacks(cards, door.id)}/${TOWER_RUN_SETTINGS.cardCap}장</small></button>`;
+function statDoorCard(door, cards, index, role = 'player', receipt = null) {
+    const CARD = statCard(door.id),
+        LEVEL = receipt?.before.level ?? cardStacks(cards, door.id);
+    return `<button type="button" class="door door--stat door--rarity-${door.rarity}" data-door="${index}"><b>${CARD.name} ${statCardText(CARD, door.rarity, role)}</b><small>${RARITY_NAMES[door.rarity]} · ${role === 'boss' ? '보스 진영' : '모든 아군'} · ${LEVEL}/${TOWER_RUN_SETTINGS.cardCap}장</small></button>`;
 }
-function passiveDoorCard(door, cards, index, role = 'player') {
+function passiveDoorCard(door, cards, index, role = 'player', receipt = null) {
     const CARD = passiveCard(door.id),
-        EFFECT = CARD.text(cardValue(CARD, door.rarity, role)).replaceAll(
-            '아군',
-            role === 'boss' ? '보스 진영' : '아군',
-        );
-    return `<button type="button" class="door door--passive door--rarity-${door.rarity}" data-door="${index}"><b>${CARD.name}</b><small>${RARITY_NAMES[door.rarity]} · ${EFFECT} · ${cardStacks(cards, door.id)}/${TOWER_RUN_SETTINGS.cardCap}장</small></button>`;
+        LEVEL = receipt?.before.level ?? cardStacks(cards, door.id),
+        EFFECT = passiveEffectText(CARD, cardValue(CARD, door.rarity, role), role);
+    return `<button type="button" class="door door--passive door--rarity-${door.rarity}" data-door="${index}"><b>${CARD.name}</b><small>${RARITY_NAMES[door.rarity]} · ${EFFECT} · ${LEVEL}/${TOWER_RUN_SETTINGS.cardCap}장</small></button>`;
 }
-function skillDoorCard(tower, door, index, role = 'player') {
+function skillDoorCard(tower, door, index, role = 'player', receipt = null) {
     const DEFINITION = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === door.id),
-        LEVEL = tower.relics.get(door.id) || 0,
+        LEVEL = receipt?.before.level ?? (tower.relics.get(door.id) || 0),
         GAIN = LEVEL ? `Lv.${LEVEL} → ${LEVEL + 1}` : '새 기술';
     return `<button type="button" class="door door--skill" data-door="${index}"><b>${RELIC_ICONS[door.id]} ${DEFINITION.name}</b><small>${GAIN} · ${relicEffectText(DEFINITION, LEVEL + 1, role)}</small></button>`;
 }
@@ -1540,39 +1562,24 @@ function eventDoorCard(door, index) {
     const EVENT = TOWER_EVENTS.find((item) => item.id === door.id);
     return `<button type="button" class="door door--event" data-door="${index}"><b>${EVENT.name}</b><small>${EVENT.text}</small></button>`;
 }
-function doorCard(tower, door, index, role = 'player') {
+function doorCard(tower, door, index, role = 'player', receipt = null) {
     if (door.type === 'fight') {
         return `<button type="button" class="door door--${door.kind}" data-door="${index}"><b>${FLOOR_KIND[door.kind]}</b><small>${DOOR_TEXT[door.kind]}</small></button>`;
     }
     if (door.type === 'stat') {
-        return statDoorCard(door, tower.cards, index, role);
+        return statDoorCard(door, tower.cards, index, role, receipt);
     }
     if (door.type === 'passive') {
-        return passiveDoorCard(door, tower.cards, index, role);
+        return passiveDoorCard(door, tower.cards, index, role, receipt);
     }
-    return door.type === 'skill' ? skillDoorCard(tower, door, index, role) : eventDoorCard(door, index);
+    return door.type === 'skill' ? skillDoorCard(tower, door, index, role, receipt) : eventDoorCard(door, index);
 }
 let bannerKey = '';
 let bannerTimer = 0;
 let doorKey = '';
 let tintFloor = -1;
-// Receipts are model-owned. This label is the only local feedback for the player's completed choice.
-let bossPlayerReceipt = null;
-function bossCardPreview(tower, draw) {
-    const CARDS = [...(tower.bossCards || [])],
-        RELICS = new Map(tower.bossRelics),
-        CARD = draw.card;
-    // The model already applied the result once. Preview each offer against its pre-selection loadout.
-    if (CARD?.type === 'skill') {
-        RELICS.set(CARD.id, Math.max(0, (RELICS.get(CARD.id) || 0) - 1));
-    } else if (CARD) {
-        const INDEX = CARDS.findLastIndex((item) => item.id === CARD.id && item.rarity === CARD.rarity);
-        if (INDEX >= 0) {
-            CARDS.splice(INDEX, 1);
-        }
-    }
-    return { cards: CARDS, relics: RELICS };
-}
+let doorAnnouncementTower = null;
+let doorAnnouncementSerial = 0;
 function bossCardName(card) {
     return card?.type === 'skill'
         ? FORMATION_SKILL_DEFINITIONS.find((item) => item.id === card.id)?.name
@@ -1582,22 +1589,106 @@ function bossCardName(card) {
             ? passiveCard(card.id)?.name
             : '';
 }
+function acquisitionText(receipt) {
+    return receipt.card.type === 'skill' ? relicAcquisitionText(receipt) : cardAcquisitionText(receipt);
+}
+function readonlyDoor(button, label, selected) {
+    button.removeAttribute('data-door');
+    button.disabled = true;
+    button.setAttribute('aria-disabled', 'true');
+    button.tabIndex = -1;
+    button.dataset.selected = String(selected);
+    let badge = button.querySelector('.door__selected');
+    if (selected && !badge) {
+        badge = document.createElement('span');
+        badge.className = 'door__selected';
+        button.append(badge);
+    }
+    if (badge) {
+        badge.textContent = label;
+        badge.hidden = !selected;
+    }
+}
 function syncBossChoice(tower, draw, phase) {
-    const PREVIEW = bossCardPreview(tower, draw);
-    DOLLAR('doorCards').innerHTML = draw.offers.map((card, index) => doorCard(PREVIEW, card, index, 'boss')).join('');
-    for (const [INDEX, BUTTON] of [...DOLLAR('doorCards').children].entries()) {
-        BUTTON.removeAttribute('data-door');
-        BUTTON.setAttribute('aria-disabled', 'true');
-        BUTTON.tabIndex = -1;
-        BUTTON.dataset.bossOffer = String(INDEX);
-        const SELECTED = phase === 'selected' && INDEX === draw.selectedIndex;
-        BUTTON.dataset.selected = String(SELECTED);
-        if (SELECTED) {
-            const BADGE = document.createElement('span');
-            BADGE.className = 'door__selected';
-            BADGE.textContent = '✓ 보스 선택';
-            BUTTON.append(BADGE);
+    const HOST = DOLLAR('doorCards'),
+        OWNER = phase === 'receipt' ? 'player' : 'boss',
+        RAIL_KEY = `${draw.serial}:${OWNER}`;
+    if (HOST.dataset.receipt !== RAIL_KEY) {
+        HOST.dataset.receipt = RAIL_KEY;
+        if (phase === 'receipt') {
+            HOST.innerHTML = doorCard(tower, draw.player.card, 0, 'player', draw.player);
+            HOST.firstElementChild.dataset.playerReceipt = 'true';
+        } else {
+            const PREVIEW = { cards: draw.offerState.cards, relics: new Map(draw.offerState.relics) };
+            HOST.innerHTML = draw.offers.map((card, index) => doorCard(PREVIEW, card, index, 'boss')).join('');
         }
+    }
+    for (const [INDEX, BUTTON] of [...HOST.children].entries()) {
+        if (phase === 'receipt') {
+            readonlyDoor(BUTTON, '✓ 내 카드 획득', true);
+        } else {
+            BUTTON.dataset.bossOffer = String(INDEX);
+            readonlyDoor(
+                BUTTON,
+                '✓ 보스 선택',
+                ['selected', 'outcome'].includes(phase) && INDEX === draw.selectedIndex,
+            );
+        }
+    }
+}
+function syncCardReceipts(tower, draw, phase) {
+    const HOST = DOLLAR('doorReceipts'),
+        VISIBLE = !!draw && ['receipt', 'outcome', ''].includes(phase);
+    HOST.hidden = !VISIBLE;
+    if (!VISIBLE) {
+        return;
+    }
+    const KEY = `${draw.serial}:${phase}`;
+    if (HOST.dataset.receipt !== KEY) {
+        HOST.dataset.receipt = KEY;
+        HOST.dataset.phase = phase || 'summary';
+        HOST.replaceChildren();
+        for (const RECEIPT of phase === 'receipt'
+            ? [draw.player]
+            : phase === 'outcome'
+              ? [draw.receipt]
+              : [draw.player, draw.receipt]) {
+            if (!RECEIPT) {
+                continue;
+            }
+            const ROW = document.createElement('p'),
+                TITLE = document.createElement('b'),
+                EFFECT = document.createElement('span');
+            ROW.dataset.role = RECEIPT.role;
+            ROW.dataset.cardType = RECEIPT.card.type;
+            TITLE.textContent = `${RECEIPT.role === 'boss' ? '보스 획득' : '내 카드'} · ${bossCardName(RECEIPT.card)}`;
+            EFFECT.textContent = acquisitionText(RECEIPT);
+            ROW.append(TITLE, EFFECT);
+            HOST.append(ROW);
+        }
+        if (draw.status === 'maxed') {
+            const EMPTY = document.createElement('p');
+            EMPTY.dataset.role = 'boss';
+            EMPTY.textContent = '보스 카드 없음 · 모든 후보 강화 완료';
+            HOST.append(EMPTY);
+        }
+    }
+    if (doorAnnouncementTower !== tower) {
+        doorAnnouncementTower = tower;
+        doorAnnouncementSerial = 0;
+    }
+    if (['outcome', ''].includes(phase) && doorAnnouncementSerial !== draw.serial) {
+        doorAnnouncementSerial = draw.serial;
+        syncText(
+            'doorAnnouncement',
+            [draw.player, draw.receipt]
+                .filter(Boolean)
+                .map(
+                    (receipt) =>
+                        `${receipt.role === 'boss' ? '보스 획득' : '내 카드 획득'} · ${bossCardName(receipt.card)}. ${acquisitionText(receipt)}`,
+                )
+                .join('. ') + (draw.status === 'maxed' ? '. 보스 카드 없음 · 모든 후보 강화 완료' : ''),
+        );
     }
 }
 // The tower: a rail of floors that steps up, a banner for every new floor, and doors between floors.
@@ -1642,50 +1733,59 @@ function syncTower(garden, home, event) {
     const DRAW = T.bossCardDraw,
         DRAW_LOCKED = CLIMBING && garden.time < (DRAW?.until || 0),
         BOSS_CHOICE = DRAW_LOCKED && Array.isArray(DRAW.offers),
-        PHASE =
-            BOSS_CHOICE && garden.time >= DRAW.startedAt + (DRAW.until - DRAW.startedAt) / 2 ? 'selected' : 'offers',
+        PHASE = BOSS_CHOICE ? cardChoicePhase(DRAW, garden.time) : '',
         DOORS = CLIMBING && event?.phase === 'idle' && (T.doors.length > 0 || BOSS_CHOICE);
     syncFlag('towerDoors', 'hidden', !DOORS);
     if (DOORS) {
         const KEY = `${JSON.stringify(T.doors)}|${T.floor}|${SLEEPERS}|${T.cards.length}|${T.relics.size}|${DRAW?.serial || 0}|${BOSS_CHOICE}|${PHASE}`;
         syncData('towerDoors', 'owner', BOSS_CHOICE ? 'boss' : 'player');
-        syncData('towerDoors', 'phase', BOSS_CHOICE ? PHASE : '');
+        syncData('towerDoors', 'phase', PHASE);
         if (KEY !== doorKey) {
             doorKey = KEY;
             if (BOSS_CHOICE) {
                 syncBossChoice(T, DRAW, PHASE);
             } else {
+                DOLLAR('doorCards').dataset.receipt = '';
                 DOLLAR('doorCards').innerHTML = T.doors.map((door, i) => doorCard(T, door, i)).join('');
             }
         }
+        syncCardReceipts(T, DRAW, PHASE);
         if (BOSS_CHOICE) {
-            const RECEIVED =
-                bossPlayerReceipt?.tower === T && bossPlayerReceipt.serial === DRAW.serial
-                    ? `내 카드 획득 · ${bossPlayerReceipt.label}`
-                    : '같은 카드풀 · 후보 중 한 장을 자동으로 선택해요';
             syncText(
                 'doorsTitle',
-                DRAW.card
-                    ? PHASE === 'selected'
-                        ? `보스 선택 · ${bossCardName(DRAW.card)}`
-                        : '보스의 카드 선택'
-                    : '보스의 카드풀이 모두 가득 찼어요',
+                PHASE === 'receipt'
+                    ? '내 카드 확정'
+                    : PHASE === 'offers'
+                      ? '보스의 카드 선택'
+                      : `보스 선택 · ${bossCardName(DRAW.card)}`,
             );
             syncText(
                 'doorsNote',
-                PHASE === 'selected' && DRAW.card ? '선택한 강화는 다음 보스부터 적용돼요' : RECEIVED,
+                PHASE === 'receipt'
+                    ? '획득한 강화가 적용됐어요'
+                    : PHASE === 'outcome'
+                      ? '선택한 강화는 다음 보스부터 적용돼요'
+                      : '보스 차례 · 같은 카드풀에서 한 장을 선택해요',
             );
         } else {
             syncText('doorsTitle', `${T.floor + 1}층 ${NEXT_FLOOR_TEXT[T.nextKind]}`);
             syncText(
                 'doorsNote',
-                DRAW?.status === 'maxed' && DRAW.floor === T.floor
-                    ? '보스 카드 없음 · 모든 후보 강화 완료'
+                DRAW
+                    ? `최근 강화 · ${DRAW.floor}층 · 다음 문을 고르세요`
                     : `${T.floor}층 돌파 · 잠든 병력 ${SLEEPERS}마리 · 강화 카드 ${T.cards.length}장`,
             );
         }
     } else {
         doorKey = '';
+        doorPointerPress = null;
+        DOLLAR('doorCards').dataset.receipt = '';
+        DOLLAR('doorReceipts').dataset.receipt = '';
+        if (!T.active) {
+            doorAnnouncementTower = null;
+            doorAnnouncementSerial = 0;
+            syncText('doorAnnouncement', '');
+        }
     }
     const RESULT = !T.active && T.floor > 0 && !home && event?.phase === 'idle';
     syncFlag('towerResult', 'hidden', !RESULT);

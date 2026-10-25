@@ -57,7 +57,8 @@ export const PASSIVE_SETTINGS = Object.freeze({
     resolveMaxReduction: 0.8,
     undyingMaxRestore: 0.9,
 });
-const PERCENT = (value) => `${Math.round(value * 1000) / 10}%`;
+const NUMBER = (value) => new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 4 }).format(value);
+const PERCENT = (value) => `${NUMBER(value * 100)}%`;
 export const PASSIVE_CARDS = Object.freeze([
     {
         id: 'last-stand',
@@ -138,19 +139,48 @@ export const STAT_CARDS = Object.freeze([
     { id: 'lifesteal-flat', stat: 'lifesteal', mode: 'flat', name: '흡혈', values: [0.03, 0.05, 0.075] },
 ]);
 
-// What the player sees: "+10%", "+2", "+5%p", "+0.5% 체력/초".
-export function statCardText(card, rarity, role = 'player') {
-    const VALUE = cardValue(card, rarity, role);
+// Previews and receipts use the same units, including the boss's explicit role profile.
+export function statModifierText(card, value) {
     if (card.stat === 'critChance' || card.stat === 'lifesteal') {
-        return `+${Math.round(VALUE * 1000) / 10}%p`;
+        return `+${NUMBER(value * 100)}%p`;
     }
     if (card.stat === 'regen' && card.mode === 'pct') {
-        return `+${Math.round(VALUE * 10000) / 100}% 체력/초`;
+        return `+${NUMBER(value * 100)}% 체력/초`;
     }
     if (card.stat === 'regen') {
-        return `+${VALUE}/초`;
+        return `+${NUMBER(value)}/초`;
     }
-    return card.mode === 'pct' ? `+${Math.round(VALUE * 100)}%` : `+${VALUE}`;
+    return card.mode === 'pct' ? `+${NUMBER(value * 100)}%` : `+${NUMBER(value)}`;
+}
+export function statCardText(card, rarity, role = 'player') {
+    return statModifierText(card, cardValue(card, rarity, role));
+}
+
+// Applied passive strength, not a claim that its condition has already triggered.
+export function passiveEffectValue(id, value) {
+    if (id === 'resolve') {
+        return Math.min(PASSIVE_SETTINGS.resolveMaxReduction, value);
+    }
+    if (id === 'undying') {
+        return Math.min(PASSIVE_SETTINGS.undyingMaxRestore, value);
+    }
+    return value;
+}
+export function passiveEffectText(card, value, role = 'player') {
+    return card.text(passiveEffectValue(card.id, value)).replaceAll('아군', role === 'boss' ? '보스 진영' : '아군');
+}
+
+// One actual before/after value in the same units as the selected card.
+export function cardAcquisitionText(receipt) {
+    const CARD = receipt.card,
+        BEFORE = receipt.before.value,
+        AFTER = receipt.after.value;
+    if (CARD.type === 'stat') {
+        const DEFINITION = statCard(CARD.id);
+        return `${DEFINITION.name} 누적 강화 ${statModifierText(DEFINITION, BEFORE)} → ${statModifierText(DEFINITION, AFTER)}`;
+    }
+    const DEFINITION = passiveCard(CARD.id);
+    return `${passiveEffectText(DEFINITION, AFTER, receipt.role)} · 누적 ${PERCENT(BEFORE)} → ${PERCENT(AFTER)}`;
 }
 
 export function statCard(id) {
@@ -269,20 +299,56 @@ export function rollEventOffers({ world, random }) {
     return OFFERS;
 }
 
-// One shared acquisition rule; receipt timing never owns the card state.
-export function applyTowerCard({ cards, relics }, card) {
-    const PREVIOUS = card.type === 'skill' ? relics.get(card.id) || 0 : cardStacks(cards, card.id);
+function acquisitionState(state, card, role) {
+    const LEVEL = card.type === 'skill' ? state.relics.get(card.id) || 0 : cardStacks(state.cards, card.id);
     if (card.type === 'skill') {
-        relics.set(card.id, PREVIOUS + 1);
-    } else {
-        cards.push({ id: card.id, rarity: card.rarity });
+        return { level: LEVEL, value: LEVEL };
     }
-    return { level: PREVIOUS + 1, status: PREVIOUS ? 'upgraded' : 'acquired' };
+    const DEFINITION = statCard(card.id),
+        VALUE = DEFINITION
+            ? runStatModifiers(state.cards, role)[DEFINITION.stat]?.[DEFINITION.mode] || 0
+            : passiveEffectValue(card.id, passiveTotals(state.cards, role)[card.id] || 0);
+    return { level: LEVEL, value: VALUE };
+}
+
+// The receipt is captured in the same transaction as acquisition. Presentation only reads it.
+export function applyTowerCard(state, card, role = 'player') {
+    const BEFORE = acquisitionState(state, card, role);
+    if (card.type === 'skill') {
+        state.relics.set(card.id, BEFORE.level + 1);
+    } else {
+        state.cards.push({ id: card.id, rarity: card.rarity });
+    }
+    const AFTER = acquisitionState(state, card, role);
+    return {
+        card: { ...card },
+        role,
+        before: BEFORE,
+        after: AFTER,
+        level: AFTER.level,
+        status: BEFORE.level ? 'upgraded' : 'acquired',
+    };
+}
+
+export const CARD_CHOICE_TIMING = Object.freeze({ receipt: 0.2, offers: 0.55, selected: 0.75, total: 1.8 });
+export function cardChoicePhase(draw, time) {
+    if (!draw || time >= draw.until) {
+        return '';
+    }
+    const ELAPSED = Math.max(0, time - draw.startedAt);
+    return ELAPSED < CARD_CHOICE_TIMING.receipt && draw.player
+        ? 'receipt'
+        : ELAPSED < CARD_CHOICE_TIMING.offers
+          ? 'offers'
+          : ELAPSED < CARD_CHOICE_TIMING.selected
+            ? 'selected'
+            : 'outcome';
 }
 
 // Same offers, rarity and limits as the player, with only explicit content exclusions.
-export function drawBossCard(tower, random, time, slots = 3, maxLevel = 5) {
+export function drawBossCard(tower, random, time, slots = 3, maxLevel = 5, player = null) {
     const STATE = { cards: tower.bossCards, relics: tower.bossRelics },
+        OFFER_STATE = { cards: STATE.cards.map((card) => ({ ...card })), relics: [...STATE.relics] },
         OFFERS = rollCardOffers({
             ...STATE,
             floor: tower.floor,
@@ -294,17 +360,21 @@ export function drawBossCard(tower, random, time, slots = 3, maxLevel = 5) {
         }),
         SELECTED_INDEX = OFFERS.length ? Math.floor(random() * OFFERS.length) : -1,
         CARD = OFFERS[SELECTED_INDEX] || null,
-        RESULT = CARD ? applyTowerCard(STATE, CARD) : { level: 0, status: 'maxed' };
+        RECEIPT = CARD ? applyTowerCard(STATE, CARD, 'boss') : null;
     tower.bossCardDraw = {
         serial: (tower.bossCardDraw?.serial || 0) + 1,
         floor: tower.floor,
         offers: OFFERS,
+        offerState: OFFER_STATE,
         selectedIndex: SELECTED_INDEX,
         card: CARD,
         id: CARD?.id || '',
-        ...RESULT,
+        level: RECEIPT?.level || 0,
+        status: RECEIPT?.status || 'maxed',
+        player,
+        receipt: RECEIPT,
         startedAt: time,
-        until: time + (CARD ? 1.8 : 0),
+        until: time + (CARD ? CARD_CHOICE_TIMING.total : 0),
     };
     return tower.bossCardDraw;
 }
