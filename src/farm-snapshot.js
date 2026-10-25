@@ -17,6 +17,7 @@ export const UNIT_SNAPSHOT_SHAPE = {
     ability: {
         phase: 'idle',
         elapsed: 0,
+        interruptedRecoverySeconds: null,
         action: null,
     },
     specialAbility: null,
@@ -103,6 +104,7 @@ const STARTER_UNIT = (id, x, y) => ({
     ability: {
         phase: 'idle',
         elapsed: 0,
+        interruptedRecoverySeconds: null,
         action: null,
     },
 });
@@ -288,6 +290,7 @@ const ATTACK = FIELDS(
     'id targetId targetGeneration hit resolvedMask hitMask peanutStrikeCount peanutAttackMultiplier peanutSpreadRadians leapDepartureCommitted leapCooldownResetApplied thornTargetId thornTargetGeneration thornShotsRemaining thornNextShotTick thornShotIndex',
     {
         target: POINT,
+        prepareAim: FIELDS('originX originY startX startY x y radius reacquired locked'),
         path: PATH,
         pendingShots: [FIELDS('shotIndex delaySeconds attackMultiplier')],
         projectileAbility: {
@@ -311,11 +314,13 @@ const UNIT = shapeFields(UNIT_SNAPSHOT_SHAPE, {
     ability: {
         phase: true,
         elapsed: true,
+        interruptedRecoverySeconds: true,
         action: ATTACK,
     },
     specialAbility: {
         phase: true,
         elapsed: true,
+        interruptedRecoverySeconds: true,
         action: ATTACK,
     },
     wheatCommandBuffs: [FIELDS('level bonus tier powerRank appliedAtTick expiresAtTick')],

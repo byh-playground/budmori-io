@@ -104,6 +104,10 @@ export function isValidFormationRuntime(runtime) {
         }
         IDS.add(EFFECT.id);
     }
+    const RETRY_ID = runtime.bossRetrySkillId;
+    if (RETRY_ID != null && (!BOSS_SKILL_IDS.includes(RETRY_ID) || !SLOTS.has(`boss:${RETRY_ID}`))) {
+        return false;
+    }
     const CAST = runtime.bossCast;
     if (
         CAST != null &&
@@ -120,8 +124,11 @@ export function isValidFormationRuntime(runtime) {
     ) {
         return false;
     }
-    return runtime.active || (runtime.slots.length === 0 && runtime.effects.length === 0 && CAST == null);
+    return (
+        runtime.active ||
+        (runtime.slots.length === 0 && runtime.effects.length === 0 && CAST == null && RETRY_ID == null)
+    );
 }
 export function createFormationRuntime() {
-    return { active: false, serial: 0, slots: [], effects: [], bossCast: null };
+    return { active: false, serial: 0, slots: [], effects: [], bossCast: null, bossRetrySkillId: null };
 }

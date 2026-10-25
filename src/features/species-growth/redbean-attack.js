@@ -136,7 +136,7 @@ export function launchRedbeanAttack(world, unit, action) {
     }
     R.launchTick = world.simulationTick;
     R.origin = { x: unit.x, y: unit.y };
-    const TARGET = world.attackTarget(unit, action),
+    const TARGET = action.prepareAim ?? world.attackTarget(unit, action),
         X = TARGET?.x ?? action.target.x,
         Y = TARGET?.y ?? action.target.y;
     const ANGLE = Math.atan2(unit.y - Y, unit.x - X),

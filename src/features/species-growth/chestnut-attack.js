@@ -145,14 +145,14 @@ export function launchChestnutAttack(world, unit, action) {
     R.launchTick = world.simulationTick;
     R.origin = { x: unit.x, y: unit.y, z: 0.35 };
     const CANDIDATE = R.targetId === 'boss' ? world.boss : world._unitForId(R.targetId);
-    const T = CANDIDATE?.generation === R.targetGeneration ? CANDIDATE : null;
+    const T = action.prepareAim ?? (CANDIDATE?.generation === R.targetGeneration ? CANDIDATE : null);
     // A committed near-face point includes projectile radius, not the body's
     // contact radius. Never pursue a target after this point is captured.
     const DX = (T?.x ?? action.target.x) - unit.x,
         DY = (T?.y ?? action.target.y) - unit.y;
     const DIST = Math.hypot(DX, DY) || 1;
     const TRAVEL =
-        T?.generation === R.targetGeneration
+        T && (action.prepareAim || T.generation === R.targetGeneration)
             ? Math.max(0.1, DIST - T.radius + 0.04)
             : Math.hypot(action.target.x - unit.x, action.target.y - unit.y);
     R.point = { x: unit.x + (DX / DIST) * TRAVEL, y: unit.y + (DY / DIST) * TRAVEL, z: 0 };

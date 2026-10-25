@@ -239,6 +239,7 @@ export class FormationSkills {
     updateBossCast(dt) {
         const BOSS = this.world.boss;
         let cast = this.runtime.bossCast;
+        let failedId = null;
         if (!this.world.tower.active || !BOSS.active || BOSS.hp <= 0 || BOSS.stun > 0) {
             // Before release the charge remains reserved, not consumed. Existing effects have their own lifetime.
             this.runtime.bossCast = null;
@@ -252,7 +253,7 @@ export class FormationSkills {
             if (cast.phase === 'prepare') {
                 const SLOT = this.slots.find((slot) => slot.role === 'boss' && slot.id === cast.id),
                     MODEL = SLOT && MODELS.get(SLOT.id);
-                if (MODEL && MODEL.cast(this.bossContext, SLOT)) {
+                if (MODEL && MODEL.canCast(this.bossContext, SLOT) && MODEL.cast(this.bossContext, SLOT)) {
                     SLOT.charge = 0;
                     SLOT.cooldown = FORMATION_COOLDOWN_SECONDS;
                     this.world.combat('formation-cast', {
@@ -262,23 +263,38 @@ export class FormationSkills {
                         y: BOSS.y,
                         z: BOSS.z,
                     });
+                    cast.phase = 'recover';
+                    cast.elapsed = 0;
+                    cast.duration = 0.45;
+                    return;
                 }
-                cast.phase = 'recover';
-                cast.elapsed = 0;
-                cast.duration = 0.45;
+                // An empty release has no recovery; let another skill or physical pursuit proceed this tick.
+                failedId = cast.id;
+                this.runtime.bossRetrySkillId = failedId;
+                this.runtime.bossCast = null;
             } else {
                 this.runtime.bossCast = null;
+                return;
             }
-            return;
         }
         if (BOSS.patternRuntime.active || !this.bossContext.enemy()) {
             return;
         }
+        // A failed preparation yields this tick and one subsequent selection,
+        // even if eligibility returns immediately. This is not a cooldown and
+        // never spends charge or changes the HUD's charged/ready state.
+        const RETRY_ID = this.runtime.bossRetrySkillId;
+        if (!failedId) {
+            this.runtime.bossRetrySkillId = null;
+        }
         const SLOT = this.slots.find(
             (slot) =>
                 slot.role === 'boss' &&
+                slot.id !== failedId &&
+                slot.id !== RETRY_ID &&
                 slot.cooldown < 1e-9 &&
-                slot.charge >= MODELS.get(slot.id).profile(this.bossContext).required,
+                slot.charge >= MODELS.get(slot.id).profile(this.bossContext).required &&
+                MODELS.get(slot.id).canCast(this.bossContext, slot),
         );
         if (SLOT) {
             cast = { id: SLOT.id, phase: 'prepare', elapsed: 0, duration: 0.8, serial: ++this.runtime.serial };

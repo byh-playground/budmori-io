@@ -5,9 +5,15 @@ export class GiantSkill extends FormationSkill {
     constructor() {
         super(DEFINITION);
     }
+    candidates(owner) {
+        return owner.allies().filter((unit) => unit.giantUntil <= owner.world.time);
+    }
+    canCast(owner) {
+        return this.candidates(owner).length > 0;
+    }
     cast(owner, slot) {
         const PROFILE = this.profile(owner),
-            CANDIDATES = owner.allies().filter((unit) => unit.giantUntil <= owner.world.time);
+            CANDIDATES = this.candidates(owner);
         if (!CANDIDATES.length) {
             return false;
         }

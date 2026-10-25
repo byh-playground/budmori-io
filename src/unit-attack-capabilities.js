@@ -38,6 +38,50 @@ export function composeUnitAttackCycles(cycle, { ArenaGeometry: arenaGeometry, B
             resolveAttackHit(sim, action, target, point, options) {
                 return sim.damageCombatTarget(this.owner, action, target, point, options);
             }
+            hasFixedRecoveryTiming() {
+                const A = this.action;
+                return !!(
+                    A?.peaAttack ||
+                    A?.cornAttack ||
+                    A?.redbeanAttack ||
+                    A?.chestnutAttack ||
+                    A?.peanutAttack ||
+                    A?.walnutAttack ||
+                    A?.riceAttack ||
+                    A?.wheatAttack ||
+                    A?.barleyAttack
+                );
+            }
+            correctPreparedAim(_sim, aim) {
+                const U = this.owner,
+                    A = this.action,
+                    DX = aim.x - U.x,
+                    DY = aim.y - U.y,
+                    DISTANCE = Math.hypot(DX, DY) || 1,
+                    INSET = this.composition.aimAtCenter ? 0 : aim.radius + U.radius - 0.16;
+                A.target.x = aim.x - (DX / DISTANCE) * INSET;
+                A.target.y = aim.y - (DY / DISTANCE) * INSET;
+                A.target.id = A.targetId;
+                A.target.generation = A.targetGeneration;
+                U.angle = Math.atan2(DY, DX);
+                // These five capabilities share a near-face contact corridor.
+                // Refresh geometry in place: never recreate budgets, RNG claims,
+                // strike slots, or the action itself during preparation.
+                const RECORD = A.peanutAttack || A.walnutAttack || A.riceAttack || A.wheatAttack || A.barleyAttack;
+                if (RECORD && RECORD.launchTick === null) {
+                    const TRAVEL = Math.max(0, DISTANCE - aim.radius * 0.98);
+                    RECORD.origin.x = U.x;
+                    RECORD.origin.y = U.y;
+                    RECORD.point.x = U.x + (DX / DISTANCE) * TRAVEL;
+                    RECORD.point.y = U.y + (DY / DISTANCE) * TRAVEL;
+                    RECORD.targetId = A.targetId;
+                    RECORD.targetGeneration = A.targetGeneration;
+                }
+                if (A.chestnutAttack?.launchTick === null) {
+                    A.chestnutAttack.targetId = A.targetId;
+                    A.chestnutAttack.targetGeneration = A.targetGeneration;
+                }
+            }
             createAttackPath() {
                 const U = this.owner,
                     A = this.action;
