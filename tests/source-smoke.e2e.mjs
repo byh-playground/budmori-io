@@ -11,7 +11,7 @@ import { chromium } from 'playwright';
 const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     OUTPUT = path.join(ROOT, 'tests/output/source-smoke'),
     // The first CI already captured the shared-rig sweep; only the basic frame still needs review.
-    CAPTURE_BOSS_BASICS = (process.env.BUDMORI_CAPTURE_BOSS_BASICS ?? '1') === '1',
+    CAPTURE_BOSS_BASICS = process.env.BUDMORI_CAPTURE_BOSS_BASICS === '1',
     CAPTURE_BOSS_SWEEP = process.env.BUDMORI_CAPTURE_BOSS_SWEEP === '1',
     HTML = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'),
     MANIFEST = JSON.parse(
