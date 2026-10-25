@@ -1341,6 +1341,11 @@ try {
                 await PAGE.locator('#gameMenuClose').click();
                 await DOCK.waitFor({ state: 'visible' });
                 await PAGE.setViewportSize({ width: 1000, height: 700 });
+                // Resizing clears the canvas; let the normal paused-scene RAF repaint before freezing the image.
+                await PAGE.evaluate(() => {
+                    BUDMORI.runtime.capturePresentation('reset');
+                    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                });
                 await CAPTURE_FRAME(FILE);
                 await PAGE.evaluate(() => globalThis.__restoreBossHudFixture());
             }
