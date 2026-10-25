@@ -418,3 +418,81 @@
         animation: none;
     }
 }
+
+/* Short landscape fights use the bottom edge, not another panel across the arena. */
+@media (max-height: 550px) and (min-aspect-ratio: 4/3) {
+    #gameplayDock:has(#battleCommands:not([hidden])) {
+        grid-template-columns: minmax(0, 1fr) 120px;
+        gap: 4px;
+        padding: 4px max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom))
+            max(8px, env(safe-area-inset-left));
+    }
+    #gameplayDock:has(#battleCommands:not([hidden])) > .bottom {
+        grid-column: 1;
+        grid-row: 2;
+        width: 100%;
+        padding: 0;
+        gap: 4px;
+    }
+    #gameplayDock:has(#battleCommands:not([hidden])) .battle-commands {
+        grid-template-columns: minmax(0, 1fr) 204px;
+        align-items: center;
+        width: 100%;
+        gap: 6px;
+    }
+    #gameplayDock:has(#battleCommands:not([hidden])) #frontlineStatus {
+        justify-self: start;
+        white-space: nowrap;
+        font-size: 11px;
+    }
+    #gameplayDock:has(#battleCommands:not([hidden])) .battle-commands label span {
+        min-height: 40px;
+        padding: 4px 8px;
+        font-size: 12px;
+    }
+    #gameplayDock:has(#battleCommands:not([hidden])) .hand {
+        width: 100%;
+    }
+    #gameplayDock:has(#battleCommands:not([hidden])) .hand__cards {
+        justify-content: flex-start;
+        overflow-x: auto;
+        gap: 4px;
+        scrollbar-width: none;
+    }
+    #gameplayDock:has(#battleCommands:not([hidden])) .hand .deck-card {
+        display: flex;
+        align-items: center;
+        flex: 0 0 auto;
+        min-height: 40px;
+        padding: 3px 6px;
+        gap: 3px;
+        font-size: 12px;
+    }
+    #gameplayDock:has(#battleCommands:not([hidden])) .hand .deck-card img {
+        width: 20px;
+        height: 20px;
+    }
+    #gameplayDock:has(#battleCommands:not([hidden])) .hand .deck-card i {
+        position: static;
+        min-width: 15px;
+        line-height: 15px;
+        font-size: 10px;
+    }
+    #gameplayDock:has(#battleCommands:not([hidden])) > .utility {
+        grid-column: 2;
+        grid-row: 2;
+        align-self: end;
+        width: 120px;
+        height: 40px;
+        padding: 0;
+    }
+    #gameplayDock:has(#battleCommands:not([hidden])) > .utility > button {
+        min-height: 40px;
+    }
+    #gameplayDock:has(#battleCommands:not([hidden])) > .utility > button::after {
+        display: none;
+    }
+    body:has(#battleCommands:not([hidden])) #bossbar {
+        top: max(46px, calc(var(--ui-safe-top) + 38px));
+    }
+}

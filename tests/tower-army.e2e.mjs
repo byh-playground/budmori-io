@@ -203,6 +203,29 @@ try {
     assert.ok(REPORT.stages.deployment.elapsed < 5, 'a 500-unit frontline must not take 50 seconds');
     await capture('500-frontline-engage-desktop.png');
     await resume();
+    await ticks(80);
+    await page.waitForFunction(() => BUDMORI.sim.boss.hp < BUDMORI.sim.boss.maxHp);
+    await page.setViewportSize({ width: 667, height: 375 });
+    await capture('500-frontline-engage-converged-landscape.png');
+    REPORT.stages.landscapeLayout = await page.evaluate(() => {
+        const BOX = (selector) => {
+            const RECT = document.querySelector(selector).getBoundingClientRect();
+            return { x: RECT.x, y: RECT.y, width: RECT.width, height: RECT.height, bottom: RECT.bottom };
+        };
+        return {
+            viewportHeight: innerHeight,
+            commands: BOX('#battleCommands'),
+            hand: BOX('#hand'),
+            boss: BOX('#bossbar'),
+            combatDamage: BUDMORI.sim.boss.maxHp - BUDMORI.sim.boss.hp,
+        };
+    });
+    assert.ok(REPORT.stages.landscapeLayout.commands.y >= 280, 'commands stay at the landscape bottom edge');
+    assert.ok(REPORT.stages.landscapeLayout.hand.height <= 44, 'reserve priority remains a slim tappable strip');
+    assert.ok(REPORT.stages.landscapeLayout.boss.bottom < REPORT.stages.landscapeLayout.commands.y);
+    assert.ok(REPORT.stages.landscapeLayout.combatDamage > 0, 'the frame follows actual combat convergence');
+    await page.setViewportSize({ width: 1000, height: 700 });
+    await resume();
     await page.locator('input[name="battleCommand"][value="scatter"]').check();
     await page.waitForFunction(() => BUDMORI.sim.battleCommand === 'scatter');
     await ticks(12);
@@ -251,7 +274,13 @@ try {
         WORLD.bossEncounter.nextJoinAt = WORLD.bossEncounter.elapsed + 0.1;
     });
     await page.waitForFunction(
-        () => BUDMORI.sim.fieldFighterCount === 500 && BUDMORI.sim.bosses.filter((boss) => boss.hp > 0).length >= 2,
+        () =>
+            BUDMORI.sim.fieldFighterCount === 500 &&
+            BUDMORI.sim.bosses.filter((boss) => boss.hp > 0).length >= 2 &&
+            BUDMORI.runtime.presentationView.bosses.length >= 2 &&
+            BUDMORI.sim.bosses
+                .filter((boss) => boss.hp > 0)
+                .every((boss) => BUDMORI.renderer.bossPlayers.has(boss.id + ':' + boss.generation)),
     );
     REPORT.stages.reinforcements = await page.evaluate(() => ({
         field: BUDMORI.sim.fieldFighterCount,
