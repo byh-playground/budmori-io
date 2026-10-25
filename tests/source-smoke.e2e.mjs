@@ -1276,23 +1276,25 @@ try {
                 return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
             });
             const HUD_CASE = ROLE === 'boss' && ID === 'ufo',
-                SCALE_CAPTURE =
-                    ROLE === 'boss' &&
-                    ['lightning', 'ufo'].includes(ID) &&
-                    process.env.BUDMORI_CAPTURE_BOSS_SCALE !== '0',
-                FILE = SCALE_CAPTURE
-                    ? `boss-${ID}-scale-desktop.jpg`
-                    : HUD_CASE && process.env.BUDMORI_CAPTURE_SHARED_HUD === '1'
-                      ? 'boss-skills-desktop.jpg'
-                      : null,
+                // The lightning image is already reviewed. Select lightning/all explicitly to recapture it.
+                SCALE_MODE = process.env.BUDMORI_CAPTURE_BOSS_SCALE ?? 'ufo',
+                SCALE_FILE =
+                    ROLE === 'boss' && ['lightning', 'ufo'].includes(ID) && [ID, 'all'].includes(SCALE_MODE)
+                        ? `boss-${ID}-scale-desktop.jpg`
+                        : null,
+                FILE = HUD_CASE && process.env.BUDMORI_CAPTURE_SHARED_HUD === '1' ? 'boss-skills-desktop.jpg' : null,
                 CAPTURE_STARTED = Date.now();
             REPORT.pendingCase = {
                 role: ROLE,
                 id: ID,
-                stage: FILE ? 'screenshot' : 'inspect native draw',
+                stage: SCALE_FILE || FILE ? 'screenshot' : 'inspect native draw',
                 elapsedMs: CAPTURE_STARTED - CASE_STARTED,
             };
             fs.writeFileSync(path.join(OUTPUT, 'report.json'), JSON.stringify(REPORT, null, 2));
+            if (SCALE_FILE) {
+                // Capture the already-repainted desktop combat frame before HUD viewport/menu round trips.
+                await CAPTURE_FRAME(SCALE_FILE);
+            }
             if (HUD_CASE) {
                 // Layout-only fixture: retain the native UFO cast, add two legal idle model slots, then restore.
                 REPORT.bossCards.hudFixture = await PAGE.evaluate(() => {
@@ -1432,8 +1434,6 @@ try {
                     await CAPTURE_FRAME(FILE);
                 }
                 await PAGE.evaluate(() => globalThis.__restoreBossHudFixture());
-            } else if (FILE) {
-                await CAPTURE_FRAME(FILE);
             }
             const CAPTURE_MS = Date.now() - CAPTURE_STARTED;
             const RESULT = await PAGE.evaluate(
@@ -1684,7 +1684,8 @@ try {
                 id: ID,
                 ...START,
                 ...RESULT,
-                screenshot: FILE,
+                screenshot: SCALE_FILE || FILE,
+                hudScreenshot: FILE,
                 elapsedMs: Date.now() - CASE_STARTED,
                 screenshotMs: CAPTURE_MS,
             });
