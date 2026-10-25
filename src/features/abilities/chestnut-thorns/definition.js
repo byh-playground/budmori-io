@@ -1,3 +1,6 @@
+// Surface standoff shared by ordinary, grown and configured-body thorn attacks.
+export const CHESTNUT_ATTACK_RANGE = Object.freeze({ base: 3.6, evolved: 4.2 });
+
 export const CHESTNUT_THORNS_FEATURE = Object.freeze({
     definition: Object.freeze({
         id: 'chestnut-target-thorns',
@@ -13,7 +16,7 @@ export const CHESTNUT_THORNS_FEATURE = Object.freeze({
         attackProfile: Object.freeze({
             kind: 'chestnut-thorns',
             timing: Object.freeze({ windup: 0, recovery: 0.2 }),
-            range: 1.45,
+            range: CHESTNUT_ATTACK_RANGE.base,
             skillMultiplier: 1,
             projectileCount: 0,
             bounces: 0,

@@ -173,6 +173,7 @@ try {
                 startTick: WORLD.simulationTick,
                 rendered: { player: [], enemy: [] },
                 launches: { player: [], enemy: [] },
+                chestnutShots: [],
                 attacking: [],
                 wheatForms: [],
                 workOverlap: {},
@@ -324,6 +325,14 @@ try {
                 const UNIT = WORLD.units.find((unit) => unit.id === notice.unit);
                 if (UNIT) {
                     ADD(OBS.launches[UNIT.faction], UNIT.species);
+                    if (UNIT.species === 3) {
+                        const TARGET = WORLD.attackTarget(UNIT, UNIT.ability.action);
+                        OBS.chestnutShots.push({
+                            faction: UNIT.faction,
+                            projectile: !!UNIT.ability.action?.chestnutAttack,
+                            surfaceGap: TARGET ? Math.hypot(UNIT.x - TARGET.x, UNIT.y - TARGET.y) - TARGET.radius : 0,
+                        });
+                    }
                 }
             }
             if (notice.kind === 'unit-hit' || notice.kind === 'boss-hit') {
@@ -444,6 +453,9 @@ try {
             BUDMORI.sim.simulationTick >= OBS.startTick + 80 &&
             OBS.launches.player.length === 9 &&
             OBS.launches.enemy.length > 0 &&
+            ['player', 'enemy'].every((faction) =>
+                OBS.chestnutShots.some((shot) => shot.faction === faction && shot.projectile && shot.surfaceGap > 2.5),
+            ) &&
             OBS.attacking.length === 9 &&
             OBS.rendered.enemy.length === 9 &&
             OBS.wheatForms.length === 2 &&
@@ -857,6 +869,13 @@ try {
         'grown allies really regenerate',
     );
     assert.deepEqual([...COMBAT.launches.player].sort(), [0, 1, 2, 3, 4, 5, 6, 7, 8], 'every species really attacks');
+    assert.ok(
+        COMBAT.chestnutShots.every((shot) => shot.projectile) &&
+            ['player', 'enemy'].every((faction) =>
+                COMBAT.chestnutShots.some((shot) => shot.faction === faction && shot.surfaceGap > 2.5),
+            ),
+        'both researched troops and unresearched enemy chestnuts fire from outside contact range',
+    );
     assert.deepEqual([...COMBAT.rendered.player].sort(), [0, 1, 2, 3, 4, 5, 6, 7, 8], 'all allies use native draws');
     assert.deepEqual(
         [...COMBAT.rendered.enemy].sort(),

@@ -57,7 +57,7 @@ export function installChestnutMotionObserver({ body, thornColors }) {
                 CHOSEN = CASE === 'small-boss' ? SORTED[0] : SORTED.at(-1);
             WORLD.configureBossStage(1, CHOSEN.species);
             Object.assign(WORLD.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
-            UNIT.x = -(WORLD.boss.radius + (UNIT.tier >= 3 ? 2 : 1.45));
+            UNIT.x = -(WORLD.boss.radius + UNIT.ability.attackRange(WORLD));
             UNIT.y = 0;
             WORLD._unitSpatialDirty = true;
             STATE.fixture.selectedBoss = CHOSEN;
