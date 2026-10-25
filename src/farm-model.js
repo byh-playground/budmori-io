@@ -104,6 +104,7 @@ import {
 } from './boss-patterns.js';
 import { FACTION_CONFIG, hasFaction, areOpposingFactions } from './factions.js';
 import { FixedSpatialGrid } from './spatial-grid.js';
+import { scatterDestination } from './army-scatter.js';
 // Bosses reuse the neutral, tier-one species kit, never the player's investments.
 export const BOSS_ATTACK_PROGRESSION = createAbilityProgressionState();
 for (const BUILD of Object.values(BOSS_ATTACK_PROGRESSION.abilities)) {
@@ -182,7 +183,13 @@ const CONFIG = Object.freeze({
             maxMaterials: MAX_GRADE_MATERIAL_COUNT,
         }),
         // The regular frontline is half of the farm's capacity, fixed for one floor.
-        deploy: Object.freeze({ cooldownSeconds: 0.1, initialSeconds: 1.5, maxFrontline: 500, scatterGap: 1.2 }),
+        deploy: Object.freeze({
+            cooldownSeconds: 0.1,
+            initialSeconds: 1.5,
+            maxFrontline: 500,
+            scatterGap: 1.2,
+            scatterAttackShare: 0.25,
+        }),
         // Draft numbers for the tower: every 5th floor is a mid-boss; fallen units sleep tier (max 3) floors.
         tower: Object.freeze({
             midBossEvery: 5,
@@ -857,6 +864,7 @@ class BossController {
             wheatCommandBuffs: [],
             barleyArmorShredBuckets: createBarleyArmorShredBuckets(),
             landingRecovery: 0,
+            scatterAttackCount: 0,
             kidneyLeapReadyTick: 0,
             kidneyLeapLastUseTick: 0,
             chestnutNextThornTick: 0,
@@ -1054,6 +1062,7 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
             hp: statProfile?.maxHp ?? STATS(tier, species).maxHp,
             down: 0,
             seed: typeof id === 'number' ? id * 2.39996 : 0,
+            scatterAttackCount: 0,
             ownerId: '',
             farmId: 0,
             dropLanded: true,
@@ -1369,6 +1378,11 @@ const GARDEN = class Garden {
         this._bossHitCandidates = [];
         this._armyThreats = [];
         this._armyThreatTick = -1;
+        this._armySpacingTick = -1;
+        this._armySpacingRadius = 0;
+        this._armySpacingNeighbors = [];
+        this._armySpacingRadii = new Map();
+        this._armyAttackTurns = new Set();
         this._mergeNearestScratch = [];
         this._mergeMaterialsScratch = [];
         this._mergeIdScratch = [];
@@ -1420,6 +1434,11 @@ const GARDEN = class Garden {
             '_bossHitCandidates',
             '_armyThreats',
             '_armyThreatTick',
+            '_armySpacingTick',
+            '_armySpacingRadius',
+            '_armySpacingNeighbors',
+            '_armySpacingRadii',
+            '_armyAttackTurns',
             '_mergeNearestScratch',
             '_mergeMaterialsScratch',
             '_mergeIdScratch',
@@ -1812,6 +1831,10 @@ const GARDEN = class Garden {
         this.battleCommand = 'engage';
         this._armyThreatTick = -1;
         this._armyThreats.length = 0;
+        this._armySpacingTick = -1;
+        this._armySpacingNeighbors.length = 0;
+        this._armySpacingRadii.clear();
+        this._armyAttackTurns.clear();
         // True while the troops are inside the tower: the battlefield is its hall, not the farm.
         this.insideTower = false;
         this.tower = {
@@ -3196,6 +3219,9 @@ const GARDEN = class Garden {
         return Math.max(0, this._deployReadyTime - this.time);
     }
     _beginArmyDeployment() {
+        for (const UNIT of this.unitCollection.items) {
+            UNIT.scatterAttackCount = 0;
+        }
         this.frontlineLimit = Math.min(CONFIG.farm.deploy.maxFrontline, Math.floor(this.capacity / 2));
         this._benched = new Set(this.unitCollection.items.filter((unit) => !unit.isBattleOnlySummon));
         this._benchRevision++;
@@ -3209,7 +3235,7 @@ const GARDEN = class Garden {
             return false;
         }
         this.battleCommand = command;
-        if (command === 'retreat') {
+        if (command === 'retreat' || command === 'scatter') {
             for (const UNIT_LOCAL of this.unitCollection.items) {
                 if (hasFaction(UNIT_LOCAL, FACTION_CONFIG.PLAYER) && UNIT_LOCAL.ability.phase === 'windup') {
                     // Do not cancel special skills, launched projectiles or committed leaps.
@@ -4635,6 +4661,9 @@ const GARDEN = class Garden {
         this._contactCorrectionCount = new Uint32Array(CAPACITY);
     }
     solveContactSeparations(units, dt) {
+        if (this.tower.active && this.battleCommand === 'scatter') {
+            this._prepareArmySpacing();
+        }
         this._ensureContactSolverBuffers(units.length);
         // Body geometry does not change inside a Jacobi solve. Cache it once,
         // rather than evaluating authored shape/grade/giant getters per pair.
@@ -4692,7 +4721,10 @@ const GARDEN = class Garden {
                             SCATTER_COMMAND &&
                             hasFaction(UNIT_LOCAL, FACTION_CONFIG.PLAYER) &&
                             hasFaction(OTHER, FACTION_CONFIG.PLAYER),
-                        GAP = SCATTER ? CONFIG.farm.deploy.scatterGap : 0.22,
+                        GAP =
+                            SCATTER && !(this._armyAttackTurns.has(UNIT_LOCAL) && this._armyAttackTurns.has(OTHER))
+                                ? CONFIG.farm.deploy.scatterGap
+                                : 0.22,
                         SOFT =
                             DISTANCE >= RADIUS &&
                             DISTANCE < RADIUS + GAP &&
@@ -5426,6 +5458,9 @@ const GARDEN = class Garden {
             this.combatLog.shift();
         }
         if (kind === 'launch') {
+            if (this.tower.active && this.battleCommand === 'scatter' && hasFaction(u, FACTION_CONFIG.PLAYER)) {
+                u.scatterAttackCount++;
+            }
             this.combat('attack-launch', {
                 species: u.species,
                 unit: u.id,
@@ -5734,6 +5769,65 @@ const GARDEN = class Garden {
         }
         this.steer(unit, bestX, bestY, dt, SPEED);
     }
+    _prepareArmySpacing() {
+        if (this._armySpacingTick !== this.simulationTick) {
+            this._armySpacingTick = this.simulationTick;
+            this._armySpacingRadius = 0;
+            this._armySpacingRadii.clear();
+            this._armyAttackTurns.clear();
+            const CANDIDATES = [];
+            for (const ALLY of this.units) {
+                if (ALLY.hp > 0 && hasFaction(ALLY, FACTION_CONFIG.PLAYER)) {
+                    const RADIUS = ALLY.radius;
+                    this._armySpacingRadius = Math.max(this._armySpacingRadius, RADIUS);
+                    this._armySpacingRadii.set(ALLY, RADIUS);
+                    if (ALLY.dropLanded) {
+                        CANDIDATES.push(ALLY);
+                    }
+                }
+            }
+            // Successful launches rotate the scarce approach space. Priority is
+            // checkpointed on the actor, so the same inner troops cannot monopolize it.
+            CANDIDATES.sort((a, b) => a.scatterAttackCount - b.scatterAttackCount || a.id - b.id);
+            const LIMIT = Math.ceil(
+                Math.min(CANDIDATES.length, CONFIG.farm.deploy.maxFrontline) * CONFIG.farm.deploy.scatterAttackShare,
+            );
+            for (const ALLY of CANDIDATES.slice(0, LIMIT)) {
+                this._armyAttackTurns.add(ALLY);
+            }
+        }
+    }
+    _scatterArmyUnit(unit, dt, enemy, attackDistance) {
+        this._prepareArmySpacing();
+        if (this._armyAttackTurns.has(unit)) {
+            return false;
+        }
+        const GAP = CONFIG.farm.deploy.scatterGap,
+            QUERY_RADIUS = unit.radius + this._armySpacingRadius + GAP * 2.5;
+        this.unitSpatial.queryAABB(
+            unit.x - QUERY_RADIUS,
+            unit.y - QUERY_RADIUS,
+            unit.x + QUERY_RADIUS,
+            unit.y + QUERY_RADIUS,
+            this._armySpacingNeighbors,
+        );
+        const DESTINATION = scatterDestination(
+            unit,
+            this._armySpacingNeighbors,
+            this._armyThreatsForTick(),
+            GAP,
+            ARENA_GEOMETRY.bounds(this.scene, unit.radius + 0.1),
+            enemy,
+            attackDistance,
+            this._armySpacingRadii,
+        );
+        if (!DESTINATION) {
+            unit.vx = unit.vy = 0;
+            return true;
+        }
+        this.steer(unit, DESTINATION.x, DESTINATION.y, dt, scaleMoveSpeed(unit.bodyProfile ? 1 : 4.1, unit));
+        return true;
+    }
     battleUnit(u, dt, enemy = null) {
         if (!u.dropLanded || (enemy && !areOpposingFactions(u, enemy))) {
             return;
@@ -5789,6 +5883,14 @@ const GARDEN = class Garden {
             STAND = B_LOCAL.radius + u.ability.attackRange(this),
             MIN = STAND - 0.55,
             MAX = STAND + BEHAVIOR.outerRangeSlack;
+        if (
+            this.tower.active &&
+            this.battleCommand === 'scatter' &&
+            hasFaction(u, FACTION_CONFIG.PLAYER) &&
+            this._scatterArmyUnit(u, dt, enemy, MAX)
+        ) {
+            return;
+        }
         if (N > MAX || (BEHAVIOR.retreatWithinRange && N < MIN)) {
             const SLOT = ARENA_GEOMETRY.clamp(
                 {
