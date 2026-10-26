@@ -10,7 +10,7 @@ export class LeapBossPattern extends BossPattern {
         return this.attackExtentFor(boss, this.config.landingRadius);
     }
     writeArea(boss, action, scene, pad, area) {
-        const { CONFIG, CLAMP } = this.dependencies;
+        const { ARENA_GEOMETRY, CLAMP } = this.dependencies;
         area.kind = 'leap';
         area.width = boss.radius + pad;
         area.reach = this.landingRadiusFor(boss) + pad;
@@ -24,11 +24,9 @@ export class LeapBossPattern extends BossPattern {
                 x = boss.x + (DX / D_LOCAL) * this.reachFor(boss);
                 y = boss.y + (DY / D_LOCAL) * this.reachFor(boss);
             }
-            const RX = CONFIG[scene].arena.radiusX - boss.radius - 0.25,
-                RY = CONFIG[scene].arena.radiusY - boss.radius - 0.25,
-                K = Math.max(1, Math.hypot(x / RX, y / RY));
-            x /= K;
-            y /= K;
+            const LAND = ARENA_GEOMETRY.clamp({ x, y }, scene, boss.radius + 0.25);
+            x = LAND.x;
+            y = LAND.y;
         }
         area.targetX = x;
         area.targetY = y;
@@ -56,7 +54,7 @@ export class LeapBossPattern extends BossPattern {
                 x,
                 y,
             },
-            world.scene,
+            world,
             boss.radius + 0.25,
         );
         action.target = {

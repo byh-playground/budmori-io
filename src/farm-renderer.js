@@ -26,7 +26,7 @@ import {
 } from './vector-sockets.js';
 import { bindBossSocketAsset, bossHandRig, unbindBossSocketAsset } from './boss-vector-sockets.js';
 import { BossPresentation, bossAttackPresentation } from './farm-render-boss.js';
-import { CONFIG, clamp, bossAttackArea } from './farm-model.js';
+import { CONFIG, clamp, bossAttackArea, ArenaGeometry } from './farm-model.js';
 import { bossDangerContour } from './attack-telegraph.js';
 import { drawFarmGrounds, drawTowerHall } from './farm-scenery.js';
 const { bosses: BOSS_VECTOR_ASSETS, troops: TROOP_VECTOR_ASSETS } = globalThis.BudmoriVectorResources;
@@ -72,8 +72,7 @@ const EMPTY_UNIT_IDS = new Set();
 const GRADE_RING_COLORS = UNIT_GRADES.map(({ outlineColor }) => outlineColor);
 const GRADE_RING_WIDTHS = UNIT_GRADES.map(({ tier }) => 0.05 + 0.012 * (tier - 2));
 const CORN_ATTACHMENT_PRESENTATION = new CornAttachmentPresentation();
-const ZOOM_MIN = 0.06,
-    ZOOM_MAX = 1.8;
+const ZOOM_MAX = 1.8;
 const DIORAMA = class Diorama {
     constructor(canvas) {
         this.canvas = canvas;
@@ -185,13 +184,28 @@ const DIORAMA = class Diorama {
         this.assetsReady = true;
     }
     resize() {
+        const CENTER = this.view
+            ? {
+                  x: this.canvas.width / (2 * this.scale) - this.offset[0] - this.view[0],
+                  y: (this.view[1] - this.canvas.height / (2 * this.scale) - this.offset[1]) / WORLD_DEPTH_PROJECTION,
+              }
+            : null;
         const R = this.canvas.getBoundingClientRect(),
             D = Math.min(globalThis.devicePixelRatio || 1, 2);
         this.canvas.width = Math.round(R.width * D);
         this.pixelRatio = D;
         this.canvas.height = Math.round(R.height * D);
         this.aspect = R.width / R.height;
+        if (this.insideTower && this.manualCamera) {
+            this.zoom = clamp(this.zoom, this.minimumZoom(), ZOOM_MAX);
+        }
         this.configure(this.scene || 'farm', true);
+        if (CENTER && this.manualCamera) {
+            this.setPan(
+                -CENTER.x,
+                this.view[1] - this.baseY() - this.canvas.height / (2 * this.scale) - CENTER.y * WORLD_DEPTH_PROJECTION,
+            );
+        }
     }
     project(x, y, z = 0) {
         return {
@@ -206,7 +220,7 @@ const DIORAMA = class Diorama {
             PX = (clientX - R.left) * this.pixelRatio,
             PY = (clientY - R.top) * this.pixelRatio;
         return {
-            x: PX / this.scale - this.offset[0] - this.view[0],
+            x: PX / this.scale - this.offset[0] - this.view[0] - (this.shakeX || 0),
             y: (this.view[1] - PY / this.scale - this.offset[1]) / WORLD_DEPTH_PROJECTION,
         };
     }
@@ -234,7 +248,7 @@ const DIORAMA = class Diorama {
         const ZOOM = scene === 'farm' ? this.zoom : 1;
         this.view = [this.baseView[0] / ZOOM, this.baseView[1] / ZOOM];
         this.scale = this.canvas.width / (2 * this.view[0]);
-        const { radiusX: RX, radiusY: RY } = CONFIG[scene].arena;
+        const { radiusX: RX, radiusY: RY } = this.cameraArena || CONFIG[scene].arena;
         // Keep the authored zoom. Pan only far enough to inspect the terrain and
         // tall boss art at its edge; never move simulation bodies or saved points.
         const BOUNDS = {
@@ -318,7 +332,7 @@ const DIORAMA = class Diorama {
         if (this.scene !== 'farm' || !(factor > 0)) {
             return false;
         }
-        const NEXT = clamp(this.zoom * factor, ZOOM_MIN, ZOOM_MAX);
+        const NEXT = clamp(this.zoom * factor, this.minimumZoom(), ZOOM_MAX);
         if (NEXT === this.zoom) {
             return false;
         }
@@ -333,6 +347,18 @@ const DIORAMA = class Diorama {
         this.setPan(PX / this.scale - this.view[0] - WX, this.view[1] - PY / this.scale - WY - BASE_Y);
         return true;
     }
+    minimumZoom() {
+        const BASE = this.scenePresentation.cameraView(this.aspect),
+            ARENA = this.insideTower ? CONFIG.farm.tower.arena : CONFIG.farm.arena,
+            OVERVIEW = Math.min(
+                BASE[0] / (ARENA.radiusX + 1),
+                BASE[1] / (ARENA.radiusY * WORLD_DEPTH_PROJECTION + 3.5),
+            );
+        return this.insideTower ? OVERVIEW : Math.min(this.homeZoom() / 2, OVERVIEW);
+    }
+    takeCameraControl() {
+        this.manualCamera = true;
+    }
     // A wide screen sits a little further back and higher up, so the tower behind the farm shows.
     homeZoom() {
         return this.aspect > 1.2 ? 0.72 : 1;
@@ -341,6 +367,12 @@ const DIORAMA = class Diorama {
         return this.aspect < 0.8 ? 1.1 : this.aspect > 1.2 ? -3.3 : -0.3;
     }
     resetZoom() {
+        this.manualCamera = false;
+        if (this.insideTower && this.cameraWorld) {
+            this.hallFramingKey = null;
+            this.fitHall(this.cameraWorld);
+            return true;
+        }
         this.zoom = this.homeZoom();
         this.configure(this.scene, true);
         return this.resetPan();
@@ -485,16 +517,19 @@ const DIORAMA = class Diorama {
             this.fitAttackPreview(sim2);
             return;
         }
+        this.cameraDirected = false;
         const INSIDE = !!sim2.insideTower,
             KEY = INSIDE ? `in${sim2.tower?.floor}` : 'out',
             MARCHING = sim2.farmBossEvent?.phase === 'marching';
         if (this.sceneKey === undefined) {
             this.sceneKey = KEY;
+            this.manualCamera = false;
             this.sceneChangedAt = -1e9;
             this.towerShotUntil = 0;
         } else if (KEY !== this.sceneKey) {
             const WAS_INSIDE = this.sceneKey !== 'out';
             this.sceneKey = KEY;
+            this.manualCamera = false;
             this.sceneChangedAt = now;
             if (INSIDE && !WAS_INSIDE) {
                 this.fitHall(sim2);
@@ -508,10 +543,14 @@ const DIORAMA = class Diorama {
         if (INSIDE) {
             this.towerShotUntil = 0;
             this.cameraReturning = false;
-            this.fitHall(sim2);
+            this.cameraDirected = now - this.sceneChangedAt < 700;
+            if (!this.manualCamera) {
+                this.fitHall(sim2);
+            }
             return;
         }
         if (MARCHING || now < this.towerShotUntil) {
+            this.cameraDirected = true;
             const ZOOM_TARGET = this.aspect > 1.2 ? 0.55 : 0.8;
             this.zoom += (ZOOM_TARGET - this.zoom) * 0.07;
             this.configure(this.scene, true);
@@ -520,6 +559,7 @@ const DIORAMA = class Diorama {
             this.setPan(this.pan.x * 0.9, this.pan.y + (TARGET_Y - this.pan.y) * 0.07);
             this.cameraReturning = true;
         } else if (this.cameraReturning && !INSIDE) {
+            this.cameraDirected = true;
             this.zoom += (this.homeZoom() - this.zoom) * 0.1;
             this.configure(this.scene, true);
             this.setPan(this.pan.x * 0.9, this.pan.y * 0.9);
@@ -725,7 +765,8 @@ const DIORAMA = class Diorama {
         this.setPan(PAN_X, PAN_Y);
     }
 
-    // Inside the tower the whole hall is always in view: no panning or zooming, so tapping anywhere deploys.
+    // The original 46 x 34 framing preserves readable troops in the larger hall.
+    // Default view reserves airborne effects; manual control remains stable until reset or a new floor.
     fitHall(world) {
         const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena,
             BASE = this.scenePresentation.cameraView(this.aspect),
@@ -780,7 +821,7 @@ const DIORAMA = class Diorama {
             return;
         }
         for (const BOSS of sim2.bosses) {
-            const AREA = renderedBossAttackArea(BOSS, sim2.scene, this.telegraphBoss, this.dangerArea);
+            const AREA = renderedBossAttackArea(BOSS, sim2, this.telegraphBoss, this.dangerArea);
             if (AREA) {
                 this.drawBossTelegraph(AREA);
                 if (BOSS.id === sim2.boss.id) {
@@ -873,7 +914,12 @@ const DIORAMA = class Diorama {
         this.feel = feel;
         this.displayTimeMs = now;
         this.shakeX = this.feel?.shake(now) || 0;
-        this.configure(sim2.scene);
+        this.cameraWorld = sim2;
+        const ARENA = ArenaGeometry.arena(sim2),
+            ARENA_CHANGED = this.cameraArena !== ARENA;
+        this.cameraArena = ARENA;
+        this.insideTower = !!sim2.insideTower;
+        this.configure(sim2.scene, ARENA_CHANGED);
         this.directCamera(sim2, now);
         const C = this.ctx,
             PRESENTATION = this.scenePresentation;

@@ -7,30 +7,21 @@ export class ChargeBossPattern extends BossPattern {
         this.physicalActive = true;
     }
     writeArea(boss, action, scene, pad, area) {
-        const { CONFIG } = this.dependencies;
+        const { ARENA_GEOMETRY } = this.dependencies;
         area.kind = 'charge';
         area.width = boss.radius + pad;
         const SX = action.start?.x ?? boss.x,
             SY = action.start?.y ?? boss.y,
-            DX = Math.cos(area.angle),
-            DY = Math.sin(area.angle);
-        // The 50ms motion is clamped to the arena boundary; the telegraph follows
-        // that same swept lane without splitting the fixed tick.
-        const RX = CONFIG[scene].arena.radiusX - boss.radius - 0.25,
-            RY = CONFIG[scene].arena.radiusY - boss.radius - 0.25;
-        const A_LOCAL = (DX * DX) / (RX * RX) + (DY * DY) / (RY * RY),
-            B_LOCAL = 2 * ((SX * DX) / (RX * RX) + (SY * DY) / (RY * RY)),
-            C_LOCAL = (SX * SX) / (RX * RX) + (SY * SY) / (RY * RY) - 1;
-        const EXIT = Math.max(
-            0,
-            (-B_LOCAL + Math.sqrt(Math.max(0, B_LOCAL * B_LOCAL - 4 * A_LOCAL * C_LOCAL))) / (2 * A_LOCAL),
-        );
-        const DISTANCE = Math.min(this.reachFor(boss), EXIT);
-        const EX = SX + DX * DISTANCE,
-            EY = SY + DY * DISTANCE,
-            K = Math.max(1, Math.hypot(EX / RX, EY / RY));
-        area.endX = action.phase === 'recover' ? boss.x : EX / K;
-        area.endY = action.phase === 'recover' ? boss.y : EY / K;
+            END = ARENA_GEOMETRY.rayEnd(
+                { x: SX, y: SY },
+                Math.cos(area.angle),
+                Math.sin(area.angle),
+                this.reachFor(boss),
+                scene,
+                boss.radius + 0.25,
+            );
+        area.endX = action.phase === 'recover' ? boss.x : END.x;
+        area.endY = action.phase === 'recover' ? boss.y : END.y;
         area.x = SX;
         area.y = SY;
     }
@@ -73,7 +64,7 @@ export class ChargeBossPattern extends BossPattern {
                 x: boss.x + DIRECTION.x * DISTANCE,
                 y: boss.y + DIRECTION.y * DISTANCE,
             },
-            BOUNDED = ARENA_GEOMETRY.clamp(CANDIDATE, world.scene, boss.radius + 0.25),
+            BOUNDED = ARENA_GEOMETRY.rayEnd(OLD, DIRECTION.x, DIRECTION.y, DISTANCE, world, boss.radius + 0.25),
             HIT_BOUNDARY = Math.hypot(CANDIDATE.x - BOUNDED.x, CANDIDATE.y - BOUNDED.y) > 1e-8;
         boss.x = BOUNDED.x;
         boss.y = BOUNDED.y;

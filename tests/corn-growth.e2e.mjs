@@ -241,7 +241,7 @@ async function captureMainCombat(page, tier, mobile) {
         const WORLD = BUDMORI.sim;
         HELP_SCENE_BY_ID(`corn-t${selectedTier}`).setup(WORLD);
         // One fixed giant across tiers/viewports makes silhouette and camera comparisons meaningful.
-        WORLD.configureBossStage(1, 6);
+        WORLD.boss.controller.configureStage(1, 6);
         Object.assign(WORLD.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
         WORLD.units[0].x = -(WORLD.boss.radius + 4.1 + (selectedTier - 1) * 0.12);
         WORLD._unitSpatialDirty = true;
@@ -327,6 +327,30 @@ async function captureMainCombat(page, tier, mobile) {
             ),
         );
         TRACE.at(-1).framing = await assertCombatFraming(page);
+        if (STAGE === 'flight' && tier === 6) {
+            const MANUAL = await page.evaluate(async () => {
+                const R = BUDMORI.renderer,
+                    { snapshot: SNAPSHOT } = await import('./src/farm-state.js'),
+                    BEFORE = JSON.stringify(SNAPSHOT(BUDMORI.sim)),
+                    DISPLAY = R.cameraWorld;
+                R.takeCameraControl();
+                R.zoomAt(1.6);
+                R.panByScreen(35, 20);
+                const EXPECTED = { zoom: R.zoom, pan: R.cameraPan };
+                R.render(DISPLAY, null, DISPLAY.displayTimeMs);
+                const AFTER = { zoom: R.zoom, pan: R.cameraPan };
+                R.resetZoom();
+                R.render(DISPLAY, null, DISPLAY.displayTimeMs);
+                return {
+                    expected: EXPECTED,
+                    after: AFTER,
+                    unchanged: BEFORE === JSON.stringify(SNAPSHOT(BUDMORI.sim)),
+                };
+            });
+            assert.deepEqual(MANUAL.after, MANUAL.expected, 'manual framing stays fixed during meteor flight');
+            assert.ok(MANUAL.unchanged, 'camera and reset preserve the complete paused world');
+            TRACE.at(-1).resetFraming = await assertCombatFraming(page);
+        }
         await page.screenshot({
             path: path.join(OUTPUT, `${VIEWPORT}-main-t${tier}-${STAGE}.png`),
         });
@@ -352,11 +376,13 @@ async function captureCrowdedCombat(page, mobile) {
         await activate(page.locator('#gameMenuClose'), mobile);
     }
     const INITIAL = await page.evaluate(async () => {
-        const { helpSceneById: HELP_SCENE_BY_ID } = await import('./src/help-scenes.js');
-        const WORLD = BUDMORI.sim,
-            LIMIT = BUDMORI.CONFIG.farm.capacity.max;
+        const { helpSceneById: HELP_SCENE_BY_ID } = await import('./src/help-scenes.js'),
+            { overallXpForLevel: XP_FOR_LEVEL } = await import('./src/player-progression.js');
+        const WORLD = BUDMORI.sim;
+        WORLD.playerProgression.overallXp = XP_FOR_LEVEL(41);
         HELP_SCENE_BY_ID('corn-t6').setup(WORLD);
-        WORLD.configureBossStage(1, 6);
+        const LIMIT = WORLD.frontlineLimit;
+        WORLD.boss.controller.configureStage(1, 6);
         Object.assign(WORLD.boss, { z: 0, hp: 1e10, maxHp: 1e10, stun: 0 });
         for (let index = 1; index < LIMIT; index++) {
             const SPECIES = index < 60 ? 1 : [0, 2, 3, 4, 5, 6, 7, 8][(index - 60) % 8],
@@ -373,7 +399,7 @@ async function captureCrowdedCombat(page, mobile) {
         WORLD._unitSpatialDirty = true;
         return { limit: LIMIT, count: WORLD.units.filter((unit) => !unit.isBattleOnlySummon).length };
     });
-    assert.equal(INITIAL.limit, 200, 'fixture follows the actual product population limit');
+    assert.equal(INITIAL.limit, 500, 'fixture follows the actual maximum frontline');
     assert.equal(INITIAL.count, INITIAL.limit, 'maximum mixed army really spawned');
     let overlap = true;
     try {
@@ -427,8 +453,8 @@ async function captureCrowdedCombat(page, mobile) {
     });
     progress(
         overlap
-            ? '200 mixed army: real boss windup and meteors captured'
-            : '200 mixed army: no windup/meteor overlap observed within 20s; current state captured',
+            ? '500 mixed army: real boss windup and meteors captured'
+            : '500 mixed army: no windup/meteor overlap observed within 20s; current state captured',
     );
     await resumeCapturedFrame(page);
 }

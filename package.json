@@ -20,6 +20,7 @@
         "check": "npm run format:check && npm run lint && node scripts/ability-reference.mjs --check && node --check src/bootstrap.js && node --check src/farm-app.js && node --check src/vector-sockets.js && node --check src/features/unit-body/definition.js && node scripts/source-graph.mjs",
         "test:source-smoke": "node tests/source-smoke.e2e.mjs",
         "test:tower-army": "node tests/tower-army.e2e.mjs",
+        "test:camera": "node tests/battle-camera.e2e.mjs",
         "test:scatter-command": "node tests/scatter-command.e2e.mjs",
         "test:scatter-participation": "node tests/scatter-participation.test.mjs"
     },

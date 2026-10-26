@@ -14,7 +14,7 @@ import {
     statCard,
     statCardText,
 } from './tower-run.js';
-import { Garden, CONFIG, ArenaGeometry, ATTACK_TYPES, Ballistics } from './farm-model.js';
+import { Garden, CONFIG, ArenaGeometry, ATTACK_TYPES, Ballistics, clamp } from './farm-model.js';
 import { Diorama } from './farm-renderer.js';
 import { FarmSession, LOCAL_PROFILE } from './farm-session.js';
 import { FarmStorage } from './farm-storage.js';
@@ -54,7 +54,9 @@ let menuTab = 'play';
 let menuWasPaused = true;
 let menuPauseChanged = false;
 let menuAutoPaused = false;
-let panPointer = null;
+let cameraGesture = null;
+const CAMERA_POINTERS = new Map();
+let suppressCanvasClick = false;
 let handKey = '';
 let farmSortTransition = null;
 let farmPanelRevision = -1;
@@ -333,6 +335,7 @@ function showBossRewardDialog(receipt, { auto = false } = {}) {
         bossRewardPortraitReceiptKey = '';
     }
     bossRewardDialogReceiptKey = receipt.receiptKey;
+    stopWorldInput();
     DIALOG.hidden = false;
     DOLLAR('bossRewardOpen').hidden = true;
     renderBossRewardBoxes(receipt);
@@ -1947,6 +1950,22 @@ DOLLAR('handCards').addEventListener('click', (e) => {
 function canUseWorldInput() {
     return !home && !menuOpen && !active.paused && !farmSortTransition;
 }
+function canUseCamera() {
+    return (
+        canUseWorldInput() &&
+        active.world.scene === 'farm' &&
+        active.world.farmBossEvent?.phase !== 'marching' &&
+        active.world.tower?.phase !== 'summit' &&
+        !RENDERER.cameraDirected &&
+        ![...document.querySelectorAll('[aria-modal="true"]')].some(
+            (node) => !node.hidden && node.getClientRects().length,
+        )
+    );
+}
+function cameraPlace() {
+    const WORLD = active.world;
+    return WORLD.insideTower ? 'tower:' + WORLD.tower.floor : WORLD.scene;
+}
 function cancelFarmSortTransition() {
     if (!farmSortTransition) {
         return false;
@@ -1989,105 +2008,124 @@ function beginFarmSortTransition(order) {
     }, 250);
     return true;
 }
-function stopPan(e) {
-    if (e && panPointer && e.pointerId !== panPointer.id) {
+function pointerSpan() {
+    const [A, B] = [...CAMERA_POINTERS.values()];
+    return B
+        ? { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2, distance: Math.hypot(A.x - B.x, A.y - B.y) }
+        : { ...A, distance: 0 };
+}
+function rebaseCameraGesture() {
+    const SPAN = CAMERA_POINTERS.size ? pointerSpan() : null;
+    cameraGesture = SPAN
+        ? {
+              ...SPAN,
+              zoom: RENDERER.zoom,
+              anchor: RENDERER.screenToWorld(SPAN.x, SPAN.y),
+              place: cameraPlace(),
+              world: active.world,
+          }
+        : null;
+}
+function stopWorldInput() {
+    const IDS = [...CAMERA_POINTERS.keys()];
+    CAMERA_POINTERS.clear();
+    cameraGesture = null;
+    for (const ID of IDS) {
+        if (CANVAS.hasPointerCapture(ID)) {
+            CANVAS.releasePointerCapture(ID);
+        }
+    }
+}
+function endCameraPointer(event) {
+    if (!CAMERA_POINTERS.delete(event.pointerId)) {
         return;
     }
-    const ID = panPointer?.id;
-    panPointer = null;
-    if (ID !== undefined && CANVAS.hasPointerCapture?.(ID)) {
-        CANVAS.releasePointerCapture(ID);
+    if (CANVAS.hasPointerCapture(event.pointerId)) {
+        CANVAS.releasePointerCapture(event.pointerId);
     }
-}
-function stopWorldInput(e) {
-    if (e) {
-        PINCH_POINTERS.delete(e.pointerId);
-    } else {
-        PINCH_POINTERS.clear();
-    }
-    pinchDistance = 0;
-    stopPan(e);
-}
-const PINCH_POINTERS = new Map();
-let pinchDistance = 0;
-function pinchSpan() {
-    const [A, B] = [...PINCH_POINTERS.values()];
-    return { distance: Math.hypot(A.x - B.x, A.y - B.y), x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
+    rebaseCameraGesture();
 }
 CANVAS.addEventListener(
     'wheel',
-    (e) => {
-        if (!canUseWorldInput() || active?.world.scene !== 'farm' || active.world.insideTower) {
+    (event) => {
+        if (!canUseCamera()) {
             return;
         }
-        const LINE = e.deltaMode === 1 ? 16 : 1;
-        RENDERER.zoomAt(Math.exp(-e.deltaY * LINE * 0.0016), e.clientX, e.clientY);
-        e.preventDefault();
+        const UNIT = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? CANVAS.clientHeight : 1;
+        RENDERER.takeCameraControl();
+        RENDERER.zoomAt(Math.exp(clamp(-event.deltaY * UNIT * 0.0016, -4, 4)), event.clientX, event.clientY);
+        event.preventDefault();
     },
     { passive: false },
 );
-CANVAS.addEventListener('pointerdown', (e) => {
+CANVAS.addEventListener('pointerdown', (event) => {
     FOOD_FEEL.unlock();
-    if (
-        e.pointerType === 'touch' &&
-        canUseWorldInput() &&
-        active?.world.scene === 'farm' &&
-        !active.world.insideTower
-    ) {
-        PINCH_POINTERS.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        if (PINCH_POINTERS.size === 2) {
-            if (panPointer) {
-                panPointer.mode = 'pinch';
-            }
-            pinchDistance = pinchSpan().distance;
-            CANVAS.setPointerCapture?.(e.pointerId);
-            e.preventDefault();
-            return;
-        }
-    }
-    if (e.button !== 0 || !canUseWorldInput() || panPointer) {
+    if (event.button !== 0 || !canUseCamera()) {
         return;
     }
-    panPointer = {
-        id: e.pointerId,
-        // Inside the tower nothing moves. On the farm the land can be dragged.
-        mode: active.world.insideTower ? 'still' : 'pan',
-        startX: e.clientX,
-        startY: e.clientY,
-        x: e.clientX,
-        y: e.clientY,
-    };
-    CANVAS.setPointerCapture?.(e.pointerId);
-    e.preventDefault();
+    if (!CAMERA_POINTERS.size) {
+        suppressCanvasClick = false;
+    }
+    CAMERA_POINTERS.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    suppressCanvasClick ||= CAMERA_POINTERS.size > 1;
+    rebaseCameraGesture();
+    CANVAS.setPointerCapture(event.pointerId);
+    event.preventDefault();
 });
-CANVAS.addEventListener('pointermove', (e) => {
-    if (PINCH_POINTERS.has(e.pointerId)) {
-        PINCH_POINTERS.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        if (PINCH_POINTERS.size === 2 && pinchDistance > 0) {
-            const SPAN = pinchSpan();
-            RENDERER.zoomAt(SPAN.distance / pinchDistance, SPAN.x, SPAN.y);
-            pinchDistance = SPAN.distance;
-            e.preventDefault();
-            return;
-        }
-    }
-    if (!panPointer || e.pointerId !== panPointer.id) {
+CANVAS.addEventListener('pointermove', (event) => {
+    if (!CAMERA_POINTERS.has(event.pointerId)) {
         return;
     }
-    if (!canUseWorldInput()) {
-        stopWorldInput(e);
+    if (!canUseCamera() || cameraGesture?.place !== cameraPlace() || cameraGesture.world !== active.world) {
+        stopWorldInput();
         return;
     }
-    if (panPointer.mode === 'pan') {
-        RENDERER.panByScreen(e.clientX - panPointer.x, e.clientY - panPointer.y);
-        panPointer.x = e.clientX;
-        panPointer.y = e.clientY;
+    CAMERA_POINTERS.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const SPAN = pointerSpan(),
+        DX = SPAN.x - cameraGesture.x,
+        DY = SPAN.y - cameraGesture.y;
+    // A small single-pointer movement stays a tap; multi-touch always owns the gesture.
+    if (!suppressCanvasClick && Math.hypot(DX, DY) < 5) {
+        return;
     }
-    e.preventDefault();
+    suppressCanvasClick = true;
+    RENDERER.takeCameraControl();
+    if (SPAN.distance > 0 && cameraGesture.distance > 0) {
+        // Keep an absolute baseline: sequential pointer events may temporarily hit
+        // a zoom limit even when both fingers are simply translating together.
+        RENDERER.zoomAt(
+            (cameraGesture.zoom * SPAN.distance) / (cameraGesture.distance * RENDERER.zoom),
+            SPAN.x,
+            SPAN.y,
+        );
+    }
+    const POINT = RENDERER.project(cameraGesture.anchor.x, cameraGesture.anchor.y),
+        RECT = CANVAS.getBoundingClientRect();
+    RENDERER.panByScreen(
+        SPAN.x - RECT.left - POINT.x / RENDERER.pixelRatio,
+        SPAN.y - RECT.top - POINT.y / RENDERER.pixelRatio,
+    );
+    event.preventDefault();
 });
-CANVAS.addEventListener('lostpointercapture', stopWorldInput);
-window.addEventListener('pointerup', stopWorldInput, true);
-window.addEventListener('pointercancel', stopWorldInput, true);
+CANVAS.addEventListener(
+    'click',
+    (event) => {
+        if (suppressCanvasClick) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+        }
+    },
+    true,
+);
+CANVAS.addEventListener('lostpointercapture', endCameraPointer);
+window.addEventListener('pointerup', endCameraPointer, true);
+window.addEventListener('pointercancel', endCameraPointer, true);
+DOLLAR('cameraReset').addEventListener('click', () => {
+    if (canUseCamera()) {
+        stopWorldInput();
+        RENDERER.resetZoom();
+    }
+});
 window.addEventListener('blur', () => {
     stopWorldInput();
     persist();
@@ -2186,7 +2224,9 @@ function sync(display, now, notices) {
         ),
         MERGE_STATUS = mergeAvailability(W, now);
     syncBossRewardDialog(REWARD_WORLD);
-    if ((home || menuOpen || active.paused) && panPointer) {
+    syncFlag('cameraReset', 'hidden', home || menuOpen);
+    syncFlag('cameraReset', 'disabled', !canUseCamera());
+    if (cameraGesture && (!canUseCamera() || cameraGesture.place !== cameraPlace() || cameraGesture.world !== W)) {
         stopWorldInput();
     }
     syncFlag('merge', 'disabled', home || FARM_EVENT_ACTIVE || !MERGE_STATUS.available);

@@ -6,6 +6,7 @@ import { CONFIG } from './farm-model.js';
 import { towerTheme } from './tower-theme.js';
 
 const { radiusX: RX, radiusY: RY } = CONFIG.farm.arena;
+const { radiusX: HALL_RX, radiusY: HALL_RY } = CONFIG.farm.tower.arena;
 const TAU = Math.PI * 2;
 // Tower: stacked round tiers (radius, height) standing right behind the door in the fence.
 const TIERS = [
@@ -475,10 +476,10 @@ function drawHallWall(paint, tint, sky, now) {
     const S = paint.s,
         C = paint.c,
         Z = HALL_WALL_HEIGHT,
-        X0 = -RX - 2,
-        X1 = RX + 2;
-    const A = paint.p(X0, RY, 0),
-        B = paint.p(X1, RY, 0),
+        X0 = -HALL_RX - 2,
+        X1 = HALL_RX + 2;
+    const A = paint.p(X0, HALL_RY, 0),
+        B = paint.p(X1, HALL_RY, 0),
         TOP = Z * WORLD_HEIGHT_PROJECTION * S;
     C.fillStyle = rgb(tint.wall);
     C.fillRect(A.x, A.y - TOP, B.x - A.x, TOP);
@@ -493,8 +494,8 @@ function drawHallWall(paint, tint, sky, now) {
     }
     C.stroke();
     const ACCENT = rgb(tint.accent);
-    for (let x = -RX; x <= RX; x += 8) {
-        const BASE = paint.p(x, RY, 0),
+    for (let x = -HALL_RX; x <= HALL_RX; x += 8) {
+        const BASE = paint.p(x, HALL_RY, 0),
             FLICKER = 0.85 + 0.15 * Math.sin(now * 0.011 + x * 1.3);
         if (!paint.visible(BASE, 160)) {
             continue;
@@ -572,7 +573,7 @@ function drawOpenSky(paint, sky, now, summit) {
         paint.r.ellipse(X, Y, ((25 + (index % 3) * 12) * paint.s) / 12, (7 * paint.s) / 12, '#ffffff28');
     }
     if (summit) {
-        const POINT = paint.p(0, RY, 10);
+        const POINT = paint.p(0, HALL_RY, 10);
         paint.r.ellipse(POINT.x, POINT.y, 3.2 * paint.s, 3.2 * paint.s, '#fff0ba44');
         paint.r.ellipse(POINT.x, POINT.y, 1.8 * paint.s, 1.8 * paint.s, '#ffe7a4');
     }
@@ -583,13 +584,13 @@ function drawThemeDecorations(paint, theme, now) {
         S = paint.s;
     // Wall-mounted or painted decoration: none of these shapes are simulation obstacles.
     if (theme.id === 'royal') {
-        paint.groundRect(-3.8, -RY, 3.8, RY, '#7e375c66');
-        paint.groundRect(-3.9, -RY, -3.75, RY, '#edcc8b99');
-        paint.groundRect(3.75, -RY, 3.9, RY, '#edcc8b99');
+        paint.groundRect(-3.8, -HALL_RY, 3.8, HALL_RY, '#7e375c66');
+        paint.groundRect(-3.9, -HALL_RY, -3.75, HALL_RY, '#edcc8b99');
+        paint.groundRect(3.75, -HALL_RY, 3.9, HALL_RY, '#edcc8b99');
     }
     for (const X of [-18, -10, 10, 18]) {
-        const BASE = paint.p(X, RY, 2.5),
-            TOP = paint.p(X, RY, 7.5);
+        const BASE = paint.p(X, HALL_RY, 2.5),
+            TOP = paint.p(X, HALL_RY, 7.5);
         if (theme.id === 'garden') {
             C.strokeStyle = '#93b978';
             C.lineWidth = Math.max(1, S * 0.13);
@@ -650,15 +651,15 @@ export function drawTowerHall(renderer, world, now) {
         drawHallWall(P, TINT, SKY, now);
     }
     // flagstones laid in running bond, not a grid
-    P.groundRect(-RX, -RY, RX, RY, rgb(TINT.floor));
+    P.groundRect(-HALL_RX, -HALL_RY, HALL_RX, HALL_RY, rgb(TINT.floor));
     const ROW = 3,
         SLAB = 5;
     const RAND = seeded(7 + (world.tower?.floor || 1));
-    for (let y = -RY, row = 0; y < RY; y += ROW, row++) {
-        for (let x = -RX - (row % 2 ? SLAB / 2 : 0); x < RX; x += SLAB) {
-            const X0 = Math.max(-RX, x),
-                X1 = Math.min(RX, x + SLAB),
-                Y1 = Math.min(RY, y + ROW),
+    for (let y = -HALL_RY, row = 0; y < HALL_RY; y += ROW, row++) {
+        for (let x = -HALL_RX - (row % 2 ? SLAB / 2 : 0); x < HALL_RX; x += SLAB) {
+            const X0 = Math.max(-HALL_RX, x),
+                X1 = Math.min(HALL_RX, x + SLAB),
+                Y1 = Math.min(HALL_RY, y + ROW),
                 T = RAND();
             if (X1 > X0) {
                 P.groundRect(
@@ -674,16 +675,16 @@ export function drawTowerHall(renderer, world, now) {
     C.strokeStyle = 'rgba(0,0,0,0.3)';
     C.lineWidth = Math.max(1, 0.05 * S);
     C.beginPath();
-    for (let y = -RY, row = 0; y <= RY; y += ROW, row++) {
-        const A = P.p(-RX, y),
-            B = P.p(RX, y);
+    for (let y = -HALL_RY, row = 0; y <= HALL_RY; y += ROW, row++) {
+        const A = P.p(-HALL_RX, y),
+            B = P.p(HALL_RX, y);
         C.moveTo(A.x, A.y);
         C.lineTo(B.x, B.y);
-        if (y < RY) {
-            for (let x = -RX - (row % 2 ? SLAB / 2 : 0); x < RX; x += SLAB) {
-                if (x > -RX) {
+        if (y < HALL_RY) {
+            for (let x = -HALL_RX - (row % 2 ? SLAB / 2 : 0); x < HALL_RX; x += SLAB) {
+                if (x > -HALL_RX) {
                     const V0 = P.p(x, y),
-                        V1 = P.p(x, Math.min(RY, y + ROW));
+                        V1 = P.p(x, Math.min(HALL_RY, y + ROW));
                     C.moveTo(V0.x, V0.y);
                     C.lineTo(V1.x, V1.y);
                 }
@@ -719,21 +720,21 @@ export function drawTowerHall(renderer, world, now) {
         C.stroke();
     }
     if (TINT.id === 'terrace' || SUMMIT) {
-        for (let x = -RX; x <= RX; x += 2.5) {
-            const POINT = P.p(x, RY, 0);
+        for (let x = -HALL_RX; x <= HALL_RX; x += 2.5) {
+            const POINT = P.p(x, HALL_RY, 0);
             C.fillStyle = rgb(TINT.wall);
             C.fillRect(POINT.x - S * 0.8, POINT.y - S * 0.9, S * 1.6, S * 0.9);
         }
     }
     // the low wall around the hall
     const EDGE = rgb(mix(TINT.wall, [255, 255, 255], 0.1));
-    const L = P.p(-RX, -RY),
-        R = P.p(RX, -RY);
+    const L = P.p(-HALL_RX, -HALL_RY),
+        R = P.p(HALL_RX, -HALL_RY);
     C.fillStyle = EDGE;
     C.fillRect(L.x, L.y, R.x - L.x, 0.5 * S);
     for (const SIDE of [-1, 1]) {
-        const T = P.p(SIDE * RX, RY),
-            B = P.p(SIDE * RX, -RY);
+        const T = P.p(SIDE * HALL_RX, HALL_RY),
+            B = P.p(SIDE * HALL_RX, -HALL_RY);
         C.fillRect(Math.min(T.x, T.x + SIDE * 0.9 * S), T.y, 0.9 * S, B.y - T.y);
     }
 }

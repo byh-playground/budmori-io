@@ -192,6 +192,11 @@ const CONFIG = Object.freeze({
         }),
         // Draft numbers for the tower: every 5th floor is a mid-boss; fallen units sleep tier (max 3) floors.
         tower: Object.freeze({
+            arena: Object.freeze({
+                radiusX: FARM_ARENA.radiusX * 1.5,
+                radiusY: FARM_ARENA.radiusY * 1.5,
+                shape: 'rect',
+            }),
             midBossEvery: 5,
             sleepMax: 3,
             topFloor: FARM_BOSS_EVENT_MAX_STAGE,
@@ -338,8 +343,31 @@ const KNOCKABLE = (baseLocal) =>
 
 // Simulation types are independent of the renderer skin mapping.
 const ARENA_GEOMETRY = {
+    arena(context = 'battle') {
+        if (typeof context === 'string') {
+            return CONFIG[context].arena;
+        }
+        return context.scene === 'farm' && context.insideTower ? CONFIG.farm.tower.arena : CONFIG[context.scene].arena;
+    },
+    rayEnd(start, dx, dy, distance, context, margin = 0) {
+        const BOUNDS = this.bounds(context, margin);
+        let exit;
+        if (this.arena(context).shape === 'rect') {
+            exit = Math.min(
+                Math.abs(dx) > 1e-12 ? ((dx > 0 ? BOUNDS.x : -BOUNDS.x) - start.x) / dx : Infinity,
+                Math.abs(dy) > 1e-12 ? ((dy > 0 ? BOUNDS.y : -BOUNDS.y) - start.y) / dy : Infinity,
+            );
+        } else {
+            const A = (dx / BOUNDS.x) ** 2 + (dy / BOUNDS.y) ** 2,
+                B = 2 * ((start.x * dx) / BOUNDS.x ** 2 + (start.y * dy) / BOUNDS.y ** 2),
+                C = (start.x / BOUNDS.x) ** 2 + (start.y / BOUNDS.y) ** 2 - 1;
+            exit = A > 0 ? (-B + Math.sqrt(Math.max(0, B * B - 4 * A * C))) / (2 * A) : 0;
+        }
+        const TRAVEL = Math.max(0, Math.min(distance, exit));
+        return this.clamp({ x: start.x + dx * TRAVEL, y: start.y + dy * TRAVEL }, context, margin);
+    },
     bounds(scene = 'battle', margin = 0) {
-        const ARENA = CONFIG[scene].arena;
+        const ARENA = this.arena(scene);
         return {
             x: ARENA.radiusX - margin,
             y: ARENA.radiusY - margin,
@@ -347,14 +375,14 @@ const ARENA_GEOMETRY = {
     },
     inside(p, scene = 'battle', margin = 0) {
         const R_LOCAL = this.bounds(scene, margin);
-        if (CONFIG[scene].arena.shape === 'rect') {
+        if (this.arena(scene).shape === 'rect') {
             return Math.abs(p.x) <= R_LOCAL.x && Math.abs(p.y) <= R_LOCAL.y;
         }
         return (p.x * p.x) / (R_LOCAL.x * R_LOCAL.x) + (p.y * p.y) / (R_LOCAL.y * R_LOCAL.y) <= 1;
     },
     clamp(p, scene = 'battle', margin = 0) {
         const R_LOCAL = this.bounds(scene, margin);
-        if (CONFIG[scene].arena.shape === 'rect') {
+        if (this.arena(scene).shape === 'rect') {
             return { x: CLAMP(p.x, -R_LOCAL.x, R_LOCAL.x), y: CLAMP(p.y, -R_LOCAL.y, R_LOCAL.y) };
         }
         const K = Math.max(1, Math.hypot(p.x / R_LOCAL.x, p.y / R_LOCAL.y));
@@ -925,20 +953,14 @@ class BossController {
         BOSS_BEHAVIORS.update(world, action, dt, living, this.unit);
         return true;
     }
-    integrateKnockback(_world, dt) {
+    integrateKnockback(world, dt) {
         const BOSS = this.unit;
         if (Math.hypot(BOSS.knockVx, BOSS.knockVy) < 1e-6) {
             return;
         }
         BOSS.x += BOSS.knockVx * dt;
         BOSS.y += BOSS.knockVy * dt;
-        const RX = CONFIG.battle.arena.radiusX - BOSS.radius,
-            RY = CONFIG.battle.arena.radiusY - BOSS.radius,
-            EDGE = Math.hypot(BOSS.x / RX, BOSS.y / RY);
-        if (EDGE > 1) {
-            BOSS.x /= EDGE;
-            BOSS.y /= EDGE;
-        }
+        world.boundBody(BOSS, world.scene, BOSS.radius);
         BOSS.knockVx *= Math.exp(-dt * 6);
         BOSS.knockVy *= Math.exp(-dt * 6);
     }
@@ -3271,7 +3293,7 @@ const GARDEN = class Garden {
             return;
         }
         const DEPLOY = CONFIG.farm.deploy,
-            ARENA = CONFIG.farm.arena,
+            ARENA = ARENA_GEOMETRY.arena(this),
             BATCH_SIZE = Math.ceil((this.frontlineLimit * DEPLOY.cooldownSeconds) / DEPLOY.initialSeconds),
             COUNT = Math.min(BATCH_SIZE, this.frontlineLimit - this.fieldFighterCount);
         for (let index = 0; index < COUNT; index++) {
@@ -3326,7 +3348,7 @@ const GARDEN = class Garden {
         if (!pick) {
             return false;
         }
-        const AT = ARENA_GEOMETRY.clamp({ x, y }, 'farm', 1);
+        const AT = ARENA_GEOMETRY.clamp({ x, y }, this, 1);
         this._benched.delete(pick);
         this._benchRevision++;
         Object.assign(pick, { x: AT.x, y: AT.y, z: CONFIG.battle.dropHeight, vx: 0, vy: 0, vz: 0, dropLanded: false });
@@ -5404,7 +5426,7 @@ const GARDEN = class Garden {
         return !ARENA_GEOMETRY.inside({ x, y }, 'farm');
     }
     boundBody(body, scene, margin) {
-        const ARENA = CONFIG[scene].arena,
+        const ARENA = ARENA_GEOMETRY.arena(scene === this.scene ? this : scene),
             RX = ARENA.radiusX - margin,
             RY = ARENA.radiusY - margin;
         if (body.workOut) {
@@ -5749,7 +5771,7 @@ const GARDEN = class Garden {
             const ANGLE = DIRECTION + (index * Math.PI) / 6,
                 POINT = ARENA_GEOMETRY.clamp(
                     { x: unit.x + Math.cos(ANGLE) * LOOK_AHEAD, y: unit.y + Math.sin(ANGLE) * LOOK_AHEAD },
-                    this.scene,
+                    this,
                     unit.radius + 0.1,
                 ),
                 TRAVEL = Math.hypot(POINT.x - unit.x, POINT.y - unit.y);
@@ -5816,7 +5838,7 @@ const GARDEN = class Garden {
             this._armySpacingNeighbors,
             this._armyThreatsForTick(),
             GAP,
-            ARENA_GEOMETRY.bounds(this.scene, unit.radius + 0.1),
+            ARENA_GEOMETRY.bounds(this, unit.radius + 0.1),
             enemy,
             attackDistance,
             this._armySpacingRadii,
@@ -5897,7 +5919,7 @@ const GARDEN = class Garden {
                     x: B_LOCAL.x + (DX / N) * (STAND - (u.species === 4 ? 0.1 : 0)),
                     y: B_LOCAL.y + (DY / N) * (STAND - (u.species === 4 ? 0.1 : 0)),
                 },
-                this.scene,
+                this,
                 u.radius,
             );
             // A ranged actor at the wall can fire within its existing maximum
@@ -6055,7 +6077,7 @@ const GARDEN = class Garden {
         return true;
     }
     bossAttackArea(unitRadius = 0) {
-        return bossAttackArea(this.boss, unitRadius, this.scene);
+        return bossAttackArea(this.boss, unitRadius, this);
     }
     livingBossTargets() {
         return this.units
@@ -6174,7 +6196,7 @@ const GARDEN = class Garden {
                         x: B_LOCAL.x + Math.cos(CANDIDATE.angle) * CONFIG_LOCAL.reach,
                         y: B_LOCAL.y + Math.sin(CANDIDATE.angle) * CONFIG_LOCAL.reach,
                     },
-                    this.scene,
+                    this,
                     B_LOCAL.radius + 0.25,
                 ),
                 FROM = {
@@ -6244,7 +6266,7 @@ const GARDEN = class Garden {
                         x: B_LOCAL.x + dx,
                         y: B_LOCAL.y + dy,
                     },
-                    this.scene,
+                    this,
                     B_LOCAL.radius + 0.25,
                 ),
                 CELL_X = Math.floor(POINT.x / SIZE),
@@ -6632,7 +6654,7 @@ const GARDEN = class Garden {
     }
     bossSummonLanding(angle, action = null, boss = this.boss) {
         const B_LOCAL = boss,
-            SCENE = this.scene,
+            SCENE = this,
             RADIUS = unitBodyRadius({ species: B_LOCAL.species, tier: 1, growthElapsed: 1, growthDuration: 1 });
         for (let i = 0; i < 16; i++) {
             const OFFSET = i === 0 ? 0 : ((i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI) / 8,
