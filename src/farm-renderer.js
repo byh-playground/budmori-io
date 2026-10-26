@@ -8,7 +8,7 @@ import { drawFormationEffects, includeFormationEffectBounds } from './formation-
 import { scenePresentation } from './farm-render-scenes.js';
 import { FoodPresentation, ProjectilePresentation } from './farm-render-items.js';
 import { UnitPresentation } from './farm-render-units.js';
-import { unitMayBeVisible } from './farm-render-visibility.js';
+import { unitCullingEnabled, unitMayBeVisible } from './farm-render-visibility.js';
 import { UNIT_GRADES } from './unit-grades.js';
 import { CornAttachmentPresentation } from './features/abilities/corn-attachment/presentation.js';
 import { disposeEffectPresentations, drawEffect } from './farm-render-effects.js';
@@ -960,18 +960,22 @@ const DIORAMA = class Diorama {
             this.cornAttachmentBodies.set(GROUP.targetId, null);
         }
         const HIDDEN_MERGE_RESULT_IDS = PRESENTATION.hiddenUnitIds?.(sim2) || EMPTY_UNIT_IDS,
-            VISIBLE_UNITS = this.visibleUnits;
+            VISIBLE_UNITS = this.visibleUnits,
+            CULL_UNITS = unitCullingEnabled(this);
+        this.unitCullingActive = CULL_UNITS;
         VISIBLE_UNITS.length = 0;
         const SIDES = sim2.insideTower || sim2.scene !== 'farm';
         for (const SOURCE of sim2.units) {
             const U = this.unitPresentation.displayUnit(SOURCE);
-            if (!unitMayBeVisible(this, U, sim2)) {
+            if (CULL_UNITS && !unitMayBeVisible(this, U, sim2)) {
                 if (!HIDDEN_MERGE_RESULT_IDS.has(U.id)) {
                     this.unitPresentation.prepareHiddenUnit(U, sim2);
                 }
                 continue;
             }
-            VISIBLE_UNITS.push(U);
+            if (CULL_UNITS) {
+                VISIBLE_UNITS.push(U);
+            }
             const A = clamp(0.22 / (1 + U.z * 0.3), 0.045, 0.22),
                 SHADOW = (U.size * 0.66) / (1 + U.z * 0.65);
             this.groundEllipse(U.x, U.y, SHADOW, SHADOW * 0.62, `rgba(42,61,35,${A})`);
@@ -1009,8 +1013,8 @@ const DIORAMA = class Diorama {
         let visibleIndex = 0;
         for (const SOURCE of sim2.units) {
             const U = this.unitPresentation.displayUnit(SOURCE),
-                CULLED = U.id !== VISIBLE_UNITS[visibleIndex]?.id;
-            if (!CULLED) {
+                CULLED = CULL_UNITS && U.id !== VISIBLE_UNITS[visibleIndex]?.id;
+            if (CULL_UNITS && !CULLED) {
                 visibleIndex++;
             }
             if (!HIDDEN_MERGE_RESULT_IDS.has(U.id)) {

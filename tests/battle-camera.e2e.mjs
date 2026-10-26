@@ -62,10 +62,12 @@ const SERVER = http.createServer((req, res) => {
     if (URL_LOCAL.searchParams.has('unculled-test') && FILE === path.resolve(ROOT, 'src/farm-renderer.js')) {
         // Reference only the visibility decision; keep native players and every
         // draw implementation identical to the frame under test.
-        const IMPORT = "import { unitMayBeVisible } from './farm-render-visibility.js';",
+        const IMPORT = "import { unitCullingEnabled, unitMayBeVisible } from './farm-render-visibility.js';",
             SOURCE = bytes.toString('utf8');
         assert.equal(SOURCE.split(IMPORT).length, 2);
-        bytes = Buffer.from(SOURCE.replace(IMPORT, 'const unitMayBeVisible = () => true;'));
+        bytes = Buffer.from(
+            SOURCE.replace(IMPORT, 'const unitCullingEnabled = () => false, unitMayBeVisible = () => true;'),
+        );
     }
     res.end(bytes);
 });
@@ -238,7 +240,7 @@ async function capture(name) {
             const PIXELS = READ(),
                 ACTUAL_IDS = [...nativeIds].sort((a, b) => a - b),
                 HIDDEN = R.scenePresentation.hiddenUnitIds(DISPLAY),
-                VISIBLE_IDS = R.visibleUnits
+                VISIBLE_IDS = (R.unitCullingActive === false ? DISPLAY.units : R.visibleUnits)
                     .filter((unit) => !HIDDEN.has(unit.id))
                     .map((unit) => unit.id)
                     .sort((a, b) => a - b),

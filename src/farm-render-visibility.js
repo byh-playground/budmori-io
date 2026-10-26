@@ -85,6 +85,25 @@ export function unitArtRadius(compiled, ground) {
     return radius;
 }
 
+// Culling pays only when the player deliberately clips the world. Automatic
+// framing keeps the original all-unit path, avoiding a second visibility list
+// and per-unit geometry checks in the most common full-army view.
+export function unitCullingEnabled(renderer) {
+    if (!renderer.manualCamera) {
+        return false;
+    }
+    const ARENA = renderer.cameraArena;
+    if (!ARENA) {
+        return true;
+    }
+    const S = renderer.scale,
+        X = (renderer.offset[0] + renderer.view[0] + (renderer.shakeX || 0)) * S,
+        Y = (renderer.view[1] - renderer.offset[1]) * S,
+        RX = ARENA.radiusX * S,
+        RY = ARENA.radiusY * WORLD_DEPTH_PROJECTION * S;
+    return X - RX < 0 || X + RX > renderer.canvas.width || Y - RY < 0 || Y + RY > renderer.canvas.height;
+}
+
 function intersects(renderer, x, y, rx, ry = rx) {
     const PAD = 4 * renderer.pixelRatio;
     return !(

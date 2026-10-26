@@ -1,5 +1,17 @@
 # 0.42.3 성능 최적화 검증
 
+> 이 문서의 기존 표·223파일 manifest는 이전 후보 d7f41a28/84f22666 및 baseline 881fd7c9의 Windows 측정이다. 아래 수치를 최신 main 결합 결과로 재사용하지 않는다.
+
+## 클라우드 재개 및 기본 화면 우회 보완 (2026-10-26)
+
+- 최신 main `9de45fda80bac1cf920732ce22024261ac5f2f0e`의 RAF 종료 수명 수정을 결합했다.
+- 자동 카메라와 전체 지면이 보이는 수동 overview에서는 per-unit visibility 검사와 visible 목록 작성을 건너뛰고 기존 shadow/ring/actor 정렬/draw 흐름을 사용한다. 사용자가 확대/패닝으로 전장을 자른 경우만 컬링한다.
+- 수동 컬링의 숨은 actor 정렬 위치와 vector→mesh flush, 숨은 clip 전환, 활성 무기 궤적·옥수수 부착 예외를 유지한다. 효과 컬링과 HP 합산 이동은 도입하지 않는다.
+- 기존 기본 화면 500명 측정에서 라운드 평균 median 31.35→36.75ms(+17.2%), p95 46.35→63.85ms가 관찰됐다. 첫 라운드 워밍업/순서 영향 가능성은 원인 확정이 아니며 이 결과를 삭제하거나 최신 보완의 통과 증거로 취급하지 않는다. 기존 전체 UI 100 안정 mean +2.08ms, 500 안정 +0.62ms 경고도 유효한 과거 기록이다.
+- 새 CI는 Linux의 같은 Chromium 프로세스에서 최신 main→결합 후보의 기본/수동 화면을 각각 양순서로 비교한다. seed731, 500전열+500예비대, 20TPS, 동일 96frame 워밍업과 80표본을 사용하고 워밍업 원시 시간도 보존한다. source hashes와 정확한 후보 head는 새 `performance-cloud` artifact에 포함한다.
+- 기존 150프레임 픽셀/시계 비교에 자동→수동 확대/패닝→reset 12프레임을 추가한다. `npm test`의 pagehide/reload와 HUD 테스트도 결합 head에서 실행한다.
+- dot 클라우드의 로컬 Node 정적/경계 테스트는 실행 가능하지만 Chromium은 sandbox socket 제한 및 승인 실행의 환경 준비 오류로 시작하지 못했다. 브라우저 결과는 기존 GitHub Actions에서 실행한 exact-head 결과로만 판정한다. 이 절의 CI 결과는 아직 진행 전이며 성능/FPS 향상 또는 회귀 없음의 확정 주장이 아니다.
+
 기준은 `881fd7c9b97efc00ca2e2a46c1ee5b069f7ccdfe` (0.42.2), 최초 검토 head는
 `09bf8f07effe582d79809ba23d9d95efb375b3e3`이다. 기존 사용자 체크아웃과 미추적 테스트
 산출물은 건드리지 않고 별도 복제본/브랜치에서 작업했다. 기준 Git tree와 사용자

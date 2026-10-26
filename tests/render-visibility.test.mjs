@@ -8,7 +8,11 @@ globalThis.BloomGamekitWorkScheduler = await import('../vendor/upstream/work-sch
 const { createVectorAssetLoader: CREATE_LOADER } = await import('../vendor/upstream/vector-assets-loader.js'),
     { createVectorAsset: CREATE_ASSET } = await import('../vendor/upstream/vector-assets.js'),
     { UNIT_BODIES } = await import('../src/features/unit-body/definition.js'),
-    { unitArtRadius: ART_RADIUS, unitMayBeVisible: UNIT_VISIBLE } = await import('../src/farm-render-visibility.js'),
+    {
+        unitArtRadius: ART_RADIUS,
+        unitMayBeVisible: UNIT_VISIBLE,
+        unitCullingEnabled: CULLING_ENABLED,
+    } = await import('../src/farm-render-visibility.js'),
     LOADER = CREATE_LOADER({ fetch: async (url) => new Response(fs.readFileSync(new URL(url))) }),
     MESHES = { createMesh: (geometry) => geometry, drawMesh() {}, deleteMesh() {} },
     OUTPUT = new URL('./output/render-visibility/', import.meta.url),
@@ -122,3 +126,20 @@ REPORT.status = 'passed';
 fs.mkdirSync(OUTPUT, { recursive: true });
 fs.writeFileSync(new URL('report.json', OUTPUT), `${JSON.stringify(REPORT, null, 2)}\n`);
 console.log(JSON.stringify(REPORT));
+
+// Full-view cameras avoid per-unit visibility work regardless of crowd size.
+const CAMERA = {
+    manualCamera: false,
+    cameraArena: { radiusX: 23, radiusY: 17 },
+    scale: 10,
+    offset: [0, 0],
+    view: [50, 40],
+    canvas: { width: 1000, height: 800 },
+};
+assert.equal(CULLING_ENABLED(CAMERA), false);
+CAMERA.manualCamera = true;
+assert.equal(CULLING_ENABLED(CAMERA), false, 'manual overview still uses original path');
+CAMERA.offset[0] = 45;
+assert.equal(CULLING_ENABLED(CAMERA), true, 'manual clipped view enables culling');
+CAMERA.manualCamera = false;
+assert.equal(CULLING_ENABLED(CAMERA), false, 'reset never inherits manual culling');

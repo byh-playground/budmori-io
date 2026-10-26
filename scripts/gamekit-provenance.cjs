@@ -292,21 +292,13 @@ function verify(root = ROOT) {
         ASSERT(!Object.hasOwn(MODULE, 'inlineSHA256'), 'inline SDK copy metadata removed');
     }
     ASSERT(!HTML.includes('BEGIN GAMEKIT'), 'HTML must reference modules, not include their bodies');
-    for (const NAME of ['game', 'bootstrap']) {
-        const SPEC = RUNTIME[NAME];
-        ASSERT.equal(SPEC.file, `src/${NAME === 'game' ? 'game' : 'bootstrap'}.js`);
-        const SOURCE = FS.readFileSync(PATH.join(root, SPEC.file));
-        ASSERT.equal(SOURCE.length, SPEC.bytes, SPEC.file + ' byte count');
-        ASSERT.equal(SHA(SOURCE), SPEC.sha256, SPEC.file + ' SHA256');
-        ASSERT(!SOURCE.toString().includes('BEGIN GAMEKIT'), 'Game source must not carry a module body');
-    }
-    const BOOTSTRAP_SRI = 'sha256-' + Buffer.from(RUNTIME.bootstrap.sha256, 'hex').toString('base64');
-    ASSERT(HTML.includes(`integrity="${BOOTSTRAP_SRI}"`), 'bootstrap integrity attribute');
-    if (RUNTIME.scope) {
-        ASSERT.equal(RUNTIME.scope.file, 'src/scope.js');
-        const BYTES = FS.readFileSync(PATH.join(root, RUNTIME.scope.file));
-        ASSERT.equal(BYTES.length, RUNTIME.scope.bytes);
-        ASSERT.equal(SHA(BYTES), RUNTIME.scope.sha256);
+    // Authored modules have no generated bundle/SRI metadata. The same read-only
+    // graph used by `check` validates their real imports, SDK pins and SVG bytes.
+    const GRAPH = require('./source-graph.mjs').sourceGraph(root);
+    ASSERT(GRAPH.entryPoints.includes('src/bootstrap.js'));
+    ASSERT(GRAPH.entryPoints.includes('src/farm-app.js'));
+    for (const FILE of GRAPH.files.filter((file) => file.kind === 'module')) {
+        ASSERT(!FS.readFileSync(PATH.join(root, FILE.file), 'utf8').includes('BEGIN GAMEKIT'));
     }
     return LOCK;
 }

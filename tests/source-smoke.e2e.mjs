@@ -2445,22 +2445,49 @@ try {
                 }
                 assert.ok(HUD.dock.top >= HUD.health.bottom, 'the boss skill dock sits beneath boss health');
                 await PAGE.setViewportSize({ width: 844, height: 390 });
-                REPORT.bossCards.combatLandscape = await PAGE.evaluate(() => ({
-                    tracks: [...document.querySelectorAll('#bossbar .track')].map((track) =>
-                        track.getBoundingClientRect().toJSON(),
-                    ),
-                    dock: document.querySelector('#bossRelicHost .formation-dock').getBoundingClientRect().toJSON(),
-                    slots: [...document.querySelectorAll('#bossRelicHost [data-formation-slot]')].map((slot) => ({
-                        id: slot.dataset.formationSlot,
-                        box: slot.getBoundingClientRect().toJSON(),
-                        unclipped: [...slot.querySelectorAll('.formation-status, .formation-lv')].every(
-                            (label) =>
-                                label.scrollWidth <= label.clientWidth && label.scrollHeight <= label.clientHeight,
+                REPORT.bossCards.combatLandscape = await PAGE.evaluate(() => {
+                    const TEXT_UNCLIPPED = (label) => {
+                        const RANGE = document.createRange();
+                        RANGE.selectNodeContents(label);
+                        const TEXT = RANGE.getBoundingClientRect();
+                        // A font may visibly overhang its line box. Only an actual
+                        // clipping ancestor can hide it; scrollHeight alone cannot.
+                        for (let ancestor = label; ancestor; ancestor = ancestor.parentElement) {
+                            const STYLE = getComputedStyle(ancestor),
+                                BOX = ancestor.getBoundingClientRect(),
+                                LEFT = BOX.left + ancestor.clientLeft,
+                                TOP = BOX.top + ancestor.clientTop;
+                            if (
+                                STYLE.overflowX !== 'visible' &&
+                                (TEXT.left < LEFT || TEXT.right > LEFT + ancestor.clientWidth)
+                            ) {
+                                return false;
+                            }
+                            if (
+                                STYLE.overflowY !== 'visible' &&
+                                (TEXT.top < TOP || TEXT.bottom > TOP + ancestor.clientHeight)
+                            ) {
+                                return false;
+                            }
+                        }
+                        return label.scrollWidth <= label.clientWidth;
+                    };
+                    return {
+                        tracks: [...document.querySelectorAll('#bossbar .track')].map((track) =>
+                            track.getBoundingClientRect().toJSON(),
                         ),
-                    })),
-                    width: innerWidth,
-                    height: innerHeight,
-                }));
+                        dock: document.querySelector('#bossRelicHost .formation-dock').getBoundingClientRect().toJSON(),
+                        slots: [...document.querySelectorAll('#bossRelicHost [data-formation-slot]')].map((slot) => ({
+                            id: slot.dataset.formationSlot,
+                            box: slot.getBoundingClientRect().toJSON(),
+                            unclipped: [...slot.querySelectorAll('.formation-status, .formation-lv')].every(
+                                TEXT_UNCLIPPED,
+                            ),
+                        })),
+                        width: innerWidth,
+                        height: innerHeight,
+                    };
+                });
                 const MOBILE = REPORT.bossCards.combatLandscape;
                 assert.equal(MOBILE.tracks.length, 2);
                 assert.equal(MOBILE.slots.length, 3, 'the actual paused boss model renders three owned skills');

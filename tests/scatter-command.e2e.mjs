@@ -152,10 +152,12 @@ const SERVER = http.createServer((request, response) => {
     response.setHeader('content-type', TYPES[path.extname(FILE)] || 'application/octet-stream');
     let bytes = fs.readFileSync(FILE);
     if (URL_LOCAL.searchParams.has('unculled-test') && FILE === path.join(ROOT, 'src/farm-renderer.js')) {
-        const IMPORT = "import { unitMayBeVisible } from './farm-render-visibility.js';",
+        const IMPORT = "import { unitCullingEnabled, unitMayBeVisible } from './farm-render-visibility.js';",
             SOURCE = bytes.toString('utf8');
         assert.equal(SOURCE.split(IMPORT).length, 2);
-        bytes = Buffer.from(SOURCE.replace(IMPORT, 'const unitMayBeVisible = () => true;'));
+        bytes = Buffer.from(
+            SOURCE.replace(IMPORT, 'const unitCullingEnabled = () => false, unitMayBeVisible = () => true;'),
+        );
     }
     response.end(bytes);
 });
@@ -354,7 +356,7 @@ try {
                 }
                 const ORIGINAL_FRAME = frame,
                     HIDDEN = this.scenePresentation.hiddenUnitIds(world),
-                    VISIBLE_IDS = this.visibleUnits
+                    VISIBLE_IDS = (this.unitCullingActive === false ? world.units : this.visibleUnits)
                         .filter((unit) => !HIDDEN.has(unit.id))
                         .map((unit) => unit.id)
                         .sort((a, b) => a - b),

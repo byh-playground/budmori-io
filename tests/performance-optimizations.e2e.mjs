@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url)),
-    BASE_COMMIT = '881fd7c9b97efc00ca2e2a46c1ee5b069f7ccdfe',
+    BASE_COMMIT = process.env.BUDMORI_PERF_BASE_COMMIT || '881fd7c9b97efc00ca2e2a46c1ee5b069f7ccdfe',
     MODE = process.argv[2] || 'render',
     COUNT = Number(process.argv[3] || 500),
     PHASE = process.argv[4] || 'settled',
@@ -32,7 +32,9 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url)),
                       ? 120
                       : 180),
     ),
-    WARMUP = MODE === 'render' ? 12 : MODE === 'ui' && PHASE === 'settled' ? 60 : 0,
+    WARMUP = Number(
+        process.env.BUDMORI_PERF_WARMUP || (MODE === 'render' ? 96 : MODE === 'ui' && PHASE === 'settled' ? 60 : 0),
+    ),
     CASE = `${MODE}-${COUNT}-${PHASE}-${VIEW}`,
     OUTPUT_NAME = process.env.BUDMORI_PERF_OUTPUT_DIR || 'performance-optimizations',
     OUTPUT = path.join(ROOT, 'tests/output', OUTPUT_NAME, CASE),
@@ -80,7 +82,7 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url)),
                 'Same source bootstrap, pinned SDK and native functions. A test-only appended accessor exposes existing sync/start without replacing their implementations. Only the app automatic RAF is suspended; model and UI clocks are driven explicitly.',
             limitations: [
                 'Operation CPU measurements exclude the browser compositor and GPU completion. No FPS claim.',
-                'Windows desktop Chromium with SwiftShader; no physical mobile-device measurement.',
+                'Desktop Chromium with SwiftShader; platform/browser are recorded; no physical mobile-device measurement.',
                 'Render repeats one identical presentation snapshot, logical render clock and camera, including native seek/draw. Each sample waits for RAF outside the timer to avoid a tight-loop submission backlog; camera boundary and moving-animation coverage is separate.',
                 'UI reports native presentation and sync separately and their combined CPU, excluding relic docks; 60 Hz calls with native session pulses at the same synthetic wall-clock sequence. Work moved from sync into presentation remains in the combined result.',
                 'Heap used before/after is a noisy retained-heap delta, not an allocation or GC count. GC pause duration is not measured.',
@@ -508,18 +510,22 @@ async function run(variant, round, origin) {
                     RESULT_LOCAL.displayTime = DISPLAY.time;
                     RENDERER.render(DISPLAY, null, FIXED_NOW);
                     RENDERER.resetZoom();
-                    RENDERER.takeCameraControl();
                     if (view === 'offscreen') {
+                        RENDERER.takeCameraControl();
                         RENDERER.zoomAt(1.8 / RENDERER.zoom);
                         RENDERER.setPan(RENDERER.panLimits.maxX, RENDERER.panLimits.maxY);
                     }
                     const BEFORE = await SHA(SNAPSHOT(WORLD));
+                    RESULT_LOCAL.rawWarmupMs = [];
                     for (let index = 0; index < warmup + samples; index++) {
                         await new Promise(requestAnimationFrame);
                         const START = performance.now();
                         RENDERER.render(DISPLAY, null, FIXED_NOW);
+                        const ELAPSED = performance.now() - START;
                         if (index >= warmup) {
-                            RAW.push(performance.now() - START);
+                            RAW.push(ELAPSED);
+                        } else {
+                            RESULT_LOCAL.rawWarmupMs.push(ELAPSED);
                         }
                     }
                     const DRAW = RENDERER.unitPresentation.draw,
@@ -633,6 +639,7 @@ try {
         args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-precise-memory-info'],
     });
     REPORT.browserVersion = browser.version();
+    REPORT.platform = process.platform;
     deadline = setTimeout(() => {
         REPORT.deadlineExceeded = true;
         browser.close().catch(() => {});

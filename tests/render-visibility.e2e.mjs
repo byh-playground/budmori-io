@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const ROOT = path.resolve(fileURLToPath(new URL('../', import.meta.url))),
-    BASE = process.env.PERFORMANCE_BASE_ROOT || path.resolve(ROOT, '../baseline'),
+    BASE = path.resolve(process.env.PERFORMANCE_BASE_ROOT || path.resolve(ROOT, '../baseline')),
     KIND = process.argv[2] || 'desktop',
     VIEWPORTS = {
         desktop: { width: 1280, height: 800 },
@@ -26,7 +26,7 @@ const ROOT = path.resolve(fileURLToPath(new URL('../', import.meta.url))),
     REPORT = {
         status: 'running',
         viewport: KIND,
-        baseCommit: '881fd7c9b97efc00ca2e2a46c1ee5b069f7ccdfe',
+        baseCommit: process.env.PERFORMANCE_BASE_COMMIT || '881fd7c9b97efc00ca2e2a46c1ee5b069f7ccdfe',
         scope: 'Identical controlled render DTOs, native SVG players and WebGL readPixels in one browser process.',
         limitations: [
             'Controlled render snapshots exercise presentation boundaries, not natural combat outcomes.',
@@ -71,7 +71,7 @@ const SERVER = http.createServer((request, response) => {
     if (FILE === path.join(DIRECTORY, 'src/farm-app.js')) {
         const SOURCE = bytes.toString('utf8');
         assert.equal(SOURCE.match(/requestAnimationFrame\(frame\);/g)?.length, 2);
-        bytes = Buffer.from(SOURCE.replaceAll('requestAnimationFrame(frame);', '/* test owns explicit frames */'));
+        bytes = Buffer.from(SOURCE.replaceAll('requestAnimationFrame(frame)', '0 /* test owns explicit frames */'));
     }
     response.setHeader('content-type', TYPES[path.extname(FILE)] || 'application/octet-stream');
     response.end(bytes);
@@ -126,6 +126,7 @@ try {
         await PAGE.waitForFunction(() => Boolean(globalThis.BUDMORI));
         await PAGE.evaluate(async () => {
             const { Garden: GARDEN } = await import('./src/farm-model.js'),
+                { snapshot: SNAPSHOT } = await import('./src/farm-state.js'),
                 { FarmSession: SESSION } = await import('./src/farm-session.js'),
                 { WORLD_HEIGHT_PROJECTION: HEIGHT, WORLD_DEPTH_PROJECTION: DEPTH } =
                     await import('./src/vector-sockets.js'),
@@ -207,7 +208,15 @@ try {
                 STATE.time += 50;
                 STATE.d.time = STATE.time / 1000;
                 STATE.d.displayTimeMs = STATE.time;
+                const AUTHORITY = JSON.stringify(SNAPSHOT(STATE.w)),
+                    ROSTER = STATE.d.units.map((unit) => unit.id);
                 R.render(STATE.d, null, STATE.time);
+                if (
+                    JSON.stringify(SNAPSHOT(STATE.w)) !== AUTHORITY ||
+                    JSON.stringify(STATE.d.units.map((unit) => unit.id)) !== JSON.stringify(ROSTER)
+                ) {
+                    throw new Error('Render changed authority or roster order');
+                }
                 const GL = R.device.gl,
                     PIXELS = new Uint8Array(R.canvas.width * R.canvas.height * 4);
                 GL.readPixels(0, 0, R.canvas.width, R.canvas.height, GL.RGBA, GL.UNSIGNED_BYTE, PIXELS);
@@ -220,7 +229,11 @@ try {
                     png: PNG,
                     size: [R.canvas.width, R.canvas.height],
                     units: STATE.d.units.length,
-                    visible: R.visibleUnits?.length ?? STATE.d.units.length,
+                    visible:
+                        R.unitCullingActive === false
+                            ? STATE.d.units.length
+                            : (R.visibleUnits?.length ?? STATE.d.units.length),
+                    culling: R.unitCullingActive ?? false,
                     actors: R.actors.length,
                     stats: R.stats,
                     camera: { zoom: R.zoom, pan: R.cameraPan, scale: R.scale, manual: R.manualCamera },
@@ -546,6 +559,19 @@ try {
         }
         const SCENE = TOWER ? 'tower' : 'farm';
         await COMPARE(`${SCENE}-default`, null, { capture: true });
+        assert.equal(await PAGES.candidate.evaluate(() => BUDMORI.renderer.unitCullingActive), false);
+        await COMPARE(
+            `${SCENE}-auto-to-manual`,
+            () => {
+                const R = globalThis.__visibility.r;
+                R.takeCameraControl();
+                R.zoomAt(1.8 / R.zoom);
+                R.setPan(R.panLimits.maxX, R.panLimits.maxY);
+            },
+            { culls: true },
+        );
+        await COMPARE(`${SCENE}-manual-to-reset`, () => globalThis.__visibility.r.resetZoom(), { poses: true });
+        assert.equal(await PAGES.candidate.evaluate(() => BUDMORI.renderer.unitCullingActive), false);
         for (const EDGE of ['left', 'right', 'top', 'bottom']) {
             for (const PAGE of Object.values(PAGES)) {
                 await PAGE.evaluate((edge) => globalThis.__visibility.boundary(edge), EDGE);
