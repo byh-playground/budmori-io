@@ -828,7 +828,7 @@ try {
     }
     await PAGE.waitForFunction(() => document.body.dataset.home === 'false' && BUDMORI.sim.scene === 'farm');
     await PAGE.evaluate(async () => {
-        const { helpSceneById: HELP_SCENE_BY_ID } = await import('./src/help-scenes.js'),
+        const { helpSceneById: HELP_SCENE_BY_ID } = await import('./src/ui/help-scenes.js'),
             WORLD = BUDMORI.sim;
         HELP_SCENE_BY_ID(globalThis.__motionSpec.key + '-t6').setup(WORLD);
         globalThis.__wheatMain = { id: null, hits: [], complete: false };

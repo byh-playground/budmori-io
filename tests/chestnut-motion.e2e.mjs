@@ -395,7 +395,7 @@ try {
     }
     await PAGE.waitForFunction(() => document.body.dataset.home === 'false' && BUDMORI.sim.scene === 'farm');
     await PAGE.evaluate(async () => {
-        const { helpSceneById: SCENE } = await import('./src/help-scenes.js'),
+        const { helpSceneById: SCENE } = await import('./src/ui/help-scenes.js'),
             WORLD = BUDMORI.sim;
         SCENE('chestnut-t6').setup(WORLD);
         globalThis.__chestnutMain = { id: null, hits: [], complete: false, checkpoint: false };

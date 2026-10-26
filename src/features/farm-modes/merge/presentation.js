@@ -1,4 +1,4 @@
-import { clamp } from '../../../farm-model.js';
+import { clamp } from '../../../model/farm-model.js';
 import { TAU, clamp01, easeOut, drawRay, drawSparkle, gradeColor, pop, rgba, strokeArc } from '../vfx-kit.js';
 
 const HOLE_PURPLE = '#7b58bd',

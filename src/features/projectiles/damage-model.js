@@ -2,7 +2,7 @@ import { AttackAction } from '../species-growth/attack-action.js';
 import { cornActionFor, cornAttackContext, cornCriticalRoll } from '../species-growth/corn-attack.js';
 import { CornAttachmentModel } from '../abilities/corn-attachment/model.js';
 import { BallisticProjectile } from './model-base.js';
-import { abilityFeatureFor } from '../../ability-catalog.js';
+import { abilityFeatureFor } from '../../abilities/ability-catalog.js';
 
 export class DamageProjectile extends BallisticProjectile {
     constructor(feature, dependencies) {

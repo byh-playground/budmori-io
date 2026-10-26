@@ -1,6 +1,6 @@
 import { BossPattern } from '../model-base.js';
 import { FEATURE } from './definition.js';
-import { FACTION_CONFIG, hasFaction } from '../../../factions.js';
+import { FACTION_CONFIG, hasFaction } from '../../../core/factions.js';
 
 export class MouthSummonBossPattern extends BossPattern {
     constructor(dependencies) {

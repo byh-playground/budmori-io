@@ -7,8 +7,8 @@ import {
 } from './attack-profile.js';
 import { AttackAction, attackTargetKey, isAttackActionDTO, attackOwnerCanContinue } from './attack-action.js';
 import { growthForAbility, growthBuildOf } from './state.js';
-import { COMMON_UNIT_STAT_DEFAULTS } from '../../unit-stats.js';
-import { mergeMaterialCostForTier } from '../../unit-grades.js';
+import { COMMON_UNIT_STAT_DEFAULTS } from '../../units/unit-stats.js';
+import { mergeMaterialCostForTier } from '../../units/unit-grades.js';
 
 const PEA_WEIGHTS = Object.freeze([null, [1], [1], [0.45, 0.55], [1], [0.4, 0.6], [0.2, 0.25, 0.55]]);
 const COMBO_TICKS = [0, 0, 0, 4, 0, 6, 8];

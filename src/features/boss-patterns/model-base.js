@@ -1,4 +1,4 @@
-import { scaleAttackArea } from '../../unit-stats.js';
+import { scaleAttackArea } from '../../units/unit-stats.js';
 
 // Shared contract only; concrete pattern behavior lives with its presentation.
 export class BossPattern {

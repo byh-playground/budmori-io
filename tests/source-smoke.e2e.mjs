@@ -164,8 +164,8 @@ try {
     // vector draws. Only the starting roster/encounter is arranged; never step or
     // render a synthetic world, and never replace attack/clip implementations.
     await PAGE.evaluate(async () => {
-        const { unitMaxHpFor: MAX_HP_FOR } = await import('./src/unit-stats.js'),
-            { Unit: UNIT_TYPE, bossAttackArea: BOSS_ATTACK_AREA } = await import('./src/farm-model.js');
+        const { unitMaxHpFor: MAX_HP_FOR } = await import('./src/units/unit-stats.js'),
+            { Unit: UNIT_TYPE, bossAttackArea: BOSS_ATTACK_AREA } = await import('./src/model/farm-model.js');
         const WORLD = BUDMORI.sim,
             SESSION = BUDMORI.runtime,
             RENDERER = BUDMORI.renderer,
@@ -837,7 +837,7 @@ try {
     assert.equal(COMBAT.unitCore.sharedLookup, true, 'boss identity resolves through the common unit lookup');
     assert.ok(COMBAT.unitCore.liveHealthChanges > 0, 'actual mixed-combat damage emits the boss Unit health signal');
     REPORT.unitCoreHealing = await PAGE.evaluate(async () => {
-        const { applyHealing: HEAL } = await import('./src/unit-stats.js'),
+        const { applyHealing: HEAL } = await import('./src/units/unit-stats.js'),
             BOSS = BUDMORI.sim.boss,
             BEFORE = BOSS.hp,
             HEALED = HEAL(BOSS, 10);
@@ -931,7 +931,7 @@ try {
         const WORLD = BUDMORI.sim,
             SESSION = BUDMORI.runtime,
             PRESENTATION = BUDMORI.renderer.bossPresentation,
-            { createBossPatternRuntime: PATTERNS } = await import('./src/boss-patterns.js'),
+            { createBossPatternRuntime: PATTERNS } = await import('./src/boss/boss-patterns.js'),
             OBS = (globalThis.__bossBasics = {
                 order: [7, 5, 0, 1, 2, 3, 4, 6, 8],
                 cases: [],
@@ -1379,7 +1379,8 @@ try {
     REPORT.bossCards = { draws: [] };
     const CARD_STATE = () =>
             PAGE.evaluate(async () => {
-                const { runStatModifiers: MODIFIERS, passiveTotals: PASSIVES } = await import('./src/tower-run.js'),
+                const { runStatModifiers: MODIFIERS, passiveTotals: PASSIVES } =
+                        await import('./src/tower/tower-run.js'),
                     WORLD = BUDMORI.sim,
                     TOWER = WORLD.tower;
                 return {
@@ -3004,7 +3005,7 @@ try {
     // Finish this same encounter through real lethal damage and normal RAF, not a direct victory call.
     await PAGE.evaluate(async () => {
         const WORLD = BUDMORI.sim,
-            { applyDamage: DAMAGE } = await import('./src/unit-stats.js');
+            { applyDamage: DAMAGE } = await import('./src/units/unit-stats.js');
         WORLD.boss.controller.configureStage(WORLD.boss.stage, 4);
         const OLD_BOSS = WORLD.boss,
             OBS = (globalThis.__unitCoreEnd = {
@@ -3037,7 +3038,7 @@ try {
     );
     REPORT.unitCoreEnd = await PAGE.evaluate(async () => {
         const WORLD = BUDMORI.sim,
-            { Unit: UNIT_TYPE } = await import('./src/farm-model.js'),
+            { Unit: UNIT_TYPE } = await import('./src/model/farm-model.js'),
             REPEATED = WORLD.finishFarmBossEvent('victory');
         BUDMORI.runtime.paused = true;
         globalThis.__restoreUnitCoreEndObservation();

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { SPECIES_ABILITY_DEFINITIONS } from '../src/ability-catalog.js';
+import { SPECIES_ABILITY_DEFINITIONS } from '../src/abilities/ability-catalog.js';
 import { growthForAbility } from '../src/features/species-growth/state.js';
-import { growthPresentationFor } from '../src/species-growth-presentation.js';
+import { growthPresentationFor } from '../src/render/species-growth-presentation.js';
 
 let forms = 0;
 let effects = 0;

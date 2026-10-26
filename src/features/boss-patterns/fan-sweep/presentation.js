@@ -1,6 +1,6 @@
 import { BossAttackPresentation } from '../presentation-base.js';
 import { FEATURE } from './definition.js';
-import { clamp } from '../../../farm-model.js';
+import { clamp } from '../../../model/farm-model.js';
 
 export class FanSweepPresentation extends BossAttackPresentation {
     constructor() {

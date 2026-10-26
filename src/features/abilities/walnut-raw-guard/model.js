@@ -1,5 +1,5 @@
 import { growthBuildOf } from '../../species-growth/state.js';
-import { getAbilityEffects } from '../../../ability-progression.js';
+import { getAbilityEffects } from '../../../abilities/ability-progression.js';
 import { WALNUT_RAW_GUARD_FEATURE } from './definition.js';
 
 const DEFINITION = WALNUT_RAW_GUARD_FEATURE.definition;

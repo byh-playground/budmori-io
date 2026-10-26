@@ -12,7 +12,7 @@ const { createVectorAssetLoader: CREATE_LOADER } = await import('../vendor/upstr
         unitArtRadius: ART_RADIUS,
         unitMayBeVisible: UNIT_VISIBLE,
         unitCullingEnabled: CULLING_ENABLED,
-    } = await import('../src/farm-render-visibility.js'),
+    } = await import('../src/render/farm-render-visibility.js'),
     LOADER = CREATE_LOADER({ fetch: async (url) => new Response(fs.readFileSync(new URL(url))) }),
     MESHES = { createMesh: (geometry) => geometry, drawMesh() {}, deleteMesh() {} },
     OUTPUT = new URL('./output/render-visibility/', import.meta.url),

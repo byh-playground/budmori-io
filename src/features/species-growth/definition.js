@@ -1,4 +1,4 @@
-import { SPECIES_CATALOG } from '../../species-catalog.js';
+import { SPECIES_CATALOG } from '../../units/species-catalog.js';
 
 export const SPECIES_MASTERY_CAP = 50;
 const EVOLUTION_UNLOCK_LEVELS = Object.freeze([2, 6, 12, 20, 30]);

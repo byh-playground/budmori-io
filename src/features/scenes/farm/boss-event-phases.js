@@ -1,4 +1,4 @@
-import { FACTION_CONFIG, hasFaction } from '../../../factions.js';
+import { FACTION_CONFIG, hasFaction } from '../../../core/factions.js';
 
 // Phase objects execute the existing event record. No parallel phase/timer is
 // kept here: save restoration and reset select behavior from that same record.

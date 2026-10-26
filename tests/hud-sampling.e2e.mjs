@@ -43,7 +43,7 @@ const TEST_ROOT = fileURLToPath(new URL('../', import.meta.url)),
                 'Functional DOM regression in desktop Chromium/SwiftShader. It is not a performance or physical mobile-device measurement.',
         },
         sourceHashes: Object.fromEntries(
-            ['src/farm-app.js', 'src/farm-session.js', 'src/farm-hud-counts.js']
+            ['src/farm-app.js', 'src/app/farm-session.js', 'src/ui/farm-hud-counts.js']
                 .filter((file) => fs.existsSync(path.join(ROOT, file)))
                 .map((file) => [file, HASH(fs.readFileSync(path.join(ROOT, file)))]),
         ),
@@ -128,8 +128,8 @@ try {
     await PAGE.goto(`${ORIGIN}/index.html`);
     await PAGE.waitForFunction(() => Boolean(globalThis.BUDMORI && globalThis.__budmoriHudAccess));
     REPORT.result = await PAGE.evaluate(async () => {
-        const { Garden: GARDEN, CONFIG } = await import('./src/farm-model.js'),
-            { snapshot: SNAPSHOT, restore: RESTORE } = await import('./src/farm-state.js'),
+        const { Garden: GARDEN, CONFIG } = await import('./src/model/farm-model.js'),
+            { snapshot: SNAPSHOT, restore: RESTORE } = await import('./src/model/farm-state.js'),
             STAGES = [],
             CHECK = (condition, message) => {
                 if (!condition) {

@@ -9,8 +9,8 @@ import { targetBodyDimensions } from '../formation-skills/model-base.js';
 import { AttackAction, attackTargetKey, isAttackActionDTO } from './attack-action.js';
 import { speciesGrowthDefinition } from './definition.js';
 import { SpeciesGrowth } from './model.js';
-import { COMMON_UNIT_STAT_DEFAULTS } from '../../unit-stats.js';
-import { mergeMaterialCostForTier } from '../../unit-grades.js';
+import { COMMON_UNIT_STAT_DEFAULTS } from '../../units/unit-stats.js';
+import { mergeMaterialCostForTier } from '../../units/unit-grades.js';
 
 // Normalize the current run's flat attack across the actual consumed material count.
 // This preserves the +5% expected transition budget without fitting individual random seeds.

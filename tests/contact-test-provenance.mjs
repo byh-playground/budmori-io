@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'espree';
 
-const ENTRIES = ['src/farm-model.js', 'src/farm-state.js', 'src/player-progression.js'],
+const ENTRIES = ['src/model/farm-model.js', 'src/model/farm-state.js', 'src/model/player-progression.js'],
     RUNTIME = ['vendor/upstream/deterministic.js', 'vendor/upstream/work-scheduler.js'],
     HASH = (bytes) => createHash('sha256').update(bytes).digest('hex');
 

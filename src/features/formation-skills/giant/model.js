@@ -1,6 +1,6 @@
 import { DEFINITION } from './definition.js';
 import { FormationSkill } from '../model-base.js';
-import { formationUpgradeValue } from '../../../formation-skill-state.js';
+import { formationUpgradeValue } from '../../../formation/formation-skill-state.js';
 export class GiantSkill extends FormationSkill {
     constructor() {
         super(DEFINITION);

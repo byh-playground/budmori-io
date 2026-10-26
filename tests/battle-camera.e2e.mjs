@@ -59,7 +59,7 @@ const SERVER = http.createServer((req, res) => {
     }
     res.setHeader('content-type', TYPES[path.extname(FILE)] || 'application/octet-stream');
     let bytes = fs.readFileSync(FILE);
-    if (URL_LOCAL.searchParams.has('unculled-test') && FILE === path.resolve(ROOT, 'src/farm-renderer.js')) {
+    if (URL_LOCAL.searchParams.has('unculled-test') && FILE === path.resolve(ROOT, 'src/render/farm-renderer.js')) {
         // Reference only the visibility decision; keep native players and every
         // draw implementation identical to the frame under test.
         const IMPORT = "import { unitCullingEnabled, unitMayBeVisible } from './farm-render-visibility.js';",
@@ -93,7 +93,7 @@ function near(a, b, message) {
 }
 async function state() {
     return page.evaluate(async () => {
-        const { snapshot: SNAPSHOT } = await import('./src/farm-state.js');
+        const { snapshot: SNAPSHOT } = await import('./src/model/farm-state.js');
         return JSON.stringify(SNAPSHOT(BUDMORI.sim));
     });
 }
@@ -205,8 +205,8 @@ async function gestureFlow(initial) {
 async function capture(name) {
     const DRAW = await page.evaluate(async () => {
         const { bossVectorScale: BOSS_SCALE } = await import('./src/vector-sockets.js'),
-            { Diorama: UNCULLED } = await import('./src/farm-renderer.js?unculled-test'),
-            { snapshot: SNAPSHOT } = await import('./src/farm-state.js'),
+            { Diorama: UNCULLED } = await import('./src/render/farm-renderer.js?unculled-test'),
+            { snapshot: SNAPSHOT } = await import('./src/model/farm-state.js'),
             R = BUDMORI.renderer,
             DISPLAY = R.cameraWorld,
             BEFORE = JSON.stringify(SNAPSHOT(BUDMORI.sim)),
@@ -415,7 +415,7 @@ try {
     await page.locator('#newGame').click();
     await page.evaluate(async () => {
         const W = BUDMORI.sim,
-            { overallXpForLevel: XP } = await import('./src/player-progression.js');
+            { overallXpForLevel: XP } = await import('./src/model/player-progression.js');
         W.resetUnits();
         W.playerProgression.overallXp = XP(41);
         W.playerProgression.towerBest = 100;

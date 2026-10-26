@@ -166,7 +166,7 @@ try {
     await page.locator('#newGame').click();
     await page.evaluate(async () => {
         const WORLD = BUDMORI.sim,
-            { overallXpForLevel: XP_FOR_LEVEL } = await import('./src/player-progression.js');
+            { overallXpForLevel: XP_FOR_LEVEL } = await import('./src/model/player-progression.js');
         BUDMORI.runtime.paused = true;
         WORLD.resetUnits();
         WORLD.playerProgression.overallXp = XP_FOR_LEVEL(41);

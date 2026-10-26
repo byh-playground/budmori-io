@@ -1,5 +1,5 @@
 import { FEATURE } from './definition.js';
-import { isJoyEffect } from '../../../farm-render-effects.js';
+import { isJoyEffect } from '../../../render/farm-render-effects.js';
 import { drawMergeBlackHoles } from '../../farm-modes/merge/presentation.js';
 
 export class FarmScenePresentation {

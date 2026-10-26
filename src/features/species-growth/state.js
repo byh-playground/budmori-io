@@ -1,4 +1,4 @@
-import { SPECIES_ABILITY_DEFINITIONS } from '../../ability-definitions.js';
+import { SPECIES_ABILITY_DEFINITIONS } from '../../abilities/ability-definitions.js';
 import { isValidLegacyAbilityProgressionState, isValidLegacyAbilityInvestment } from './legacy-state.js';
 import { SpeciesGrowth } from './model.js';
 import { speciesGrowthDefinition } from './definition.js';

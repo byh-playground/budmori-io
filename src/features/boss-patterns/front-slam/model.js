@@ -1,6 +1,6 @@
 import { BossPattern } from '../model-base.js';
 import { FEATURE } from './definition.js';
-import { BOSS_CONTACT_MARGIN } from '../../../boss-patterns.js';
+import { BOSS_CONTACT_MARGIN } from '../../../boss/boss-patterns.js';
 
 // The basic attack: one strong hit on the nearest unit in front of the boss.
 export class SlamBossPattern extends BossPattern {

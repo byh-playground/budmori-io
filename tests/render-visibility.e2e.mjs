@@ -40,7 +40,12 @@ const ROOT = path.resolve(fileURLToPath(new URL('../', import.meta.url))),
 assert.ok(VIEWPORT, 'desktop, portrait or landscape');
 assert.notEqual(fs.realpathSync(BASE), fs.realpathSync(ROOT));
 REPORT.sources = {};
-for (const FILE of ['index.html', 'src/farm-renderer.js', 'src/farm-render-units.js', 'src/farm-session.js']) {
+for (const FILE of [
+    'index.html',
+    'src/render/farm-renderer.js',
+    'src/render/farm-render-units.js',
+    'src/app/farm-session.js',
+]) {
     const HASH = (bytes) => createHash('sha256').update(bytes).digest('hex'),
         EXPECTED = HASH(
             execFileSync('git', ['show', `${REPORT.baseCommit}:${FILE}`], { cwd: ROOT, maxBuffer: 8 * 1024 * 1024 }),
@@ -125,9 +130,9 @@ try {
         await PAGE.goto(`${ORIGIN}/${VARIANT}/index.html`);
         await PAGE.waitForFunction(() => Boolean(globalThis.BUDMORI));
         await PAGE.evaluate(async () => {
-            const { Garden: GARDEN } = await import('./src/farm-model.js'),
-                { snapshot: SNAPSHOT } = await import('./src/farm-state.js'),
-                { FarmSession: SESSION } = await import('./src/farm-session.js'),
+            const { Garden: GARDEN } = await import('./src/model/farm-model.js'),
+                { snapshot: SNAPSHOT } = await import('./src/model/farm-state.js'),
+                { FarmSession: SESSION } = await import('./src/app/farm-session.js'),
                 { WORLD_HEIGHT_PROJECTION: HEIGHT, WORLD_DEPTH_PROJECTION: DEPTH } =
                     await import('./src/vector-sockets.js'),
                 R = BUDMORI.renderer;

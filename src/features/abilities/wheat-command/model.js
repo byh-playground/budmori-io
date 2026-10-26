@@ -1,6 +1,6 @@
 import { growthBuildOf } from '../../species-growth/state.js';
-import { getAbilityEffects } from '../../../ability-progression.js';
-import { abilityProfile } from '../../../unit-abilities.js';
+import { getAbilityEffects } from '../../../abilities/ability-progression.js';
+import { abilityProfile } from '../../../units/unit-abilities.js';
 import { WHEAT_COMMAND_CRIT_FEATURE } from '../wheat-command-crit.js';
 
 const DEFINITION = WHEAT_COMMAND_CRIT_FEATURE.definition;

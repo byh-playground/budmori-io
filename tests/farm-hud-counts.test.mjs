@@ -2,13 +2,13 @@
 // are checked together by hud-sampling.e2e.mjs, independently of cache internals.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { FarmHudCounts } from '../src/farm-hud-counts.js';
+import { FarmHudCounts } from '../src/ui/farm-hud-counts.js';
 
 globalThis.BloomGamekitDeterministic = await import('../vendor/upstream/deterministic.js');
 globalThis.BloomGamekitWorkScheduler = await import('../vendor/upstream/work-scheduler.js');
-const { Garden: GARDEN } = await import('../src/farm-model.js'),
-    { snapshot: SNAPSHOT, restore: RESTORE } = await import('../src/farm-state.js'),
-    { overallXpForLevel: XP } = await import('../src/player-progression.js'),
+const { Garden: GARDEN } = await import('../src/model/farm-model.js'),
+    { snapshot: SNAPSHOT, restore: RESTORE } = await import('../src/model/farm-state.js'),
+    { overallXpForLevel: XP } = await import('../src/model/player-progression.js'),
     COUNTS = new FarmHudCounts();
 
 function digest(world) {

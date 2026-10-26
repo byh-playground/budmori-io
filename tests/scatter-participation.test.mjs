@@ -7,10 +7,10 @@ import fs from 'node:fs';
 
 globalThis.BloomGamekitDeterministic = await import('../vendor/upstream/deterministic.js');
 globalThis.BloomGamekitWorkScheduler = await import('../vendor/upstream/work-scheduler.js');
-const { Garden: GARDEN } = await import('../src/farm-model.js'),
-    { snapshot: SNAPSHOT, restore: RESTORE } = await import('../src/farm-state.js'),
-    { overallXpForLevel: XP } = await import('../src/player-progression.js'),
-    { unitCapabilityComposition: COMPOSITION } = await import('../src/unit-abilities.js'),
+const { Garden: GARDEN } = await import('../src/model/farm-model.js'),
+    { snapshot: SNAPSHOT, restore: RESTORE } = await import('../src/model/farm-state.js'),
+    { overallXpForLevel: XP } = await import('../src/model/player-progression.js'),
+    { unitCapabilityComposition: COMPOSITION } = await import('../src/units/unit-abilities.js'),
     COUNT = Number(process.argv[2] || 100),
     STEP = 0.05,
     SECONDS = 120,
@@ -18,11 +18,11 @@ const { Garden: GARDEN } = await import('../src/farm-model.js'),
     WINDOW_TICKS = WINDOW_SECONDS / STEP,
     OUTPUT = new URL('./output/scatter-participation/', import.meta.url),
     SOURCE_FILES = [
-        'farm-model.js',
-        'army-scatter.js',
-        'farm-snapshot.js',
-        'farm-snapshot-validation.js',
-        'farm-snapshot-migrations.js',
+        'model/farm-model.js',
+        'model/army-scatter.js',
+        'save/farm-snapshot.js',
+        'save/farm-snapshot-validation.js',
+        'save/farm-snapshot-migrations.js',
     ],
     REPORT = {
         status: 'running',
