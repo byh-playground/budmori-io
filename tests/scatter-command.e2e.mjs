@@ -317,7 +317,7 @@ try {
             return UNIT_DRAW.apply(this, args);
         };
         RENDERER.unitPresentation.drawVectorUnit = function (unit, ...args) {
-            if (frame) {
+            if (frame && !args[4]) {
                 frame.nativeIds.push(unit.id);
             }
             return NATIVE_DRAW.call(this, unit, ...args);
@@ -405,7 +405,9 @@ try {
                     // Reuse native players and their start clocks. Only this
                     // test-server renderer's unit visibility predicate differs.
                     this.unitPresentation.drawVectorUnit = function (...args) {
-                        unculledDraws++;
+                        if (!args[5]) {
+                            unculledDraws++;
+                        }
                         return NATIVE.apply(this, args);
                     };
                     UNCULLED.prototype.render.call(this, world, feel, now);

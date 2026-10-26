@@ -80,7 +80,6 @@ export class UnitPresentation {
         this.unitRingPool = [{}, {}, {}, {}];
         this.breedingIndicator = {};
         this.restIndicator = {};
-        this.vectorFrame = { player: null, seekTime: 0, swing: null };
     }
     prepareUnits(units, time, world) {
         if (
@@ -235,7 +234,11 @@ export class UnitPresentation {
             C.stroke();
         }
     }
-    prepareVectorPlayer(u, sim, rest) {
+    prepareHiddenUnit(u, sim) {
+        const REST = unitRestPresentation(u, sim, CONFIG.unit.corpseRecoverySeconds, this.restIndicator);
+        this.drawVectorUnit(u, sim, null, null, REST, true);
+    }
+    drawVectorUnit(u, sim, p, r, rest, hidden = false) {
         const RECORD = this.renderer.vectorAssets.get(u.species);
         if (!RECORD) {
             throw new Error('Missing required troop vector asset for species ' + u.species);
@@ -275,50 +278,38 @@ export class UnitPresentation {
             player.setExpression(EXPRESSION);
         }
         prepareUnitAttackPlayer(player, u);
-        const FRAME = this.vectorFrame;
-        FRAME.player = player;
-        FRAME.swing = SWING;
-        FRAME.seekTime = HAS_PHASE_CLOCK
-            ? clamp(PHASE_TIME_MS, 0, CLIP.durationMs)
-            : rest
-              ? rest.elapsed * 1000
-              : this.renderer.displayTimeMs;
-        return FRAME;
-    }
-    prepareHiddenUnit(u, sim) {
-        // Observe every clip transition even outside the view. Returning to the
-        // same clip after idle -> walk -> idle must keep the new start clock.
-        // Native pose evaluation and submission are deferred until visible.
-        const REST = unitRestPresentation(u, sim, CONFIG.unit.corpseRecoverySeconds, this.restIndicator);
-        const FRAME = this.prepareVectorPlayer(u, sim, REST);
-        // Active melee trails are never culled. On their inactive path this only
-        // clears retained samples, including after a checkpoint/action cancel.
-        drawUnitAttackContact(this.renderer, u, FRAME.player, null);
-    }
-    drawVectorUnit(u, sim, p, r, rest) {
-        const RECORD = this.renderer.vectorAssets.get(u.species),
-            FRAME = this.prepareVectorPlayer(u, sim, rest),
-            PLAYER = FRAME.player;
-        PLAYER.seek(FRAME.seekTime);
+        if (hidden) {
+            // Observe clip transitions without evaluating native poses or art.
+            // Active melee trails are kept visible; this clears inactive history.
+            drawUnitAttackContact(this.renderer, u, player, null);
+            return true;
+        }
+        player.seek(
+            HAS_PHASE_CLOCK
+                ? clamp(PHASE_TIME_MS, 0, CLIP.durationMs)
+                : rest
+                  ? rest.elapsed * 1000
+                  : this.renderer.displayTimeMs,
+        );
         const [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox,
             GROUND = unitBodyDefinition(u.species).ground,
             SCALE = (2 * r) / Math.max(WIDTH, HEIGHT);
         const MATRIX = [SCALE, 0, 0, SCALE, p.x - GROUND.x * SCALE, p.y - GROUND.y * SCALE];
-        if (!FRAME.swing && !rest) {
+        if (!SWING && !rest) {
             applyUnitAttackPose(MATRIX, u, GROUND);
         }
         if (this.renderer.cornAttachmentBodies.has(u.id)) {
-            this.renderer.captureCornAttachmentBody(u, u.id, PLAYER, MATRIX);
+            this.renderer.captureCornAttachmentBody(u, u.id, player, MATRIX);
         }
         // Native vector players submit directly to MeshRenderer, so flush earlier 2D paint first.
         this.renderer.ctx.vector.flush();
-        PLAYER.draw({
+        player.draw({
             projection: this.renderer.ctx.vector.projection,
             matrix: MATRIX,
             alpha: u.isFormationClone ? 0.52 : 1,
             color: u.isFormationClone ? [0.55, 0.82, 1, 1] : [1, 1, 1, 1],
         });
-        drawUnitAttackContact(this.renderer, u, PLAYER, MATRIX);
+        drawUnitAttackContact(this.renderer, u, player, MATRIX);
         return true;
     }
     drawUnit(u, sim, rest) {

@@ -232,7 +232,10 @@ async function capture(name) {
         let nativeIds = [];
         let renderEvidence;
         R.unitPresentation.drawVectorUnit = function (unit, ...args) {
-            nativeIds.push(unit.id);
+            // hidden=true observes clip transitions without native art submission.
+            if (!args[4]) {
+                nativeIds.push(unit.id);
+            }
             return NATIVE.call(this, unit, ...args);
         };
         try {
