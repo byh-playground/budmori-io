@@ -309,7 +309,8 @@ try {
     REPORT.checks.push('farm shares the same native gestures, reset and state isolation');
     await page.evaluate(() => {
         const W = BUDMORI.sim;
-        for (let i = 200; i < 1000; i++) {
+        // 500 frontline + 100 reserves; the separate tower-army flow covers a full 1,000 roster.
+        for (let i = 200; i < 600; i++) {
             const U = W.spawn(i % 9, 1, ((i % 40) - 19.5) * 1.05, (Math.floor(i / 40) - 12) * 1.1);
             U.growthElapsed = U.growthDuration;
             U.dropLanded = true;
@@ -399,12 +400,17 @@ try {
     await page.waitForFunction(() => BUDMORI.renderer.manualCamera);
     const CENTER = (await camera()).anchor;
     const ROTATED = KIND === 'portrait' ? SIZES.landscape : SIZES.portrait;
+    await page.mouse.down();
     await page.setViewportSize(ROTATED);
     await page.waitForFunction((width) => BUDMORI.renderer.canvas.width === width, ROTATED.width);
     near((await camera(ROTATED.width / 2, ROTATED.height / 2)).anchor, CENTER, 'resize preserves center world point');
+    const RESIZED = await camera();
+    await page.mouse.move(ROTATED.width / 3, ROTATED.height / 3);
+    await page.mouse.up();
+    assert.deepEqual(await camera(), RESIZED, 'resize releases a captured drag');
     await page.setViewportSize(SIZE);
     await page.waitForFunction((width) => BUDMORI.renderer.canvas.width === width, SIZE.width);
-    REPORT.checks.push('native viewport resize/rotation preserves center');
+    REPORT.checks.push('native viewport resize/rotation preserves center and releases captured drag');
     await page.locator('input[name="battleCommand"][value="scatter"]').check();
     await resume();
     await page.waitForFunction(() => BUDMORI.sim.battleCommand === 'scatter');
