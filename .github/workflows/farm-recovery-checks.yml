@@ -44,12 +44,27 @@ jobs:
             - name: Play the tower army flow
               if: success() || failure()
               run: timeout 180s npm run test:tower-army
+            - name: Inspect farm and battlefield with desktop gestures
+              if: success() || failure()
+              run: timeout 180s npm run test:camera -- desktop
+            - name: Inspect farm and battlefield with portrait touch gestures
+              if: success() || failure()
+              run: timeout 180s npm run test:camera -- portrait
+            - name: Inspect farm and battlefield with landscape touch gestures
+              if: success() || failure()
+              run: timeout 180s npm run test:camera -- landscape
+            - name: Preserve default meteor framing and manual camera control
+              if: success() || failure()
+              run: timeout 180s npm run test:corn-growth:case -- battle landscape
             - name: Compare visible scatter at maximum frontline
               if: success() || failure()
               run: timeout 180s npm run test:scatter-command -- 500 1 center
             - name: Verify scatter commands and reserve joins
               if: success() || failure()
               run: timeout 180s npm run test:scatter-command -- 100 1 center
+            - name: Compare maximum frontline at the expanded wall
+              if: success() || failure()
+              run: timeout 180s npm run test:scatter-command -- 500 1 wall
             - name: Verify sustained scatter attack participation (100)
               if: success() || failure()
               run: timeout 180s npm run test:scatter-participation -- 100
@@ -64,6 +79,8 @@ jobs:
                       tests/output/source-smoke/
                       tests/output/browser-setup/
                       tests/output/tower-army/
+                      tests/output/battle-camera/
+                      tests/output/corn-growth/
                       tests/output/scatter-command/
                       tests/output/scatter-participation/
                   if-no-files-found: warn

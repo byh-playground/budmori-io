@@ -173,6 +173,18 @@ async function restoreComparison() {
     } else {
         REPORT.comparisonStart = START;
     }
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await page.evaluate((placement) => {
+        const R = BUDMORI.renderer,
+            BOSSES = BUDMORI.sim.bosses.filter((boss) => boss.active && boss.hp > 0);
+        R.resetZoom();
+        if (placement === 'wall') {
+            R.setPan(-BOSSES.reduce((sum, boss) => sum + boss.x, 0) / BOSSES.length, R.cameraPan.y);
+        }
+        // Compare spacing at one fixed viewpoint; the normal default view may
+        // translate to keep a moving boss's head in frame.
+        R.takeCameraControl();
+    }, PLACEMENT);
 }
 async function capture(file) {
     assert.equal(await page.evaluate(() => BUDMORI.runtime.paused), true);
@@ -371,7 +383,7 @@ try {
                 WORLD.step(0.05);
             }
             if (placement === 'wall') {
-                const SHIFT_X = 20 - WORLD.boss.x;
+                const SHIFT_X = BUDMORI.ArenaGeometry.bounds(WORLD, WORLD.boss.radius).x - WORLD.boss.x;
                 for (const UNIT of [...WORLD.units, ...WORLD.bosses]) {
                     UNIT.x += SHIFT_X;
                     WORLD.boundBody(UNIT, 'farm', UNIT.radius);
@@ -407,6 +419,7 @@ try {
                 snapshot: globalThis.__scatterSnapshot,
                 count: WORLD.fieldFighterCount,
                 bosses: WORLD.bosses.length,
+                arena: BUDMORI.ArenaGeometry.bounds(WORLD),
             };
         },
         { count: COUNT, bosses: BOSSES, placement: PLACEMENT },
@@ -415,6 +428,7 @@ try {
     delete REPORT.initial.snapshot;
     assert.equal(REPORT.initial.count, COUNT);
     assert.equal(REPORT.initial.bosses, BOSSES);
+    assert.deepEqual(REPORT.initial.arena, { x: 34.5, y: 25.5 }, 'compare commands in the expanded tower');
     await restoreComparison();
     saveReport();
     await capture('initial-desktop.png');
@@ -476,7 +490,7 @@ try {
                         .filter((boss) => boss.active && boss.hp > 0)
                         .map((boss) => ({ id: boss.id, x: boss.x, y: boss.y })),
                     outside: POINTS.filter(
-                        (point) => !BUDMORI.ArenaGeometry.inside(point, 'farm', Math.max(0, point.radius - 0.01)),
+                        (point) => !BUDMORI.ArenaGeometry.inside(point, WORLD, Math.max(0, point.radius - 0.01)),
                     ).length,
                     damageBySpecies: { ...OBS.damageBySpecies },
                     movedFraction:
