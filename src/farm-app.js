@@ -1,4 +1,5 @@
 import { PerformanceDiagnostics } from './performance-diagnostics.js';
+import { FarmHudCounts } from './farm-hud-counts.js';
 import { RelicDock, RELIC_ICONS, relicEffectText, relicAcquisitionText } from './relic-dock.js';
 import { FORMATION_SKILL_DEFINITIONS } from './formation-skill-state.js';
 import {
@@ -79,6 +80,7 @@ const RENDERER = new Diorama(DOLLAR('world'));
 const RELIC_DOCK = new RelicDock({ onOpen: () => stopWorldInput() });
 const BOSS_RELIC_DOCK = new RelicDock({ role: 'boss', host: '#bossRelicHost', onOpen: () => stopWorldInput() });
 const PERFORMANCE_DIAGNOSTICS = new PerformanceDiagnostics();
+const HUD_COUNTS = new FarmHudCounts();
 STORAGE.profiler = PERFORMANCE_DIAGNOSTICS;
 function frameRate() {
     return PERFORMANCE_DIAGNOSTICS.frameRate();
@@ -660,6 +662,7 @@ function install(world) {
         cancelFarmSortTransition();
     }
     active?.dispose();
+    HUD_COUNTS.bind(world);
     RENDERER.resetPan();
     active = new FarmSession(world, {
         onError: FAIL,
@@ -1914,24 +1917,20 @@ const BATTLE_COMMAND_NOTES = Object.freeze({
     scatter: '간격을 넓히며 공격해요',
     retreat: '공격을 멈추고 적에게서 물러나요',
 });
-function syncBattleCommands(garden, visible) {
+function syncBattleCommands(garden, visible, counts) {
     syncFlag('battleCommands', 'hidden', !visible);
     if (!visible) {
         return;
     }
-    let reserves = 0;
-    for (const COUNT of garden.handCounts.values()) {
-        reserves += COUNT;
-    }
-    syncText('frontlineStatus', `전선 ${garden.fieldFighterCount}/${garden.frontlineLimit} · 예비대 ${reserves}`);
+    syncText('frontlineStatus', `전선 ${counts.fighters}/${garden.frontlineLimit} · 예비대 ${counts.reserves}`);
     syncText('battleCommandNote', BATTLE_COMMAND_NOTES[garden.battleCommand]);
     for (const INPUT of DOLLAR('battleCommands').querySelectorAll('input')) {
         INPUT.checked = INPUT.value === garden.battleCommand;
     }
 }
-function syncHand(garden, visible) {
-    const COUNTS = visible ? garden.handCounts : new Map(),
-        IDS = garden.deployOrder.filter((id) => COUNTS.has(id)),
+function syncHand(garden, visible, counts) {
+    const COUNTS = counts?.hand,
+        IDS = visible ? garden.deployOrder.filter((id) => COUNTS.has(id)) : [],
         KEY = IDS.map((id) => `${id}x${COUNTS.get(id)}`).join(',');
     syncFlag('hand', 'hidden', !visible || IDS.length < 2);
     if (KEY !== handKey) {
@@ -2170,6 +2169,7 @@ window.addEventListener('pagehide', () => {
         markSeen();
     }
     active.dispose();
+    HUD_COUNTS.dispose();
     unsubscribeProgress?.();
     unsubscribeProgress = null;
     RENDERER.dispose();
@@ -2240,7 +2240,9 @@ function sync(display, now, notices) {
     syncFlag('mergeNotice', 'hidden', home || FARM_EVENT_ACTIVE);
     syncAttribute('merge', 'aria-label', `합성${MERGE_STATUS.available ? '' : ' 불가'} · ${MERGE_STATUS.reason}`);
     syncText('mergeNotice', MERGE_STATUS.reason);
-    let worldCount = 0;
+    const WORLD_COUNT = HUD_COUNTS.worldPopulation(W),
+        BATTLE_VISIBLE = !home && fightActive(),
+        BATTLE_COUNTS = BATTLE_VISIBLE ? HUD_COUNTS.battleCounts(W) : null;
     let armyCurrent = 0;
     let armyMax = 0;
     let armyLiving = 0;
@@ -2253,11 +2255,6 @@ function sync(display, now, notices) {
             armyTotal++;
         }
     }
-    for (const UNIT of W.unitCollection.items) {
-        if (!UNIT.isBattleOnlySummon) {
-            worldCount++;
-        }
-    }
     syncFlag('farmControls', 'hidden', FARM_EVENT_ACTIVE || home || W.tower.active);
     syncFlag('workHud', 'hidden', FARM_EVENT_ACTIVE || home || W.tower.active);
     syncTower(W, home, FARM_EVENT);
@@ -2266,9 +2263,9 @@ function sync(display, now, notices) {
         'hidden',
         !FARM_EVENT_ACTIVE || home || FARM_EVENT.phase === 'marching' || W.tower.phase === 'summit',
     );
-    syncBattleCommands(W, !home && fightActive());
-    syncHand(W, !home && fightActive());
-    syncText('count', worldCount);
+    syncBattleCommands(W, BATTLE_VISIBLE, BATTLE_COUNTS);
+    syncHand(W, BATTLE_VISIBLE, BATTLE_COUNTS);
+    syncText('count', WORLD_COUNT);
     syncText('capacity', personalGarden?.capacity ?? CONFIG.farm.capacity.max);
     const PROGRESSION = (personalGarden || W).playerProgression,
         LEVEL = overallLevel(PROGRESSION),
@@ -2292,7 +2289,7 @@ function sync(display, now, notices) {
             ? `${speciesRewardName(PENDING_REWARD.species)} 보상 대기 · 공간이 생기면 합류해요`
             : !HAS_READY_TROOPS
               ? '모두 잠자는 중 · 회복을 기다려요'
-              : worldCount >= W.capacity
+              : WORLD_COUNT >= W.capacity
                 ? '농장이 가득 찼어요'
                 : '번식으로 식구를 늘려요',
     );

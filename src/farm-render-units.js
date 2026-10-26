@@ -234,7 +234,11 @@ export class UnitPresentation {
             C.stroke();
         }
     }
-    drawVectorUnit(u, sim, p, r, rest) {
+    prepareHiddenUnit(u, sim) {
+        const REST = unitRestPresentation(u, sim, CONFIG.unit.corpseRecoverySeconds, this.restIndicator);
+        this.drawVectorUnit(u, sim, null, null, REST, true);
+    }
+    drawVectorUnit(u, sim, p, r, rest, hidden = false) {
         const RECORD = this.renderer.vectorAssets.get(u.species);
         if (!RECORD) {
             throw new Error('Missing required troop vector asset for species ' + u.species);
@@ -274,6 +278,12 @@ export class UnitPresentation {
             player.setExpression(EXPRESSION);
         }
         prepareUnitAttackPlayer(player, u);
+        if (hidden) {
+            // Observe clip transitions without evaluating native poses or art.
+            // Active melee trails are kept visible; this clears inactive history.
+            drawUnitAttackContact(this.renderer, u, player, null);
+            return true;
+        }
         player.seek(
             HAS_PHASE_CLOCK
                 ? clamp(PHASE_TIME_MS, 0, CLIP.durationMs)

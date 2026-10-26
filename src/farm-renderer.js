@@ -8,6 +8,7 @@ import { drawFormationEffects, includeFormationEffectBounds } from './formation-
 import { scenePresentation } from './farm-render-scenes.js';
 import { FoodPresentation, ProjectilePresentation } from './farm-render-items.js';
 import { UnitPresentation } from './farm-render-units.js';
+import { unitCullingEnabled, unitMayBeVisible } from './farm-render-visibility.js';
 import { UNIT_GRADES } from './unit-grades.js';
 import { CornAttachmentPresentation } from './features/abilities/corn-attachment/presentation.js';
 import { disposeEffectPresentations, drawEffect } from './farm-render-effects.js';
@@ -88,6 +89,7 @@ const DIORAMA = class Diorama {
         this.vectorPlayerAssets = new WeakMap();
         this.cornAttachmentBodies = new Map();
         this.actors = [];
+        this.visibleUnits = [];
         this.actorPool = [];
         this.liveUnitIds = new Set();
         this.joyEffects = [];
@@ -919,7 +921,7 @@ const DIORAMA = class Diorama {
             }
         }
     }
-    addActor(presentation, source, depth, id, vector = false) {
+    addActor(presentation, source, depth, id, vector = false, culled = false) {
         const INDEX = this.actors.length,
             ACTOR = this.actorPool[INDEX] || (this.actorPool[INDEX] = {});
         ACTOR.presentation = presentation;
@@ -927,6 +929,7 @@ const DIORAMA = class Diorama {
         ACTOR.depth = depth;
         ACTOR.id = id;
         ACTOR.vector = vector;
+        ACTOR.culled = culled;
         this.actors.push(ACTOR);
     }
     render(sim2, feel = null, now = performance.now()) {
@@ -950,10 +953,30 @@ const DIORAMA = class Diorama {
         });
         this.terrain(sim2, now);
         this.unitPresentation.prepareUnits(sim2.units, sim2.time, sim2);
+        // Attachment targets need their native body transform even when their
+        // center is outside the view; the attached art can still cross it.
+        this.cornAttachmentBodies.clear();
+        for (const GROUP of sim2.cornAttachments?.groups || []) {
+            this.cornAttachmentBodies.set(GROUP.targetId, null);
+        }
+        const HIDDEN_MERGE_RESULT_IDS = PRESENTATION.hiddenUnitIds?.(sim2) || EMPTY_UNIT_IDS,
+            VISIBLE_UNITS = this.visibleUnits,
+            CULL_UNITS = unitCullingEnabled(this);
+        this.unitCullingActive = CULL_UNITS;
+        VISIBLE_UNITS.length = 0;
         const SIDES = sim2.insideTower || sim2.scene !== 'farm';
         for (const SOURCE of sim2.units) {
-            const U = this.unitPresentation.displayUnit(SOURCE),
-                A = clamp(0.22 / (1 + U.z * 0.3), 0.045, 0.22),
+            const U = this.unitPresentation.displayUnit(SOURCE);
+            if (CULL_UNITS && !unitMayBeVisible(this, U, sim2)) {
+                if (!HIDDEN_MERGE_RESULT_IDS.has(U.id)) {
+                    this.unitPresentation.prepareHiddenUnit(U, sim2);
+                }
+                continue;
+            }
+            if (CULL_UNITS) {
+                VISIBLE_UNITS.push(U);
+            }
+            const A = clamp(0.22 / (1 + U.z * 0.3), 0.045, 0.22),
                 SHADOW = (U.size * 0.66) / (1 + U.z * 0.65);
             this.groundEllipse(U.x, U.y, SHADOW, SHADOW * 0.62, `rgba(42,61,35,${A})`);
             // Grade is a ground ring batched with the shadows, so each unit needs one native vector draw.
@@ -982,12 +1005,18 @@ const DIORAMA = class Diorama {
                 }
             }
         }
-        const HIDDEN_MERGE_RESULT_IDS = PRESENTATION.hiddenUnitIds?.(sim2) || EMPTY_UNIT_IDS,
-            ACTORS = this.actors;
+        const ACTORS = this.actors;
         ACTORS.length = 0;
         PRESENTATION.drawMergeBlackHoles?.(this, sim2);
+        // Both lists retain source order, so a cursor avoids a per-frame
+        // visibility Set while keeping hidden actors at their original depth.
+        let visibleIndex = 0;
         for (const SOURCE of sim2.units) {
-            const U = this.unitPresentation.displayUnit(SOURCE);
+            const U = this.unitPresentation.displayUnit(SOURCE),
+                CULLED = CULL_UNITS && U.id !== VISIBLE_UNITS[visibleIndex]?.id;
+            if (CULL_UNITS && !CULLED) {
+                visibleIndex++;
+            }
             if (!HIDDEN_MERGE_RESULT_IDS.has(U.id)) {
                 this.addActor(
                     this.unitPresentation,
@@ -995,6 +1024,7 @@ const DIORAMA = class Diorama {
                     0.785 * U.y - 0.62 * U.z,
                     U.id,
                     this.vectorAssets.has(U.species),
+                    CULLED,
                 );
             }
         }
@@ -1032,11 +1062,6 @@ const DIORAMA = class Diorama {
         }
         // Preserve stable source order for equal depth/id and every vector flush boundary.
         ACTORS.sort(COMPARE_ACTORS);
-        // Only targets with active corn groups need a body transform. No per-actor pose query otherwise.
-        this.cornAttachmentBodies.clear();
-        for (const GROUP of sim2.cornAttachments?.groups || []) {
-            this.cornAttachmentBodies.set(GROUP.targetId, null);
-        }
         let vectorRun = false;
         for (const ACTOR of ACTORS) {
             if (ACTOR.vector && !vectorRun) {
@@ -1046,7 +1071,16 @@ const DIORAMA = class Diorama {
                 C.flush();
                 vectorRun = false;
             }
-            ACTOR.presentation.draw(ACTOR.source, sim2);
+            if (ACTOR.culled) {
+                // A hidden native player can still separate earlier visible
+                // meshes from queued 2D primitives. Preserve that ordered
+                // boundary without evaluating its pose or submitting its art.
+                // Context.flush puts primitives first and changes this order.
+                C.vector.flush();
+                this.meshes.flush();
+            } else {
+                ACTOR.presentation.draw(ACTOR.source, sim2);
+            }
             ACTOR.source = null;
         }
         if (vectorRun) {

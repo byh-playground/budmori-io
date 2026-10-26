@@ -22,7 +22,13 @@
         "test:tower-army": "node tests/tower-army.e2e.mjs",
         "test:camera": "node tests/battle-camera.e2e.mjs",
         "test:scatter-command": "node tests/scatter-command.e2e.mjs",
-        "test:scatter-participation": "node tests/scatter-participation.test.mjs"
+        "test:scatter-participation": "node tests/scatter-participation.test.mjs",
+        "test:hud-counts": "node tests/farm-hud-counts.test.mjs",
+        "test:hud-sampling": "node tests/hud-sampling.e2e.mjs",
+        "test:contact-boundaries": "node tests/contact-boundaries.test.mjs",
+        "test:render-bounds": "node tests/render-visibility.test.mjs",
+        "test:render-visibility": "node tests/render-visibility.e2e.mjs",
+        "test:performance-optimizations": "node tests/performance-optimizations.e2e.mjs"
     },
     "devDependencies": {
         "@eslint/js": "10.0.1",

@@ -138,7 +138,8 @@ function summarize(raw) {
     };
 }
 const SERVER = http.createServer((request, response) => {
-    const RELATIVE = new URL(request.url, 'http://localhost').pathname.replace(/^\/+/, '') || 'index.html',
+    const URL_LOCAL = new URL(request.url, 'http://localhost'),
+        RELATIVE = URL_LOCAL.pathname.replace(/^\/+/, '') || 'index.html',
         FILE = path.resolve(ROOT, RELATIVE);
     if (RELATIVE === 'favicon.ico') {
         response.writeHead(204).end();
@@ -149,7 +150,16 @@ const SERVER = http.createServer((request, response) => {
         return;
     }
     response.setHeader('content-type', TYPES[path.extname(FILE)] || 'application/octet-stream');
-    response.end(fs.readFileSync(FILE));
+    let bytes = fs.readFileSync(FILE);
+    if (URL_LOCAL.searchParams.has('unculled-test') && FILE === path.join(ROOT, 'src/farm-renderer.js')) {
+        const IMPORT = "import { unitCullingEnabled, unitMayBeVisible } from './farm-render-visibility.js';",
+            SOURCE = bytes.toString('utf8');
+        assert.equal(SOURCE.split(IMPORT).length, 2);
+        bytes = Buffer.from(
+            SOURCE.replace(IMPORT, 'const unitCullingEnabled = () => false, unitMayBeVisible = () => true;'),
+        );
+    }
+    response.end(bytes);
 });
 let browser;
 let page;
@@ -195,9 +205,27 @@ async function capture(file) {
     });
     await page.waitForFunction(() => Boolean(globalThis.__scatterCaptureEvidence));
     const EVIDENCE = await page.evaluate(() => globalThis.__scatterCaptureEvidence);
+    REPORT.captureEvidence[file] = EVIDENCE;
+    saveReport();
     assert.equal(EVIDENCE.tick, await page.evaluate(() => BUDMORI.sim.simulationTick));
     assert.equal(EVIDENCE.terrainDraws, 1, 'native terrain must draw in the captured frame');
-    assert.ok(EVIDENCE.unitDraws >= EVIDENCE.expectedUnits, 'native troop bodies must draw in the captured frame');
+    assert.equal(EVIDENCE.unculledDraws, EVIDENCE.expectedUnits, 'unculled reference retains every field troop');
+    assert.deepEqual(
+        EVIDENCE.nativeIds,
+        EVIDENCE.visibleIds,
+        'every admitted troop submits its native body exactly once',
+    );
+    assert.equal(EVIDENCE.unitDraws, EVIDENCE.nativeIds.length, 'each troop actor performs its native body draw');
+    assert.ok(
+        EVIDENCE.nativeIds.length > 0 && EVIDENCE.nativeBodyPixels > 0,
+        'captured spacing comparison contains actual onscreen troop art',
+    );
+    assert.equal(EVIDENCE.unculledDifferentPixels, 0, 'same snapshot/camera matches the unculled native framebuffer');
+    assert.equal(EVIDENCE.restoredDifferentPixels, 0, 'reference inspection restores the captured native framebuffer');
+    assert.ok(
+        EVIDENCE.cameraUnchanged && EVIDENCE.stateUnchanged && EVIDENCE.clocksUnchanged,
+        'reference render preserves camera, authoritative snapshot and native player clocks',
+    );
     assert.equal(EVIDENCE.bossDraws, EVIDENCE.expectedBosses, 'native bosses must draw in the captured frame');
     assert.ok(EVIDENCE.fadeAgeMs >= 700, 'native tower entry fade must finish before capture');
     assert.ok(EVIDENCE.brightPixelFraction > 0.1, 'battlefield pixels must be visible beyond the fade color');
@@ -209,7 +237,6 @@ async function capture(file) {
             'paired screenshots must use the same native camera',
         );
     }
-    REPORT.captureEvidence[file] = EVIDENCE;
     await page.evaluate(() => document.fonts.ready.then(() => true));
     await page.clock.pauseAt(await page.evaluate(() => Date.now() + 60_000));
     try {
@@ -267,11 +294,14 @@ try {
     await page.goto(ORIGIN);
     await page.waitForFunction(() => Boolean(globalThis.BUDMORI));
     await page.locator('#newGame').click();
-    await page.evaluate(() => {
-        const RENDERER = BUDMORI.renderer,
+    await page.evaluate(async () => {
+        const { Diorama: UNCULLED } = await import('./src/farm-renderer.js?unculled-test'),
+            { snapshot: SNAPSHOT } = await import('./src/farm-state.js'),
+            RENDERER = BUDMORI.renderer,
             RENDER = RENDERER.render,
             TERRAIN = RENDERER.terrain,
             UNIT_DRAW = RENDERER.unitPresentation.draw,
+            NATIVE_DRAW = RENDERER.unitPresentation.drawVectorUnit,
             BOSS_DRAW = RENDERER.bossPresentation.draw;
         let frame = null;
         RENDERER.terrain = function (...args) {
@@ -286,6 +316,12 @@ try {
             }
             return UNIT_DRAW.apply(this, args);
         };
+        RENDERER.unitPresentation.drawVectorUnit = function (unit, ...args) {
+            if (frame && !args[4]) {
+                frame.nativeIds.push(unit.id);
+            }
+            return NATIVE_DRAW.call(this, unit, ...args);
+        };
         RENDERER.bossPresentation.draw = function (...args) {
             if (frame) {
                 frame.bossDraws++;
@@ -294,7 +330,7 @@ try {
         };
         RENDERER.render = function (world, feel, now) {
             const CAPTURE = Boolean(globalThis.__scatterCaptureRequested);
-            frame = CAPTURE ? { terrainDraws: 0, unitDraws: 0, bossDraws: 0 } : null;
+            frame = CAPTURE ? { terrainDraws: 0, unitDraws: 0, bossDraws: 0, nativeIds: [] } : null;
             const RESULT = RENDER.call(this, world, feel, now);
             if (CAPTURE) {
                 const GL = this.device.gl,
@@ -318,10 +354,101 @@ try {
                         COLORS.add((R << 16) | (G << 8) | B);
                     }
                 }
+                const ORIGINAL_FRAME = frame,
+                    HIDDEN = this.scenePresentation.hiddenUnitIds(world),
+                    VISIBLE_IDS = (this.unitCullingActive === false ? world.units : this.visibleUnits)
+                        .filter((unit) => !HIDDEN.has(unit.id))
+                        .map((unit) => unit.id)
+                        .sort((a, b) => a - b),
+                    BEFORE = JSON.stringify(SNAPSHOT(BUDMORI.sim)),
+                    DIRECT = this.directCamera,
+                    NATIVE = this.unitPresentation.drawVectorUnit,
+                    CAMERA = () =>
+                        JSON.stringify({
+                            scale: this.scale,
+                            offset: this.offset,
+                            view: this.view,
+                            zoom: this.zoom,
+                            pan: this.cameraPan,
+                        }),
+                    CAMERA_BEFORE = CAMERA(),
+                    CLOCKS = [...this.vectorPlayers].map(([id, player]) => ({
+                        id,
+                        player,
+                        clip: player.currentClip,
+                        time: player.currentTimeMs,
+                    })),
+                    READ = () => {
+                        const OUTPUT = new Uint8Array(PIXELS.length);
+                        GL.readPixels(0, 0, WIDTH, HEIGHT, GL.RGBA, GL.UNSIGNED_BYTE, OUTPUT);
+                        return OUTPUT;
+                    },
+                    DIFFERENT_PIXELS = (a, b) => {
+                        let count = 0;
+                        for (let i = 0; i < a.length; i += 4) {
+                            if (
+                                a[i] !== b[i] ||
+                                a[i + 1] !== b[i + 1] ||
+                                a[i + 2] !== b[i + 2] ||
+                                a[i + 3] !== b[i + 3]
+                            ) {
+                                count++;
+                            }
+                        }
+                        return count;
+                    };
+                let unculledDraws = 0;
+                let visibilityEvidence;
+                frame = null;
+                this.directCamera = () => {};
+                try {
+                    // Reuse native players and their start clocks. Only this
+                    // test-server renderer's unit visibility predicate differs.
+                    this.unitPresentation.drawVectorUnit = function (...args) {
+                        if (!args[5]) {
+                            unculledDraws++;
+                        }
+                        return NATIVE.apply(this, args);
+                    };
+                    UNCULLED.prototype.render.call(this, world, feel, now);
+                    const UNCULLED_PIXELS = READ();
+                    this.unitPresentation.drawVectorUnit = () => true;
+                    RENDER.call(this, world, feel, now);
+                    const WITHOUT_BODIES = READ();
+                    this.unitPresentation.drawVectorUnit = NATIVE;
+                    RENDER.call(this, world, feel, now);
+                    const RESTORED_PIXELS = READ();
+                    for (const CLOCK of CLOCKS) {
+                        if (CLOCK.player.currentTimeMs !== CLOCK.time) {
+                            CLOCK.player.seek(CLOCK.time);
+                        }
+                    }
+                    visibilityEvidence = {
+                        nativeIds: ORIGINAL_FRAME.nativeIds.sort((a, b) => a - b),
+                        visibleIds: VISIBLE_IDS,
+                        unculledDraws,
+                        unculledDifferentPixels: DIFFERENT_PIXELS(PIXELS, UNCULLED_PIXELS),
+                        nativeBodyPixels: DIFFERENT_PIXELS(PIXELS, WITHOUT_BODIES),
+                        restoredDifferentPixels: DIFFERENT_PIXELS(PIXELS, RESTORED_PIXELS),
+                        cameraUnchanged: CAMERA() === CAMERA_BEFORE,
+                        stateUnchanged: JSON.stringify(SNAPSHOT(BUDMORI.sim)) === BEFORE,
+                        clocksUnchanged: CLOCKS.every(
+                            ({ id, player, clip, time }) =>
+                                this.vectorPlayers.get(id) === player &&
+                                player.currentClip === clip &&
+                                player.currentTimeMs === time,
+                        ),
+                    };
+                } finally {
+                    this.unitPresentation.drawVectorUnit = NATIVE;
+                    this.directCamera = DIRECT;
+                }
                 globalThis.__scatterCaptureEvidence = {
-                    ...frame,
+                    ...ORIGINAL_FRAME,
+                    ...visibilityEvidence,
                     tick: world.simulationTick,
-                    expectedUnits: world.fieldFighterCount,
+                    expectedUnits: world.units.filter((unit) => !HIDDEN.has(unit.id)).length,
+                    fieldFighters: world.fieldFighterCount,
                     expectedBosses: world.bosses.length,
                     fadeAgeMs: now - this.sceneChangedAt,
                     brightPixelFraction: bright / sampled,
