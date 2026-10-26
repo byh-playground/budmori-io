@@ -1,0 +1,83 @@
+name: Browser checks
+on:
+    pull_request:
+    push:
+        branches: [main]
+    workflow_dispatch:
+        inputs:
+            extended:
+                description: Also run the camera, tower army, scatter and growth browser flows
+                type: boolean
+                default: false
+permissions:
+    contents: read
+jobs:
+    core:
+        runs-on: ubuntu-24.04
+        timeout-minutes: 30
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+            - run: npm ci
+            - uses: actions/cache@v4
+              with:
+                  path: ~/.cache/ms-playwright
+                  key: playwright-ubuntu-24.04-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
+            - name: Install Chromium
+              run: |
+                  ./node_modules/.bin/playwright install-deps chromium
+                  ./node_modules/.bin/playwright install chromium
+            - id: check
+              run: npm run check
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' }}
+              run: timeout 180s npm run test:source-smoke
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' }}
+              run: timeout 300s npm test
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' }}
+              run: timeout 180s npm run test:breed-allocation
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' }}
+              run: timeout 180s npm run test:hud-sampling
+            - uses: actions/upload-artifact@v4
+              if: always()
+              with:
+                  name: browser-checks-core
+                  path: tests/output/
+                  if-no-files-found: ignore
+    extended:
+        if: ${{ inputs.extended }}
+        runs-on: ubuntu-24.04
+        timeout-minutes: 60
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+            - run: npm ci
+            - uses: actions/cache@v4
+              with:
+                  path: ~/.cache/ms-playwright
+                  key: playwright-ubuntu-24.04-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
+            - name: Install Chromium
+              run: |
+                  ./node_modules/.bin/playwright install-deps chromium
+                  ./node_modules/.bin/playwright install chromium
+            - run: timeout 300s npm run test:tower-army
+            - run: timeout 300s npm run test:camera -- desktop
+            - run: timeout 300s npm run test:camera -- portrait
+            - run: timeout 300s npm run test:camera -- landscape
+            - run: timeout 300s npm run test:scatter-command -- 100 1 center
+            - run: timeout 300s npm run test:scatter-command -- 500 1 wall
+            - run: timeout 300s npm run test:corn-growth:case -- battle landscape
+            - run: timeout 300s node tests/walnut-growth.e2e.mjs desktop
+            - run: timeout 300s node tests/rice-growth.e2e.mjs desktop
+            - run: timeout 300s node tests/wheat-growth.e2e.mjs desktop
+            - uses: actions/upload-artifact@v4
+              if: always()
+              with:
+                  name: browser-checks-extended
+                  path: tests/output/
+                  if-no-files-found: ignore

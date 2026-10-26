@@ -11,7 +11,7 @@ const BOUNDED_EASINGS = new Set(['linear', 'inOutSine', 'outQuad']);
 // native mesh stores already-transformed SVG coordinates in its 11-float layout.
 // Rotations may take any angle; keyframe translations/scales stay between their
 // endpoints for the accepted easings. Unknown geometry/easing keeps rendering.
-export function unitArtRadius(compiled, ground) {
+function unitArtRadius(compiled, ground) {
     if (ART_RADII.has(compiled)) {
         return ART_RADII.get(compiled);
     }
