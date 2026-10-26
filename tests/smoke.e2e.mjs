@@ -1,4 +1,4 @@
-// Browser smoke test: boots the built game in headless Chromium and walks the main flows.
+// Browser smoke test: boots the authored ES modules in headless Chromium and walks the main flows.
 // The gamekit CDN requests are answered from vendor/upstream, so it runs offline. Real-device speed is not measured.
 import { chromium } from 'playwright';
 import http from 'node:http';
@@ -245,7 +245,6 @@ await check('challenge button starts a boss fight and retreat ends it', async ()
     await PAGE.waitForFunction(() => BUDMORI.sim.insideTower && BUDMORI.sim.farmBossEvent.phase !== 'marching', null, {
         timeout: 15000,
     });
-    await PAGE.waitForTimeout(1500);
     const FIGHTING = await WORLD(() => BUDMORI.sim.farmBossEvent.phase);
     expect(FIGHTING !== 'idle', `fight did not start (${FIGHTING})`);
     const HAND = await WORLD(() => ({
@@ -255,7 +254,18 @@ await check('challenge button starts a boss fight and retreat ends it', async ()
         field: BUDMORI.sim.fieldFighterCount,
     }));
     expect(!HAND.hidden && HAND.cards > 0, `deploy order not shown (${JSON.stringify(HAND)})`);
-    // Nobody is placed by hand: the whole army walks in on its own, one unit per 0.1 s, from all around the hall.
+    // Change priority while reserves still exist. The 1.5 s automatic deployment
+    // can empty the hand before a later UI action, which is an expected state.
+    const FIRST = await WORLD(() => {
+        const BUTTONS = [...document.querySelectorAll('#hand [data-deploy]')],
+            LAST = BUTTONS[BUTTONS.length - 1];
+        LAST.click();
+        return Number(LAST.dataset.deploy);
+    });
+    await PAGE.waitForTimeout(400);
+    const ORDER = await WORLD(() => BUDMORI.sim.deployOrder[0]);
+    expect(ORDER === FIRST, `tapped card did not move to the front (${ORDER} vs ${FIRST})`);
+    // Nobody is placed by hand: the whole army walks in on its own from around the hall.
     await PAGE.waitForTimeout(2500);
     const AUTO = await WORLD(() => {
         const W = BUDMORI.sim,
@@ -267,16 +277,9 @@ await check('challenge button starts a boss fight and retreat ends it', async ()
         };
     });
     expect(AUTO.field >= 3, `army was not sent in by itself ${JSON.stringify(AUTO)}`);
-    // Tapping a species card puts that species at the front of the order.
-    const FIRST = await WORLD(() => {
-        const BUTTONS = [...document.querySelectorAll('#hand [data-deploy]')],
-            LAST = BUTTONS[BUTTONS.length - 1];
-        LAST.click();
-        return Number(LAST.dataset.deploy);
-    });
-    await PAGE.waitForTimeout(400);
-    const ORDER = await WORLD(() => BUDMORI.sim.deployOrder[0]);
-    expect(ORDER === FIRST, `tapped card did not move to the front (${ORDER} vs ${FIRST})`);
+    // Contact takes longer in the expanded hall. Observe actual combat rather
+    // than treating a fixed delay after deployment as proof that a hit happened.
+    await PAGE.waitForFunction(() => BUDMORI.combatFeel.counts.hits > 0, null, { timeout: 15000 });
     // A hit is drawn where and when it happens (the effect's time is in the same ms as the display clock), and every
     // hit that did damage has its own number.
     const FEEL = await WORLD(() => {
@@ -407,10 +410,17 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
     );
     const SKILL = await WORLD(() => {
         const W = BUDMORI.sim;
+        const FINISH_DRAW = () => {
+            for (let tick = 0; tick < 60 && W.time < (W.tower.bossCardDraw?.until || 0); tick++) {
+                W.step(1 / 20);
+            }
+        };
+        FINISH_DRAW();
         W.tower.nextKind = 'power';
         W.tower.doors = [{ type: 'skill', id: 'lightning' }];
         W.chooseDoor(0);
         const FIRST = W.tower.relics.get('lightning');
+        FINISH_DRAW();
         W.tower.nextKind = 'power';
         W.tower.doors = [{ type: 'skill', id: 'lightning' }];
         W.chooseDoor(0);
@@ -428,6 +438,7 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
         };
     });
     expect(MID.doors === 'mid' && MID.next === 'mid', `floor 5 doors: ${JSON.stringify(MID)}`);
+    await PAGE.waitForFunction(() => BUDMORI.sim.time >= (BUDMORI.sim.tower.bossCardDraw?.until || 0));
     await WORLD(() => {
         const W = BUDMORI.sim;
         W.tower.floor = 2;
@@ -460,7 +471,8 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
 
 await check('a species the farm lacks joins as a pair on its first win, even below the best floor', async () => {
     const R = await WORLD(async () => {
-        const W = BUDMORI.sim;
+        const { Garden: GARDEN } = await import('./src/farm-model.js');
+        const W = new GARDEN(731);
         W._flushEjected();
         for (const U of [...W.units]) {
             W.removeUnit(U);
@@ -500,8 +512,9 @@ await check('a species the farm lacks joins as a pair on its first win, even bel
 await check(
     'a boss win feeds only its species mastery; points stay with that species and a reset keeps them',
     async () => {
-        const R = await WORLD(() => {
-            const W = BUDMORI.sim;
+        const R = await WORLD(async () => {
+            const { Garden: GARDEN } = await import('./src/farm-model.js');
+            const W = new GARDEN(732);
             const SNAP = () =>
                 JSON.stringify(
                     Object.entries(W.playerProgression.abilities).map(([id, a]) => [id, a.masteryLevel, a.masteryXp]),
@@ -538,9 +551,9 @@ await check(
             const AFTER = JSON.parse(SNAP());
             const CHANGED = AFTER.filter((row, i) => row[1] !== BEFORE[i][1] || row[2] !== BEFORE[i][2]);
             const ID = CHANGED[0]?.[0];
-            // Legacy species start with zero points. Newly activated trees grant their Lv1 point,
-            // so use another legacy species to test that this reward cannot fund its purchase.
-            const OTHER = AFTER.find((row) => row[0] !== ID && !W.playerProgression.abilities[row[0]].nodeRanks)[0];
+            // Every species now has a growth tree and a starting point. Spend the
+            // other species' own point before proving this reward cannot fund it.
+            const OTHER = AFTER.find((row) => row[0] !== ID)[0];
             W.leaveTower();
             W.playerProgression.abilities[ID].masteryLevel = 3;
             const BEFORE_PURCHASE = JSON.parse(JSON.stringify(W.playerProgression.abilities[ID]));
@@ -548,8 +561,8 @@ await check(
             const OWN = W.investAbilityNode(ID, OWN_NODE).ok;
             const AFTER_PURCHASE = JSON.parse(JSON.stringify(W.playerProgression.abilities[ID]));
             // Evolved species use the growth-tree node; legacy species retain power-1.
-            const OTHER_NODE = W.playerProgression.abilities[OTHER].nodeRanks ? 'basic-1' : 'power-1';
-            const OTHERS = W.investAbilityNode(OTHER, OTHER_NODE);
+            const OTHER_START = W.investAbilityNode(OTHER, 'basic-1');
+            const OTHERS = W.investAbilityNode(OTHER, 'basic-2');
             const RESET = W.resetProgression({ type: 'abilities' });
             const KEPT = W.playerProgression.abilities[ID];
             return {
@@ -557,6 +570,7 @@ await check(
                 gained: CHANGED[0] ? CHANGED[0][2] - BEFORE.find((row) => row[0] === ID)[2] : 0,
                 own: OWN,
                 other: OTHERS.reason,
+                otherStarted: OTHER_START.ok,
                 reset: RESET.ok,
                 keptLevel: KEPT.masteryLevel,
                 power: KEPT.nodeRanks ? KEPT.nodeRanks[OWN_NODE] || 0 : KEPT.powerLevel,
@@ -566,7 +580,7 @@ await check(
             };
         });
         expect(
-            R.changed === 1 && R.gained === 20 && R.own === true && R.other === 'insufficient-points',
+            R.changed === 1 && R.gained === 20 && R.own === true && R.otherStarted && R.other === 'insufficient-points',
             `mastery ${JSON.stringify(R)}`,
         );
         expect(R.reset === true && R.keptLevel === 3 && R.power === 0, `mastery reset ${JSON.stringify(R)}`);
@@ -930,7 +944,7 @@ await check('passive cards: damage scale, undying once per fight, helper heals, 
         T.undyingUsed = new Set();
         T.passives = { 'last-stand': 0.24, opening: 0.4, vengeance: 0.07, resolve: 0.15, helper: 0.5, undying: 0.25 };
         W.farmBossEvent.elapsed = 5;
-        const MAX = 40;
+        const MAX = A.maxHp;
         const FULL = W.passiveDamageScale(A, MAX, W.boss, W.boss.maxHp);
         A.hp = MAX * 0.4;
         const LOW = W.passiveDamageScale(A, MAX, W.boss, W.boss.maxHp);
@@ -952,15 +966,15 @@ await check('passive cards: damage scale, undying once per fight, helper heals, 
         const HEALED = B.hp;
         const FALLEN = T.fallen;
         Object.assign(T, { active: SAVE.active, passives: SAVE.passives, fallen: SAVE.fallen, undyingUsed: SAVE.used });
-        return { FULL, LOW, LATE, TAKEN_FULL, TAKEN_LOW, SAVED, SECOND, HEALED, FALLEN };
+        return { FULL, LOW, LATE, TAKEN_FULL, TAKEN_LOW, SAVED, SECOND, HEALED, FALLEN, MAX };
     });
     const NEAR = (a, b) => Math.abs(a - b) < 1e-9;
     expect(NEAR(R.FULL, 1 + 0.4 + 0.14), `opening + vengeance ${JSON.stringify(R)}`);
     expect(NEAR(R.LOW, 1 + 0.4 + 0.14 + 0.24), `last stand ${JSON.stringify(R)}`);
     expect(NEAR(R.LATE, 1 + 0.14 + 0.24), `opening over ${JSON.stringify(R)}`);
     expect(R.TAKEN_FULL === 1 && NEAR(R.TAKEN_LOW, 0.85), `resolve ${JSON.stringify(R)}`);
-    expect(NEAR(R.SAVED, 10) && R.SECOND === 0, `undying ${JSON.stringify(R)}`);
-    expect(R.HEALED === 30 && R.FALLEN === 3, `helper ${JSON.stringify(R)}`);
+    expect(NEAR(R.SAVED, R.MAX * 0.25) && R.SECOND === 0, `undying ${JSON.stringify(R)}`);
+    expect(NEAR(R.HEALED, 10 + R.MAX * 0.5) && R.FALLEN === 3, `helper ${JSON.stringify(R)}`);
 });
 
 await check(
@@ -1038,6 +1052,55 @@ await check(
         );
     },
 );
+
+await check('page exit saves and cancels drawing before releasing the renderer; reload resumes', async () => {
+    const OUTPUT = path.join(ROOT, 'tests/output/qa-cleanup');
+    fs.mkdirSync(OUTPUT, { recursive: true });
+    await PAGE.screenshot({ path: path.join(OUTPUT, 'farm-before-pagehide.png') });
+    await WORLD(() => {
+        const RENDERER = BUDMORI.renderer,
+            RENDER = RENDERER.render.bind(RENDERER),
+            DISPOSE = RENDERER.dispose.bind(RENDERER);
+        globalThis.__exitObservation = { disposed: 0, drawsAfterDispose: 0 };
+        RENDERER.render = (...args) => {
+            if (globalThis.__exitObservation.disposed) {
+                globalThis.__exitObservation.drawsAfterDispose++;
+            }
+            return RENDER(...args);
+        };
+        RENDERER.dispose = () => {
+            globalThis.__exitObservation.disposed++;
+            return DISPOSE();
+        };
+        window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+    });
+    await PAGE.waitForTimeout(250);
+    const EXIT = await WORLD(() => ({
+        ...globalThis.__exitObservation,
+        sessionClosed: BUDMORI.runtime.closed,
+        saved: !!BUDMORI.storage.raw,
+    }));
+    expect(
+        EXIT.sessionClosed && EXIT.saved && EXIT.disposed === 1 && EXIT.drawsAfterDispose === 0,
+        `page exit ${JSON.stringify(EXIT)}`,
+    );
+    // A persisted page is reloaded by the production pageshow handler.
+    await Promise.all([
+        PAGE.waitForEvent('load'),
+        WORLD(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))),
+    ]);
+    // Reload retains #/farm, whose native router resumes the saved garden.
+    await PAGE.waitForFunction(
+        () =>
+            globalThis.BUDMORI &&
+            document.body.dataset.home === 'false' &&
+            !BUDMORI.runtime.closed &&
+            BUDMORI.sim.units.length > 0,
+    );
+    await PAGE.setViewportSize({ width: 390, height: 844 });
+    await PAGE.waitForTimeout(500);
+    await PAGE.screenshot({ path: path.join(OUTPUT, 'farm-after-reload-mobile.png') });
+});
 
 await check('no page errors', async () => {
     expect(ERRORS.length === 0, ERRORS.slice(0, 3).join(' | '));

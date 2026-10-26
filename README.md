@@ -41,6 +41,8 @@ npm run test:corn-growth
 
 정적 서버로 저장소 루트를 열면 `index.html` → `src/bootstrap.js` → `src/farm-app.js`와 그 원본 ES 모듈을 직접 실행합니다. 별도 번들·concat·생성 산출물 배포 단계는 없습니다. GameKit은 `gamekit-lock.json`의 불변 CDN ESM을 검증 후 로드합니다. 기존 `src/game.js`는 제품 진입점이나 검증 후보가 아닙니다.
 
+`node scripts/gamekit-provenance.cjs`는 고정 SDK의 Git 객체·manifest·SHA-256과 원본 import graph·SVG를 읽기 전용으로 검증합니다. 원본 앱을 퇴역한 `src/game.js` 번들이나 생성 SRI와 비교하지 않습니다. `npm test`의 종료·복귀 흐름은 저장 뒤 렌더 프레임 취소, 자원 해제, 뒤로 가기 캐시의 `pageshow` 재로딩과 이어하기를 함께 확인합니다.
+
 `assets/troops/`와 `assets/bosses/`의 SVG가 각 캐릭터 벡터 아트, 클립, 표정, 소켓의 단일 원본입니다. 고정 GameKit SVG 로더가 원본을 읽어 실행 메모리에서 메시를 만들며, 저장소 파일을 재작성하거나 배포용 메시를 생성하지 않습니다. `npm run check`는 원본 import graph와 자산 무결성을 읽기 전용으로 확인합니다. GameKit의 native `play`, `setExpression`, `seek`, `getSocket`, `draw` API를 사용하고 모든 캐릭터를 공통 `PresentationRuntime` 표시 시각에 맞춥니다. 수동 얼굴 그리기나 SVG 옆 모션 sidecar는 사용하지 않습니다.
 
 병력의 충돌 반경·높이와 표시 배율은 원본의 이름 있는 몸통 외곽선·지면 소켓을 공유합니다. 옥수수 낟알은 발사 순간 몸통 높이의 20%이며, 최소 표시 픽셀은 충돌 크기에 영향을 주지 않습니다. 측정 기준과 저장 호환성은 [몸 크기와 투사체 크기](docs/unit-body-dimensions.md)에 정리했습니다.

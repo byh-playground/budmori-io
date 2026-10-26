@@ -46,6 +46,7 @@ const HELP_PANEL = createHelpPanel(DOLLAR);
 DOLLAR('abilitySpeciesTabs').innerHTML = renderAbilitySpeciesTabsMarkup();
 let imported = null;
 let active = null;
+let frameRequest = null;
 let home = true;
 let personalGarden = null;
 let unsubscribeProgress = null;
@@ -2158,6 +2159,11 @@ window.addEventListener('resize', () => {
     RENDERER.resize();
 });
 window.addEventListener('pagehide', () => {
+    if (frameRequest === null) {
+        return;
+    }
+    cancelAnimationFrame(frameRequest);
+    frameRequest = null;
     stopWorldInput();
     persist();
     if (!home) {
@@ -2408,6 +2414,9 @@ function sync(display, now, notices) {
     FOOD_FEEL.frame();
 }
 function frame(now) {
+    if (frameRequest === null) {
+        return;
+    }
     try {
         PERFORMANCE_DIAGNOSTICS.beginFrame(now);
         active.profiler = PERFORMANCE_DIAGNOSTICS;
@@ -2441,7 +2450,7 @@ function frame(now) {
         );
         PERFORMANCE_DIAGNOSTICS.end('ui', UI_START);
         PERFORMANCE_DIAGNOSTICS.endFrame(RENDERER);
-        requestAnimationFrame(frame);
+        frameRequest = requestAnimationFrame(frame);
     } catch (error) {
         if (typeof globalThis.BloomReportRuntimeFatal === 'function') {
             globalThis.BloomReportRuntimeFatal(error);
@@ -2543,7 +2552,7 @@ if (HELP.scene) {
         snapshot: () => ({ ...HELP.scenario.snapshot(), step: SCENE.step(active.world) }),
     };
 }
-requestAnimationFrame(frame);
+frameRequest = requestAnimationFrame(frame);
 // Read-only diagnostics for support and browser scenarios. Commands use the product session.
 globalThis.BUDMORI = {
     get sim() {
