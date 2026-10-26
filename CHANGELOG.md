@@ -1,5 +1,11 @@
 # 변경 기록
 
+## 0.42.6 - 2026-10-26
+
+- `src/` 안의 낱개 파일 70개를 영역별 폴더로 옮겼어요: `core`(기반), `model`(농장 시뮬레이션), `units`(병종·스탯), `boss`(보스 패턴·보상), `tower`(탑), `save`(저장), `render`(그리기), `ui`(도움말·도크), `app`(실행 세션), `abilities`(능력), `formation`(편성 스킬). 시작 파일 5개는 그대로 `src/` 바로 아래에 있어요.
+- 6,850줄이던 `farm-model.js`에서 독립적인 덩어리 5개를 파일로 떼어냈어요: `model/farm-config.js`(설정), `model/arena-geometry.js`(경기장·탄도), `boss/boss-behaviors.js`, `boss/boss-controller.js`, `units/attack-cycle.js`. 이제 6,090줄이에요.
+- import 경로, 린트 설정, 테스트, README·문서의 경로를 함께 바꿨어요. 코드 내용과 게임 동작은 바뀌지 않았어요.
+
 ## 0.42.5 - 2026-10-26
 
 - 어디서도 부르지 않던 함수 16개와 거기에만 쓰이던 import를 지웠어요(보스 보상·능력치 진행·성장 보조 함수 등).

@@ -128,7 +128,7 @@ async function captureCornAttachment(label, actionId) {
         await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const { cornLocalPoint: LOCAL_POINT, CornAttachmentPresentation: PRESENTATION } =
             await import('./src/features/abilities/corn-attachment/presentation.js');
-        const { snapshot: SNAPSHOT, restore: RESTORE } = await import('./src/farm-state.js');
+        const { snapshot: SNAPSHOT, restore: RESTORE } = await import('./src/model/farm-state.js');
         const GROUP = W.cornAttachments.groups.find((group) => group.cornActionId === actionId);
         if (!GROUP || !GROUP.attachments.some((attachment) => attachment.status === 'attached')) {
             throw Error('Expected actual attached corn group');
@@ -185,7 +185,7 @@ async function captureChestnutBrown() {
     await page.locator('#gameMenuOverlay').waitFor({ state: 'hidden' });
     assert.equal(await page.evaluate(() => BUDMORI.runtime.paused), false);
     await page.evaluate(async () => {
-        const { helpSceneById: SCENE } = await import('./src/help-scenes.js');
+        const { helpSceneById: SCENE } = await import('./src/ui/help-scenes.js');
         const { CHESTNUT_THORN_COLORS: COLORS } = await import('./src/features/projectiles/spike/definition.js');
         const W = BUDMORI.sim,
             R = BUDMORI.renderer;

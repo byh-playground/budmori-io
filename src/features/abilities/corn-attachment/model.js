@@ -4,7 +4,7 @@ import {
     cornCriticalRoll,
     cornKernelMultiplier,
 } from '../../species-growth/corn-attack.js';
-import { getAbilityEffects } from '../../../ability-progression.js';
+import { getAbilityEffects } from '../../../abilities/ability-progression.js';
 import { CORN_ATTACHMENT_FEATURE } from './definition.js';
 
 const DEFINITION = CORN_ATTACHMENT_FEATURE.definition;

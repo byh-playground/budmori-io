@@ -1,6 +1,6 @@
 import { FarmMode } from '../model-base.js';
 import { FEATURE } from './definition.js';
-import { scaleMoveSpeed } from '../../../unit-stats.js';
+import { scaleMoveSpeed } from '../../../units/unit-stats.js';
 
 export class BreedFarmMode extends FarmMode {
     constructor(config) {

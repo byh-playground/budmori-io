@@ -1,4 +1,4 @@
-import { isBossActorId, isCombatActorId } from '../../combat-identity.js';
+import { isBossActorId, isCombatActorId } from '../../core/combat-identity.js';
 // One basic attack owns a finite set of slots. Presentation particles are never slots.
 // Timings use the simulation tick; probability/RAW/command decisions are sampled by the caller once at launch.
 const MAX_ACTION_STRIKES = 32;

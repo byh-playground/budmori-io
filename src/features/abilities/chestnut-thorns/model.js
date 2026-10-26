@@ -1,4 +1,4 @@
-import { getAbilityEffects } from '../../../ability-progression.js';
+import { getAbilityEffects } from '../../../abilities/ability-progression.js';
 import { CHESTNUT_THORNS_FEATURE } from './definition.js';
 
 const ABILITY_ID = CHESTNUT_THORNS_FEATURE.definition.id;

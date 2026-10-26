@@ -1,6 +1,6 @@
 import { DEFINITION } from './definition.js';
 import { FormationSkill } from '../model-base.js';
-import { applyHealing, resolveUnitStats } from '../../../unit-stats.js';
+import { applyHealing, resolveUnitStats } from '../../../units/unit-stats.js';
 export class HealingRainSkill extends FormationSkill {
     constructor() {
         super(DEFINITION);

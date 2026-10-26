@@ -116,19 +116,39 @@ npm run test:corn-growth
 
 ## 소스와 기준
 
-- `src/farm-model.js`: 농장, 전방위 자동 AI, 공통 공격 phase, 월드 보스 상태기계·충돌·전투 사건.
-- `src/unit-abilities.js`, `src/unit-attack-capabilities.js`: 종별 공격 수치·능력 조합 registry와 재사용 공격/패시브 capability.
-- `src/farm-progress.js`: 진행 데이터 추출·검증·그룹 수량 복원과 동일 진행 비교. 디스크 저장의 단일 계약.
-- `src/farm-snapshot.js`: 실행 중 원정 정산을 위한 명시적인 값 복사. 디스크 저장에는 사용하지 않습니다.
-- `src/farm-snapshot-migrations.js`, `farm-snapshot-validation.js`, `farm-state.js`: 지원 구 저장의 이관, 값 검증, 런타임 복원. 누락 필드의 이관 기본값은 저장 계약에 고정하며 런타임 constructor에서 추출하지 않습니다.
-- `src/farm-save-codec.js`, `farm-storage.js`: 버전·크기 경계, 진행 데이터만 JSON 인코딩, 원본 백업과 저장 보호.
-- `src/farm-session.js`: 로컬 명령과 실행 세션.
-- `src/farm-renderer.js`: 실제 WebGL 투영, GameKit troop/boss vector assets, 전투 예고.
+`src/` 폴더 구성:
+
+| 폴더         | 내용                                                               |
+| ------------ | ------------------------------------------------------------------ |
+| `core/`      | 신호, 공간 격자, 진영 등 모델과 표현이 함께 쓰는 기반              |
+| `model/`     | 농장 시뮬레이션, 상태, 진행, 장면·모드, 컬렉션                     |
+| `units/`     | 병종 목록, 스탯, 등급, 공격·능력 조합                              |
+| `boss/`      | 보스 패턴 수치·동작 조합, 보상                                     |
+| `tower/`     | 탑 진행, 조우, 테마, 패시브 표시                                   |
+| `save/`      | 저장 형식, 스냅샷 검증·이관, 저장소, 자동 저장                     |
+| `render/`    | WebGL 렌더러, 장면·유닛·보스 그리기, 효과, 소켓                    |
+| `ui/`        | 도움말, 유물 도크, HUD 집계                                        |
+| `app/`       | 로컬 명령과 실행 세션                                              |
+| `abilities/` | 능력 정의·진행·상태·성장 화면                                      |
+| `formation/` | 편성 스킬 상태·표현·화면                                           |
+| `features/`  | 기능 하나의 모델과 표현을 함께 둔 폴더(보스 패턴, 투사체, 성장 등) |
+| `styles/`    | 공통 스타일                                                        |
+
+`bootstrap.js`, `farm-app.js`, `showcase.js`, `version.js`, `vector-sockets.js`는 진입점이라 `src/` 바로 아래에 둡니다.
+
+- `src/model/farm-model.js`: 농장, 전방위 자동 AI, 공통 공격 phase, 월드 보스 상태기계·충돌·전투 사건.
+- `src/units/unit-abilities.js`, `src/units/unit-attack-capabilities.js`: 종별 공격 수치·능력 조합 registry와 재사용 공격/패시브 capability.
+- `src/model/farm-progress.js`: 진행 데이터 추출·검증·그룹 수량 복원과 동일 진행 비교. 디스크 저장의 단일 계약.
+- `src/save/farm-snapshot.js`: 실행 중 원정 정산을 위한 명시적인 값 복사. 디스크 저장에는 사용하지 않습니다.
+- `src/save/farm-snapshot-migrations.js`, `farm-snapshot-validation.js`, `src/model/farm-state.js`: 지원 구 저장의 이관, 값 검증, 런타임 복원. 누락 필드의 이관 기본값은 저장 계약에 고정하며 런타임 constructor에서 추출하지 않습니다.
+- `src/save/farm-save-codec.js`, `src/save/farm-storage.js`: 버전·크기 경계, 진행 데이터만 JSON 인코딩, 원본 백업과 저장 보호.
+- `src/app/farm-session.js`: 로컬 명령과 실행 세션.
+- `src/render/farm-renderer.js`: 실제 WebGL 투영, GameKit troop/boss vector assets, 전투 예고.
 - `assets/troops/*.svg`: 캐릭터 몸체·클립·표정·소켓 원본.
-- `src/combat-feel.js`, `food-feel.js`: 확정 사건을 읽는 제한된 표현·오디오.
+- `src/render/combat-feel.js`, `src/render/food-feel.js`: 확정 사건을 읽는 제한된 표현·오디오.
 - `src/farm-app.js`: 시작·복귀·농장 입력·라우팅·성장 UI.
-- `src/ability-progression.js`: 능력·일반 강화 구매, 환불, 적용 등급과 노드 상태 판정. 모델과 성장 UI가 같은 도메인 규칙을 사용합니다.
-- `src/ability-tree.js`: 도메인 조회·명령을 사용하는 성장 화면 마크업과 DOM 입력. 저장 스키마는 `src/ability-state.js`가 관리합니다.
+- `src/abilities/ability-progression.js`: 능력·일반 강화 구매, 환불, 적용 등급과 노드 상태 판정. 모델과 성장 UI가 같은 도메인 규칙을 사용합니다.
+- `src/abilities/ability-tree.js`: 도메인 조회·명령을 사용하는 성장 화면 마크업과 DOM 입력. 저장 스키마는 `src/abilities/ability-state.js`가 관리합니다.
 
 농장 원본 기준은 지정 후보 SHA256 `f7ba37cf172d8b92ab5c7b55424827eccd8e7b2fd57300a24c2e65f9b4a7a5d6`이며, 정식 통합 기준은 [PR41](https://github.com/byh-playground/budmori-io/pull/41)의 `6f555cca264b601b23e8e381c2a5ddfac2e10796`입니다.
 

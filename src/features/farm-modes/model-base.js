@@ -1,4 +1,4 @@
-import { scaleMoveSpeed } from '../../unit-stats.js';
+import { scaleMoveSpeed } from '../../units/unit-stats.js';
 
 const WANDER_SECONDS_MIN = 16,
     WANDER_SECONDS_SPREAD = 16,

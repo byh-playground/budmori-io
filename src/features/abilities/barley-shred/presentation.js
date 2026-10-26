@@ -1,4 +1,4 @@
-import { drawGlyphText, formatDamage, textWidth } from '../../../damage-numbers.js';
+import { drawGlyphText, formatDamage, textWidth } from '../../../render/damage-numbers.js';
 
 // Pixel sizes: the mark is a readable fraction of the drawn body, never smaller or larger than these bounds.
 const STATUS = Object.freeze({ minHeight: 11, maxHeight: 34, bodyShare: 0.16 });

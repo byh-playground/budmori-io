@@ -1,7 +1,7 @@
-import { PerformanceDiagnostics } from './performance-diagnostics.js';
-import { FarmHudCounts } from './farm-hud-counts.js';
-import { RelicDock, RELIC_ICONS, relicEffectText, relicAcquisitionText } from './relic-dock.js';
-import { FORMATION_SKILL_DEFINITIONS } from './formation-skill-state.js';
+import { PerformanceDiagnostics } from './core/performance-diagnostics.js';
+import { FarmHudCounts } from './ui/farm-hud-counts.js';
+import { RelicDock, RELIC_ICONS, relicEffectText, relicAcquisitionText } from './ui/relic-dock.js';
+import { FORMATION_SKILL_DEFINITIONS } from './formation/formation-skill-state.js';
 import {
     RARITY_NAMES,
     TOWER_EVENTS,
@@ -14,32 +14,32 @@ import {
     passiveCard,
     statCard,
     statCardText,
-} from './tower-run.js';
-import { Garden, CONFIG, ArenaGeometry, ATTACK_TYPES, Ballistics, clamp } from './farm-model.js';
-import { Diorama } from './farm-renderer.js';
-import { FarmSession, LOCAL_PROFILE } from './farm-session.js';
-import { FarmStorage } from './farm-storage.js';
-import { FarmAutosave } from './farm-autosave.js';
-import { snapshot, restore } from './farm-state.js';
+} from './tower/tower-run.js';
+import { Garden, CONFIG, ArenaGeometry, ATTACK_TYPES, Ballistics, clamp } from './model/farm-model.js';
+import { Diorama } from './render/farm-renderer.js';
+import { FarmSession, LOCAL_PROFILE } from './app/farm-session.js';
+import { FarmStorage } from './save/farm-storage.js';
+import { FarmAutosave } from './save/farm-autosave.js';
+import { snapshot, restore } from './model/farm-state.js';
 import { PRODUCT_VERSION } from './version.js';
-import { highestTowerStartFloor, overallLevel, overallXpForLevel } from './player-progression.js';
-import { towerTheme } from './tower-theme.js';
-import { FoodFeel } from './food-feel.js';
-import { CombatFeel } from './combat-feel.js';
-import { renderAbilityTreeMarkup, renderAbilitySpeciesTabsMarkup } from './ability-tree.js';
-import { canResetPlayerProgression, getAbilityPointsLeft } from './ability-progression.js';
-import { SPECIES_ABILITY_DEFINITIONS } from './ability-catalog.js';
+import { highestTowerStartFloor, overallLevel, overallXpForLevel } from './model/player-progression.js';
+import { towerTheme } from './tower/tower-theme.js';
+import { FoodFeel } from './render/food-feel.js';
+import { CombatFeel } from './render/combat-feel.js';
+import { renderAbilityTreeMarkup, renderAbilitySpeciesTabsMarkup } from './abilities/ability-tree.js';
+import { canResetPlayerProgression, getAbilityPointsLeft } from './abilities/ability-progression.js';
+import { SPECIES_ABILITY_DEFINITIONS } from './abilities/ability-catalog.js';
 import {
     advanceBossRewardReveal,
     openAllBossRewardBoxes,
     bossRewardQueueBySpecies,
     bossSpeciesOwned,
-} from './boss-rewards.js';
-import { workersBySpecies } from './farm-work.js';
-import { apportionBreedShares, adjustBreedShare } from './breed-allocation.js';
-import { speciesById, giantSpeciesName, speciesRewardName } from './species-catalog.js';
-import { HELP_MAX_FRAME_MS, HELP_PLAYBACK_RATE, helpSceneById } from './help-scenes.js';
-import { createHelpPanel } from './help-panel.js';
+} from './boss/boss-rewards.js';
+import { workersBySpecies } from './model/farm-work.js';
+import { apportionBreedShares, adjustBreedShare } from './model/breed-allocation.js';
+import { speciesById, giantSpeciesName, speciesRewardName } from './units/species-catalog.js';
+import { HELP_MAX_FRAME_MS, HELP_PLAYBACK_RATE, helpSceneById } from './ui/help-scenes.js';
+import { createHelpPanel } from './ui/help-panel.js';
 const DOLLAR = (id) => document.getElementById(id),
     STORAGE = new FarmStorage();
 STORAGE.initializeIncompatible(new Garden());
@@ -993,7 +993,7 @@ DOLLAR('saveFile').onchange = async () => {
             throw Error('저장 파일이 너무 커요.');
         }
         const TEXT = await FILE.text();
-        const { validateSave: VALIDATE_SAVE } = await import('./farm-storage.js');
+        const { validateSave: VALIDATE_SAVE } = await import('./save/farm-storage.js');
         VALIDATE_SAVE(TEXT);
         imported = TEXT;
         DOLLAR('importConfirmText').textContent = '선택한 파일로 현재 저장을 바꿀까요?';

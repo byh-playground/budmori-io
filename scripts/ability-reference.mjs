@@ -1,9 +1,9 @@
 import { format as FORMAT } from 'prettier';
 import { readFile, writeFile } from 'node:fs/promises';
-import { SPECIES_ABILITY_DEFINITIONS } from '../src/ability-catalog.js';
-import { speciesById } from '../src/species-catalog.js';
+import { SPECIES_ABILITY_DEFINITIONS } from '../src/abilities/ability-catalog.js';
+import { speciesById } from '../src/units/species-catalog.js';
 import { growthForAbility } from '../src/features/species-growth/state.js';
-import { growthPresentationFor } from '../src/species-growth-presentation.js';
+import { growthPresentationFor } from '../src/render/species-growth-presentation.js';
 
 // The current growth panel owns all names, descriptions and rank values.
 // Legacy powerValues are save-compatibility data, not the released progression.

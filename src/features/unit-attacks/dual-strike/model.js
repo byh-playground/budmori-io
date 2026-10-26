@@ -1,5 +1,9 @@
 import { createPeanutAttack, launchPeanutAttack, resolvePeanutSlots } from '../../species-growth/peanut-attack.js';
-import { createPeanutStrikeSchedule, resolveStrikeMask, PEANUT_BASE_STRIKE } from '../../../unit-combat-patterns.js';
+import {
+    createPeanutStrikeSchedule,
+    resolveStrikeMask,
+    PEANUT_BASE_STRIKE,
+} from '../../../units/unit-combat-patterns.js';
 
 export function createDualStrikeMixin(pathMotion, arenaGeometry) {
     const PATH_MOTION = pathMotion;

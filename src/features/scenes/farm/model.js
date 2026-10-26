@@ -1,5 +1,5 @@
 import { SimulationScene } from '../model-base.js';
-import { unitMaxHpFor } from '../../../unit-stats.js';
+import { unitMaxHpFor } from '../../../units/unit-stats.js';
 import { FEATURE } from './definition.js';
 
 export class FarmSimulationScene extends SimulationScene {

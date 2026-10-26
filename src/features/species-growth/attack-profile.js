@@ -1,5 +1,5 @@
-import { isBossActorId, isCombatActorId } from '../../combat-identity.js';
-import { baseUnitStatsFor } from '../../unit-stats.js';
+import { isBossActorId, isCombatActorId } from '../../core/combat-identity.js';
+import { baseUnitStatsFor } from '../../units/unit-stats.js';
 
 const EXACT_KEYS = (value, keys) =>
     value &&

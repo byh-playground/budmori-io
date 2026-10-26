@@ -5,10 +5,16 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { bossStageStats } from '../src/boss-rewards.js';
-import { masteryPointsLeft } from '../src/ability-state.js';
-import { baseUnitStatsFor, setRunStatMods } from '../src/unit-stats.js';
-import { advanceSince, freshTowerRun, rollCardOffers, rollFloorKind, runStatModifiers } from '../src/tower-run.js';
+import { bossStageStats } from '../src/boss/boss-rewards.js';
+import { masteryPointsLeft } from '../src/abilities/ability-state.js';
+import { baseUnitStatsFor, setRunStatMods } from '../src/units/unit-stats.js';
+import {
+    advanceSince,
+    freshTowerRun,
+    rollCardOffers,
+    rollFloorKind,
+    runStatModifiers,
+} from '../src/tower/tower-run.js';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     PORT = 8499,
@@ -471,7 +477,7 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
 
 await check('a species the farm lacks joins as a pair on its first win, even below the best floor', async () => {
     const R = await WORLD(async () => {
-        const { Garden: GARDEN } = await import('./src/farm-model.js');
+        const { Garden: GARDEN } = await import('./src/model/farm-model.js');
         const W = new GARDEN(731);
         W._flushEjected();
         for (const U of [...W.units]) {
@@ -513,7 +519,7 @@ await check(
     'a boss win feeds only its species mastery; points stay with that species and a reset keeps them',
     async () => {
         const R = await WORLD(async () => {
-            const { Garden: GARDEN } = await import('./src/farm-model.js');
+            const { Garden: GARDEN } = await import('./src/model/farm-model.js');
             const W = new GARDEN(732);
             const SNAP = () =>
                 JSON.stringify(

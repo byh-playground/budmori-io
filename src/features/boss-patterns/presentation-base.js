@@ -1,4 +1,4 @@
-import { clamp } from '../../farm-model.js';
+import { clamp } from '../../model/farm-model.js';
 
 const EXTRA_PARTS = ['foot-left', 'foot-right', 'leaf', 'kernel-mark', 'hilum'];
 const POSE_PHASE_METHODS = { windup: 'windup', active: 'active', recover: 'recover' };

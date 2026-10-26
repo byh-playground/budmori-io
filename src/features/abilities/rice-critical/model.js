@@ -1,4 +1,4 @@
-import { getAbilityEffects } from '../../../ability-progression.js';
+import { getAbilityEffects } from '../../../abilities/ability-progression.js';
 
 const ABILITY_ID = 'rice-low-health-harvest';
 

@@ -1,4 +1,4 @@
-import { masteryXpForNextLevel } from '../../mastery.js';
+import { masteryXpForNextLevel } from '../../model/mastery.js';
 import { SPECIES_MASTERY_CAP } from './definition.js';
 
 // Activated builds replace legacy investments, rather than running both trees at once.

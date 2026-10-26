@@ -1,4 +1,4 @@
-import { getAbilityEffects } from '../../../ability-progression.js';
+import { getAbilityEffects } from '../../../abilities/ability-progression.js';
 
 export const BARLEY_ARMOR_SHRED_LEGACY_DURATION_TICKS = 60;
 export const BARLEY_ARMOR_SHRED_MAX_DURATION_TICKS = 100;

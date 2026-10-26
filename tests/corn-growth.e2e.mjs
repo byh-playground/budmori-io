@@ -237,7 +237,7 @@ async function captureMainCombat(page, tier, mobile) {
         await activate(page.locator('#gameMenuClose'), mobile);
     }
     await page.evaluate(async (selectedTier) => {
-        const { helpSceneById: HELP_SCENE_BY_ID } = await import('./src/help-scenes.js');
+        const { helpSceneById: HELP_SCENE_BY_ID } = await import('./src/ui/help-scenes.js');
         const WORLD = BUDMORI.sim;
         HELP_SCENE_BY_ID(`corn-t${selectedTier}`).setup(WORLD);
         // One fixed giant across tiers/viewports makes silhouette and camera comparisons meaningful.
@@ -330,7 +330,7 @@ async function captureMainCombat(page, tier, mobile) {
         if (STAGE === 'flight' && tier === 6) {
             const MANUAL = await page.evaluate(async () => {
                 const R = BUDMORI.renderer,
-                    { snapshot: SNAPSHOT } = await import('./src/farm-state.js'),
+                    { snapshot: SNAPSHOT } = await import('./src/model/farm-state.js'),
                     BEFORE = JSON.stringify(SNAPSHOT(BUDMORI.sim)),
                     DISPLAY = R.cameraWorld;
                 R.takeCameraControl();
@@ -376,8 +376,8 @@ async function captureCrowdedCombat(page, mobile) {
         await activate(page.locator('#gameMenuClose'), mobile);
     }
     const INITIAL = await page.evaluate(async () => {
-        const { helpSceneById: HELP_SCENE_BY_ID } = await import('./src/help-scenes.js'),
-            { overallXpForLevel: XP_FOR_LEVEL } = await import('./src/player-progression.js');
+        const { helpSceneById: HELP_SCENE_BY_ID } = await import('./src/ui/help-scenes.js'),
+            { overallXpForLevel: XP_FOR_LEVEL } = await import('./src/model/player-progression.js');
         const WORLD = BUDMORI.sim;
         WORLD.playerProgression.overallXp = XP_FOR_LEVEL(41);
         HELP_SCENE_BY_ID('corn-t6').setup(WORLD);

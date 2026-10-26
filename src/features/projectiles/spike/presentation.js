@@ -1,4 +1,4 @@
-import { Ballistics } from '../../../farm-model.js';
+import { Ballistics } from '../../../model/farm-model.js';
 import { FEATURE, CHESTNUT_THORN_COLORS } from './definition.js';
 
 // One authoritative projectile can display a bounded bundle. Shards never own

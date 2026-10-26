@@ -1,6 +1,6 @@
 import { BossAttackPresentation } from '../presentation-base.js';
 import { FEATURE } from './definition.js';
-import { bossSummonPose, sampleBossSummon } from '../../../boss-vector-sockets.js';
+import { bossSummonPose, sampleBossSummon } from '../../../render/boss-vector-sockets.js';
 
 export class MouthSummonPresentation extends BossAttackPresentation {
     constructor() {

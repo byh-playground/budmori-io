@@ -8,7 +8,7 @@ import { UnitAttackPresentation } from './presentation-base.js';
 import { PeaAttackPresentation } from './pea/presentation.js';
 import { LobPresentation } from './lob/presentation.js';
 import { DualStrikePresentation } from './dual-strike/presentation.js';
-import { ATTACK_TYPES, clamp } from '../../farm-model.js';
+import { ATTACK_TYPES, clamp } from '../../model/farm-model.js';
 
 const BARLEY_ATTACK = new BarleyAttackPresentation();
 const WHEAT_ATTACK = new WheatAttackPresentation();

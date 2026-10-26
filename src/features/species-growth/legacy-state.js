@@ -1,5 +1,5 @@
-import { SPECIES_ABILITY_DEFINITIONS } from '../../ability-definitions.js';
-import { masteryXpForNextLevel } from '../../mastery.js';
+import { SPECIES_ABILITY_DEFINITIONS } from '../../abilities/ability-definitions.js';
+import { masteryXpForNextLevel } from '../../model/mastery.js';
 
 export function legacyInvestedPoints(investment) {
     return (

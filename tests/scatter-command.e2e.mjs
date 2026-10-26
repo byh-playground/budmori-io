@@ -151,7 +151,7 @@ const SERVER = http.createServer((request, response) => {
     }
     response.setHeader('content-type', TYPES[path.extname(FILE)] || 'application/octet-stream');
     let bytes = fs.readFileSync(FILE);
-    if (URL_LOCAL.searchParams.has('unculled-test') && FILE === path.join(ROOT, 'src/farm-renderer.js')) {
+    if (URL_LOCAL.searchParams.has('unculled-test') && FILE === path.join(ROOT, 'src/render/farm-renderer.js')) {
         const IMPORT = "import { unitCullingEnabled, unitMayBeVisible } from './farm-render-visibility.js';",
             SOURCE = bytes.toString('utf8');
         assert.equal(SOURCE.split(IMPORT).length, 2);
@@ -295,8 +295,8 @@ try {
     await page.waitForFunction(() => Boolean(globalThis.BUDMORI));
     await page.locator('#newGame').click();
     await page.evaluate(async () => {
-        const { Diorama: UNCULLED } = await import('./src/farm-renderer.js?unculled-test'),
-            { snapshot: SNAPSHOT } = await import('./src/farm-state.js'),
+        const { Diorama: UNCULLED } = await import('./src/render/farm-renderer.js?unculled-test'),
+            { snapshot: SNAPSHOT } = await import('./src/model/farm-state.js'),
             RENDERER = BUDMORI.renderer,
             RENDER = RENDERER.render,
             TERRAIN = RENDERER.terrain,
@@ -463,9 +463,9 @@ try {
     });
     REPORT.initial = await page.evaluate(
         async ({ count, bosses, placement }) => {
-            const { Garden: GARDEN } = await import('./src/farm-model.js'),
-                { snapshot: SNAPSHOT, restore: RESTORE } = await import('./src/farm-state.js'),
-                { overallXpForLevel: XP } = await import('./src/player-progression.js'),
+            const { Garden: GARDEN } = await import('./src/model/farm-model.js'),
+                { snapshot: SNAPSHOT, restore: RESTORE } = await import('./src/model/farm-state.js'),
+                { overallXpForLevel: XP } = await import('./src/model/player-progression.js'),
                 WORLD = new GARDEN(731);
             BUDMORI.runtime.paused = true;
             WORLD.resetUnits();
@@ -562,7 +562,7 @@ try {
     for (const COMMAND of ['engage', 'scatter']) {
         await restoreComparison();
         await page.evaluate(async () => {
-            const { unitCapabilityComposition: COMPOSITION } = await import('./src/unit-abilities.js');
+            const { unitCapabilityComposition: COMPOSITION } = await import('./src/units/unit-abilities.js');
             const WORLD = BUDMORI.sim,
                 INITIAL = new Map(WORLD.units.map((unit) => [unit.id, { x: unit.x, y: unit.y }])),
                 STEP = WORLD.step,

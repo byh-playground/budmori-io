@@ -1,6 +1,6 @@
 import { createPeaAttack, startPeaContacts, resolvePeaContacts } from '../../species-growth/pea-attack.js';
 import { AttackAction } from '../../species-growth/attack-action.js';
-import { scaleAttackArea } from '../../../unit-stats.js';
+import { scaleAttackArea } from '../../../units/unit-stats.js';
 
 // The contact capability remains untouched for the seven unreleased species.
 export function createPeaAttackMixin(contactAttack, geometry) {

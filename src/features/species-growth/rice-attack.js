@@ -8,9 +8,9 @@ import {
 } from './attack-profile.js';
 import { AttackAction, attackTargetKey, isAttackActionDTO, attackOwnerCanContinue } from './attack-action.js';
 import { growthBuildOf, growthForAbility } from './state.js';
-import { COMMON_UNIT_STAT_DEFAULTS } from '../../unit-stats.js';
-import { mergeMaterialCostForTier } from '../../unit-grades.js';
-import { areOpposingFactions } from '../../factions.js';
+import { COMMON_UNIT_STAT_DEFAULTS } from '../../units/unit-stats.js';
+import { mergeMaterialCostForTier } from '../../units/unit-grades.js';
+import { areOpposingFactions } from '../../core/factions.js';
 const ATTACK_KIND = 'ram';
 
 const RICE_WEIGHTS = Object.freeze([

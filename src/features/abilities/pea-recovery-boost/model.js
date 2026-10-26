@@ -1,5 +1,5 @@
 import { peaGrowthBuild } from '../../species-growth/pea-attack.js';
-import { getAbilityEffects } from '../../../ability-progression.js';
+import { getAbilityEffects } from '../../../abilities/ability-progression.js';
 import { PEA_RECOVERY_BOOST_FEATURE } from '../pea-recovery-boost.js';
 
 const ABILITY_ID = PEA_RECOVERY_BOOST_FEATURE.definition.id;

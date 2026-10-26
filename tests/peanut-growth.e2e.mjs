@@ -666,7 +666,7 @@ async function setupCombat(page, tier, mobile, researched = true) {
     }
     await page.evaluate(
         async ({ tier: selectedTier, researched: fullResearch }) => {
-            const { helpSceneById: HELP_SCENE_BY_ID } = await import('./src/help-scenes.js'),
+            const { helpSceneById: HELP_SCENE_BY_ID } = await import('./src/ui/help-scenes.js'),
                 WORLD = BUDMORI.sim;
             HELP_SCENE_BY_ID(`peanut-t${selectedTier}`).setup(WORLD);
             if (!fullResearch) {

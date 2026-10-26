@@ -143,9 +143,9 @@ function sourceFiles(root) {
 for (const FILE of [
     'index.html',
     'src/farm-app.js',
-    'src/farm-model.js',
-    'src/farm-renderer.js',
-    'src/farm-render-units.js',
+    'src/model/farm-model.js',
+    'src/render/farm-renderer.js',
+    'src/render/farm-render-units.js',
 ]) {
     assert.equal(
         HASH(fs.readFileSync(path.join(ROOTS.base, FILE))),
@@ -157,10 +157,12 @@ REPORT.sourceHashes = Object.fromEntries(
     Object.entries(ROOTS).map(([name, root]) => [
         name,
         Object.fromEntries(
-            ['src/farm-app.js', 'src/farm-model.js', 'src/farm-renderer.js', 'src/farm-render-units.js'].map((file) => [
-                file,
-                HASH(fs.readFileSync(path.join(root, file))),
-            ]),
+            [
+                'src/farm-app.js',
+                'src/model/farm-model.js',
+                'src/render/farm-renderer.js',
+                'src/render/farm-render-units.js',
+            ].map((file) => [file, HASH(fs.readFileSync(path.join(root, file)))]),
         ),
     ]),
 );
@@ -240,9 +242,9 @@ async function run(variant, round, origin) {
     await PAGE.waitForFunction(() => Boolean(globalThis.BUDMORI && globalThis.__budmoriPerfAccess));
     const RESULT = await PAGE.evaluate(
         async ({ count, phase, mode, view, samples, warmup }) => {
-            const { Garden: GARDEN } = await import('./src/farm-model.js'),
-                { snapshot: SNAPSHOT } = await import('./src/farm-state.js'),
-                { overallXpForLevel: XP } = await import('./src/player-progression.js'),
+            const { Garden: GARDEN } = await import('./src/model/farm-model.js'),
+                { snapshot: SNAPSHOT } = await import('./src/model/farm-state.js'),
+                { overallXpForLevel: XP } = await import('./src/model/player-progression.js'),
                 WORLD = new GARDEN(731),
                 SHA = async (value) =>
                     Array.from(

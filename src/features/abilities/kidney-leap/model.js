@@ -1,4 +1,4 @@
-import { getAbilityEffects } from '../../../ability-progression.js';
+import { getAbilityEffects } from '../../../abilities/ability-progression.js';
 import { KIDNEY_CONTINUOUS_LEAP_FEATURE } from '../kidney-continuous-leap.js';
 
 const ABILITY_ID = KIDNEY_CONTINUOUS_LEAP_FEATURE.definition.id;

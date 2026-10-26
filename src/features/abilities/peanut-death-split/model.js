@@ -1,4 +1,4 @@
-import { getAbilityEffects } from '../../../ability-progression.js';
+import { getAbilityEffects } from '../../../abilities/ability-progression.js';
 import { PEANUT_DEATH_SPLIT_FEATURE } from './definition.js';
 
 const ABILITY_ID = PEANUT_DEATH_SPLIT_FEATURE.definition.id;

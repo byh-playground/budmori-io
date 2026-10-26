@@ -1,4 +1,4 @@
-import { COMMON_UNIT_STAT_DEFAULTS } from '../../../unit-stats.js';
+import { COMMON_UNIT_STAT_DEFAULTS } from '../../../units/unit-stats.js';
 
 export class RiceCriticalPresentation {
     label(_definition, value) {

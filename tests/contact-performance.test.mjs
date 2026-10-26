@@ -24,9 +24,9 @@ globalThis.BloomGamekitWorkScheduler = await import('../vendor/upstream/work-sch
 async function load(root) {
     const MODULE = (file) => import(pathToFileURL(path.join(root, 'src', file)).href);
     return {
-        ...(await MODULE('farm-model.js')),
-        ...(await MODULE('farm-state.js')),
-        ...(await MODULE('player-progression.js')),
+        ...(await MODULE('model/farm-model.js')),
+        ...(await MODULE('model/farm-state.js')),
+        ...(await MODULE('model/player-progression.js')),
     };
 }
 const API = { base: await load(BASE), candidate: await load(ROOT) },
@@ -51,7 +51,7 @@ const API = { base: await load(BASE), candidate: await load(ROOT) },
             Object.entries({ base: BASE, candidate: ROOT }).map(([key, root]) => [
                 key,
                 createHash('sha256')
-                    .update(fs.readFileSync(path.join(root, 'src/farm-model.js')))
+                    .update(fs.readFileSync(path.join(root, 'src/model/farm-model.js')))
                     .digest('hex'),
             ]),
         ),

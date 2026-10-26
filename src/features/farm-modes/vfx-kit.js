@@ -1,4 +1,4 @@
-import { UNIT_GRADES } from '../../unit-grades.js';
+import { UNIT_GRADES } from '../../units/unit-grades.js';
 
 // Small flat-style drawing helpers shared by the farm mode effects. Everything is a solid fill or
 // a plain stroke; alpha is the only blending used.
