@@ -32,38 +32,38 @@
     <ellipse id="neutral-eye-right" cx="480.5" cy="113" rx="6.7" ry="7.2" fill="#431811"/>
     <path id="neutral-mouth" d="M451.5 122 C454.5 128 461.5 128 466.5 122" fill="none" stroke="#431811" stroke-width="2.6" stroke-linecap="round"/>
   </g>
-  <g id="face-happy" transform="translate(0 10)">
+  <g id="face-happy" display="none" transform="translate(0 10)">
     <ellipse id="walnut-happy-blush-left" cx="111" cy="137" rx="12" ry="6" fill="#e98278"/>
     <ellipse id="walnut-happy-blush-right" cx="209" cy="137" rx="12" ry="6" fill="#e98278"/>
     <path id="walnut-happy-eyes-mouth" d="M126 121 Q135 109 144 121 M176 121 Q185 109 194 121 M146 143 Q160 162 174 143 Z" fill="#431811" stroke="#431811" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
-  <g id="face-focused" transform="translate(0 10)">
+  <g id="face-focused" display="none" transform="translate(0 10)">
     <path id="walnut-focused-brows" d="M125 109 L144 114 M176 114 L195 109" fill="none" stroke="#431811" stroke-width="3.5" stroke-linecap="round"/>
     <ellipse id="walnut-focused-eye-left" cx="135" cy="121" rx="8" ry="9" fill="#431811"/>
     <ellipse id="walnut-focused-eye-right" cx="185" cy="121" rx="8" ry="9" fill="#431811"/>
     <path id="walnut-focused-mouth" d="M150 150 L170 150" fill="none" stroke="#431811" stroke-width="3.5" stroke-linecap="round"/>
   </g>
-  <g id="face-attack" transform="translate(0 10)">
+  <g id="face-attack" display="none" transform="translate(0 10)">
     <path id="walnut-attack-brows" d="M125 110 L144 115 M176 115 L195 110" fill="none" stroke="#431811" stroke-width="3.5" stroke-linecap="round"/>
     <ellipse id="walnut-attack-eye-left" cx="135" cy="121" rx="8" ry="9" fill="#431811"/>
     <ellipse id="walnut-attack-eye-right" cx="185" cy="121" rx="8" ry="9" fill="#431811"/>
     <ellipse id="walnut-attack-mouth" cx="160" cy="151" rx="5" ry="7" fill="#431811"/>
   </g>
-  <g id="face-surprised" transform="translate(0 10)">
+  <g id="face-surprised" display="none" transform="translate(0 10)">
     <ellipse id="walnut-surprised-eye-left" cx="135" cy="121" rx="8.5" ry="9.5" fill="none" stroke="#431811" stroke-width="3.5"/>
     <ellipse id="walnut-surprised-eye-right" cx="185" cy="121" rx="8.5" ry="9.5" fill="none" stroke="#431811" stroke-width="3.5"/>
     <ellipse id="walnut-surprised-mouth" cx="160" cy="151" rx="5" ry="7" fill="none" stroke="#431811" stroke-width="3.5"/>
   </g>
-  <g id="face-hurt" transform="translate(0 10)">
+  <g id="face-hurt" display="none" transform="translate(0 10)">
     <path id="walnut-hurt-eyes" d="M127 113 L143 129 M143 113 L127 129 M177 113 L193 129 M193 113 L177 129" fill="none" stroke="#431811" stroke-width="3.5" stroke-linecap="round"/>
     <path id="walnut-hurt-mouth" d="M148 153 Q160 142 172 153" fill="none" stroke="#431811" stroke-width="3.5" stroke-linecap="round"/>
   </g>
-  <g id="face-hungry" transform="translate(0 10)">
+  <g id="face-hungry" display="none" transform="translate(0 10)">
     <ellipse id="walnut-hungry-eye-left" cx="135" cy="121" rx="8" ry="9" fill="#431811"/>
     <ellipse id="walnut-hungry-eye-right" cx="185" cy="121" rx="8" ry="9" fill="#431811"/>
     <path id="walnut-hungry-mouth" d="M160 145 C152 145 151 157 160 162 C169 157 168 145 160 145 Z" fill="#431811"/>
   </g>
-  <g id="face-dead" transform="translate(0 10)">
+  <g id="face-dead" display="none" transform="translate(0 10)">
     <path id="walnut-dead-eyes" d="M127 113 L143 129 M143 113 L127 129 M177 113 L193 129 M193 113 L177 129" fill="none" stroke="#431811" stroke-width="3.5" stroke-linecap="round"/>
     <path id="walnut-dead-mouth" d="M151 152 L169 152" fill="none" stroke="#431811" stroke-width="3.5" stroke-linecap="round"/>
   </g>
@@ -81,7 +81,7 @@
   <path id="walnut-arm-right-outline" d="M 514 131 C 520 130 527 134 532 139 C 538 145 541 152 539 158 C 538 164 533 169 529 171 C 526 173 522 172 520 168 C 519 166 518 164 518 162" fill="none" stroke="#39281f" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
   <path id="walnut-arm-right-crease" d="M530 153 Q526 157 520 156" fill="none" stroke="#b77920" stroke-width="1.7" stroke-linecap="round"/>
 </g></g>
-<g id="guard-form" transform="translate(160 0) scale(.92 .88) translate(-160 0)">
+<g id="guard-form" display="none" transform="translate(160 0) scale(.92 .88) translate(-160 0)">
   <path id="walnut-guard-shell" d="M160 43 C150 40 142 46 134 53 C123 50 111 56 106 66 C93 68 84 79 86 92 C77 100 77 114 84 125 C77 137 82 150 94 157 C92 171 104 182 119 180 C127 192 143 195 158 187 C174 196 190 191 197 180 C212 184 226 175 225 161 C239 154 243 140 234 127 C243 116 241 101 233 92 C236 79 226 69 213 66 C207 55 194 51 183 55 C176 45 167 42 160 43 Z" fill="#dfa832" stroke="#3d2b22" stroke-width="4.5" stroke-linejoin="round"/>
   <path id="walnut-guard-lower-shell" d="M84 128 C106 136 137 144 160 157 C183 143 211 135 235 127 C242 140 236 154 225 161 C226 175 212 184 197 180 C190 191 174 196 158 187 C143 195 127 192 119 180 C104 182 92 171 94 157 C82 150 77 138 84 128 Z" fill="#d89328" opacity=".58"/>
   <path id="walnut-guard-rim-shadow" d="M84 127 C108 137 137 148 160 157 C183 148 212 137 235 127" fill="none" stroke="#593622" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>

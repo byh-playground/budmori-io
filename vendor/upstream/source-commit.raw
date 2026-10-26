@@ -1,26 +1,26 @@
-tree 0578eee0e6970709864f124de19646f31c51524a
-parent dc2660d3c50a66c343d18cd5fce6959432284e84
-parent e9d087fab452a1d978e73e966422cf6d66ebe4ab
-author byh020907 <byh020907@naver.com> 1792420472 +0900
-committer GitHub <noreply@github.com> 1792420472 +0900
+tree b06a932ccebd52312214d9d3703d4f73f96bbddf
+parent c987d80273c8b5b0fa5ad015419fdacbf89f7898
+parent ba239fee542ae6551fc730db5a1c7aa3301e3136
+author byh020907 <byh020907@naver.com> 1793058848 +0900
+committer GitHub <noreply@github.com> 1793058848 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq1ip4CRC1aQ7uu5UhlAAAW6sQAB08k5V9pMmgZ8pXWk7lvYtY
- mul/+kbi3Z7qnL7zB5WxfNxUkyYjpigbdQvS/u8aalWScvuxtjg5aO83OUH0Yo0h
- Nk0nZZXp9bXQGNVzo0MPqEgErRHFpxUCE/lq/SxNA2f14sn6Tbc+i3S+143Ubbx2
- ZV26yjVea2s/JtnNqOJDOJR9dzsUU5iYmVvFnvjSQVH+FqhKG2PG1IGYQwWgIr6M
- hvg6pKAqKcBPTDN8YC92dV94D+kSGAvdxDHoZyZKiw12l1+LvD6gOvYcJ48Lvf7i
- eKIn9eaJ04bZXUmBc4tonkPsLqIiK3w9Kqjt/Q7SVqxrxbMoNlbsYwimvzVOlXYL
- UcCl0yaQt49m/PA0Ogi3qL/mNt5n5MwQTflQibpsaZQkmcIlYAIn4byn+kkm3nIs
- WDvjIW92MprklqRBuaFTPJ9vQ+tB0MVj7LJyzBTaUiA+OX5aIerODn9hWLQ7DJw5
- 2dAqIFOdtSMYQ0IV4FPdM7eAS7Ulvma9crKRJhP495ifadLs9+HkJhzCR0ohlGu1
- NPL2GuJiRsQnjiQxShoQqRnhXFNENkvkBsF9Ro8gx8saxKssxJCcbgPzxrpLau+w
- ALUoLmGlzSqSnIA9DfWZ3XMN1wgUEWT++pAeRD/SwKgNyFblD7fpL6lL3/EEZr7M
- wIP0Z0lPgceot43G86f7
- =8I34
+ wsFcBAABCAAQBQJq3+ggCRC1aQ7uu5UhlAAAevsQAHjikOYDr8rh28DbB6Wolz/v
+ t2DRP9ZPBi+ySb3w9a+tE5G1XRNmuuN62hWCionzcTge1iHxCzVs+aDU4cn9CuQU
+ JPteovPCG27cd/4Oa2WGiAKB8TxQh2nyUElV1xl6p2Yo5TGUtChSKQ66X7M2vTLj
+ ixPZ8i8/X7JaQDwkO70hViGb336y8FogxB/gqjQ5jH3NctZATFq8edmy3/DCuls8
+ Pw+YB/Qk9CE+31PSefqMNutUrcbI2Saq7qez3AT5usSJfPIXqj+GCCizAXuBFTZK
+ ZKcK5Rpy4exFlNs6PN/acjrVfx4ZYQNJwb65mu9KKlNzxlgfwYU9uC/DTy2lqzBi
+ nidrGtyTihwAteITowtcjK9uOpSHcpMAaLYxUZgczKRgTuTnQGlAIP6JZviM+bsm
+ e6mXxrI+lRa5MxpuNqIyVynAztASE+rjxoqzRent0UtXzvRK7IX5nd4hbWChAspC
+ u0+hzcBiCRzO3pC2YyJ11FI5/lM/1Abf9hFYvDT/GO4MZULLapW4XXit+CleN0Ld
+ I1zObL8wDtcnN8WAjE3417EX9LltqKaOPzCW9Ezwa5UrdJvy55h25NwQPdmpHKU2
+ fa/gCxtD4q8rH5+Rsduc0qMhH2kR620KzABzyhoWXCSBs8o/p2poun9pTEnJI2dy
+ FH2UB6/lFecKh+Z39bcb
+ =bfh2
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #108 from byh-playground/codex/color-parse-cache
+Merge pull request #116 from byh-playground/codex/svg-default-pose-source
 
-perf(rendering): 색 파싱 캐시와 RGBA 검증 배열 할당 제거 (v0.15.3)
+feat(vector-assets): 소스 SVG가 기본 표정을 그리도록 강제 (v0.16.0)

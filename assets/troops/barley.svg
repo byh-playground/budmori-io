@@ -20,45 +20,45 @@
       <ellipse id="barley-neutral-eye-right" cx="484.9" cy="114.3" rx="6.5" ry="6.5" fill="#4b211b"/>
       <path id="barley-neutral-mouth" d="M458 122 C461 128 469 129 473 122" fill="none" stroke="#2c1c18" stroke-width="2.2" stroke-linecap="round"/>
     </g>
-    <g id="face-happy">
+    <g id="face-happy" display="none">
       <ellipse id="barley-happy-blush-left" cx="437.5" cy="126" rx="7" ry="4.2" fill="#e98275"/>
       <ellipse id="barley-happy-blush-right" cx="493" cy="126" rx="7" ry="4.2" fill="#e98275"/>
       <path id="barley-happy-eye-left" d="M439.6 114.2 Q445.6 107.7 451.6 114.2" fill="none" stroke="#2c1c18" stroke-width="2.3" stroke-linecap="round"/>
       <path id="barley-happy-eye-right" d="M478.9 114.3 Q484.9 107.8 490.9 114.3" fill="none" stroke="#2c1c18" stroke-width="2.3" stroke-linecap="round"/>
       <path id="barley-happy-mouth" d="M457 123 Q465 132 473 123" fill="none" stroke="#2c1c18" stroke-width="2.3" stroke-linecap="round"/>
     </g>
-    <g id="face-focused">
+    <g id="face-focused" display="none">
       <ellipse id="barley-focused-eye-left" cx="445.6" cy="114.2" rx="5.4" ry="6" fill="#4b211b"/>
       <ellipse id="barley-focused-eye-right" cx="484.9" cy="114.3" rx="5.4" ry="6" fill="#4b211b"/>
       <path id="barley-focused-brows" d="M439 104 L452 107 M479 107 L493 104" fill="none" stroke="#39271b" stroke-width="2" stroke-linecap="round"/>
       <path id="barley-focused-mouth" d="M458 126 L472 126" fill="none" stroke="#2c1c18" stroke-width="2.2" stroke-linecap="round"/>
     </g>
-    <g id="face-attack">
+    <g id="face-attack" display="none">
       <ellipse id="barley-attack-eye-left" cx="445.6" cy="114.2" rx="5" ry="6" fill="#4b211b"/>
       <ellipse id="barley-attack-eye-right" cx="484.9" cy="114.3" rx="5" ry="6" fill="#4b211b"/>
       <path id="barley-attack-brows" d="M439 105 L452 108 M479 108 L493 105" fill="none" stroke="#39271b" stroke-width="2" stroke-linecap="round"/>
       <path id="barley-attack-mouth" d="M456 124 L460 127 L465 124 L470 127 L474 124" fill="none" stroke="#2c1c18" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
     </g>
-    <g id="face-surprised">
+    <g id="face-surprised" display="none">
       <ellipse id="barley-surprised-eye-left" cx="445.6" cy="114.2" rx="5.6" ry="6" fill="#4b211b"/>
       <ellipse id="barley-surprised-eye-right" cx="484.9" cy="114.3" rx="5.6" ry="6" fill="#4b211b"/>
       <ellipse id="barley-surprised-mouth" cx="465" cy="126" rx="3.5" ry="4.5" fill="none" stroke="#2c1c18" stroke-width="2"/>
     </g>
-    <g id="face-hurt">
+    <g id="face-hurt" display="none">
       <path id="barley-hurt-eye-left" d="M439.6 114.2 L451.6 114.2" fill="none" stroke="#2c1c18" stroke-width="2.3" stroke-linecap="round"/>
       <path id="barley-hurt-eye-right" d="M478.9 114.3 L490.9 114.3" fill="none" stroke="#2c1c18" stroke-width="2.3" stroke-linecap="round"/>
       <path id="barley-hurt-mouth" d="M456 131 Q465 124 474 131" fill="none" stroke="#2c1c18" stroke-width="2.3" stroke-linecap="round"/>
       <ellipse id="barley-hurt-blush-left" cx="437.5" cy="126" rx="7" ry="4.2" fill="#e98275"/>
       <ellipse id="barley-hurt-blush-right" cx="493" cy="126" rx="7" ry="4.2" fill="#e98275"/>
     </g>
-    <g id="face-hungry">
+    <g id="face-hungry" display="none">
       <circle id="barley-hungry-eye-left" cx="445.6" cy="114.2" r="6.5" fill="#4b211b"/>
       <circle id="barley-hungry-eye-right" cx="484.9" cy="114.3" r="6.5" fill="#4b211b"/>
       <circle id="barley-hungry-glint-left" cx="436" cy="112" r="1.5" fill="#fff5d8"/>
       <circle id="barley-hungry-glint-right" cx="484" cy="112" r="1.5" fill="#fff5d8"/>
       <path id="barley-hungry-mouth" d="M459 125 Q465 129 471 125" fill="none" stroke="#2c1c18" stroke-width="2" stroke-linecap="round"/>
     </g>
-    <g id="face-dead">
+    <g id="face-dead" display="none">
       <path id="barley-dead-eyes" d="M441 109 L451 119 M451 109 L441 119 M481 109 L491 119 M491 109 L481 119" fill="none" stroke="#2c1c18" stroke-width="2.3" stroke-linecap="round"/>
       <path id="barley-dead-mouth" d="M458 126 L472 126" fill="none" stroke="#2c1c18" stroke-width="2.2" stroke-linecap="round"/>
     </g>

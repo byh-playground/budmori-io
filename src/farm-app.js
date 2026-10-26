@@ -201,12 +201,11 @@ function renderBossRewardBoxes(receipt) {
         const ENTRY = speciesById(receipt.species);
         if (ENTRY) {
             bossRewardPortraitReceiptKey = receipt.receiptKey;
-            renderNeutralBossPreview(
-                DOLLAR('bossRewardPortrait'),
-                receipt.species,
-                ENTRY.asset,
-                speciesRewardName(receipt.species),
-            );
+            // The source SVG itself draws the default pose, so a plain image is the portrait.
+            const PORTRAIT = DOLLAR('bossRewardPortrait');
+            PORTRAIT.src = `./assets/troops/${ENTRY.asset}`;
+            PORTRAIT.alt = speciesRewardName(receipt.species);
+            PORTRAIT.hidden = false;
         }
     }
     DOLLAR('bossRewardOpenAll').disabled = receipt.status !== 'ready' || !HAS_PRESENTATION || REVEALED >= COUNT;
@@ -459,109 +458,6 @@ const FAIL = (error) => {
         active.paused = true;
     }
 };
-const BOSS_PREVIEW_SOURCES = new Map(),
-    BOSS_PREVIEW_VERSIONS = new WeakMap();
-function bossPreviewSource(asset) {
-    if (BOSS_PREVIEW_SOURCES.has(asset)) {
-        const CACHED = BOSS_PREVIEW_SOURCES.get(asset);
-        BOSS_PREVIEW_SOURCES.delete(asset);
-        BOSS_PREVIEW_SOURCES.set(asset, CACHED);
-        return CACHED;
-    }
-    const SOURCE = fetch(new URL(asset, document.baseURI), {
-        credentials: 'same-origin',
-    }).then((response) => {
-        if (!response.ok) {
-            throw Error(`Boss preview source failed: ${response.status}`);
-        }
-        return response.text();
-    });
-    BOSS_PREVIEW_SOURCES.set(asset, SOURCE);
-    if (BOSS_PREVIEW_SOURCES.size > 16) {
-        BOSS_PREVIEW_SOURCES.delete(BOSS_PREVIEW_SOURCES.keys().next().value);
-    }
-    SOURCE.catch(() => {
-        if (BOSS_PREVIEW_SOURCES.get(asset) === SOURCE) {
-            BOSS_PREVIEW_SOURCES.delete(asset);
-        }
-    });
-    return SOURCE;
-}
-async function createNeutralBossPreview(species, asset) {
-    const COMPILED = globalThis.BudmoriVectorResources?.troops?.[species],
-        EXPRESSIONS = COMPILED?.metadata?.expressions,
-        NEUTRAL = EXPRESSIONS?.neutral;
-    if (!NEUTRAL) {
-        throw Error(`Species ${species} is missing the neutral GameKit expression`);
-    }
-    const DOCUMENT_SVG = new DOMParser().parseFromString(
-        await bossPreviewSource(`./assets/troops/${asset}`),
-        'image/svg+xml',
-    );
-    if (DOCUMENT_SVG.getElementsByTagName('parsererror').length || DOCUMENT_SVG.documentElement.localName !== 'svg') {
-        throw Error(`Invalid SVG preview source: ${asset}`);
-    }
-    const SVG = DOCUMENT_SVG.documentElement,
-        NODES_BY_ID = new Map([...SVG.querySelectorAll('[id]')].map((node) => [node.getAttribute('id'), node]));
-    const EXPRESSION_PARTS = new Set(
-            Object.values(EXPRESSIONS).flatMap((variant) => [...variant.show, ...variant.hide]),
-        ),
-        VISIBLE = new Set(NEUTRAL.show);
-    for (const ID of NEUTRAL.hide) {
-        VISIBLE.delete(ID);
-    }
-    for (const ID of EXPRESSION_PARTS) {
-        const NODE = NODES_BY_ID.get(ID);
-        if (!NODE) {
-            throw Error(`SVG preview is missing GameKit expression part: ${ID}`);
-        }
-        NODE.style.setProperty('display', VISIBLE.has(ID) ? 'inline' : 'none');
-    }
-    // Source opacity stays paintable for runtime animation; previews use the idle starting pose.
-    const IDLE_POSE = COMPILED.metadata.clips.idle.keyframes[0].parts;
-    for (const [ID, POSE] of Object.entries(IDLE_POSE)) {
-        if (POSE.opacity !== undefined) {
-            const NODE = NODES_BY_ID.get(ID);
-            if (!NODE) {
-                throw Error(`SVG preview is missing idle part: ${ID}`);
-            }
-            NODE.style.setProperty('opacity', String(POSE.opacity));
-        }
-    }
-    return document.importNode(SVG, true);
-}
-async function renderNeutralBossPreview(target, species, asset, label = '') {
-    const VERSION = (BOSS_PREVIEW_VERSIONS.get(target) || 0) + 1;
-    BOSS_PREVIEW_VERSIONS.set(target, VERSION);
-    target.setAttribute('aria-busy', 'true');
-    try {
-        const SVG = await createNeutralBossPreview(species, asset);
-        if (BOSS_PREVIEW_VERSIONS.get(target) !== VERSION || !target.isConnected) {
-            return;
-        }
-        SVG.id = target.id;
-        SVG.setAttribute('class', target.getAttribute('class') || '');
-        SVG.removeAttribute('hidden');
-        SVG.setAttribute('aria-busy', 'false');
-        if (label) {
-            SVG.setAttribute('role', 'img');
-            SVG.setAttribute('aria-label', label);
-        } else {
-            SVG.setAttribute('aria-hidden', 'true');
-            SVG.removeAttribute('role');
-            SVG.removeAttribute('aria-label');
-        }
-        target.replaceWith(SVG);
-        BOSS_PREVIEW_VERSIONS.set(SVG, VERSION);
-    } catch (error) {
-        if (BOSS_PREVIEW_VERSIONS.get(target) !== VERSION) {
-            return;
-        }
-        target.hidden = true;
-        target.setAttribute('aria-busy', 'false');
-        console.error('Unable to render neutral boss preview', error);
-    }
-}
 function writeCheckpoint(world = personalGarden) {
     if (!world) {
         return false;
