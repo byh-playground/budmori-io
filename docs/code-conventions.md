@@ -76,7 +76,7 @@ DOM·디스크·표현 연결은 어댑터가 모델을 사용하는 방향으�
 ## 자동 검사 범위와 실행
 
 직접 관리하는 `src/`, `scripts/`, `tests/`의 JavaScript·CommonJS·ESM 및 루트 설정 파일에 적용합니다.
-`vendor/`, `node_modules/`, `tests/output/`, 생성 번들 `src/game.js`, `*.generated.*`, `dist/`는 제외합니다.
+`vendor/`, `node_modules/`, `tests/output/`, `*.generated.*`, `dist/`는 제외합니다.
 생성물은 원본을 고친 뒤 기존 빌드 경로로 갱신합니다.
 
 ```sh

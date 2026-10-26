@@ -81,7 +81,6 @@ export function sourceGraph(root = DEFAULT_ROOT) {
         assert.ok(!FILE.startsWith('../'), `Source escapes repository: ${specifier} in ${importer}`);
         if (module) {
             assert.ok(FILE.endsWith('.js'), `Browser import must be native .js, not CommonJS: ${FILE}`);
-            assert.notEqual(FILE, 'src/game.js', 'Generated game.js must not enter the source graph');
         }
         return FILE;
     };
