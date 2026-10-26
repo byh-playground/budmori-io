@@ -94,6 +94,11 @@ jobs:
             - name: Verify sustained scatter attack participation (500)
               if: success() || failure()
               run: timeout 180s npm run test:scatter-participation -- 500
+            - name: Include recorded paired measurement JSON for independent review
+              if: always()
+              run: |
+                  python3 -m zipfile -e docs/validation/performance-0.42.3-raw.zip tests/output/recorded-performance
+                  cp docs/validation/performance-0.42.3.json tests/output/recorded-performance/manifest.json
             - uses: actions/upload-artifact@v4
               if: always()
               with:
@@ -109,4 +114,5 @@ jobs:
                       tests/output/render-visibility/
                       tests/output/hud-sampling/
                       tests/output/contact-performance/*-boundaries.json
+                      tests/output/recorded-performance/
                   if-no-files-found: warn
