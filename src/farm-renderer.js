@@ -921,7 +921,7 @@ const DIORAMA = class Diorama {
             }
         }
     }
-    addActor(presentation, source, depth, id, vector = false) {
+    addActor(presentation, source, depth, id, vector = false, culled = false) {
         const INDEX = this.actors.length,
             ACTOR = this.actorPool[INDEX] || (this.actorPool[INDEX] = {});
         ACTOR.presentation = presentation;
@@ -929,6 +929,7 @@ const DIORAMA = class Diorama {
         ACTOR.depth = depth;
         ACTOR.id = id;
         ACTOR.vector = vector;
+        ACTOR.culled = culled;
         this.actors.push(ACTOR);
     }
     render(sim2, feel = null, now = performance.now()) {
@@ -1003,7 +1004,15 @@ const DIORAMA = class Diorama {
         const ACTORS = this.actors;
         ACTORS.length = 0;
         PRESENTATION.drawMergeBlackHoles?.(this, sim2);
-        for (const U of VISIBLE_UNITS) {
+        // Both lists retain source order, so a cursor avoids a per-frame
+        // visibility Set while keeping hidden actors at their original depth.
+        let visibleIndex = 0;
+        for (const SOURCE of sim2.units) {
+            const U = this.unitPresentation.displayUnit(SOURCE),
+                CULLED = U.id !== VISIBLE_UNITS[visibleIndex]?.id;
+            if (!CULLED) {
+                visibleIndex++;
+            }
             if (!HIDDEN_MERGE_RESULT_IDS.has(U.id)) {
                 this.addActor(
                     this.unitPresentation,
@@ -1011,6 +1020,7 @@ const DIORAMA = class Diorama {
                     0.785 * U.y - 0.62 * U.z,
                     U.id,
                     this.vectorAssets.has(U.species),
+                    CULLED,
                 );
             }
         }
@@ -1057,7 +1067,16 @@ const DIORAMA = class Diorama {
                 C.flush();
                 vectorRun = false;
             }
-            ACTOR.presentation.draw(ACTOR.source, sim2);
+            if (ACTOR.culled) {
+                // A hidden native player can still separate earlier visible
+                // meshes from queued 2D primitives. Preserve that ordered
+                // boundary without evaluating its pose or submitting its art.
+                // Context.flush puts primitives first and changes this order.
+                C.vector.flush();
+                this.meshes.flush();
+            } else {
+                ACTOR.presentation.draw(ACTOR.source, sim2);
+            }
             ACTOR.source = null;
         }
         if (vectorRun) {

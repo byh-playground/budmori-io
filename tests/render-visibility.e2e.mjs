@@ -439,6 +439,65 @@ try {
                     R.setPan(R.panLimits.minX, R.panLimits.maxY);
                 }
             };
+            STATE.samePoseRun = (front) => {
+                STATE.resetUnits();
+                R.takeCameraControl();
+                R.zoom = 1.8;
+                R.configure('farm', true);
+                R.setPan(0, 0);
+                // Each visible unit is immediately followed in depth order by
+                // two distant units with the same native mesh, expression and
+                // idle phase. Hidden draw barriers must preserve native batches
+                // even around rear rings and post-body passive primitives.
+                STATE.d.units.forEach((unit, index) => {
+                    const SPECIES = Math.floor(index / 3),
+                        SLOT = index % 3,
+                        ID = unit.id;
+                    Object.assign(unit, structuredClone(STATE.original[SPECIES]), {
+                        id: ID,
+                        seed: 0,
+                        vx: 0,
+                        vy: 0,
+                        vz: 0,
+                        hp: 100,
+                        down: 0,
+                        cooldown: 0,
+                        buffed: SLOT === 0 && !front,
+                        resolveOn: SLOT === 0 && front,
+                        commandBeatLife: 0,
+                    });
+                    unit.ability.phase = 'idle';
+                    unit.ability.elapsed = 0;
+                    STATE.place(
+                        unit,
+                        SLOT === 0 ? R.canvas.width * 0.5 : -2500 - SLOT * 100,
+                        R.canvas.height * (0.14 + SPECIES * 0.09) - SLOT,
+                    );
+                });
+                // Both revisions create native players through their unchanged
+                // public render path before aligning the controlled phase.
+                R.render(STATE.d, null, STATE.time);
+                for (const UNIT of STATE.d.units) {
+                    const PLAYER = R.vectorPlayers.get(UNIT.id);
+                    PLAYER.play('idle', 0);
+                    PLAYER.seek(STATE.time + 50);
+                }
+                for (let species = 0; species < 9; species++) {
+                    const PARTS = R.vectorAssets.get(species).compiled.metadata.parts,
+                        RUN = STATE.d.units.slice(species * 3, species * 3 + 3),
+                        POSES = RUN.map((unit) => {
+                            const PLAYER = R.vectorPlayers.get(unit.id);
+                            return JSON.stringify([
+                                PLAYER.currentClip,
+                                PLAYER.currentExpression,
+                                ...PARTS.map((part) => PLAYER.getPartPose(part.id)),
+                            ]);
+                        });
+                    if (!POSES.every((pose) => pose === POSES[0])) {
+                        throw new Error('Same-pose native run differs for species ' + species);
+                    }
+                }
+            };
         });
         PAGES[VARIANT] = PAGE;
     }
@@ -534,6 +593,14 @@ try {
                 culls: !VISIBLE,
             });
         }
+        await COMPARE(`${SCENE}-same-pose-rear-ring`, () => globalThis.__visibility.samePoseRun(false), {
+            capture: true,
+            culls: true,
+        });
+        await COMPARE(`${SCENE}-same-pose-front-passive`, () => globalThis.__visibility.samePoseRun(true), {
+            capture: true,
+            culls: true,
+        });
     }
     assert.deepEqual(ERRORS, []);
     REPORT.status = 'passed';

@@ -1,6 +1,6 @@
 // Paired CPU measurements in one real browser process. One bounded case per invocation:
 // BUDMORI_PERF_BASE_ROOT=/immutable/archive node tests/performance-optimizations.e2e.mjs render 500 settled offscreen
-// Modes: model, ui, render. Counts: 100, 250, 500. Phases: dense, settled. Views: default, offscreen.
+// Modes: model, ui, render, hidden. Counts: 100, 250, 500. Phases: dense, settled. Views: default, offscreen.
 // Native app RAF is suspended for this harness; these are operation CPU costs, not RAF/device FPS.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -16,23 +16,26 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     MODE = process.argv[2] || 'render',
     COUNT = Number(process.argv[3] || 500),
     PHASE = process.argv[4] || 'settled',
-    VIEW = process.argv[5] || (MODE === 'render' ? 'offscreen' : 'default'),
+    VIEW = process.argv[5] || (MODE === 'render' || MODE === 'hidden' ? 'offscreen' : 'default'),
     ROUNDS = Number(process.env.BUDMORI_PERF_ROUNDS || 2),
     SAMPLES = Number(
         process.env.BUDMORI_PERF_SAMPLES ||
-            (MODE === 'render'
-                ? 80
-                : MODE === 'model'
-                  ? PHASE === 'dense'
-                      ? 40
-                      : 120
-                  : PHASE === 'dense'
-                    ? 120
-                    : 180),
+            (MODE === 'hidden'
+                ? 40
+                : MODE === 'render'
+                  ? 80
+                  : MODE === 'model'
+                    ? PHASE === 'dense'
+                        ? 40
+                        : 120
+                    : PHASE === 'dense'
+                      ? 120
+                      : 180),
     ),
     WARMUP = MODE === 'render' ? 12 : MODE === 'ui' && PHASE === 'settled' ? 60 : 0,
     CASE = `${MODE}-${COUNT}-${PHASE}-${VIEW}`,
-    OUTPUT = path.join(ROOT, 'tests/output/performance-optimizations', CASE),
+    OUTPUT_NAME = process.env.BUDMORI_PERF_OUTPUT_DIR || 'performance-optimizations',
+    OUTPUT = path.join(ROOT, 'tests/output', OUTPUT_NAME, CASE),
     ROOTS = { base: path.resolve(process.env.BUDMORI_PERF_BASE_ROOT || '../baseline'), candidate: path.resolve(ROOT) },
     TYPES = {
         '.html': 'text/html',
@@ -50,6 +53,13 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url)),
         startedAt: new Date().toISOString(),
         baseCommit: BASE_COMMIT,
         candidateHead: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim(),
+        candidateUncommittedSourceFiles: execFileSync('git', ['diff', '--name-only', '--', 'src'], {
+            cwd: ROOT,
+            encoding: 'utf8',
+        })
+            .trim()
+            .split('\n')
+            .filter(Boolean),
         case: CASE,
         protocol: {
             mode: MODE,
@@ -59,7 +69,7 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url)),
             seed: 731,
             tps: 20,
             phase: PHASE,
-            view: MODE === 'render' ? VIEW : null,
+            view: MODE === 'render' || MODE === 'hidden' ? VIEW : null,
             rounds: ROUNDS,
             samples: SAMPLES,
             warmup: WARMUP,
@@ -71,20 +81,24 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url)),
             limitations: [
                 'Operation CPU measurements exclude the browser compositor and GPU completion. No FPS claim.',
                 'Windows desktop Chromium with SwiftShader; no physical mobile-device measurement.',
-                'Render repeats one identical presentation snapshot and camera, including native seek/draw; camera boundary and moving-animation coverage is separate.',
+                'Render repeats one identical presentation snapshot, logical render clock and camera, including native seek/draw. Each sample waits for RAF outside the timer to avoid a tight-loop submission backlog; camera boundary and moving-animation coverage is separate.',
                 'UI reports native presentation and sync separately and their combined CPU, excluding relic docks; 60 Hz calls with native session pulses at the same synthetic wall-clock sequence. Work moved from sync into presentation remains in the combined result.',
                 'Heap used before/after is a noisy retained-heap delta, not an allocation or GC count. GC pause duration is not measured.',
                 'Method counters are enabled only in a separate untimed observation pass to keep their overhead out of timing samples.',
+                'Hidden mode is an untimed integration observation: each native 20 Hz session tick is followed by native offscreen rendering, and attacks/damage are matched to units whose draw was actually omitted in that frame.',
+                'candidateHead names the repository HEAD; sourceTrees pins every actually loaded source file, including any uncommitted source change.',
             ],
         },
         runs: [],
         comparisons: [],
         errors: ERRORS,
     };
-assert.ok(['model', 'ui', 'render'].includes(MODE));
+assert.ok(['model', 'ui', 'render', 'hidden'].includes(MODE));
 assert.ok([100, 250, 500].includes(COUNT));
 assert.ok(['dense', 'settled'].includes(PHASE));
 assert.ok(['default', 'offscreen'].includes(VIEW));
+assert.ok(MODE !== 'hidden' || VIEW === 'offscreen');
+assert.match(OUTPUT_NAME, /^[a-z0-9-]+$/);
 assert.ok(Number.isInteger(ROUNDS) && ROUNDS > 0 && ROUNDS <= 3);
 assert.notEqual(ROOTS.base, ROOTS.candidate);
 fs.mkdirSync(OUTPUT, { recursive: true });
@@ -181,6 +195,7 @@ const SERVER = http.createServer((request, response) => {
     response.end(bytes);
 });
 let browser;
+let deadline;
 async function run(variant, round, origin) {
     assert.deepEqual(
         sourceFiles(ROOTS[variant]),
@@ -315,7 +330,87 @@ async function run(variant, round, origin) {
                 // cancellation from a different performance.now() epoch per page.
                 const START_WALL = Math.ceil(performance.now()) + 100;
                 SESSION.pulse(START_WALL);
-                if (mode === 'ui') {
+                if (mode === 'hidden') {
+                    const PLAYER_IDS = new Set(
+                            WORLD.units.filter((unit) => unit.faction === 'player').map((unit) => unit.id),
+                        ),
+                        DRAW = RENDERER.unitPresentation.draw,
+                        DRAWN = new Set(),
+                        CULLED_IDS = new Set(),
+                        TICK_NOTICES = [],
+                        OBSERVATION = {
+                            ticks: samples,
+                            renderCalls: 0,
+                            unitFramesCulled: 0,
+                            attackLaunchesWhileCulled: 0,
+                            damageEventsWhileCulled: 0,
+                            damageWhileCulled: 0,
+                        },
+                        OFF = WORLD.onNotice.on((notice) => {
+                            if (
+                                PLAYER_IDS.has(notice.unit) &&
+                                (notice.kind === 'attack-launch' || notice.kind === 'boss-hit')
+                            ) {
+                                TICK_NOTICES.push(notice);
+                            }
+                        });
+                    let display = SESSION.presentation(START_WALL);
+                    RENDERER.render(display, null, WORLD.time * 1000 + 1000);
+                    RENDERER.resetZoom();
+                    RENDERER.takeCameraControl();
+                    RENDERER.zoomAt(1.8 / RENDERER.zoom);
+                    RENDERER.setPan(RENDERER.panLimits.maxX, RENDERER.panLimits.maxY);
+                    RENDERER.unitPresentation.draw = function (unit, ...args) {
+                        DRAWN.add(unit.id);
+                        return DRAW.call(this, unit, ...args);
+                    };
+                    try {
+                        for (let index = 0; index < samples; index++) {
+                            TICK_NOTICES.length = 0;
+                            DRAWN.clear();
+                            const NOW = START_WALL + (index + 1) * 50;
+                            SESSION.pulse(NOW);
+                            display = SESSION.presentation(NOW);
+                            RENDERER.render(display, null, WORLD.time * 1000 + 1000);
+                            OBSERVATION.renderCalls++;
+                            const CULLED = new Set(
+                                display.units
+                                    .filter((unit) => PLAYER_IDS.has(unit.id) && !DRAWN.has(unit.id))
+                                    .map((unit) => unit.id),
+                            );
+                            OBSERVATION.unitFramesCulled += CULLED.size;
+                            for (const ID of CULLED) {
+                                CULLED_IDS.add(ID);
+                            }
+                            for (const NOTICE of TICK_NOTICES) {
+                                if (!CULLED.has(NOTICE.unit)) {
+                                    continue;
+                                }
+                                if (NOTICE.kind === 'attack-launch') {
+                                    OBSERVATION.attackLaunchesWhileCulled++;
+                                } else if (NOTICE.damage > 0) {
+                                    OBSERVATION.damageEventsWhileCulled++;
+                                    OBSERVATION.damageWhileCulled += NOTICE.damage;
+                                }
+                            }
+                            if ((index + 1) % 10 === 0) {
+                                CHECKPOINTS.push({ tick: WORLD.simulationTick, hash: await SHA(SNAPSHOT(WORLD)) });
+                            }
+                        }
+                    } finally {
+                        RENDERER.unitPresentation.draw = DRAW;
+                        OFF();
+                    }
+                    OBSERVATION.distinctCulledUnits = CULLED_IDS.size;
+                    RESULT_LOCAL.hiddenCombat = OBSERVATION;
+                    RESULT_LOCAL.camera = {
+                        zoom: RENDERER.zoom,
+                        pan: RENDERER.cameraPan,
+                        scale: RENDERER.scale,
+                        view: [...RENDERER.view],
+                        offset: [...RENDERER.offset],
+                    };
+                } else if (mode === 'ui') {
                     for (let index = 0; index < warmup + samples; index++) {
                         if (index === warmup) {
                             RESULT_LOCAL.measuredStartTick = WORLD.simulationTick;
@@ -345,12 +440,19 @@ async function run(variant, round, origin) {
                     }
                     const HAND = Object.getOwnPropertyDescriptor(owner, 'handCounts').get;
                     let handCalls = 0,
-                        benchEntriesVisited = 0;
+                        benchEntriesVisited = 0,
+                        uiHandCalls = 0,
+                        uiBenchEntriesVisited = 0,
+                        observingUi = false;
                     Object.defineProperty(WORLD, 'handCounts', {
                         configurable: true,
                         get() {
                             handCalls++;
                             benchEntriesVisited += this._benched.size;
+                            if (observingUi) {
+                                uiHandCalls++;
+                                uiBenchEntriesVisited += this._benched.size;
+                            }
                             return HAND.call(this);
                         },
                     });
@@ -369,12 +471,16 @@ async function run(variant, round, origin) {
                     for (let index = 0; index < 60; index++) {
                         const NOW = START_WALL + Math.round((warmup + samples + index + 1) * (1000 / 60));
                         SESSION.pulse(NOW);
+                        observingUi = true;
                         globalThis.__budmoriPerfAccess.sync(SESSION.presentation(NOW), NOW, []);
+                        observingUi = false;
                     }
                     delete WORLD.handCounts;
                     RESULT_LOCAL.counts = {
                         observedSyncCalls: 60,
                         handCountsCalls: handCalls,
+                        uiHandCountsCalls: uiHandCalls,
+                        nativeTickHandCountsCalls: handCalls - uiHandCalls,
                         observedTicks: WORLD.simulationTick - OBSERVED_TICK,
                         unchangedSyncCalls: 60,
                         unchangedHandCountsCalls: UNCHANGED_CALLS,
@@ -382,6 +488,8 @@ async function run(variant, round, origin) {
                         // and visits every bench Set entry on each invocation.
                         handResultMapsCreated: handCalls,
                         handBenchEntriesVisited: benchEntriesVisited,
+                        uiHandResultMapsCreated: uiHandCalls,
+                        uiHandBenchEntriesVisited: uiBenchEntriesVisited,
                         reserveLength: WORLD._benched.size,
                     };
                     RESULT_LOCAL.hud = {
@@ -395,7 +503,9 @@ async function run(variant, round, origin) {
                 } else {
                     SESSION.paused = true;
                     const DISPLAY = SESSION.presentation(START_WALL),
-                        FIXED_NOW = DISPLAY.displayTimeMs;
+                        FIXED_NOW = WORLD.time * 1000 + 1000;
+                    RESULT_LOCAL.renderClockMs = FIXED_NOW;
+                    RESULT_LOCAL.displayTime = DISPLAY.time;
                     RENDERER.render(DISPLAY, null, FIXED_NOW);
                     RENDERER.resetZoom();
                     RENDERER.takeCameraControl();
@@ -405,6 +515,7 @@ async function run(variant, round, origin) {
                     }
                     const BEFORE = await SHA(SNAPSHOT(WORLD));
                     for (let index = 0; index < warmup + samples; index++) {
+                        await new Promise(requestAnimationFrame);
                         const START = performance.now();
                         RENDERER.render(DISPLAY, null, FIXED_NOW);
                         if (index >= warmup) {
@@ -483,7 +594,7 @@ async function run(variant, round, origin) {
     );
     RESULT.variant = variant;
     RESULT.round = round;
-    RESULT.cpu = summary(RESULT.rawMs);
+    RESULT.cpu = MODE === 'hidden' ? null : summary(RESULT.rawMs);
     if (MODE === 'ui') {
         RESULT.presentationCpu = summary(RESULT.rawPresentationMs);
         RESULT.presentationAndUiCpu = summary(RESULT.rawPresentationAndUiMs);
@@ -495,11 +606,19 @@ async function run(variant, round, origin) {
     }
     assert.equal(RESULT.field, COUNT);
     assert.equal(RESULT.reserve, COUNT);
-    assert.equal(RESULT.rawMs.length, SAMPLES);
+    if (MODE !== 'hidden') {
+        assert.equal(RESULT.rawMs.length, SAMPLES);
+    }
     REPORT.runs.push(RESULT);
-    console.log(
-        `${CASE} round ${round} ${variant}: CPU median/p95/p99 ${RESULT.cpu.medianMs.toFixed(3)}/${RESULT.cpu.p95Ms.toFixed(3)}/${RESULT.cpu.p99Ms.toFixed(3)} ms`,
-    );
+    if (MODE === 'hidden') {
+        console.log(
+            `${CASE} round ${round} ${variant}: ${RESULT.hiddenCombat.distinctCulledUnits} culled units, ${RESULT.hiddenCombat.attackLaunchesWhileCulled} launches / ${RESULT.hiddenCombat.damageEventsWhileCulled} hits while culled`,
+        );
+    } else {
+        console.log(
+            `${CASE} round ${round} ${variant}: CPU median/p95/p99 ${RESULT.cpu.medianMs.toFixed(3)}/${RESULT.cpu.p95Ms.toFixed(3)}/${RESULT.cpu.p99Ms.toFixed(3)} ms`,
+        );
+    }
     save();
     await CONTEXT.close();
 }
@@ -514,6 +633,10 @@ try {
         args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-precise-memory-info'],
     });
     REPORT.browserVersion = browser.version();
+    deadline = setTimeout(() => {
+        REPORT.deadlineExceeded = true;
+        browser.close().catch(() => {});
+    }, 170000);
     const ORIGIN = `http://127.0.0.1:${SERVER.address().port}`;
     for (let round = 0; round < ROUNDS; round++) {
         for (const VARIANT of round % 2 ? ['candidate', 'base'] : ['base', 'candidate']) {
@@ -532,6 +655,18 @@ try {
         if (MODE === 'ui') {
             assert.deepEqual(CANDIDATE.hud, BASE.hud, 'native final HUD values must match');
         }
+        if (MODE === 'hidden') {
+            assert.deepEqual(CANDIDATE.camera, BASE.camera, 'integrated hidden combat uses the same camera');
+            assert.ok(CANDIDATE.hiddenCombat.unitFramesCulled > 0, 'native rendering must actually omit hidden units');
+            assert.ok(
+                CANDIDATE.hiddenCombat.attackLaunchesWhileCulled > 0,
+                'omitted units must continue native attacks',
+            );
+            assert.ok(
+                CANDIDATE.hiddenCombat.damageEventsWhileCulled > 0,
+                'omitted units must continue dealing native damage',
+            );
+        }
         REPORT.comparisons.push({
             round,
             exactAuthority: true,
@@ -539,9 +674,15 @@ try {
             exactCheckpoints: true,
             exactRotation: true,
             exactPixels: MODE === 'render',
-            ratios: Object.fromEntries(
-                ['medianMs', 'p95Ms', 'p99Ms', 'meanMs'].map((key) => [key, CANDIDATE.cpu[key] / BASE.cpu[key]]),
-            ),
+            ratios:
+                MODE === 'hidden'
+                    ? null
+                    : Object.fromEntries(
+                          ['medianMs', 'p95Ms', 'p99Ms', 'meanMs'].map((key) => [
+                              key,
+                              CANDIDATE.cpu[key] / BASE.cpu[key],
+                          ]),
+                      ),
             presentationRatios:
                 MODE === 'ui'
                     ? Object.fromEntries(
@@ -570,6 +711,7 @@ try {
     REPORT.failure = String(error.stack || error);
     throw error;
 } finally {
+    clearTimeout(deadline);
     save();
     await browser?.close();
     SERVER.close();

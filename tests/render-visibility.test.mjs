@@ -8,11 +8,7 @@ globalThis.BloomGamekitWorkScheduler = await import('../vendor/upstream/work-sch
 const { createVectorAssetLoader: CREATE_LOADER } = await import('../vendor/upstream/vector-assets-loader.js'),
     { createVectorAsset: CREATE_ASSET } = await import('../vendor/upstream/vector-assets.js'),
     { UNIT_BODIES } = await import('../src/features/unit-body/definition.js'),
-    {
-        unitArtRadius: ART_RADIUS,
-        unitMayBeVisible: UNIT_VISIBLE,
-        effectMayBeVisible: EFFECT_VISIBLE,
-    } = await import('../src/farm-render-visibility.js'),
+    { unitArtRadius: ART_RADIUS, unitMayBeVisible: UNIT_VISIBLE } = await import('../src/farm-render-visibility.js'),
     LOADER = CREATE_LOADER({ fetch: async (url) => new Response(fs.readFileSync(new URL(url))) }),
     MESHES = { createMesh: (geometry) => geometry, drawMesh() {}, deleteMesh() {} },
     OUTPUT = new URL('./output/render-visibility/', import.meta.url),
@@ -114,9 +110,6 @@ for (const BODY of UNIT_BODIES) {
         UNIT.ability.phase = 'active';
         assert.equal(UNIT_VISIBLE(RENDERER, UNIT, { time: 1 }), true, 'active melee trail sampling remains live');
     }
-    assert.equal(EFFECT_VISIBLE(RENDERER, { kind: 'unknown', x: 1000, y: 0 }), true);
-    assert.equal(EFFECT_VISIBLE(RENDERER, { kind: 'impact', x: 1000, y: 0 }), false);
-    assert.equal(EFFECT_VISIBLE(RENDERER, { kind: 'thresh', x: 0, y: 0 }), true);
     assert.equal(
         ART_RADIUS({ ...COMPILED, geometry: { ...COMPILED.geometry, nonScalingStroke: true } }, BODY.ground),
         Infinity,

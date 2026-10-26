@@ -50,6 +50,14 @@ jobs:
                   git fetch --no-tags --depth=1 origin 881fd7c9b97efc00ca2e2a46c1ee5b069f7ccdfe
                   mkdir -p ../baseline
                   git archive 881fd7c9b97efc00ca2e2a46c1ee5b069f7ccdfe | tar -x -C ../baseline
+            - name: Preserve native HUD interpolation through roster changes
+              if: success() || failure()
+              run: timeout 180s npm run test:hud-sampling
+            - name: Preserve retreat contacts at expanded walls with multiple bosses
+              if: success() || failure()
+              run: |
+                  timeout 180s npm run test:contact-boundaries -- ../baseline 250 wall
+                  timeout 180s npm run test:contact-boundaries -- ../baseline 500 corner
             - name: Compare boundary and re-entry pixels at all viewport shapes
               if: success() || failure()
               run: |
@@ -99,4 +107,6 @@ jobs:
                       tests/output/scatter-command/
                       tests/output/scatter-participation/
                       tests/output/render-visibility/
+                      tests/output/hud-sampling/
+                      tests/output/contact-performance/*-boundaries.json
                   if-no-files-found: warn

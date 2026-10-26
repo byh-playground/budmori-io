@@ -4,11 +4,14 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { captureContactInputs, verifyContactInputs } from './contact-test-provenance.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     BASE = path.resolve(process.argv[2] || ''),
     COUNT = Number(process.argv[3] || 100),
+    STARTED = Date.now(),
     OUTPUT = new URL('./output/contact-performance/', import.meta.url),
     // Restoring corn payloads changes object insertion order, not any value.
     // Canonicalize object keys only; array/pair/rotation order remains authoritative.
@@ -28,6 +31,7 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url)),
             .digest('hex');
 assert.notEqual(BASE, path.resolve(ROOT));
 assert.ok([100, 250, 500].includes(COUNT));
+const READ_INPUTS = captureContactInputs(BASE, ROOT, import.meta.url);
 globalThis.BloomGamekitDeterministic = await import('../vendor/upstream/deterministic.js');
 globalThis.BloomGamekitWorkScheduler = await import('../vendor/upstream/work-scheduler.js');
 async function load(root) {
@@ -42,6 +46,16 @@ const APIS = { base: await load(BASE), candidate: await load(ROOT) },
     RESULTS = {},
     REPORT = {
         status: 'running',
+        startedAt: new Date(STARTED).toISOString(),
+        environment: {
+            node: process.version,
+            platform: process.platform,
+            release: os.release(),
+            arch: process.arch,
+            cpu: os.cpus()[0]?.model,
+        },
+        command: [process.execPath, ...process.argv.slice(1)],
+        readInputs: READ_INPUTS,
         count: COUNT,
         fixture:
             'Seed731,20TPS,mixed9T1,100/250/500 frontline plus equal reserves; same forced deaths drive native lifecycle.',
@@ -177,6 +191,7 @@ try {
         RESULTS.base,
         'exact state, attacks, damage, reinforcements, rotation and floor rewards',
     );
+    verifyContactInputs(READ_INPUTS, BASE, ROOT, import.meta.url);
     REPORT.status = 'passed';
     REPORT.result = RESULTS.candidate;
 } catch (error) {
@@ -184,6 +199,7 @@ try {
     REPORT.error = String(error.stack || error);
     throw error;
 } finally {
+    REPORT.elapsedMs = Date.now() - STARTED;
     fs.writeFileSync(new URL(`${COUNT}-lifecycle.json`, OUTPUT), JSON.stringify(REPORT, null, 2));
 }
 console.log(

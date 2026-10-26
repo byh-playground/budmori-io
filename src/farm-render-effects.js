@@ -12,7 +12,6 @@ import {
     ShockwaveEffect,
 } from './features/farm-modes/basic-presentation.js';
 import { clamp } from './farm-model.js';
-import { effectMayBeVisible } from './farm-render-visibility.js';
 
 const IMPACT = new ImpactEffect();
 const SHOCKWAVE = new ShockwaveEffect();
@@ -39,9 +38,6 @@ export function isJoyEffect(effect) {
     return effect.life < 0.85 && JOY_EFFECTS.has(effect.kind);
 }
 export function drawEffect(renderer, effect) {
-    if (!effectMayBeVisible(renderer, effect)) {
-        return;
-    }
     const PRESENTATION = EFFECT_PRESENTATIONS.get(effect.kind);
     if (!PRESENTATION) {
         return;

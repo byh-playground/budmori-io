@@ -1,14 +1,12 @@
-// Bounded model/query and native-presentation regression; no DOM or mocked health interpolation.
+// Bounded model/query regression. Native HP interpolation and actual HUD values
+// are checked together by hud-sampling.e2e.mjs, independently of cache internals.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { FarmHudCounts } from '../src/farm-hud-counts.js';
 
 globalThis.BloomGamekitDeterministic = await import('../vendor/upstream/deterministic.js');
 globalThis.BloomGamekitWorkScheduler = await import('../vendor/upstream/work-scheduler.js');
-globalThis.BloomGamekitInterpolation = await import('../vendor/upstream/interpolation.js');
-globalThis.BloomGamekitSimloop = await import('../vendor/upstream/simloop.js');
-const { Garden: GARDEN, CONFIG } = await import('../src/farm-model.js'),
-    { FarmSession: FARM_SESSION } = await import('../src/farm-session.js'),
+const { Garden: GARDEN } = await import('../src/farm-model.js'),
     { snapshot: SNAPSHOT, restore: RESTORE } = await import('../src/farm-state.js'),
     { overallXpForLevel: XP } = await import('../src/player-progression.js'),
     COUNTS = new FarmHudCounts();
@@ -31,20 +29,6 @@ function assertCounts(world) {
     assert.equal(BATTLE.fighters, world.fieldFighterCount);
     assert.equal(digest(world), BEFORE, 'HUD reads leave the authoritative snapshot unchanged');
 }
-function assertHealth(view) {
-    const EXPECTED = { current: 0, max: 0, living: 0, total: 0 };
-    for (const UNIT of view.units) {
-        if (UNIT.faction === CONFIG.factions.PLAYER) {
-            EXPECTED.current += Math.max(0, Math.min(UNIT.maxHp, UNIT.hp));
-            EXPECTED.max += UNIT.maxHp;
-            EXPECTED.living += UNIT.hp > 0 ? 1 : 0;
-            EXPECTED.total++;
-        }
-    }
-    assert.deepEqual(view.displayArmyHealth, EXPECTED, 'fused health equals the former display scan exactly');
-    return view.displayArmyHealth.current;
-}
-
 for (const FRONTLINE of [100, 250, 500]) {
     const WORLD = new GARDEN(731);
     WORLD.resetUnits();
@@ -121,48 +105,8 @@ for (const FRONTLINE of [100, 250, 500]) {
     console.log(`HUD count semantics: ${FRONTLINE} field / ${FRONTLINE} reserves passed`);
 }
 
-// Control only the wall clock, leaving the native PresentationRuntime's 50ms
-// delay, schemas, state boundaries and sampled model iteration untouched.
-const WORLD = new GARDEN(731);
-WORLD.resetUnits();
-const UNIT = WORLD.spawn(0, 1, 0, 0),
-    SESSION = new FARM_SESSION(WORLD),
-    ORIGIN = SESSION.presentationOriginWallMs;
-let clock = ORIGIN + 50;
-SESSION.captureClock = () => clock;
-SESSION.frameClock = (now) => now;
-SESSION.capturePresentation('reset');
-UNIT.setHealth(UNIT.hp * 0.5);
-clock += 50;
-SESSION.capturePresentation('continuous');
-const SAMPLES = [];
-for (const OFFSET of [0, 10, 25, 40, 50]) {
-    SAMPLES.push(assertHealth(SESSION.presentation(clock + OFFSET)));
-}
-assert.ok(new Set(SAMPLES).size > 2, 'health continues interpolating between ticks');
-UNIT.setHealth(0);
-clock += 50;
-SESSION.capturePresentation('continuous');
-for (const OFFSET of [0, 10, 25, 40, 50]) {
-    assertHealth(SESSION.presentation(clock + OFFSET));
-}
-UNIT.revive(UNIT.maxHp);
-clock += 50;
-SESSION.capturePresentation('continuous');
-for (const OFFSET of [0, 25, 50]) {
-    assertHealth(SESSION.presentation(clock + OFFSET));
-}
-WORLD.createFormationClone(UNIT);
-clock += 50;
-SESSION.capturePresentation('reset');
-assertHealth(SESSION.presentation(clock));
-UNIT.setBaseStats({ maxHp: UNIT.maxHp * 2 });
-clock += 50;
-SESSION.capturePresentation('continuous');
-assertHealth(SESSION.presentation(clock + 25));
 const LISTENERS = COUNTS.world.unitCollection.onHealthChanged.listeners.size,
     LAST_WORLD = COUNTS.world;
 COUNTS.dispose();
 assert.equal(LAST_WORLD.unitCollection.onHealthChanged.listeners.size, LISTENERS - 1);
-SESSION.dispose();
-console.log('Native sampled HP: exact sums, interpolation, death, revival, clone and maxHp passed');
+console.log('HUD counts: read-only state, same-tick invalidation, 240-to-40 hand queries and observer cleanup passed');

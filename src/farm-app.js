@@ -2235,9 +2235,20 @@ function sync(display, now, notices) {
     syncAttribute('merge', 'aria-label', `합성${MERGE_STATUS.available ? '' : ' 불가'} · ${MERGE_STATUS.reason}`);
     syncText('mergeNotice', MERGE_STATUS.reason);
     const WORLD_COUNT = HUD_COUNTS.worldPopulation(W),
-        { current: ARMY_CURRENT, max: ARMY_MAX, living: ARMY_LIVING, total: ARMY_TOTAL } = display.displayArmyHealth,
         BATTLE_VISIBLE = !home && fightActive(),
         BATTLE_COUNTS = BATTLE_VISIBLE ? HUD_COUNTS.battleCounts(W) : null;
+    let armyCurrent = 0;
+    let armyMax = 0;
+    let armyLiving = 0;
+    let armyTotal = 0;
+    for (const UNIT of display.units) {
+        if (UNIT.faction === CONFIG.factions.PLAYER) {
+            armyCurrent += Math.max(0, Math.min(UNIT.maxHp, UNIT.hp));
+            armyMax += UNIT.maxHp;
+            armyLiving += UNIT.hp > 0 ? 1 : 0;
+            armyTotal++;
+        }
+    }
     syncFlag('farmControls', 'hidden', FARM_EVENT_ACTIVE || home || W.tower.active);
     syncFlag('workHud', 'hidden', FARM_EVENT_ACTIVE || home || W.tower.active);
     syncTower(W, home, FARM_EVENT);
@@ -2276,10 +2287,10 @@ function sync(display, now, notices) {
                 ? '농장이 가득 찼어요'
                 : '번식으로 식구를 늘려요',
     );
-    syncWidth('allyHealth', (ARMY_MAX ? (ARMY_CURRENT / ARMY_MAX) * 100 : 0) + '%');
+    syncWidth('allyHealth', (armyMax ? (armyCurrent / armyMax) * 100 : 0) + '%');
     syncText(
         'allyHealthText',
-        Math.ceil(ARMY_CURRENT) + '/' + Math.ceil(ARMY_MAX) + ' · ' + ARMY_LIVING + '/' + ARMY_TOTAL + '마리',
+        Math.ceil(armyCurrent) + '/' + Math.ceil(armyMax) + ' · ' + armyLiving + '/' + armyTotal + '마리',
     );
     const BOSS = display.boss,
         BOSSES = display.bosses,
@@ -2321,8 +2332,8 @@ function sync(display, now, notices) {
                 : '쓰러진 병력 포함 최대 체력',
     );
     syncFlag('fightRetreat', 'hidden', !(FARM_EVENT_ACTIVE && ['dropping', 'fighting'].includes(FARM_EVENT.phase)));
-    syncAttribute('allyHealth', 'aria-valuenow', ARMY_CURRENT);
-    syncAttribute('allyHealth', 'aria-valuemax', ARMY_MAX);
+    syncAttribute('allyHealth', 'aria-valuenow', armyCurrent);
+    syncAttribute('allyHealth', 'aria-valuemax', armyMax);
     syncAttribute('bossHealth', 'aria-valuenow', BOSS_HP);
     syncAttribute('bossHealth', 'aria-valuemax', BOSS_MAX_HP);
     syncWidth('bossHealth', BOSS_MAX_HP ? (BOSS_HP / BOSS_MAX_HP) * 100 + '%' : '0%');

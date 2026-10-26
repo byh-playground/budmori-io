@@ -1,6 +1,6 @@
 // Model-derived HUD counts share the model's existing membership/bench revisions.
-// The display HP sum belongs to the presentation pass instead: health interpolates
-// between simulation ticks and must never be cached with these discrete counts.
+// HP is summed from the current display in the UI: health interpolates between
+// simulation ticks and must never be cached with these discrete counts.
 export class FarmHudCounts {
     constructor() {
         this.world = null;

@@ -45,6 +45,7 @@ const DEADLINE = setTimeout(() => {
     process.exit(1);
 }, 180000);
 const SERVER = http.createServer((req, res) => {
+    const URL_LOCAL = new URL(req.url, 'http://localhost');
     const FILE = path.resolve(
         ROOT,
         '.' +
@@ -57,7 +58,16 @@ const SERVER = http.createServer((req, res) => {
         return;
     }
     res.setHeader('content-type', TYPES[path.extname(FILE)] || 'application/octet-stream');
-    res.end(fs.readFileSync(FILE));
+    let bytes = fs.readFileSync(FILE);
+    if (URL_LOCAL.searchParams.has('unculled-test') && FILE === path.resolve(ROOT, 'src/farm-renderer.js')) {
+        // Reference only the visibility decision; keep native players and every
+        // draw implementation identical to the frame under test.
+        const IMPORT = "import { unitMayBeVisible } from './farm-render-visibility.js';",
+            SOURCE = bytes.toString('utf8');
+        assert.equal(SOURCE.split(IMPORT).length, 2);
+        bytes = Buffer.from(SOURCE.replace(IMPORT, 'const unitMayBeVisible = () => true;'));
+    }
+    res.end(bytes);
 });
 let browser;
 let page;
@@ -193,10 +203,94 @@ async function gestureFlow(initial) {
 async function capture(name) {
     const DRAW = await page.evaluate(async () => {
         const { bossVectorScale: BOSS_SCALE } = await import('./src/vector-sockets.js'),
+            { Diorama: UNCULLED } = await import('./src/farm-renderer.js?unculled-test'),
+            { snapshot: SNAPSHOT } = await import('./src/farm-state.js'),
             R = BUDMORI.renderer,
-            DISPLAY = R.cameraWorld;
-        R.render(DISPLAY, null, DISPLAY.displayTimeMs);
+            DISPLAY = R.cameraWorld,
+            BEFORE = JSON.stringify(SNAPSHOT(BUDMORI.sim)),
+            NATIVE = R.unitPresentation.drawVectorUnit,
+            DIRECT = R.directCamera,
+            READ = () => {
+                const GL = R.device.gl,
+                    PIXELS = new Uint8Array(GL.drawingBufferWidth * GL.drawingBufferHeight * 4);
+                GL.readPixels(0, 0, GL.drawingBufferWidth, GL.drawingBufferHeight, GL.RGBA, GL.UNSIGNED_BYTE, PIXELS);
+                return PIXELS;
+            },
+            CAMERA = () =>
+                JSON.stringify({ zoom: R.zoom, pan: R.cameraPan, scale: R.scale, offset: R.offset, view: R.view }),
+            COUNT_DIFFERENT_PIXELS = (a, b) => {
+                let count = 0;
+                for (let i = 0; i < a.length; i += 4) {
+                    if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2] || a[i + 3] !== b[i + 3]) {
+                        count++;
+                    }
+                }
+                return count;
+            };
+        let nativeIds = [];
+        let renderEvidence;
+        R.unitPresentation.drawVectorUnit = function (unit, ...args) {
+            nativeIds.push(unit.id);
+            return NATIVE.call(this, unit, ...args);
+        };
+        try {
+            R.render(DISPLAY, null, DISPLAY.displayTimeMs);
+            const PIXELS = READ(),
+                ACTUAL_IDS = [...nativeIds].sort((a, b) => a - b),
+                HIDDEN = R.scenePresentation.hiddenUnitIds(DISPLAY),
+                VISIBLE_IDS = R.visibleUnits
+                    .filter((unit) => !HIDDEN.has(unit.id))
+                    .map((unit) => unit.id)
+                    .sort((a, b) => a - b),
+                CAMERA_BEFORE = CAMERA(),
+                CLOCKS = [...R.vectorPlayers].map(([id, player]) => ({
+                    id,
+                    player,
+                    clip: player.currentClip,
+                    time: player.currentTimeMs,
+                }));
+            R.directCamera = () => {};
+            nativeIds = [];
+            UNCULLED.prototype.render.call(R, DISPLAY, null, DISPLAY.displayTimeMs);
+            const UNCULLED_PIXELS = READ(),
+                UNCULLED_DRAWS = nativeIds.length;
+            // Prove that shots meant to show troops contain actual native body
+            // pixels, not merely terrain/shadows or dispatched empty actors.
+            R.unitPresentation.drawVectorUnit = () => true;
+            R.render(DISPLAY, null, DISPLAY.displayTimeMs);
+            const WITHOUT_BODIES = READ();
+            R.unitPresentation.drawVectorUnit = NATIVE;
+            R.render(DISPLAY, null, DISPLAY.displayTimeMs);
+            const RESTORED = READ();
+            // The reference deliberately seeks hidden players. Restore their
+            // prior sampled time; clip start clocks are never reset by the test.
+            for (const CLOCK of CLOCKS) {
+                if (CLOCK.player.currentTimeMs !== CLOCK.time) {
+                    CLOCK.player.seek(CLOCK.time);
+                }
+            }
+            renderEvidence = {
+                nativeIds: ACTUAL_IDS,
+                visibleIds: VISIBLE_IDS,
+                unculledDraws: UNCULLED_DRAWS,
+                unculledDifferentPixels: COUNT_DIFFERENT_PIXELS(PIXELS, UNCULLED_PIXELS),
+                nativeBodyPixels: COUNT_DIFFERENT_PIXELS(PIXELS, WITHOUT_BODIES),
+                restoredDifferentPixels: COUNT_DIFFERENT_PIXELS(PIXELS, RESTORED),
+                cameraUnchanged: CAMERA() === CAMERA_BEFORE,
+                stateUnchanged: JSON.stringify(SNAPSHOT(BUDMORI.sim)) === BEFORE,
+                clocksUnchanged: CLOCKS.every(
+                    ({ id, player, clip, time }) =>
+                        R.vectorPlayers.get(id) === player &&
+                        player.currentClip === clip &&
+                        player.currentTimeMs === time,
+                ),
+            };
+        } finally {
+            R.unitPresentation.drawVectorUnit = NATIVE;
+            R.directCamera = DIRECT;
+        }
         return {
+            ...renderEvidence,
             tick: BUDMORI.sim.simulationTick,
             actors: R.actors.length,
             troops: DISPLAY.units.length,
@@ -221,10 +315,24 @@ async function capture(name) {
                 }),
         };
     });
+    REPORT.captures.push({ name, ...DRAW });
     assert.ok(
-        DRAW.fadeMs >= 700 && DRAW.actors >= 100 && DRAW.troops >= 100,
-        'capture includes actual troops after scene fade',
+        DRAW.fadeMs >= 700 && DRAW.troops >= 100 && DRAW.unculledDraws >= 100,
+        'capture retains the populated fixture after scene fade',
     );
+    assert.deepEqual(DRAW.nativeIds, DRAW.visibleIds, 'every admitted troop submits its native body exactly once');
+    assert.equal(DRAW.unculledDifferentPixels, 0, 'same snapshot/camera has exactly the unculled native framebuffer');
+    assert.equal(DRAW.restoredDifferentPixels, 0, 'reference inspection restores the captured native framebuffer');
+    assert.ok(
+        DRAW.cameraUnchanged && DRAW.stateUnchanged && DRAW.clocksUnchanged,
+        'reference render preserves camera, authoritative snapshot and native player clocks',
+    );
+    if (name.endsWith('default')) {
+        assert.ok(
+            DRAW.nativeIds.length > 0 && DRAW.nativeBodyPixels > 0,
+            'default view contains actual native troop art',
+        );
+    }
     if (name === 'default') {
         assert.ok(
             DRAW.bosses.every((boss) => boss.top >= 0),
@@ -232,7 +340,6 @@ async function capture(name) {
         );
     }
     await page.screenshot({ path: path.join(OUTPUT, name + '.png'), scale: 'css' });
-    REPORT.captures.push({ name, ...DRAW });
 }
 try {
     for (const MODULE of MANIFEST.modules) {
