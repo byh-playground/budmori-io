@@ -103,7 +103,7 @@ export function passiveCard(id) {
 }
 
 // The run's passive cards as one {id: total} table: the sum of the taken cards' values.
-export const BOSS_CARD_PROFILE = Object.freeze({ 'regen-pct': 0.25, 'lifesteal-flat': 0.25, helper: 0.25 });
+const BOSS_CARD_PROFILE = Object.freeze({ 'regen-pct': 0.25, 'lifesteal-flat': 0.25, helper: 0.25 });
 export function cardValue(card, rarity, role = 'player') {
     return card.values[rarity] * (role === 'boss' ? (BOSS_CARD_PROFILE[card.id] ?? 1) : 1);
 }
@@ -124,7 +124,7 @@ export const RARITY_NAMES = Object.freeze(['일반', '희귀', '영웅']);
 // A stat card adds `values[rarity]` to one stat for the whole climb: `flat` is added to the stat's base, `pct` is added to
 // a shared multiplier, so the result is (base + all flat) * (1 + all pct). Armor, crit and lifesteal have no meaningful
 // base to scale and so exist as one kind only. Regen `pct` is a share of max HP per second.
-export const STAT_CARDS = Object.freeze([
+const STAT_CARDS = Object.freeze([
     { id: 'attack-pct', stat: 'attackPower', mode: 'pct', name: '공격력', values: [0.1, 0.16, 0.25] },
     { id: 'attack-flat', stat: 'attackPower', mode: 'flat', name: '공격력', values: [2, 3, 5] },
     { id: 'hp-pct', stat: 'maxHp', mode: 'pct', name: '체력', values: [0.12, 0.19, 0.3] },
@@ -140,7 +140,7 @@ export const STAT_CARDS = Object.freeze([
 ]);
 
 // Previews and receipts use the same units, including the boss's explicit role profile.
-export function statModifierText(card, value) {
+function statModifierText(card, value) {
     if (card.stat === 'critChance' || card.stat === 'lifesteal') {
         return `+${NUMBER(value * 100)}%p`;
     }
@@ -157,7 +157,7 @@ export function statCardText(card, rarity, role = 'player') {
 }
 
 // Applied passive strength, not a claim that its condition has already triggered.
-export function passiveEffectValue(id, value) {
+function passiveEffectValue(id, value) {
     if (id === 'resolve') {
         return Math.min(PASSIVE_SETTINGS.resolveMaxReduction, value);
     }
@@ -246,7 +246,7 @@ export function advanceSince(since, kind) {
     return Object.fromEntries(Object.entries(since).map(([key, value]) => [key, key === CAME ? 0 : value + 1]));
 }
 
-export function rollRarity(floor, random) {
+function rollRarity(floor, random) {
     const SETTINGS = TOWER_RUN_SETTINGS;
     return weightedIndex(
         SETTINGS.rarityBase.map((base, index) =>
@@ -330,7 +330,7 @@ export function applyTowerCard(state, card, role = 'player') {
     };
 }
 
-export const CARD_CHOICE_TIMING = Object.freeze({ receipt: 0.2, offers: 0.55, selected: 0.75, total: 1.8 });
+const CARD_CHOICE_TIMING = Object.freeze({ receipt: 0.2, offers: 0.55, selected: 0.75, total: 1.8 });
 export function cardChoicePhase(draw, time) {
     if (!draw || time >= draw.until) {
         return '';

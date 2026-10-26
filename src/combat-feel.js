@@ -6,7 +6,7 @@ const { ObjectPool: OBJECT_POOL } = globalThis.BloomGamekitObjectPool;
 const EMPTY_NOTICES = Object.freeze([]);
 // One place for the budget of a fight's feedback: how long an effect lives, how many may be alive, and when the
 // decoration thins out. Numbers never thin out; the particles around them do.
-export const COMBAT_FEEL_CONFIG = Object.freeze({
+const COMBAT_FEEL_CONFIG = Object.freeze({
     lifeMs: 430,
     maxEffects: 96,
     denseHits: 12,

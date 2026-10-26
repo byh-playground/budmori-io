@@ -12,15 +12,7 @@ import { baseUnitStatsFor, COMMON_UNIT_STAT_DEFAULTS } from '../../unit-stats.js
 import { mergeMaterialCostForTier } from '../../unit-grades.js';
 import { areOpposingFactions } from '../../factions.js';
 
-export const REDBEAN_WEIGHTS = Object.freeze([
-    null,
-    [1],
-    [1],
-    [0.45, 0.55],
-    [0.45, 0.55],
-    [0.4, 0.6],
-    [0.2, 0.25, 0.55],
-]);
+const REDBEAN_WEIGHTS = Object.freeze([null, [1], [1], [0.45, 0.55], [0.45, 0.55], [0.4, 0.6], [0.2, 0.25, 0.55]]);
 const LEGS = [
     null,
     [[9, 0.65]],
@@ -61,7 +53,7 @@ export function redbeanPlan(form, speed) {
     });
     return { legs: LEGS_LOCAL, durationTicks: end, strikes: STRIKES };
 }
-export function redbeanCycleTicks(form, speed, chance) {
+function redbeanCycleTicks(form, speed, chance) {
     const RECOVERY = Math.ceil(10 / speed - 1e-9),
         RESET = 2;
     return (
@@ -72,7 +64,7 @@ export function redbeanCycleTicks(form, speed, chance) {
         chance * Math.max(0, RECOVERY - RESET)
     );
 }
-export function redbeanBudgetMultiplier(tier, form, speed, chance, one, current) {
+function redbeanBudgetMultiplier(tier, form, speed, chance, one, current) {
     let materials = 1;
     for (let grade = 2; grade <= tier; grade++) {
         materials *= mergeMaterialCostForTier(grade);

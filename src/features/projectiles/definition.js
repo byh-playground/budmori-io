@@ -6,6 +6,6 @@ export function projectileFeature(projectile) {
     return projectileFlightFeature(projectile);
 }
 
-export function projectileFlightFeature(projectile) {
+function projectileFlightFeature(projectile) {
     return projectile.projectileKind === 'chestnut-spike' ? SPIKE : SEED;
 }

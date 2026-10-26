@@ -110,8 +110,8 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
     }),
 });
 // The basic attack and the area attacks are chosen 1 : 1 whenever both can be used.
-export const BOSS_BASIC_SHARE = 0.5;
-export const BOSS_PATTERN_WEIGHT_DEFAULTS = Object.freeze({
+const BOSS_BASIC_SHARE = 0.5;
+const BOSS_PATTERN_WEIGHT_DEFAULTS = Object.freeze({
     base: 1,
     eligibleBonus: 0.5,
     cap: 3,

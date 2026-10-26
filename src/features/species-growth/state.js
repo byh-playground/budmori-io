@@ -3,7 +3,7 @@ import { isValidLegacyAbilityProgressionState, isValidLegacyAbilityInvestment } 
 import { SpeciesGrowth } from './model.js';
 import { speciesGrowthDefinition } from './definition.js';
 
-export const SPECIES_TREE_VERSION = 1;
+const SPECIES_TREE_VERSION = 1;
 const GROWTH_BY_ABILITY = new Map(
     SPECIES_ABILITY_DEFINITIONS.filter((definition) => speciesGrowthDefinition(definition.species)?.available).map(
         (definition) => [definition.id, new SpeciesGrowth(speciesGrowthDefinition(definition.species))],
@@ -27,11 +27,7 @@ export function growthBuildOf(investment) {
     };
 }
 
-export function cloneAbilityInvestment(investment) {
-    return structuredClone(investment);
-}
-
-export function isValidGrowthInvestment(abilityId, investment) {
+function isValidGrowthInvestment(abilityId, investment) {
     const GROWTH = growthForAbility(abilityId),
         DEFINITION = SPECIES_ABILITY_DEFINITIONS.find((definition) => definition.id === abilityId);
     return !!(

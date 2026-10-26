@@ -1,7 +1,7 @@
 // Piles of grain that food workers fight like enemies: each hit stacks up, five stacks shake one food loose,
 // a pile holds a fixed amount of food and vanishes when it is used up, and the field keeps a few piles around.
 // Piles and swings are transient presentation-adjacent state; they are rebuilt after a load.
-export const SWING_WINDUP = 0.28,
+const SWING_WINDUP = 0.28,
     SWING_RECOVER = 0.36;
 // Draft numbers: food falls 1.5–3.5 from its pile.
 const FOOD_DROP_MIN = 1.5,
@@ -10,7 +10,7 @@ const FOOD_DROP_MIN = 1.5,
     CHARGE_SPEED = 18,
     CHARGE_TIMEOUT = 1.6,
     RECOIL_SPEED = 5.5;
-export const STACKS_PER_FOOD = 5;
+const STACKS_PER_FOOD = 5;
 function pilePosition(world, config) {
     const WORK = config.farm.work;
     let best = null,
@@ -50,7 +50,7 @@ function spawnPile(world, config) {
     world.emit('drop-dust', POSITION.x, POSITION.y);
 }
 // Piles are solid: the radius shrinks a little as the pile is used up.
-export function pileRadius(pile) {
+function pileRadius(pile) {
     return 0.85 * (0.95 + 0.5 * (pile.food / pile.maxFood));
 }
 // How many of each species work. The slider fixes the farm-wide worker share. Without breeding weights every species

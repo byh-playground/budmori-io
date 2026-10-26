@@ -13,15 +13,7 @@ import { mergeMaterialCostForTier } from '../../unit-grades.js';
 import { areOpposingFactions } from '../../factions.js';
 import { CHESTNUT_ATTACK_RANGE } from '../abilities/chestnut-thorns/definition.js';
 
-export const CHESTNUT_WEIGHTS = Object.freeze([
-    null,
-    [1],
-    [0.45, 0.55],
-    [1],
-    [0.4, 0.6],
-    [0.4, 0.6],
-    [0.25, 0.3, 0.45],
-]);
+const CHESTNUT_WEIGHTS = Object.freeze([null, [1], [0.45, 0.55], [1], [0.4, 0.6], [0.4, 0.6], [0.25, 0.3, 0.45]]);
 const STAGES = [
     null,
     ['thrust'],
@@ -51,7 +43,7 @@ export function chestnutRange(world, unit) {
     );
 }
 // All six forms share one actor cadence and one normalized basic-attack budget.
-export function chestnutBudgetMultiplier(tier, one, current) {
+function chestnutBudgetMultiplier(tier, one, current) {
     let materials = 1;
     for (let grade = 2; grade <= tier; grade++) {
         materials *= mergeMaterialCostForTier(grade);
@@ -251,7 +243,7 @@ export function advanceChestnutAttacks(world) {
             world._unitForId(r.owner)?.ability.action?.chestnutAttack === r,
     );
 }
-export function chestnutRecordFor(world, id) {
+function chestnutRecordFor(world, id) {
     return world.chestnutAttacks.find((r) => r.id === id);
 }
 export function resolveChestnutImpact(world, p, geometry, old) {

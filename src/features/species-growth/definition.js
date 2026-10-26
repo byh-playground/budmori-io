@@ -1,11 +1,11 @@
 import { SPECIES_CATALOG } from '../../species-catalog.js';
 
 export const SPECIES_MASTERY_CAP = 50;
-export const EVOLUTION_UNLOCK_LEVELS = Object.freeze([2, 6, 12, 20, 30]);
+const EVOLUTION_UNLOCK_LEVELS = Object.freeze([2, 6, 12, 20, 30]);
 
 // Rollout is explicit: a species is enabled only with its attack, effects, UI and save consumer.
 // All nine species have their attack, growth presentation and save consumer enabled.
-export const SPECIES_GROWTH_DEFINITIONS = Object.freeze(
+const SPECIES_GROWTH_DEFINITIONS = Object.freeze(
     SPECIES_CATALOG.map(({ id }) =>
         createSpeciesGrowthDefinition(
             id,
@@ -68,7 +68,7 @@ export const SPECIES_GROWTH_DEFINITIONS = Object.freeze(
     ),
 );
 
-export function createSpeciesGrowthDefinition(species, { available = false, basic = [], specialty = [] } = {}) {
+function createSpeciesGrowthDefinition(species, { available = false, basic = [], specialty = [] } = {}) {
     const NODES = [
         ...EVOLUTION_UNLOCK_LEVELS.map((level, index) => ({
             id: `evolution-${index + 2}`,

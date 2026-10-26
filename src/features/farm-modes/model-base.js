@@ -15,7 +15,7 @@ function wanderUnit(seed, salt) {
 // The old target orbited the farm faster than a unit could walk, so everyone chased it in small circles around the
 // middle and piled up there. Spots are spread evenly over the ground (square root of the radius), and the same unit
 // and time always give the same spot, so a unit that is only drawn can walk to it with plain arithmetic.
-export function restingSpot(unit, time, arena) {
+function restingSpot(unit, time, arena) {
     const PERIOD = WANDER_SECONDS_MIN + WANDER_SECONDS_SPREAD * wanderUnit(unit.seed, 7),
         EPOCH = Math.floor(time / PERIOD + wanderUnit(unit.seed, 3)),
         X = wanderUnit(unit.seed, EPOCH * 2 + 11) * 2 - 1,

@@ -40,34 +40,3 @@ export function sampleSkillCastPose(cast, radius = 1) {
         releasePulse: PREPARING ? 0 : CLAMP(1 - Math.max(0, cast.elapsed || 0) / 0.16),
     };
 }
-
-// Shared rig adapter for floating boss hands and parented/root troop arms.
-// Only supplied channels are owned by this overlay; persistent weapon scale,
-// visibility and species-specific appearance remain the caller's responsibility.
-export function skillCastPartPoses(pose, parts, heldItem = null) {
-    const PARTS = new Map(parts.map((part) => [part.id, part])),
-        OUTPUT = {};
-    if (PARTS.has('body')) {
-        OUTPUT.body = pose.body;
-    }
-    for (const [ID, HAND] of Object.entries(pose.hands)) {
-        const PART = PARTS.get(ID);
-        if (!PART) {
-            continue;
-        }
-        OUTPUT[ID] = {
-            x: HAND.x,
-            y: HAND.y + (PART.parent === 'body' ? 0 : pose.body.y),
-        };
-        if (heldItem?.hand === ID && PARTS.has(heldItem.part)) {
-            const HELD = PARTS.get(heldItem.part);
-            if (HELD.parent !== ID) {
-                OUTPUT[heldItem.part] = {
-                    x: HAND.x,
-                    y: HAND.y + (HELD.parent === 'body' ? 0 : pose.body.y),
-                };
-            }
-        }
-    }
-    return OUTPUT;
-}

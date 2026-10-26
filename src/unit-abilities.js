@@ -114,7 +114,7 @@ export const UNIT_CAPABILITY_COMPOSITIONS = Object.freeze({
         contactRecoil: true,
     }),
 });
-export const UNIT_SPECIAL_ABILITY_COMPOSITIONS = Object.freeze({
+const UNIT_SPECIAL_ABILITY_COMPOSITIONS = Object.freeze({
     chestnutThorns: Object.freeze({
         definition: CHESTNUT_THORNS_FEATURE.definition,
         profile: CHESTNUT_THORNS_FEATURE.definition.attackProfile,
@@ -184,8 +184,4 @@ for (const [SPECIES, DEFINITION] of Object.entries(UNIT_CAPABILITY_COMPOSITIONS)
 }
 for (const SPECIES of CAPABILITY_SPECIES.values()) {
     Object.freeze(SPECIES);
-}
-const NO_SPECIES = Object.freeze([]);
-export function speciesWithCapability(capability) {
-    return CAPABILITY_SPECIES.get(capability) || NO_SPECIES;
 }

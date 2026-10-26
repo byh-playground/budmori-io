@@ -10,8 +10,6 @@ import {
     getAbilityNodeStatus,
     getAbilityPointsLeft,
     getInvestedAbilityPointCount,
-    purchaseAbilityNode,
-    resetAbilityProgression,
 } from './ability-progression.js';
 
 const DEFAULT_ABILITY_PRESENTATION = {
@@ -111,50 +109,6 @@ function renderMasteryMarkup(mastery, speciesName) {
     <div><strong>${speciesName} 숙련 Lv. ${mastery.masteryLevel}</strong><span>${formatXpForDisplay(mastery.masteryXp)} / ${formatXpForDisplay(NEXT_LEVEL_XP)} XP</span></div>
     <progress max="${NEXT_LEVEL_XP}" value="${mastery.masteryXp}" aria-label="${LABEL}"></progress>
   </div>`;
-}
-export function mountAbilityTreePanel(host, { getState, getContext = () => ({}), onStateChange = () => {} } = {}) {
-    if (!host || typeof host.addEventListener !== 'function') {
-        throw new TypeError('A DOM host element is required');
-    }
-    if (typeof getState !== 'function') {
-        throw new TypeError('getState callback is required');
-    }
-    const RENDER = () => {
-        const STATE = getState();
-        host.innerHTML = renderAbilityTreeMarkup(STATE, getContext());
-    };
-    const ON_CLICK = (event) => {
-        const BUTTON = event.target?.closest?.('button[data-ability-action],button[data-ability-node]');
-        if (!BUTTON || BUTTON.getAttribute('aria-disabled') === 'true') {
-            return;
-        }
-        const STATE = getState();
-        const CONTEXT = getContext();
-        let result;
-        if (BUTTON.dataset.abilityAction === 'reset') {
-            result = resetAbilityProgression(
-                STATE,
-                CONTEXT,
-                Number.isInteger(CONTEXT.selectedSpecies) ? CONTEXT.selectedSpecies : null,
-            );
-        } else if (BUTTON.dataset.abilityNode) {
-            const [ABILITY_ID, KIND, LEVEL] = BUTTON.dataset.abilityNode.split(':');
-            const NODE_ID = KIND === 'root' ? 'root' : `${KIND}-${LEVEL}`;
-            result = purchaseAbilityNode(STATE, ABILITY_ID, NODE_ID, CONTEXT);
-        }
-        if (result?.ok) {
-            onStateChange(result.state, result);
-            RENDER();
-        }
-    };
-    host.addEventListener('click', ON_CLICK);
-    RENDER();
-    return {
-        render: RENDER,
-        dispose() {
-            host.removeEventListener('click', ON_CLICK);
-        },
-    };
 }
 function renderAbilityCard(state, definition, context) {
     const INVESTMENT = state.abilities[definition.id];

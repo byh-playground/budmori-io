@@ -7,29 +7,17 @@ import {
 } from './attack-profile.js';
 import { AttackAction, attackTargetKey, isAttackActionDTO, attackOwnerCanContinue } from './attack-action.js';
 import { growthForAbility, growthBuildOf } from './state.js';
-import { baseUnitStatsFor, COMMON_UNIT_STAT_DEFAULTS } from '../../unit-stats.js';
+import { COMMON_UNIT_STAT_DEFAULTS } from '../../unit-stats.js';
 import { mergeMaterialCostForTier } from '../../unit-grades.js';
 
-export const PEA_WEIGHTS = Object.freeze([null, [1], [1], [0.45, 0.55], [1], [0.4, 0.6], [0.2, 0.25, 0.55]]);
+const PEA_WEIGHTS = Object.freeze([null, [1], [1], [0.45, 0.55], [1], [0.4, 0.6], [0.2, 0.25, 0.55]]);
 const COMBO_TICKS = [0, 0, 0, 4, 0, 6, 8];
-export const PEA_SLOT_TICKS = Object.freeze([null, [0], [0], [0, 4], [0], [0, 6], [0, 3, 8]]);
+const PEA_SLOT_TICKS = Object.freeze([null, [0], [0], [0, 4], [0], [0, 6], [0, 3, 8]]);
 const ABILITY_ID = 'pea-recovery-boost';
 
 export function peaGrowthBuild(progression) {
     const INVESTMENT = progression?.abilities?.[ABILITY_ID];
     return INVESTMENT?.treeVersion === 1 ? growthBuildOf(INVESTMENT) : null;
-}
-
-// Pea normalization includes its own measured melee cycle, not corn's projectile cadence.
-// At the neutral 20Hz baseline: prepare6 + approach2 + recover13 + next-action1 =22 ticks.
-export function peaMergeBudgetMultiplier(tier, form = 1, recoverySeconds = 0.65) {
-    return peaBudgetFromInputs(
-        tier,
-        form,
-        recoverySeconds,
-        baseUnitStatsFor(1, 0).attackPower,
-        baseUnitStatsFor(tier, 0).attackPower,
-    );
 }
 
 function peaBudgetFromInputs(tier, form, recoverySeconds, one, current) {

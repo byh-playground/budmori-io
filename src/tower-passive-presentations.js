@@ -72,7 +72,7 @@ export class PassiveMarksPresentation {
 }
 
 // The gold shield of an undying save breaks into shards around the unit.
-export class UndyingPresentation {
+class UndyingPresentation {
     lifeMs = 750;
     draw(renderer, event, progress) {
         const T = Math.min(1, progress),
@@ -148,12 +148,12 @@ class MotesPresentation {
         }
     }
 }
-export class HelperPresentation extends MotesPresentation {
+class HelperPresentation extends MotesPresentation {
     color(alpha) {
         return `rgba(120,220,140,${alpha})`;
     }
 }
-export class VengeancePresentation extends MotesPresentation {
+class VengeancePresentation extends MotesPresentation {
     color(alpha) {
         return `rgba(235,70,70,${alpha})`;
     }

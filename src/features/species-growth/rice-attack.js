@@ -13,7 +13,7 @@ import { mergeMaterialCostForTier } from '../../unit-grades.js';
 import { areOpposingFactions } from '../../factions.js';
 const ATTACK_KIND = 'ram';
 
-export const RICE_WEIGHTS = Object.freeze([
+const RICE_WEIGHTS = Object.freeze([
     null,
     [1],
     [0.45, 0.55],
@@ -34,7 +34,7 @@ const STAGES = [
 const RATIOS = [null, [0.65], [0.25, 0.75], [0.25, 0.75], [0.25, 0.75], [0.15, 0.45, 0.85], [0.1, 0.35, 0.6, 0.9]];
 // Repartition the verified legacy contact (2 ticks) plus recovery budget.
 // The active scythe window overlaps that budget instead of extending it.
-export function riceTiming(speed) {
+function riceTiming(speed) {
     const RECOVERY = Math.ceil(13 / speed);
     // With at most two recovery ticks, legacy recoil returns in one contact
     // tick after the opening cycle. Keep that measured sustained cadence.
@@ -42,7 +42,7 @@ export function riceTiming(speed) {
     const ACTIVE = Math.min(10, TOTAL - 1);
     return { activeTicks: ACTIVE, recoveryTicks: TOTAL - ACTIVE };
 }
-export function riceGrowthBuild(progression) {
+function riceGrowthBuild(progression) {
     const ENTRY = progression?.abilities?.['rice-low-health-harvest'];
     return ENTRY?.treeVersion === 1 ? growthBuildOf(ENTRY) : null;
 }
@@ -53,7 +53,7 @@ export function riceRange(world, unit) {
     const BUILD = riceGrowthBuild(world.abilityProgressionFor(unit));
     return BUILD ? 1.45 * (1 + 0.04 * (BUILD.nodeRanks['specialty-2'] || 0)) : null;
 }
-export function riceBudgetMultiplier(tier, one, current) {
+function riceBudgetMultiplier(tier, one, current) {
     let materials = 1;
     for (let grade = 2; grade <= tier; grade++) {
         materials *= mergeMaterialCostForTier(grade);
@@ -62,7 +62,7 @@ export function riceBudgetMultiplier(tier, one, current) {
         ? (one * materials * 1.05 ** (tier - 1)) / current
         : 1.75 ** (tier - 1);
 }
-export function riceShots(form, activeTicks = 10) {
+function riceShots(form, activeTicks = 10) {
     return RICE_WEIGHTS[form].map((weight, slot) => ({
         slot,
         tick: Math.max(1, Math.min(activeTicks, Math.round(RATIOS[form][slot] * activeTicks))),
@@ -140,7 +140,7 @@ export function launchRiceAttack(world, action) {
     ).toDTO();
 }
 // Finite committed scythe corridors, with broad outer and focused inner arcs.
-export function riceSlotGeometry(r, slot) {
+function riceSlotGeometry(r, slot) {
     const STAGE = r.shots[slot].stage;
     const WIDE = STAGE === 'wide' || STAGE === 'semicircle';
     const NARROW = STAGE === 'inward' || STAGE === 'harvest';

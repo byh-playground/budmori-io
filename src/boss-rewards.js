@@ -1,8 +1,6 @@
 import { awardMasteryXp, FARM_BOSS_EVENT_MAX_STAGE } from './player-progression.js';
 import { BOSS_SPECIES_WEIGHTS } from './species-catalog.js';
 
-const FORMAT_PERCENT = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 });
-const FORMAT_COUNT = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 0 });
 const PRD_UNITS_PER_TICK = 10;
 const STREAM_DOMAINS = Object.freeze({
     normal: Object.freeze({ prd: 0x2f6e2b1d, boxes: 0x5c3a9217 }),
@@ -81,7 +79,7 @@ export const BOSS_REWARD_SETTINGS = Object.freeze({
     speciesWeights: BOSS_SPECIES_WEIGHTS,
 });
 
-export function bossRewardBoxPayouts(total) {
+function bossRewardBoxPayouts(total) {
     if (!Number.isSafeInteger(total) || total < 1) {
         throw new RangeError('Boss reward quantity must be a positive safe integer');
     }
@@ -115,43 +113,6 @@ export function bossStageStats(stage) {
         boxPayouts: PAYOUTS,
         bonusRollChance: 0,
     };
-}
-
-export function bossRewardRollDescription(
-    stage,
-    { farmEvent = false, firstClear = false, acquisitionMultiplier = 1 } = {},
-) {
-    const STATS = bossStageStats(stage),
-        NOMINAL_CHANCE = bossAcquisitionChance({ farmEvent, firstClear, acquisitionMultiplier: 1 }) * 100,
-        CHANCE = bossAcquisitionChance({ farmEvent, firstClear, acquisitionMultiplier }) * 100,
-        PAYOUTS = STATS.boxPayouts,
-        MIN = Math.min(...PAYOUTS),
-        MAX = Math.max(...PAYOUTS),
-        RANGE = MIN === MAX ? FORMAT_COUNT.format(MIN) : `${FORMAT_COUNT.format(MIN)}–${FORMAT_COUNT.format(MAX)}`;
-    return `${FORMAT_COUNT.format(STATS.boxCount)}회 추첨 · 상자당 ${RANGE}마리 · ${firstClear ? '첫 클리어' : '재도전'} 기본 확률 ${FORMAT_PERCENT.format(NOMINAL_CHANCE)}% · 편성 반영 ${FORMAT_PERCENT.format(CHANCE)}%`;
-}
-
-export function chooseBossSpecies(random, weights = BOSS_REWARD_SETTINGS.speciesWeights) {
-    if (
-        typeof random !== 'function' ||
-        !Array.isArray(weights) ||
-        weights.length !== BOSS_REWARD_SETTINGS.speciesWeights.length ||
-        weights.some((weight) => !Number.isFinite(weight) || weight <= 0)
-    ) {
-        throw new TypeError('Boss species weights and random source are required');
-    }
-    const TOTAL = weights.reduce((sum, weight) => sum + weight, 0);
-    let remaining = random() * TOTAL;
-    if (!Number.isFinite(remaining) || remaining < 0 || remaining >= TOTAL) {
-        throw new RangeError('Boss species roll must be in [0, 1)');
-    }
-    for (let index = 0; index < weights.length; index += 1) {
-        remaining -= weights[index];
-        if (remaining < 0) {
-            return index;
-        }
-    }
-    return weights.length - 1;
 }
 
 export function bossAcquisitionChance({ farmEvent = false, firstClear = false, acquisitionMultiplier = 1 } = {}) {
@@ -199,18 +160,6 @@ export function bossRewardQueueBySpecies(world) {
         COUNTS.set(ENTRY.species, (COUNTS.get(ENTRY.species) || 0) + ENTRY.count);
     }
     return [...COUNTS].filter(([, count]) => count > 0);
-}
-
-export function getBossRewardQueueCount(world, species, tier = 1) {
-    return (world.bossRewardInventory || [])
-        .filter((entry) => entry.species === species && entry.tier === tier)
-        .reduce((sum, entry) => {
-            const NEXT = sum + entry.count;
-            if (!Number.isSafeInteger(NEXT)) {
-                throw new RangeError('Owned boss reward quantity exceeds the safe integer range');
-            }
-            return NEXT;
-        }, 0);
 }
 
 function allocatePlacedRewards(world, species, tier, quantity) {
@@ -307,12 +256,6 @@ function shuffleForNewReceipt(world, source, total, firstClear = false) {
         payouts: SHUFFLED.payouts,
         payoutRngStateAfter: SHUFFLED.rngState,
     };
-}
-
-export function resolveBossAcquisition(world, options = {}) {
-    return typeof world.mutateUnits === 'function'
-        ? world.mutateUnits(resolveBossAcquisitionCommitted, world, options)
-        : resolveBossAcquisitionCommitted(world, options);
 }
 
 function resolveBossAcquisitionCommitted(world, options = {}) {
