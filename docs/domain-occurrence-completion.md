@@ -66,7 +66,7 @@ Cull은 죽음이나 inventory detach가 아니다. HP/deadEffect 변경, death/
 
 미도달 최초·tier `ensureGrowthDraft`, `chooseGrowth`, `compressPermanent` 및 spatial wrapper를 제거했다. 전용 capture/helper/busy flag만 함께 삭제했다. `growthTransaction`, `statOfferRandom`, 지원 저장 migration, 전투력 helper와 네 비활성 wire 명령은 보존했다.
 
-세부 호출/덮어쓰기 도달성 증명과 각 의존성의 존치 근거는 `retired-progression-reachability.md`에 있다. `growthDraft`, `growthChoice`, `gate`, `compress`의 encode/decode/queue와 최종 inert adapter에는 변화가 없다.
+`growthDraft`, `growthChoice`, `gate`, `compress`의 encode/decode/queue와 최종 inert adapter에는 변화가 없다.
 
 ## 이전 검증 기록 (아카이브)
 

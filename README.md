@@ -3,7 +3,7 @@
 ## 브라우저 원본 모듈 실행 (2026-10-24)
 
 - `index.html` → `src/bootstrap.js` → `src/farm-app.js` 순서로 실행합니다.
-- 게임은 생성된 `src/game.js` 번들 대신 원본 ES 모듈을 직접 가져옵니다.
+- 게임은 원본 ES 모듈을 직접 가져옵니다.
 - 원본 SVG와 고정된 GameKit SDK 해시 검증, 저장·네트워크 계약은 유지합니다.
 - `npm run check`는 문법·코드·모듈 계약을 검사하며 실행 파일을 만들지 않습니다.
 - GitHub Pages는 기존 `main /`의 원본 HTML·JS·CSS·SVG를 게시합니다.
@@ -39,11 +39,11 @@ npm run test:breed-allocation
 npm run test:corn-growth
 ```
 
-정적 서버로 저장소 루트를 열면 `index.html` → `src/bootstrap.js` → `src/farm-app.js`와 그 원본 ES 모듈을 직접 실행합니다. 별도 번들·concat·생성 산출물 배포 단계는 없습니다. GameKit은 `gamekit-lock.json`의 불변 CDN ESM을 검증 후 로드합니다. 기존 `src/game.js`는 제품 진입점이나 검증 후보가 아닙니다.
+정적 서버로 저장소 루트를 열면 `index.html` → `src/bootstrap.js` → `src/farm-app.js`와 그 원본 ES 모듈을 직접 실행합니다. 별도 번들·concat·생성 산출물 배포 단계는 없습니다. GameKit은 `gamekit-lock.json`의 불변 CDN ESM을 검증 후 로드합니다.
 
-`node scripts/gamekit-provenance.cjs`는 고정 SDK의 Git 객체·manifest·SHA-256과 원본 import graph·SVG를 읽기 전용으로 검증합니다. 원본 앱을 퇴역한 `src/game.js` 번들이나 생성 SRI와 비교하지 않습니다. `npm test`의 종료·복귀 흐름은 저장 뒤 렌더 프레임 취소, 자원 해제, 뒤로 가기 캐시의 `pageshow` 재로딩과 이어하기를 함께 확인합니다.
+`node scripts/gamekit-provenance.cjs`는 고정 SDK의 Git 객체·manifest·SHA-256과 원본 import graph·SVG를 읽기 전용으로 검증합니다. `npm test`의 종료·복귀 흐름은 저장 뒤 렌더 프레임 취소, 자원 해제, 뒤로 가기 캐시의 `pageshow` 재로딩과 이어하기를 함께 확인합니다.
 
-`assets/troops/`와 `assets/bosses/`의 SVG가 각 캐릭터 벡터 아트, 클립, 표정, 소켓의 단일 원본입니다. 고정 GameKit SVG 로더가 원본을 읽어 실행 메모리에서 메시를 만들며, 저장소 파일을 재작성하거나 배포용 메시를 생성하지 않습니다. `npm run check`는 원본 import graph와 자산 무결성을 읽기 전용으로 확인합니다. GameKit의 native `play`, `setExpression`, `seek`, `getSocket`, `draw` API를 사용하고 모든 캐릭터를 공통 `PresentationRuntime` 표시 시각에 맞춥니다. 수동 얼굴 그리기나 SVG 옆 모션 sidecar는 사용하지 않습니다.
+`assets/troops/`의 SVG가 각 캐릭터 벡터 아트, 클립, 표정, 소켓의 단일 원본입니다. 고정 GameKit SVG 로더가 원본을 읽어 실행 메모리에서 메시를 만들며, 저장소 파일을 재작성하거나 배포용 메시를 생성하지 않습니다. `npm run check`는 원본 import graph와 자산 무결성을 읽기 전용으로 확인합니다. GameKit의 native `play`, `setExpression`, `seek`, `getSocket`, `draw` API를 사용하고 모든 캐릭터를 공통 `PresentationRuntime` 표시 시각에 맞춥니다. 수동 얼굴 그리기나 SVG 옆 모션 sidecar는 사용하지 않습니다.
 
 병력의 충돌 반경·높이와 표시 배율은 원본의 이름 있는 몸통 외곽선·지면 소켓을 공유합니다. 옥수수 낟알은 발사 순간 몸통 높이의 20%이며, 최소 표시 픽셀은 충돌 크기에 영향을 주지 않습니다. 측정 기준과 저장 호환성은 [몸 크기와 투사체 크기](docs/unit-body-dimensions.md)에 정리했습니다.
 
@@ -124,7 +124,7 @@ npm run test:corn-growth
 - `src/farm-save-codec.js`, `farm-storage.js`: 버전·크기 경계, 진행 데이터만 JSON 인코딩, 원본 백업과 저장 보호.
 - `src/farm-session.js`: 로컬 명령과 실행 세션.
 - `src/farm-renderer.js`: 실제 WebGL 투영, GameKit troop/boss vector assets, 전투 예고.
-- `assets/troops/*.svg`, `assets/bosses/chestnut.svg`: 캐릭터 몸체·클립·표정·소켓 원본.
+- `assets/troops/*.svg`: 캐릭터 몸체·클립·표정·소켓 원본.
 - `src/combat-feel.js`, `food-feel.js`: 확정 사건을 읽는 제한된 표현·오디오.
 - `src/farm-app.js`: 시작·복귀·농장 입력·라우팅·성장 UI.
 - `src/ability-progression.js`: 능력·일반 강화 구매, 환불, 적용 등급과 노드 상태 판정. 모델과 성장 UI가 같은 도메인 규칙을 사용합니다.
@@ -144,11 +144,11 @@ npm run test:corn-growth
 
 ## SVG 원본 시작 로딩
 
-캐릭터 배포 리소스는 `assets/troops/*.svg`, `assets/bosses/*.svg` 원본만 사용합니다.
+캐릭터 배포 리소스는 `assets/troops/*.svg` 원본만 사용합니다.
 부트스트랩이 manifest의 SHA-256/크기를 확인하고 GameKit `vector-assets-loader`로 시작 시 한 번 변환한 뒤 게임을 시작합니다.
 메시와 애니메이션은 세션 캐시에서 재사용하며 장면 전환·매 프레임에 다시 컴파일하지 않습니다.
-일반 병력은 `smallAsset`(곡선 분할 2, 선 끝 호 분할 2), 모든 거대 보스는 `standard`(4, 2) 품질로 별도 변환합니다. 보스는 떠 있는 손과 전용 소켓을 포함한 `assets/bosses/`의 원본 SVG를 직접 사용합니다. 병사 SVG로 대체하지 않습니다.
-생성 정점 배열/base64 메시를 `game.js` 또는 HTML에 내장하거나 생성 캐릭터 파일을 배포하지 않습니다.
+일반 병력은 `smallAsset`(곡선 분할 2, 선 끝 호 분할 2), 모든 거대 보스는 `standard`(4, 2) 품질로 별도 변환합니다. 보스는 같은 병종의 SVG를 `standard` 품질로 변환해 씁니다.
+생성 정점 배열/base64 메시를 HTML에 내장하거나 생성 캐릭터 파일을 배포하지 않습니다.
 리소스 로딩 실패 시 시작을 막고 재시도 UI를 제공합니다. `npm run check`는 원본 모듈 graph와 SVG/manifest 기록을 검증하며, 기본 Farm E2E는 실제 브라우저에서 게임 리소스가 로드되는 시작 흐름을 확인합니다.
 
 자동 저장은 변경이 멈춘 뒤 1초, 계속 변경될 때는 최대 10초에 체크포인트를 저장합니다. 기존 타이머가 최신 마감 시각을 다시 확인해 매 틱 취소·재생성하지 않습니다. 스냅샷의 정규화·검증·저장 순서와 실패 시 기존 저장 보존은 유지합니다. 물리 스텝은 비직렬화 임시 배열을 재사용하되 시작 시점의 유닛 순서를 고정하며, 도중 생성된 유닛은 인덱스에 즉시 반영되고 다음 스텝부터 진행합니다.
@@ -163,7 +163,7 @@ asset/player는 세션 runtime에만 보관하고 저장에 넣지 않습니다.
 
 ## 코드 규약 확인
 
-[코드 규약](docs/code-conventions.md)을 따릅니다. `npm run format`은 직접 작성한 소스·스크립트·기존 E2E·문서의 포맷을 적용하고, `npm run format:check`와 `npm run lint`는 파일을 고치지 않고 위반을 검사합니다. `npm run check`는 두 검사와 원본 엔트리 검증을 실행하며 어떠한 제품 파일도 생성하지 않습니다. 고정 vendor와 사용하지 않는 과거 `src/game.js`는 직접 포맷하지 않습니다.
+[코드 규약](docs/code-conventions.md)을 따릅니다. `npm run format`은 직접 작성한 소스·스크립트·기존 E2E·문서의 포맷을 적용하고, `npm run format:check`와 `npm run lint`는 파일을 고치지 않고 위반을 검사합니다. `npm run check`는 두 검사와 원본 엔트리 검증을 실행하며 어떠한 제품 파일도 생성하지 않습니다. 고정 vendor는 직접 포맷하지 않습니다.
 
 ## 기능별 구조
 
