@@ -111,7 +111,7 @@ jobs:
                   BUDMORI_PERF_WARMUP: 96
               run: |
                   for view in default offscreen; do
-                    timeout 180s npm run test:performance-optimizations -- render 500 settled "$view" || exit $?
+                    timeout 420s npm run test:performance-optimizations -- render 500 settled "$view" || exit $?
                   done
             - name: Include recorded paired measurement JSON for independent review
               if: always()

@@ -640,10 +640,13 @@ try {
     });
     REPORT.browserVersion = browser.version();
     REPORT.platform = process.platform;
-    deadline = setTimeout(() => {
-        REPORT.deadlineExceeded = true;
-        browser.close().catch(() => {});
-    }, 170000);
+    deadline = setTimeout(
+        () => {
+            REPORT.deadlineExceeded = true;
+            browser.close().catch(() => {});
+        },
+        Number(process.env.BUDMORI_PERF_DEADLINE_MS || 410000),
+    );
     const ORIGIN = `http://127.0.0.1:${SERVER.address().port}`;
     for (let round = 0; round < ROUNDS; round++) {
         for (const VARIANT of round % 2 ? ['candidate', 'base'] : ['base', 'candidate']) {

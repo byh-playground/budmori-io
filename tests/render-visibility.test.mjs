@@ -122,10 +122,6 @@ for (const BODY of UNIT_BODIES) {
     ASSET.dispose();
 }
 LOADER.dispose();
-REPORT.status = 'passed';
-fs.mkdirSync(OUTPUT, { recursive: true });
-fs.writeFileSync(new URL('report.json', OUTPUT), `${JSON.stringify(REPORT, null, 2)}\n`);
-console.log(JSON.stringify(REPORT));
 
 // Full-view cameras avoid per-unit visibility work regardless of crowd size.
 const CAMERA = {
@@ -143,3 +139,8 @@ CAMERA.offset[0] = 45;
 assert.equal(CULLING_ENABLED(CAMERA), true, 'manual clipped view enables culling');
 CAMERA.manualCamera = false;
 assert.equal(CULLING_ENABLED(CAMERA), false, 'reset never inherits manual culling');
+
+REPORT.status = 'passed';
+fs.mkdirSync(OUTPUT, { recursive: true });
+fs.writeFileSync(new URL('report.json', OUTPUT), `${JSON.stringify(REPORT, null, 2)}\n`);
+console.log(JSON.stringify(REPORT));
