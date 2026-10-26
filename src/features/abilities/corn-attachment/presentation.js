@@ -29,7 +29,7 @@ function transformPoint(matrix, point) {
 }
 // An inset torso ellipse, not the collision circle: aspect and face exclusion come from the authored SVG.
 // The narrow peanut waist needs a smaller horizontal inset. Sampling is continuous, never a slot/grid.
-export function cornLocalPoint(attachment, group, definition) {
+function cornLocalPoint(attachment, group, definition) {
     let cache = LOCAL_POINTS.get(group);
     if (!cache || cache.definition !== definition) {
         cache = { definition, points: new Map() };
