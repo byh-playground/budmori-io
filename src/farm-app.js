@@ -40,6 +40,7 @@ import { apportionBreedShares, adjustBreedShare } from './model/breed-allocation
 import { speciesById, giantSpeciesName, speciesRewardName } from './units/species-catalog.js';
 import { HELP_MAX_FRAME_MS, HELP_PLAYBACK_RATE, helpSceneById } from './ui/help-scenes.js';
 import { createHelpPanel } from './ui/help-panel.js';
+import { createNeutralSpeciesSvg, speciesIconHtml } from './ui/species-icons.js';
 const DOLLAR = (id) => document.getElementById(id),
     STORAGE = new FarmStorage();
 STORAGE.initializeIncompatible(new Garden());
@@ -459,83 +460,13 @@ const FAIL = (error) => {
         active.paused = true;
     }
 };
-const BOSS_PREVIEW_SOURCES = new Map(),
-    BOSS_PREVIEW_VERSIONS = new WeakMap();
-function bossPreviewSource(asset) {
-    if (BOSS_PREVIEW_SOURCES.has(asset)) {
-        const CACHED = BOSS_PREVIEW_SOURCES.get(asset);
-        BOSS_PREVIEW_SOURCES.delete(asset);
-        BOSS_PREVIEW_SOURCES.set(asset, CACHED);
-        return CACHED;
-    }
-    const SOURCE = fetch(new URL(asset, document.baseURI), {
-        credentials: 'same-origin',
-    }).then((response) => {
-        if (!response.ok) {
-            throw Error(`Boss preview source failed: ${response.status}`);
-        }
-        return response.text();
-    });
-    BOSS_PREVIEW_SOURCES.set(asset, SOURCE);
-    if (BOSS_PREVIEW_SOURCES.size > 16) {
-        BOSS_PREVIEW_SOURCES.delete(BOSS_PREVIEW_SOURCES.keys().next().value);
-    }
-    SOURCE.catch(() => {
-        if (BOSS_PREVIEW_SOURCES.get(asset) === SOURCE) {
-            BOSS_PREVIEW_SOURCES.delete(asset);
-        }
-    });
-    return SOURCE;
-}
-async function createNeutralBossPreview(species, asset) {
-    const COMPILED = globalThis.BudmoriVectorResources?.troops?.[species],
-        EXPRESSIONS = COMPILED?.metadata?.expressions,
-        NEUTRAL = EXPRESSIONS?.neutral;
-    if (!NEUTRAL) {
-        throw Error(`Species ${species} is missing the neutral GameKit expression`);
-    }
-    const DOCUMENT_SVG = new DOMParser().parseFromString(
-        await bossPreviewSource(`./assets/troops/${asset}`),
-        'image/svg+xml',
-    );
-    if (DOCUMENT_SVG.getElementsByTagName('parsererror').length || DOCUMENT_SVG.documentElement.localName !== 'svg') {
-        throw Error(`Invalid SVG preview source: ${asset}`);
-    }
-    const SVG = DOCUMENT_SVG.documentElement,
-        NODES_BY_ID = new Map([...SVG.querySelectorAll('[id]')].map((node) => [node.getAttribute('id'), node]));
-    const EXPRESSION_PARTS = new Set(
-            Object.values(EXPRESSIONS).flatMap((variant) => [...variant.show, ...variant.hide]),
-        ),
-        VISIBLE = new Set(NEUTRAL.show);
-    for (const ID of NEUTRAL.hide) {
-        VISIBLE.delete(ID);
-    }
-    for (const ID of EXPRESSION_PARTS) {
-        const NODE = NODES_BY_ID.get(ID);
-        if (!NODE) {
-            throw Error(`SVG preview is missing GameKit expression part: ${ID}`);
-        }
-        NODE.style.setProperty('display', VISIBLE.has(ID) ? 'inline' : 'none');
-    }
-    // Source opacity stays paintable for runtime animation; previews use the idle starting pose.
-    const IDLE_POSE = COMPILED.metadata.clips.idle.keyframes[0].parts;
-    for (const [ID, POSE] of Object.entries(IDLE_POSE)) {
-        if (POSE.opacity !== undefined) {
-            const NODE = NODES_BY_ID.get(ID);
-            if (!NODE) {
-                throw Error(`SVG preview is missing idle part: ${ID}`);
-            }
-            NODE.style.setProperty('opacity', String(POSE.opacity));
-        }
-    }
-    return document.importNode(SVG, true);
-}
+const BOSS_PREVIEW_VERSIONS = new WeakMap();
 async function renderNeutralBossPreview(target, species, asset, label = '') {
     const VERSION = (BOSS_PREVIEW_VERSIONS.get(target) || 0) + 1;
     BOSS_PREVIEW_VERSIONS.set(target, VERSION);
     target.setAttribute('aria-busy', 'true');
     try {
-        const SVG = await createNeutralBossPreview(species, asset);
+        const SVG = await createNeutralSpeciesSvg(species, asset);
         if (BOSS_PREVIEW_VERSIONS.get(target) !== VERSION || !target.isConnected) {
             return;
         }
@@ -1099,7 +1030,7 @@ function drawSpeciesRoles(world) {
         HOST.innerHTML = STATE.ids
             .map((id) => {
                 const SPECIES = speciesById(id);
-                return `<button type="button" class="breed-chip" data-breed-species="${id}" aria-pressed="false"><img src="./assets/troops/${SPECIES.asset}" alt="" width="36" height="36"><span>${SPECIES.name}</span><b data-breed-percent></b></button>`;
+                return `<button type="button" class="breed-chip" data-breed-species="${id}" aria-pressed="false">${speciesIconHtml(id, 36)}<span>${SPECIES.name}</span><b data-breed-percent></b></button>`;
             })
             .join('');
     }
@@ -1191,7 +1122,7 @@ function drawRewardQueue(world) {
         BOX = DOLLAR('farmQueue'),
         HTML = QUEUE.map(
             ([species, count]) =>
-                `<span class="farm-queue__chip"><img src="./assets/troops/${speciesById(species).asset}" alt="${speciesById(species).name}" width="20" height="20"><b>${count}</b></span>`,
+                `<span class="farm-queue__chip">${speciesIconHtml(species, 20, { alt: speciesById(species).name })}<b>${count}</b></span>`,
         ).join('');
     BOX.hidden = QUEUE.length === 0;
     if (BOX.innerHTML !== HTML) {
@@ -1900,7 +1831,7 @@ function saveDeployOrder(order) {
 }
 function deckCardHtml(id, count, slot) {
     const SPECIES = speciesById(id);
-    return `<button type="button" class="deck-card" data-deploy="${id}" aria-label="${slot}번 ${SPECIES.name}"><i>${slot}</i><img src="./assets/troops/${SPECIES.asset}" alt="" width="40" height="40" draggable="false"><b>×${count}</b></button>`;
+    return `<button type="button" class="deck-card" data-deploy="${id}" aria-label="${slot}번 ${SPECIES.name}"><i>${slot}</i>${speciesIconHtml(id, 40, { attributes: ' draggable="false"' })}<b>×${count}</b></button>`;
 }
 function ownedCounts(garden) {
     const COUNTS = new Map();
