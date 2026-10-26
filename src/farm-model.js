@@ -106,7 +106,7 @@ import { FACTION_CONFIG, hasFaction, areOpposingFactions } from './factions.js';
 import { FixedSpatialGrid } from './spatial-grid.js';
 import { scatterDestination } from './army-scatter.js';
 // Bosses reuse the neutral, tier-one species kit, never the player's investments.
-export const BOSS_ATTACK_PROGRESSION = createAbilityProgressionState();
+const BOSS_ATTACK_PROGRESSION = createAbilityProgressionState();
 for (const BUILD of Object.values(BOSS_ATTACK_PROGRESSION.abilities)) {
     Object.freeze(BUILD.nodeRanks);
     Object.freeze(BUILD.branchLevels);

@@ -39,7 +39,7 @@ const SPECIES_STAT_OVERRIDES = [
     { maxHpMultiplier: 1.25, attackPowerMultiplier: 1.05, armor: 15, moveSpeed: 1.08 }, // Wheat support.
     { maxHpMultiplier: 1.35, attackPowerMultiplier: 1.15, armor: 20, moveSpeed: 1.08 }, // Barley breaker.
 ];
-export const COMMON_UNIT_STAT_PROFILES = Object.freeze(
+const COMMON_UNIT_STAT_PROFILES = Object.freeze(
     Array.from({ length: SPECIES_COUNT }, (_, species) =>
         Object.freeze({
             ...COMMON_UNIT_STAT_DEFAULTS,
@@ -221,7 +221,7 @@ function combatStats(unit, overrides) {
         ? baseUnitStatsFor(unit?.tier, unit?.species, unit?.faction !== 'enemy')
         : resolveUnitStats(unit, overrides);
 }
-export function resolveDamage(
+function resolveDamage(
     rawDamage,
     armor = 0,
     armorPenetration = 0,

@@ -14,7 +14,7 @@ import { mergeMaterialCostForTier } from '../../unit-grades.js';
 import { areOpposingFactions } from '../../factions.js';
 const ATTACK_KIND = 'ram';
 
-export const BARLEY_WEIGHTS = Object.freeze([
+const BARLEY_WEIGHTS = Object.freeze([
     null,
     [1],
     [0.4, 0.6],
@@ -35,7 +35,7 @@ const STAGES = [
 const RATIOS = [null, [0.65], [0.25, 0.75], [0.25, 0.75], [0.25, 0.75], [0.15, 0.45, 0.85], [0.1, 0.35, 0.6, 0.9]];
 // Repartition the verified legacy contact (2 ticks) plus recovery budget.
 // The active flail window overlaps that budget instead of extending it.
-export function barleyTiming(speed) {
+function barleyTiming(speed) {
     const RECOVERY = Math.ceil(13 / speed);
     // With at most two recovery ticks, legacy recoil returns in one contact
     // tick after the opening cycle. Keep that measured sustained cadence.
@@ -54,7 +54,7 @@ export function barleyRange(world, unit) {
     const BUILD = barleyGrowthBuild(world.abilityProgressionFor(unit));
     return BUILD ? 1.45 * (growthForAbility('barley-armor-break').attackTier(BUILD, unit.tier) >= 4 ? 1.3 : 1) : null;
 }
-export function barleyBudgetMultiplier(tier, one, current) {
+function barleyBudgetMultiplier(tier, one, current) {
     let materials = 1;
     for (let grade = 2; grade <= tier; grade++) {
         materials *= mergeMaterialCostForTier(grade);
@@ -63,7 +63,7 @@ export function barleyBudgetMultiplier(tier, one, current) {
         ? (one * materials * 1.05 ** (tier - 1)) / current
         : 1.75 ** (tier - 1);
 }
-export function barleyShots(form, activeTicks = 10) {
+function barleyShots(form, activeTicks = 10) {
     return BARLEY_WEIGHTS[form].map((weight, slot) => ({
         slot,
         tick:
@@ -145,7 +145,7 @@ export function launchBarleyAttack(world, action) {
     ).toDTO();
 }
 // Finite committed flail corridors, with broad outer and focused inner arcs.
-export function barleySlotGeometry(r, slot) {
+function barleySlotGeometry(r, slot) {
     const STAGE = r.shots[slot].stage;
     const WIDE = ['half', 'finish', 'broad', 'low', 'return', 'left', 'right'].includes(STAGE);
     const NARROW = STAGE === 'pull' || STAGE === 'diagonal';

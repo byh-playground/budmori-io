@@ -1,5 +1,5 @@
 // Visual atmosphere only: themes never change terrain, collisions, movement or damage.
-export const TOWER_THEMES = Object.freeze([
+const TOWER_THEMES = Object.freeze([
     Object.freeze({
         id: 'entrance',
         name: '성의 입구',

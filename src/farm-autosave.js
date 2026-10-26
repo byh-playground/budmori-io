@@ -1,5 +1,5 @@
-export const FARM_AUTOSAVE_DEBOUNCE_MS = 1000;
-export const FARM_AUTOSAVE_MAX_WAIT_MS = 10000;
+const FARM_AUTOSAVE_DEBOUNCE_MS = 1000;
+const FARM_AUTOSAVE_MAX_WAIT_MS = 10000;
 
 // Farm-specific trailing debounce with a bounded checkpoint interval. It only
 // writes when a progress event (not a movement/display tick) marks the Farm.

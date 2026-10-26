@@ -45,16 +45,6 @@ export function createPeanutStrikeSchedule({
         },
     );
 }
-export function hasStrikeMask(mask, strikeIndex) {
-    return (
-        Number.isSafeInteger(mask) &&
-        mask >= 0 &&
-        Number.isSafeInteger(strikeIndex) &&
-        strikeIndex >= 0 &&
-        strikeIndex < MASK_BITS &&
-        (mask & (1 << strikeIndex)) !== 0
-    );
-}
 export function resolveStrikeMask({ resolvedMask = 0, hitMask = 0 } = {}, strikeIndex, didHit) {
     if (
         !Number.isSafeInteger(resolvedMask) ||

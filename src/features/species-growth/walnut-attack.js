@@ -13,7 +13,7 @@ import { mergeMaterialCostForTier } from '../../unit-grades.js';
 import { areOpposingFactions } from '../../factions.js';
 const ATTACK_KIND = 'walnut-hammer';
 
-export const WALNUT_WEIGHTS = Object.freeze([
+const WALNUT_WEIGHTS = Object.freeze([
     null,
     [1],
     [0.6, 0.4],
@@ -32,10 +32,10 @@ const STAGES = [
     ['up', 'down', 'impact'],
     ['block', 'up', 'down', 'wedge'],
 ];
-export function walnutFinalDirectSlot(form) {
+function walnutFinalDirectSlot(form) {
     return form === 1 ? 0 : form === 6 ? 2 : 1;
 }
-export function walnutRawWeight(form, slot) {
+function walnutRawWeight(form, slot) {
     return form < 4
         ? slot === walnutFinalDirectSlot(form)
             ? 1
@@ -50,7 +50,7 @@ export function walnutGrowthBuild(progression) {
     const ENTRY = progression?.abilities?.['walnut-raw-guard'];
     return ENTRY?.treeVersion === 1 ? growthBuildOf(ENTRY) : null;
 }
-export function walnutBudgetMultiplier(tier, one, current) {
+function walnutBudgetMultiplier(tier, one, current) {
     let materials = 1;
     for (let grade = 2; grade <= tier; grade++) {
         materials *= mergeMaterialCostForTier(grade);
@@ -59,7 +59,7 @@ export function walnutBudgetMultiplier(tier, one, current) {
         ? (one / current) * materials * 1.05 ** (tier - 1)
         : 1.75 ** (tier - 1);
 }
-export function walnutShots(form) {
+function walnutShots(form) {
     return WALNUT_WEIGHTS[form].map((weight, slot) => ({
         slot,
         tick: TICKS[form][slot],
@@ -141,7 +141,7 @@ export function launchWalnutAttack(world, action) {
     ).toDTO();
 }
 // A finite hammer corridor or local contact circle, never a traveling wave.
-export function walnutSlotGeometry(r, slot) {
+function walnutSlotGeometry(r, slot) {
     const STAGE = r.shots[slot].stage,
         LOCAL = STAGE === 'impact' || STAGE === 'wedge';
     const SCALE = r.source.attackerStats.attackArea * attackGeometryScale(r);

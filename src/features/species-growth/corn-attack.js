@@ -9,20 +9,12 @@ import { targetBodyDimensions } from '../formation-skills/model-base.js';
 import { AttackAction, attackTargetKey, isAttackActionDTO } from './attack-action.js';
 import { speciesGrowthDefinition } from './definition.js';
 import { SpeciesGrowth } from './model.js';
-import { baseUnitStatsFor, COMMON_UNIT_STAT_DEFAULTS } from '../../unit-stats.js';
+import { COMMON_UNIT_STAT_DEFAULTS } from '../../unit-stats.js';
 import { mergeMaterialCostForTier } from '../../unit-grades.js';
 
 // Normalize the current run's flat attack across the actual consumed material count.
 // This preserves the +5% expected transition budget without fitting individual random seeds.
-export const CORN_MERGE_DPS_TARGET = 1.05;
-export function cornMergeBudgetMultiplier(tier, species = 1) {
-    if (!Number.isInteger(tier) || tier < 1 || tier > 6) {
-        throw new RangeError('Invalid corn merge tier');
-    }
-    const TIER_ONE_ATTACK = baseUnitStatsFor(1, species).attackPower,
-        TIER_ATTACK = baseUnitStatsFor(tier, species).attackPower;
-    return cornBudgetFromInputs(tier, TIER_ONE_ATTACK, TIER_ATTACK);
-}
+const CORN_MERGE_DPS_TARGET = 1.05;
 
 function cornBudgetFromInputs(tier, tierOneAttack, tierAttack) {
     if (tier === 1) {
@@ -51,7 +43,7 @@ const FORMS = Object.freeze([
     { weights: [0.25, 0.3, 0.45], times: [0.35, 0.5, 0.65], kernels: [3, 3, 3], height: 0 },
 ]);
 
-export function cornGrowthBuild(progression) {
+function cornGrowthBuild(progression) {
     const INVESTMENT = progression?.abilities?.[CORN_ABILITY];
     if (INVESTMENT?.treeVersion !== 1 || !INVESTMENT.nodeRanks) {
         return null;

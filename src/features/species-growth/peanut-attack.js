@@ -13,7 +13,7 @@ import { mergeMaterialCostForTier } from '../../unit-grades.js';
 import { areOpposingFactions } from '../../factions.js';
 import { FEATURE as DUAL_STRIKE_FEATURE } from '../unit-attacks/dual-strike/definition.js';
 
-export const PEANUT_WEIGHTS = Object.freeze([
+const PEANUT_WEIGHTS = Object.freeze([
     null,
     [0.5, 0.5],
     [0.45, 0.55],
@@ -32,7 +32,7 @@ const STAGES = [
     ['sweep-left', 'sweep-right', 'close-left', 'close-right'],
     ['spread-left', 'spread-right', 'sweep-left', 'sweep-right', 'central'],
 ];
-export function peanutGrowthBuild(progression) {
+function peanutGrowthBuild(progression) {
     const ENTRY = progression?.abilities?.['peanut-death-split'];
     return ENTRY?.treeVersion === 1 ? growthBuildOf(ENTRY) : null;
 }
@@ -46,7 +46,7 @@ export function peanutRange(world, unit) {
     const BUILD = peanutGrowthBuild(world.abilityProgressionFor(unit));
     return BUILD ? 1.45 * (1 + 0.04 * (BUILD.nodeRanks['specialty-1'] || 0)) : null;
 }
-export function peanutBudgetMultiplier(tier, one, current) {
+function peanutBudgetMultiplier(tier, one, current) {
     let materials = 1;
     for (let grade = 2; grade <= tier; grade++) {
         materials *= mergeMaterialCostForTier(grade);
@@ -55,7 +55,7 @@ export function peanutBudgetMultiplier(tier, one, current) {
         ? (one * materials * 1.05 ** (tier - 1)) / current
         : 1.75 ** (tier - 1);
 }
-export function peanutShots(form) {
+function peanutShots(form) {
     return PEANUT_WEIGHTS[form].map((weight, slot) => ({
         slot,
         tick: TICKS[form][slot],
@@ -136,7 +136,7 @@ export function launchPeanutAttack(world, action) {
 }
 // These are committed melee contact corridors, not independent projectiles.
 // Both kernels belong to the same body and cannot outlive its action.
-export function peanutSlotGeometry(r, slot) {
+function peanutSlotGeometry(r, slot) {
     const SHOT = r.shots[slot];
     const DX = r.point.x - r.origin.x,
         DY = r.point.y - r.origin.y;

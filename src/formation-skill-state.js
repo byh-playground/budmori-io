@@ -22,7 +22,7 @@ export const FORMATION_SKILL_DEFINITIONS = Object.freeze([
 export const BOSS_SKILL_IDS = Object.freeze(
     FORMATION_SKILL_DEFINITIONS.filter((definition) => definition.id !== 'copy').map((definition) => definition.id),
 );
-export const FORMATION_MAX_LEVEL = 10;
+const FORMATION_MAX_LEVEL = 10;
 export const FORMATION_COOLDOWN_SECONDS = 5;
 export function formationUpgradeValue(definition, level) {
     const LEVEL = Math.max(1, level);

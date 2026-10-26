@@ -1,7 +1,7 @@
 import { isBossActorId, isCombatActorId } from '../../combat-identity.js';
 // One basic attack owns a finite set of slots. Presentation particles are never slots.
 // Timings use the simulation tick; probability/RAW/command decisions are sampled by the caller once at launch.
-export const MAX_ACTION_STRIKES = 32;
+const MAX_ACTION_STRIKES = 32;
 
 // Body-bound strike slots belong to this live incarnation and this exact cycle.
 // Already emitted projectiles have their own snapshot/generation lifecycle.
@@ -17,7 +17,7 @@ export function attackOwnerCanContinue(world, unit, action, record) {
     );
 }
 
-export function defineAttackAction({ durationTicks, strikes }) {
+function defineAttackAction({ durationTicks, strikes }) {
     if (
         !Number.isSafeInteger(durationTicks) ||
         durationTicks < 1 ||

@@ -18,7 +18,7 @@ function raysFor(count) {
     }
     return RAYS.get(count);
 }
-export function walnutContactTriangles(count, radius, width, cap, join, miterLimit) {
+function walnutContactTriangles(count, radius, width, cap, join, miterLimit) {
     const OUT = [],
         HALF = width / 2,
         EMIT = (a, b, c) => OUT.push(...a, ...b, ...c),

@@ -5,7 +5,7 @@ import {
     isGrowthInvestment,
     isValidMixedAbilityEntries,
 } from './features/species-growth/state.js';
-export const ABILITY_TREE_SCHEMA_VERSION = 4;
+const ABILITY_TREE_SCHEMA_VERSION = 4;
 // Every species keeps its own mastery: beating its boss fills the XP bar, each level earns one point for that
 // species' abilities only. XP is the remainder toward the next level, so it carries over across level-ups.
 export { MASTERY_FIRST_LEVEL_XP, MASTERY_LEVEL_XP_MULTIPLIER, masteryXpForNextLevel } from './mastery.js';

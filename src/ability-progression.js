@@ -5,34 +5,31 @@ import { growthForAbility, growthBuildOf, isGrowthInvestment } from './features/
 
 // Progression rules are shared by simulation commands and UI queries.
 // This module never imports presentation code or reads the DOM.
-export const ABILITY_POINT_COST = 1;
+const ABILITY_POINT_COST = 1;
 const DEFINITION_BY_ID = new Map(SPECIES_ABILITY_DEFINITIONS.map((definition) => [definition.id, definition]));
-export function abilityStateFor(state, abilityId) {
+function abilityStateFor(state, abilityId) {
     if (!DEFINITION_BY_ID.has(abilityId) || !state?.abilities?.[abilityId]) {
         return null;
     }
     return state.abilities[abilityId];
 }
-export function getAbilityPowerLevel(state, abilityId) {
+function getAbilityPowerLevel(state, abilityId) {
     return abilityStateFor(state, abilityId)?.powerLevel || 0;
 }
-export function getAbilityBranchLevel(state, abilityId, branchId) {
+function getAbilityBranchLevel(state, abilityId, branchId) {
     return abilityStateFor(state, abilityId)?.branchLevels?.[branchId] || 0;
 }
-export function getMinimumApplicableTier(_state, abilityId) {
+function getMinimumApplicableTier(_state, abilityId) {
     const DEFINITION = DEFINITION_BY_ID.get(abilityId);
     if (!DEFINITION) {
         return null;
     }
     return DEFINITION.minimumTier || 1;
 }
-export function isAbilityActive(state, abilityId, unitTier) {
+function isAbilityActive(state, abilityId, unitTier) {
     const DEFINITION = DEFINITION_BY_ID.get(abilityId),
         MINIMUM_TIER = getMinimumApplicableTier(state, abilityId);
     return DEFINITION?.availableByDefault === true && Number.isInteger(unitTier) && unitTier >= MINIMUM_TIER;
-}
-export function powerLevelFor(state, abilityId) {
-    return getAbilityPowerLevel(state, abilityId);
 }
 export function getAbilityEffects(state, abilityId, unitTier) {
     const DEFINITION = DEFINITION_BY_ID.get(abilityId);
@@ -58,7 +55,7 @@ export function getAbilityPointsLeft(state, abilityId) {
     const INVESTMENT = abilityStateFor(state, abilityId);
     return INVESTMENT ? masteryPointsLeft(INVESTMENT) : 0;
 }
-export function getInvestedPointCount(state) {
+function getInvestedPointCount(state) {
     return getInvestedAbilityPointCount(state);
 }
 export function getInvestedAbilityPointCount(state, speciesId = null) {
@@ -74,7 +71,7 @@ export function getInvestedAbilityPointCount(state, speciesId = null) {
         return total + investedPointsOf(INVESTMENT);
     }, 0);
 }
-export function canPurchaseAbilityNode(state, abilityId, nodeId, context = {}) {
+function canPurchaseAbilityNode(state, abilityId, nodeId, context = {}) {
     const DEFINITION = DEFINITION_BY_ID.get(abilityId);
     if (!DEFINITION) {
         return {
@@ -204,29 +201,6 @@ export function canResetAbilityProgression(state, context = {}, speciesId = null
     return {
         allowed: true,
         reason: null,
-    };
-}
-export function resetAbilityProgression(state, context = {}, speciesId = null) {
-    const CHECK = canResetAbilityProgression(state, context, speciesId);
-    if (!CHECK.allowed) {
-        return {
-            ok: false,
-            reason: CHECK.reason,
-            state,
-        };
-    }
-    const REFUNDED = getInvestedAbilityPointCount(state, speciesId);
-    const NEXT = cloneState(state);
-    for (const DEFINITION of SPECIES_ABILITY_DEFINITIONS) {
-        if (speciesId === null || DEFINITION.species === speciesId) {
-            NEXT.abilities[DEFINITION.id] = emptyAbilityInvestment(DEFINITION, NEXT.abilities[DEFINITION.id]);
-        }
-    }
-    return {
-        ok: true,
-        reason: null,
-        refunded: REFUNDED,
-        state: NEXT,
     };
 }
 export function canResetPlayerProgression(state, scope = { type: 'all' }, context = {}) {

@@ -1,7 +1,7 @@
 // Floating damage numbers. Every confirmed hit gets its own number at the place it landed, so a crowd of hits keeps its
 // rhythm; clutter is handled by drawing the other decoration less, never by merging the numbers.
 // The digits are strokes in the same vector style as the rest of the battle, so no font has to be downloaded.
-export const DAMAGE_NUMBER = Object.freeze({
+const DAMAGE_NUMBER = Object.freeze({
     lifeMs: 800,
     // World units: the digit height of a normal hit and the factor a critical hit adds.
     height: 0.7,

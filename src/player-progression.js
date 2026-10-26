@@ -13,7 +13,7 @@ import {
 import { SPECIES_ABILITY_DEFINITIONS } from './ability-definitions.js';
 
 // Beating a boss feeds the mastery of its own species; the XP a kill pays grows with the floor.
-export const BOSS_KILL_XP = 20;
+const BOSS_KILL_XP = 20;
 export const FARM_BOSS_EVENT_MAX_STAGE = 100;
 export const OVERALL_PROGRESSION_SETTINGS = Object.freeze({
     initialCapacity: 200,
@@ -72,7 +72,7 @@ export function beginTowerRewardRun(state) {
         runId: RUN_ID,
     };
 }
-export function towerFloorXp(floor, difficultyMultiplier = 1) {
+function towerFloorXp(floor, difficultyMultiplier = 1) {
     if (
         !Number.isSafeInteger(floor) ||
         floor < 1 ||
