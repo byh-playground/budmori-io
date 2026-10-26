@@ -191,8 +191,9 @@ async function gestureFlow(initial) {
     }
 }
 async function capture(name) {
-    const DRAW = await page.evaluate(() => {
-        const R = BUDMORI.renderer,
+    const DRAW = await page.evaluate(async () => {
+        const { bossVectorScale: BOSS_SCALE } = await import('./src/vector-sockets.js'),
+            R = BUDMORI.renderer,
             DISPLAY = R.cameraWorld;
         R.render(DISPLAY, null, DISPLAY.displayTimeMs);
         return {
@@ -202,12 +203,34 @@ async function capture(name) {
             fadeMs: DISPLAY.displayTimeMs - R.sceneChangedAt,
             zoom: R.zoom,
             pan: R.cameraPan,
+            bosses: DISPLAY.bosses
+                .filter((boss) => boss.active && boss.hp > 0)
+                .map((boss) => {
+                    const RECORD = R.bossSpeciesAssets.get(boss.species);
+                    return {
+                        species: boss.species,
+                        x: boss.x,
+                        y: boss.y,
+                        z: boss.z,
+                        height: boss.height,
+                        phase: boss.patternPhase,
+                        top:
+                            R.project(boss.x, boss.y, boss.z).y -
+                            (RECORD.anchors.ground.y - RECORD.compiled.viewBox[1]) * BOSS_SCALE(boss) * R.scale,
+                    };
+                }),
         };
     });
     assert.ok(
         DRAW.fadeMs >= 700 && DRAW.actors >= 100 && DRAW.troops >= 100,
         'capture includes actual troops after scene fade',
     );
+    if (name === 'default') {
+        assert.ok(
+            DRAW.bosses.every((boss) => boss.top >= 0),
+            'default view preserves boss headroom',
+        );
+    }
     await page.screenshot({ path: path.join(OUTPUT, name + '.png'), scale: 'css' });
     REPORT.captures.push({ name, ...DRAW });
 }

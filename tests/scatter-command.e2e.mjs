@@ -173,6 +173,18 @@ async function restoreComparison() {
     } else {
         REPORT.comparisonStart = START;
     }
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await page.evaluate((placement) => {
+        const R = BUDMORI.renderer,
+            BOSSES = BUDMORI.sim.bosses.filter((boss) => boss.active && boss.hp > 0);
+        R.resetZoom();
+        if (placement === 'wall') {
+            R.setPan(-BOSSES.reduce((sum, boss) => sum + boss.x, 0) / BOSSES.length, R.cameraPan.y);
+        }
+        // Compare spacing at one fixed viewpoint; the normal default view may
+        // translate to keep a moving boss's head in frame.
+        R.takeCameraControl();
+    }, PLACEMENT);
 }
 async function capture(file) {
     assert.equal(await page.evaluate(() => BUDMORI.runtime.paused), true);

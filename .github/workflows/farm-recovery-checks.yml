@@ -62,6 +62,9 @@ jobs:
             - name: Verify scatter commands and reserve joins
               if: success() || failure()
               run: timeout 180s npm run test:scatter-command -- 100 1 center
+            - name: Compare maximum frontline at the expanded wall
+              if: success() || failure()
+              run: timeout 180s npm run test:scatter-command -- 500 1 wall
             - name: Verify sustained scatter attack participation (100)
               if: success() || failure()
               run: timeout 180s npm run test:scatter-participation -- 100

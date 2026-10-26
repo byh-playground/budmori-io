@@ -792,8 +792,27 @@ const DIORAMA = class Diorama {
             this.zoom = FIT;
             this.configure(this.scene, true);
         }
+        // Leave headroom when the fight moves north in the expanded hall.
+        // Translate the original view instead of shrinking troops to fit the whole map.
+        let headroom = 0;
+        for (const BOSS of world.bosses) {
+            if (!BOSS.active || BOSS.hp <= 0) {
+                continue;
+            }
+            const RECORD = this.bossSpeciesAssets.get(BOSS.species),
+                ART_TOP =
+                    BOSS.y * WORLD_DEPTH_PROJECTION +
+                    (BOSS.z || 0) * WORLD_HEIGHT_PROJECTION +
+                    (RECORD.anchors.ground.y - RECORD.compiled.viewBox[1]) * bossVectorScale(BOSS);
+            headroom = Math.max(headroom, ART_TOP + 1 - FRAME_TOP);
+        }
         const PAN_X = -(LEFT + RIGHT) / 2,
-            PAN_Y = this.view[1] - this.baseY() - this.canvas.height / (2 * this.scale) - (FRAME_TOP + BOTTOM) / 2;
+            PAN_Y =
+                this.view[1] -
+                this.baseY() -
+                this.canvas.height / (2 * this.scale) -
+                (FRAME_TOP + BOTTOM) / 2 -
+                headroom;
         // Hall framing owns these bounds; the farm's manual-pan limits must not crop airborne effects.
         this.panLimits.minX = Math.min(this.panLimits.minX, PAN_X);
         this.panLimits.maxX = Math.max(this.panLimits.maxX, PAN_X);
