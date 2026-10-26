@@ -1289,12 +1289,20 @@ function inverseBodyMass(body) {
     const MASS = Number.isFinite(body.mass) ? body.mass : 1;
     return MASS > 0 ? 1 / MASS : 0;
 }
-function contact(a, b) {
+function contact(
+    a,
+    b,
+    radius = a.radius + b.radius,
+    heightA = a.height,
+    heightB = b.height,
+    massA = null,
+    massB = null,
+) {
     const DX = b.x - a.x,
         DY = b.y - a.y,
         D_LOCAL = Math.hypot(DX, DY),
-        R_LOCAL = a.radius + b.radius;
-    if (a.z > b.z + b.height || b.z > a.z + a.height) {
+        R_LOCAL = radius;
+    if (a.z > b.z + heightB || b.z > a.z + heightA) {
         return false;
     }
     if (D_LOCAL >= R_LOCAL) {
@@ -1302,8 +1310,8 @@ function contact(a, b) {
     }
     const NX = D_LOCAL > 1e-6 ? DX / D_LOCAL : 1,
         NY = D_LOCAL > 1e-6 ? DY / D_LOCAL : 0,
-        INVERSE_MASS_A = inverseBodyMass(a),
-        INVERSE_MASS_B = inverseBodyMass(b),
+        INVERSE_MASS_A = massA ?? inverseBodyMass(a),
+        INVERSE_MASS_B = massB ?? inverseBodyMass(b),
         INVERSE_MASS_SUM = INVERSE_MASS_A + INVERSE_MASS_B;
     const CLOSING = (a.vx - b.vx) * NX + (a.vy - b.vy) * NY;
     if (CLOSING > 0 && INVERSE_MASS_SUM > 0) {
@@ -1780,7 +1788,7 @@ const GARDEN = class Garden {
     _endSpatialQueryBatch() {
         this._spatialQueryDepth = Math.max(0, this._spatialQueryDepth - 1);
     }
-    _collectContactOrders(unit, minimumOrder, maximumOrder, out, queryRadius = null) {
+    _collectContactOrders(unit, minimumOrder, maximumOrder, out, queryRadius = null, bodyOrder = null, contactGap = 0) {
         const GAP = this.tower.active && this.battleCommand === 'scatter' ? CONFIG.farm.deploy.scatterGap : 0.22,
             RADIUS = queryRadius ?? unit.radius + CONFIG.unit.maxRadius + GAP;
         this.unitSpatial.queryAABB(
@@ -1794,6 +1802,23 @@ const GARDEN = class Garden {
         for (const CANDIDATE of this._contactQuery) {
             const ORDER = this._unitStepOrder.get(CANDIDATE);
             if (ORDER !== undefined && ORDER >= minimumOrder && ORDER <= maximumOrder) {
+                if (bodyOrder !== null) {
+                    if (
+                        unit.z > CANDIDATE.z + this._battleHeight[ORDER] ||
+                        CANDIDATE.z > unit.z + this._battleHeight[bodyOrder]
+                    ) {
+                        continue;
+                    }
+                    const DX = CANDIDATE.x - unit.x,
+                        DY = CANDIDATE.y - unit.y,
+                        REACH = this._battleRadius[bodyOrder] + this._battleRadius[ORDER] + contactGap,
+                        REACH_SQUARED = REACH * REACH;
+                    // Keep the rounding boundary for the original Math.hypot comparison.
+                    // Query again after every Jacobi move: a later pass can create a new contact.
+                    if (DX * DX + DY * DY > REACH_SQUARED + Math.max(1, REACH_SQUARED) * Number.EPSILON * 8) {
+                        continue;
+                    }
+                }
                 out.push(ORDER);
             }
         }
@@ -4682,14 +4707,16 @@ const GARDEN = class Garden {
         this._contactCorrectionY = new Float64Array(CAPACITY);
         this._contactCorrectionCount = new Uint32Array(CAPACITY);
     }
-    solveContactSeparations(units, dt) {
+    solveContactSeparations(units, dt, bodiesCached = false) {
         if (this.tower.active && this.battleCommand === 'scatter') {
             this._prepareArmySpacing();
         }
         this._ensureContactSolverBuffers(units.length);
         // Body geometry does not change inside a Jacobi solve. Cache it once,
         // rather than evaluating authored shape/grade/giant getters per pair.
-        this._cacheBattleBodies(units);
+        if (!bodiesCached) {
+            this._cacheBattleBodies(units);
+        }
         const CORRECTION_X = this._contactCorrectionX,
             CORRECTION_Y = this._contactCorrectionY,
             CORRECTION_COUNT = this._contactCorrectionCount,
@@ -4721,6 +4748,8 @@ const GARDEN = class Garden {
                     units.length - 1,
                     this._contactPending,
                     BODY_RADIUS[i] + maximumRadius + QUERY_GAP,
+                    i,
+                    QUERY_GAP,
                 );
                 for (const J of PENDING) {
                     const OTHER = units[J];
@@ -5075,9 +5104,23 @@ const GARDEN = class Garden {
         SIMULATION_SCENES[this.scene].resolveContacts(this, units, dt);
     }
     resolveFarmContacts(units, dt = 1 / 20) {
+        // Impulses only change velocity/stun, not body geometry or mass. Share the
+        // existing solver cache across this pass and the following Jacobi solve.
+        this._cacheBattleBodies(units);
+        const RADIUS = this._battleRadius,
+            HEIGHT = this._battleHeight,
+            INVERSE_MASS = this._battleInverseMass,
+            GAP = this.tower.active && this.battleCommand === 'scatter' ? CONFIG.farm.deploy.scatterGap : 0.22;
         for (let i = 0; i < units.length; i++) {
             const UNIT_LOCAL = units[i],
-                PENDING = this._collectContactOrders(UNIT_LOCAL, i + 1, units.length - 1, this._contactPending);
+                PENDING = this._collectContactOrders(
+                    UNIT_LOCAL,
+                    i + 1,
+                    units.length - 1,
+                    this._contactPending,
+                    RADIUS[i] + CONFIG.unit.maxRadius + GAP,
+                    i,
+                );
             if (this.isMergeTaskMaterial(UNIT_LOCAL)) {
                 continue;
             }
@@ -5085,12 +5128,22 @@ const GARDEN = class Garden {
                 if (this.isMergeTaskMaterial(units[J])) {
                     continue;
                 }
-                if (contact(UNIT_LOCAL, units[J])) {
+                if (
+                    contact(
+                        UNIT_LOCAL,
+                        units[J],
+                        RADIUS[i] + RADIUS[J],
+                        HEIGHT[i],
+                        HEIGHT[J],
+                        INVERSE_MASS[i],
+                        INVERSE_MASS[J],
+                    )
+                ) {
                     this.metrics.contacts++;
                 }
             }
         }
-        this.solveContactSeparations(units, dt);
+        this.solveContactSeparations(units, dt, true);
     }
     resolveFarmContactPairs(units) {
         for (let i = 0; i < units.length; i++) {

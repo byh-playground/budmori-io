@@ -4,7 +4,7 @@ import { growthBuildOf, growthForAbility } from './features/species-growth/state
 import { WheatCommandModel } from './features/abilities/wheat-command/model.js';
 import { updateRicePresentation } from './features/unit-attacks/rice/presentation.js';
 import { updateWalnutPresentation } from './features/unit-attacks/walnut/presentation.js';
-import { Garden, bindPresentationClock } from './farm-model.js';
+import { Garden, CONFIG, bindPresentationClock } from './farm-model.js';
 import { unitMaxHpFor, resolveUnitStats } from './unit-stats.js';
 import { PASSIVE_SETTINGS } from './tower-run.js';
 import { BarleyArmorShredModel } from './features/abilities/barley-shred/model.js';
@@ -1048,6 +1048,7 @@ class FarmSession {
                     effects: [],
                     formationEffects: [],
                     presentationDiagnostics: {},
+                    displayArmyHealth: { current: 0, max: 0, living: 0, total: 0 },
                 },
             ));
             // Only consume these models synchronously in this frame. GameKit owns and
@@ -1059,6 +1060,16 @@ class FarmSession {
                     VIEW.bosses.push(model);
                 } else if (id.startsWith('unit:')) {
                     VIEW.units.push(model);
+                    // Sum the sampled values in their existing iteration order.
+                    // Alive HP keeps its native interpolation; death/revival and
+                    // maximum HP keep their state-boundary/step semantics.
+                    if (model.faction === CONFIG.factions.PLAYER) {
+                        const HEALTH = VIEW.displayArmyHealth;
+                        HEALTH.current += Math.max(0, Math.min(model.maxHp, model.hp));
+                        HEALTH.max += model.maxHp;
+                        HEALTH.living += model.hp > 0 ? 1 : 0;
+                        HEALTH.total++;
+                    }
                 } else if (id.startsWith('food:')) {
                     VIEW.food.push(model);
                     VIEW.presentationFoodIds.add(id);
@@ -1077,6 +1088,11 @@ class FarmSession {
         VIEW.projectiles.length = 0;
         VIEW.effects.length = 0;
         VIEW.formationEffects.length = 0;
+        VIEW.displayArmyHealth.current =
+            VIEW.displayArmyHealth.max =
+            VIEW.displayArmyHealth.living =
+            VIEW.displayArmyHealth.total =
+                0;
         VIEW.formationSlots = WORLD.formationRuntime.slots.filter((slot) => slot.role !== 'boss');
         VIEW.bossSlots = WORLD.formationRuntime.slots.filter((slot) => slot.role === 'boss');
         FRAME.forEach(this.collectPresentationModel);

@@ -17,6 +17,10 @@ jobs:
                   cache: npm
             - run: npm ci
             - run: npm run check
+            - name: Preserve HUD sampling and authored render bounds
+              run: |
+                  timeout 180s npm run test:hud-counts
+                  timeout 180s npm run test:render-bounds
             - uses: actions/cache@v4
               id: playwright-cache
               with:
@@ -41,6 +45,17 @@ jobs:
                   ./node_modules/.bin/playwright --version >> tests/output/browser-setup/setup.txt
             - name: Boot the unbuilt source once
               run: timeout 120s npm run test:source-smoke
+            - name: Prepare immutable pre-optimization render baseline
+              run: |
+                  git fetch --no-tags --depth=1 origin 881fd7c9b97efc00ca2e2a46c1ee5b069f7ccdfe
+                  mkdir -p ../baseline
+                  git archive 881fd7c9b97efc00ca2e2a46c1ee5b069f7ccdfe | tar -x -C ../baseline
+            - name: Compare boundary and re-entry pixels at all viewport shapes
+              if: success() || failure()
+              run: |
+                  for viewport in desktop portrait landscape; do
+                    timeout 180s npm run test:render-visibility -- "$viewport" || exit $?
+                  done
             - name: Play the tower army flow
               if: success() || failure()
               run: timeout 180s npm run test:tower-army
@@ -83,4 +98,5 @@ jobs:
                       tests/output/corn-growth/
                       tests/output/scatter-command/
                       tests/output/scatter-participation/
+                      tests/output/render-visibility/
                   if-no-files-found: warn
