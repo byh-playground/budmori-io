@@ -137,7 +137,7 @@ function fireBurst(brush, event, seconds) {
         MOUTH = event.radius * 0.85,
         SEED = event.tick ?? 1,
         PACKETS = [];
-    for (let index = 0; index < 90; index++) {
+    for (let index = 0; index < 60; index++) {
         const DELAY = rand(index, SEED + 1) * 0.2,
             LIFE = 0.42 + 0.14 * rand(index, SEED + 2),
             Q = (seconds - DELAY) / LIFE;
@@ -363,7 +363,7 @@ function waterJet(brush, event, seconds) {
         EXTENT = REACH + 1.4,
         WIDTH = event.width,
         DROPS = [];
-    for (let index = 0; index < 220; index++) {
+    for (let index = 0; index < 150; index++) {
         const LIFE = 0.34 + 0.2 * rand(index, 3),
             DELAY = rand(index, 4) * 0.34,
             Q = (seconds - DELAY) / LIFE;
@@ -619,8 +619,8 @@ function lightningHop(brush, event, seconds) {
     brush.flat(
         event.toX,
         event.toY,
-        0.4 + 2.2 * RING,
-        0.4 + 2.2 * RING,
+        0.5 + 3 * RING,
+        0.5 + 3 * RING,
         null,
         (1 - RING) * 0.9,
         '#c8ebff',
@@ -630,9 +630,9 @@ function lightningHop(brush, event, seconds) {
     boltPoints(brush, FROM, TO, FLICKER + 41, 1, ARC);
     // Bolts, their glow and the sparks are light: overlapping layers brighten instead of covering each other.
     brush.add(true);
-    brush.dot(event.toX, event.toY, 0.8, 1.9 * FADE + 0.3, '#3a8ad8', 0.34 * FADE);
-    strokeBolt(brush, STRIKE, FADE, 1.1);
-    strokeBolt(brush, ARC, FADE, 0.9);
+    brush.dot(event.toX, event.toY, 0.8, 2.6 * FADE + 0.4, '#3a8ad8', 0.34 * FADE);
+    strokeBolt(brush, STRIKE, FADE, 1.6);
+    strokeBolt(brush, ARC, FADE, 1.3);
     for (let index = 0; index < 9; index++) {
         const ANGLE = rand(index + event.hop * 11, 1) * TAU,
             SPEED = (2 + 5 * rand(index, 2)) * seconds,
