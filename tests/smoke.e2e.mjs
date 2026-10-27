@@ -488,7 +488,6 @@ await check(
             for (let i = 0; i < 6; i++) {
                 W.spawn(0, 1, i * 0.4, 0);
             }
-            W.randomBossSpecies = () => 8;
             W.playerProgression.towerBest = 50;
             W.startTower(1);
             const TICK = () => {
@@ -511,12 +510,18 @@ await check(
                 record: W.tower.record,
                 first: RECEIPT?.firstClear,
                 status: RECEIPT?.status,
-                seeds: W.unitCollection.items.filter((u) => !u.isBattleOnlySummon && u.species === 8 && u.seedling)
-                    .length,
+                bossSpecies: W.bosses[0].species,
+                species: RECEIPT?.species,
+                seeds: W.unitCollection.items.filter(
+                    (u) => !u.isBattleOnlySummon && u.species === RECEIPT?.species && u.seedling,
+                ).length,
                 xp: RECEIPT?.xpAmount,
             };
         });
-        expect(R.record === false && R.first === true && R.seeds === 2 && R.xp > 0, `first win ${JSON.stringify(R)}`);
+        expect(
+            R.bossSpecies === 9 && R.record === false && R.first === true && R.seeds === 2 && R.xp > 0,
+            `first win ${JSON.stringify(R)}`,
+        );
     },
 );
 await check(
@@ -535,7 +540,6 @@ await check(
             for (let i = 0; i < 6; i++) {
                 W.spawn(0, 1, i * 0.4, 0);
             }
-            W.randomBossSpecies = () => 3;
             W.playerProgression.towerBest = 50;
             // Earlier fights in this run already fed mastery; start from empty xp so a level-up cannot wrap the count.
             for (const ABILITY of Object.values(W.playerProgression.abilities)) {

@@ -1,3 +1,5 @@
+import { BOSS_SPECIES } from '../units/species-catalog.js';
+
 // Initial tuning, not a time limit. A floor owns one finite roster and one
 // aggregate stat budget; adding actors divides that budget rather than copying it.
 export const TOWER_ENCOUNTER_SETTINGS = Object.freeze({
@@ -15,17 +17,17 @@ export const TOWER_ENCOUNTER_SETTINGS = Object.freeze({
     summitSeconds: 8,
 });
 
-export function createTowerEncounter(floor, firstSpecies, chooseSpecies) {
+export function createTowerEncounter(floor) {
     const COUNT = TOWER_ENCOUNTER_SETTINGS.bands.find((band) => floor <= band.through).count,
-        ROSTER = Array.from({ length: COUNT }, (_, index) => ({
-            species: index === 0 ? firstSpecies : chooseSpecies(),
+        ROSTER = Array.from({ length: COUNT }, () => ({
+            species: BOSS_SPECIES,
             hpShare: floor === 100 ? 0.5 / COUNT : 1 / COUNT,
             attackShare: floor === 100 ? 0.56 / COUNT : 1 / COUNT,
             final: false,
         }));
     if (floor === 100) {
-        // The crown is a regular barley Unit with the same authored rig/patterns.
-        ROSTER.push({ species: 8, hpShare: 0.5, attackShare: 0.44, final: true });
+        // The crown is one more plain sprout with the same authored rig/patterns.
+        ROSTER.push({ species: BOSS_SPECIES, hpShare: 0.5, attackShare: 0.44, final: true });
     }
     return {
         roster: ROSTER,
@@ -34,7 +36,6 @@ export function createTowerEncounter(floor, firstSpecies, chooseSpecies) {
         nextJoinAt: 0,
         clearedIds: [],
         floor,
-        rewardSpecies: firstSpecies,
         completed: false,
     };
 }

@@ -100,6 +100,7 @@ import {
     awardTowerFloorXp,
 } from './player-progression.js';
 import { towerElement } from '../tower/tower-theme.js';
+import { BOSS_SPECIES } from '../units/species-catalog.js';
 import { createTowerEncounter, encounterBudget, TOWER_ENCOUNTER_SETTINGS } from '../tower/tower-encounter.js';
 import { createAbilityProgressionState } from '../abilities/ability-state.js';
 import { bossVectorScale } from '../vector-sockets.js';
@@ -1867,9 +1868,6 @@ const GARDEN = class Garden {
     random() {
         return this.rng.nextUint32() / 4294967296;
     }
-    randomBossSpecies() {
-        return Math.min(CONFIG.unit.speciesCount - 1, Math.floor(this.random() * CONFIG.unit.speciesCount));
-    }
     // A fresh seed: its species, temperament and colour genes are fixed now and shown once it has grown.
     rollSeedLineage() {
         const RANDOM = lineageRandom(this.seed, this.nextId, 0);
@@ -2496,9 +2494,8 @@ const GARDEN = class Garden {
                 UNIT_LOCAL.chestnutNextThornTick = 0;
             }
         }
-        const SPECIES = this.randomBossSpecies();
         this.replaceBosses([]);
-        this.bossEncounter = createTowerEncounter(T.floor, SPECIES, () => this.randomBossSpecies());
+        this.bossEncounter = createTowerEncounter(T.floor);
         this.farmBossEvent = {
             phase: 'dropping',
             elapsed: 0,
@@ -2756,7 +2753,7 @@ const GARDEN = class Garden {
             farmEvent,
         });
     }
-    createBoss(species = 3, id = 'boss') {
+    createBoss(species = BOSS_SPECIES, id = 'boss') {
         const BOSS = new UNIT(id, CLAMP(species, 0, CONFIG.unit.speciesCount - 1), 1, 0, 0, {
             statProfile: { maxHp: 2000, attackPower: 4, moveSpeed: CONFIG.boss.chaseSpeed },
             bodyProfile: {
@@ -5548,8 +5545,7 @@ const GARDEN = class Garden {
             }
         }
         if (outcome === 'victory') {
-            const REWARD_BOSS = this.bosses[0],
-                REWARD_SPECIES = this.bossEncounter?.rewardSpecies ?? REWARD_BOSS.species;
+            const REWARD_BOSS = this.bosses[0];
             const EVENT_STAGE = REWARD_BOSS.stage,
                 STAGE_STATS = bossStageStats(EVENT_STAGE),
                 BEST = this.playerProgression.towerBest,
@@ -5560,17 +5556,16 @@ const GARDEN = class Garden {
             }
             // Every win pays by its floor and kind; a floor higher than ever before pays double.
             const REWARD_SCALE = KIND.reward * (this.tower.record ? BOSS_REWARD_SETTINGS.recordMultiplier : 1),
-                // Seeds are only ever first-tier species; a stronger boss still pays its own species' mastery.
-                DROP_SPECIES = SEED_SPECIES.includes(REWARD_SPECIES)
-                    ? REWARD_SPECIES
-                    : SEED_SPECIES[Math.floor(lineageRandom(this.seed, ENCOUNTER_ID, 3)() * SEED_SPECIES.length)],
+                // Every boss is the plain sprout, so the seed it drops, and the species whose mastery the win feeds,
+                // is drawn from the first-tier species.
+                DROP_SPECIES =
+                    SEED_SPECIES[Math.floor(lineageRandom(this.seed, ENCOUNTER_ID, 3)() * SEED_SPECIES.length)],
                 FIRST_CLEAR = !bossSpeciesOwned(this, DROP_SPECIES),
                 SETTLEMENT = settleBossKill(this, {
                     encounterId: ENCOUNTER_ID,
                     source: 'farm',
                     stage: EVENT_STAGE,
                     species: DROP_SPECIES,
-                    masterySpecies: REWARD_SPECIES,
                     tier: 1,
                     x: REWARD_BOSS.x,
                     y: REWARD_BOSS.y,
@@ -5595,7 +5590,7 @@ const GARDEN = class Garden {
             }
             this.combat('farm-boss-xp', {
                 encounterId: ENCOUNTER_ID,
-                species: REWARD_SPECIES,
+                species: DROP_SPECIES,
                 xp: SETTLEMENT.xpAwarded,
                 levelsGained: SETTLEMENT.levelsGained,
                 pointsAwarded: SETTLEMENT.pointsAwarded,

@@ -238,7 +238,7 @@ try {
         Object.assign(WORLD.boss, { z: 0, dropLanded: true, hp: 1e9, maxHp: 1e9, stun: 0 });
         ALLIES.forEach((unit, index) => {
             const ANGLE = (index * Math.PI * 2) / (ALLIES.length - 1),
-                DISTANCE = WORLD.boss.radius + 1.2 + (index % 2) * 0.8;
+                DISTANCE = WORLD.boss.radius + 0.2 + (index % 2) * 0.4;
             Object.assign(unit, {
                 x: Math.cos(ANGLE) * DISTANCE,
                 y: Math.sin(ANGLE) * DISTANCE,
@@ -639,17 +639,21 @@ try {
                 }
             }
             const CAST = this.formationRuntime.bossCast;
-            if (!OBS.healing.prepared && CAST?.id === 'healing-rain' && CAST.phase === 'prepare') {
-                OBS.healing.prepared = true;
-                OBS.healing.serial = CAST.serial;
+            if (CAST?.id === 'healing-rain' && CAST.phase === 'prepare') {
+                // The preparation must find no injured beneficiary at its end. The probe's own hit can land inside the
+                // 0.8 s window and hurt the enemy target, so every tick of the window refills the boss's side.
                 for (const ALLY of this.formationSkills.bossContext.allies()) {
                     ALLY.setHealth(ALLY.maxHp);
                 }
-                OBS.healing.injuredAfterFill = this.formationSkills.bossContext.injuredAllies().length;
-                if (OBS.healing.injuredAfterFill !== 0) {
-                    throw new Error(
-                        'The live healing invalidation fixture must leave no injured same-faction beneficiary',
-                    );
+                if (!OBS.healing.prepared) {
+                    OBS.healing.prepared = true;
+                    OBS.healing.serial = CAST.serial;
+                    OBS.healing.injuredAfterFill = this.formationSkills.bossContext.injuredAllies().length;
+                    if (OBS.healing.injuredAfterFill !== 0) {
+                        throw new Error(
+                            'The live healing invalidation fixture must leave no injured same-faction beneficiary',
+                        );
+                    }
                 }
             }
             if (!OBS.healing.failed && this.formationRuntime.bossRetrySkillId === 'healing-rain') {

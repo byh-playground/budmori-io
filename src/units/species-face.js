@@ -122,6 +122,19 @@ export const SPECIES_FACES = Object.freeze([
         ],
         23.1,
     ),
+    FACE(
+        [320, 350],
+        [
+            [107.6, 252.4],
+            [213.8, 252.4],
+        ],
+        [15.3, 9],
+        [
+            [129.2, 227.2],
+            [192.2, 227.2],
+        ],
+        23.4,
+    ),
 ]);
 
 // Dark brows, except on the chestnut whose body is as dark.

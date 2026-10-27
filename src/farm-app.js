@@ -29,16 +29,10 @@ import { CombatFeel } from './render/combat-feel.js';
 import { renderAbilityTreeMarkup, renderAbilitySpeciesTabsMarkup } from './abilities/ability-tree.js';
 import { canResetPlayerProgression, getAbilityPointsLeft } from './abilities/ability-progression.js';
 import { SPECIES_ABILITY_DEFINITIONS } from './abilities/ability-catalog.js';
-import {
-    advanceBossRewardReveal,
-    openAllBossRewardBoxes,
-    bossRewardQueueBySpecies,
-    bossSpeciesOwned,
-} from './boss/boss-rewards.js';
+import { advanceBossRewardReveal, openAllBossRewardBoxes, bossRewardQueueBySpecies } from './boss/boss-rewards.js';
 import { workersBySpecies } from './model/farm-work.js';
 import { apportionBreedShares, adjustBreedShare } from './model/breed-allocation.js';
 import { speciesById, giantSpeciesName } from './units/species-catalog.js';
-import { SEED_SPECIES } from './model/lineage.js';
 import { HELP_MAX_FRAME_MS, HELP_PLAYBACK_RATE, helpSceneById } from './ui/help-scenes.js';
 import { createHelpPanel } from './ui/help-panel.js';
 import { codexHtml, CODEX_TABS } from './ui/codex-dialog.js';
@@ -152,7 +146,7 @@ function bossRewardMasteryLine(receipt) {
         return '';
     }
     const LEVEL_UP = receipt.pointsAwarded > 0 ? ' · 숙련 포인트 +' + receipt.pointsAwarded : '';
-    return speciesById(receipt.masterySpecies).name + ' 숙련 +' + receipt.xpAmount + ' XP' + LEVEL_UP;
+    return speciesById(receipt.species).name + ' 숙련 +' + receipt.xpAmount + ' XP' + LEVEL_UP;
 }
 
 function renderBossRewardBoxes(receipt) {
@@ -2269,16 +2263,12 @@ function sync(display, now, notices) {
                   )
                 : null,
         REWARD_NAME = '씨앗',
-        ENCOUNTER_NAME = giantSpeciesName(BOSS.species),
-        FIRST_MEETING =
-            FARM_EVENT_ACTIVE && SEED_SPECIES.includes(BOSS.species) && !bossSpeciesOwned(W, BOSS.species)
-                ? ' · 첫 조우'
-                : '';
+        ENCOUNTER_NAME = giantSpeciesName(BOSS.species);
     syncText(
         'bossName',
-        (W.tower.active
+        W.tower.active
             ? `${BOSS.stage}층 · ${BOSS.isFinalBoss ? '최종 수호자' : `보스 ${BOSS_LIVING}/${BOSS_TOTAL}`}`
-            : ENCOUNTER_NAME) + FIRST_MEETING,
+            : ENCOUNTER_NAME,
     );
     syncAttribute('bossHealth', 'aria-label', '등장한 보스 합계 체력');
     syncText('bossHealthText', Math.ceil(BOSS_HP) + '/' + Math.round(BOSS_MAX_HP));

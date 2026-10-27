@@ -1531,9 +1531,9 @@ function validateTowerCheckpoint(raw) {
     }
     ASSERT(
         ENCOUNTER &&
-            Object.keys(ENCOUNTER).length === 8 &&
-            ['roster', 'nextIndex', 'elapsed', 'nextJoinAt', 'clearedIds', 'floor', 'rewardSpecies', 'completed'].every(
-                (key) => Object.hasOwn(ENCOUNTER, key),
+            Object.keys(ENCOUNTER).length === 7 &&
+            ['roster', 'nextIndex', 'elapsed', 'nextJoinAt', 'clearedIds', 'floor', 'completed'].every((key) =>
+                Object.hasOwn(ENCOUNTER, key),
             ) &&
             Array.isArray(ENCOUNTER.roster) &&
             ENCOUNTER.roster.length >= 1 &&
@@ -1569,7 +1569,6 @@ function validateTowerCheckpoint(raw) {
             new Set(ENCOUNTER.clearedIds).size === ENCOUNTER.clearedIds.length &&
             ENCOUNTER.clearedIds.every((id) => raw.bosses.some((boss) => boss.id === id && boss.hp <= 0)) &&
             INTEGER(ENCOUNTER.floor, 1, FARM_BOSS_EVENT_MAX_STAGE) &&
-            INTEGER(ENCOUNTER.rewardSpecies, 0, CONFIG.unit.speciesCount - 1) &&
             typeof ENCOUNTER.completed === 'boolean' &&
             (!ENCOUNTER.completed ||
                 (ENCOUNTER.nextIndex === ENCOUNTER.roster.length && raw.bosses.every((boss) => boss.hp <= 0))),
