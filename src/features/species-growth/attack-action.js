@@ -1,4 +1,5 @@
 import { isBossActorId, isCombatActorId } from '../../core/combat-identity.js';
+import { areOpposingFactions } from '../../core/factions.js';
 // One basic attack owns a finite set of slots. Presentation particles are never slots.
 // Timings use the simulation tick; probability/RAW/command decisions are sampled by the caller once at launch.
 const MAX_ACTION_STRIKES = 32;
@@ -15,6 +16,69 @@ export function attackOwnerCanContinue(world, unit, action, record) {
         unit.ability?.action === action &&
         unit.ability.phase === 'active'
     );
+}
+
+// Runtime sets are derived from the validated transport record once per action. Restored records have new identity
+// and reconstruct through the same DTO validator. Only the resolver writes the checkpoint; no hidden timing or damage
+// is cached. Each species keeps its own cache, created once at module load.
+export function createAttackRuntime() {
+    const CACHE = new WeakMap();
+    return (record) => {
+        let runtime = CACHE.get(record);
+        if (!runtime || runtime.checkpoint !== record.attack) {
+            runtime = { action: AttackAction.fromDTO(record.attack), checkpoint: record.attack };
+            CACHE.set(record, runtime);
+        }
+        return runtime;
+    };
+}
+
+// Commits a launched record to its immutable strike plan; `durationTicks` is the plan length.
+export function commitAttackAction(world, record, durationTicks) {
+    record.launchTick = world.simulationTick;
+    record.attack = new AttackAction(
+        { durationTicks, strikes: record.shots.map(({ tick, weight }) => ({ tick, weight })) },
+        record.launchTick,
+    ).toDTO();
+}
+
+// Strike candidates in hit order: the chosen target, then the other live opposing bosses, then every opposing unit.
+export function strikeCandidates(world, unit, primary) {
+    const CANDIDATES = primary ? [primary] : [];
+    for (const BOSS of world.bosses) {
+        if (BOSS !== primary && BOSS.active && BOSS.hp > 0 && areOpposingFactions(unit, BOSS)) {
+            CANDIDATES.push(BOSS);
+        }
+    }
+    // The same live-faction index used by sensing is current after the owner lookup. A boss-only battle needs no
+    // scan of every allied body per slot.
+    let hasUnitEnemy = false;
+    for (const [FACTION, COUNT] of world._liveFactionCounts) {
+        if (FACTION !== unit.faction && COUNT > 0) {
+            hasUnitEnemy = true;
+            break;
+        }
+    }
+    if (hasUnitEnemy) {
+        for (const TARGET of world.units) {
+            if (TARGET !== primary && TARGET.hp > 0 && areOpposingFactions(unit, TARGET)) {
+                CANDIDATES.push(TARGET);
+            }
+        }
+    }
+    return CANDIDATES;
+}
+
+// The first sample per target is kept for every later strike of the action. A record that carries
+// `criticalChances` also freezes the chance used for that sample.
+export function sampleCriticalRoll(world, record, key) {
+    if (!Object.hasOwn(record.criticalRolls, key)) {
+        record.criticalRolls[key] = world.random();
+        if (record.criticalChances) {
+            record.criticalChances[key] = Math.min(1, Math.max(0, record.source.attackerStats.critChance));
+        }
+    }
+    return Reflect.get(record.criticalRolls, key);
 }
 
 function defineAttackAction({ durationTicks, strikes }) {

@@ -5,6 +5,7 @@ import {
     attackGeometryScale,
     captureAttackGeometry,
     attackBudgetValues,
+    exactKeys,
 } from './attack-profile.js';
 import { AttackAction, attackTargetKey, isAttackActionDTO, attackOwnerCanContinue } from './attack-action.js';
 import { growthBuildOf, growthForAbility } from './state.js';
@@ -267,11 +268,6 @@ export function resolveRedbeanSlots(world, unit, action, geometry) {
     }
     R.attack = ATTACK.toDTO();
 }
-const EXACT = (value, keys) =>
-    value &&
-    typeof value === 'object' &&
-    !Array.isArray(value) &&
-    Object.keys(value).sort().join(' ') === keys.split(' ').sort().join(' ');
 export function isRedbeanAttackRecord(r) {
     if (
         !attackRecordShape(
@@ -298,15 +294,18 @@ export function isRedbeanAttackRecord(r) {
         ![0, 1, 2, 3, 4, 5].some((rank) => r.chance === Math.min(0.65, 0.2 + 0.09 * rank)) ||
         r.windupSeconds !== 0.32 / r.speed ||
         r.recoverySeconds !== 0.5 / r.speed ||
-        !EXACT(r.ranks, 'power radius finish') ||
+        !exactKeys(r.ranks, 'power radius finish') ||
         !Object.entries(r.ranks).every(([k, v]) => Number.isInteger(v) && v >= 0 && v <= (k === 'power' ? 10 : 5)) ||
         !attackBudgetShape(r.budgetInputs, 'one current') ||
         !attackBudgetValues(r.budgetInputs).every(Number.isFinite) ||
         r.directMultiplier !==
             redbeanBudgetMultiplier(r.tier, r.form, r.speed, r.chance, r.budgetInputs.one, r.budgetInputs.current) *
                 (1 + 0.03 * r.ranks.power) ||
-        !EXACT(r.source, 'attackerStats attackPowerMultiplier sourceDamageScale sourceKind') ||
-        !EXACT(r.source.attackerStats, ['maxHp', 'attackPower', ...Object.keys(COMMON_UNIT_STAT_DEFAULTS)].join(' ')) ||
+        !exactKeys(r.source, 'attackerStats attackPowerMultiplier sourceDamageScale sourceKind') ||
+        !exactKeys(
+            r.source.attackerStats,
+            ['maxHp', 'attackPower', ...Object.keys(COMMON_UNIT_STAT_DEFAULTS)].join(' '),
+        ) ||
         !Object.values(r.source.attackerStats).every((v) => Number.isFinite(v) && v >= 0) ||
         r.source.attackerStats.maxHp <= 0 ||
         ![1, 3].includes(r.source.attackPowerMultiplier) ||
@@ -366,8 +365,8 @@ export function isRedbeanAttackRecord(r) {
     if (
         !Array.isArray(r.points) ||
         r.points.length !== PLAN.legs.length ||
-        !EXACT(r.origin, 'x y') ||
-        !r.points.every((point) => EXACT(point, 'x y'))
+        !exactKeys(r.origin, 'x y') ||
+        !r.points.every((point) => exactKeys(point, 'x y'))
     ) {
         return false;
     }
@@ -393,11 +392,11 @@ export function isRedbeanAttackRecord(r) {
     return (
         Number.isSafeInteger(r.launchTick) &&
         r.launchTick >= 0 &&
-        EXACT(r.origin, 'x y') &&
+        exactKeys(r.origin, 'x y') &&
         Object.values(r.origin).every(Number.isFinite) &&
         Array.isArray(r.points) &&
         r.points.length === PLAN.legs.length &&
-        r.points.every((p) => EXACT(p, 'x y') && Object.values(p).every(Number.isFinite)) &&
+        r.points.every((p) => exactKeys(p, 'x y') && Object.values(p).every(Number.isFinite)) &&
         isAttackActionDTO(r.attack) &&
         r.attack.startTick === r.launchTick &&
         r.attack.plan.durationTicks === PLAN.durationTicks + 1 &&

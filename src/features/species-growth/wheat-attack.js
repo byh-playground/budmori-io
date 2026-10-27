@@ -5,13 +5,23 @@ import {
     attackGeometryScale,
     captureAttackGeometry,
     attackBudgetValues,
+    exactKeys,
+    attackBudgetMultiplier,
+    CONTACT_STRIKE_RATIOS,
+    contactAttackTiming,
 } from './attack-profile.js';
 import { WheatCommandModel } from '../abilities/wheat-command/model.js';
-import { AttackAction, attackTargetKey, isAttackActionDTO, attackOwnerCanContinue } from './attack-action.js';
+import {
+    attackTargetKey,
+    isAttackActionDTO,
+    attackOwnerCanContinue,
+    commitAttackAction,
+    createAttackRuntime,
+    sampleCriticalRoll,
+    strikeCandidates,
+} from './attack-action.js';
 import { growthBuildOf, growthForAbility } from './state.js';
 import { COMMON_UNIT_STAT_DEFAULTS } from '../../units/unit-stats.js';
-import { mergeMaterialCostForTier } from '../../units/unit-grades.js';
-import { areOpposingFactions } from '../../core/factions.js';
 const ATTACK_KIND = 'punch';
 
 const WHEAT_WEIGHTS = Object.freeze([
@@ -32,17 +42,6 @@ const STAGES = [
     ['longsweep', 'return', 'thrust'],
     ['left', 'right', 'front', 'finish'],
 ];
-const RATIOS = [null, [0.65], [0.25, 0.75], [0.25, 0.75], [0.25, 0.75], [0.15, 0.45, 0.85], [0.1, 0.35, 0.6, 0.9]];
-// Repartition the verified legacy contact (2 ticks) plus recovery budget.
-// The active baton window overlaps that budget instead of extending it.
-function wheatTiming(speed) {
-    const RECOVERY = Math.ceil(13 / speed);
-    // With at most two recovery ticks, legacy recoil returns in one contact
-    // tick after the opening cycle. Keep that measured sustained cadence.
-    const TOTAL = RECOVERY + (RECOVERY <= 2 ? 1 : 2);
-    const ACTIVE = Math.min(10, TOTAL - 1);
-    return { activeTicks: ACTIVE, recoveryTicks: TOTAL - ACTIVE };
-}
 function wheatGrowthBuild(progression) {
     const ENTRY = progression?.abilities?.['wheat-command-crit'];
     return ENTRY?.treeVersion === 1 ? growthBuildOf(ENTRY) : null;
@@ -54,19 +53,10 @@ export function wheatRange(world, unit) {
     const BUILD = wheatGrowthBuild(world.abilityProgressionFor(unit));
     return BUILD ? 1.45 * (growthForAbility('wheat-command-crit').attackTier(BUILD, unit.tier) >= 4 ? 1.3 : 1) : null;
 }
-function wheatBudgetMultiplier(tier, one, current) {
-    let materials = 1;
-    for (let grade = 2; grade <= tier; grade++) {
-        materials *= mergeMaterialCostForTier(grade);
-    }
-    return one > 0 && current > 0 && Number.isFinite(one + current)
-        ? (one * materials * 1.05 ** (tier - 1)) / current
-        : 1.75 ** (tier - 1);
-}
 function wheatShots(form, activeTicks = 10) {
     return WHEAT_WEIGHTS[form].map((weight, slot) => ({
         slot,
-        tick: Math.max(1, Math.min(activeTicks, Math.round(RATIOS[form][slot] * activeTicks))),
+        tick: Math.max(1, Math.min(activeTicks, Math.round(CONTACT_STRIKE_RATIOS[form][slot] * activeTicks))),
         weight,
         stage: STAGES[form][slot],
     }));
@@ -86,7 +76,7 @@ export function createWheatAttack(world, unit, action, commandSpeed = 1) {
         DY = (TARGET?.y ?? action.target.y) - unit.y;
     const DIST = Math.hypot(DX, DY) || 1;
     const TRAVEL = Math.max(0, DIST - (TARGET?.radius || 0) * 0.98);
-    const TIMING = wheatTiming(SPEED);
+    const TIMING = contactAttackTiming(SPEED);
     return {
         version: 1,
         id: action.id,
@@ -107,7 +97,7 @@ export function createWheatAttack(world, unit, action, commandSpeed = 1) {
             finish: R['specialty-3'] || 0,
         },
         budgetInputs: INPUTS,
-        multiplier: wheatBudgetMultiplier(unit.tier, INPUTS.one, INPUTS.current) * (1 + 0.03 * (R['basic-1'] || 0)),
+        multiplier: attackBudgetMultiplier(unit.tier, INPUTS.one, INPUTS.current) * (1 + 0.03 * (R['basic-1'] || 0)),
         source: {
             attackerStats: structuredClone(C.attackerStats),
             statMultiplier: unit.permanentStatMultiplier ?? 1,
@@ -143,19 +133,12 @@ export function launchWheatAttack(world, action) {
             (1 + 0.02 * R.ranks.speed) *
             WheatCommandModel.attackSpeedMultiplier(OWNER, world.simulationTick),
     );
-    const TIMING = wheatTiming(R.speed);
+    const TIMING = contactAttackTiming(R.speed);
     R.durationSeconds = TIMING.activeTicks / 20;
     R.recoverySeconds = TIMING.recoveryTicks / 20;
     R.shots = wheatShots(R.form, TIMING.activeTicks);
     action.path.duration = R.durationSeconds;
-    R.launchTick = world.simulationTick;
-    R.attack = new AttackAction(
-        {
-            durationTicks: Math.round(R.durationSeconds * 20) + 1,
-            strikes: R.shots.map(({ tick, weight }) => ({ tick, weight })),
-        },
-        R.launchTick,
-    ).toDTO();
+    commitAttackAction(world, R, Math.round(R.durationSeconds * 20) + 1);
 }
 // Finite committed baton corridors, with broad outer and focused inner arcs.
 function wheatSlotGeometry(r, slot) {
@@ -170,25 +153,14 @@ function wheatSlotGeometry(r, slot) {
         height: (STAGE === 'up' ? 0.8 : 0.5) * attackGeometryScale(r),
     };
 }
-// Runtime sets are derived from the validated transport record once per action.
-// Restored records have new identity and reconstruct through the same DTO validator.
-// Only this consumer writes the checkpoint; no hidden timing or damage is cached.
-const WHEAT_RUNTIME = new WeakMap();
-function wheatRuntime(record) {
-    let runtime = WHEAT_RUNTIME.get(record);
-    if (!runtime || runtime.checkpoint !== record.attack) {
-        runtime = { action: AttackAction.fromDTO(record.attack), checkpoint: record.attack };
-        WHEAT_RUNTIME.set(record, runtime);
-    }
-    return runtime;
-}
+const RUNTIME_OF = createAttackRuntime();
 export function resolveWheatSlots(world, unit, action, elapsed, geometry) {
     const R = action.wheatAttack;
     if (!R || R.launchTick === null || !attackOwnerCanContinue(world, unit, action, R)) {
         return;
     }
     R.motionTick = Math.min(Math.round(R.durationSeconds * 20), Math.max(0, Math.round(elapsed * 20)));
-    const RUNTIME = wheatRuntime(R),
+    const RUNTIME = RUNTIME_OF(R),
         A = RUNTIME.action,
         READY = A.advance(R.launchTick + R.motionTick);
     if (!READY.length) {
@@ -202,28 +174,7 @@ export function resolveWheatSlots(world, unit, action, elapsed, geometry) {
         const G = wheatSlotGeometry(R, S.slot),
             TARGET = world.attackTarget(unit, action),
             PRIMARY = TARGET?.hp > 0 ? TARGET : null;
-        const CANDIDATES = PRIMARY ? [PRIMARY] : [];
-        for (const BOSS of world.bosses) {
-            if (BOSS !== PRIMARY && BOSS.active && BOSS.hp > 0 && areOpposingFactions(unit, BOSS)) {
-                CANDIDATES.push(BOSS);
-            }
-        }
-        // The same live-faction index used by sensing is current after the owner
-        // lookup. A boss-only battle needs no scan of every allied body per slot.
-        let hasUnitEnemy = false;
-        for (const [FACTION, COUNT] of world._liveFactionCounts) {
-            if (FACTION !== unit.faction && COUNT > 0) {
-                hasUnitEnemy = true;
-                break;
-            }
-        }
-        if (hasUnitEnemy) {
-            for (const T of world.units) {
-                if (T !== PRIMARY && T.hp > 0 && areOpposingFactions(unit, T)) {
-                    CANDIDATES.push(T);
-                }
-            }
-        }
+        const CANDIDATES = strikeCandidates(world, unit, PRIMARY);
         let secondary = 0;
         for (const T of CANDIDATES) {
             if (!attackOwnerCanContinue(world, unit, action, R)) {
@@ -245,13 +196,8 @@ export function resolveWheatSlots(world, unit, action, elapsed, geometry) {
                 secondary++;
             }
             const KEY = attackTargetKey(ID, T.generation);
-            if (!Object.hasOwn(R.criticalRolls, KEY)) {
-                R.criticalRolls[KEY] = world.random();
-                R.criticalChances[KEY] = Math.min(1, Math.max(0, R.source.attackerStats.critChance));
-            }
-            // Keep the first target-hit sample for every later strike in this action.
-            const CRITICAL_ROLL = Reflect.get(R.criticalRolls, KEY),
-                SOURCE = R.source;
+            const CRITICAL_ROLL = sampleCriticalRoll(world, R, KEY);
+            const SOURCE = R.source;
             world.damageCombatTarget(unit, { id: action.id, hit: false }, T, HIT, {
                 attackKind: ATTACK_KIND,
                 suppressBasicProc: !A.claimOnce('basic-proc'),
@@ -294,11 +240,6 @@ export function resolveWheatSlots(world, unit, action, elapsed, geometry) {
     }
     R.attack.claims = [...A.claims];
 }
-const EXACT = (v, keys) =>
-    v &&
-    typeof v === 'object' &&
-    !Array.isArray(v) &&
-    Object.keys(v).sort().join(' ') === keys.split(' ').sort().join(' ');
 export function isWheatAttackRecord(r) {
     if (
         !attackRecordShape(
@@ -320,9 +261,9 @@ export function isWheatAttackRecord(r) {
         !Number.isFinite(r.speed) ||
         r.speed < 0.05 ||
         r.windupSeconds !== 0.28 ||
-        r.durationSeconds !== wheatTiming(r.speed).activeTicks / 20 ||
-        r.recoverySeconds !== wheatTiming(r.speed).recoveryTicks / 20 ||
-        !EXACT(r.ranks, 'power speed command range finish') ||
+        r.durationSeconds !== contactAttackTiming(r.speed).activeTicks / 20 ||
+        r.recoverySeconds !== contactAttackTiming(r.speed).recoveryTicks / 20 ||
+        !exactKeys(r.ranks, 'power speed command range finish') ||
         !Object.entries(r.ranks).every(
             ([k, v]) => Number.isInteger(v) && v >= 0 && v <= (['power', 'speed'].includes(k) ? 10 : 5),
         ) ||
@@ -333,9 +274,12 @@ export function isWheatAttackRecord(r) {
         !Number.isFinite(r.multiplier) ||
         r.multiplier < 1 ||
         r.multiplier !==
-            wheatBudgetMultiplier(r.tier, r.budgetInputs.one, r.budgetInputs.current) * (1 + 0.03 * r.ranks.power) ||
-        !EXACT(r.source, 'attackerStats statMultiplier attackPowerMultiplier sourceKind sourceDamageScale') ||
-        !EXACT(r.source.attackerStats, ['maxHp', 'attackPower', ...Object.keys(COMMON_UNIT_STAT_DEFAULTS)].join(' ')) ||
+            attackBudgetMultiplier(r.tier, r.budgetInputs.one, r.budgetInputs.current) * (1 + 0.03 * r.ranks.power) ||
+        !exactKeys(r.source, 'attackerStats statMultiplier attackPowerMultiplier sourceKind sourceDamageScale') ||
+        !exactKeys(
+            r.source.attackerStats,
+            ['maxHp', 'attackPower', ...Object.keys(COMMON_UNIT_STAT_DEFAULTS)].join(' '),
+        ) ||
         !Object.values(r.source.attackerStats).every((v) => Number.isFinite(v) && v >= 0) ||
         r.source.attackerStats.maxHp <= 0 ||
         !Number.isFinite(r.source.statMultiplier) ||
@@ -357,7 +301,7 @@ export function isWheatAttackRecord(r) {
         !Number.isFinite((r.source.attackerStats.attackArea * (r.form >= 4 ? 1.3 : 1) * 0.65) ** 2) ||
         ![r.origin, r.point].every(
             (p) =>
-                EXACT(p, 'x y z') &&
+                exactKeys(p, 'x y z') &&
                 Object.values(p).every((v) => Number.isFinite(v) && Math.abs(v) <= 100) &&
                 p.z === 0,
         ) ||
