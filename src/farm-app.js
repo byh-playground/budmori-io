@@ -2513,6 +2513,9 @@ globalThis.BUDMORI = {
     get presentationDiagnostics() {
         return active.latestPresentationDiagnostics;
     },
+    get poseDiagnostics() {
+        return RENDERER.meshes.poseStats();
+    },
     renderer: RENDERER,
     storage: STORAGE,
     foodFeel: FOOD_FEEL,

@@ -65,3 +65,11 @@ Boss charge paths and projectiles retain swept collision checks across each 50ms
 | 1000           | 약 86ms | 약 10ms |
 
 그 밖의 낮은 우선순위 항목은 현재 근거와 우선순위를 유지하며, 실측 전에는 구조를 크게 바꾸지 않습니다.
+
+## GPU pose diagnostics (0.47.1)
+
+`BUDMORI.poseDiagnostics` returns the official GameKit pose counters for the last rendered frame, including GPU/CPU/uniform draw instances, `cpuFallbackRatio`, `fallbackReasons`, state/base-pose/CPU-pose upload bytes, live allocations and retained texture bytes. The performance recorder also retains `gpuPoseInstances`, `cpuPoseInstances`, `uniformPoseInstances`, and `poseTextureUploadBytes`. These counters measure visible submissions, not all living or culled units. Unsupported animation combinations use the existing CPU pose path without resetting playback clocks.
+
+The GPU texture stores numeric transform channels and evaluated matrices; SVG art remains compiled reusable geometry. Visible actors retain depth order, including body, face overlay, effects, and the following actor. Pose preparation runs before visible submissions; no species sorting is used. Context loss skips render submission until restoration; disposal releases the shared mesh and pose resources.
+
+`gpuMs` in the ordinary support recorder remains unmeasured. Dedicated benchmark GPU queries wrap the entire renderer, including the pose pass, and are reported separately from CPU render/animation/submission time. Physical mobile hardware has not been verified.

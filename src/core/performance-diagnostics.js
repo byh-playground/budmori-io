@@ -68,6 +68,10 @@ const COUNTERS = Object.freeze([
     'meshCreates',
     'bufferUploads',
     'bufferBytes',
+    'gpuPoseInstances',
+    'cpuPoseInstances',
+    'uniformPoseInstances',
+    'poseTextureUploadBytes',
 ]);
 const FRAME_MAX_COUNTERS = Object.freeze(['workSchedulerMaxWaitTicks']);
 const NUMBER = (value, digits = 1) => (Number.isFinite(value) ? value.toFixed(digits) : '미측정');
@@ -114,6 +118,16 @@ export class PerformanceDiagnostics {
         this.meter.beginFrame(now);
     }
     endFrame(renderer) {
+        const POSES = renderer.meshes.poseStats();
+        if (POSES) {
+            this.count('gpuPoseInstances', POSES.gpuDrawInstances);
+            this.count('cpuPoseInstances', POSES.cpuDrawInstances);
+            this.count('uniformPoseInstances', POSES.uniformDrawInstances);
+            this.count(
+                'poseTextureUploadBytes',
+                POSES.cpuPoseUploadBytes + POSES.stateUploadBytes + POSES.overrideUploadBytes,
+            );
+        }
         for (const NAME of COUNTERS) {
             if (NAME in renderer.device.stats) {
                 this.count(NAME, renderer.device.stats[NAME]);

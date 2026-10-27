@@ -946,11 +946,15 @@ const DIORAMA = class Diorama {
         const C = this.ctx,
             PRESENTATION = this.scenePresentation;
         PRESENTATION.collectJoy(sim2, this.joyEffects);
-        C.beginFrame({
-            width: this.canvas.width,
-            height: this.canvas.height,
-            clearColor: [0.9, 0.92, 0.87, 1],
-        });
+        if (
+            !C.beginFrame({
+                width: this.canvas.width,
+                height: this.canvas.height,
+                clearColor: [0.9, 0.92, 0.87, 1],
+            })
+        ) {
+            return;
+        }
         this.terrain(sim2, now);
         this.unitPresentation.prepareUnits(sim2.units, sim2.time, sim2);
         // Attachment targets need their native body transform even when their
@@ -1062,6 +1066,19 @@ const DIORAMA = class Diorama {
         }
         // Preserve stable source order for equal depth/id and every vector flush boundary.
         ACTORS.sort(COMPARE_ACTORS);
+        // Evaluate shared numeric poses before visible submission. Actor order and
+        // every body/face/effect boundary below remain in painter order.
+        for (const ACTOR of ACTORS) {
+            if (ACTOR.culled) {
+                continue;
+            }
+            if (ACTOR.presentation === this.unitPresentation) {
+                this.unitPresentation.prepareVisibleUnit(ACTOR.source, sim2);
+            } else if (ACTOR.presentation === this.bossPresentation) {
+                this.bossPresentation.prepareVisibleBoss(ACTOR.source, sim2);
+            }
+        }
+        this.meshes.preparePoses();
         let vectorRun = false;
         for (const ACTOR of ACTORS) {
             if (ACTOR.vector && !vectorRun) {
@@ -1177,12 +1194,15 @@ const DIORAMA = class Diorama {
         this.bossAssets?.clear();
         this.bossSpeciesAssets.clear();
         this.bossPresentation.attackDisplays.clear();
+        this.bossPresentation.preparedVisibleBosses.clear();
         this.actors.length = 0;
         this.actorPool.length = 0;
         this.liveUnitIds.clear();
         this.unitPresentation.riceDisplayUnits.clear();
         this.unitPresentation.wheatDisplayUnits.clear();
         this.unitPresentation.barleyDisplayUnits.clear();
+        this.unitPresentation.preparedVisibleUnits.clear();
+        this.unitPresentation.playerIdentities.clear();
         this.unitPresentation.riceDisplayWorld = null;
         this.unitPresentation.riceDisplayTime = 0;
         this.joyEffects.length = 0;

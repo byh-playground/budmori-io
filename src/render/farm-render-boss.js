@@ -46,8 +46,9 @@ export function bossAttackPresentation(boss) {
 export class BossPresentation {
     constructor(renderer) {
         this.renderer = renderer;
-        this.bossAttackPose = new BossAttackPose();
         this.attackDisplays = new Map();
+        this.preparedVisibleBosses = new Map();
+        this.preparedBossFrame = -1;
     }
     sourceBoss(boss) {
         const ENTRY = this.attackDisplays.get(boss.id);
@@ -155,10 +156,30 @@ export class BossPresentation {
         }
         return b.phase === 'chase' ? 'walk' : 'idle';
     }
-    draw(source, world) {
+    prepareVisibleBoss(source, world) {
+        const FRAME = this.renderer.device.stats.frame;
+        if (this.preparedBossFrame !== FRAME) {
+            this.preparedVisibleBosses.clear();
+            this.preparedBossFrame = FRAME;
+        }
+        const SOURCE_BOSS = this.sourceBoss(source);
+        const CURRENT_BOSS = SOURCE_BOSS && SOURCE_BOSS.radius ? SOURCE_BOSS : world.boss;
+        const CURRENT_RECORD = this.renderer.bossSpeciesAssets.get(CURRENT_BOSS.species);
+        const PREPARED_KEY = SOURCE_BOSS.id + ':' + SOURCE_BOSS.generation;
+        const CACHED = this.preparedVisibleBosses.get(PREPARED_KEY);
+        if (
+            CACHED?.world === world &&
+            CACHED.source === SOURCE_BOSS &&
+            CACHED.displayTimeMs === this.renderer.displayTimeMs &&
+            CACHED.revision === world.presentationRevision &&
+            CACHED.species === CURRENT_BOSS.species &&
+            CACHED.record === CURRENT_RECORD
+        ) {
+            return CACHED;
+        }
         // A boss standing on its tile of the map is drawn from its own record; the fighting one is the world's.
-        const SOURCE = this.sourceBoss(source),
-            BOSS = SOURCE && SOURCE.radius ? SOURCE : world.boss,
+        const SOURCE = SOURCE_BOSS,
+            BOSS = CURRENT_BOSS,
             { b: B, p: P, k: K } = this.bossPose(world, this.displayBoss(BOSS, world)),
             EVENT = world.farmBossEvent,
             SPECIES = B.species,
@@ -166,12 +187,17 @@ export class BossPresentation {
             BASIC = this.basicAttackVisible(B, world),
             ATTACK = unitAttackPresentation(B),
             PRESENTATION = CAST || BASIC ? IDLE_PRESENTATION : bossAttackPresentation(B);
-        const RECORD = this.renderer.bossSpeciesAssets.get(SPECIES);
+        const RECORD = CURRENT_RECORD;
         if (!RECORD) {
             throw new Error('Missing required boss vector asset for species ' + SPECIES);
         }
         const INSTANCE_KEY = B.id + ':' + B.generation;
         let instance = this.renderer.bossPlayers.get(INSTANCE_KEY);
+        if (instance && instance.record !== RECORD) {
+            instance.player.dispose();
+            this.renderer.bossPlayers.delete(INSTANCE_KEY);
+            instance = null;
+        }
         if (!instance) {
             const PLAYER = RECORD.asset.createPlayer({
                 clip: 'idle',
@@ -180,6 +206,7 @@ export class BossPresentation {
             instance = {
                 record: RECORD,
                 player: PLAYER,
+                attackPose: new BossAttackPose(),
             };
             this.renderer.bossPlayers.set(INSTANCE_KEY, instance);
         }
@@ -269,7 +296,7 @@ export class BossPresentation {
                 : 0;
         const FADE = EVENT?.phase === 'fading' ? clamp(1 - EVENT.elapsed / CONFIG.farm.bossEvent.fadeSeconds, 0, 1) : 1;
         const PARTS = RECORD.parts,
-            POSE = PRESENTATION.pose(B, PARTS, this.bossAttackPose, RECORD.hands);
+            POSE = PRESENTATION.pose(B, PARTS, (instance.attackPose ??= new BossAttackPose()), RECORD.hands);
         // Ordinary pose writes below reset every channel touched by the cast on
         // completion, cancellation or death. No cast pose survives into combat.
         if (CAST_POSE) {
@@ -303,6 +330,44 @@ export class BossPresentation {
         }
         if (BASIC) {
             applyUnitAttackPose(MATRIX, B, GROUND);
+        }
+        PLAYER.preparePose();
+        const PREPARED = {
+            world,
+            source: SOURCE,
+            displayTimeMs: this.renderer.displayTimeMs,
+            revision: world.presentationRevision,
+            boss: B,
+            projected: P,
+            basic: BASIC,
+            player: PLAYER,
+            record: RECORD,
+            species: SPECIES,
+            presentation: PRESENTATION,
+            pose: POSE,
+            matrix: MATRIX,
+            scale: S_LOCAL,
+        };
+        this.preparedVisibleBosses.set(PREPARED_KEY, PREPARED);
+        return PREPARED;
+    }
+    draw(source, world) {
+        const PREPARED = this.prepareVisibleBoss(source, world);
+        const {
+            boss: B,
+            projected: P,
+            basic: BASIC,
+            player: PLAYER,
+            record: RECORD,
+            species: SPECIES,
+            presentation: PRESENTATION,
+            pose: POSE,
+            matrix: MATRIX,
+            scale: S_LOCAL,
+        } = PREPARED;
+        this.renderer.bossPlayer = PLAYER;
+        this.renderer.bossPlayerAsset = RECORD;
+        if (BASIC) {
             drawUnitAttackGround(this.renderer, B);
         }
         if (this.renderer.cornAttachmentBodies.has(B.id)) {
@@ -313,9 +378,7 @@ export class BossPresentation {
                 x: MOUTH_SOCKET.x * S_LOCAL + MATRIX[4],
                 y: MOUTH_SOCKET.y * S_LOCAL + MATRIX[5],
             };
-        this.renderer.ctx.vector.flush();
-        PLAYER.draw({
-            projection: this.renderer.ctx.vector.projection,
+        this.renderer.ctx.drawVectorAsset(PLAYER, {
             matrix: MATRIX,
         });
         PRESENTATION.drawRelease(this.renderer, B, POSE, MOUTH_SCREEN);

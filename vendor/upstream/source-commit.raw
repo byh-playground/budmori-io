@@ -1,26 +1,26 @@
-tree b06a932ccebd52312214d9d3703d4f73f96bbddf
-parent c987d80273c8b5b0fa5ad015419fdacbf89f7898
-parent ba239fee542ae6551fc730db5a1c7aa3301e3136
-author byh020907 <byh020907@naver.com> 1793058848 +0900
-committer GitHub <noreply@github.com> 1793058848 +0900
+tree 87482eddba7b872e7a95c9b141f4880d0149012d
+parent a028c9efee432c063daac3ca468e4ad6cb21f6fd
+parent 9ca016dc463dbd4b597625f523b04aa396c99d84
+author byh020907 <byh020907@naver.com> 1793080237 +0900
+committer GitHub <noreply@github.com> 1793080237 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq3+ggCRC1aQ7uu5UhlAAAevsQAHjikOYDr8rh28DbB6Wolz/v
- t2DRP9ZPBi+ySb3w9a+tE5G1XRNmuuN62hWCionzcTge1iHxCzVs+aDU4cn9CuQU
- JPteovPCG27cd/4Oa2WGiAKB8TxQh2nyUElV1xl6p2Yo5TGUtChSKQ66X7M2vTLj
- ixPZ8i8/X7JaQDwkO70hViGb336y8FogxB/gqjQ5jH3NctZATFq8edmy3/DCuls8
- Pw+YB/Qk9CE+31PSefqMNutUrcbI2Saq7qez3AT5usSJfPIXqj+GCCizAXuBFTZK
- ZKcK5Rpy4exFlNs6PN/acjrVfx4ZYQNJwb65mu9KKlNzxlgfwYU9uC/DTy2lqzBi
- nidrGtyTihwAteITowtcjK9uOpSHcpMAaLYxUZgczKRgTuTnQGlAIP6JZviM+bsm
- e6mXxrI+lRa5MxpuNqIyVynAztASE+rjxoqzRent0UtXzvRK7IX5nd4hbWChAspC
- u0+hzcBiCRzO3pC2YyJ11FI5/lM/1Abf9hFYvDT/GO4MZULLapW4XXit+CleN0Ld
- I1zObL8wDtcnN8WAjE3417EX9LltqKaOPzCW9Ezwa5UrdJvy55h25NwQPdmpHKU2
- fa/gCxtD4q8rH5+Rsduc0qMhH2kR620KzABzyhoWXCSBs8o/p2poun9pTEnJI2dy
- FH2UB6/lFecKh+Z39bcb
- =bfh2
+ wsFcBAABCAAQBQJq4DutCRC1aQ7uu5UhlAAACRQQACenaI1AJ/LbFrxk8WvB15po
+ St0cZZuVcopos9WDyyqi2zwWu6El7LVju3fYv9yXVHqA/30l2NjNp6p8+AVY5JGc
+ nkFyQZV8X+Cd4pBTfpEEf57w6RK9cl9h2RaXRjDuhHrmloTNIfRf1HHnB5TSWZFL
+ 4lBYEhmn/Jg5mCQvWcM+twz9Q7KhF5rlCi47jtl624bInVUBW3kYvXJ5KEMKkIMJ
+ Md4FCYEk2aCuGtveJf7ZKZJ1ShUEIfrGnSLcI172I7ChjONsbXAKi1GF5P+Jdbyp
+ WajzeDuNxfU0nwynAD0BVgys4mWsRy2U6UQ2x5dO1WNhuL2BkbjyBhslwvgziBDU
+ Vl99vmCsCg8QA64aw2XAQlA2ylVNyrhr7k+ZJp8XSv1g3O1HwzWJLInTT1tBc72S
+ 7lfdJXnMFuN/qZFLbu90uEpQ5GfOL1JfaSngIbODPSslSBfb7GIuxzT8ZWA7tSAA
+ gI3EUi2obcUsr3SR2rrCoF3ksE6yeTso4aYFUk9breB5vkl4WHgMFfvGFNzP4fs+
+ c4FCuiDTkl/3Rq2u9u3MhEAryqnRxPDGIKVoqqG5Mxfxj4mdGf5d7EmdfdgN3dP2
+ AcQ7eDLuuRVFTHagYvh/b8DYX9L1W1qUsVU5MjXz442lVjBK1na4TdYcAoTWjcKT
+ 1W/BMx1UlQQBMvA1vf1O
+ =g+OJ
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #116 from byh-playground/codex/svg-default-pose-source
+Merge pull request #117 from byh-playground/codex/webgl2-gpu-pose
 
-feat(vector-assets): 소스 SVG가 기본 표정을 그리도록 강제 (v0.16.0)
+WebGL 2와 공유 GPU pose atlas를 공통 렌더러에 적용한다 (v0.17.0)
