@@ -1,6 +1,6 @@
 import { BossAttackPresentation } from '../presentation-base.js';
 import { SIGNATURE_FEATURES } from './definition.js';
-import { SIGNATURE_EFFECTS, drawSignatureEffect, drawSignatureWindup } from './effects.js';
+import { SIGNATURE_EFFECTS, drawSignatureEffect, drawSignatureWindup } from './effects/index.js';
 
 // Bright effect colours by element id (lineage.js): fire, ice, grass, lightning, water.
 const FX_COLORS = Object.freeze({
@@ -56,12 +56,12 @@ export const SIGNATURE_PRESENTATIONS = Object.freeze(
     Object.values(SIGNATURE_FEATURES).map((feature) => new SignaturePresentation(feature)),
 );
 
-// The moment a signature skill lands (and each burn tick or jump): the element's own drawing, see effects.js.
+// The moment a signature skill lands (and each burn tick or jump): the element's own drawing, see effects/.
 export class SignatureEffectPresentation {
     lifeMsFor(event) {
         return SIGNATURE_EFFECTS[event.element].lifeMs;
     }
     draw(renderer, event, progress) {
-        drawSignatureEffect(renderer, event, progress, this.lifeMsFor(event));
+        drawSignatureEffect(renderer, event, progress);
     }
 }
