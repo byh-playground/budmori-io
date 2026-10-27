@@ -1,8 +1,9 @@
 import { SeedProjectile } from '../features/projectiles/seed/model.js';
 import { SpikeProjectile } from '../features/projectiles/spike/model.js';
 import { projectileFeature } from '../features/projectiles/definition.js';
+import { ARENA_GEOMETRY, BALLISTICS } from './arena-geometry.js';
 
-export function createProjectileBehaviors(dependencies) {
+function createProjectileBehaviors(dependencies) {
     const BEHAVIORS = Object.freeze(
         Object.fromEntries(
             [new SeedProjectile(dependencies), new SpikeProjectile(dependencies)].map((behavior) => [
@@ -17,3 +18,8 @@ export function createProjectileBehaviors(dependencies) {
         },
     });
 }
+
+export const PROJECTILE_BEHAVIORS = createProjectileBehaviors({
+    Ballistics: BALLISTICS,
+    ArenaGeometry: ARENA_GEOMETRY,
+});
