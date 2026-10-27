@@ -62,38 +62,38 @@
     <ellipse id="neutral-eye-right" cx="141" cy="107" rx="5.5" ry="5.5" fill="#3b241e"/>
     <path id="neutral-mouth" d="M117 114 Q123.5 120 131 114" fill="none" stroke="#3b241e" stroke-width="2.7" stroke-linecap="round"/>
   </g>
-  <g id="face-happy" transform="translate(160 153) scale(.96 .97) translate(-160 -153)">
+  <g id="face-happy" display="none" transform="translate(160 153) scale(.96 .97) translate(-160 -153)">
     <ellipse id="peanut-happy-blush-left" cx="136" cy="132" rx="8" ry="4.5" fill="#e9897f"/>
     <ellipse id="peanut-happy-blush-right" cx="184" cy="132" rx="8" ry="4.5" fill="#e9897f"/>
     <path id="peanut-happy-eyes-mouth" d="M129 119 Q137 109 145 119 M175 119 Q183 109 191 119 M148 134 Q160 151 172 134 Z" fill="#3b241e" stroke="#3b241e" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
-  <g id="face-focused" transform="translate(160 153) scale(.96 .97) translate(-160 -153)">
+  <g id="face-focused" display="none" transform="translate(160 153) scale(.96 .97) translate(-160 -153)">
     <path id="peanut-focused-brows" d="M127 107 L143 111 M177 111 L193 107" fill="none" stroke="#3b241e" stroke-width="3" stroke-linecap="round"/>
     <ellipse id="peanut-focused-eye-left" cx="137" cy="119" rx="6.5" ry="8" fill="#3b241e"/>
     <ellipse id="peanut-focused-eye-right" cx="183" cy="119" rx="6.5" ry="8" fill="#3b241e"/>
     <path id="peanut-focused-mouth" d="M151 139 L169 139" fill="none" stroke="#3b241e" stroke-width="3" stroke-linecap="round"/>
   </g>
-  <g id="face-attack" transform="translate(160 153) scale(.96 .97) translate(-160 -153)">
+  <g id="face-attack" display="none" transform="translate(160 153) scale(.96 .97) translate(-160 -153)">
     <path id="peanut-attack-brows" d="M127 108 L143 112 M177 112 L193 108" fill="none" stroke="#3b241e" stroke-width="3" stroke-linecap="round"/>
     <ellipse id="peanut-attack-eye-left" cx="137" cy="119" rx="6.5" ry="8" fill="#3b241e"/>
     <ellipse id="peanut-attack-eye-right" cx="183" cy="119" rx="6.5" ry="8" fill="#3b241e"/>
     <ellipse id="peanut-attack-mouth" cx="160" cy="139" rx="4.5" ry="6" fill="#3b241e"/>
   </g>
-  <g id="face-surprised" transform="translate(160 153) scale(.96 .97) translate(-160 -153)">
+  <g id="face-surprised" display="none" transform="translate(160 153) scale(.96 .97) translate(-160 -153)">
     <ellipse id="peanut-surprised-eye-left" cx="137" cy="119" rx="7" ry="8" fill="none" stroke="#3b241e" stroke-width="3.2"/>
     <ellipse id="peanut-surprised-eye-right" cx="183" cy="119" rx="7" ry="8" fill="none" stroke="#3b241e" stroke-width="3.2"/>
     <ellipse id="peanut-surprised-mouth" cx="160" cy="139" rx="4.5" ry="6" fill="none" stroke="#3b241e" stroke-width="3.2"/>
   </g>
-  <g id="face-hurt" transform="translate(160 153) scale(.96 .97) translate(-160 -153)">
+  <g id="face-hurt" display="none" transform="translate(160 153) scale(.96 .97) translate(-160 -153)">
     <path id="peanut-hurt-eyes" d="M130 112 L144 126 M144 112 L130 126 M176 112 L190 126 M190 112 L176 126" fill="none" stroke="#3b241e" stroke-width="3.2" stroke-linecap="round"/>
     <path id="peanut-hurt-mouth" d="M151 146 Q160 137 169 146" fill="none" stroke="#3b241e" stroke-width="3.2" stroke-linecap="round"/>
   </g>
-  <g id="face-hungry" transform="translate(160 153) scale(.96 .97) translate(-160 -153)">
+  <g id="face-hungry" display="none" transform="translate(160 153) scale(.96 .97) translate(-160 -153)">
     <ellipse id="peanut-hungry-eye-left" cx="137" cy="119" rx="6.5" ry="8" fill="#3b241e"/>
     <ellipse id="peanut-hungry-eye-right" cx="183" cy="119" rx="6.5" ry="8" fill="#3b241e"/>
     <path id="peanut-hungry-mouth" d="M160 134 C153 134 151 143 160 148 C169 143 167 134 160 134 Z" fill="#3b241e"/>
   </g>
-  <g id="face-dead" transform="translate(160 153) scale(.96 .97) translate(-160 -153)">
+  <g id="face-dead" display="none" transform="translate(160 153) scale(.96 .97) translate(-160 -153)">
     <path id="peanut-dead-eyes" d="M130 112 L144 126 M144 112 L130 126 M176 112 L190 126 M190 112 L176 126" fill="none" stroke="#3b241e" stroke-width="3.2" stroke-linecap="round"/>
     <path id="peanut-dead-mouth" d="M151 141 L169 141" fill="none" stroke="#3b241e" stroke-width="3.2" stroke-linecap="round"/>
   </g>

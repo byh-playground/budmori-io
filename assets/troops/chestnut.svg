@@ -18,40 +18,40 @@
       <ellipse id="neutral-eye-right" cx="192" cy="116" rx="10" ry="12" fill="#2d1e1a"/>
       <path id="neutral-mouth" d="M148 136 Q160 149 172 136" fill="none" stroke="#2d1e1a" stroke-width="4.5" stroke-linecap="round"/>
     </g>
-    <g id="face-focused">
+    <g id="face-focused" display="none">
       <path id="focused-brow-left" d="M117 104 L135 109 M185 109 L203 104" fill="none" stroke="#2d1e1a" stroke-width="3.5" stroke-linecap="round"/>
       <ellipse id="focused-eye-left" cx="128" cy="118" rx="8" ry="10" fill="#2d1e1a"/>
       <ellipse id="focused-eye-right" cx="192" cy="118" rx="8" ry="10" fill="#2d1e1a"/>
       <path id="focused-mouth" d="M150 140 L170 140" fill="none" stroke="#2d1e1a" stroke-width="4" stroke-linecap="round"/>
     </g>
-    <g id="face-attack">
+    <g id="face-attack" display="none">
       <path id="attack-brow-left" d="M116 104 L135 110 M185 110 L204 104" fill="none" stroke="#2d1e1a" stroke-width="3.5" stroke-linecap="round"/>
       <ellipse id="attack-eye-left" cx="128" cy="118" rx="9" ry="11" fill="#2d1e1a"/>
       <ellipse id="attack-eye-right" cx="192" cy="118" rx="9" ry="11" fill="#2d1e1a"/>
       <ellipse id="attack-mouth" cx="160" cy="140" rx="7" ry="8" fill="#2d1e1a"/>
     </g>
-    <g id="face-hurt">
+    <g id="face-hurt" display="none">
       <path id="hurt-eye-left" d="M119 116 L137 116 M119 109 L137 123" fill="none" stroke="#2d1e1a" stroke-width="4" stroke-linecap="round"/>
       <path id="hurt-eye-right" d="M183 116 L201 116 M183 123 L201 109" fill="none" stroke="#2d1e1a" stroke-width="4" stroke-linecap="round"/>
       <path id="hurt-mouth" d="M149 145 Q160 137 171 145" fill="none" stroke="#2d1e1a" stroke-width="4" stroke-linecap="round"/>
     </g>
-    <g id="face-dead">
+    <g id="face-dead" display="none">
       <path id="dead-eye-left" d="M120 110 L136 124 M136 110 L120 124" fill="none" stroke="#2d1e1a" stroke-width="4" stroke-linecap="round"/>
       <path id="dead-eye-right" d="M184 110 L200 124 M200 110 L184 124" fill="none" stroke="#2d1e1a" stroke-width="4" stroke-linecap="round"/>
       <path id="dead-mouth" d="M150 140 L170 140" fill="none" stroke="#2d1e1a" stroke-width="4" stroke-linecap="round"/>
     </g>
-    <g id="face-happy">
+    <g id="face-happy" display="none">
       <ellipse id="happy-cheek-left" cx="104" cy="137" rx="16" ry="12" fill="#f07880"/>
       <ellipse id="happy-cheek-right" cx="216" cy="137" rx="16" ry="12" fill="#f07880"/>
       <path id="happy-eyes" d="M118 120 Q128 107 138 120 M182 120 Q192 107 202 120" fill="none" stroke="#2d1e1a" stroke-width="4.5" stroke-linecap="round"/>
       <path id="happy-mouth" d="M147 136 Q160 153 173 136 Z" fill="#2d1e1a"/>
     </g>
-    <g id="face-surprised">
+    <g id="face-surprised" display="none">
       <ellipse id="troop-surprised-eye-left" cx="128" cy="116" rx="9" ry="11" fill="none" stroke="#2d1e1a" stroke-width="4"/>
       <ellipse id="troop-surprised-eye-right" cx="192" cy="116" rx="9" ry="11" fill="none" stroke="#2d1e1a" stroke-width="4"/>
       <ellipse id="troop-surprised-mouth" cx="160" cy="140" rx="6" ry="8" fill="none" stroke="#2d1e1a" stroke-width="4"/>
     </g>
-    <g id="face-hungry">
+    <g id="face-hungry" display="none">
       <ellipse id="troop-hungry-eye-left" cx="128" cy="116" rx="9" ry="11" fill="#2d1e1a"/>
       <ellipse id="troop-hungry-eye-right" cx="192" cy="116" rx="9" ry="11" fill="#2d1e1a"/>
       <path id="troop-hungry-mouth" d="M160 136 C154 136 153 144 160 148 C167 144 166 136 160 136 Z" fill="#2d1e1a"/>
