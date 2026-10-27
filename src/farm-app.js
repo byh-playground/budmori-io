@@ -44,6 +44,8 @@ DOLLAR('abilitySpeciesTabs').innerHTML = renderAbilitySpeciesTabsMarkup();
 let imported = null;
 let active = null;
 let frameRequest = null;
+let graphicsRecovery = null;
+let sessionClockNow = () => performance.now();
 let home = true;
 let personalGarden = null;
 let unsubscribeProgress = null;
@@ -556,7 +558,11 @@ function install(world) {
     RENDERER.resetPan();
     active = new FarmSession(world, {
         onError: FAIL,
+        now: () => sessionClockNow(),
     });
+    if (graphicsRecovery) {
+        active.suspendClock();
+    }
     world.setWorkBasisPoints(loadWorkSetting(world.workBasisPoints));
     loadBreedWeights(world);
     loadDeployOrder(world);
@@ -2108,6 +2114,7 @@ window.addEventListener('pagehide', () => {
     }
     cancelAnimationFrame(frameRequest);
     frameRequest = null;
+    graphicsRecovery = null;
     stopWorldInput();
     persist();
     if (!home) {
@@ -2119,11 +2126,59 @@ window.addEventListener('pagehide', () => {
     unsubscribeProgress = null;
     RENDERER.dispose();
 });
+const GRAPHICS_RECOVERY_MESSAGE = '그래픽 화면을 복구하고 있어요.';
+function suspendGraphics() {
+    if (frameRequest === null || active.closed) {
+        return;
+    }
+    if (!graphicsRecovery) {
+        stopWorldInput();
+        persist();
+        graphicsRecovery = { revision: 0, failed: false };
+    }
+    active.suspendClock();
+    if (DOLLAR('error').hidden) {
+        DOLLAR('error').hidden = false;
+        DOLLAR('error').textContent = GRAPHICS_RECOVERY_MESSAGE;
+    }
+}
 CANVAS.addEventListener('webglcontextlost', (e) => {
     e.preventDefault();
-    stopWorldInput();
-    persist();
-    FAIL(Error('그래픽 연결이 끊겼어요. 새로고침해 다시 이어가 주세요.'));
+    suspendGraphics();
+    if (graphicsRecovery) {
+        graphicsRecovery.revision++;
+    }
+});
+CANVAS.addEventListener('webglcontextrestored', () => {
+    const RECOVERY = graphicsRecovery,
+        REVISION = RECOVERY?.revision;
+    // SDK resource listeners, including lazily created painters, finish first.
+    setTimeout(() => {
+        if (!RECOVERY || graphicsRecovery !== RECOVERY || RECOVERY.revision !== REVISION || RECOVERY.failed) {
+            return;
+        }
+        if (frameRequest === null || active.closed) {
+            graphicsRecovery = null;
+            return;
+        }
+        if (RENDERER.device.gl.isContextLost()) {
+            return;
+        }
+        if ([RENDERER.device, RENDERER.ctx, RENDERER.meshes].some((owner) => owner.state !== 'ready')) {
+            RECOVERY.failed = true;
+            FAIL(Error('그래픽 화면을 복구하지 못했어요. 새로고침해 다시 이어가 주세요.'));
+            return;
+        }
+        if (HELP.scene) {
+            HELP.last = performance.now();
+        }
+        active.resumeClock();
+        graphicsRecovery = null;
+        if (DOLLAR('error').textContent === GRAPHICS_RECOVERY_MESSAGE) {
+            DOLLAR('error').hidden = true;
+            DOLLAR('error').textContent = '';
+        }
+    }, 0);
 });
 function route() {
     stopWorldInput();
@@ -2363,6 +2418,11 @@ function frame(now) {
     if (frameRequest === null) {
         return;
     }
+    if (graphicsRecovery || RENDERER.device.gl.isContextLost()) {
+        suspendGraphics();
+        frameRequest = requestAnimationFrame(frame);
+        return;
+    }
     try {
         PERFORMANCE_DIAGNOSTICS.beginFrame(now);
         active.profiler = PERFORMANCE_DIAGNOSTICS;
@@ -2398,6 +2458,12 @@ function frame(now) {
         PERFORMANCE_DIAGNOSTICS.endFrame(RENDERER);
         frameRequest = requestAnimationFrame(frame);
     } catch (error) {
+        if (RENDERER.device.gl.isContextLost()) {
+            PERFORMANCE_DIAGNOSTICS.endFrame(RENDERER);
+            suspendGraphics();
+            frameRequest = requestAnimationFrame(frame);
+            return;
+        }
         if (typeof globalThis.BloomReportRuntimeFatal === 'function') {
             globalThis.BloomReportRuntimeFatal(error);
         } else {
@@ -2440,6 +2506,7 @@ const HELP = {
         }
     },
 };
+sessionClockNow = () => (HELP.scene && HELP.last !== null ? HELP.scaled : performance.now());
 if (HELP.scene) {
     const SCENE = HELP.scene,
         WORLD = new Garden(SCENE.seed);

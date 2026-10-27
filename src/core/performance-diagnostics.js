@@ -118,7 +118,12 @@ export class PerformanceDiagnostics {
         this.meter.beginFrame(now);
     }
     endFrame(renderer) {
-        const POSES = renderer.device.state === 'ready' ? renderer.meshes.poseStats() : null;
+        if (renderer.device.state !== 'ready' || renderer.device.gl.isContextLost()) {
+            this.frameMaximums = Object.create(null);
+            this.meter.endFrame();
+            return;
+        }
+        const POSES = renderer.meshes.poseStats();
         if (POSES) {
             this.count('gpuPoseInstances', POSES.gpuDrawInstances);
             this.count('cpuPoseInstances', POSES.cpuDrawInstances);
