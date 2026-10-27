@@ -10,16 +10,9 @@ import {
     CONTACT_STRIKE_RATIOS,
     contactAttackTiming,
 } from './attack-profile.js';
+import { resolveStrikeSlots, strikeSpecies } from './strike-slots.js';
 import { BarleyArmorShredModel } from '../abilities/barley-shred/model.js';
-import {
-    attackTargetKey,
-    isAttackActionDTO,
-    attackOwnerCanContinue,
-    commitAttackAction,
-    createAttackRuntime,
-    sampleCriticalRoll,
-    strikeCandidates,
-} from './attack-action.js';
+import { attackTargetKey, isAttackActionDTO, commitAttackAction, createAttackRuntime } from './attack-action.js';
 import { growthBuildOf, growthForAbility } from './state.js';
 import { COMMON_UNIT_STAT_DEFAULTS } from '../../units/unit-stats.js';
 const ATTACK_KIND = 'ram';
@@ -141,114 +134,42 @@ function barleySlotGeometry(r, slot) {
     };
 }
 const RUNTIME_OF = createAttackRuntime();
-export function resolveBarleySlots(world, unit, action, elapsed, geometry) {
-    const R = action.barleyAttack;
-    if (!R || R.launchTick === null || !attackOwnerCanContinue(world, unit, action, R)) {
-        return;
-    }
-    R.motionTick = Math.min(Math.round(R.durationSeconds * 20), Math.max(0, Math.round(elapsed * 20)));
-    const RUNTIME = RUNTIME_OF(R),
-        A = RUNTIME.action,
-        READY = A.advance(R.launchTick + R.motionTick);
-    if (!READY.length) {
-        R.attack.lastTick = A.lastTick;
-        return;
-    }
-    for (const S of READY) {
-        if (!attackOwnerCanContinue(world, unit, action, R)) {
-            break;
+const BARLEY_STRIKES = strikeSpecies({
+    recordKey: 'barleyAttack',
+    runtime: RUNTIME_OF,
+    slotGeometry: barleySlotGeometry,
+    attackKind: ATTACK_KIND,
+    eventKind: 'barley-strike',
+    // Each successful slot applies its own share after damage. The final
+    // multi-hit slot benefits from shred but never repeats the budget.
+    afterDamage(world, unit, record, strike, target, damage) {
+        const SHRED_SLOTS = Math.max(1, record.shots.length - 1);
+        if (!damage || (record.shots.length !== 1 && strike.slot >= SHRED_SLOTS)) {
+            return;
         }
-        const G = barleySlotGeometry(R, S.slot),
-            TARGET = world.attackTarget(unit, action),
-            PRIMARY = TARGET?.hp > 0 ? TARGET : null;
-        const CANDIDATES = strikeCandidates(world, unit, PRIMARY);
-        let secondary = 0;
-        for (const T of CANDIDATES) {
-            if (!attackOwnerCanContinue(world, unit, action, R)) {
-                break;
-            }
-            const MAIN = T === PRIMARY;
-            if (!MAIN && secondary >= 4) {
-                continue;
-            }
-            const HIT = geometry.sweep(G.from, G.to, G.radius, G.height, T);
-            if (!HIT) {
-                continue;
-            }
-            const ID = T.id;
-            if (!A.claimHit(S.slot, ID, T.generation)) {
-                continue;
-            }
-            if (!MAIN) {
-                secondary++;
-            }
-            const KEY = attackTargetKey(ID, T.generation);
-            const CRITICAL_ROLL = sampleCriticalRoll(world, R, KEY);
-            const SOURCE = R.source;
-            const DAMAGE = world.damageCombatTarget(unit, { id: action.id, hit: false }, T, HIT, {
-                attackKind: ATTACK_KIND,
-                suppressBasicProc: !A.claimOnce('basic-proc'),
-                attackContext: {
-                    source: unit,
-                    sourceKind: SOURCE.sourceKind,
-                    attackerStats: SOURCE.attackerStats,
-                    damageMultiplier:
-                        R.multiplier *
-                        (S.weight + (S.slot === R.shots.length - 1 ? 0.08 * R.ranks.finish : 0)) *
-                        (MAIN ? 1 : 0.5),
-                    criticalChanceSnapshot: Reflect.get(R.criticalChances, KEY),
-                    attackPowerMultiplier: SOURCE.attackPowerMultiplier,
-                    sourceDamageScale: SOURCE.sourceDamageScale,
-                    kind: ATTACK_KIND,
-                    strikeIndex: S.slot,
-                    buffed: false,
-                    sourceStatOverrides: SOURCE.attackerStats,
-                    area: true,
-                    criticalRoll: CRITICAL_ROLL,
-                    hitTargets: null,
-                },
+        const AMOUNT =
+            ((1 + 0.4 * record.ranks.shred) * (1 + 0.03 * record.ranks.power) * (1 + 0.2 * (record.tier - 1))) /
+            SHRED_SLOTS;
+        const RESULT = BarleyArmorShredModel.applyAmount(
+            target,
+            world.simulationTick,
+            AMOUNT,
+            60 + 8 * record.ranks.duration,
+        );
+        if (RESULT) {
+            world.combat('barley-shred', {
+                sourceUnit: unit.id,
+                unit: target.id,
+                amount: RESULT.amount,
+                x: target.x,
+                y: target.y,
+                z: target.z || 0,
             });
-            // Each successful slot applies its own share after damage. The final
-            // multi-hit slot benefits from shred but never repeats the budget.
-            const SHRED_SLOTS = Math.max(1, R.shots.length - 1);
-            if (DAMAGE && (R.shots.length === 1 || S.slot < SHRED_SLOTS)) {
-                const AMOUNT =
-                    ((1 + 0.4 * R.ranks.shred) * (1 + 0.03 * R.ranks.power) * (1 + 0.2 * (R.tier - 1))) / SHRED_SLOTS;
-                const RESULT = BarleyArmorShredModel.applyAmount(
-                    T,
-                    world.simulationTick,
-                    AMOUNT,
-                    60 + 8 * R.ranks.duration,
-                );
-                if (RESULT) {
-                    world.combat('barley-shred', {
-                        sourceUnit: unit.id,
-                        unit: ID,
-                        amount: RESULT.amount,
-                        x: T.x,
-                        y: T.y,
-                        z: T.z || 0,
-                    });
-                }
-            }
         }
-        world.combat('barley-strike', {
-            unit: unit.id,
-            actionId: action.id,
-            slot: S.slot,
-            form: R.form,
-            stage: R.shots[S.slot].stage,
-        });
-    }
-    // The plan and start tick are immutable after launch. Keep their original
-    // transport copy and synchronize only consumed slots and mutable claims.
-    R.attack.nextSlot = A.nextSlot;
-    R.attack.lastTick = A.lastTick;
-    R.attack.cancelled = A.cancelled;
-    for (const S of READY) {
-        R.attack.hits[S.slot] = [...A.hits[S.slot]];
-    }
-    R.attack.claims = [...A.claims];
+    },
+});
+export function resolveBarleySlots(world, unit, action, elapsed, geometry) {
+    resolveStrikeSlots(world, unit, action, elapsed, geometry, BARLEY_STRIKES);
 }
 export function isBarleyAttackRecord(r) {
     if (

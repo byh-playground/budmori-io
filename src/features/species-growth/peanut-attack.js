@@ -8,15 +8,8 @@ import {
     exactKeys,
     attackBudgetMultiplier,
 } from './attack-profile.js';
-import {
-    attackTargetKey,
-    isAttackActionDTO,
-    attackOwnerCanContinue,
-    commitAttackAction,
-    createAttackRuntime,
-    sampleCriticalRoll,
-    strikeCandidates,
-} from './attack-action.js';
+import { resolveStrikeSlots, strikeSpecies } from './strike-slots.js';
+import { attackTargetKey, isAttackActionDTO, commitAttackAction, createAttackRuntime } from './attack-action.js';
 import { growthBuildOf, growthForAbility } from './state.js';
 import { COMMON_UNIT_STAT_DEFAULTS } from '../../units/unit-stats.js';
 import { FEATURE as DUAL_STRIKE_FEATURE } from '../unit-attacks/dual-strike/definition.js';
@@ -155,90 +148,17 @@ function peanutSlotGeometry(r, slot) {
     };
 }
 const RUNTIME_OF = createAttackRuntime();
+const PEANUT_STRIKES = strikeSpecies({
+    recordKey: 'peanutAttack',
+    runtime: RUNTIME_OF,
+    slotGeometry: peanutSlotGeometry,
+    attackKind: DUAL_STRIKE_FEATURE.id,
+    eventKind: 'peanut-strike',
+    motionTicks: () => 10,
+    contextFor: () => ({}),
+});
 export function resolvePeanutSlots(world, unit, action, elapsed, geometry) {
-    const R = action.peanutAttack;
-    if (!R || R.launchTick === null || !attackOwnerCanContinue(world, unit, action, R)) {
-        return;
-    }
-    R.motionTick = Math.min(10, Math.max(0, Math.round(elapsed * 20)));
-    const RUNTIME = RUNTIME_OF(R),
-        A = RUNTIME.action,
-        READY = A.advance(R.launchTick + R.motionTick);
-    if (!READY.length) {
-        R.attack.lastTick = A.lastTick;
-        return;
-    }
-    for (const S of READY) {
-        if (!attackOwnerCanContinue(world, unit, action, R)) {
-            break;
-        }
-        const G = peanutSlotGeometry(R, S.slot),
-            TARGET = world.attackTarget(unit, action),
-            PRIMARY = TARGET?.hp > 0 ? TARGET : null;
-        const CANDIDATES = strikeCandidates(world, unit, PRIMARY);
-        let secondary = 0;
-        for (const T of CANDIDATES) {
-            if (!attackOwnerCanContinue(world, unit, action, R)) {
-                break;
-            }
-            const MAIN = T === PRIMARY;
-            if (!MAIN && secondary >= 4) {
-                continue;
-            }
-            const HIT = geometry.sweep(G.from, G.to, G.radius, G.height, T);
-            if (!HIT) {
-                continue;
-            }
-            const ID = T.id;
-            if (!A.claimHit(S.slot, ID, T.generation)) {
-                continue;
-            }
-            if (!MAIN) {
-                secondary++;
-            }
-            const KEY = attackTargetKey(ID, T.generation);
-            const CRITICAL_ROLL = sampleCriticalRoll(world, R, KEY);
-            const SOURCE = R.source;
-            world.damageCombatTarget(unit, { id: action.id, hit: false }, T, HIT, {
-                attackKind: DUAL_STRIKE_FEATURE.id,
-                suppressBasicProc: !A.claimOnce('basic-proc'),
-                attackContext: {
-                    source: unit,
-                    sourceKind: SOURCE.sourceKind,
-                    attackerStats: SOURCE.attackerStats,
-                    damageMultiplier:
-                        R.multiplier *
-                        (S.weight + (S.slot === R.shots.length - 1 ? 0.08 * R.ranks.finish : 0)) *
-                        (MAIN ? 1 : 0.5),
-                    attackPowerMultiplier: SOURCE.attackPowerMultiplier,
-                    sourceDamageScale: SOURCE.sourceDamageScale,
-                    kind: DUAL_STRIKE_FEATURE.id,
-                    strikeIndex: S.slot,
-                    buffed: false,
-                    sourceStatOverrides: SOURCE.attackerStats,
-                    area: true,
-                    criticalRoll: CRITICAL_ROLL,
-                    hitTargets: null,
-                },
-            });
-        }
-        world.combat('peanut-strike', {
-            unit: unit.id,
-            actionId: action.id,
-            slot: S.slot,
-            form: R.form,
-            stage: R.shots[S.slot].stage,
-        });
-    }
-    // The plan and start tick are immutable after launch. Keep their original
-    // transport copy and synchronize only consumed slots and mutable claims.
-    R.attack.nextSlot = A.nextSlot;
-    R.attack.lastTick = A.lastTick;
-    R.attack.cancelled = A.cancelled;
-    for (const S of READY) {
-        R.attack.hits[S.slot] = [...A.hits[S.slot]];
-    }
-    R.attack.claims = [...A.claims];
+    resolveStrikeSlots(world, unit, action, elapsed, geometry, PEANUT_STRIKES);
 }
 export function isPeanutAttackRecord(r) {
     if (
