@@ -46,7 +46,6 @@ const VALID_BATTLE_UNIT_ID = (id, bossSummonSerial) =>
 function validActorId(raw, id) {
     return raw.bosses.some((boss) => boss.id === id) || VALID_BATTLE_UNIT_ID(id, raw.bossSummonSerial);
 }
-export { VALID_BATTLE_UNIT_ID as validBattleUnitId };
 function assertSnapshot(ok) {
     if (!ok) {
         throw new TypeError('올바른 농장 저장 데이터가 아니에요.');
@@ -54,7 +53,6 @@ function assertSnapshot(ok) {
 }
 const ASSERT = assertSnapshot;
 const MAX_PEANUT_SPLIT_CHILDREN = 2;
-export { assertSnapshot };
 function finiteTree(v, depth = 0, key = '', progression = false) {
     ASSERT(depth < 18);
     if (typeof v === 'number') {

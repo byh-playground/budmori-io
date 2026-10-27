@@ -24,7 +24,6 @@ const IS_READABLE_COMPATIBILITY = (version) =>
         '0.31',
         '0.30',
     ].includes(COMPATIBILITY_LOCAL(version));
-export { IS_READABLE_COMPATIBILITY as isReadableCompatibility };
 function readFarmSave(text) {
     if (typeof text !== 'string' || text.length > MAX_BYTES) {
         throw Error('Save data is too large. The original data was left unchanged.');

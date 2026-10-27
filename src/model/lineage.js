@@ -38,10 +38,10 @@ export const ELEMENT_COUNT = ELEMENTS.length - 1;
 // Seeds only drop the first-tier species; the rest are made by recipes.
 export const SEED_SPECIES = Object.freeze([0, 6, 7, 2, 8, 9]);
 
-export const SEED_GENE_RATES = Object.freeze({ carrier: 0.15, recessive: 0.02 });
+const SEED_GENE_RATES = Object.freeze({ carrier: 0.15, recessive: 0.02 });
 export const SEED_FEEDS = 3;
 export const SEED_FEED_COOLDOWN_SECONDS = 5;
-export const TEMPERAMENT_MUTATION_RATE = 0.1;
+const TEMPERAMENT_MUTATION_RATE = 0.1;
 
 export const RECIPES = Object.freeze([
     Object.freeze({ a: 0, b: 6, result: 1 }),
@@ -95,10 +95,6 @@ export function isValidGenes(genes) {
 // Only two matching recessive genes show; a single one is a hidden carrier.
 export function elementOf(genes) {
     return genes[0] === genes[1] ? genes[0] : 0;
-}
-
-export function carriedElement(genes) {
-    return genes[0] !== genes[1] ? Math.max(genes[0], genes[1]) : 0;
 }
 
 export function rollSeedGenes(random) {
@@ -189,14 +185,14 @@ export function isValidCodex(codex) {
 
 // An element unit's hit carries half its power again as element damage, so it deals 200% on an advantage, 150% on
 // an even match and 125% on a disadvantage; a plain unit deals 100%.
-export const ELEMENT_HIT_BONUS = 0.5;
+const ELEMENT_HIT_BONUS = 0.5;
 export function elementHitScale(attacker, defender) {
     return attacker === 0 ? 1 : 1 + ELEMENT_HIT_BONUS * elementMultiplier(attacker, defender);
 }
 
 // What an element hit from a boss does to one of our units: a plain unit always takes 150%; a coloured unit takes the
 // cycle's multiplier (200% if the boss beats it, 50% if it beats the boss, 100% otherwise).
-export const PLAIN_ELEMENT_DAMAGE_TAKEN = 1.5;
+const PLAIN_ELEMENT_DAMAGE_TAKEN = 1.5;
 export function elementDamageTaken(bossElement, genes) {
     const ELEMENT = elementOf(genes);
     return ELEMENT === 0 ? PLAIN_ELEMENT_DAMAGE_TAKEN : elementMultiplier(bossElement, ELEMENT);

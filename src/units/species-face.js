@@ -2,7 +2,7 @@ import { ELEMENTS } from '../model/lineage.js';
 
 // Existing temperament brows use eye anchors. Cheek colour lives only in authored SVG named fills.
 const FACE = (viewBox, eyes, eyeH) => Object.freeze({ viewBox, eyes, eyeH });
-export const SPECIES_FACES = Object.freeze([
+const SPECIES_FACES = Object.freeze([
     FACE(
         [320, 350],
         [
