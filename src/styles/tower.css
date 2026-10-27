@@ -503,19 +503,3 @@ body:has(#towerSummit:not([hidden])) #battleOutcome {
         top: max(46px, calc(var(--ui-safe-top) + 38px));
     }
 }
-
-.camera-reset {
-    position: fixed;
-    z-index: var(--ui-z-dock);
-    right: max(12px, env(safe-area-inset-right));
-    top: 50%;
-    min-height: 44px;
-    padding: 8px 12px;
-    border: var(--ui-bw) solid var(--ui-line);
-    border-radius: var(--ui-r-m);
-    background: var(--ui-panel);
-    color: var(--ui-ink);
-    font: inherit;
-    font-size: 12px;
-    touch-action: manipulation;
-}
