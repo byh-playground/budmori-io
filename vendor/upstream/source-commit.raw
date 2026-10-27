@@ -1,26 +1,26 @@
-tree c873f09c0621ef1647a17a6d13e365acc541ffa5
-parent 1053a8c57a81a16fac5b355920ad7ba38c87d06d
-parent bff7f085cc16dfba797768facce8d8e867f9f4d2
-author byh020907 <byh020907@naver.com> 1793083713 +0900
-committer GitHub <noreply@github.com> 1793083713 +0900
+tree 5adfebe2d88a33d625ecd5fafa2dedafb2324800
+parent d371e0fdc536c57172050a45ce08e62e3267b9c0
+parent 1a4aa2a48019614952052f111673ede5b9e7c7c0
+author byh020907 <byh020907@naver.com> 1793097810 +0900
+committer GitHub <noreply@github.com> 1793097810 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq4ElBCRC1aQ7uu5UhlAAAwboQACZd7eXZyov9zllfYSI8/kLd
- mhvYbsmwRFlxCMFAtY6zYI3qwARapX7/62rwQUmtHIakqqsxsX3Uv6mDzQtaM8Eg
- 3zr5Euu3s/o9KRQJEHM/LW+J+E47S7pfEmaD5GcroefOTirLPJsqqaokjC6uKVYc
- ok2MrvwiGxs6dvmcsRy+nOQ260StPIFCkTCeEX/3eOMNaMa0LkyYxtmbyDq1/lKh
- 3TmWnM7ybVd7co22tHGwsDTmfPWmvhfgHEnbwOme+l3BLZKARMDZYYNqfoT+CKqP
- 3avOO+C5/FbDBMAo8ztExKWWGqIL9q8fgh0yeR8geXkt7zCJMMUKHUQzloxwdopm
- HFg0TDmCk55c439t/lI0vecEue8yWRh3Cg985Rc8KI4ntbuNxKkBmkB6/S7s95g8
- dzv334cUcBHbAg4/9CQAEwA1t2keSzRmqMe1veGyur/X3snlT5l4THFJQFzU5Y6H
- ezXgoa59BHMk4Kfc9/aVsKu4rNuEq9zvsRxLH/yPSJ3d5xmGZVYAAyZ47gzLX4SB
- 0Eev5Awmt+F3IilGCn05V3rP8m/VaeZnw8/bjgFGpyOvkTdW+AP/9GQnNMIHIElf
- cPpTg18zvv7idCBlPw5X5kku2eOW0+qarrakhCsiyyhHq7XZY50F0bqOEPsy3uBu
- ycKlRpoykyN1hnPdXfY7
- =KCT1
+ wsFcBAABCAAQBQJq4IBSCRC1aQ7uu5UhlAAA++cQAFCPmbI0f3SGunQZ0pFugyul
+ FZcVU6rz+i3OWVWWP5b5MHQ9lDdquDezHDCTTJYJridRLzcia89/Qa6XGQ7tww1Y
+ EqEBSQ9HTqLC3IPKY5+euUpP2h+NkGhycyGeGlbgdWFG56hyxuiO1YVJXeoHA5s5
+ uRtB6AKWOk/GsKR6vcO5zq6brbJNcgt8HqLSGbrxx3EDDEM8BcW5Fm+d0B2eEska
+ 7UrG3AS+upYyoi9QNk58wsPndQ/F5zkpvJU5Ji+jPfi0ioze0h1nmgXpyMRMdnZW
+ LiGWdWxWpeAHjBCQiZdEnduHHKnlb963BuqYLDuLZnGvR6HQE/bDD1njGqIthyLm
+ KEr2JElyEcVJa69Z931SuMmomuU2UCIZzO7kxNfXbjxE6hu92dDkVyLO3sh0UARk
+ Lb2WEweh5LNtDp3BEGg1ZyCWNSQyVZn3XA+3cfa5rYzMj4WDoPHcIW/+h9yNsLxR
+ J+boUqZzWSfb+szxvCd6xkaYWI9yTFc+Nu0WXvFxjeqpHQz1YS/nnhS+tsolKFx7
+ 8+tPPGtP2NKztkhGz2LdoLCpZFSXws8JBtQreSV4MQejoP8ZlRuUG7hOocN1nkft
+ YvNJUjoFRa3T5BjojUSkyO61y5zKjyrwwCZ+VB/KCUBYfZwmmBQks2ZZENwDNtAO
+ wDPW37jRlymHw5BabHfE
+ =F1d5
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #118 from byh-playground/codex/pose-clean-fast-path
+Merge pull request #120 from byh-playground/claude/vector-additive-blend
 
-perf: skip clean pose atlas scans and reuse prepared poses
+feat(rendering): VectorContext 가산 합성 지원 (v0.18.0)
