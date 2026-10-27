@@ -39,7 +39,9 @@ let browser;
 try {
     browser = await chromium.launch({
         executablePath: process.env.CHROME_PATH,
-        ignoreDefaultArgs: ['--enable-unsafe-swiftshader'],
+        ...(process.env.BUDMORI_HARDWARE_RENDERING === '1'
+            ? { ignoreDefaultArgs: ['--enable-unsafe-swiftshader'] }
+            : { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] }),
     });
     const PAGE = await browser.newPage({ viewport: { width: 1100, height: 850 } });
     PAGE.on('pageerror', (error) => ERRORS.push(String(error)));
