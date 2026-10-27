@@ -285,7 +285,7 @@ await check('challenge button starts a boss fight and retreat ends it', async ()
     expect(AUTO.field >= 3, `army was not sent in by itself ${JSON.stringify(AUTO)}`);
     // Contact takes longer in the expanded hall. Observe actual combat rather
     // than treating a fixed delay after deployment as proof that a hit happened.
-    await PAGE.waitForFunction(() => BUDMORI.combatFeel.counts.hits > 0, null, { timeout: 15000 });
+    await PAGE.waitForFunction(() => BUDMORI.combatFeel.counts.numbers > 0, null, { timeout: 15000 });
     // A hit is drawn where and when it happens (the effect's time is in the same ms as the display clock), and every
     // hit that did damage has its own number.
     const FEEL = await WORLD(() => {
@@ -842,6 +842,85 @@ await check('a boss attack hits everyone it reaches: 35% each and 65% shared amo
     );
 });
 
+await check('each element band picks its own signature skill, and element damage follows the cycle', async () => {
+    const R = await WORLD(() => {
+        const W = BUDMORI.sim;
+        W._flushEjected();
+        for (const U of [...W.units]) {
+            W.removeUnit(U);
+        }
+        for (let i = 0; i < 6; i++) {
+            W.spawn(0, 1, i * 0.5, 0);
+        }
+        W.playerProgression.towerBest = 50;
+        W.startTower(1);
+        for (let i = 0; i < 40; i++) {
+            W.step(1 / 30);
+        }
+        W.finishMarch();
+        for (let i = 0; i < 30; i++) {
+            W.step(1 / 30);
+        }
+        const PICKS = [1, 21, 41, 61, 81].map((floor) => {
+            W.tower.floor = floor;
+            for (const ID of Object.keys(W.boss.patternRuntime.cooldowns)) {
+                W.boss.patternRuntime.cooldowns[ID] = 0;
+            }
+            for (const U of W.unitCollection.items.filter((u) => !u.isBattleOnlySummon && u.hp > 0)) {
+                U.x = W.boss.x + 3;
+                U.y = W.boss.y;
+                U.z = 0;
+                U.dropLanded = true;
+            }
+            return W.eligibleBossPatterns(W.livingBossTargets(), null, W.boss).filter((id) =>
+                id.startsWith('signature.'),
+            );
+        });
+        // A water boss (floor 1) against a plain, a fire (beaten by water), a water (even) and a lightning (beats water) unit.
+        W.tower.floor = 1;
+        const ID = 'signature.water',
+            LOSS = (genes) => {
+                const U = W.unitCollection.items.filter((u) => !u.isBattleOnlySummon && u.hp > 0)[0];
+                U.genes = genes;
+                U.z = 0;
+                U.dropLanded = true;
+                U.hp = U.maxHp;
+                W.boss.patternRuntime.active = { id: ID, hitIds: new Set() };
+                const BEFORE = U.hp;
+                W.hitBossPatternUnit(U, ID, { x: U.x, y: U.y });
+                W._settleBossHits();
+                return BEFORE - U.hp;
+            },
+            PLAIN = LOSS([0, 0]),
+            FIRE = LOSS([1, 1]),
+            WATER = LOSS([5, 5]),
+            LIGHTNING = LOSS([4, 4]);
+        W.boss.patternRuntime.active = null;
+        W.retreatFromFight();
+        for (let i = 0; i < 60; i++) {
+            W.step(1 / 30);
+        }
+        W._flushEjected();
+        return { PICKS, PLAIN, FIRE, WATER, LIGHTNING };
+    });
+    expect(
+        JSON.stringify(R.PICKS) ===
+            JSON.stringify([
+                ['signature.water'],
+                ['signature.grass'],
+                ['signature.fire'],
+                ['signature.ice'],
+                ['signature.lightning'],
+            ]),
+        `one signature skill per band ${JSON.stringify(R.PICKS)}`,
+    );
+    const NEAR = (value, expected) => Math.abs(value / R.WATER - expected) < 0.06;
+    expect(
+        R.WATER > 0 && NEAR(R.PLAIN, 1.5) && NEAR(R.FIRE, 2) && NEAR(R.LIGHTNING, 0.5),
+        `plain 150%, beaten 200%, even 100%, beating 50% ${JSON.stringify(R)}`,
+    );
+});
+
 await check(
     'boss sweeps start at the body: both arms sweep the whole circle, the fan sweeps its sector, nothing near the body is missed',
     async () => {
@@ -980,8 +1059,9 @@ await check('passive cards: damage scale, undying once per fight, helper heals, 
     });
     const NEAR = (a, b) => Math.abs(a - b) < 1e-9;
     expect(NEAR(R.FULL, 1 + 0.4 + 0.14), `opening + vengeance ${JSON.stringify(R)}`);
-    expect(NEAR(R.LOW, 1 + 0.4 + 0.14 + 0.24), `last stand ${JSON.stringify(R)}`);
-    expect(NEAR(R.LATE, 1 + 0.14 + 0.24), `opening over ${JSON.stringify(R)}`);
+    // A unit's own temperament (끈기 here) adds its passive: last stand 0.15 on top of the card's 0.24.
+    expect(NEAR(R.LOW, 1 + 0.4 + 0.14 + 0.24 + 0.15), `last stand ${JSON.stringify(R)}`);
+    expect(NEAR(R.LATE, 1 + 0.14 + 0.24 + 0.15), `opening over ${JSON.stringify(R)}`);
     expect(R.TAKEN_FULL === 1 && NEAR(R.TAKEN_LOW, 0.85), `resolve ${JSON.stringify(R)}`);
     expect(NEAR(R.SAVED, R.MAX * 0.25) && R.SECOND === 0, `undying ${JSON.stringify(R)}`);
     expect(NEAR(R.HEALED, 10 + R.MAX * 0.5) && R.FALLEN === 3, `helper ${JSON.stringify(R)}`);

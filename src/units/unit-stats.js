@@ -1,5 +1,6 @@
 import { MAX_UNIT_TIER, UNIT_GRADES } from './unit-grades.js';
 import { SPECIES_COUNT } from './species-catalog.js';
+import { TEMPERAMENT_TILTS } from '../model/lineage.js';
 const TIER_HP = 40;
 const TIER_HP_SCALE = 1.5;
 const TIER_ATTACK = 4;
@@ -143,6 +144,7 @@ export function resolveUnitStats(unit, overrides) {
         ...(unit?.isFormationClone ? { maxHp: 1 } : {}),
         ...overrides,
     };
+    applyTemperamentTilt(RESULT, unit, overrides);
     // Percentage regeneration follows effective max HP for every body, including growth and summons.
     // Flat regeneration and explicit caller overrides remain unchanged.
     if (!Object.hasOwn(overrides || {}, 'regen')) {
@@ -153,13 +155,33 @@ export function resolveUnitStats(unit, overrides) {
     }
     return RESULT;
 }
+// A player body's temperament tilts its stats; clones, enemies and caller overrides are left alone.
+function temperamentTiltOf(unit) {
+    return unit && !unit.isFormationClone && unit.faction !== 'enemy' ? TEMPERAMENT_TILTS[unit.temperament] : undefined;
+}
+function applyTemperamentTilt(stats, unit, overrides) {
+    const TILT = temperamentTiltOf(unit);
+    if (!TILT) {
+        return;
+    }
+    for (const [STAT, FACTOR] of Object.entries(TILT)) {
+        if (STAT === 'regenPct') {
+            if (!Object.hasOwn(overrides || {}, 'regen')) {
+                stats.regen += stats.maxHp * FACTOR;
+            }
+        } else if (!Object.hasOwn(overrides || {}, STAT)) {
+            stats[STAT] *= FACTOR;
+        }
+    }
+    stats.maxHp = Math.round(stats.maxHp);
+}
 function growthHealthMultiplierFor(unit) {
     // Split children inherit only their spawn multiplier, never the parent's permanent tree.
     return unit?.species === 4 && unit.isBattleOnlySummon ? 1 : (unit?.growthMaxHpMultiplier ?? 1);
 }
 // Legacy base-HP consumers retain their established semantics for all other species.
 export function unitMaxHpFor(unit) {
-    if (unit.statProfile || Object.keys(unit.statModifiers || {}).length) {
+    if (unit.statProfile || Object.keys(unit.statModifiers || {}).length || temperamentTiltOf(unit)) {
         return resolveUnitStats(unit).maxHp;
     }
     const SPLIT_MULTIPLIER =
@@ -215,6 +237,7 @@ function combatStats(unit, overrides) {
     return overrides === undefined &&
         !unit?.statProfile &&
         !Object.keys(unit?.statModifiers || {}).length &&
+        !temperamentTiltOf(unit) &&
         !unit?.isFormationClone &&
         (unit?.permanentStatMultiplier ?? 1) === 1 &&
         growthHealthMultiplierFor(unit) === 1

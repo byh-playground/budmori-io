@@ -20,6 +20,7 @@ import { CircleSweepPresentation } from '../features/boss-patterns/sweep-360/pre
 import { ChargePresentation } from '../features/boss-patterns/charge/presentation.js';
 import { LeapSlamPresentation } from '../features/boss-patterns/leap-slam/presentation.js';
 import { FanSweepPresentation } from '../features/boss-patterns/fan-sweep/presentation.js';
+import { SIGNATURE_PRESENTATIONS } from '../features/boss-patterns/signature/presentation.js';
 import { MouthSummonPresentation } from '../features/boss-patterns/mouth-summon/presentation.js';
 import { BarleyArmorShredPresentation } from '../features/abilities/barley-shred/presentation.js';
 
@@ -33,6 +34,7 @@ const BOSS_PRESENTATIONS = new Map(
         new LeapSlamPresentation(),
         new FanSweepPresentation(),
         new MouthSummonPresentation(),
+        ...SIGNATURE_PRESENTATIONS,
     ].map((presentation) => [presentation.id, presentation]),
 );
 export function bossAttackPresentation(boss) {

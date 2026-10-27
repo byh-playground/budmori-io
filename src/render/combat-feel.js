@@ -1,4 +1,5 @@
 import { presentationEventTimeMs } from '../model/farm-model.js';
+import { SignatureEffectPresentation } from '../features/boss-patterns/signature/presentation.js';
 import { DamageNumberPresentation } from './damage-numbers.js';
 import { BarleyArmorShredPresentation } from '../features/abilities/barley-shred/presentation.js';
 import { PASSIVE_PRESENTATION_EVENTS } from '../tower/tower-passive-presentations.js';
@@ -121,6 +122,8 @@ class HitPresentation extends BurstPresentation {
             z: event.z,
             amount: event.damage,
             critical: event.critical,
+            element: event.element || 0,
+            elementMultiplier: event.elementMultiplier ?? 1,
             role,
             at,
             heard: true,
@@ -238,6 +241,7 @@ const COMBAT_EFFECT_PRESENTATIONS = new Map([
     ['unit-land', Object.freeze(new UnitLandingPresentation())],
     ['attack-launch', Object.freeze(new AttackLaunchPresentation())],
     ['boss-launch', Object.freeze(new BossLaunchPresentation())],
+    ['boss-signature', Object.freeze(new SignatureEffectPresentation())],
     ...PASSIVE_PRESENTATION_EVENTS,
 ]);
 

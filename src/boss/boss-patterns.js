@@ -7,6 +7,11 @@ export const BOSS_PATTERN_IDS = Object.freeze([
     'attack.leap-slam',
     'attack.fan-sweep',
     'summon.mouth-t1',
+    'signature.water',
+    'signature.grass',
+    'signature.fire',
+    'signature.ice',
+    'signature.lightning',
 ]);
 
 // Numeric balance values are implementation defaults derived from the source
@@ -23,7 +28,94 @@ export const BOSS_CONTACT_MARGIN = 0.2;
 export function bossAttackTotal(multiplier, hits) {
     return multiplier * (BOSS_HIT_SPLIT.everyone * hits + (1 - BOSS_HIT_SPLIT.everyone));
 }
+// Each element band's boss has one signature skill. All of its damage is element damage (see elementDamageTaken) and it
+// is used on the shared cooldown. Water: a narrow jet that pushes. Grass: roots erupt under the target. Fire: a long
+// breath that burns several times. Ice: a pulse around the boss that freezes. Lightning: a chain that jumps `hops` times,
+// each jump `falloff` of the one before, to the nearest ally not hit yet.
+const SIGNATURE_COOLDOWN = 5;
+export const SIGNATURE_PATTERN_CONFIG = Object.freeze({
+    'signature.water': Object.freeze({
+        kind: 'signature-water',
+        element: 5,
+        unlockHp: 1,
+        windup: 0.9,
+        active: 0.4,
+        recover: 0.7,
+        cooldown: SIGNATURE_COOLDOWN,
+        reach: 13,
+        halfWidth: 1.1,
+        damageMultiplier: 1.6,
+        knockback: 20,
+        lift: 2,
+        groundOnly: true,
+    }),
+    'signature.grass': Object.freeze({
+        kind: 'signature-grass',
+        element: 3,
+        unlockHp: 1,
+        windup: 1,
+        active: 0.4,
+        recover: 0.7,
+        cooldown: SIGNATURE_COOLDOWN,
+        reach: 9,
+        radius: 2.6,
+        damageMultiplier: 1.6,
+        knockback: 3,
+        lift: 14,
+        groundOnly: true,
+    }),
+    'signature.fire': Object.freeze({
+        kind: 'signature-fire',
+        element: 1,
+        unlockHp: 1,
+        windup: 0.9,
+        active: 1.2,
+        recover: 0.8,
+        cooldown: SIGNATURE_COOLDOWN,
+        reach: 10.5,
+        sector: (Math.PI * 2) / 3,
+        ticks: 4,
+        damageMultiplier: 0.4,
+        knockback: 3,
+        lift: 0,
+        groundOnly: true,
+    }),
+    'signature.ice': Object.freeze({
+        kind: 'signature-ice',
+        element: 2,
+        unlockHp: 1,
+        windup: 1,
+        active: 0.3,
+        recover: 0.8,
+        cooldown: SIGNATURE_COOLDOWN,
+        reach: 8.5,
+        freeze: 1.5,
+        damageMultiplier: 1.6,
+        knockback: 6,
+        lift: 4,
+        groundOnly: true,
+    }),
+    'signature.lightning': Object.freeze({
+        kind: 'signature-lightning',
+        element: 4,
+        unlockHp: 1,
+        windup: 0.8,
+        active: 0.8,
+        recover: 0.7,
+        cooldown: SIGNATURE_COOLDOWN,
+        reach: 12,
+        hops: 7,
+        hopSeconds: 0.1,
+        hopRadius: 6,
+        falloff: 0.9,
+        damageMultiplier: 1.6,
+        knockback: 2,
+        lift: 3,
+        groundOnly: false,
+    }),
+});
 export const BOSS_PATTERN_CONFIG = Object.freeze({
+    ...SIGNATURE_PATTERN_CONFIG,
     'attack.sweep-360': Object.freeze({
         kind: 'sweep-360',
         unlockHp: 0.4,
@@ -127,7 +219,10 @@ export const BOSS_AIM_TURN_RATE = 5.5;
 export function createBossPatternRuntime() {
     return {
         weights: Object.fromEntries(BOSS_PATTERN_IDS.map((id) => [id, BOSS_PATTERN_WEIGHT_DEFAULTS.base])),
-        cooldowns: Object.fromEntries(BOSS_PATTERN_IDS.map((id) => [id, 0])),
+        // A signature skill is not ready at the start of a fight: it waits out its first cooldown.
+        cooldowns: Object.fromEntries(
+            BOSS_PATTERN_IDS.map((id) => [id, BOSS_PATTERN_CONFIG[id].element ? SIGNATURE_COOLDOWN : 0]),
+        ),
         active: null,
         encounterElapsed: 0,
     };

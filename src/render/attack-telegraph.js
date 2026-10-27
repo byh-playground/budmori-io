@@ -54,6 +54,17 @@ export function bossDangerContour(area, out) {
         n = point(out, n, area.x, area.y);
         return arc(out, n, area.x, area.y, area.reach, area.angle - area.sector / 2, area.angle + area.sector / 2);
     }
+    if (area.kind === 'disk') {
+        return arc(out, 0, area.x, area.y, area.reach, 0, TAU);
+    }
+    if (area.kind === 'line') {
+        const COS = Math.cos(area.angle),
+            SIN = Math.sin(area.angle);
+        n = point(out, n, area.x - SIN * area.width, area.y + COS * area.width);
+        n = point(out, n, area.x - SIN * area.width + COS * area.reach, area.y + COS * area.width + SIN * area.reach);
+        n = point(out, n, area.x + SIN * area.width + COS * area.reach, area.y - COS * area.width + SIN * area.reach);
+        return point(out, n, area.x + SIN * area.width, area.y - COS * area.width);
+    }
     if (area.kind === 'charge') {
         return bodyLandingContour(out, area.x, area.y, area.endX, area.endY, area.width, area.width);
     }

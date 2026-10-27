@@ -26,6 +26,11 @@ import {
     inheritGenes,
     inheritTemperament,
     lineageRandom,
+    TEMPERAMENT_PASSIVE_IDS,
+    elementDamageTaken,
+    elementHitScale,
+    elementMultiplier,
+    TEMPERAMENT_TILTS,
     rollSeedGenes,
     recipeFor,
     rollTemperament,
@@ -74,6 +79,7 @@ import {
 } from '../boss/boss-rewards.js';
 import {
     PASSIVE_CARDS,
+    passiveCard,
     PASSIVE_SETTINGS,
     TOWER_EVENTS,
     advanceSince,
@@ -93,6 +99,7 @@ import {
     beginTowerRewardRun,
     awardTowerFloorXp,
 } from './player-progression.js';
+import { towerElement } from '../tower/tower-theme.js';
 import { createTowerEncounter, encounterBudget, TOWER_ENCOUNTER_SETTINGS } from '../tower/tower-encounter.js';
 import { createAbilityProgressionState } from '../abilities/ability-state.js';
 import { bossVectorScale } from '../vector-sockets.js';
@@ -1564,9 +1571,23 @@ const GARDEN = class Garden {
     // The run's passive cards in a fight. A hit gains from the attacker's low health, the fight's first seconds and the
     // allies fallen so far; a unit hurt while low takes less. All of it is zero outside a tower climb.
     passiveState(unit) {
-        return unit.faction === FACTION_CONFIG.ENEMY
-            ? { totals: this.tower.bossPassives, fallen: this.tower.bossFallen }
-            : { totals: this.tower.passives, fallen: this.tower.fallen };
+        if (unit.faction === FACTION_CONFIG.ENEMY) {
+            return { totals: this.tower.bossPassives, fallen: this.tower.bossFallen };
+        }
+        return { totals: this._temperamentTotals(unit.temperament), fallen: this.tower.fallen };
+    }
+    // The run's cards plus the one passive a unit's temperament carries (its first-rarity value); rebuilt only when the
+    // run's totals are replaced.
+    _temperamentTotals(temperament) {
+        const TOTALS = this.tower.passives;
+        if (this._temperamentTotalsSource !== TOTALS) {
+            this._temperamentTotalsSource = TOTALS;
+            this._temperamentTotalsByKind = TEMPERAMENT_PASSIVE_IDS.map((id) => ({
+                ...TOTALS,
+                [id]: (TOTALS[id] || 0) + passiveCard(id).values[0],
+            }));
+        }
+        return this._temperamentTotalsByKind[temperament] ?? TOTALS;
     }
     passiveAttackScale(source, sourceMaxHp) {
         const TOWER = this.tower;
@@ -1934,6 +1955,7 @@ const GARDEN = class Garden {
                 U.growthDuration = this.breedGrowthDuration();
             }
         }
+        U.hp = unitMaxHpFor(U);
         applyRunGrowthHealth(U, this.runProgressionSnapshot, { preserveRatio: true });
         this.addUnit(U);
         return U;
@@ -3665,6 +3687,7 @@ const GARDEN = class Garden {
             ORDERED.map((unit) => unit.genes),
             LINEAGE_RANDOM,
         );
+        RESULT.hp = unitMaxHpFor(RESULT);
         applyRunGrowthHealth(RESULT, this.runProgressionSnapshot, { preserveRatio: true });
         RESULT.dropLanded = false;
         RESULT.meals = 1;
@@ -3856,7 +3879,11 @@ const GARDEN = class Garden {
                 continue;
             }
             U.age += dt;
-            if ((U.statProfile?.regen ?? STATS(U.tier, U.species).regen) > 0 || U.statModifiers.regen) {
+            if (
+                (U.statProfile?.regen ?? STATS(U.tier, U.species).regen) > 0 ||
+                U.statModifiers.regen ||
+                TEMPERAMENT_TILTS[U.temperament]?.regenPct
+            ) {
                 const UNIT_STATS = resolveUnitStats(U);
                 applyHealing(U, UNIT_STATS.regen * dt, UNIT_STATS);
             }
@@ -5089,10 +5116,17 @@ const GARDEN = class Garden {
                 ...CONTEXT.sourceStatOverrides,
                 critChance: CONTEXT.criticalChanceSnapshot ?? CLAMP(ATTACKER_STATS.critChance + CRITICAL_BONUS, 0, 1),
             };
-        const RAW_BASE_DAMAGE =
+        // A coloured unit's hit against the floor band's enemies carries element damage.
+        const HIT_ELEMENT =
+                SOURCE.faction === FACTION_CONFIG.PLAYER && target.faction === FACTION_CONFIG.ENEMY
+                    ? elementOf(SOURCE.genes)
+                    : 0,
+            ELEMENT_SCALE = elementHitScale(HIT_ELEMENT, towerElement(this.tower.floor)),
+            RAW_BASE_DAMAGE =
                 ATTACKER_STATS.attackPower *
                 (CONTEXT.attackPowerMultiplier ?? (SOURCE.giantUntil > this.time ? 3 : 1)) *
-                DAMAGE_MULTIPLIER,
+                DAMAGE_MULTIPLIER *
+                ELEMENT_SCALE,
             RAW_DAMAGE = Number.isFinite(CONTEXT.sourceDamageScale)
                 ? (RAW_BASE_DAMAGE * CONTEXT.sourceDamageScale + (CONTEXT.rawDamageBonus || 0)) *
                   this.passiveReceivedScale(target, DEFENSE.maxHp)
@@ -5147,13 +5181,13 @@ const GARDEN = class Garden {
         }
         const STRENGTH = DAMAGE_MULTIPLIER * (DAMAGE.critical ? ATTACKER_STATS.critMultiplier : 1);
         if (IS_BOSS) {
-            this.finishBossHit(SOURCE, action, target, point, CONTEXT, DAMAGE, STRENGTH);
+            this.finishBossHit(SOURCE, action, target, point, CONTEXT, DAMAGE, STRENGTH, HIT_ELEMENT);
         } else {
             this.finishUnitHit(SOURCE, action, target, point, CONTEXT, DAMAGE, STRENGTH);
         }
         return true;
     }
-    finishBossHit(u, action, boss, point, { kind, strikeIndex, buffed }, damage, strength) {
+    finishBossHit(u, action, boss, point, { kind, strikeIndex, buffed }, damage, strength, element) {
         if (boss.hp <= 0) {
             this.handleUnitDeath(boss);
         }
@@ -5172,6 +5206,8 @@ const GARDEN = class Garden {
             buffed,
             critical: damage.critical,
             damage: damage.totalActualLoss,
+            element,
+            elementMultiplier: element ? elementMultiplier(element, towerElement(this.tower.floor)) : 1,
             x: boss.x + (DX / D_LOCAL) * boss.radius,
             y: boss.y + (DY / D_LOCAL) * boss.radius,
             z: CLAMP(point.z + 0.2, 0.2, boss.height),
@@ -5945,12 +5981,13 @@ const GARDEN = class Garden {
         });
         return true;
     }
-    hitBossPatternUnit(unit, patternId, point, normal = null, boss = this.boss) {
-        return this.mutateUnits(this._hitBossPatternUnit, unit, patternId, point, normal, boss);
+    hitBossPatternUnit(unit, patternId, point, normal = null, boss = this.boss, options = null) {
+        return this.mutateUnits(this._hitBossPatternUnit, unit, patternId, point, normal, boss, options);
     }
     // A hit knocks the unit back at once and queues its damage: the damage is shared among everyone hit in the same
     // moment, which is only known once the attack has looked at all of them (_settleBossHits).
-    _hitBossPatternUnit(unit, patternId, point, normal = null, boss = this.boss) {
+    // `options.scale` weakens the hit (a lightning jump) and `options.repeat` lets a unit be hit again in one attack.
+    _hitBossPatternUnit(unit, patternId, point, normal = null, boss = this.boss, options = null) {
         const B_LOCAL = boss,
             ACTION = B_LOCAL.patternRuntime.active,
             CONFIG_LOCAL = BOSS_PATTERN_CONFIG[patternId];
@@ -5961,7 +5998,7 @@ const GARDEN = class Garden {
             !areOpposingFactions(B_LOCAL, unit) ||
             unit.hp <= 0 ||
             !unit.dropLanded ||
-            ACTION.hitIds.has(unit.id)
+            (ACTION.hitIds.has(unit.id) && !options?.repeat)
         ) {
             return false;
         }
@@ -5989,6 +6026,7 @@ const GARDEN = class Garden {
             nx: DX / N,
             ny: DY / N,
             guard: GUARD,
+            scale: options?.scale ?? 1,
         });
         return true;
     }
@@ -6015,7 +6053,8 @@ const GARDEN = class Garden {
         const CRITICAL = STATS.critChance > 0 && resolveCritical(STATS, ROLL());
         for (const HIT of BATCH) {
             const UNIT_LOCAL = HIT.unit,
-                CONFIG_LOCAL = BOSS_PATTERN_CONFIG[HIT.patternId];
+                CONFIG_LOCAL = BOSS_PATTERN_CONFIG[HIT.patternId],
+                ELEMENT_TAKEN = CONFIG_LOCAL.element ? elementDamageTaken(CONFIG_LOCAL.element, UNIT_LOCAL.genes) : 1;
             const RAW_DAMAGE =
                 B_LOCAL.attackPower *
                 (B_LOCAL.giantUntil > this.time ? 3 : 1) *
@@ -6023,6 +6062,8 @@ const GARDEN = class Garden {
                 SHARE *
                 (this.bossEnraged ? BOSS_ENRAGE.damageMultiplier : 1) *
                 (HIT.guard?.receivedDamageMultiplier ?? 1) *
+                HIT.scale *
+                ELEMENT_TAKEN *
                 this.passiveDamageScale(B_LOCAL, B_LOCAL.maxHp, UNIT_LOCAL, unitMaxHpFor(UNIT_LOCAL));
             // The guard observes this unit's allocated pre-armor damage once,
             // before lethal damage can clear its guard state.
@@ -6073,6 +6114,8 @@ const GARDEN = class Garden {
                 ny: HIT.ny,
                 strength: CONFIG_LOCAL.damageMultiplier * (RECEIVED.critical ? STATS.critMultiplier : 1),
                 critical: RECEIVED.critical,
+                element: CONFIG_LOCAL.element || 0,
+                elementMultiplier: ELEMENT_TAKEN,
             });
         }
         this._bossHitBatch = this._bossHitBatch.filter((hit) => hit.bossId !== boss.id);

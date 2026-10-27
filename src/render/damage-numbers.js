@@ -1,3 +1,4 @@
+import { ELEMENTS } from '../model/lineage.js';
 // Floating damage numbers. Every confirmed hit gets its own number at the place it landed, so a crowd of hits keeps its
 // rhythm; clutter is handled by drawing the other decoration less, never by merging the numbers.
 // The digits are strokes in the same vector style as the rest of the battle, so no font has to be downloaded.
@@ -196,6 +197,10 @@ const STYLES = Object.freeze({
     critical: Object.freeze({ fill: [255, 207, 74], outline: [122, 59, 0], prefix: '', suffix: '!' }),
     taken: Object.freeze({ fill: [255, 154, 120], outline: [84, 30, 20], prefix: '-', suffix: '' }),
 });
+// An element hit is drawn in its colour: bigger on an advantage, smaller on a disadvantage.
+const HEX_RGB = (hex) => [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
+const ELEMENT_FILLS = Object.freeze(ELEMENTS.map((element) => HEX_RGB(element.color)));
+const ELEMENT_NUMBER_SCALE = Object.freeze({ 2: 1.25, 1.5: 1.1, 1: 1, 0.5: 0.8 });
 const OUTLINE_WIDTH = 0.3;
 const FILL_WIDTH = 0.14;
 
@@ -227,12 +232,15 @@ export class DamageNumberPresentation {
         if ([0, 2, 3, 4, 5, 6, 7].includes(renderer.attackPreviewSpecies)) {
             return;
         }
-        const STYLE = STYLES[event.critical ? 'critical' : event.role],
+        const STYLE = event.element
+                ? { ...STYLES[event.critical ? 'critical' : event.role], fill: ELEMENT_FILLS[event.element] }
+                : STYLES[event.critical ? 'critical' : event.role],
             REDUCED = feel?.reduced === true,
             POP = Math.min(1, progress / DAMAGE_NUMBER.popFraction),
             ALPHA = Math.min(1, (1 - progress) / DAMAGE_NUMBER.fadeFraction),
             SCALE =
                 (event.critical ? DAMAGE_NUMBER.criticalScale : 1) *
+                (event.element ? (ELEMENT_NUMBER_SCALE[event.elementMultiplier] ?? 1) : 1) *
                 (REDUCED ? 1 : 0.65 + 0.45 * Math.sin(POP * Math.PI * 0.5)),
             LIFT = REDUCED ? 0 : DAMAGE_NUMBER.rise * (1 - (1 - progress) ** 2),
             DRIFT = (((event.sequence * 7919) % 11) - 5) * DAMAGE_NUMBER.spread,
