@@ -11,6 +11,7 @@
         "lint": "eslint . --max-warnings 0",
         "test:breed-allocation": "node tests/breed-allocation.e2e.mjs",
         "test:lineage": "node tests/lineage.e2e.mjs",
+        "test:seedling-motion": "node tests/seedling-motion.e2e.mjs",
         "test:palette": "node tests/paint-regions.mjs && node tests/palette.e2e.mjs",
         "test:corn-growth": "for scenario in ui previews battle; do for viewport in desktop mobile; do timeout 180s node tests/corn-growth.e2e.mjs \"$scenario\" \"$viewport\" || exit $?; done; done; timeout 180s node tests/corn-growth.e2e.mjs battle landscape",
         "test:corn-growth:case": "node tests/corn-growth.e2e.mjs",
