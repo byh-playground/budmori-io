@@ -1,5 +1,5 @@
 import { awardMasteryXp, FARM_BOSS_EVENT_MAX_STAGE } from '../model/player-progression.js';
-import { BOSS_SPECIES_WEIGHTS } from '../units/species-catalog.js';
+import { SPECIES_COUNT } from '../units/species-catalog.js';
 
 const PRD_UNITS_PER_TICK = 10;
 const STREAM_DOMAINS = Object.freeze({
@@ -76,7 +76,7 @@ export const BOSS_REWARD_SETTINGS = Object.freeze({
     maxRollCount: FARM_BOSS_EVENT_MAX_STAGE * MAX_KIND_REWARD * RECORD_MULTIPLIER,
     maxBoxCount: 100,
     prdUnitsPerTick: PRD_UNITS_PER_TICK,
-    speciesWeights: BOSS_SPECIES_WEIGHTS,
+    speciesCount: SPECIES_COUNT,
 });
 
 function bossRewardBoxPayouts(total) {
@@ -291,7 +291,7 @@ function resolveBossAcquisitionCommitted(world, options = {}) {
         throw new RangeError('Boss reward quantity is outside the safe integer range');
     }
     const SPECIES = options.species ?? 3;
-    if (!Number.isSafeInteger(SPECIES) || SPECIES < 0 || SPECIES >= BOSS_REWARD_SETTINGS.speciesWeights.length) {
+    if (!Number.isSafeInteger(SPECIES) || SPECIES < 0 || SPECIES >= BOSS_REWARD_SETTINGS.speciesCount) {
         throw new RangeError('Boss reward species is invalid');
     }
     const STREAM_KIND = streamFor(SOURCE, FIRST_CLEAR),
@@ -313,7 +313,6 @@ function resolveBossAcquisitionCommitted(world, options = {}) {
                     : (options.acquisitionMultiplier ?? 1),
             stage: Number.isSafeInteger(options.stage) ? options.stage : 0,
             species: SPECIES,
-            masterySpecies: options.masterySpecies ?? SPECIES,
             tier: 1,
             x: Number.isFinite(options.x) ? options.x : 0,
             y: Number.isFinite(options.y) ? options.y : 0,
@@ -553,7 +552,7 @@ function settleBossKillCommitted(world, options = {}) {
     const RESULT = awardMasteryXp(
         WALLET,
         RECEIPT_KEY,
-        RECEIPT.masterySpecies,
+        RECEIPT.species,
         options.xpAmount === undefined ? undefined : options.xpAmount,
     );
     if (RESULT.awarded) {

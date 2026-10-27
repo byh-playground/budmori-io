@@ -193,6 +193,27 @@ const AUTHORED_BODIES = [
             y: 171.85,
         },
     },
+    {
+        species: 9,
+        asset: 'assets/troops/sprout.svg',
+        shapeId: 'body-outline',
+        sourceSha256: '393781e60efc1b1d0f1330d81bd5f3d7ca275903360c65808d539f275562f08c',
+        viewBox: [0.0, 0.0, 320.0, 350.0],
+        bounds: {
+            left: 62.600001930191,
+            top: 130.0000035762787,
+            right: 253.4000095129013,
+            bottom: 329.8000115056,
+        },
+        ground: {
+            x: 160.0,
+            y: 350,
+        },
+        mouth: {
+            x: 160.7,
+            y: 254.2,
+        },
+    },
 ];
 const UNIT_BODIES = Object.freeze(
     AUTHORED_BODIES.map((body) =>

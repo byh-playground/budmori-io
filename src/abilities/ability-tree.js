@@ -23,7 +23,7 @@ const DEFAULT_ABILITY_PRESENTATION = {
 const INVESTMENT_REASON_LABELS = new Map([
     ['already-invested', '이미 투자한 항목이에요.'],
     ['prerequisite-required', '이전 단계에 먼저 투자해야 해요.'],
-    ['insufficient-points', '이 종의 숙련 포인트가 필요해요. 이 종 보스를 잡으면 쌓여요.'],
+    ['insufficient-points', '이 종의 숙련 포인트가 필요해요. 이 종의 씨앗이 나오는 보스를 잡으면 쌓여요.'],
     ['combat-lock', '전투 중에는 투자할 수 없어요.'],
     ['farm-only', '농장에서만 투자할 수 있어요.'],
     ['max-level', '최대 강화 단계예요.'],
@@ -86,7 +86,7 @@ export function renderAbilityTreeMarkup(
                 : renderMasteryMarkup(state.abilities[FOCUS.id], speciesById(FOCUS.species).name)
             : '',
         DEFAULTS_NOTE =
-            '각 병종의 기본 특성은 T1부터 적용돼요. 같은 병종의 보스를 쓰러뜨리면 숙련이 올라 특성을 강화할 포인트를 얻어요.';
+            '각 병종의 기본 특성은 T1부터 적용돼요. 보스를 쓰러뜨리면 나온 씨앗 병종의 숙련이 올라 특성을 강화할 포인트를 얻어요.';
     return `<section class="ability-tree" aria-labelledby="ability-tree-title">
     <header class="ability-tree__header">
       <div><p class="ability-tree__eyebrow">농장 성장</p><h2 id="ability-tree-title">병종 특성</h2></div>

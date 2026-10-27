@@ -8,7 +8,6 @@ export const SPECIES_CATALOG = Object.freeze([
         // The colours of the floating hands a boss of this species swings: fill and outline.
         limbFill: '#83ad47',
         limbOutline: '#4a1c16',
-        bossWeight: 1,
     }),
     Object.freeze({
         id: 1,
@@ -17,7 +16,6 @@ export const SPECIES_CATALOG = Object.freeze([
         // The colours of the floating hands a boss of this species swings: fill and outline.
         limbFill: '#f7cd36',
         limbOutline: '#4a1c16',
-        bossWeight: 1,
     }),
     Object.freeze({
         id: 2,
@@ -26,7 +24,6 @@ export const SPECIES_CATALOG = Object.freeze([
         // The colours of the floating hands a boss of this species swings: fill and outline.
         limbFill: '#d06a8f',
         limbOutline: '#4b1a20',
-        bossWeight: 1,
     }),
     Object.freeze({
         id: 3,
@@ -35,7 +32,6 @@ export const SPECIES_CATALOG = Object.freeze([
         // The colours of the floating hands a boss of this species swings: fill and outline.
         limbFill: '#84472f',
         limbOutline: '#2c201c',
-        bossWeight: 1,
     }),
     Object.freeze({
         id: 4,
@@ -44,7 +40,6 @@ export const SPECIES_CATALOG = Object.freeze([
         // The colours of the floating hands a boss of this species swings: fill and outline.
         limbFill: '#c89d67',
         limbOutline: '#3b241e',
-        bossWeight: 1,
     }),
     Object.freeze({
         id: 5,
@@ -55,7 +50,6 @@ export const SPECIES_CATALOG = Object.freeze([
         limbOutline: '#431811',
         // The weapon this species' boss holds: it goes wherever that floating hand goes.
         heldItem: Object.freeze({ part: 'hammer', hand: 'arm-right' }),
-        bossWeight: 1,
     }),
     Object.freeze({
         id: 6,
@@ -66,7 +60,6 @@ export const SPECIES_CATALOG = Object.freeze([
         limbOutline: '#4b211b',
         // The weapon this species' boss holds: it goes wherever that floating hand goes.
         heldItem: Object.freeze({ part: 'sickle', hand: 'arm-right' }),
-        bossWeight: 1,
     }),
     Object.freeze({
         id: 7,
@@ -77,7 +70,6 @@ export const SPECIES_CATALOG = Object.freeze([
         limbOutline: '#34271f',
         // The weapon this species' boss holds: it goes wherever that floating hand goes.
         heldItem: Object.freeze({ part: 'command-baton', hand: 'arm-right' }),
-        bossWeight: 1,
     }),
     Object.freeze({
         id: 8,
@@ -86,11 +78,19 @@ export const SPECIES_CATALOG = Object.freeze([
         // The colours of the floating hands a boss of this species swings: fill and outline.
         limbFill: '#ddaa43',
         limbOutline: '#4b211b',
-        bossWeight: 1,
+    }),
+    // A plain sprout: no ability of its own, so it plays by the shared rules alone. Every boss is this species.
+    Object.freeze({
+        id: 9,
+        name: '새싹',
+        asset: 'sprout.svg',
+        limbFill: '#d9bd8a',
+        limbOutline: '#2c201c',
     }),
 ]);
 export const SPECIES_COUNT = SPECIES_CATALOG.length;
-export const BOSS_SPECIES_WEIGHTS = Object.freeze(SPECIES_CATALOG.map((species) => species.bossWeight));
+// Every boss is the plain sprout; the species a win pays is drawn separately.
+export const BOSS_SPECIES = 9;
 export function speciesById(id) {
     return SPECIES_CATALOG.find((species) => species.id === id) || SPECIES_CATALOG[SPECIES_CATALOG.length - 1];
 }

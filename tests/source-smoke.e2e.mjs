@@ -238,7 +238,7 @@ try {
         Object.assign(WORLD.boss, { z: 0, dropLanded: true, hp: 1e9, maxHp: 1e9, stun: 0 });
         ALLIES.forEach((unit, index) => {
             const ANGLE = (index * Math.PI * 2) / (ALLIES.length - 1),
-                DISTANCE = WORLD.boss.radius + 1.2 + (index % 2) * 0.8;
+                DISTANCE = WORLD.boss.radius + 0.2 + (index % 2) * 0.4;
             Object.assign(unit, {
                 x: Math.cos(ANGLE) * DISTANCE,
                 y: Math.sin(ANGLE) * DISTANCE,
