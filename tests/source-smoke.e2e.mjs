@@ -2,6 +2,7 @@
 // Detailed species, migration and performance scenarios remain on-demand checks.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -13,6 +14,7 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     // Optional representative native frames; the live observations always run.
     CAPTURE_BOSS_BASICS = process.env.BUDMORI_CAPTURE_BOSS_BASICS === '1',
     CAPTURE_BOSS_SWEEP = process.env.BUDMORI_CAPTURE_BOSS_SWEEP === '1',
+    HARDWARE_RENDERING = process.env.BUDMORI_HARDWARE_RENDERING === '1',
     HTML = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'),
     MANIFEST = JSON.parse(
         HTML.match(/<script id="bloom-runtime-manifest" type="application\/json">(.*?)<\/script>/s)?.[1] || 'null',
@@ -29,10 +31,11 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     ERRORS = [],
     REPORT = {
         status: 'running',
+        sourceHead: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim(),
         startedAt: new Date().toISOString(),
         entry: 'src/farm-app.js',
         renderEnvironment: {
-            backend: 'Chromium SwiftShader',
+            backend: HARDWARE_RENDERING ? 'Chromium hardware WebGL' : 'Chromium SwiftShader',
             deviceScaleFactor: 0.75,
             purpose: 'functional and CSS-layout verification, not device performance',
         },
@@ -78,7 +81,9 @@ try {
     const ORIGIN = `http://127.0.0.1:${SERVER.address().port}`;
     browser = await chromium.launch({
         executablePath: process.env.CHROME_PATH,
-        args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+        ...(HARDWARE_RENDERING
+            ? { ignoreDefaultArgs: ['--enable-unsafe-swiftshader'] }
+            : { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] }),
     });
     const CONTEXT = await browser.newContext({
             viewport: { width: 667, height: 375 },
@@ -156,6 +161,14 @@ try {
     await PAGE.clock.install();
     await PAGE.goto(`${ORIGIN}/index.html`);
     await PAGE.waitForFunction(() => Boolean(globalThis.BUDMORI));
+    REPORT.renderEnvironment.renderer = await PAGE.evaluate(() => {
+        const GL = BUDMORI.renderer.device.gl,
+            DEBUG = GL.getExtension('WEBGL_debug_renderer_info');
+        return DEBUG ? GL.getParameter(DEBUG.UNMASKED_RENDERER_WEBGL) : GL.getParameter(GL.RENDERER);
+    });
+    if (HARDWARE_RENDERING) {
+        assert.doesNotMatch(REPORT.renderEnvironment.renderer, /swiftshader|software/i);
+    }
     await PAGE.locator('#newGame').click();
     await PAGE.waitForFunction(() => BUDMORI.sim?.scene === 'farm' && BUDMORI.sim.units.length > 0);
     await PAGE.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -189,6 +202,7 @@ try {
                 gpuPoseSupported: RENDERER.device.floatRenderTargetsSupported,
                 maxGpuPoseInstances: 0,
                 maxCpuPoseInstances: 0,
+                poseFrames: [],
             }),
             ADD = (list, value) => {
                 if (!list.includes(value)) {
@@ -416,12 +430,30 @@ try {
             }
             return RESULT;
         };
+        const RENDER = RENDERER.render;
+        RENDERER.render = function (...args) {
+            const RESULT = RENDER.apply(this, args),
+                POSES = this.meshes.poseStats();
+            OBS.poseFrames.push({
+                frame: this.device.stats.frame,
+                gpu: POSES.gpuDrawInstances,
+                cpu: POSES.cpuDrawInstances,
+                uniform: POSES.uniformDrawInstances,
+                cpuFallbackRatio: POSES.cpuFallbackRatio,
+                fallbackReasons: { ...POSES.fallbackReasons },
+                gpuPoseDraws: POSES.gpuPoseDraws,
+                gpuPoseRows: POSES.gpuPoseRows,
+                flushRecordVisits: POSES.flushRecordVisits,
+            });
+            return RESULT;
+        };
         globalThis.__restoreMixedObservation = () => {
             RENDERER.unitPresentation.drawVectorUnit = DRAW;
+            RENDERER.render = RENDER;
             OFF_MIXED_HEALTH();
             OFF_MIXED_NOTICE();
             globalThis.__restoreMixedObservation = null;
-            return RENDERER.unitPresentation.drawVectorUnit === DRAW;
+            return RENDERER.unitPresentation.drawVectorUnit === DRAW && RENDERER.render === RENDER;
         };
         const DRAW_DANGER = RENDERER.drawDanger;
         WORLD.boss.setStatModifiers({ attackArea: { flat: 0, pct: 1 } });
