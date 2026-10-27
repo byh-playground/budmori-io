@@ -118,7 +118,7 @@ export class PerformanceDiagnostics {
         this.meter.beginFrame(now);
     }
     endFrame(renderer) {
-        const POSES = renderer.meshes.poseStats();
+        const POSES = renderer.device.state === 'ready' ? renderer.meshes.poseStats() : null;
         if (POSES) {
             this.count('gpuPoseInstances', POSES.gpuDrawInstances);
             this.count('cpuPoseInstances', POSES.cpuDrawInstances);

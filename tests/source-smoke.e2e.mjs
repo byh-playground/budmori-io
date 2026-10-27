@@ -186,6 +186,9 @@ try {
                 splitChildren: [],
                 deathRendered: false,
                 nativeDraws: 0,
+                gpuPoseSupported: RENDERER.device.floatRenderTargetsSupported,
+                maxGpuPoseInstances: 0,
+                maxCpuPoseInstances: 0,
             }),
             ADD = (list, value) => {
                 if (!list.includes(value)) {
@@ -378,6 +381,9 @@ try {
                 CLIP = RENDERER.vectorPlayers.get(unit.id)?.currentClip,
                 SWING = world.workSwingOf?.(unit.id);
             OBS.nativeDraws++;
+            const POSES = RENDERER.meshes.poseStats();
+            OBS.maxGpuPoseInstances = Math.max(OBS.maxGpuPoseInstances, POSES.gpuDrawInstances);
+            OBS.maxCpuPoseInstances = Math.max(OBS.maxCpuPoseInstances, POSES.cpuDrawInstances);
             if (unit.id === OBS.attackFlow?.unitId) {
                 OBS.attackFlow.nativeFrames++;
             }
@@ -776,6 +782,9 @@ try {
     }));
     const COMBAT = REPORT.mixedCombat,
         FLOW = COMBAT.attackFlow;
+    if (COMBAT.gpuPoseSupported) {
+        assert.ok(COMBAT.maxGpuPoseInstances > 0, 'supported mixed combat must use the real GPU pose path');
+    }
     assert.ok(FLOW.nativeFrames > 0, 'the ordinary probe Unit reaches native presentation in the same encounter');
     assert.ok(
         FLOW.sweepFrame.sessionDto && FLOW.sweepFrame.sameSource && FLOW.sweepFrame.handRadius > 0,
