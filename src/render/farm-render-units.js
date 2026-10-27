@@ -362,7 +362,11 @@ export class UnitPresentation {
         if (this.renderer.cornAttachmentBodies.has(u.id)) {
             this.renderer.captureCornAttachmentBody(u, u.id, PLAYER, MATRIX);
         }
-        this.renderer.ctx.drawVectorAsset(PLAYER, {
+        // Preserve the established primitive/vector submission order. Changing
+        // overlay ordering is a separate visual change from pose evaluation.
+        this.renderer.ctx.vector.flush();
+        PLAYER.draw({
+            projection: this.renderer.ctx.vector.projection,
             matrix: MATRIX,
             alpha: u.isFormationClone ? 0.52 : 1,
             color: u.isFormationClone ? [0.55, 0.82, 1, 1] : u.isSeedling ? SEEDLING_TINT : [1, 1, 1, 1],

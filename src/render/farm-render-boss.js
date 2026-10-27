@@ -378,7 +378,10 @@ export class BossPresentation {
                 x: MOUTH_SOCKET.x * S_LOCAL + MATRIX[4],
                 y: MOUTH_SOCKET.y * S_LOCAL + MATRIX[5],
             };
-        this.renderer.ctx.drawVectorAsset(PLAYER, {
+        // Keep the main branch's actual overlay submission order unchanged.
+        this.renderer.ctx.vector.flush();
+        PLAYER.draw({
+            projection: this.renderer.ctx.vector.projection,
             matrix: MATRIX,
         });
         PRESENTATION.drawRelease(this.renderer, B, POSE, MOUTH_SCREEN);
