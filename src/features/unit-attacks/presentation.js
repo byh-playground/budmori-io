@@ -22,6 +22,12 @@ const ATTACK_PRESENTATIONS = new Map(
     [new DualStrikePresentation(), new LobPresentation()].map((presentation) => [presentation.id, presentation]),
 );
 export function unitAttackPresentation(unit) {
+    // The growing stage wears sprout art while retaining its eventual species.
+    // Use that art's common phase clips and elapsed clock, never mature weapon
+    // stages, normalized phase clocks or species-specific pose offsets.
+    if (unit.isSeedling) {
+        return DEFAULT_ATTACK;
+    }
     if (unit.species === 8 && unit.ability?.barleyForm) {
         return BARLEY_ATTACK;
     }
@@ -105,7 +111,7 @@ export function unitCombatExpression(unit) {
     if (!unit.dropLanded || unit.z > 0.5) {
         return 'surprised';
     }
-    if (unit.walnutGuarding) {
+    if (unit.walnutGuarding && !unit.isSeedling) {
         return unit.ability?.walnutForm && unitAttackMotion(unit) ? 'guard-attack' : 'guard';
     }
     return unit.ability?.phase === 'windup' ? 'focused' : unit.ability?.phase === 'active' ? 'attack' : null;
