@@ -23,8 +23,8 @@ class SignaturePattern extends BossPattern {
             world.enterBossPatternRecovery(action);
         }
     }
-    effect(world, shape, detail) {
-        world.combat('boss-signature', { element: this.config.element, shape, ...detail });
+    effect(world, detail) {
+        world.combat('boss-signature', { element: this.config.element, ...detail });
     }
 }
 
@@ -51,9 +51,10 @@ export class WaterJetPattern extends SignaturePattern {
                 world.hitBossPatternUnit(UNIT, this.id, { x: UNIT.x, y: UNIT.y, z: 0 }, { x: COS, y: SIN }, boss);
             }
         }
-        this.effect(world, 'line', {
+        this.effect(world, {
             x: boss.x,
             y: boss.y,
+            radius: boss.radius,
             angle: action.aim,
             reach: REACH,
             width: this.config.halfWidth,
@@ -85,7 +86,7 @@ export class RootEruptionPattern extends SignaturePattern {
                 N = Math.hypot(DX, DY) || 1;
             world.hitBossPatternUnit(UNIT, this.id, { x: UNIT.x, y: UNIT.y, z: 0 }, { x: DX / N, y: DY / N }, boss);
         }
-        this.effect(world, 'disk', { x: X, y: Y, reach: RADIUS });
+        this.effect(world, { x: X, y: Y, reach: RADIUS });
     }
 }
 
@@ -117,9 +118,10 @@ export class FireBreathPattern extends SignaturePattern {
                 undefined,
                 boss,
             );
-            this.effect(world, 'sector', {
+            this.effect(world, {
                 x: boss.x,
                 y: boss.y,
+                radius: boss.radius,
                 angle: action.aim,
                 reach: this.reachFor(boss),
                 sector: this.config.sector,
@@ -151,7 +153,7 @@ export class FrostPulsePattern extends SignaturePattern {
                 UNIT.stun = Math.max(UNIT.stun, this.config.freeze);
             }
         }
-        this.effect(world, 'ring', { x: boss.x, y: boss.y, reach: this.reachFor(boss) });
+        this.effect(world, { x: boss.x, y: boss.y, reach: this.reachFor(boss) });
     }
 }
 
@@ -219,7 +221,7 @@ export class ChainLightningPattern extends SignaturePattern {
             }
             // Each jump is settled alone so it is not shared out with the jumps of the same moment.
             world._settleBossHits(boss);
-            this.effect(world, 'chain', { x: CHAIN.last.x, y: CHAIN.last.y, toX: UNIT.x, toY: UNIT.y, hop: CHAIN.hop });
+            this.effect(world, { x: CHAIN.last.x, y: CHAIN.last.y, toX: UNIT.x, toY: UNIT.y, hop: CHAIN.hop });
             CHAIN.hit.add(UNIT.id);
             CHAIN.last = { x: UNIT.x, y: UNIT.y };
             CHAIN.lastUnit = UNIT;

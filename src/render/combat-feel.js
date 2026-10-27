@@ -288,7 +288,8 @@ class CombatFeel {
     }
     // How long an effect stays: the effect decides, the shared budget is only the default.
     lifeMs(event) {
-        return COMBAT_EFFECT_PRESENTATIONS.get(event.kind)?.lifeMs ?? COMBAT_FEEL_CONFIG.lifeMs;
+        const PRESENTATION = COMBAT_EFFECT_PRESENTATIONS.get(event.kind);
+        return PRESENTATION?.lifeMsFor?.(event) ?? PRESENTATION?.lifeMs ?? COMBAT_FEEL_CONFIG.lifeMs;
     }
     releaseEffect(event) {
         COMBAT_EFFECT_PRESENTATIONS.get(event.kind)?.release?.(this, event);
