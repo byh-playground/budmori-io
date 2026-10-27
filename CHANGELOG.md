@@ -1,5 +1,9 @@
 # 변경 기록
 
+## 0.48.11 - 2026-10-27
+
+- 번식 짝 예약, 합체·조합 판정과 합체 작업 진행 메서드 29개를 `farm-model.js`에서 `farm-merge-breed.js`로 옮겼어요. 농장 모드 목록(`FARM_MODES`)은 `farm-mode-behaviors.js`가 직접 내보내요. 동작은 그대로예요.
+
 ## 0.48.10 - 2026-10-27
 
 - 유닛 몸체 클래스(`Unit`과 충돌·넉백·공격 합성)를 `farm-model.js`에서 `farm-unit.js`로 옮겼어요. `Unit`은 이제 `farm-unit.js`에서만 가져와요. 동작은 그대로예요.
