@@ -371,6 +371,7 @@ const READY = new Map();
 let pending = false;
 let started = false;
 let vectorLoader = null;
+const VECTOR_SOURCE_TEXT = new Map();
 const DIGEST = async (bytes) =>
     Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), (b) =>
         b.toString(16).padStart(2, '0'),
@@ -472,9 +473,17 @@ async function launch() {
         // Keep troop and giant variants in separate quality-keyed startup cache entries.
         vectorLoader ||= globalThis.BloomGamekitVectorAssetLoader.createVectorAssetLoader({
             maxEntries: config.vectorAssets.length,
+            fetch: async (url, options) => {
+                const RESPONSE = await fetch(url, options);
+                if (RESPONSE.ok) {
+                    VECTOR_SOURCE_TEXT.set(url, await RESPONSE.clone().text());
+                }
+                return RESPONSE;
+            },
         });
         const TROOPS = {},
-            BOSSES = {};
+            BOSSES = {},
+            SOURCES = {};
         const RECORDS = await Promise.all(
             config.vectorAssets.map(async (spec) => {
                 const URL_LOCAL = new URL(spec.file + '?version=' + spec.sha256, document.baseURI).href;
@@ -500,10 +509,16 @@ async function launch() {
         );
         for (const { spec: SPEC, compiled: COMPILED } of RECORDS) {
             (SPEC.kind === 'troop' ? TROOPS : BOSSES)[SPEC.id] = COMPILED;
+            if (SPEC.kind === 'troop') {
+                SOURCES[SPEC.id] = VECTOR_SOURCE_TEXT.get(
+                    new URL(SPEC.file + '?version=' + SPEC.sha256, document.baseURI).href,
+                );
+            }
         }
         globalThis.BudmoriVectorResources = Object.freeze({
             troops: Object.freeze(TROOPS),
             bosses: Object.freeze(BOSSES),
+            sources: Object.freeze(SOURCES),
         });
         let scope = null;
         if (config.scope) {

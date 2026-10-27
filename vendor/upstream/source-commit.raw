@@ -1,26 +1,29 @@
-tree 5adfebe2d88a33d625ecd5fafa2dedafb2324800
-parent d371e0fdc536c57172050a45ce08e62e3267b9c0
-parent 1a4aa2a48019614952052f111673ede5b9e7c7c0
-author byh020907 <byh020907@naver.com> 1793097810 +0900
-committer GitHub <noreply@github.com> 1793097810 +0900
+tree e86f89fc82a0a08be93fee98876074c0bd0976ec
+parent df54a90f33d8859f9cc94aa2bacdbad1c7f44fa3
+author byh020907 <byh020907@naver.com> 1793102737 +0900
+committer GitHub <noreply@github.com> 1793102737 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq4IBSCRC1aQ7uu5UhlAAA++cQAFCPmbI0f3SGunQZ0pFugyul
- FZcVU6rz+i3OWVWWP5b5MHQ9lDdquDezHDCTTJYJridRLzcia89/Qa6XGQ7tww1Y
- EqEBSQ9HTqLC3IPKY5+euUpP2h+NkGhycyGeGlbgdWFG56hyxuiO1YVJXeoHA5s5
- uRtB6AKWOk/GsKR6vcO5zq6brbJNcgt8HqLSGbrxx3EDDEM8BcW5Fm+d0B2eEska
- 7UrG3AS+upYyoi9QNk58wsPndQ/F5zkpvJU5Ji+jPfi0ioze0h1nmgXpyMRMdnZW
- LiGWdWxWpeAHjBCQiZdEnduHHKnlb963BuqYLDuLZnGvR6HQE/bDD1njGqIthyLm
- KEr2JElyEcVJa69Z931SuMmomuU2UCIZzO7kxNfXbjxE6hu92dDkVyLO3sh0UARk
- Lb2WEweh5LNtDp3BEGg1ZyCWNSQyVZn3XA+3cfa5rYzMj4WDoPHcIW/+h9yNsLxR
- J+boUqZzWSfb+szxvCd6xkaYWI9yTFc+Nu0WXvFxjeqpHQz1YS/nnhS+tsolKFx7
- 8+tPPGtP2NKztkhGz2LdoLCpZFSXws8JBtQreSV4MQejoP8ZlRuUG7hOocN1nkft
- YvNJUjoFRa3T5BjojUSkyO61y5zKjyrwwCZ+VB/KCUBYfZwmmBQks2ZZENwDNtAO
- wDPW37jRlymHw5BabHfE
- =F1d5
+ wsFcBAABCAAQBQJq4JORCRC1aQ7uu5UhlAAAv6YQAKIQUeBFb5xK1iSO9YyU/J5R
+ lfTMM7Z8HhVee7B3Us++cC7I8Lik8cjCjg2SD3DKAsyuFKnDENOyaw8zezo3YQLw
+ oKzVhfwBorZzrQjOms57bd/St/AXMTdJiWXDnfktBuaQNhmtqqocy4XuQTYv9NhM
+ EAeZI99tfsQGjf66RVqYJYbN1lHtPb5gsl22NnCQD234lHt7FPxKNchDK74OmrGQ
+ i+KRE5bH9QR5tmT2u9EGXLiaXcxAc5+lap/Qkeume2dKUNTkdR4QpyF628IiXj5i
+ Mr2exsNL5CYseSOd+uCbUmljTmVX5xoCr9SKjDmgmug+fEBXRbrz0pNgX5jxq4Sf
+ 2XPD9Utme2ERzcOnmJhcZyYPZt/5FMAR9eUyGXaJ7irCoO3XJFXw3D0MMsUHPoBm
+ BYg9wDZBXxUwgIzDS0VSB04NgkjBnqg9t2fne341mOBrZCxqhDU6b9Q3BJfmZYaz
+ BYjj1zLBhU5ZFOusrVBWU8MkeYtY7QVGyyy/uYSNTJwhJ5YV9N9yFtczzjZ4Yies
+ JtfZXcsLHQzexDZnUxU/dw1qaiuPRUyYcVL1PgF1oUxzqanHNpG5EckjzrqOG5Y/
+ vYOFAKYRjEYIndyhSJT3RnZVN7Qa8ci26hyyQB+rTqgYvmx3BI5M1XNu0WsXnK/4
+ ymKI5no+uy/amkcGroD6
+ =ucND
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #120 from byh-playground/claude/vector-additive-blend
+feat: SVG named fill region 팔레트 계약 (0.19.1) (#122)
 
-feat(rendering): VectorContext 가산 합성 지원 (v0.18.0)
+* feat: 원본 SVG named fill region 팔레트 계약
+
+* fix: 0.19.0 래스터와 팔레트 통합 검증 및 0.19.1 준비
+
+* fix: sparse RGB 입력 차단 및 GPU 경로 검증

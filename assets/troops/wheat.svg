@@ -12,8 +12,8 @@
       <path id="wheat-grain-central-crease" d="M380 83 C379 89 380 96 380 101 M380 151 C379 162 380 176 381 190" fill="none" stroke="#bd9662" stroke-width="1.15" stroke-linecap="round" opacity=".62"/>
       <ellipse id="wheat-grain-highlight" cx="351" cy="107" rx="1.7" ry="4.3" fill="#fff6e1" opacity=".72"/>
       <g id="face-neutral">
-        <ellipse id="wheat-neutral-blush-left" cx="355" cy="135" rx="5.5" ry="3.2" fill="#e88375"/>
-        <ellipse id="wheat-neutral-blush-right" cx="396" cy="135" rx="5.5" ry="3.2" fill="#e88375"/>
+        <ellipse data-paint-region="element-cheeks" id="wheat-neutral-blush-left" cx="355" cy="135" rx="5.5" ry="3.2" fill="#e88375"/>
+        <ellipse data-paint-region="element-cheeks" id="wheat-neutral-blush-right" cx="396" cy="135" rx="5.5" ry="3.2" fill="#e88375"/>
         <ellipse id="wheat-neutral-eye-left" cx="361.5" cy="125.5" rx="4.8" ry="5" fill="#4b211b"/>
         <ellipse id="wheat-neutral-eye-right" cx="390" cy="125.5" rx="4.8" ry="5" fill="#4b211b"/>
         <path id="wheat-neutral-mouth" d="M371 132 Q376.5 137 382 132" fill="none" stroke="#2c1c18" stroke-width="1.25" stroke-linecap="round"/>
@@ -22,8 +22,8 @@
         <path id="wheat-happy-eye-left" d="M357 126 Q362 121 367 126" fill="none" stroke="#2c1c18" stroke-width="1.7" stroke-linecap="round"/>
         <path id="wheat-happy-eye-right" d="M386 126 Q391 121 396 126" fill="none" stroke="#2c1c18" stroke-width="1.7" stroke-linecap="round"/>
         <path id="wheat-happy-mouth" d="M371 131 Q376.5 135 382 131" fill="none" stroke="#2c1c18" stroke-width="1.7" stroke-linecap="round"/>
-        <ellipse id="wheat-happy-blush-left" cx="355" cy="135" rx="5.5" ry="3.2" fill="#e88375"/>
-        <ellipse id="wheat-happy-blush-right" cx="396" cy="135" rx="5.5" ry="3.2" fill="#e88375"/>
+        <ellipse data-paint-region="element-cheeks" id="wheat-happy-blush-left" cx="355" cy="135" rx="5.5" ry="3.2" fill="#e88375"/>
+        <ellipse data-paint-region="element-cheeks" id="wheat-happy-blush-right" cx="396" cy="135" rx="5.5" ry="3.2" fill="#e88375"/>
       </g>
       <g id="face-focused" display="none">
         <ellipse id="wheat-focused-eye-left" cx="362" cy="126" rx="4.2" ry="5.1" fill="#4b211b"/>
@@ -45,8 +45,8 @@
       <g id="face-hurt" display="none">
         <path id="wheat-hurt-eye-left" d="M357 126 L367 126 M386 126 L396 126" fill="none" stroke="#2c1c18" stroke-width="1.8" stroke-linecap="round"/>
         <path id="wheat-hurt-mouth" d="M371 136 Q376.5 129 382 136" fill="none" stroke="#2c1c18" stroke-width="1.8" stroke-linecap="round"/>
-        <ellipse id="wheat-hurt-blush-left" cx="355" cy="135" rx="5.5" ry="3.2" fill="#e88375"/>
-        <ellipse id="wheat-hurt-blush-right" cx="396" cy="135" rx="5.5" ry="3.2" fill="#e88375"/>
+        <ellipse data-paint-region="element-cheeks" id="wheat-hurt-blush-left" cx="355" cy="135" rx="5.5" ry="3.2" fill="#e88375"/>
+        <ellipse data-paint-region="element-cheeks" id="wheat-hurt-blush-right" cx="396" cy="135" rx="5.5" ry="3.2" fill="#e88375"/>
       </g>
       <g id="face-hungry" display="none">
         <circle id="wheat-hungry-eye-left" cx="362" cy="126" r="5.2" fill="#4b211b"/>

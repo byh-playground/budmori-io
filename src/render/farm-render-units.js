@@ -17,6 +17,7 @@ import { ATTACK_TYPES, CONFIG, clamp } from '../model/farm-model.js';
 import { farmBreedingCooldown, unitRestPresentation } from '../ui/farm-indicators.js';
 import { scenePresentation } from './farm-render-scenes.js';
 import { drawElementMark, drawFaceMarks } from './unit-face-overlay.js';
+import { elementPaintRegions } from '../units/species-paint.js';
 import { towerElement } from '../tower/tower-theme.js';
 import { PassiveMarksPresentation } from '../tower/tower-passive-presentations.js';
 
@@ -371,6 +372,15 @@ export class UnitPresentation {
             matrix: MATRIX,
             alpha: u.isFormationClone ? 0.52 : 1,
             color: u.isFormationClone ? [0.55, 0.82, 1, 1] : [1, 1, 1, 1],
+            paintRegions: elementPaintRegions(
+                u.isSeedling || u.isFormationClone
+                    ? 0
+                    : u.faction === 'enemy'
+                      ? sim.tower.active && !u.isBoss
+                          ? towerElement(sim.tower.floor)
+                          : 0
+                      : u.element,
+            ),
         });
         drawUnitAttackContact(this.renderer, u, PLAYER, MATRIX);
         this.drawLineageMarks(u, PLAYER, RECORD, MATRIX, sim);
@@ -390,7 +400,7 @@ export class UnitPresentation {
             NOW = player.getSocket('mouth'),
             SHIFT = { x: NOW.x - REST[0], y: NOW.y - REST[1] },
             CTX = this.renderer.ctx;
-        drawFaceMarks(CTX, u.species, ENEMY ? -1 : u.temperament, ELEMENT, matrix, SHIFT);
+        drawFaceMarks(CTX, u.species, ENEMY ? -1 : u.temperament, matrix, SHIFT);
         if (ELEMENT > 0) {
             const TOP = this.renderer.project(u.x, u.y, u.z + u.height + 0.35);
             drawElementMark(

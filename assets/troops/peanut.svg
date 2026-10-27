@@ -56,15 +56,15 @@
     <path id="peanut-kernel-right-sheen" d="M187 104 Q196 117 193 131 M186 151 Q183 162 177 168" fill="none" stroke="#f4cb93" stroke-width="3" stroke-linecap="round"/>
   </g>
   <g id="face-neutral" transform="translate(3.75 10) scale(1.25)">
-    <ellipse id="neutral-blush-left" cx="100" cy="118" rx="6.5" ry="3.6" fill="#e9897f"/>
-    <ellipse id="neutral-blush-right" cx="148" cy="118" rx="6.5" ry="3.6" fill="#e9897f"/>
+    <ellipse data-paint-region="element-cheeks" id="neutral-blush-left" cx="100" cy="118" rx="6.5" ry="3.6" fill="#e9897f"/>
+    <ellipse data-paint-region="element-cheeks" id="neutral-blush-right" cx="148" cy="118" rx="6.5" ry="3.6" fill="#e9897f"/>
     <ellipse id="neutral-eye-left" cx="107" cy="107" rx="5.5" ry="5.5" fill="#3b241e"/>
     <ellipse id="neutral-eye-right" cx="141" cy="107" rx="5.5" ry="5.5" fill="#3b241e"/>
     <path id="neutral-mouth" d="M117 114 Q123.5 120 131 114" fill="none" stroke="#3b241e" stroke-width="2.7" stroke-linecap="round"/>
   </g>
   <g id="face-happy" display="none" transform="translate(160 153) scale(.96 .97) translate(-160 -153)">
-    <ellipse id="peanut-happy-blush-left" cx="136" cy="132" rx="8" ry="4.5" fill="#e9897f"/>
-    <ellipse id="peanut-happy-blush-right" cx="184" cy="132" rx="8" ry="4.5" fill="#e9897f"/>
+    <ellipse data-paint-region="element-cheeks" id="peanut-happy-blush-left" cx="136" cy="132" rx="8" ry="4.5" fill="#e9897f"/>
+    <ellipse data-paint-region="element-cheeks" id="peanut-happy-blush-right" cx="184" cy="132" rx="8" ry="4.5" fill="#e9897f"/>
     <path id="peanut-happy-eyes-mouth" d="M129 119 Q137 109 145 119 M175 119 Q183 109 191 119 M148 134 Q160 151 172 134 Z" fill="#3b241e" stroke="#3b241e" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
   <g id="face-focused" display="none" transform="translate(160 153) scale(.96 .97) translate(-160 -153)">

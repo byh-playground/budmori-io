@@ -20,7 +20,8 @@ import { CircleSweepPresentation } from '../features/boss-patterns/sweep-360/pre
 import { ChargePresentation } from '../features/boss-patterns/charge/presentation.js';
 import { LeapSlamPresentation } from '../features/boss-patterns/leap-slam/presentation.js';
 import { FanSweepPresentation } from '../features/boss-patterns/fan-sweep/presentation.js';
-import { drawElementMark, drawFaceMarks } from './unit-face-overlay.js';
+import { drawElementMark } from './unit-face-overlay.js';
+import { elementPaintRegions } from '../units/species-paint.js';
 import { towerElement } from '../tower/tower-theme.js';
 import { SIGNATURE_PRESENTATIONS } from '../features/boss-patterns/signature/presentation.js';
 import { MouthSummonPresentation } from '../features/boss-patterns/mouth-summon/presentation.js';
@@ -359,7 +360,6 @@ export class BossPresentation {
             basic: BASIC,
             player: PLAYER,
             record: RECORD,
-            species: SPECIES,
             presentation: PRESENTATION,
             pose: POSE,
             matrix: MATRIX,
@@ -383,16 +383,12 @@ export class BossPresentation {
         PLAYER.draw({
             projection: this.renderer.ctx.vector.projection,
             matrix: MATRIX,
+            paintRegions: elementPaintRegions(world.tower.active ? towerElement(world.tower.floor) : 0),
         });
         PRESENTATION.drawRelease(this.renderer, B, POSE, MOUTH_SCREEN);
         if (world.tower.active && B.hp > 0) {
             // A boss shows its floor band's element like every other enemy: cheeks in its colour and a mark above.
-            const ELEMENT = towerElement(world.tower.floor),
-                REST = RECORD.anchors.mouth;
-            drawFaceMarks(this.renderer.ctx, SPECIES, -1, ELEMENT, MATRIX, {
-                x: MOUTH_SOCKET.x - REST.x,
-                y: MOUTH_SOCKET.y - REST.y,
-            });
+            const ELEMENT = towerElement(world.tower.floor);
             drawElementMark(
                 this.renderer.ctx,
                 ELEMENT,

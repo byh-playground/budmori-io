@@ -1,17 +1,10 @@
 import { ELEMENTS } from '../model/lineage.js';
 
-// Where each species' face sits in its own SVG canvas (the troop art's viewBox, measured from the neutral face), so the
-// temperament's eyebrows and the element's cheek colour can be laid over any picture of the species: the field, the
-// codex and the reward cards all read the same table. `cheek` is the blush's radii, `eyeH` the eye's height.
-const FACE = (viewBox, cheeks, cheek, eyes, eyeH) => Object.freeze({ viewBox, cheeks, cheek, eyes, eyeH });
+// Existing temperament brows use eye anchors. Cheek colour lives only in authored SVG named fills.
+const FACE = (viewBox, eyes, eyeH) => Object.freeze({ viewBox, eyes, eyeH });
 export const SPECIES_FACES = Object.freeze([
     FACE(
         [320, 350],
-        [
-            [123, 214],
-            [228, 214],
-        ],
-        [14, 8],
         [
             [139, 190],
             [216, 190],
@@ -21,11 +14,6 @@ export const SPECIES_FACES = Object.freeze([
     FACE(
         [285, 295],
         [
-            [88, 113],
-            [196, 113],
-        ],
-        [14, 8],
-        [
             [102, 89],
             [180, 89],
         ],
@@ -33,11 +21,6 @@ export const SPECIES_FACES = Object.freeze([
     ),
     FACE(
         [260, 320],
-        [
-            [82, 113],
-            [172, 113],
-        ],
-        [12.5, 7],
         [
             [96, 93],
             [156, 93],
@@ -47,11 +30,6 @@ export const SPECIES_FACES = Object.freeze([
     FACE(
         [320, 300],
         [
-            [104, 137],
-            [216, 137],
-        ],
-        [16, 12],
-        [
             [128, 116],
             [192, 116],
         ],
@@ -59,11 +37,6 @@ export const SPECIES_FACES = Object.freeze([
     ),
     FACE(
         [320, 300],
-        [
-            [128.8, 157.5],
-            [188.8, 157.5],
-        ],
-        [8.2, 4.5],
         [
             [137.5, 143.8],
             [180, 143.8],
@@ -73,11 +46,6 @@ export const SPECIES_FACES = Object.freeze([
     FACE(
         [320, 300],
         [
-            [122.5, 166.3],
-            [196.3, 166.3],
-        ],
-        [9.4, 4.4],
-        [
             [133.1, 151.3],
             [185.6, 151.3],
         ],
@@ -85,11 +53,6 @@ export const SPECIES_FACES = Object.freeze([
     ),
     FACE(
         [320, 350],
-        [
-            [113, 183],
-            [204, 183],
-        ],
-        [11.5, 6.2],
         [
             [126, 163],
             [189, 163],
@@ -99,11 +62,6 @@ export const SPECIES_FACES = Object.freeze([
     FACE(
         [320, 350],
         [
-            [110, 178],
-            [192, 178],
-        ],
-        [11, 6.4],
-        [
             [123, 159],
             [180, 159],
         ],
@@ -112,11 +70,6 @@ export const SPECIES_FACES = Object.freeze([
     FACE(
         [320, 350],
         [
-            [111, 172.7],
-            [209.8, 172.7],
-        ],
-        [12.5, 7.5],
-        [
             [125.5, 151.7],
             [195.4, 151.9],
         ],
@@ -124,11 +77,6 @@ export const SPECIES_FACES = Object.freeze([
     ),
     FACE(
         [320, 350],
-        [
-            [107.6, 252.4],
-            [213.8, 252.4],
-        ],
-        [15.3, 9],
         [
             [129.2, 227.2],
             [192.2, 227.2],
@@ -150,28 +98,13 @@ const BROWS = Object.freeze([
     Object.freeze({ lift: 1.0, length: 0.7, width: 0.2, inner: -0.2, outer: 0.35 }),
 ]);
 
-// The marks over a species' face as plain shapes in its SVG canvas: the element's cheek colour and the temperament's brows
+// Existing temperament brows in the original canvas; colour never adds face geometry
 // (none for a negative temperament, as on an enemy).
-export function faceMarks(species, temperament, element) {
+export function faceMarks(species, temperament) {
     const FACE_LOCAL = SPECIES_FACES[species],
         MARKS = [];
     if (!FACE_LOCAL) {
         return MARKS;
-    }
-    if (element > 0) {
-        const COLOR = ELEMENTS[element].color;
-        for (const [X, Y] of FACE_LOCAL.cheeks) {
-            MARKS.push({
-                kind: 'ellipse',
-                x: X,
-                y: Y,
-                rx: FACE_LOCAL.cheek[0] * 1.15,
-                ry: FACE_LOCAL.cheek[1] * 1.2,
-                fill: COLOR,
-                stroke: '#5b4a40',
-                strokeWidth: Math.max(1.2, FACE_LOCAL.eyeH * 0.06),
-            });
-        }
     }
     if (!(temperament >= 0)) {
         return MARKS;
@@ -278,15 +211,14 @@ export function elementIconSvg(element, size = 16) {
     return `<svg class="element-icon" viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true">${SHAPE}</svg>`;
 }
 // The face marks as an SVG laid over the species picture (same canvas, so it lines up at any size).
-export function faceOverlaySvg(species, temperament, element) {
+export function faceOverlaySvg(species, temperament) {
     const FACE_LOCAL = SPECIES_FACES[species];
     if (!FACE_LOCAL) {
         return '';
     }
-    const SHAPES = faceMarks(species, temperament, element).map((mark) =>
-        mark.kind === 'ellipse'
-            ? `<ellipse cx="${mark.x}" cy="${mark.y}" rx="${mark.rx}" ry="${mark.ry}" fill="${mark.fill}" stroke="${mark.stroke}" stroke-width="${mark.strokeWidth}"/>`
-            : `<line x1="${mark.x1}" y1="${mark.y1}" x2="${mark.x2}" y2="${mark.y2}" stroke="${mark.color}" stroke-width="${mark.width}" stroke-linecap="round"/>`,
+    const SHAPES = faceMarks(species, temperament).map(
+        (mark) =>
+            `<line x1="${mark.x1}" y1="${mark.y1}" x2="${mark.x2}" y2="${mark.y2}" stroke="${mark.color}" stroke-width="${mark.width}" stroke-linecap="round"/>`,
     );
     return `<svg class="face-overlay" viewBox="0 0 ${FACE_LOCAL.viewBox[0]} ${FACE_LOCAL.viewBox[1]}" aria-hidden="true">${SHAPES.join('')}</svg>`;
 }
