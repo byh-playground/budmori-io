@@ -1,5 +1,5 @@
 // User flow: enter a populated tower, inspect it with native pointer/touch input,
-// reset the view, use command/menu UI, and return to the unchanged outdoor farm.
+// use command/menu UI, and return to the unchanged outdoor farm.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -437,11 +437,8 @@ try {
     await gestureFlow(FARM_CAMERA);
     await capture('farm-manual');
     assert.equal(await state(), FARM_STATE, 'farm gestures preserve full checkpoint');
-    await page.locator('#cameraReset').click();
-    near((await camera()).pan, FARM_CAMERA.pan, 'farm reset');
-    assert.equal((await camera()).zoom, FARM_CAMERA.zoom);
     await resume();
-    REPORT.checks.push('farm shares the same native gestures, reset and state isolation');
+    REPORT.checks.push('farm shares the same native gestures and state isolation');
     await page.evaluate(() => {
         const W = BUDMORI.sim;
         // 500 frontline + 100 reserves; the separate tower-army flow covers a full 1,000 roster.
@@ -525,11 +522,7 @@ try {
             LIMITED.pan.y >= LIMITED.limits.minY &&
             LIMITED.pan.y <= LIMITED.limits.maxY,
     );
-    await page.locator('#cameraReset').click();
-    assert.equal((await camera()).manual, false);
-    near((await camera()).pan, INITIAL.pan, 'reset returns original framing');
-    assert.ok(Math.abs((await camera()).zoom - INITIAL.zoom) < 1e-8);
-    REPORT.checks.push('projection inverse, pixel/line/page wheel units, zoom/pan limits, original view reset');
+    REPORT.checks.push('projection inverse, pixel/line/page wheel units, zoom/pan limits');
     await page.mouse.move(CX, CY);
     await page.mouse.wheel(0, -100);
     await page.waitForFunction(() => BUDMORI.renderer.manualCamera);

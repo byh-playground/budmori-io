@@ -2071,12 +2071,6 @@ CANVAS.addEventListener(
 CANVAS.addEventListener('lostpointercapture', endCameraPointer);
 window.addEventListener('pointerup', endCameraPointer, true);
 window.addEventListener('pointercancel', endCameraPointer, true);
-DOLLAR('cameraReset').addEventListener('click', () => {
-    if (canUseCamera()) {
-        stopWorldInput();
-        RENDERER.resetZoom();
-    }
-});
 window.addEventListener('blur', () => {
     stopWorldInput();
     persist();
@@ -2232,8 +2226,6 @@ function sync(display, now, notices) {
         MERGE_STATUS = MERGE_CACHE.value,
         COMBINE_STATUS = MERGE_CACHE.combine;
     syncBossRewardDialog(REWARD_WORLD);
-    syncFlag('cameraReset', 'hidden', home || menuOpen);
-    syncFlag('cameraReset', 'disabled', !canUseCamera());
     if (cameraGesture && (!canUseCamera() || cameraGesture.place !== cameraPlace() || cameraGesture.world !== W)) {
         stopWorldInput();
     }
