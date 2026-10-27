@@ -451,15 +451,36 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
         W.tower.floor = 2;
         W.tower.nextKind = 'battle';
         W.tower.doors = [{ type: 'fight', kind: 'battle' }];
+        // A boss may legitimately acquire this card on a power floor. Keep a
+        // boss skill in this fixture so role separation is always exercised.
+        W.tower.bossRelics.set('giant', 1);
         W.chooseDoor(0);
     });
     await PAGE.waitForTimeout(3500);
     const SLOT = await WORLD(() => {
         const W = BUDMORI.sim;
         W.formationSkills.update(0.05);
-        return W.formationSkills.slots.map((x) => `${x.id}:${x.level}`).join();
+        const KEY = (slot) => `${slot.id}:${slot.level}`;
+        return {
+            player: W.formationSkills.slots
+                .filter((slot) => !slot.role || slot.role === 'player')
+                .map(KEY)
+                .sort(),
+            boss: W.formationSkills.slots
+                .filter((slot) => slot.role === 'boss')
+                .map(KEY)
+                .sort(),
+            expectedBoss: [...W.tower.bossRelics].map(([id, level]) => `${id}:${level}`).sort(),
+            total: W.formationSkills.slots.length,
+        };
     });
-    expect(SLOT === 'lightning:2', `relic skill in fight: ${SLOT}`);
+    expect(SLOT.player.join() === 'lightning:2', `player relic skill in fight: ${JSON.stringify(SLOT)}`);
+    expect(
+        SLOT.boss.includes('giant:1') &&
+            JSON.stringify(SLOT.boss) === JSON.stringify(SLOT.expectedBoss) &&
+            SLOT.total === SLOT.player.length + SLOT.boss.length,
+        `boss relic skills and roles in fight: ${JSON.stringify(SLOT)}`,
+    );
     await CLEAR_FLOOR();
     await PAGE.waitForTimeout(3500);
     const THREE = await WORLD(() => ({
