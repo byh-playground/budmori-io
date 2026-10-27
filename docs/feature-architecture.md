@@ -130,3 +130,30 @@ FarmSession의 공격 DTO와 checkpoint의 cycle 직렬화·검증·재수화도
 
 보스의 모든 동작은 병력과 동일한 SVG 원본을 standard 품질로 읽는다. 평타·특수 패턴·카드 시전 사이에
 리그를 바꾸지 않으며, 실제 part/socket과 공통 몸체 profile을 사용한다. 농장 병력의 노동 리그와 동작은 유지한다.
+
+## 정원 모델(`Garden`)의 파일 배치
+
+`src/model/farm-model.js`의 `Garden`은 상태를 만드는 생성자와 장면 공통 진행(`step`, 생성·제거, 알림, 일꾼 배정,
+초기화)만 소유합니다. 나머지 메서드는 역할별 `src/model/farm-*.js`가 합성 클래스(`(base) => class extends base`)로
+제공하고, `Garden`이 목록(`GARDEN_BASE`)으로 이어 붙입니다. 각 조각은 생성자가 만든 공유 상태를 읽고 쓰며 자체
+상태를 만들지 않습니다. 메서드 본문의 동작과 호출 순서는 분리 전과 같습니다(비교 방법은 아래 검증 항목).
+
+| 파일                     | 합성 조각             | 책임 (대표 메서드)                                                                   |
+| ------------------------ | --------------------- | ------------------------------------------------------------------------------------ |
+| `farm-food-field.js`     | `FARM_FOOD_FIELD`     | 식량 공간 색인, 먹이 목표 탐색 작업, 식량 회피 (`requestGroundFoodTarget`)           |
+| `farm-contact-solver.js` | `FARM_CONTACT_SOLVER` | 농장·전투 접촉 분리와 충돌 충격 (`solveContactSeparations`, `battleContacts`)        |
+| `farm-merge-breed.js`    | `FARM_MERGE_BREED`    | 번식 짝 예약, 합체·조합 판정과 합체 작업 진행 (`startManualMerge`, `mergeGroup`)     |
+| `farm-boss-patterns.js`  | `FARM_BOSS_PATTERNS`  | 보스 목표 선택, 패턴 시작·판정·마무리, 입 소환 (`beginBossPattern`)                  |
+| `farm-tower-run.js`      | `FARM_TOWER_RUN`      | 탑 출발·행군·문 선택·층 시작, 군대 배치·철수, 보스 생성 (`startTower`, `createBoss`) |
+| `farm-combat.js`         | `FARM_COMBAT`         | 전투 이벤트, 타격 대상, 피해 계산·마무리, 투사체 갱신 (`damageCombatTarget`)         |
+| `farm-army-battle.js`    | `FARM_ARMY_BATTLE`    | 군대 후퇴·간격·분산과 전장 유닛 행동 (`battleUnit`)                                  |
+| `farm-unit-life.js`      | `FARM_UNIT_LIFE`      | 유닛 사망·부활, 성향 패시브, 전투 소환 정리 (`processUnitDeath`)                     |
+| `farm-boss-event.js`     | `FARM_BOSS_EVENT`     | 농장 보스 이벤트 마무리 (`finishFarmBossEvent`)                                      |
+
+조각 밖으로 나온 값은 소유 파일에서 직접 가져옵니다. `Unit`(몸체·충돌·넉백·공격 합성)은 `farm-unit.js`,
+`FARM_MODES`는 `farm-mode-behaviors.js`, `PROJECTILE_BEHAVIORS`는 `projectile-behaviors.js`,
+`SIMULATION_SCENES`는 `simulation-scenes.js`입니다. 이전 위치(`farm-model.js`의 `Unit` 재내보내기,
+`createProjectileBehaviors`·`createFarmModeBehaviors`·`createSimulationScenes` 팩토리)는 제거했습니다.
+
+새 메서드는 책임이 맞는 조각에 넣고, 어느 조각에도 맞지 않으면 `Garden`에 두지 말고 먼저 조각을 나눌지 정합니다.
+조각을 만들 때는 같은 조건의 이전/이후 시뮬레이션 추적(전투, 농장, 탑 한 판)이 같은지로 동작 보존을 확인합니다.
