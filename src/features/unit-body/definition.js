@@ -310,8 +310,6 @@ function validateUnitBodySource(species, source) {
 }
 
 export {
-    UNIT_BODIES,
-    UNIT_BODY_CONFIG,
     unitBodyDefinition,
     unitVisualSize,
     unitVectorScale,

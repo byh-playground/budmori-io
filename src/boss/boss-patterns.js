@@ -33,7 +33,7 @@ export function bossAttackTotal(multiplier, hits) {
 // breath that burns several times. Ice: a pulse around the boss that freezes. Lightning: a chain that jumps `hops` times,
 // each jump `falloff` of the one before, to the nearest ally not hit yet.
 const SIGNATURE_COOLDOWN = 5;
-export const SIGNATURE_PATTERN_CONFIG = Object.freeze({
+const SIGNATURE_PATTERN_CONFIG = Object.freeze({
     'signature.water': Object.freeze({
         kind: 'signature-water',
         element: 5,
