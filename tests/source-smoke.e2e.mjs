@@ -500,6 +500,9 @@ try {
             knockVy: 0,
         });
         WORLD.boss.patternRuntime.active = null;
+        // The boss may be mid basic attack from the earlier fight; the sweep fixture starts from an idle boss.
+        WORLD.boss.ability.interrupt();
+        WORLD.boss.specialAbility?.interrupt();
         for (const ID of Object.keys(WORLD.boss.patternRuntime.cooldowns)) {
             WORLD.boss.patternRuntime.cooldowns[ID] = ID === 'attack.sweep-360' ? 0 : 1000;
         }
