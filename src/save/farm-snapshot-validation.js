@@ -1,4 +1,12 @@
-import { TEMPERAMENT_COUNT, SEED_FEEDS, SEED_FEED_COOLDOWN_SECONDS, isValidGenes } from '../model/lineage.js';
+import {
+    TEMPERAMENT_COUNT,
+    SEED_FEEDS,
+    SEED_FEED_COOLDOWN_SECONDS,
+    isValidGenes,
+    isValidCombine,
+    isValidCodex,
+    recipeFor,
+} from '../model/lineage.js';
 import { isWheatAttackRecord } from '../features/species-growth/wheat-attack.js';
 import { isBarleyAttackRecord } from '../features/species-growth/barley-attack.js';
 import { isRiceAttackRecord } from '../features/species-growth/rice-attack.js';
@@ -629,6 +637,7 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
     );
     ASSERT(raw.scene === 'farm');
     ASSERT(Array.isArray(raw.mergeTasks) && raw.mergeTasks.length <= CONFIG.farm.capacity.battleUnits);
+    ASSERT(isValidCombine(raw.combine) && isValidCodex(raw.codex));
     const CHESTNUT_ACTIONS = new Map();
     ASSERT(Array.isArray(raw.chestnutAttacks) && raw.chestnutAttacks.length <= CONFIG.battle.capacity.projectiles);
     for (const R of raw.chestnutAttacks) {
@@ -690,10 +699,12 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
         for (const ID of T.materialIds) {
             MERGE_TASK_UNIT_IDS.add(ID);
         }
+        ASSERT(INTEGER(T.partnerSpecies, -1, CONFIG.unit.speciesCount - 1));
         if (T.phase === 'approach') {
             const MATERIALS = T.materialIds.map((id) => raw.units.find((u) => u.id === id)),
                 FIRST = MATERIALS[0],
-                COST = mergeMaterialCostForTier(FIRST?.tier + 1);
+                COMBINE = T.partnerSpecies >= 0,
+                COST = COMBINE ? 2 : mergeMaterialCostForTier(FIRST?.tier + 1);
             ASSERT(
                 INTEGER(T.aId, 1, CONFIG.farm.maxUnitId) &&
                     INTEGER(T.bId, 1, CONFIG.farm.maxUnitId) &&
@@ -702,10 +713,15 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
                     COST === MATERIALS.length &&
                     FIRST &&
                     INTEGER(T.sourceSpecies, 0, CONFIG.unit.speciesCount - 1) &&
-                    INTEGER(T.sourceTier, 1, CONFIG.unit.maxTier - 1) &&
+                    INTEGER(T.sourceTier, 1, CONFIG.unit.maxTier) &&
                     T.sourceSpecies === FIRST.species &&
                     T.sourceTier === FIRST.tier &&
-                    MATERIALS.every((u) => u && u.tier === FIRST.tier && u.species === FIRST.species) &&
+                    (COMBINE
+                        ? MATERIALS[1] &&
+                          MATERIALS[1].species === T.partnerSpecies &&
+                          recipeFor(FIRST.species, T.partnerSpecies) !== null &&
+                          MATERIALS.every((u) => u && u.tier === FIRST.tier)
+                        : MATERIALS.every((u) => u && u.tier === FIRST.tier && u.species === FIRST.species)) &&
                     T.startPositions.length === MATERIALS.length &&
                     T.startPositions.every(
                         (position, index) =>
@@ -716,7 +732,12 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
                             position.z >= 0,
                     ),
             );
-            PENDING_MERGE_COST[FIRST.species] += MATERIALS.length - 1;
+            if (COMBINE) {
+                PENDING_MERGE_COST[FIRST.species] += 1;
+                PENDING_MERGE_COST[T.partnerSpecies] += 1;
+            } else {
+                PENDING_MERGE_COST[FIRST.species] += MATERIALS.length - 1;
+            }
         } else {
             const RESULT = raw.units.find((u) => u.id === T.resultId);
             ASSERT(
@@ -726,10 +747,14 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
                     !MERGE_TASK_UNIT_IDS.has(T.resultId) &&
                     RESULT &&
                     INTEGER(T.sourceSpecies, 0, CONFIG.unit.speciesCount - 1) &&
-                    INTEGER(T.sourceTier, 1, CONFIG.unit.maxTier - 1) &&
-                    RESULT.species === T.sourceSpecies &&
-                    RESULT.tier === T.sourceTier + 1 &&
-                    T.materialIds.length === mergeMaterialCostForTier(RESULT.tier),
+                    INTEGER(T.sourceTier, 1, CONFIG.unit.maxTier) &&
+                    (T.partnerSpecies >= 0
+                        ? RESULT.species === recipeFor(T.sourceSpecies, T.partnerSpecies)?.result &&
+                          RESULT.tier === T.sourceTier &&
+                          T.materialIds.length === 2
+                        : RESULT.species === T.sourceSpecies &&
+                          RESULT.tier === T.sourceTier + 1 &&
+                          T.materialIds.length === mergeMaterialCostForTier(RESULT.tier)),
             );
             MERGE_TASK_UNIT_IDS.add(T.resultId);
         }

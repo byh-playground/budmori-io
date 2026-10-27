@@ -189,6 +189,8 @@ export const FARM_SNAPSHOT_SHAPE = {
     notices: [],
     eventSequence: 0,
     mergeTasks: [],
+    combine: { recipe: -1, tier: 1 },
+    codex: { recipes: [], forms: [], colors: [] },
     corpseRecoveryVersion: 1,
     rng: {
         state: 3031296687,
@@ -427,10 +429,13 @@ const SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
     notices: [JSON_PAYLOAD],
     combatLog: [JSON_PAYLOAD],
     mergeTasks: [
-        FIELDS('phase aId bId elapsed duration resultId sourceSpecies sourceTier centerX centerY centerZ', {
-            materialIds: [true],
-            startPositions: [FIELDS('id x y z')],
-        }),
+        FIELDS(
+            'phase aId bId elapsed duration resultId sourceSpecies partnerSpecies sourceTier centerX centerY centerZ',
+            {
+                materialIds: [true],
+                startPositions: [FIELDS('id x y z')],
+            },
+        ),
     ],
 });
 function copyJsonPayload(value, depth = 0) {

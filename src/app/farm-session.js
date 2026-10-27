@@ -859,6 +859,10 @@ class FarmSession {
                 return W.scene === 'farm' && W.sortActiveFarm(c.order);
             case 'merge':
                 return W.scene === 'farm' && W.startManualMerge();
+            case 'combine':
+                return W.scene === 'farm' && W.startManualMerge(true);
+            case 'combine-select':
+                return W.scene === 'farm' && W.setCombineSelection(c.recipe, c.tier);
             case 'progression-invest':
                 if (W.scene === 'farm' && typeof c.nodeId === 'string' && c.nodeId.length < 64) {
                     if (c.scope === 'ability' && typeof c.abilityId === 'string' && c.abilityId.length < 64) {

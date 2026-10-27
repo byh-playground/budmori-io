@@ -1,3 +1,6 @@
+import { MAX_UNIT_TIER } from '../units/unit-grades.js';
+import { SPECIES_COUNT } from '../units/species-catalog.js';
+
 // Lineage: the temperament and colour genes a unit carries, and the recipe book. Pure data and rules; the world
 // supplies the random source so every roll stays on the seeded stream.
 
@@ -139,4 +142,36 @@ export function elementMultiplier(attacker, defender) {
         return 0.5;
     }
     return 1;
+}
+
+const SORTED_UNIQUE_INTEGERS = (list, limit) =>
+    Array.isArray(list) &&
+    list.every(
+        (value, index) =>
+            Number.isInteger(value) && value >= 0 && value < limit && (index === 0 || value > list[index - 1]),
+    );
+
+export function isValidCombine(combine) {
+    return (
+        !!combine &&
+        Object.keys(combine).length === 2 &&
+        Number.isInteger(combine.recipe) &&
+        combine.recipe >= -1 &&
+        combine.recipe < RECIPES.length &&
+        Number.isInteger(combine.tier) &&
+        combine.tier >= 1 &&
+        combine.tier <= MAX_UNIT_TIER
+    );
+}
+
+// What the farm has had: recipes made, species-by-temperament forms (species * 5 + temperament) and species-by-colour
+// forms (species * 5 + element - 1).
+export function isValidCodex(codex) {
+    return (
+        !!codex &&
+        Object.keys(codex).length === 3 &&
+        SORTED_UNIQUE_INTEGERS(codex.recipes, RECIPES.length) &&
+        SORTED_UNIQUE_INTEGERS(codex.forms, SPECIES_COUNT * TEMPERAMENT_COUNT) &&
+        SORTED_UNIQUE_INTEGERS(codex.colors, SPECIES_COUNT * ELEMENT_COUNT)
+    );
 }

@@ -81,6 +81,7 @@ export class BreedFarmMode extends FarmMode {
                 world.releaseMate(a);
                 return false;
             }
+            world.recordCodex(CHILD);
             CHILD.growthDuration = world.breedGrowthDuration();
             CHILD.vz = 3;
             a.meals = b.meals = 0;
