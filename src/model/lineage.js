@@ -54,6 +54,22 @@ export function recipeFor(speciesA, speciesB) {
     );
 }
 
+// Lineage rolls never touch the world's main random stream: whether and when units are born must not change what the
+// fights draw. Each roll is a small generator seeded from the world seed, the id the new unit will get and a purpose.
+export function lineageRandom(seed, id, purpose) {
+    let state =
+        (Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b) ^
+            Math.imul(id + 1, 0xc2b2ae35) ^
+            Math.imul(purpose + 1, 0x27d4eb2f)) >>>
+        0;
+    return () => {
+        state = (state + 0x6d2b79f5) >>> 0;
+        let value = Math.imul(state ^ (state >>> 15), state | 1);
+        value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+        return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
 export function isValidGenes(genes) {
     return (
         Array.isArray(genes) &&

@@ -24,6 +24,7 @@ import {
     SEED_SPECIES,
     inheritGenes,
     inheritTemperament,
+    lineageRandom,
     rollSeedGenes,
     rollTemperament,
 } from './lineage.js';
@@ -1824,7 +1825,7 @@ const GARDEN = class Garden {
     }
     // A fresh seed: its species, temperament and colour genes are fixed now and shown once it has grown.
     rollSeedLineage() {
-        const RANDOM = () => this.random();
+        const RANDOM = lineageRandom(this.seed, this.nextId, 0);
         return {
             temperament: rollTemperament(RANDOM),
             genes: rollSeedGenes(RANDOM),
@@ -1833,7 +1834,7 @@ const GARDEN = class Garden {
     }
     // The child of a breeding pair takes its genes from both parents like any other result.
     inheritLineage(parents) {
-        const RANDOM = () => this.random();
+        const RANDOM = lineageRandom(this.seed, this.nextId, 1);
         return {
             temperament: inheritTemperament(
                 parents.map((unit) => unit.temperament),
@@ -5369,7 +5370,7 @@ const GARDEN = class Garden {
                 // Seeds are only ever first-tier species; a stronger boss still pays its own species' mastery.
                 DROP_SPECIES = SEED_SPECIES.includes(REWARD_SPECIES)
                     ? REWARD_SPECIES
-                    : SEED_SPECIES[Math.floor(this.random() * SEED_SPECIES.length)],
+                    : SEED_SPECIES[Math.floor(lineageRandom(this.seed, ENCOUNTER_ID, 3)() * SEED_SPECIES.length)],
                 FIRST_CLEAR = !bossSpeciesOwned(this, DROP_SPECIES),
                 SETTLEMENT = settleBossKill(this, {
                     encounterId: ENCOUNTER_ID,

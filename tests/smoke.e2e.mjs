@@ -475,46 +475,50 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
     expect(!LEFT.active && LEFT.units > 0, `leave ${JSON.stringify(LEFT)}`);
 });
 
-await check('a species the farm lacks joins as a pair on its first win, even below the best floor', async () => {
-    const R = await WORLD(async () => {
-        const { Garden: GARDEN } = await import('./src/model/farm-model.js');
-        const W = new GARDEN(731);
-        W._flushEjected();
-        for (const U of [...W.units]) {
-            W.removeUnit(U);
-        }
-        for (let i = 0; i < 6; i++) {
-            W.spawn(0, 1, i * 0.4, 0);
-        }
-        W.randomBossSpecies = () => 3;
-        W.playerProgression.towerBest = 50;
-        W.startTower(1);
-        const TICK = () => {
-            W.step(1 / 30);
-            W.advanceWork(1 / 30);
-        };
-        for (let i = 0; i < 40; i++) {
-            TICK();
-        }
-        W.finishMarch();
-        for (let i = 0; i < 10; i++) {
-            TICK();
-        }
-        W.boss.hp = 0;
-        for (let i = 0; i < 400; i++) {
-            TICK();
-        }
-        const RECEIPT = W.bossRewardReceipts.at(-1);
-        return {
-            record: W.tower.record,
-            first: RECEIPT?.firstClear,
-            status: RECEIPT?.status,
-            species3: W.unitCollection.items.filter((u) => !u.isBattleOnlySummon && u.species === 3).length,
-            xp: RECEIPT?.xpAmount,
-        };
-    });
-    expect(R.record === false && R.first === true && R.species3 === 2 && R.xp > 0, `first win ${JSON.stringify(R)}`);
-});
+await check(
+    'a seed species the farm lacks joins as a pair of seeds on its first win, even below the best floor',
+    async () => {
+        const R = await WORLD(async () => {
+            const { Garden: GARDEN } = await import('./src/model/farm-model.js');
+            const W = new GARDEN(731);
+            W._flushEjected();
+            for (const U of [...W.units]) {
+                W.removeUnit(U);
+            }
+            for (let i = 0; i < 6; i++) {
+                W.spawn(0, 1, i * 0.4, 0);
+            }
+            W.randomBossSpecies = () => 8;
+            W.playerProgression.towerBest = 50;
+            W.startTower(1);
+            const TICK = () => {
+                W.step(1 / 30);
+                W.advanceWork(1 / 30);
+            };
+            for (let i = 0; i < 40; i++) {
+                TICK();
+            }
+            W.finishMarch();
+            for (let i = 0; i < 10; i++) {
+                TICK();
+            }
+            W.boss.hp = 0;
+            for (let i = 0; i < 400; i++) {
+                TICK();
+            }
+            const RECEIPT = W.bossRewardReceipts.at(-1);
+            return {
+                record: W.tower.record,
+                first: RECEIPT?.firstClear,
+                status: RECEIPT?.status,
+                seeds: W.unitCollection.items.filter((u) => !u.isBattleOnlySummon && u.species === 8 && u.seedling)
+                    .length,
+                xp: RECEIPT?.xpAmount,
+            };
+        });
+        expect(R.record === false && R.first === true && R.seeds === 2 && R.xp > 0, `first win ${JSON.stringify(R)}`);
+    },
+);
 await check(
     'a boss win feeds only its species mastery; points stay with that species and a reset keeps them',
     async () => {
