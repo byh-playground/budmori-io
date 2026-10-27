@@ -178,7 +178,8 @@ try {
     // render a synthetic world, and never replace attack/clip implementations.
     await PAGE.evaluate(async () => {
         const { unitMaxHpFor: MAX_HP_FOR } = await import('./src/units/unit-stats.js'),
-            { Unit: UNIT_TYPE, bossAttackArea: BOSS_ATTACK_AREA } = await import('./src/model/farm-model.js');
+            { bossAttackArea: BOSS_ATTACK_AREA } = await import('./src/model/farm-model.js'),
+            { Unit: UNIT_TYPE } = await import('./src/model/farm-unit.js');
         const WORLD = BUDMORI.sim,
             SESSION = BUDMORI.runtime,
             RENDERER = BUDMORI.renderer,
@@ -3085,7 +3086,7 @@ try {
     );
     REPORT.unitCoreEnd = await PAGE.evaluate(async () => {
         const WORLD = BUDMORI.sim,
-            { Unit: UNIT_TYPE } = await import('./src/model/farm-model.js'),
+            { Unit: UNIT_TYPE } = await import('./src/model/farm-unit.js'),
             REPEATED = WORLD.finishFarmBossEvent('victory');
         BUDMORI.runtime.paused = true;
         globalThis.__restoreUnitCoreEndObservation();

@@ -1,4 +1,5 @@
-import { Garden, Unit, createUnitAttackCycle, CREATE_UNIT_SPECIAL_ABILITY } from './farm-model.js';
+import { Garden, createUnitAttackCycle, CREATE_UNIT_SPECIAL_ABILITY } from './farm-model.js';
+import { Unit } from './farm-unit.js';
 import { normalizeSnapshot } from '../save/farm-snapshot-migrations.js';
 import { validateSnapshot } from '../save/farm-snapshot-validation.js';
 import { runStatModifiers } from '../tower/tower-run.js';
