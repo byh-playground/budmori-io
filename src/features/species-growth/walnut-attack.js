@@ -5,12 +5,20 @@ import {
     attackGeometryScale,
     captureAttackGeometry,
     attackBudgetValues,
+    exactKeys,
 } from './attack-profile.js';
-import { AttackAction, attackTargetKey, isAttackActionDTO, attackOwnerCanContinue } from './attack-action.js';
+import {
+    attackTargetKey,
+    isAttackActionDTO,
+    attackOwnerCanContinue,
+    commitAttackAction,
+    createAttackRuntime,
+    sampleCriticalRoll,
+    strikeCandidates,
+} from './attack-action.js';
 import { growthBuildOf, growthForAbility } from './state.js';
 import { COMMON_UNIT_STAT_DEFAULTS } from '../../units/unit-stats.js';
 import { mergeMaterialCostForTier } from '../../units/unit-grades.js';
-import { areOpposingFactions } from '../../core/factions.js';
 const ATTACK_KIND = 'walnut-hammer';
 
 const WALNUT_WEIGHTS = Object.freeze([
@@ -134,11 +142,7 @@ export function launchWalnutAttack(world, action) {
     if (!R || R.launchTick !== null) {
         return;
     }
-    R.launchTick = world.simulationTick;
-    R.attack = new AttackAction(
-        { durationTicks: 11, strikes: R.shots.map(({ tick, weight }) => ({ tick, weight })) },
-        R.launchTick,
-    ).toDTO();
+    commitAttackAction(world, R, 11);
 }
 // A finite hammer corridor or local contact circle, never a traveling wave.
 function walnutSlotGeometry(r, slot) {
@@ -152,25 +156,14 @@ function walnutSlotGeometry(r, slot) {
         height: 0.5 * attackGeometryScale(r),
     };
 }
-// Runtime sets are derived from the validated transport record once per action.
-// Restored records have new identity and reconstruct through the same DTO validator.
-// Only this consumer writes the checkpoint; no hidden timing or damage is cached.
-const WALNUT_RUNTIME = new WeakMap();
-function walnutRuntime(record) {
-    let runtime = WALNUT_RUNTIME.get(record);
-    if (!runtime || runtime.checkpoint !== record.attack) {
-        runtime = { action: AttackAction.fromDTO(record.attack), checkpoint: record.attack };
-        WALNUT_RUNTIME.set(record, runtime);
-    }
-    return runtime;
-}
+const RUNTIME_OF = createAttackRuntime();
 export function resolveWalnutSlots(world, unit, action, elapsed, geometry) {
     const R = action.walnutAttack;
     if (!R || R.launchTick === null || !attackOwnerCanContinue(world, unit, action, R)) {
         return;
     }
     R.motionTick = Math.min(10, Math.max(0, Math.round(elapsed * 20)));
-    const RUNTIME = walnutRuntime(R),
+    const RUNTIME = RUNTIME_OF(R),
         A = RUNTIME.action,
         READY = A.advance(R.launchTick + R.motionTick);
     if (!READY.length) {
@@ -184,28 +177,7 @@ export function resolveWalnutSlots(world, unit, action, elapsed, geometry) {
         const G = walnutSlotGeometry(R, S.slot),
             TARGET = world.attackTarget(unit, action),
             PRIMARY = TARGET?.hp > 0 ? TARGET : null;
-        const CANDIDATES = PRIMARY ? [PRIMARY] : [];
-        for (const BOSS of world.bosses) {
-            if (BOSS !== PRIMARY && BOSS.active && BOSS.hp > 0 && areOpposingFactions(unit, BOSS)) {
-                CANDIDATES.push(BOSS);
-            }
-        }
-        // The same live-faction index used by sensing is current after the owner
-        // lookup. A boss-only battle needs no scan of every allied body per slot.
-        let hasUnitEnemy = false;
-        for (const [FACTION, COUNT] of world._liveFactionCounts) {
-            if (FACTION !== unit.faction && COUNT > 0) {
-                hasUnitEnemy = true;
-                break;
-            }
-        }
-        if (hasUnitEnemy) {
-            for (const T of world.units) {
-                if (T !== PRIMARY && T.hp > 0 && areOpposingFactions(unit, T)) {
-                    CANDIDATES.push(T);
-                }
-            }
-        }
+        const CANDIDATES = strikeCandidates(world, unit, PRIMARY);
         let secondary = 0;
         for (const T of CANDIDATES) {
             if (!attackOwnerCanContinue(world, unit, action, R)) {
@@ -227,13 +199,10 @@ export function resolveWalnutSlots(world, unit, action, elapsed, geometry) {
                 secondary++;
             }
             const KEY = attackTargetKey(ID, T.generation);
-            if (!Object.hasOwn(R.criticalRolls, KEY)) {
-                R.criticalRolls[KEY] = world.random();
-            }
+            const CRITICAL_ROLL = sampleCriticalRoll(world, R, KEY);
             // Read the serializable target-key cache through the generic builtin.
             // A keyed load here repeatedly deoptimized on new boss generations.
-            const CRITICAL_ROLL = Reflect.get(R.criticalRolls, KEY),
-                SOURCE = R.source;
+            const SOURCE = R.source;
             world.damageCombatTarget(unit, { id: action.id, hit: false }, T, HIT, {
                 attackKind: ATTACK_KIND,
                 suppressBasicProc: !A.claimOnce('basic-proc'),
@@ -276,11 +245,6 @@ export function resolveWalnutSlots(world, unit, action, elapsed, geometry) {
     }
     R.attack.claims = [...A.claims];
 }
-const EXACT = (v, keys) =>
-    v &&
-    typeof v === 'object' &&
-    !Array.isArray(v) &&
-    Object.keys(v).sort().join(' ') === keys.split(' ').sort().join(' ');
 export function isWalnutAttackRecord(r) {
     if (
         !attackRecordShape(
@@ -326,7 +290,7 @@ export function isWalnutAttackRecord(r) {
         r.windupSeconds !== 0.5 ||
         r.durationSeconds !== 0.5 ||
         r.recoverySeconds !== 1 / r.speed ||
-        !EXACT(r.ranks, 'power conversion finish') ||
+        !exactKeys(r.ranks, 'power conversion finish') ||
         !Object.entries(r.ranks).every(([k, v]) => Number.isInteger(v) && v >= 0 && v <= (k === 'power' ? 10 : 5)) ||
         !attackBudgetShape(r.budgetInputs, 'one current') ||
         !attackBudgetValues(r.budgetInputs).every((v) => Number.isFinite(v) && v >= 0) ||
@@ -336,8 +300,11 @@ export function isWalnutAttackRecord(r) {
         r.multiplier < 1 ||
         r.multiplier !==
             walnutBudgetMultiplier(r.tier, r.budgetInputs.one, r.budgetInputs.current) * (1 + 0.03 * r.ranks.power) ||
-        !EXACT(r.source, 'attackerStats statMultiplier attackPowerMultiplier sourceKind sourceDamageScale') ||
-        !EXACT(r.source.attackerStats, ['maxHp', 'attackPower', ...Object.keys(COMMON_UNIT_STAT_DEFAULTS)].join(' ')) ||
+        !exactKeys(r.source, 'attackerStats statMultiplier attackPowerMultiplier sourceKind sourceDamageScale') ||
+        !exactKeys(
+            r.source.attackerStats,
+            ['maxHp', 'attackPower', ...Object.keys(COMMON_UNIT_STAT_DEFAULTS)].join(' '),
+        ) ||
         !Object.values(r.source.attackerStats).every((v) => Number.isFinite(v) && v >= 0) ||
         r.source.attackerStats.maxHp <= 0 ||
         !Number.isFinite(r.source.statMultiplier) ||
@@ -360,7 +327,7 @@ export function isWalnutAttackRecord(r) {
         !Number.isFinite((r.source.attackerStats.attackArea * 0.65) ** 2) ||
         ![r.origin, r.point].every(
             (p) =>
-                EXACT(p, 'x y z') &&
+                exactKeys(p, 'x y z') &&
                 Object.values(p).every((v) => Number.isFinite(v) && Math.abs(v) <= 100) &&
                 p.z === 0,
         ) ||

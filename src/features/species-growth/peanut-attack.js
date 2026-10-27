@@ -5,12 +5,20 @@ import {
     attackGeometryScale,
     captureAttackGeometry,
     attackBudgetValues,
+    exactKeys,
+    attackBudgetMultiplier,
 } from './attack-profile.js';
-import { AttackAction, attackTargetKey, isAttackActionDTO, attackOwnerCanContinue } from './attack-action.js';
+import {
+    attackTargetKey,
+    isAttackActionDTO,
+    attackOwnerCanContinue,
+    commitAttackAction,
+    createAttackRuntime,
+    sampleCriticalRoll,
+    strikeCandidates,
+} from './attack-action.js';
 import { growthBuildOf, growthForAbility } from './state.js';
 import { COMMON_UNIT_STAT_DEFAULTS } from '../../units/unit-stats.js';
-import { mergeMaterialCostForTier } from '../../units/unit-grades.js';
-import { areOpposingFactions } from '../../core/factions.js';
 import { FEATURE as DUAL_STRIKE_FEATURE } from '../unit-attacks/dual-strike/definition.js';
 
 const PEANUT_WEIGHTS = Object.freeze([
@@ -45,15 +53,6 @@ export function peanutRange(world, unit) {
     }
     const BUILD = peanutGrowthBuild(world.abilityProgressionFor(unit));
     return BUILD ? 1.45 * (1 + 0.04 * (BUILD.nodeRanks['specialty-1'] || 0)) : null;
-}
-function peanutBudgetMultiplier(tier, one, current) {
-    let materials = 1;
-    for (let grade = 2; grade <= tier; grade++) {
-        materials *= mergeMaterialCostForTier(grade);
-    }
-    return one > 0 && current > 0 && Number.isFinite(one + current)
-        ? (one * materials * 1.05 ** (tier - 1)) / current
-        : 1.75 ** (tier - 1);
 }
 function peanutShots(form) {
     return PEANUT_WEIGHTS[form].map((weight, slot) => ({
@@ -104,7 +103,7 @@ export function createPeanutAttack(world, unit, action, commandSpeed = 1) {
         ranks: { power: R['basic-1'] || 0, range: R['specialty-1'] || 0, finish: R['specialty-2'] || 0 },
         budgetInputs: INPUTS,
         multiplier:
-            (CHILD ? 1 : peanutBudgetMultiplier(unit.tier, INPUTS.one, INPUTS.current)) *
+            (CHILD ? 1 : attackBudgetMultiplier(unit.tier, INPUTS.one, INPUTS.current)) *
             (1 + 0.03 * (R['basic-1'] || 0)),
         source: {
             attackerStats: structuredClone(C.attackerStats),
@@ -128,11 +127,7 @@ export function launchPeanutAttack(world, action) {
     if (!R || R.launchTick !== null) {
         return;
     }
-    R.launchTick = world.simulationTick;
-    R.attack = new AttackAction(
-        { durationTicks: 11, strikes: R.shots.map(({ tick, weight }) => ({ tick, weight })) },
-        R.launchTick,
-    ).toDTO();
+    commitAttackAction(world, R, 11);
 }
 // These are committed melee contact corridors, not independent projectiles.
 // Both kernels belong to the same body and cannot outlive its action.
@@ -159,25 +154,14 @@ function peanutSlotGeometry(r, slot) {
         height: 0.5 * attackGeometryScale(r),
     };
 }
-// Runtime sets are derived from the validated transport record once per action.
-// Restored records have new identity and reconstruct through the same DTO validator.
-// Only this consumer writes the checkpoint; no hidden timing or damage is cached.
-const PEANUT_RUNTIME = new WeakMap();
-function peanutRuntime(record) {
-    let runtime = PEANUT_RUNTIME.get(record);
-    if (!runtime || runtime.checkpoint !== record.attack) {
-        runtime = { action: AttackAction.fromDTO(record.attack), checkpoint: record.attack };
-        PEANUT_RUNTIME.set(record, runtime);
-    }
-    return runtime;
-}
+const RUNTIME_OF = createAttackRuntime();
 export function resolvePeanutSlots(world, unit, action, elapsed, geometry) {
     const R = action.peanutAttack;
     if (!R || R.launchTick === null || !attackOwnerCanContinue(world, unit, action, R)) {
         return;
     }
     R.motionTick = Math.min(10, Math.max(0, Math.round(elapsed * 20)));
-    const RUNTIME = peanutRuntime(R),
+    const RUNTIME = RUNTIME_OF(R),
         A = RUNTIME.action,
         READY = A.advance(R.launchTick + R.motionTick);
     if (!READY.length) {
@@ -191,28 +175,7 @@ export function resolvePeanutSlots(world, unit, action, elapsed, geometry) {
         const G = peanutSlotGeometry(R, S.slot),
             TARGET = world.attackTarget(unit, action),
             PRIMARY = TARGET?.hp > 0 ? TARGET : null;
-        const CANDIDATES = PRIMARY ? [PRIMARY] : [];
-        for (const BOSS of world.bosses) {
-            if (BOSS !== PRIMARY && BOSS.active && BOSS.hp > 0 && areOpposingFactions(unit, BOSS)) {
-                CANDIDATES.push(BOSS);
-            }
-        }
-        // The same live-faction index used by sensing is current after the owner
-        // lookup. A boss-only battle needs no scan of every allied body per slot.
-        let hasUnitEnemy = false;
-        for (const [FACTION, COUNT] of world._liveFactionCounts) {
-            if (FACTION !== unit.faction && COUNT > 0) {
-                hasUnitEnemy = true;
-                break;
-            }
-        }
-        if (hasUnitEnemy) {
-            for (const T of world.units) {
-                if (T !== PRIMARY && T.hp > 0 && areOpposingFactions(unit, T)) {
-                    CANDIDATES.push(T);
-                }
-            }
-        }
+        const CANDIDATES = strikeCandidates(world, unit, PRIMARY);
         let secondary = 0;
         for (const T of CANDIDATES) {
             if (!attackOwnerCanContinue(world, unit, action, R)) {
@@ -234,9 +197,7 @@ export function resolvePeanutSlots(world, unit, action, elapsed, geometry) {
                 secondary++;
             }
             const KEY = attackTargetKey(ID, T.generation);
-            if (!Object.hasOwn(R.criticalRolls, KEY)) {
-                R.criticalRolls[KEY] = world.random();
-            }
+            const CRITICAL_ROLL = sampleCriticalRoll(world, R, KEY);
             const SOURCE = R.source;
             world.damageCombatTarget(unit, { id: action.id, hit: false }, T, HIT, {
                 attackKind: DUAL_STRIKE_FEATURE.id,
@@ -256,7 +217,7 @@ export function resolvePeanutSlots(world, unit, action, elapsed, geometry) {
                     buffed: false,
                     sourceStatOverrides: SOURCE.attackerStats,
                     area: true,
-                    criticalRoll: R.criticalRolls[KEY],
+                    criticalRoll: CRITICAL_ROLL,
                     hitTargets: null,
                 },
             });
@@ -279,11 +240,6 @@ export function resolvePeanutSlots(world, unit, action, elapsed, geometry) {
     }
     R.attack.claims = [...A.claims];
 }
-const EXACT = (v, keys) =>
-    v &&
-    typeof v === 'object' &&
-    !Array.isArray(v) &&
-    Object.keys(v).sort().join(' ') === keys.split(' ').sort().join(' ');
 export function isPeanutAttackRecord(r) {
     if (
         !attackRecordShape(
@@ -306,7 +262,7 @@ export function isPeanutAttackRecord(r) {
         r.windupSeconds !== 0.25 ||
         r.durationSeconds !== 0.5 ||
         r.recoverySeconds !== 1 / r.speed ||
-        !EXACT(r.ranks, 'power range finish') ||
+        !exactKeys(r.ranks, 'power range finish') ||
         !Object.entries(r.ranks).every(([k, v]) => Number.isInteger(v) && v >= 0 && v <= (k === 'power' ? 10 : 5)) ||
         (r.child && (r.form !== 1 || r.tier !== 1 || r.ranks.range !== 0 || r.ranks.finish !== 0)) ||
         !attackBudgetShape(r.budgetInputs, 'one current speedRank commandSpeed') ||
@@ -326,10 +282,13 @@ export function isPeanutAttackRecord(r) {
                 ),
             ) ||
         r.multiplier !==
-            (r.child ? 1 : peanutBudgetMultiplier(r.tier, r.budgetInputs.one, r.budgetInputs.current)) *
+            (r.child ? 1 : attackBudgetMultiplier(r.tier, r.budgetInputs.one, r.budgetInputs.current)) *
                 (1 + 0.03 * r.ranks.power) ||
-        !EXACT(r.source, 'attackerStats attackPowerMultiplier sourceKind sourceDamageScale') ||
-        !EXACT(r.source.attackerStats, ['maxHp', 'attackPower', ...Object.keys(COMMON_UNIT_STAT_DEFAULTS)].join(' ')) ||
+        !exactKeys(r.source, 'attackerStats attackPowerMultiplier sourceKind sourceDamageScale') ||
+        !exactKeys(
+            r.source.attackerStats,
+            ['maxHp', 'attackPower', ...Object.keys(COMMON_UNIT_STAT_DEFAULTS)].join(' '),
+        ) ||
         !Object.values(r.source.attackerStats).every((v) => Number.isFinite(v) && v >= 0) ||
         r.source.attackerStats.maxHp <= 0 ||
         ![1, 3].includes(r.source.attackPowerMultiplier) ||
@@ -347,7 +306,7 @@ export function isPeanutAttackRecord(r) {
         !Number.isFinite(((1 + 0.04 * r.ranks.range) * r.source.attackerStats.attackArea) ** 2) ||
         ![r.origin, r.point].every(
             (p) =>
-                EXACT(p, 'x y z') &&
+                exactKeys(p, 'x y z') &&
                 Object.values(p).every((v) => Number.isFinite(v) && Math.abs(v) <= 100) &&
                 p.z === 0,
         ) ||
