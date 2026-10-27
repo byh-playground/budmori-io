@@ -1,6 +1,7 @@
 import { RECIPES, TEMPERAMENTS, ELEMENTS, ELEMENT_COUNT, TEMPERAMENT_COUNT } from '../model/lineage.js';
 import { speciesById, SPECIES_COUNT } from '../units/species-catalog.js';
 import { elementIconSvg, faceOverlaySvg } from '../units/species-face.js';
+import { speciesPortraitSource } from '../units/species-paint.js';
 
 const TABS = Object.freeze([
     Object.freeze({ id: 'recipes', label: '조합식' }),
@@ -11,11 +12,11 @@ const TABS = Object.freeze([
 // A species picture; a known one in the grids also carries the temperament's brows and the element's cheeks and mark.
 function icon(species, known, look = null) {
     const ENTRY = speciesById(species),
-        IMAGE = `<img class="codex-icon${known ? '' : ' is-unknown'}" src="./assets/troops/${ENTRY.asset}" alt="${known ? ENTRY.name : '미발견'}" width="40" height="40" draggable="false">`;
+        IMAGE = `<img class="codex-icon${known ? '' : ' is-unknown'}" src="${speciesPortraitSource(species, known ? look?.element : 0)}" alt="${known ? ENTRY.name : '미발견'}" width="40" height="40" draggable="false">`;
     if (!known || !look) {
         return IMAGE;
     }
-    return `<span class="codex-pic">${IMAGE}${faceOverlaySvg(species, look.temperament, look.element)}${elementIconSvg(look.element, 14)}</span>`;
+    return `<span class="codex-pic">${IMAGE}${faceOverlaySvg(species, look.temperament)}${elementIconSvg(look.element, 14)}</span>`;
 }
 
 // The species tiers a recipe can be made at right now: both ingredients owned at the same tier.

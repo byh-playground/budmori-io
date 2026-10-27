@@ -1,37 +1,20 @@
 import { ELEMENTS } from '../model/lineage.js';
 import { ELEMENT_ICONS, faceMarks } from '../units/species-face.js';
 
-// The temperament's brows and the element's cheeks drawn over a unit's face, and the element mark floating above it.
+// Existing temperament brows and the element mark. Cheek fills are coloured in the native SVG mesh.
 // `matrix` is the unit's vector transform and `shift` how far the animation has moved the face from its rest pose.
 
-export function drawFaceMarks(ctx, species, temperament, element, matrix, shift) {
+export function drawFaceMarks(ctx, species, temperament, matrix, shift) {
     const [SCALE, , , , OX, OY] = matrix,
         SIZE = Math.abs(SCALE);
-    for (const MARK of faceMarks(species, temperament, element)) {
+    for (const MARK of faceMarks(species, temperament)) {
         ctx.beginPath();
-        if (MARK.kind === 'ellipse') {
-            ctx.ellipse(
-                (MARK.x + shift.x) * SCALE + OX,
-                (MARK.y + shift.y) * SCALE + OY,
-                MARK.rx * SIZE,
-                MARK.ry * SIZE,
-                0,
-                0,
-                Math.PI * 2,
-            );
-            ctx.fillStyle = MARK.fill;
-            ctx.fill();
-            ctx.strokeStyle = MARK.stroke;
-            ctx.lineWidth = MARK.strokeWidth * SIZE;
-            ctx.stroke();
-        } else {
-            ctx.moveTo((MARK.x1 + shift.x) * SCALE + OX, (MARK.y1 + shift.y) * SCALE + OY);
-            ctx.lineTo((MARK.x2 + shift.x) * SCALE + OX, (MARK.y2 + shift.y) * SCALE + OY);
-            ctx.strokeStyle = MARK.color;
-            ctx.lineWidth = MARK.width * SIZE;
-            ctx.lineCap = 'round';
-            ctx.stroke();
-        }
+        ctx.moveTo((MARK.x1 + shift.x) * SCALE + OX, (MARK.y1 + shift.y) * SCALE + OY);
+        ctx.lineTo((MARK.x2 + shift.x) * SCALE + OX, (MARK.y2 + shift.y) * SCALE + OY);
+        ctx.strokeStyle = MARK.color;
+        ctx.lineWidth = MARK.width * SIZE;
+        ctx.lineCap = 'round';
+        ctx.stroke();
     }
 }
 

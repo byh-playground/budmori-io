@@ -59,6 +59,8 @@ const SOURCE_FILES = Object.freeze([
     'modules/vector-assets/compiler-core.js',
     'modules/vector-assets/quality-presets.js',
     'modules/vector-assets/schema.js',
+    'modules/vector-assets/paint-regions.js',
+    'modules/rendering/paint-regions.js',
 ]);
 const SHA = (bytes, algorithm = 'sha256') => CRYPTO.createHash(algorithm).update(bytes).digest('hex');
 const OBJECT_ID = (type, bytes) => SHA(Buffer.concat([Buffer.from(`${type} ${bytes.length}\0`), bytes]), 'sha1');
@@ -173,8 +175,19 @@ function verify(root = ROOT) {
     );
     for (const FILE of SOURCE_FILES) {
         const BASENAME = FILE.split('/').at(-1),
-            ENTRY = SOURCE_VECTOR_ENTRIES.get(BASENAME),
+            RENDERING = FILE.startsWith('modules/rendering/'),
+            RENDERING_TREE = RENDERING
+                ? Buffer.from(READ_SOURCE('rendering-tree.base64').toString('ascii').trim(), 'base64')
+                : null,
+            ENTRY = (RENDERING ? treeEntries(RENDERING_TREE) : SOURCE_VECTOR_ENTRIES).get(BASENAME),
             BYTES = READ_SOURCE(FILE);
+        if (RENDERING) {
+            ASSERT.equal(
+                SOURCE_MODULE_ENTRIES.get('rendering')?.oid,
+                OBJECT_ID('tree', RENDERING_TREE),
+                'source rendering tree object',
+            );
+        }
         ASSERT.equal(ENTRY?.mode, '100644', FILE + ' must be regular file');
         ASSERT.equal(OBJECT_ID('blob', BYTES), ENTRY.oid, FILE + ' pinned source Git blob');
     }
@@ -377,6 +390,11 @@ function refresh(repository, root = ROOT) {
         for (const NAME of SOURCE_FILES) {
             PUT(SOURCE_CACHE, NAME, GIT(['show', `${LOCK.sourceCommit}:${NAME}`]));
         }
+        PUT(
+            SOURCE_CACHE,
+            'rendering-tree.base64',
+            GIT(['cat-file', 'tree', `${LOCK.sourceCommit}:modules/rendering`]).toString('base64') + '\n',
+        );
         const STAGED = PATH.join(TEMP, 'staged');
         FS.mkdirSync(PATH.join(STAGED, 'vendor'), {
             recursive: true,

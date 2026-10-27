@@ -15,8 +15,8 @@
       <ellipse id="rice-body-highlight-small" cx="92" cy="121" rx="2.4" ry="3.5" fill="#ffffff" opacity=".74"/>
     </g>
     <g id="face-neutral">
-      <ellipse id="rice-neutral-blush-left" cx="113" cy="183" rx="11.5" ry="6.2" fill="#e77b70"/>
-      <ellipse id="rice-neutral-blush-right" cx="204" cy="183" rx="11.5" ry="6.2" fill="#e77b70"/>
+      <ellipse data-paint-region="element-cheeks" id="rice-neutral-blush-left" cx="113" cy="183" rx="11.5" ry="6.2" fill="#e77b70"/>
+      <ellipse data-paint-region="element-cheeks" id="rice-neutral-blush-right" cx="204" cy="183" rx="11.5" ry="6.2" fill="#e77b70"/>
       <ellipse id="rice-neutral-eye-left" cx="126" cy="163" rx="10.3" ry="10.3" fill="#4b211b"/>
       <ellipse id="rice-neutral-eye-right" cx="189" cy="163" rx="10.3" ry="10.3" fill="#4b211b"/>
       <path id="rice-neutral-mouth" d="M145 177 Q159 195 173 177" fill="none" stroke="#2c1c18" stroke-width="4.2" stroke-linecap="round"/>
@@ -25,8 +25,8 @@
       <path id="rice-happy-eye-left" d="M116 164 Q126 151 136 164" fill="none" stroke="#2c1c18" stroke-width="4.2" stroke-linecap="round"/>
       <path id="rice-happy-eye-right" d="M179 164 Q189 151 199 164" fill="none" stroke="#2c1c18" stroke-width="4.2" stroke-linecap="round"/>
       <path id="rice-happy-mouth" d="M145 177 Q159 195 173 177" fill="none" stroke="#2c1c18" stroke-width="4.2" stroke-linecap="round"/>
-      <ellipse id="rice-happy-blush-left" transform="translate(160 0) scale(.846 1) translate(-160 0)" cx="113" cy="183" rx="11.5" ry="6.2" fill="#e97c72"/>
-      <ellipse id="rice-happy-blush-right" transform="translate(160 0) scale(.846 1) translate(-160 0)" cx="204" cy="183" rx="11.5" ry="6.2" fill="#e97c72"/>
+      <ellipse data-paint-region="element-cheeks" id="rice-happy-blush-left" transform="translate(160 0) scale(.846 1) translate(-160 0)" cx="113" cy="183" rx="11.5" ry="6.2" fill="#e97c72"/>
+      <ellipse data-paint-region="element-cheeks" id="rice-happy-blush-right" transform="translate(160 0) scale(.846 1) translate(-160 0)" cx="204" cy="183" rx="11.5" ry="6.2" fill="#e97c72"/>
     </g>
     <g id="face-focused" display="none">
       <ellipse id="rice-focused-eye-left" cx="126" cy="163" rx="10.3" ry="10.3" fill="#4b211b"/>
@@ -49,8 +49,8 @@
       <path id="rice-hurt-eye-left" d="M116 163 L136 163" fill="none" stroke="#2c1c18" stroke-width="4.2" stroke-linecap="round"/>
       <path id="rice-hurt-eye-right" d="M179 163 L199 163" fill="none" stroke="#2c1c18" stroke-width="4.2" stroke-linecap="round"/>
       <path id="rice-hurt-mouth" d="M145 187 Q159 174 173 187" fill="none" stroke="#2c1c18" stroke-width="4.2" stroke-linecap="round"/>
-      <ellipse id="rice-hurt-blush-left" transform="translate(160 0) scale(.846 1) translate(-160 0)" cx="113" cy="183" rx="11.5" ry="6.2" fill="#e97c72"/>
-      <ellipse id="rice-hurt-blush-right" transform="translate(160 0) scale(.846 1) translate(-160 0)" cx="204" cy="183" rx="11.5" ry="6.2" fill="#e97c72"/>
+      <ellipse data-paint-region="element-cheeks" id="rice-hurt-blush-left" transform="translate(160 0) scale(.846 1) translate(-160 0)" cx="113" cy="183" rx="11.5" ry="6.2" fill="#e97c72"/>
+      <ellipse data-paint-region="element-cheeks" id="rice-hurt-blush-right" transform="translate(160 0) scale(.846 1) translate(-160 0)" cx="204" cy="183" rx="11.5" ry="6.2" fill="#e97c72"/>
     </g>
     <g id="face-hungry" display="none">
       <circle id="rice-hungry-eye-left" cx="126" cy="163" r="10.3" fill="#4b211b"/>

@@ -26,15 +26,15 @@
     <path id="walnut-side-brain-groove-left" d="M 0 0" fill="none" opacity="0"/>
     <path id="walnut-side-brain-groove-right" d="M 0 0" fill="none" opacity="0"/>
   </g>  <g id="face-neutral" transform="translate(-415 10) scale(1.25)">
-    <ellipse id="neutral-blush-left" cx="430" cy="125" rx="7.5" ry="3.5" fill="#e27c63"/>
-    <ellipse id="neutral-blush-right" cx="489" cy="125" rx="7.5" ry="3.5" fill="#e27c63"/>
+    <ellipse data-paint-region="element-cheeks" id="neutral-blush-left" cx="430" cy="125" rx="7.5" ry="3.5" fill="#e27c63"/>
+    <ellipse data-paint-region="element-cheeks" id="neutral-blush-right" cx="489" cy="125" rx="7.5" ry="3.5" fill="#e27c63"/>
     <ellipse id="neutral-eye-left" cx="438.5" cy="113" rx="6.7" ry="7.2" fill="#431811"/>
     <ellipse id="neutral-eye-right" cx="480.5" cy="113" rx="6.7" ry="7.2" fill="#431811"/>
     <path id="neutral-mouth" d="M451.5 122 C454.5 128 461.5 128 466.5 122" fill="none" stroke="#431811" stroke-width="2.6" stroke-linecap="round"/>
   </g>
   <g id="face-happy" display="none" transform="translate(0 10)">
-    <ellipse id="walnut-happy-blush-left" cx="111" cy="137" rx="12" ry="6" fill="#e98278"/>
-    <ellipse id="walnut-happy-blush-right" cx="209" cy="137" rx="12" ry="6" fill="#e98278"/>
+    <ellipse data-paint-region="element-cheeks" id="walnut-happy-blush-left" cx="111" cy="137" rx="12" ry="6" fill="#e98278"/>
+    <ellipse data-paint-region="element-cheeks" id="walnut-happy-blush-right" cx="209" cy="137" rx="12" ry="6" fill="#e98278"/>
     <path id="walnut-happy-eyes-mouth" d="M126 121 Q135 109 144 121 M176 121 Q185 109 194 121 M146 143 Q160 162 174 143 Z" fill="#431811" stroke="#431811" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
   <g id="face-focused" display="none" transform="translate(0 10)">
@@ -87,8 +87,8 @@
   <path id="walnut-guard-rim-shadow" d="M84 127 C108 137 137 148 160 157 C183 148 212 137 235 127" fill="none" stroke="#593622" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
   <path id="walnut-guard-rim-highlight" d="M87 134 C110 143 138 153 160 164 C183 153 210 143 232 134" fill="none" stroke="#f4cc70" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
   <path id="walnut-guard-top-crease" d="M160 47 Q157 62 157 77" fill="none" stroke="#b9791d" stroke-width="4" stroke-linecap="round"/>
-  <ellipse id="walnut-guard-blush-left" cx="120" cy="116" rx="11" ry="6" fill="#e98278"/>
-  <ellipse id="walnut-guard-blush-right" cx="200" cy="116" rx="11" ry="6" fill="#e98278"/>
+  <ellipse data-paint-region="element-cheeks" id="walnut-guard-blush-left" cx="120" cy="116" rx="11" ry="6" fill="#e98278"/>
+  <ellipse data-paint-region="element-cheeks" id="walnut-guard-blush-right" cx="200" cy="116" rx="11" ry="6" fill="#e98278"/>
   <ellipse id="walnut-guard-eye-left" cx="137" cy="105" rx="7.5" ry="8.5" fill="#431811"/>
   <ellipse id="walnut-guard-eye-right" cx="183" cy="105" rx="7.5" ry="8.5" fill="#431811"/>
   <path id="walnut-guard-mouth" d="M151 124 Q160 133 169 124" fill="none" stroke="#431811" stroke-width="3.5" stroke-linecap="round"/>
