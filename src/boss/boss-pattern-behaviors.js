@@ -5,6 +5,13 @@ import { ChargeBossPattern } from '../features/boss-patterns/charge/model.js';
 import { LeapBossPattern } from '../features/boss-patterns/leap-slam/model.js';
 import { FanBossPattern } from '../features/boss-patterns/fan-sweep/model.js';
 import { MouthSummonBossPattern } from '../features/boss-patterns/mouth-summon/model.js';
+import {
+    WaterJetPattern,
+    RootEruptionPattern,
+    FireBreathPattern,
+    FrostPulsePattern,
+    ChainLightningPattern,
+} from '../features/boss-patterns/signature/model.js';
 import { BOSS_PATTERN_CONFIG, BOSS_AIM_TURN_RATE } from './boss-patterns.js';
 
 // Compose the model perspective once. Feature folders own their concrete
@@ -21,6 +28,11 @@ export function createBossPatternBehaviors(dependencies) {
                 new LeapBossPattern(DEPENDENCIES),
                 new FanBossPattern(DEPENDENCIES),
                 new MouthSummonBossPattern(DEPENDENCIES),
+                new WaterJetPattern(DEPENDENCIES),
+                new RootEruptionPattern(DEPENDENCIES),
+                new FireBreathPattern(DEPENDENCIES),
+                new FrostPulsePattern(DEPENDENCIES),
+                new ChainLightningPattern(DEPENDENCIES),
             ].map((pattern) => [pattern.feature.id, Object.freeze(pattern)]),
         ),
     );

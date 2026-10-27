@@ -1,3 +1,4 @@
+import { BOSS_PATTERN_IDS } from '../boss/boss-patterns.js';
 import { createFormationRuntime } from '../formation/formation-skill-state.js';
 import { createPlayerProgressionState } from '../model/player-progression.js';
 import { createBarleyArmorShredBuckets } from '../features/abilities/barley-shred/model.js';
@@ -129,17 +130,7 @@ const STARTER_UNIT = (id, x, y) => ({
         action: null,
     },
 });
-const PATTERN_VALUES = (value) =>
-    Object.fromEntries(
-        [
-            'attack.sweep-360',
-            'attack.front-slam',
-            'attack.charge',
-            'attack.leap-slam',
-            'attack.fan-sweep',
-            'summon.mouth-t1',
-        ].map((id) => [id, value]),
-    );
+const PATTERN_VALUES = (value) => Object.fromEntries(BOSS_PATTERN_IDS.map((id) => [id, value]));
 export const BOSS_SNAPSHOT_SHAPE = {
     ...ACTOR_ATTACK_SNAPSHOT_SHAPE,
     id: 'boss',

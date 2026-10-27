@@ -13,6 +13,17 @@ export const TEMPERAMENTS = Object.freeze([
 ]);
 export const TEMPERAMENT_COUNT = TEMPERAMENTS.length;
 
+// What each temperament trades: a stat multiplier up and one down (resolveUnitStats applies them to player units), and the
+// one passive card it carries at its first rarity in every fight, by passive card id.
+export const TEMPERAMENT_TILTS = Object.freeze([
+    Object.freeze({ maxHp: 1.15, moveSpeed: 0.9 }),
+    Object.freeze({ armor: 1.3, attackPower: 0.9 }),
+    Object.freeze({ attackPower: 1.15, maxHp: 0.9 }),
+    Object.freeze({ attackSpeed: 1.1, maxHp: 0.92 }),
+    Object.freeze({ regenPct: 0.01, attackPower: 0.9 }),
+]);
+export const TEMPERAMENT_PASSIVE_IDS = Object.freeze(['last-stand', 'resolve', 'vengeance', 'opening', 'helper']);
+
 // Element 0 is "none": the plain colour. Elements 1..5 beat the next one in the cycle and lose to the previous one.
 export const ELEMENTS = Object.freeze([
     Object.freeze({ id: 0, name: '무속성', color: '#d8d4bd' }),
@@ -174,4 +185,19 @@ export function isValidCodex(codex) {
         SORTED_UNIQUE_INTEGERS(codex.forms, SPECIES_COUNT * TEMPERAMENT_COUNT) &&
         SORTED_UNIQUE_INTEGERS(codex.colors, SPECIES_COUNT * ELEMENT_COUNT)
     );
+}
+
+// An element unit's hit carries half its power again as element damage, so it deals 200% on an advantage, 150% on
+// an even match and 125% on a disadvantage; a plain unit deals 100%.
+export const ELEMENT_HIT_BONUS = 0.5;
+export function elementHitScale(attacker, defender) {
+    return attacker === 0 ? 1 : 1 + ELEMENT_HIT_BONUS * elementMultiplier(attacker, defender);
+}
+
+// What an element hit from a boss does to one of our units: a plain unit always takes 150%; a coloured unit takes the
+// cycle's multiplier (200% if the boss beats it, 50% if it beats the boss, 100% otherwise).
+export const PLAIN_ELEMENT_DAMAGE_TAKEN = 1.5;
+export function elementDamageTaken(bossElement, genes) {
+    const ELEMENT = elementOf(genes);
+    return ELEMENT === 0 ? PLAIN_ELEMENT_DAMAGE_TAKEN : elementMultiplier(bossElement, ELEMENT);
 }

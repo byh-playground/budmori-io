@@ -57,6 +57,8 @@ const MODEL_FILES = [
     'src/features/boss-patterns/leap-slam/definition.js',
     'src/features/boss-patterns/leap-slam/model.js',
     'src/features/boss-patterns/model-base.js',
+    'src/features/boss-patterns/signature/definition.js',
+    'src/features/boss-patterns/signature/model.js',
     'src/features/boss-patterns/mouth-summon/definition.js',
     'src/features/boss-patterns/mouth-summon/model.js',
     'src/features/boss-patterns/sweep-360/definition.js',

@@ -105,6 +105,24 @@ try {
             return { temperament: UNIT.temperament, genes: UNIT.genes };
         });
         assert.deepEqual(WHEAT, { temperament: 2, genes: [3, 3] }, 'the seed kept the lineage it was dropped with');
+        // A temperament tilts the body and carries one passive into every fight.
+        const TEMPERED = await PAGE.evaluate(() => {
+            const W = BUDMORI.sim,
+                STURDY = W.units.find((unit) => unit.species === 0),
+                ANGRY = W.units.find((unit) => unit.species === 6);
+            STURDY.temperament = 0;
+            const PERSISTENT_HP = STURDY.maxHp;
+            STURDY.temperament = 2;
+            const ANGRY_HP = STURDY.maxHp;
+            STURDY.temperament = 0;
+            ANGRY.temperament = 2;
+            return {
+                hpOrder: PERSISTENT_HP / ANGRY_HP > 1.2,
+                lastStand: W.passiveState(STURDY).totals['last-stand'] > 0,
+                vengeance: !W.passiveState(STURDY).totals.vengeance && W.passiveState(ANGRY).totals.vengeance > 0,
+            };
+        });
+        assert.deepEqual(TEMPERED, { hpOrder: true, lastStand: true, vengeance: true });
         await PAGE.evaluate(() => {
             BUDMORI.storage.save(BUDMORI.sim);
         });

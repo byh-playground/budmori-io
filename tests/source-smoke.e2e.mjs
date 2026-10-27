@@ -558,6 +558,8 @@ try {
             WORLD._benched.delete(UNIT);
         }
         TARGET.faction = 'enemy';
+        // An enemy has no temperament tilt, so its full health is read again after the side changes.
+        TARGET.hp = TARGET.maxHp;
         TARGET.stun = 1000;
         TARGET.x = PROBE.x + TARGET.radius + PROBE.ability.attackRange(WORLD) - 0.3;
         if (!PROBE.ability.begin(WORLD, { id: TARGET.id, generation: TARGET.generation, x: TARGET.x, y: TARGET.y })) {
