@@ -50,6 +50,7 @@ const REWARD_EXTRAS = [
     'xpReceiptKey',
     'xpStatus',
     'xpAmount',
+    'masterySpecies',
     'levelsGained',
     'pointsAwarded',
 ];
@@ -454,6 +455,9 @@ export function validateFarmProgress(data, { allowLegacy = false } = {}) {
         }
         if (REWARD.xpStatus !== undefined) {
             ASSERT(['awarded', 'already-awarded', 'unsettled'].includes(REWARD.xpStatus));
+        }
+        if (REWARD.masterySpecies !== undefined) {
+            ASSERT(INTEGER(REWARD.masterySpecies, 0, CONFIG.unit.speciesCount - 1));
         }
         for (const KEY of ['xpAmount', 'levelsGained', 'pointsAwarded']) {
             if (REWARD[KEY] !== undefined) {

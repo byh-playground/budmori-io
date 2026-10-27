@@ -145,11 +145,11 @@ function bossRewardChestTier(receipt) {
 }
 
 function bossRewardMasteryLine(receipt) {
-    if (!receipt.xpAmount || !receipt.species) {
+    if (!receipt.xpAmount) {
         return '';
     }
     const LEVEL_UP = receipt.pointsAwarded > 0 ? ' · 숙련 포인트 +' + receipt.pointsAwarded : '';
-    return speciesById(receipt.species).name + ' 숙련 +' + receipt.xpAmount + ' XP' + LEVEL_UP;
+    return speciesById(receipt.masterySpecies).name + ' 숙련 +' + receipt.xpAmount + ' XP' + LEVEL_UP;
 }
 
 function renderBossRewardBoxes(receipt) {

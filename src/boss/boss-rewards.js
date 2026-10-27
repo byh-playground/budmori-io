@@ -313,6 +313,7 @@ function resolveBossAcquisitionCommitted(world, options = {}) {
                     : (options.acquisitionMultiplier ?? 1),
             stage: Number.isSafeInteger(options.stage) ? options.stage : 0,
             species: SPECIES,
+            masterySpecies: options.masterySpecies ?? SPECIES,
             tier: 1,
             x: Number.isFinite(options.x) ? options.x : 0,
             y: Number.isFinite(options.y) ? options.y : 0,
@@ -552,7 +553,7 @@ function settleBossKillCommitted(world, options = {}) {
     const RESULT = awardMasteryXp(
         WALLET,
         RECEIPT_KEY,
-        options.masterySpecies ?? RECEIPT.species,
+        RECEIPT.masterySpecies,
         options.xpAmount === undefined ? undefined : options.xpAmount,
     );
     if (RESULT.awarded) {
