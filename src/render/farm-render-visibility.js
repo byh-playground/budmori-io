@@ -1,4 +1,5 @@
 import { unitBodyDefinition } from '../features/unit-body/definition.js';
+import { unitArtSpecies } from '../units/species-catalog.js';
 import { unitAttackDisplayScale } from '../features/unit-attacks/presentation-geometry.js';
 import { applyUnitAttackPose } from '../features/unit-attacks/presentation.js';
 import { WORLD_DEPTH_PROJECTION, WORLD_HEIGHT_PROJECTION } from '../vector-sockets.js';
@@ -126,11 +127,11 @@ export function unitMayBeVisible(renderer, unit, sim) {
         // their native sample history even across an instantaneous camera move.
         return true;
     }
-    const RECORD = renderer.vectorAssets.get(unit.species);
+    const RECORD = renderer.vectorAssets.get(unitArtSpecies(unit));
     if (!RECORD) {
         return true;
     }
-    const BODY = unitBodyDefinition(unit.species),
+    const BODY = unitBodyDefinition(unitArtSpecies(unit)),
         ART_RADIUS = unitArtRadius(RECORD.compiled, BODY.ground);
     if (!Number.isFinite(ART_RADIUS)) {
         return true;

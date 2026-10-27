@@ -91,6 +91,10 @@ export const SPECIES_CATALOG = Object.freeze([
 export const SPECIES_COUNT = SPECIES_CATALOG.length;
 // Every boss is the plain sprout; the species a win pays is drawn separately.
 export const BOSS_SPECIES = 9;
+// The growing stage keeps its eventual species in the model, but wears the authored sprout art.
+export function unitArtSpecies(unit) {
+    return unit.isSeedling ? 9 : unit.species;
+}
 export function speciesById(id) {
     return SPECIES_CATALOG.find((species) => species.id === id) || SPECIES_CATALOG[SPECIES_CATALOG.length - 1];
 }

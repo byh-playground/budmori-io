@@ -200,8 +200,8 @@ function renderBossRewardBoxes(receipt) {
     ) {
         bossRewardPortraitReceiptKey = receipt.receiptKey;
         const PORTRAIT = DOLLAR('bossRewardPortrait');
-        PORTRAIT.src = './assets/seed.svg';
-        PORTRAIT.alt = '씨앗';
+        PORTRAIT.src = './assets/troops/sprout.svg';
+        PORTRAIT.alt = '새싹';
         PORTRAIT.hidden = false;
     }
     DOLLAR('bossRewardOpenAll').disabled = receipt.status !== 'ready' || !HAS_PRESENTATION || REVEALED >= COUNT;
@@ -534,7 +534,7 @@ function plannedWorkers(world) {
     const COUNTS = new Map();
     let total = 0;
     for (const UNIT of world.units) {
-        if (!UNIT.isBattleOnlySummon && !UNIT.isFormationClone) {
+        if (!UNIT.seedling && !UNIT.isBattleOnlySummon && !UNIT.isFormationClone) {
             COUNTS.set(UNIT.species, (COUNTS.get(UNIT.species) || 0) + 1);
             total++;
         }

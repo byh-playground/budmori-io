@@ -11,6 +11,7 @@ import {
 } from '../features/unit-attacks/presentation.js';
 import { unitAttackDisplayScale } from '../features/unit-attacks/presentation-geometry.js';
 import { unitBodyDefinition } from '../features/unit-body/definition.js';
+import { unitArtSpecies } from '../units/species-catalog.js';
 import { BarleyArmorShredPresentation } from '../features/abilities/barley-shred/presentation.js';
 import { ATTACK_TYPES, CONFIG, clamp } from '../model/farm-model.js';
 import { farmBreedingCooldown, unitRestPresentation } from '../ui/farm-indicators.js';
@@ -72,8 +73,6 @@ const ATTACK_ACCENTS = ['#8fac68', '#dbb76b', '#b58b9c', '#9a6947', '#d7914f', '
 
 // The unit presentation owns its reusable indicator scratch and the ordering of
 // rear rings, native vector passes, front rings, and sleep feedback.
-// A seed is a dark silhouette until it has grown: what it will become stays hidden.
-const SEEDLING_TINT = Object.freeze([0.3, 0.26, 0.22, 1]);
 export class UnitPresentation {
     constructor(renderer) {
         this.renderer = renderer;
@@ -252,7 +251,7 @@ export class UnitPresentation {
         this.drawVectorUnit(u, sim, null, null, REST, true);
     }
     prepareUnitPlayer(u, sim, rest) {
-        const RECORD = this.renderer.vectorAssets.get(u.species);
+        const RECORD = this.renderer.vectorAssets.get(unitArtSpecies(u));
         if (!RECORD) {
             throw new Error('Missing required troop vector asset for species ' + u.species);
         }
@@ -297,7 +296,9 @@ export class UnitPresentation {
         if (EXPRESSION !== player.currentExpression) {
             player.setExpression(EXPRESSION);
         }
-        prepareUnitAttackPlayer(player, u);
+        if (!u.isSeedling) {
+            prepareUnitAttackPlayer(player, u);
+        }
         return {
             record: RECORD,
             player,
@@ -353,7 +354,7 @@ export class UnitPresentation {
         const PREPARED = this.prepareVisibleUnit(u, sim);
         const { record: RECORD, player: PLAYER, swing: SWING } = PREPARED;
         const [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox,
-            GROUND = unitBodyDefinition(u.species).ground,
+            GROUND = unitBodyDefinition(unitArtSpecies(u)).ground,
             SCALE = (2 * r) / Math.max(WIDTH, HEIGHT);
         const MATRIX = [SCALE, 0, 0, SCALE, p.x - GROUND.x * SCALE, p.y - GROUND.y * SCALE];
         if (!SWING && !PREPARED.rest) {
@@ -369,7 +370,7 @@ export class UnitPresentation {
             projection: this.renderer.ctx.vector.projection,
             matrix: MATRIX,
             alpha: u.isFormationClone ? 0.52 : 1,
-            color: u.isFormationClone ? [0.55, 0.82, 1, 1] : u.isSeedling ? SEEDLING_TINT : [1, 1, 1, 1],
+            color: u.isFormationClone ? [0.55, 0.82, 1, 1] : [1, 1, 1, 1],
         });
         drawUnitAttackContact(this.renderer, u, PLAYER, MATRIX);
         this.drawLineageMarks(u, PLAYER, RECORD, MATRIX, sim);
@@ -410,7 +411,7 @@ export class UnitPresentation {
                 u.y,
                 u.z + BOB,
             );
-        const BODY = unitBodyDefinition(u.species),
+        const BODY = unitBodyDefinition(unitArtSpecies(u)),
             R = unitAttackDisplayScale(this.renderer, u, sim.time) * Math.max(BODY.viewBox[2], BODY.viewBox[3]) * 0.5;
         this.drawVectorUnit(u, sim, P, R, rest);
         return {

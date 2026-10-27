@@ -60,6 +60,10 @@ export class FarmMode {
         if (unit.stun > 0 || unit.z > 0.1) {
             return;
         }
+        if (unit.seedling) {
+            this.updateSeedling(world, unit, dt);
+            return;
+        }
         if (world.isWorker(unit)) {
             // Workers keep to their job at the work station: no eating, no breeding.
             const ORDER = world.workOrder(unit);
@@ -75,10 +79,6 @@ export class FarmMode {
                     unit.angle = Math.atan2(ORDER.fy - unit.y, ORDER.fx - unit.x);
                 }
             }
-            return;
-        }
-        if (unit.seedling) {
-            this.updateSeedling(world, unit, dt);
             return;
         }
         if (!unit.mature || unit.cooldown > 0) {

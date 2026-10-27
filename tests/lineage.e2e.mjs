@@ -78,6 +78,25 @@ try {
         await PAGE.waitForFunction(() => globalThis.BUDMORI);
         await PAGE.locator('#newGame').click();
         await seed(PAGE);
+        await PAGE.evaluate(() => {
+            const W = BUDMORI.sim;
+            W.setWorkBasisPoints(10000);
+            const SEED = W.units.find((unit) => unit.seedling);
+            // Offline settlement must not turn an unfed seed into an adult or a worker.
+            const BEFORE = SEED.growthElapsed;
+            W.settleOffline(3600);
+            if (SEED.growthElapsed !== BEFORE || W.isWorker(SEED) || W._workAssign.has(SEED.id)) {
+                throw new Error('An unfed seed grew or received offline labor');
+            }
+            W.setWorkBasisPoints(0);
+        });
+        await PAGE.waitForFunction(() => {
+            const SEED = BUDMORI.sim.units.find((unit) => unit.seedling),
+                R = BUDMORI.renderer,
+                PLAYER = SEED && R.vectorPlayers.get(SEED.id);
+            return PLAYER && R.vectorPlayerAssets.get(PLAYER).compiled.sourcePath === 'assets/troops/sprout.svg';
+        });
+        await PAGE.screenshot({ path: path.join(OUTPUT, MOBILE ? 'sprout-mobile.png' : 'sprout-desktop.png') });
         // With no recipe chosen the combine button opens the codex.
         await PRESS('#combine');
         assert.equal(await PAGE.locator('#codexDialog').isVisible(), true);
@@ -96,15 +115,41 @@ try {
             recipes: BUDMORI.sim.codex.recipes,
         }));
         assert.deepEqual(MADE, { merges: 1, corn: 1, recipes: [0] }, 'one pea and one rice became one corn');
+        await PAGE.evaluate(() => BUDMORI.sim.setWorkBasisPoints(10000));
         // The seed eats three meals and shows what it is.
-        await PAGE.waitForFunction(() => BUDMORI.sim.units.some((unit) => unit.species === 7 && !unit.seedling), null, {
-            timeout: 60000,
+        await PAGE.waitForFunction(
+            () => {
+                const W = BUDMORI.sim,
+                    SEED = W.units.find((unit) => unit.seedling);
+                if (SEED && (W.isWorker(SEED) || W._workAssign.has(SEED.id) || W.workOrder(SEED))) {
+                    throw new Error('A growing seed received a work assignment');
+                }
+                return W.units.some((unit) => unit.species === 7 && !unit.seedling);
+            },
+            null,
+            { timeout: 60000 },
+        );
+        await PAGE.waitForFunction(() => {
+            const UNIT = BUDMORI.sim.units.find((unit) => unit.species === 7),
+                R = BUDMORI.renderer,
+                PLAYER = UNIT && R.vectorPlayers.get(UNIT.id);
+            return PLAYER && R.vectorPlayerAssets.get(PLAYER).compiled.sourcePath === 'assets/troops/wheat.svg';
         });
+        await PAGE.screenshot({ path: path.join(OUTPUT, MOBILE ? 'grown-mobile.png' : 'grown-desktop.png') });
         const WHEAT = await PAGE.evaluate(() => {
             const UNIT = BUDMORI.sim.units.find((unit) => unit.species === 7);
             return { temperament: UNIT.temperament, genes: UNIT.genes };
         });
         assert.deepEqual(WHEAT, { temperament: 2, genes: [3, 3] }, 'the seed kept the lineage it was dropped with');
+        await PAGE.evaluate(() => {
+            const W = BUDMORI.sim,
+                WHEAT = W.units.find((unit) => unit.species === 7);
+            W.setWorkBasisPoints(10000);
+            if (!W.isWorker(WHEAT)) {
+                throw new Error('A grown seed did not become eligible for work');
+            }
+            W.setWorkBasisPoints(0);
+        });
         // A temperament tilts the body and carries one passive into every fight.
         const TEMPERED = await PAGE.evaluate(() => {
             const W = BUDMORI.sim,
@@ -138,6 +183,25 @@ try {
         await PRESS('#codexOpen');
         await PRESS('#codexTabs [data-tab="colors"]');
         assert.equal(await PAGE.locator('#codexBody .codex-icon:not(.is-unknown)').count(), 1);
+        await PRESS('#codexClose');
+        await PAGE.evaluate(async () => {
+            const { settleBossKill: SETTLE_BOSS_KILL } = await import('./src/boss/boss-rewards.js');
+            SETTLE_BOSS_KILL(BUDMORI.sim, {
+                encounterId: 999,
+                source: 'farm',
+                stage: 1,
+                species: 7,
+                tier: 1,
+                x: 0,
+                y: 0,
+                firstClear: true,
+                rollBudget: 1,
+                xpAmount: 20,
+            });
+        });
+        await PAGE.waitForSelector('#bossRewardPortrait:not([hidden])');
+        assert.equal(await PAGE.locator('#bossRewardPortrait').getAttribute('src'), './assets/troops/sprout.svg');
+        await PAGE.screenshot({ path: path.join(OUTPUT, MOBILE ? 'reward-mobile.png' : 'reward-desktop.png') });
         assert.deepEqual(ERRORS, []);
         console.log(
             `PASS ${MOBILE ? 'mobile touch' : 'desktop'}: codex recipe pick, combine, seed growth with lineage, reload keeps combine and codex`,
