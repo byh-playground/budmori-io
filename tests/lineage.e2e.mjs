@@ -185,8 +185,8 @@ try {
         assert.equal(await PAGE.locator('#codexBody .codex-icon:not(.is-unknown)').count(), 1);
         await PRESS('#codexClose');
         await PAGE.evaluate(async () => {
-            const { settleBossKill } = await import('./src/boss/boss-rewards.js');
-            settleBossKill(BUDMORI.sim, {
+            const { settleBossKill: SETTLE_BOSS_KILL } = await import('./src/boss/boss-rewards.js');
+            SETTLE_BOSS_KILL(BUDMORI.sim, {
                 encounterId: 999,
                 source: 'farm',
                 stage: 1,
