@@ -6,7 +6,14 @@ import {
     OVERALL_PROGRESSION_SETTINGS,
 } from './player-progression.js';
 import { BOSS_REWARD_SETTINGS } from '../boss/boss-rewards.js';
-import { TEMPERAMENT_COUNT, SEED_FEEDS, SEED_FEED_COOLDOWN_SECONDS, isValidGenes } from './lineage.js';
+import {
+    TEMPERAMENT_COUNT,
+    SEED_FEEDS,
+    SEED_FEED_COOLDOWN_SECONDS,
+    isValidGenes,
+    isValidCombine,
+    isValidCodex,
+} from './lineage.js';
 const FAIL = () => {
     throw new TypeError('올바른 농장 진행 저장 데이터가 아니에요.');
 };
@@ -148,6 +155,8 @@ export function captureFarmProgress(world) {
     }
     const ROSTER = [...GROUPS.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, row]) => row);
     return {
+        ...(world.combine.recipe >= 0 ? { combine: { ...world.combine } } : {}),
+        codex: structuredClone(world.codex),
         seed: world.seed,
         rngState: world.rng.state,
         nextId: world.nextId,
@@ -184,12 +193,18 @@ export function captureFarmProgress(world) {
     };
 }
 export function validateFarmProgress(data, { allowLegacy = false } = {}) {
-    keys(data, ['seed', 'rngState', 'nextId', 'player', 'roster', 'food', 'totals', 'ledger'], ['mode']);
+    keys(
+        data,
+        ['seed', 'rngState', 'nextId', 'player', 'roster', 'food', 'totals', 'ledger'],
+        ['mode', 'combine', 'codex'],
+    );
     ASSERT(
         INTEGER(data.seed, 0, 0xffffffff) &&
             INTEGER(data.rngState, 0, 0xffffffff) &&
             INTEGER(data.nextId, 1, CONFIG.farm.maxUnitId + 1) &&
-            (data.mode === undefined || ['breed', 'merge'].includes(data.mode)),
+            (data.mode === undefined || ['breed', 'merge'].includes(data.mode)) &&
+            (data.combine === undefined || isValidCombine(data.combine)) &&
+            (data.codex === undefined || isValidCodex(data.codex)),
     );
     const PLAYER = data.player,
         DEFAULTS = createPlayerProgressionState();
@@ -570,6 +585,16 @@ export function restoreFarmProgress(data) {
         revealedCount: reward.status === 'ready' ? reward.boxCount : 0,
     }));
     WORLD.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(data.rngState);
+    if (data.combine) {
+        WORLD.combine = { ...data.combine };
+    }
+    // The saved codex plus everything the restored units already are.
+    WORLD.codex = structuredClone(data.codex ?? { recipes: [], forms: [], colors: [] });
+    for (const UNIT of WORLD.roster.residents()) {
+        if (!UNIT.seedling) {
+            WORLD.recordCodex(UNIT);
+        }
+    }
     WORLD.reconcileMateReservations();
     return WORLD;
 }

@@ -22,11 +22,16 @@ import {
     SEED_FEEDS,
     SEED_FEED_COOLDOWN_SECONDS,
     SEED_SPECIES,
+    RECIPES,
     inheritGenes,
     inheritTemperament,
     lineageRandom,
     rollSeedGenes,
+    recipeFor,
     rollTemperament,
+    elementOf,
+    ELEMENT_COUNT,
+    TEMPERAMENT_COUNT,
 } from './lineage.js';
 import { createSimulationScenes } from './simulation-scenes.js';
 import { createProjectileBehaviors } from './projectile-behaviors.js';
@@ -583,6 +588,19 @@ function contact(
     }
     return true;
 }
+// What a group of materials turns into: the same species one tier up, or - for two different species with a recipe -
+// the recipe's species at the same tier.
+function mergeOutcome(materials) {
+    const FIRST = materials[0];
+    if (!FIRST) {
+        return null;
+    }
+    if (materials.every((unit) => unit.species === FIRST.species)) {
+        return { species: FIRST.species, tier: FIRST.tier + 1, recipe: null };
+    }
+    const RECIPE = materials.length === 2 ? recipeFor(materials[0].species, materials[1].species) : null;
+    return RECIPE ? { species: RECIPE.result, tier: FIRST.tier, recipe: RECIPE } : null;
+}
 const GARDEN = class Garden {
     constructor(seed = 731) {
         this.seed = seed;
@@ -774,8 +792,13 @@ const GARDEN = class Garden {
     _pendingMergeCost(species, excludedTask = null) {
         let cost = 0;
         for (const TASK of this.mergeTasks) {
-            if (TASK !== excludedTask && TASK.phase === 'approach' && TASK.sourceSpecies === species) {
-                cost += TASK.materialIds.length - 1;
+            if (TASK === excludedTask || TASK.phase !== 'approach') {
+                continue;
+            }
+            if (TASK.partnerSpecies < 0) {
+                cost += TASK.sourceSpecies === species ? TASK.materialIds.length - 1 : 0;
+            } else if (TASK.sourceSpecies === species || TASK.partnerSpecies === species) {
+                cost += 1;
             }
         }
         return cost;
@@ -1134,6 +1157,8 @@ const GARDEN = class Garden {
         this._stepUnits.length = 0;
         this.corpseRecoveryVersion = 1;
         this.rng = new SEEDED_PRNG(this.seed);
+        this.combine = { recipe: -1, tier: 1 };
+        this.codex = { recipes: [], forms: [], colors: [] };
         this.resetUnits();
         this.food = [];
         this.effects = [];
@@ -1207,6 +1232,7 @@ const GARDEN = class Garden {
             U.growth = CONFIG.farm.breeding.matureMeals;
             U.growthDuration = this.breedGrowthDuration();
             U.growthElapsed = U.growthDuration;
+            this.recordCodex(U);
         }
     }
     mutateUnits(action, a, b, c, d, e) {
@@ -1846,6 +1872,29 @@ const GARDEN = class Garden {
             ),
         };
     }
+    // The codex remembers every kind of unit the farm has had: species by temperament, and species by shown colour.
+    recordCodex(unit) {
+        const ENTRIES = [
+            [this.codex.forms, unit.species * TEMPERAMENT_COUNT + unit.temperament],
+            ...(elementOf(unit.genes)
+                ? [[this.codex.colors, unit.species * ELEMENT_COUNT + elementOf(unit.genes) - 1]]
+                : []),
+        ];
+        for (const [LIST, VALUE] of ENTRIES) {
+            if (!LIST.includes(VALUE)) {
+                LIST.push(VALUE);
+                LIST.sort((a, b) => a - b);
+                this.markProgressChanged();
+            }
+        }
+    }
+    recordRecipe(index) {
+        if (!this.codex.recipes.includes(index)) {
+            this.codex.recipes.push(index);
+            this.codex.recipes.sort((a, b) => a - b);
+            this.markProgressChanged();
+        }
+    }
     // One meal of a seed. The third makes it a full unit.
     feedSeedling(unit) {
         const SEEDLING = unit.seedling;
@@ -1859,6 +1908,7 @@ const GARDEN = class Garden {
             unit.growthElapsed = unit.growthDuration;
             unit.growth = CONFIG.farm.breeding.matureMeals;
             this.metrics.births++;
+            this.recordCodex(unit);
             this.emit('birth', unit.x, unit.y, 0.7);
         } else {
             unit.growthElapsed = (unit.growthDuration * SEEDLING.fed * 0.8) / SEED_FEEDS;
@@ -3023,9 +3073,13 @@ const GARDEN = class Garden {
                 return false;
             }
             const FIRST = materials[0],
-                RESULT_TIER = FIRST?.tier + 1,
-                MATERIAL_COUNT = mergeMaterialCostForTier(RESULT_TIER);
-            if (MATERIAL_COUNT < 2 || materials.length !== MATERIAL_COUNT || FIRST.tier >= CONFIG.unit.maxTier) {
+                OUTCOME = FIRST ? mergeOutcome(materials) : null;
+            if (!OUTCOME) {
+                return false;
+            }
+            const COMBINE = OUTCOME.recipe !== null,
+                MATERIAL_COUNT = COMBINE ? 2 : mergeMaterialCostForTier(OUTCOME.tier);
+            if (MATERIAL_COUNT < 2 || materials.length !== MATERIAL_COUNT || OUTCOME.tier > CONFIG.unit.maxTier) {
                 return false;
             }
             const IDS = new Set();
@@ -3035,7 +3089,6 @@ const GARDEN = class Garden {
                     IDS.has(UNIT_LOCAL.id) ||
                     UNIT_LOCAL.isBattleOnlySummon ||
                     UNIT_LOCAL.mergeEligible === false ||
-                    UNIT_LOCAL.species !== FIRST.species ||
                     UNIT_LOCAL.tier !== FIRST.tier ||
                     UNIT_LOCAL.hp <= 0 ||
                     UNIT_LOCAL.down > 0 ||
@@ -3059,14 +3112,16 @@ const GARDEN = class Garden {
             const EXCLUDED_TASK = reservationOwner
                 ? this.mergeTasks.find((task) => MERGE_RESERVATION_OWNER(task.materialIds || []) === reservationOwner)
                 : null;
-            if (
-                this._ownedSpeciesCounts[FIRST.species] -
-                    this._pendingMergeCost(FIRST.species, EXCLUDED_TASK) -
-                    MATERIAL_COUNT +
-                    1 <
-                2
-            ) {
-                return false;
+            for (const MATERIAL_SPECIES of new Set(materials.map((unit) => unit.species))) {
+                const LOSS = COMBINE ? 1 : MATERIAL_COUNT - 1;
+                if (
+                    this._ownedSpeciesCounts[MATERIAL_SPECIES] -
+                        this._pendingMergeCost(MATERIAL_SPECIES, EXCLUDED_TASK) -
+                        LOSS <
+                    2
+                ) {
+                    return false;
+                }
             }
             if (requireNoEnemy && materials.some((unit) => this.senseEnemy(unit))) {
                 return false;
@@ -3093,6 +3148,68 @@ const GARDEN = class Garden {
     canMergePair(a, b, options = {}) {
         return this.canMergeGroup([a, b], options);
     }
+    // Sorts the units that may be merged right now into species-and-tier groups.
+    _collectMergeEligible() {
+        for (const GROUP of this._mergeEligibleGroups) {
+            GROUP.length = 0;
+        }
+        for (const GROUP of this._speciesTierGroups) {
+            for (const UNIT_LOCAL of GROUP) {
+                if (
+                    !UNIT_LOCAL.isBattleOnlySummon &&
+                    UNIT_LOCAL.mergeEligible !== false &&
+                    UNIT_LOCAL.hp > 0 &&
+                    UNIT_LOCAL.down <= 0 &&
+                    UNIT_LOCAL.mature &&
+                    UNIT_LOCAL.cooldown <= 0 &&
+                    (!this.unitCollection.reservationOwner(UNIT_LOCAL) ||
+                        this._isValidBreedReservation(UNIT_LOCAL, this.unitCollection.reservationOwner(UNIT_LOCAL))) &&
+                    !this.senseEnemy(UNIT_LOCAL)
+                ) {
+                    this._mergeEligibleGroups[UNIT_LOCAL.species * (CONFIG.unit.maxTier + 1) + UNIT_LOCAL.tier].push(
+                        UNIT_LOCAL,
+                    );
+                }
+            }
+        }
+    }
+    // The closest pair for a recipe at one tier, or null.
+    selectCombineMaterials(recipeIndex, tier) {
+        const RECIPE = RECIPES[recipeIndex];
+        if (this.scene !== 'farm' || !RECIPE || !Number.isInteger(tier) || tier < 1 || tier > CONFIG.unit.maxTier) {
+            return null;
+        }
+        const BATCH = !this._spatialStepActive;
+        if (BATCH) {
+            this._beginSpatialQueryBatch();
+        }
+        try {
+            this._collectMergeEligible();
+            const FIRST_GROUP = this._mergeEligibleGroups[RECIPE.a * (CONFIG.unit.maxTier + 1) + tier],
+                SECOND_GROUP = this._mergeEligibleGroups[RECIPE.b * (CONFIG.unit.maxTier + 1) + tier];
+            let best = null,
+                bestDistance = Infinity;
+            for (const A of FIRST_GROUP) {
+                for (const B of SECOND_GROUP) {
+                    const DISTANCE = (A.x - B.x) ** 2 + (A.y - B.y) ** 2;
+                    if (
+                        DISTANCE < bestDistance ||
+                        (DISTANCE === bestDistance && best && A.id + B.id < best[0].id + best[1].id)
+                    ) {
+                        if (this.canMergeGroup([A, B], { requireNoEnemy: true })) {
+                            best = [A, B];
+                            bestDistance = DISTANCE;
+                        }
+                    }
+                }
+            }
+            return best;
+        } finally {
+            if (BATCH) {
+                this._endSpatialQueryBatch();
+            }
+        }
+    }
     selectMergeMaterials() {
         if (this.scene !== 'farm') {
             return null;
@@ -3102,32 +3219,7 @@ const GARDEN = class Garden {
             this._beginSpatialQueryBatch();
         }
         try {
-            for (const GROUP of this._mergeEligibleGroups) {
-                GROUP.length = 0;
-            }
-            for (const GROUP of this._speciesTierGroups) {
-                for (const UNIT_LOCAL of GROUP) {
-                    if (
-                        !UNIT_LOCAL.isBattleOnlySummon &&
-                        UNIT_LOCAL.mergeEligible !== false &&
-                        UNIT_LOCAL.hp > 0 &&
-                        UNIT_LOCAL.down <= 0 &&
-                        UNIT_LOCAL.mature &&
-                        UNIT_LOCAL.cooldown <= 0 &&
-                        UNIT_LOCAL.tier < CONFIG.unit.maxTier &&
-                        (!this.unitCollection.reservationOwner(UNIT_LOCAL) ||
-                            this._isValidBreedReservation(
-                                UNIT_LOCAL,
-                                this.unitCollection.reservationOwner(UNIT_LOCAL),
-                            )) &&
-                        !this.senseEnemy(UNIT_LOCAL)
-                    ) {
-                        this._mergeEligibleGroups[
-                            UNIT_LOCAL.species * (CONFIG.unit.maxTier + 1) + UNIT_LOCAL.tier
-                        ].push(UNIT_LOCAL);
-                    }
-                }
-            }
+            this._collectMergeEligible();
             const COMPARE_IDS = (left, right) => {
                 for (let index = 0; index < left.length; index++) {
                     if (left[index] !== right[index]) {
@@ -3289,11 +3381,60 @@ const GARDEN = class Garden {
                 : {}),
         };
     }
-    startManualMerge() {
-        return this.mutateUnits(this._startManualMerge);
+    setCombineSelection(recipe, tier) {
+        if (
+            !Number.isInteger(recipe) ||
+            recipe < -1 ||
+            recipe >= RECIPES.length ||
+            !Number.isInteger(tier) ||
+            tier < 1 ||
+            tier > CONFIG.unit.maxTier ||
+            (recipe === this.combine.recipe && tier === this.combine.tier)
+        ) {
+            return false;
+        }
+        this.combine = { recipe, tier };
+        this._markMergeAvailabilityChanged();
+        this.markProgressChanged();
+        return true;
     }
-    _startManualMerge() {
-        const DECISION = this.mergeDecision();
+    combineDecision() {
+        if (this.scene !== 'farm') {
+            return { available: false, code: 'wrong-scene', reason: '농장 화면에서만 조합할 수 있어요.' };
+        }
+        if (this.farmBossEvent?.phase !== 'idle') {
+            return { available: false, code: 'boss-event', reason: '레이드 중에는 조합할 수 없어요.' };
+        }
+        const RECIPE = RECIPES[this.combine.recipe];
+        if (!RECIPE) {
+            return { available: false, code: 'no-recipe', reason: '도감에서 조합식을 골라 주세요.' };
+        }
+        const MATERIALS = this.selectCombineMaterials(this.combine.recipe, this.combine.tier);
+        if (!MATERIALS) {
+            return {
+                available: false,
+                code: 'no-eligible-materials',
+                reason: `T${this.combine.tier} 재료가 부족해요. 각 병종이 3마리씩 있어야 해요.`,
+            };
+        }
+        return {
+            available: true,
+            code: 'ready',
+            tier: this.combine.tier,
+            materialCount: 2,
+            materials: MATERIALS,
+            reason: `T${this.combine.tier} 조합`,
+        };
+    }
+    combineAvailability() {
+        const DECISION = this.combineDecision();
+        return { available: DECISION.available, code: DECISION.code, reason: DECISION.reason };
+    }
+    startManualMerge(combine = false) {
+        return this.mutateUnits(this._startManualMerge, combine);
+    }
+    _startManualMerge(combine) {
+        const DECISION = combine ? this.combineDecision() : this.mergeDecision();
         if (!DECISION.available) {
             return false;
         }
@@ -3332,6 +3473,7 @@ const GARDEN = class Garden {
             centerY: CENTER_Y,
             centerZ: CONFIG.farm.merge.centerHeight,
             sourceSpecies: MATERIALS[0].species,
+            partnerSpecies: combine ? MATERIALS[1].species : -1,
             sourceTier: MATERIALS[0].tier,
             elapsed: 0,
             duration: DURATION,
@@ -3512,7 +3654,17 @@ const GARDEN = class Garden {
             Z = TASK.centerZ;
         // Prepare the complete result before the collection owner commits the
         // replacement. A failed preparation never consumes existing units.
-        const RESULT = new UNIT(this.nextId, FIRST.species, FIRST.tier + 1, X, Y);
+        const OUTCOME = mergeOutcome(ORDERED),
+            RESULT = new UNIT(this.nextId, OUTCOME.species, OUTCOME.tier, X, Y);
+        const LINEAGE_RANDOM = lineageRandom(this.seed, this.nextId, 2);
+        RESULT.temperament = inheritTemperament(
+            ORDERED.map((unit) => unit.temperament),
+            LINEAGE_RANDOM,
+        );
+        RESULT.genes = inheritGenes(
+            ORDERED.map((unit) => unit.genes),
+            LINEAGE_RANDOM,
+        );
         applyRunGrowthHealth(RESULT, this.runProgressionSnapshot, { preserveRatio: true });
         RESULT.dropLanded = false;
         RESULT.meals = 1;
@@ -3537,7 +3689,12 @@ const GARDEN = class Garden {
                     TASK.materialIds = MATERIAL_IDS;
                     TASK.resultId = RESULT.id;
                     TASK.sourceSpecies = FIRST.species;
+                    TASK.partnerSpecies = OUTCOME.recipe ? ORDERED[1].species : -1;
                     TASK.sourceTier = FIRST.tier;
+                    this.recordCodex(RESULT);
+                    if (OUTCOME.recipe) {
+                        this.recordRecipe(RECIPES.indexOf(OUTCOME.recipe));
+                    }
                     TASK.elapsed = 0;
                     TASK.duration = CONFIG.farm.merge.animationSeconds;
                     this._markMergeTasksChanged();

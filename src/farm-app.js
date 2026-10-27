@@ -41,6 +41,7 @@ import { speciesById, giantSpeciesName } from './units/species-catalog.js';
 import { SEED_SPECIES } from './model/lineage.js';
 import { HELP_MAX_FRAME_MS, HELP_PLAYBACK_RATE, helpSceneById } from './ui/help-scenes.js';
 import { createHelpPanel } from './ui/help-panel.js';
+import { codexHtml, CODEX_TABS } from './ui/codex-dialog.js';
 const DOLLAR = (id) => document.getElementById(id),
     STORAGE = new FarmStorage();
 STORAGE.initializeIncompatible(new Garden());
@@ -76,6 +77,7 @@ let mergeStatusCache = {
     revision: -1,
     updatedAt: -Infinity,
     value: null,
+    combine: null,
 };
 const RENDERER = new Diorama(DOLLAR('world'));
 const RELIC_DOCK = new RelicDock({ onOpen: () => stopWorldInput() });
@@ -97,9 +99,10 @@ function mergeAvailability(world, now) {
             revision: world.mergeAvailabilityRevision,
             updatedAt: now,
             value: world.mergeAvailability(),
+            combine: world.combineAvailability(),
         };
     }
-    return mergeStatusCache.value;
+    return mergeStatusCache;
 }
 function rewardReceiptSummary(reward) {
     if (!reward) {
@@ -922,7 +925,7 @@ DOLLAR('confirmImport').onclick = () => {
         DOLLAR('saveNotice').textContent = e.message;
     }
 };
-// Holding the merge button merges once right away, then one more every 0.1 s while it stays down.
+// Holding a merge button merges once right away, then one more every 0.1 s while it stays down.
 let mergeHold = null;
 function stopMergeHold() {
     if (mergeHold) {
@@ -931,31 +934,86 @@ function stopMergeHold() {
         mergeHold = null;
     }
 }
-DOLLAR('merge').addEventListener('pointerdown', (e) => {
-    if (e.button !== 0 || DOLLAR('merge').disabled) {
-        return;
+function bindMergeButton(id, command, onBlocked = null) {
+    const BUTTON = DOLLAR(id);
+    BUTTON.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 || BUTTON.disabled) {
+            return;
+        }
+        stopMergeHold();
+        if (onBlocked?.()) {
+            return;
+        }
+        active?.queue(command);
+        const HOLD = (mergeHold = { delay: 0, repeat: 0 });
+        HOLD.delay = setTimeout(() => {
+            HOLD.repeat = setInterval(() => active?.queue(command), 100);
+        }, 350);
+    });
+    for (const EVENT of ['pointerup', 'pointercancel', 'pointerleave']) {
+        BUTTON.addEventListener(EVENT, stopMergeHold);
     }
-    stopMergeHold();
-    active?.queue('merge');
-    const HOLD = (mergeHold = { delay: 0, repeat: 0 });
-    HOLD.delay = setTimeout(() => {
-        HOLD.repeat = setInterval(() => active?.queue('merge'), 100);
-    }, 350);
-});
-for (const EVENT of ['pointerup', 'pointercancel', 'pointerleave']) {
-    DOLLAR('merge').addEventListener(EVENT, stopMergeHold);
+    // A pointer press already merged above; this is for the keyboard.
+    BUTTON.onclick = (e) => {
+        if (e.detail === 0 && !onBlocked?.()) {
+            active?.queue(command);
+        }
+    };
+    BUTTON.addEventListener('keydown', (e) => {
+        if (e.repeat && ['Enter', ' '].includes(e.key)) {
+            e.preventDefault();
+        }
+    });
 }
 window.addEventListener('blur', stopMergeHold);
-// A pointer press already merged above; this is for the keyboard.
-DOLLAR('merge').onclick = (e) => {
-    if (e.detail === 0) {
-        active?.queue('merge');
+bindMergeButton('merge', 'merge');
+// Without a chosen recipe the combine button opens the codex to pick one.
+bindMergeButton('combine', 'combine', () => {
+    if (personalGarden.combine.recipe >= 0) {
+        return false;
     }
+    openCodex('recipes');
+    return true;
+});
+// The codex: recipes to pick, and every kind of unit the farm has had.
+let codexTab = 'recipes';
+function paintCodex() {
+    DOLLAR('codexTabs').innerHTML = CODEX_TABS.map(
+        (tab) =>
+            `<button type="button" role="tab" data-tab="${tab.id}" aria-selected="${tab.id === codexTab}">${tab.label}</button>`,
+    ).join('');
+    DOLLAR('codexBody').innerHTML = codexHtml(personalGarden, codexTab);
+}
+function openCodex(tab = codexTab) {
+    codexTab = tab;
+    paintCodex();
+    DOLLAR('codexDialog').hidden = false;
+}
+DOLLAR('codexOpen').onclick = () => openCodex();
+DOLLAR('codexClose').onclick = () => {
+    DOLLAR('codexDialog').hidden = true;
 };
-DOLLAR('merge').addEventListener('keydown', (e) => {
-    if (e.repeat && ['Enter', ' '].includes(e.key)) {
-        e.preventDefault();
+DOLLAR('codexTabs').addEventListener('click', (e) => {
+    const TAB = e.target.closest('[data-tab]');
+    if (TAB) {
+        codexTab = TAB.dataset.tab;
+        paintCodex();
     }
+});
+DOLLAR('codexBody').addEventListener('click', (e) => {
+    const RECIPE = e.target.closest('[data-recipe]'),
+        TIER = e.target.closest('[data-tier]');
+    if (RECIPE) {
+        const INDEX = Number(RECIPE.dataset.recipe);
+        active?.queue('combine-select', {
+            recipe: INDEX === personalGarden.combine.recipe ? -1 : INDEX,
+            tier: 1,
+        });
+    } else if (TIER) {
+        active?.queue('combine-select', { recipe: personalGarden.combine.recipe, tier: Number(TIER.dataset.tier) });
+    }
+    // The command lands on the next tick; paint after it.
+    setTimeout(paintCodex, 120);
 });
 // Selection and the proportional editing basis are presentation-only, never part of a farm save.
 const BREED_CONTROL = { selected: null, idsKey: '', world: null, sourceKey: '', basis: [] };
@@ -2121,7 +2179,9 @@ function sync(display, now, notices) {
         PENDING_REWARD = REWARD_WORLD.bossRewardReceipts.find(
             (reward) => ['calculating', 'ready'].includes(reward.status) || reward.queuedCount > 0,
         ),
-        MERGE_STATUS = mergeAvailability(W, now);
+        MERGE_CACHE = mergeAvailability(W, now),
+        MERGE_STATUS = MERGE_CACHE.value,
+        COMBINE_STATUS = MERGE_CACHE.combine;
     syncBossRewardDialog(REWARD_WORLD);
     syncFlag('cameraReset', 'hidden', home || menuOpen);
     syncFlag('cameraReset', 'disabled', !canUseCamera());
@@ -2133,6 +2193,9 @@ function sync(display, now, notices) {
     syncFlag('mergeNotice', 'hidden', home || FARM_EVENT_ACTIVE);
     syncAttribute('merge', 'aria-label', `합성${MERGE_STATUS.available ? '' : ' 불가'} · ${MERGE_STATUS.reason}`);
     syncText('mergeNotice', MERGE_STATUS.reason);
+    syncFlag('combine', 'disabled', home || FARM_EVENT_ACTIVE || (W.combine.recipe >= 0 && !COMBINE_STATUS.available));
+    syncData('combine', 'availability', COMBINE_STATUS.code || 'unavailable');
+    syncAttribute('combine', 'aria-label', `조합${COMBINE_STATUS.available ? '' : ' 불가'} · ${COMBINE_STATUS.reason}`);
     const WORLD_COUNT = HUD_COUNTS.worldPopulation(W),
         BATTLE_VISIBLE = !home && fightActive(),
         BATTLE_COUNTS = BATTLE_VISIBLE ? HUD_COUNTS.battleCounts(W) : null;
