@@ -1929,6 +1929,7 @@ const GARDEN = class Garden {
             this.metrics.births++;
             this.recordCodex(unit);
             this.emit('birth', unit.x, unit.y, 0.7);
+            this._nextWorkerRefreshTick = 0;
         } else {
             unit.growthElapsed = (unit.growthDuration * SEEDLING.fed * 0.8) / SEED_FEEDS;
         }
@@ -2030,7 +2031,7 @@ const GARDEN = class Garden {
         }
     }
     isWorker(unit) {
-        return this._workerIds.has(unit.id);
+        return !unit.seedling && this._workerIds.has(unit.id);
     }
     // The grain piles of the farm plot on screen.
     get piles() {
@@ -2089,6 +2090,7 @@ const GARDEN = class Garden {
             const BY_SPECIES = new Map();
             for (const UNIT_LOCAL of this.roster.residents()) {
                 if (
+                    UNIT_LOCAL.seedling ||
                     !UNIT_LOCAL.mature ||
                     UNIT_LOCAL.hp <= 0 ||
                     UNIT_LOCAL.down > 0 ||

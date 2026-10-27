@@ -212,7 +212,7 @@ function impact(world, config, pile) {
 // What a worker should do this tick: where to go and how fast, or hold still while winding up or recoiling.
 export function workOrder(world, unit) {
     const ASSIGN = world._workAssign.get(unit.id);
-    if (!ASSIGN) {
+    if (!ASSIGN || !world.isWorker(unit)) {
         return null;
     }
     const PILE = ASSIGN.pile,
@@ -274,7 +274,7 @@ export function stepWork(world, config, dt) {
             continue;
         }
         const UNIT = world._unitById.get(ID);
-        if (!UNIT || UNIT.hp <= 0) {
+        if (!UNIT || !world.isWorker(UNIT) || UNIT.hp <= 0) {
             world._swings.delete(ID);
             continue;
         }

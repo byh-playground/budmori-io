@@ -29,7 +29,7 @@ export function applyOffline(world, config, rawSeconds) {
         if (UNIT.down > 0) {
             UNIT.down = Math.min(UNIT.down, 0.05);
         }
-        if (!UNIT.mature) {
+        if (!UNIT.seedling && !UNIT.mature) {
             UNIT.growthElapsed = UNIT.growthDuration;
         }
     }
@@ -41,7 +41,7 @@ export function applyOffline(world, config, rawSeconds) {
         SPECIES_COUNT = config.unit.speciesCount,
         ADULTS = new Array(SPECIES_COUNT).fill(0);
     for (const UNIT of world.roster.residents()) {
-        if (UNIT.isBattleOnlySummon) {
+        if (UNIT.isBattleOnlySummon || UNIT.seedling) {
             continue;
         }
         if (UNIT.mature && UNIT.hp > 0 && !world._workerIds.has(UNIT.id)) {
