@@ -604,7 +604,8 @@ function validateActorAttackState(actor, raw, cornActions, chestnutActions, allo
     }
     ASSERT(Number.isFinite(U.ability.elapsed) && U.ability.elapsed >= 0);
 }
-export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
+// Root identity, tower checkpoint and formation runtime.
+function validateRootFields(raw) {
     finiteTree(raw);
     shape(raw, GARDEN_SHAPE);
     ASSERT(
@@ -636,6 +637,9 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
     ASSERT(raw.scene === 'farm');
     ASSERT(Array.isArray(raw.mergeTasks) && raw.mergeTasks.length <= CONFIG.farm.capacity.battleUnits);
     ASSERT(isValidCombine(raw.combine) && isValidCodex(raw.codex));
+}
+// Chestnut and corn attack records.
+function validateAttackRecords(raw) {
     const CHESTNUT_ACTIONS = new Map();
     ASSERT(Array.isArray(raw.chestnutAttacks) && raw.chestnutAttacks.length <= CONFIG.battle.capacity.projectiles);
     for (const R of raw.chestnutAttacks) {
@@ -670,6 +674,10 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
         );
         CORN_ACTIONS.set(RECORD.id, RECORD);
     }
+    return { CHESTNUT_ACTIONS, CORN_ACTIONS };
+}
+// Pending merge tasks and their material costs.
+function validateMergeTasks(raw) {
     const MERGE_TASK_UNIT_IDS = new Set(),
         PENDING_MERGE_COST = new Int32Array(CONFIG.unit.speciesCount);
     for (const T of raw.mergeTasks) {
@@ -780,12 +788,18 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
             Number.isFinite(raw.farmBossEvent.elapsed) &&
             raw.farmBossEvent.elapsed >= 0,
     );
+}
+// Player progression and food counters.
+function validateProgressionState(raw) {
     ASSERT(INTEGER(raw.nextBossEncounterId, 1, 1e12) && Array.isArray(raw.bossRewardReceipts));
     validateProgression(raw.playerProgression);
     if (raw.runProgressionSnapshot !== null) {
         validateProgression(raw.runProgressionSnapshot);
     }
     ASSERT(Array.isArray(raw.food) && raw.food.length <= 140);
+}
+// The farm boss event phases.
+function validateFarmBossEvent(raw) {
     const FARM_EVENT = raw.farmBossEvent;
     if (FARM_EVENT.phase === 'idle') {
         ASSERT(
@@ -842,6 +856,11 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
             Object.keys(raw.bossRewardStreams).length === 3 &&
             ['normal', 'event', 'firstClear'].every((key) => Object.hasOwn(raw.bossRewardStreams, key)),
     );
+    return { FARM_EVENT };
+}
+// Boss reward streams, inventory and receipts.
+function validateBossRewards(raw, context) {
+    const { FARM_EVENT } = context;
     const VALID_DISTRIBUTION = (state) =>
             state &&
             typeof state === 'object' &&
@@ -1008,6 +1027,10 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
                 RECEIPT.unitId === FARM_EVENT.rewardUnitId,
         );
     }
+}
+// Counters, the live roster, boss summons and generations.
+function validateUnits(raw, context, allowLegacyBarleyShred) {
+    const { CHESTNUT_ACTIONS, CORN_ACTIONS } = context;
     ASSERT(
         raw.corpseRecoveryVersion === 1 &&
             INTEGER(raw.nextId, 1, 1e9) &&
@@ -1197,12 +1220,20 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
             raw.bosses.every((boss) => boss.generation <= raw.entityGenerationSerial) &&
             raw.units.every((unit) => unit.generation <= raw.entityGenerationSerial),
     );
+    return { UNITS_BY_ID };
+}
+// Food piles.
+function validateFood(raw) {
     for (const F of raw.food) {
         ASSERT(['flight', 'bounce', 'grounded'].includes(F.phase));
         for (const K of ['x', 'y', 'z', 'vx', 'vy', 'vz', 'tx', 'ty']) {
             ASSERT(Number.isFinite(F[K]));
         }
     }
+}
+// Projectiles and the attacks they belong to.
+function validateProjectiles(raw, context) {
+    const { CHESTNUT_ACTIONS, CORN_ACTIONS } = context;
     const PROJECTILE_IDS = new Set(),
         CORN_PROJECTILE_SLOTS = new Set(),
         CHESTNUT_PROJECTILE_SLOTS = new Set();
@@ -1321,6 +1352,10 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
             ASSERT(R.completedSlots[i] || CHESTNUT_PROJECTILE_SLOTS.has(`${R.id}:${i}`));
         }
     }
+}
+// Corn attachment groups.
+function validateCornAttachments(raw, context) {
+    const { CORN_ACTIONS, UNITS_BY_ID } = context;
     const ATTACHMENTS = new Set(),
         CORN_GROUP_TARGETS = new Set(),
         CORN_DEFINITION = CORN_ATTACHMENT_FEATURE.definition;
@@ -1435,10 +1470,28 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
             previousKernelIndex = ATTACHMENT.cornKernelIndex;
         }
     }
+}
+// Projectile and boss summon serials.
+function validateSerials(raw) {
     ASSERT(INTEGER(raw.projectileSerial, 0, 1e12) && INTEGER(raw.bossSummonSerial, 0, 1e12));
     for (const BOSS of raw.bosses) {
         validateBoss(BOSS, raw);
     }
+}
+export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
+    // Shared results of earlier sections that later sections cross-check against.
+    const CONTEXT = {};
+    validateRootFields(raw);
+    Object.assign(CONTEXT, validateAttackRecords(raw));
+    validateMergeTasks(raw);
+    validateProgressionState(raw);
+    Object.assign(CONTEXT, validateFarmBossEvent(raw));
+    validateBossRewards(raw, CONTEXT);
+    Object.assign(CONTEXT, validateUnits(raw, CONTEXT, allowLegacyBarleyShred));
+    validateFood(raw);
+    validateProjectiles(raw, CONTEXT);
+    validateCornAttachments(raw, CONTEXT);
+    validateSerials(raw);
     return true;
 }
 function validateTowerCheckpoint(raw) {
