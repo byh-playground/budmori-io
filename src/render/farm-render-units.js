@@ -84,8 +84,17 @@ export class UnitPresentation {
         this.unitRingPool = [{}, {}, {}, {}];
         this.breedingIndicator = {};
         this.restIndicator = {};
+        this.preparedVisibleUnits = new Map();
+        this.playerIdentities = new Map();
     }
     prepareUnits(units, time, world) {
+        this.preparedVisibleUnits.clear();
+        const LIVE_PLAYER_IDS = new Set(units.map((unit) => unit.id));
+        for (const ID of this.playerIdentities.keys()) {
+            if (!LIVE_PLAYER_IDS.has(ID)) {
+                this.playerIdentities.delete(ID);
+            }
+        }
         if (
             this.riceDisplayWorld !== world ||
             this.riceDisplayTime > this.renderer.displayTimeMs ||
@@ -242,13 +251,19 @@ export class UnitPresentation {
         const REST = unitRestPresentation(u, sim, CONFIG.unit.corpseRecoverySeconds, this.restIndicator);
         this.drawVectorUnit(u, sim, null, null, REST, true);
     }
-    drawVectorUnit(u, sim, p, r, rest, hidden = false) {
+    prepareUnitPlayer(u, sim, rest) {
         const RECORD = this.renderer.vectorAssets.get(u.species);
         if (!RECORD) {
             throw new Error('Missing required troop vector asset for species ' + u.species);
         }
         let player = this.renderer.vectorPlayers.get(u.id);
-        if (player && this.renderer.vectorPlayerAssets.get(player) !== RECORD) {
+        const IDENTITY = player && this.playerIdentities.get(u.id);
+        if (
+            player &&
+            (this.renderer.vectorPlayerAssets.get(player) !== RECORD ||
+                IDENTITY?.seed !== u.seed ||
+                IDENTITY?.generation !== u.generation)
+        ) {
             player.dispose();
             this.renderer.vectorPlayers.delete(u.id);
             player = null;
@@ -270,6 +285,7 @@ export class UnitPresentation {
             });
             this.renderer.vectorPlayers.set(u.id, player);
             this.renderer.vectorPlayerAssets.set(player, RECORD);
+            this.playerIdentities.set(u.id, { seed: u.seed, generation: u.generation });
         } else if (player.currentClip !== MOTION_NAME) {
             player.play(MOTION_NAME, CLIP_START_AT_MS);
         }
@@ -282,39 +298,81 @@ export class UnitPresentation {
             player.setExpression(EXPRESSION);
         }
         prepareUnitAttackPlayer(player, u);
-        if (hidden) {
-            // Observe clip transitions without evaluating native poses or art.
-            // Active melee trails are kept visible; this clears inactive history.
-            drawUnitAttackContact(this.renderer, u, player, null);
-            return true;
+        return {
+            record: RECORD,
+            player,
+            swing: SWING,
+            rest,
+            phaseTimeMs: PHASE_TIME_MS,
+            hasPhaseClock: HAS_PHASE_CLOCK,
+            clip: CLIP,
+        };
+    }
+    prepareVisibleUnit(u, sim) {
+        const CACHED = this.preparedVisibleUnits.get(u.id);
+        if (
+            CACHED?.unit === u &&
+            CACHED.sim === sim &&
+            CACHED.displayTimeMs === this.renderer.displayTimeMs &&
+            CACHED.seed === u.seed &&
+            CACHED.generation === u.generation
+        ) {
+            return CACHED;
         }
-        player.seek(
+        const REST_RESULT = unitRestPresentation(u, sim, CONFIG.unit.corpseRecoverySeconds, this.restIndicator);
+        const REST = REST_RESULT ? { ...REST_RESULT } : null;
+        const PREPARED = this.prepareUnitPlayer(u, sim, REST);
+        const { player: PLAYER, clip: CLIP, phaseTimeMs: PHASE_TIME_MS, hasPhaseClock: HAS_PHASE_CLOCK } = PREPARED;
+        PLAYER.seek(
             HAS_PHASE_CLOCK
                 ? clamp(PHASE_TIME_MS, 0, CLIP.durationMs)
-                : rest
-                  ? rest.elapsed * 1000
+                : REST
+                  ? REST.elapsed * 1000
                   : this.renderer.displayTimeMs,
         );
+        PLAYER.preparePose();
+        const ENTRY = {
+            ...PREPARED,
+            unit: u,
+            sim,
+            seed: u.seed,
+            generation: u.generation,
+            displayTimeMs: this.renderer.displayTimeMs,
+        };
+        this.preparedVisibleUnits.set(u.id, ENTRY);
+        return ENTRY;
+    }
+    drawVectorUnit(u, sim, p, r, rest, hidden = false) {
+        if (hidden) {
+            const { player: PLAYER } = this.prepareUnitPlayer(u, sim, rest);
+            // Observe clip transitions without evaluating native poses or art.
+            // Active melee trails are kept visible; this clears inactive history.
+            drawUnitAttackContact(this.renderer, u, PLAYER, null);
+            return true;
+        }
+        const PREPARED = this.prepareVisibleUnit(u, sim);
+        const { record: RECORD, player: PLAYER, swing: SWING } = PREPARED;
         const [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox,
             GROUND = unitBodyDefinition(u.species).ground,
             SCALE = (2 * r) / Math.max(WIDTH, HEIGHT);
         const MATRIX = [SCALE, 0, 0, SCALE, p.x - GROUND.x * SCALE, p.y - GROUND.y * SCALE];
-        if (!SWING && !rest) {
+        if (!SWING && !PREPARED.rest) {
             applyUnitAttackPose(MATRIX, u, GROUND);
         }
         if (this.renderer.cornAttachmentBodies.has(u.id)) {
-            this.renderer.captureCornAttachmentBody(u, u.id, player, MATRIX);
+            this.renderer.captureCornAttachmentBody(u, u.id, PLAYER, MATRIX);
         }
-        // Native vector players submit directly to MeshRenderer, so flush earlier 2D paint first.
+        // Preserve the established primitive/vector submission order. Changing
+        // overlay ordering is a separate visual change from pose evaluation.
         this.renderer.ctx.vector.flush();
-        player.draw({
+        PLAYER.draw({
             projection: this.renderer.ctx.vector.projection,
             matrix: MATRIX,
             alpha: u.isFormationClone ? 0.52 : 1,
             color: u.isFormationClone ? [0.55, 0.82, 1, 1] : u.isSeedling ? SEEDLING_TINT : [1, 1, 1, 1],
         });
-        drawUnitAttackContact(this.renderer, u, player, MATRIX);
-        this.drawLineageMarks(u, player, RECORD, MATRIX, sim);
+        drawUnitAttackContact(this.renderer, u, PLAYER, MATRIX);
+        this.drawLineageMarks(u, PLAYER, RECORD, MATRIX, sim);
         return true;
     }
     // Brows for a living ally's temperament, cheeks and a floating mark for its element; an enemy shows its band's element.
@@ -363,7 +421,7 @@ export class UnitPresentation {
     draw(u, sim) {
         const EFFECTS = this.unitRingEffects(u, sim);
         this.drawUnitRingLayer(u, EFFECTS, 'rear');
-        const REST = unitRestPresentation(u, sim, CONFIG.unit.corpseRecoverySeconds, this.restIndicator);
+        const REST = this.prepareVisibleUnit(u, sim).rest;
         if (!REST) {
             drawUnitAttackGround(this.renderer, u);
         }

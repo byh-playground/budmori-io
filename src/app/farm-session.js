@@ -650,8 +650,9 @@ class GameClockRender extends RENDER_OBJECT {
     }
 }
 class FarmSession {
-    constructor(world = new Garden(), { onError = console.error } = {}) {
+    constructor(world = new Garden(), { onError = console.error, now = () => globalThis.performance.now() } = {}) {
         this.world = world;
+        this.now = now;
         this.tick = 0;
         this.presentationTick = 0;
         this.profile = LOCAL_PROFILE;
@@ -660,6 +661,7 @@ class FarmSession {
         this._paused = false;
         this.pauseStartedAt = null;
         this.pausedDurationMs = 0;
+        this.clockSuspendedAtMs = null;
         this.pending = [];
         this.pendingNotices = [];
         this.presentationNotices = [];
@@ -806,7 +808,7 @@ class FarmSession {
             START_TIME = W.time,
             LOOP_START = this.loop?.simulationTimeMs,
             START_CLOCK = this.adjustedWallTime(
-                Number.isFinite(LOOP_START) ? LOOP_START : (this.pulseTimestamp ?? globalThis.performance.now()),
+                Number.isFinite(LOOP_START) ? LOOP_START : (this.pulseTimestamp ?? this.now()),
             ),
             PRESENTATION_START_MS = Math.max(0, START_CLOCK - (this.presentationOriginWallMs ?? START_CLOCK));
         bindPresentationClock(W, (time) => PRESENTATION_START_MS + (time - START_TIME) * 1000);
@@ -916,7 +918,7 @@ class FarmSession {
         if (value === this._paused) {
             return;
         }
-        const NOW = globalThis.performance.now();
+        const NOW = this.now();
         if (value) {
             this.pauseStartedAt = NOW;
         } else if (this.pauseStartedAt !== null) {
@@ -925,10 +927,30 @@ class FarmSession {
         }
         this._paused = value;
     }
-    adjustedWallTime(now) {
+    clockWithoutSuspension(now) {
         return (
             now - this.pausedDurationMs - (this._paused && this.pauseStartedAt !== null ? now - this.pauseStartedAt : 0)
         );
+    }
+    adjustedWallTime(now) {
+        return this.clockSuspendedAtMs ?? this.clockWithoutSuspension(now);
+    }
+    suspendClock(now = this.now()) {
+        if (this.closed) {
+            return false;
+        }
+        this.clockSuspendedAtMs ??= this.clockWithoutSuspension(now);
+        this.loop.resetTiming();
+        return true;
+    }
+    resumeClock(now = this.now()) {
+        if (this.closed || this.clockSuspendedAtMs === null) {
+            return false;
+        }
+        this.pausedDurationMs += Math.max(0, this.clockWithoutSuspension(now) - this.clockSuspendedAtMs);
+        this.clockSuspendedAtMs = null;
+        this.loop.resetTiming();
+        return true;
     }
     capturePresentation(mode = 'continuous') {
         const START = this.profiler?.start();
@@ -1028,7 +1050,7 @@ class FarmSession {
         return accepted;
     }
     captureClock() {
-        const NOW = this.pulseTimestamp ?? globalThis.performance.now(),
+        const NOW = this.pulseTimestamp ?? this.now(),
             BOUNDARY = this.loop?.simulationTimeMs;
         const CANDIDATE = this.adjustedWallTime(Number.isFinite(BOUNDARY) ? BOUNDARY : NOW);
         const RECEIPT = Math.max(CANDIDATE, this.lastCaptureClockMs, this.lastFrameClockMs ?? 0);
@@ -1145,6 +1167,9 @@ class FarmSession {
         return VIEW;
     }
     pulse(now) {
+        if (this.closed || this.clockSuspendedAtMs !== null) {
+            return;
+        }
         // GameKit reports exact drop reasons; Farm records each reason once.
         // limits for diagnostics only; the loop itself remains the timekeeper.
         this.pulseTimestamp = now;
@@ -1174,6 +1199,7 @@ class FarmSession {
     }
     dispose() {
         this.closed = true;
+        this.clockSuspendedAtMs = null;
         this.unsubscribeNotices?.();
         this.unsubscribeNotices = null;
         this.noticeWorld = null;
