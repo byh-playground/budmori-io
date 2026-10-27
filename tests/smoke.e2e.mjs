@@ -5,6 +5,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { BOSS_PATTERN_CONFIG } from '../src/boss/boss-patterns.js';
 import { bossStageStats } from '../src/boss/boss-rewards.js';
 import { masteryPointsLeft } from '../src/abilities/ability-state.js';
 import { baseUnitStatsFor, setRunStatMods } from '../src/units/unit-stats.js';
@@ -923,6 +924,91 @@ await check('each element band picks its own signature skill, and element damage
         R.WATER > 0 && NEAR(R.PLAIN, 1.5) && NEAR(R.FIRE, 2) && NEAR(R.LIGHTNING, 0.5),
         `plain 150%, beaten 200%, even 100%, beating 50% ${JSON.stringify(R)}`,
     );
+});
+
+await check('each element signature skill is telegraphed and drawn with its own effect in the real game', async () => {
+    const BANDS = [
+        ['water', 1],
+        ['grass', 21],
+        ['fire', 41],
+        ['ice', 61],
+        ['lightning', 81],
+    ];
+    await WORLD(async () => {
+        // Count what the renderer really draws per element, then call the original drawing.
+        const MODULE = await import('/src/features/boss-patterns/signature/presentation.js');
+        globalThis.__sigDraws = { telegraph: {}, effect: {} };
+        const COUNT = (kind, element) => {
+            globalThis.__sigDraws[kind][element] = (globalThis.__sigDraws[kind][element] ?? 0) + 1;
+        };
+        const TELEGRAPH = MODULE.SignaturePresentation.prototype.drawTelegraph,
+            EFFECT = MODULE.SignatureEffectPresentation.prototype.draw;
+        MODULE.SignaturePresentation.prototype.drawTelegraph = function (renderer, area) {
+            COUNT('telegraph', this.config.element);
+            return TELEGRAPH.call(this, renderer, area);
+        };
+        MODULE.SignatureEffectPresentation.prototype.draw = function (renderer, event, progress) {
+            COUNT('effect', event.element);
+            return EFFECT.call(this, renderer, event, progress);
+        };
+    });
+    for (const [NAME, FLOOR] of BANDS) {
+        const ELEMENT = BOSS_PATTERN_CONFIG[`signature.${NAME}`].element;
+        await WORLD(
+            ([id, band]) => {
+                const W = BUDMORI.sim;
+                W._flushEjected();
+                for (const U of [...W.units]) {
+                    W.removeUnit(U);
+                }
+                for (let i = 0; i < 9; i++) {
+                    W.spawn(0, 3, i * 0.4, 0);
+                }
+                W.playerProgression.towerBest = 150;
+                W.startTower(Math.min(band, 80));
+                W.tower.floor = band;
+                W.finishMarch();
+                const BOSS = W.boss;
+                BOSS.hp = BOSS.maxHp = 1e9;
+                for (const U of W.units) {
+                    if (U.faction !== 'enemy') {
+                        U.hp = U.maxHp = 1e7;
+                    }
+                }
+                // Only the skill under test may be chosen.
+                for (const SKILL of Object.keys(BOSS.patternRuntime.cooldowns)) {
+                    BOSS.patternRuntime.cooldowns[SKILL] = SKILL === `signature.${id}` ? 0 : 1e6;
+                }
+            },
+            [NAME, FLOOR],
+        );
+        const STATE = () =>
+            WORLD(() => ({
+                scene: BUDMORI.sim.scene,
+                mode: BUDMORI.sim.battleCommand,
+                active: BUDMORI.sim.boss?.patternRuntime?.active?.id,
+                draws: globalThis.__sigDraws,
+                paused: BUDMORI.runtime?.paused,
+            }));
+        await PAGE.waitForFunction(
+            (element) => {
+                const D = globalThis.__sigDraws;
+                return D.telegraph[element] > 0 && D.effect[element] > 0;
+            },
+            ELEMENT,
+            { timeout: 20000 },
+        ).catch(async (error) => {
+            throw new Error(`${NAME}: ${error.message.split('\n')[0]} ${JSON.stringify(await STATE())}`);
+        });
+        await WORLD(() => {
+            const W = BUDMORI.sim;
+            W.retreatFromFight();
+            for (let i = 0; i < 60; i++) {
+                W.step(1 / 30);
+            }
+            W._flushEjected();
+        });
+    }
 });
 
 await check(
