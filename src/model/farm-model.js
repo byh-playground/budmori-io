@@ -18,6 +18,16 @@ import { seedProjectileDimensions } from '../features/projectiles/seed/definitio
 import { MutationNotifications } from '../core/mutation-notifications.js';
 import { UnitCollection } from './unit-collection.js';
 import { FarmingRoster } from './farm-roster.js';
+import {
+    SEED_FEEDS,
+    SEED_FEED_COOLDOWN_SECONDS,
+    SEED_SPECIES,
+    inheritGenes,
+    inheritTemperament,
+    lineageRandom,
+    rollSeedGenes,
+    rollTemperament,
+} from './lineage.js';
 import { createSimulationScenes } from './simulation-scenes.js';
 import { createProjectileBehaviors } from './projectile-behaviors.js';
 import { createFarmBossEventPhases } from '../features/scenes/farm/boss-event-phases.js';
@@ -306,6 +316,9 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
             tier,
             permanentStatMultiplier: 1,
             growthMaxHpMultiplier: 1,
+            temperament: 0,
+            genes: [0, 0],
+            seedling: null,
             faction: FACTION_CONFIG.PLAYER,
             hp: statProfile?.maxHp ?? STATS(tier, species).maxHp,
             down: 0,
@@ -1810,7 +1823,51 @@ const GARDEN = class Garden {
     randomBossSpecies() {
         return Math.min(CONFIG.unit.speciesCount - 1, Math.floor(this.random() * CONFIG.unit.speciesCount));
     }
-    spawn(species, tier, x, y, { birthReservationOwner = null } = {}) {
+    // A fresh seed: its species, temperament and colour genes are fixed now and shown once it has grown.
+    rollSeedLineage() {
+        const RANDOM = lineageRandom(this.seed, this.nextId, 0);
+        return {
+            temperament: rollTemperament(RANDOM),
+            genes: rollSeedGenes(RANDOM),
+            seedling: { fed: 0, cooldown: 0 },
+        };
+    }
+    // The child of a breeding pair takes its genes from both parents like any other result.
+    inheritLineage(parents) {
+        const RANDOM = lineageRandom(this.seed, this.nextId, 1);
+        return {
+            temperament: inheritTemperament(
+                parents.map((unit) => unit.temperament),
+                RANDOM,
+            ),
+            genes: inheritGenes(
+                parents.map((unit) => unit.genes),
+                RANDOM,
+            ),
+        };
+    }
+    // One meal of a seed. The third makes it a full unit.
+    feedSeedling(unit) {
+        const SEEDLING = unit.seedling;
+        if (!SEEDLING) {
+            return false;
+        }
+        SEEDLING.fed += 1;
+        SEEDLING.cooldown = SEED_FEED_COOLDOWN_SECONDS;
+        if (SEEDLING.fed >= SEED_FEEDS) {
+            unit.seedling = null;
+            unit.growthElapsed = unit.growthDuration;
+            unit.growth = CONFIG.farm.breeding.matureMeals;
+            this.metrics.births++;
+            this.emit('birth', unit.x, unit.y, 0.7);
+        } else {
+            unit.growthElapsed = (unit.growthDuration * SEEDLING.fed * 0.8) / SEED_FEEDS;
+        }
+        this.markProgressChanged();
+        this._markMergeAvailabilityChanged();
+        return true;
+    }
+    spawn(species, tier, x, y, { birthReservationOwner = null, lineage = null } = {}) {
         if (this.scene === 'farm') {
             if (this.freeRoom(birthReservationOwner) <= 0) {
                 return null;
@@ -1819,6 +1876,14 @@ const GARDEN = class Garden {
             return null;
         }
         const U = new UNIT(this.nextId++, species, CLAMP(tier, 1, CONFIG.unit.maxTier), x, y);
+        if (lineage) {
+            U.temperament = lineage.temperament;
+            U.genes = [...lineage.genes];
+            U.seedling = lineage.seedling ? { ...lineage.seedling } : null;
+            if (U.seedling) {
+                U.growthDuration = this.breedGrowthDuration();
+            }
+        }
         applyRunGrowthHealth(U, this.runProgressionSnapshot, { preserveRatio: true });
         this.addUnit(U);
         return U;
@@ -3638,7 +3703,13 @@ const GARDEN = class Garden {
                 const UNIT_STATS = resolveUnitStats(U);
                 applyHealing(U, UNIT_STATS.regen * dt, UNIT_STATS);
             }
-            if (!U.mature) {
+            if (U.seedling) {
+                // A seed grows by eating, never by waiting.
+                if (U.seedling.cooldown > 0) {
+                    progressTimersAdvanced = true;
+                    U.seedling.cooldown = Math.max(0, U.seedling.cooldown - dt);
+                }
+            } else if (!U.mature) {
                 progressTimersAdvanced = true;
                 U.growthElapsed = Math.min(U.growthDuration, U.growthElapsed + dt);
                 U.growth = Math.min(
@@ -5296,12 +5367,17 @@ const GARDEN = class Garden {
             }
             // Every win pays by its floor and kind; a floor higher than ever before pays double.
             const REWARD_SCALE = KIND.reward * (this.tower.record ? BOSS_REWARD_SETTINGS.recordMultiplier : 1),
-                FIRST_CLEAR = !bossSpeciesOwned(this, REWARD_SPECIES),
+                // Seeds are only ever first-tier species; a stronger boss still pays its own species' mastery.
+                DROP_SPECIES = SEED_SPECIES.includes(REWARD_SPECIES)
+                    ? REWARD_SPECIES
+                    : SEED_SPECIES[Math.floor(lineageRandom(this.seed, ENCOUNTER_ID, 3)() * SEED_SPECIES.length)],
+                FIRST_CLEAR = !bossSpeciesOwned(this, DROP_SPECIES),
                 SETTLEMENT = settleBossKill(this, {
                     encounterId: ENCOUNTER_ID,
                     source: 'farm',
                     stage: EVENT_STAGE,
-                    species: REWARD_SPECIES,
+                    species: DROP_SPECIES,
+                    masterySpecies: REWARD_SPECIES,
                     tier: 1,
                     x: REWARD_BOSS.x,
                     y: REWARD_BOSS.y,

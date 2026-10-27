@@ -36,6 +36,26 @@ export class FarmMode {
         }
         world.steer(unit, SPOT.x, SPOT.y, dt, scaleMoveSpeed(1.3, unit));
     }
+    // A seed looks for farm food and eats it, one meal per cooldown; between meals it wanders like the others.
+    updateSeedling(world, unit, dt) {
+        if (unit.seedling.cooldown > 0) {
+            this.wander(world, unit, dt);
+            return;
+        }
+        const TARGET = world.requestGroundFoodTarget(unit);
+        if (!TARGET) {
+            this.wander(world, unit, dt);
+            return;
+        }
+        if (Math.hypot(TARGET.x - unit.x, TARGET.y - unit.y) < 0.42 && world.consumeGroundFood(TARGET)) {
+            world.clearFoodTargetSearch(unit);
+            unit.vz = 2;
+            world.emit('eat', unit.x, unit.y, 0.5);
+            world.feedSeedling(unit);
+            return;
+        }
+        world.steer(unit, TARGET.x, TARGET.y, dt, scaleMoveSpeed(3.6, unit));
+    }
     update(world, unit, dt) {
         if (unit.stun > 0 || unit.z > 0.1) {
             return;
@@ -55,6 +75,10 @@ export class FarmMode {
                     unit.angle = Math.atan2(ORDER.fy - unit.y, ORDER.fx - unit.x);
                 }
             }
+            return;
+        }
+        if (unit.seedling) {
+            this.updateSeedling(world, unit, dt);
             return;
         }
         if (!unit.mature || unit.cooldown > 0) {

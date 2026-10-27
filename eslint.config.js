@@ -11,6 +11,7 @@ const MODEL_FILES = [
     'src/abilities/ability-progression.js',
     'src/abilities/ability-state.js',
     'src/model/mastery.js',
+    'src/model/lineage.js',
     'src/boss/boss-patterns.js',
     'src/boss/boss-rewards.js',
     'src/core/factions.js',
