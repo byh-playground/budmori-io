@@ -146,454 +146,200 @@ export function helpSceneById(id) {
 
 // Research previews use the same isolated help-frame runtime, attack model and renderer as play.
 // The target is a stationary training boss, not a second implementation of the attack animation.
-const CORN_PREVIEW_SCENES = Object.freeze(
-    Array.from({ length: 6 }, (_, index) => {
-        const TIER = index + 1;
-        return Object.freeze({
-            id: `corn-t${TIER}`,
-            title: `옥수수 T${TIER} 공격 미리보기`,
-            seed: 731,
-            rate: 0.6,
-            durationMs: 6500,
-            timeline: [],
-            setup(world) {
-                world.resetUnits();
-                world.setWorkBasisPoints(0);
-                const BUILD = world.playerProgression.abilities['corn-kernel-chain'];
-                BUILD.masteryLevel = 50;
-                BUILD.nodeRanks = Object.fromEntries(
-                    Array.from({ length: TIER - 1 }, (_value, tierIndex) => [`evolution-${tierIndex + 2}`, 1]),
-                );
-                const UNIT = world.spawn(1, TIER, -7, 0);
-                UNIT.growth = 3;
-                UNIT.growthElapsed = UNIT.growthDuration;
-                world.startTower(1);
-                world.finishMarch();
-                world._benched.clear();
-                world._benchRevision++;
-                Object.assign(world.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
-                world.farmBossEvent.phase = 'fighting';
-                world.farmBossEvent.elapsed = 0;
-                UNIT.x = -(world.boss.radius + 4.1 + (TIER - 1) * 0.12);
-                UNIT.y = 0;
-                UNIT.z = 0;
-                UNIT.dropLanded = true;
-                world._unitSpatialDirty = true;
-            },
-            step(world) {
-                return world.cornAttachments.groups.some((group) =>
-                    group.attachments.some((attachment) => attachment.status === 'fading'),
-                )
-                    ? 'explosion'
-                    : world.projectiles.length > 0
-                      ? 'flight'
-                      : 'prepare';
-            },
-            steps: {
-                prepare: '알갱이를 쏠 준비를 해요',
-                flight: '알갱이가 날아가 적에게 붙어요',
-                explosion: '붙은 지 1초 뒤부터 0.1초 간격으로 터져요',
-            },
-        });
-    }),
-);
+const CORN_STEP = (world) =>
+    world.cornAttachments.groups.some((group) => group.attachments.some((attachment) => attachment.status === 'fading'))
+        ? 'explosion'
+        : world.projectiles.length > 0
+          ? 'flight'
+          : 'prepare';
+const CONTACT_STEP = (world) =>
+    world.units[0]?.ability.phase === 'active'
+        ? 'contact'
+        : world.units[0]?.ability.phase === 'recover'
+          ? 'recover'
+          : 'prepare';
+const CHESTNUT_STEP = (world) =>
+    world.projectiles.some((projectile) => projectile.chestnutActionId)
+        ? 'flight'
+        : world.units[0]?.ability.phase === 'recover'
+          ? 'recover'
+          : 'prepare';
 
-const PEA_PREVIEW_SCENES = Object.freeze(
-    Array.from({ length: 6 }, (_, index) => {
-        const TIER = index + 1;
-        return Object.freeze({
-            id: `pea-t${TIER}`,
-            title: `콩 T${TIER} 공격 미리보기`,
-            seed: 731,
-            rate: 0.6,
-            durationMs: 9000,
-            timeline: [],
-            setup(world) {
-                world.resetUnits();
-                world.setWorkBasisPoints(0);
-                const BUILD = world.playerProgression.abilities['pea-recovery-boost'];
-                BUILD.masteryLevel = 50;
-                BUILD.nodeRanks = Object.fromEntries(
-                    Array.from({ length: TIER - 1 }, (_value, tierIndex) => [`evolution-${tierIndex + 2}`, 1]),
-                );
-                const UNIT = world.spawn(0, TIER, -7, 0);
-                UNIT.growth = 3;
-                UNIT.growthElapsed = UNIT.growthDuration;
-                world.startTower(1);
-                world.finishMarch();
-                world._benched.clear();
-                world._benchRevision++;
-                Object.assign(world.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
-                world.farmBossEvent.phase = 'fighting';
-                world.farmBossEvent.elapsed = 0;
-                UNIT.x = -(world.boss.radius + 1.45);
-                UNIT.y = 0;
-                UNIT.z = 0;
-                UNIT.dropLanded = true;
-                world._unitSpatialDirty = true;
-            },
-            step(world) {
-                return world.units[0]?.ability.phase === 'active'
-                    ? 'contact'
-                    : world.units[0]?.ability.phase === 'recover'
-                      ? 'recover'
-                      : 'prepare';
-            },
-            steps: {
-                prepare: '적을 향해 돌진할 준비를 해요',
-                contact: '앞으로 돌진해 적을 들이받아요',
-                recover: '들이받은 뒤 다음 돌진을 준비해요',
-            },
-        });
-    }),
-);
+// One tier-by-tier preview card set per species: the unit is built at the given tier with its ability tree
+// evolved to match, then stands a species-specific distance from a stunned training boss.
+function speciesPreviewScenes({ id, name, species, ability, durationMs, distance, step, steps }) {
+    return Object.freeze(
+        Array.from({ length: 6 }, (_, index) => {
+            const TIER = index + 1;
+            return Object.freeze({
+                id: `${id}-t${TIER}`,
+                title: `${name} T${TIER} 공격 미리보기`,
+                seed: 731,
+                rate: 0.6,
+                durationMs,
+                timeline: [],
+                setup(world) {
+                    world.resetUnits();
+                    world.setWorkBasisPoints(0);
+                    const BUILD = world.playerProgression.abilities[ability];
+                    BUILD.masteryLevel = 50;
+                    BUILD.nodeRanks = Object.fromEntries(
+                        Array.from({ length: TIER - 1 }, (_value, tierIndex) => [`evolution-${tierIndex + 2}`, 1]),
+                    );
+                    const UNIT = world.spawn(species, TIER, -7, 0);
+                    UNIT.growth = 3;
+                    UNIT.growthElapsed = UNIT.growthDuration;
+                    world.startTower(1);
+                    world.finishMarch();
+                    world._benched.clear();
+                    world._benchRevision++;
+                    Object.assign(world.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
+                    world.farmBossEvent.phase = 'fighting';
+                    world.farmBossEvent.elapsed = 0;
+                    UNIT.x = -distance(world.boss.radius, TIER);
+                    UNIT.y = 0;
+                    UNIT.z = 0;
+                    UNIT.dropLanded = true;
+                    world._unitSpatialDirty = true;
+                },
+                step,
+                steps,
+            });
+        }),
+    );
+}
 
-const REDBEAN_PREVIEW_SCENES = Object.freeze(
-    Array.from({ length: 6 }, (_, index) => {
-        const TIER = index + 1;
-        return Object.freeze({
-            id: `redbean-t${TIER}`,
-            title: `팥 T${TIER} 공격 미리보기`,
-            seed: 731,
-            rate: 0.6,
-            durationMs: 9000,
-            timeline: [],
-            setup(world) {
-                world.resetUnits();
-                world.setWorkBasisPoints(0);
-                const BUILD = world.playerProgression.abilities['kidney-continuous-leap'];
-                BUILD.masteryLevel = 50;
-                BUILD.nodeRanks = Object.fromEntries(
-                    Array.from({ length: TIER - 1 }, (_value, tierIndex) => [`evolution-${tierIndex + 2}`, 1]),
-                );
-                const UNIT = world.spawn(2, TIER, -7, 0);
-                UNIT.growth = 3;
-                UNIT.growthElapsed = UNIT.growthDuration;
-                world.startTower(1);
-                world.finishMarch();
-                world._benched.clear();
-                world._benchRevision++;
-                Object.assign(world.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
-                world.farmBossEvent.phase = 'fighting';
-                world.farmBossEvent.elapsed = 0;
-                UNIT.x = -(world.boss.radius + 1.45);
-                UNIT.y = 0;
-                UNIT.z = 0;
-                UNIT.dropLanded = true;
-                world._unitSpatialDirty = true;
-            },
-            step(world) {
-                return world.units[0]?.ability.phase === 'active'
-                    ? 'contact'
-                    : world.units[0]?.ability.phase === 'recover'
-                      ? 'recover'
-                      : 'prepare';
-            },
-            steps: {
-                prepare: '적을 향해 뛰어오를 준비를 해요',
-                contact: '뛰어올라 적을 덮쳐요',
-                recover: '착지한 뒤 다음 도약을 준비해요',
-            },
-        });
-    }),
-);
+const CORN_PREVIEW_SCENES = speciesPreviewScenes({
+    id: 'corn',
+    name: '옥수수',
+    species: 1,
+    ability: 'corn-kernel-chain',
+    durationMs: 6500,
+    distance: (radius, tier) => radius + 4.1 + (tier - 1) * 0.12,
+    step: CORN_STEP,
+    steps: {
+        prepare: '알갱이를 쏠 준비를 해요',
+        flight: '알갱이가 날아가 적에게 붙어요',
+        explosion: '붙은 지 1초 뒤부터 0.1초 간격으로 터져요',
+    },
+});
 
-const CHESTNUT_PREVIEW_SCENES = Object.freeze(
-    Array.from({ length: 6 }, (_, index) => {
-        const TIER = index + 1;
-        return Object.freeze({
-            id: `chestnut-t${TIER}`,
-            title: `밤톨 T${TIER} 공격 미리보기`,
-            seed: 731,
-            rate: 0.6,
-            durationMs: 9000,
-            timeline: [],
-            setup(world) {
-                world.resetUnits();
-                world.setWorkBasisPoints(0);
-                const BUILD = world.playerProgression.abilities['chestnut-target-thorns'];
-                BUILD.masteryLevel = 50;
-                BUILD.nodeRanks = Object.fromEntries(
-                    Array.from({ length: TIER - 1 }, (_value, tierIndex) => [`evolution-${tierIndex + 2}`, 1]),
-                );
-                const UNIT = world.spawn(3, TIER, -7, 0);
-                UNIT.growth = 3;
-                UNIT.growthElapsed = UNIT.growthDuration;
-                world.startTower(1);
-                world.finishMarch();
-                world._benched.clear();
-                world._benchRevision++;
-                Object.assign(world.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
-                world.farmBossEvent.phase = 'fighting';
-                world.farmBossEvent.elapsed = 0;
-                UNIT.x = -(world.boss.radius + (TIER >= 3 ? 2 : 1.45));
-                UNIT.y = 0;
-                UNIT.z = 0;
-                UNIT.dropLanded = true;
-                world._unitSpatialDirty = true;
-            },
-            step(world) {
-                return world.projectiles.some((projectile) => projectile.chestnutActionId)
-                    ? 'flight'
-                    : world.units[0]?.ability.phase === 'recover'
-                      ? 'recover'
-                      : 'prepare';
-            },
-            steps: {
-                prepare: '가시를 쏠 준비를 해요',
-                flight: '가시를 날려 적을 찔러요',
-                recover: '가시를 쏜 뒤 다음 공격을 준비해요',
-            },
-        });
-    }),
-);
+const PEA_PREVIEW_SCENES = speciesPreviewScenes({
+    id: 'pea',
+    name: '콩',
+    species: 0,
+    ability: 'pea-recovery-boost',
+    durationMs: 9000,
+    distance: (radius) => radius + 1.45,
+    step: CONTACT_STEP,
+    steps: {
+        prepare: '적을 향해 돌진할 준비를 해요',
+        contact: '앞으로 돌진해 적을 들이받아요',
+        recover: '들이받은 뒤 다음 돌진을 준비해요',
+    },
+});
 
-const PEANUT_PREVIEW_SCENES = Object.freeze(
-    Array.from({ length: 6 }, (_, index) => {
-        const TIER = index + 1;
-        return Object.freeze({
-            id: `peanut-t${TIER}`,
-            title: `땅콩 T${TIER} 공격 미리보기`,
-            seed: 731,
-            rate: 0.6,
-            durationMs: 9000,
-            timeline: [],
-            setup(world) {
-                world.resetUnits();
-                world.setWorkBasisPoints(0);
-                const BUILD = world.playerProgression.abilities['peanut-death-split'];
-                BUILD.masteryLevel = 50;
-                BUILD.nodeRanks = Object.fromEntries(
-                    Array.from({ length: TIER - 1 }, (_value, tierIndex) => [`evolution-${tierIndex + 2}`, 1]),
-                );
-                const UNIT = world.spawn(4, TIER, -7, 0);
-                UNIT.growth = 3;
-                UNIT.growthElapsed = UNIT.growthDuration;
-                world.startTower(1);
-                world.finishMarch();
-                world._benched.clear();
-                world._benchRevision++;
-                Object.assign(world.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
-                world.farmBossEvent.phase = 'fighting';
-                world.farmBossEvent.elapsed = 0;
-                UNIT.x = -(world.boss.radius + 1.35);
-                UNIT.y = 0;
-                UNIT.z = 0;
-                UNIT.dropLanded = true;
-                world._unitSpatialDirty = true;
-            },
-            step(world) {
-                return world.units[0]?.ability.phase === 'active'
-                    ? 'contact'
-                    : world.units[0]?.ability.phase === 'recover'
-                      ? 'recover'
-                      : 'prepare';
-            },
-            steps: {
-                prepare: '두 알이 함께 공격할 준비를 해요',
-                contact: '두 알이 번갈아 적을 공격해요',
-                recover: '협공을 마치고 다음 공격을 준비해요',
-            },
-        });
-    }),
-);
+const REDBEAN_PREVIEW_SCENES = speciesPreviewScenes({
+    id: 'redbean',
+    name: '팥',
+    species: 2,
+    ability: 'kidney-continuous-leap',
+    durationMs: 9000,
+    distance: (radius) => radius + 1.45,
+    step: CONTACT_STEP,
+    steps: {
+        prepare: '적을 향해 뛰어오를 준비를 해요',
+        contact: '뛰어올라 적을 덮쳐요',
+        recover: '착지한 뒤 다음 도약을 준비해요',
+    },
+});
 
-const WALNUT_PREVIEW_SCENES = Object.freeze(
-    Array.from({ length: 6 }, (_, index) => {
-        const TIER = index + 1;
-        return Object.freeze({
-            id: `walnut-t${TIER}`,
-            title: `호두 T${TIER} 공격 미리보기`,
-            seed: 731,
-            rate: 0.6,
-            durationMs: 9000,
-            timeline: [],
-            setup(world) {
-                world.resetUnits();
-                world.setWorkBasisPoints(0);
-                const BUILD = world.playerProgression.abilities['walnut-raw-guard'];
-                BUILD.masteryLevel = 50;
-                BUILD.nodeRanks = Object.fromEntries(
-                    Array.from({ length: TIER - 1 }, (_value, tierIndex) => [`evolution-${tierIndex + 2}`, 1]),
-                );
-                const UNIT = world.spawn(5, TIER, -7, 0);
-                UNIT.growth = 3;
-                UNIT.growthElapsed = UNIT.growthDuration;
-                world.startTower(1);
-                world.finishMarch();
-                world._benched.clear();
-                world._benchRevision++;
-                Object.assign(world.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
-                world.farmBossEvent.phase = 'fighting';
-                world.farmBossEvent.elapsed = 0;
-                UNIT.x = -(world.boss.radius + 1.35);
-                UNIT.y = 0;
-                UNIT.z = 0;
-                UNIT.dropLanded = true;
-                world._unitSpatialDirty = true;
-            },
-            step(world) {
-                return world.units[0]?.ability.phase === 'active'
-                    ? 'contact'
-                    : world.units[0]?.ability.phase === 'recover'
-                      ? 'recover'
-                      : 'prepare';
-            },
-            steps: {
-                prepare: '망치를 들어 공격할 준비를 해요',
-                contact: '망치를 휘둘러 적을 때려요',
-                recover: '망치를 거두고 다음 공격을 준비해요',
-            },
-        });
-    }),
-);
+const CHESTNUT_PREVIEW_SCENES = speciesPreviewScenes({
+    id: 'chestnut',
+    name: '밤톨',
+    species: 3,
+    ability: 'chestnut-target-thorns',
+    durationMs: 9000,
+    distance: (radius, tier) => radius + (tier >= 3 ? 2 : 1.45),
+    step: CHESTNUT_STEP,
+    steps: {
+        prepare: '가시를 쏠 준비를 해요',
+        flight: '가시를 날려 적을 찔러요',
+        recover: '가시를 쏜 뒤 다음 공격을 준비해요',
+    },
+});
 
-const RICE_PREVIEW_SCENES = Object.freeze(
-    Array.from({ length: 6 }, (_, index) => {
-        const TIER = index + 1;
-        return Object.freeze({
-            id: `rice-t${TIER}`,
-            title: `쌀 T${TIER} 공격 미리보기`,
-            seed: 731,
-            rate: 0.6,
-            durationMs: 9000,
-            timeline: [],
-            setup(world) {
-                world.resetUnits();
-                world.setWorkBasisPoints(0);
-                const BUILD = world.playerProgression.abilities['rice-low-health-harvest'];
-                BUILD.masteryLevel = 50;
-                BUILD.nodeRanks = Object.fromEntries(
-                    Array.from({ length: TIER - 1 }, (_value, tierIndex) => [`evolution-${tierIndex + 2}`, 1]),
-                );
-                const UNIT = world.spawn(6, TIER, -7, 0);
-                UNIT.growth = 3;
-                UNIT.growthElapsed = UNIT.growthDuration;
-                world.startTower(1);
-                world.finishMarch();
-                world._benched.clear();
-                world._benchRevision++;
-                Object.assign(world.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
-                world.farmBossEvent.phase = 'fighting';
-                world.farmBossEvent.elapsed = 0;
-                UNIT.x = -(world.boss.radius + 1.35);
-                UNIT.y = 0;
-                UNIT.z = 0;
-                UNIT.dropLanded = true;
-                world._unitSpatialDirty = true;
-            },
-            step(world) {
-                return world.units[0]?.ability.phase === 'active'
-                    ? 'contact'
-                    : world.units[0]?.ability.phase === 'recover'
-                      ? 'recover'
-                      : 'prepare';
-            },
-            steps: {
-                prepare: '낫을 들어 적을 벨 준비를 해요',
-                contact: '낫을 휘둘러 적을 베어요',
-                recover: '낫을 거두고 다음 공격을 준비해요',
-            },
-        });
-    }),
-);
+const PEANUT_PREVIEW_SCENES = speciesPreviewScenes({
+    id: 'peanut',
+    name: '땅콩',
+    species: 4,
+    ability: 'peanut-death-split',
+    durationMs: 9000,
+    distance: (radius) => radius + 1.35,
+    step: CONTACT_STEP,
+    steps: {
+        prepare: '두 알이 함께 공격할 준비를 해요',
+        contact: '두 알이 번갈아 적을 공격해요',
+        recover: '협공을 마치고 다음 공격을 준비해요',
+    },
+});
 
-const WHEAT_PREVIEW_SCENES = Object.freeze(
-    Array.from({ length: 6 }, (_, index) => {
-        const TIER = index + 1;
-        return Object.freeze({
-            id: `wheat-t${TIER}`,
-            title: `밀 T${TIER} 공격 미리보기`,
-            seed: 731,
-            rate: 0.6,
-            durationMs: 9000,
-            timeline: [],
-            setup(world) {
-                world.resetUnits();
-                world.setWorkBasisPoints(0);
-                const BUILD = world.playerProgression.abilities['wheat-command-crit'];
-                BUILD.masteryLevel = 50;
-                BUILD.nodeRanks = Object.fromEntries(
-                    Array.from({ length: TIER - 1 }, (_value, tierIndex) => [`evolution-${tierIndex + 2}`, 1]),
-                );
-                const UNIT = world.spawn(7, TIER, -7, 0);
-                UNIT.growth = 3;
-                UNIT.growthElapsed = UNIT.growthDuration;
-                world.startTower(1);
-                world.finishMarch();
-                world._benched.clear();
-                world._benchRevision++;
-                Object.assign(world.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
-                world.farmBossEvent.phase = 'fighting';
-                world.farmBossEvent.elapsed = 0;
-                UNIT.x = -(world.boss.radius + 1.35);
-                UNIT.y = 0;
-                UNIT.z = 0;
-                UNIT.dropLanded = true;
-                world._unitSpatialDirty = true;
-            },
-            step(world) {
-                return world.units[0]?.ability.phase === 'active'
-                    ? 'contact'
-                    : world.units[0]?.ability.phase === 'recover'
-                      ? 'recover'
-                      : 'prepare';
-            },
-            steps: {
-                prepare: '지휘봉을 들어 공격할 준비를 해요',
-                contact: '지휘봉을 휘둘러 적을 공격해요',
-                recover: '지휘봉을 거두고 다음 공격을 준비해요',
-            },
-        });
-    }),
-);
+const WALNUT_PREVIEW_SCENES = speciesPreviewScenes({
+    id: 'walnut',
+    name: '호두',
+    species: 5,
+    ability: 'walnut-raw-guard',
+    durationMs: 9000,
+    distance: (radius) => radius + 1.35,
+    step: CONTACT_STEP,
+    steps: {
+        prepare: '망치를 들어 공격할 준비를 해요',
+        contact: '망치를 휘둘러 적을 때려요',
+        recover: '망치를 거두고 다음 공격을 준비해요',
+    },
+});
 
-const BARLEY_PREVIEW_SCENES = Object.freeze(
-    Array.from({ length: 6 }, (_, index) => {
-        const TIER = index + 1;
-        return Object.freeze({
-            id: `barley-t${TIER}`,
-            title: `보리 T${TIER} 공격 미리보기`,
-            seed: 731,
-            rate: 0.6,
-            durationMs: 9000,
-            timeline: [],
-            setup(world) {
-                world.resetUnits();
-                world.setWorkBasisPoints(0);
-                const BUILD = world.playerProgression.abilities['barley-armor-break'];
-                BUILD.masteryLevel = 50;
-                BUILD.nodeRanks = Object.fromEntries(
-                    Array.from({ length: TIER - 1 }, (_value, tierIndex) => [`evolution-${tierIndex + 2}`, 1]),
-                );
-                const UNIT = world.spawn(8, TIER, -7, 0);
-                UNIT.growth = 3;
-                UNIT.growthElapsed = UNIT.growthDuration;
-                world.startTower(1);
-                world.finishMarch();
-                world._benched.clear();
-                world._benchRevision++;
-                Object.assign(world.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
-                world.farmBossEvent.phase = 'fighting';
-                world.farmBossEvent.elapsed = 0;
-                UNIT.x = -(world.boss.radius + 1.35);
-                UNIT.y = 0;
-                UNIT.z = 0;
-                UNIT.dropLanded = true;
-                world._unitSpatialDirty = true;
-            },
-            step(world) {
-                return world.units[0]?.ability.phase === 'active'
-                    ? 'contact'
-                    : world.units[0]?.ability.phase === 'recover'
-                      ? 'recover'
-                      : 'prepare';
-            },
-            steps: {
-                prepare: '도리깨를 들어 공격할 준비를 해요',
-                contact: '도리깨를 휘둘러 적을 때려요',
-                recover: '도리깨를 거두고 다음 공격을 준비해요',
-            },
-        });
-    }),
-);
+const RICE_PREVIEW_SCENES = speciesPreviewScenes({
+    id: 'rice',
+    name: '쌀',
+    species: 6,
+    ability: 'rice-low-health-harvest',
+    durationMs: 9000,
+    distance: (radius) => radius + 1.35,
+    step: CONTACT_STEP,
+    steps: {
+        prepare: '낫을 들어 적을 벨 준비를 해요',
+        contact: '낫을 휘둘러 적을 베어요',
+        recover: '낫을 거두고 다음 공격을 준비해요',
+    },
+});
+
+const WHEAT_PREVIEW_SCENES = speciesPreviewScenes({
+    id: 'wheat',
+    name: '밀',
+    species: 7,
+    ability: 'wheat-command-crit',
+    durationMs: 9000,
+    distance: (radius) => radius + 1.35,
+    step: CONTACT_STEP,
+    steps: {
+        prepare: '지휘봉을 들어 공격할 준비를 해요',
+        contact: '지휘봉을 휘둘러 적을 공격해요',
+        recover: '지휘봉을 거두고 다음 공격을 준비해요',
+    },
+});
+
+const BARLEY_PREVIEW_SCENES = speciesPreviewScenes({
+    id: 'barley',
+    name: '보리',
+    species: 8,
+    ability: 'barley-armor-break',
+    durationMs: 9000,
+    distance: (radius) => radius + 1.35,
+    step: CONTACT_STEP,
+    steps: {
+        prepare: '도리깨를 들어 공격할 준비를 해요',
+        contact: '도리깨를 휘둘러 적을 때려요',
+        recover: '도리깨를 거두고 다음 공격을 준비해요',
+    },
+});
