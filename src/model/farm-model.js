@@ -8,6 +8,8 @@ import { FARM_BOSS_PATTERNS } from './farm-boss-patterns.js';
 import { FARM_TOWER_RUN } from './farm-tower-run.js';
 import { FARM_COMBAT } from './farm-combat.js';
 import { FARM_ARMY_BATTLE } from './farm-army-battle.js';
+import { FARM_UNIT_LIFE } from './farm-unit-life.js';
+import { FARM_BOSS_EVENT } from './farm-boss-event.js';
 import { assignWorkers, resetWork, stepWork, workOrder, workersBySpecies } from './farm-work.js';
 import { FormationSkills } from '../formation/formation-skills.js';
 import { createFormationRuntime } from '../formation/formation-skill-state.js';
@@ -20,11 +22,9 @@ import { FarmingRoster } from './farm-roster.js';
 import {
     SEED_FEEDS,
     SEED_FEED_COOLDOWN_SECONDS,
-    SEED_SPECIES,
     inheritGenes,
     inheritTemperament,
     lineageRandom,
-    TEMPERAMENT_PASSIVE_IDS,
     TEMPERAMENT_TILTS,
     rollSeedGenes,
     rollTemperament,
@@ -32,9 +32,8 @@ import {
     ELEMENT_COUNT,
     TEMPERAMENT_COUNT,
 } from './lineage.js';
-import { createSimulationScenes } from './simulation-scenes.js';
+import { SIMULATION_SCENES } from './simulation-scenes.js';
 import { PROJECTILE_BEHAVIORS } from './projectile-behaviors.js';
-import { createFarmBossEventPhases } from '../features/scenes/farm/boss-event-phases.js';
 import { FARM_MODES } from './farm-mode-behaviors.js';
 import {} from '../features/abilities/barley-shred/model.js';
 import { CornAttachmentModel } from '../features/abilities/corn-attachment/model.js';
@@ -49,16 +48,12 @@ import {
 } from '../units/unit-stats.js';
 import { UNIT_ABILITY_PROFILES as ATTACK_TYPES, abilityProfile } from '../units/unit-abilities.js';
 import {
-    BOSS_REWARD_SETTINGS,
-    bossStageStats,
-    settleBossKill,
-    bossSpeciesOwned,
     grantPendingBossAcquisitions,
     advanceBossRewardCalculations,
     createBossRewardStreams,
 } from '../boss/boss-rewards.js';
-import { passiveCard, PASSIVE_SETTINGS, freshTowerRun } from '../tower/tower-run.js';
-import { createPlayerProgressionState, farmCapacityForProgression, awardTowerFloorXp } from './player-progression.js';
+import { freshTowerRun } from '../tower/tower-run.js';
+import { createPlayerProgressionState, farmCapacityForProgression } from './player-progression.js';
 import {} from '../tower/tower-theme.js';
 import {} from '../units/species-catalog.js';
 import { TOWER_ENCOUNTER_SETTINGS } from '../tower/tower-encounter.js';
@@ -96,16 +91,7 @@ export function bindPresentationClock(world, clock) {
     }
 }
 
-const FARM_BOSS_PHASES = createFarmBossEventPhases(CONFIG);
-
 export const CREATE_UNIT_SPECIAL_ABILITY = (owner) => CREATE_UNIT_ATTACK_CYCLE.createSpecial(owner);
-const SIMULATION_SCENES = createSimulationScenes({
-    config: CONFIG,
-    stats: STATS,
-    createUnitAttackCycle: CREATE_UNIT_ATTACK_CYCLE,
-    farmModes: FARM_MODES,
-    bossEventPhases: FARM_BOSS_PHASES,
-});
 // Garden's behaviour is composed from these slices, innermost first; each one adds methods that read the shared state
 // created in the constructor below.
 const GARDEN_BASE = [
@@ -116,6 +102,8 @@ const GARDEN_BASE = [
     FARM_TOWER_RUN,
     FARM_COMBAT,
     FARM_ARMY_BATTLE,
+    FARM_UNIT_LIFE,
+    FARM_BOSS_EVENT,
 ].reduce((base, mixin) => mixin(base), Object);
 const GARDEN = class Garden extends GARDEN_BASE {
     constructor(seed = 731) {
@@ -934,249 +922,12 @@ const GARDEN = class Garden extends GARDEN_BASE {
         this.addUnit(CLONE, { markProgress: false });
         return CLONE;
     }
-    handleUnitDeath(unit) {
-        return this.mutateUnits(this._handleUnitDeath, unit);
-    }
-    _handleUnitDeath(unit) {
-        if (this.isBoss(unit)) {
-            return unit.hp <= 0 && unit.die();
-        }
-        if (!this.unitCollection.has(unit)) {
-            return false;
-        }
-        const SPLIT_BEFORE = unit.splitUsedThisBattle,
-            DIED = unit.die();
-        return DIED && !SPLIT_BEFORE && unit.splitUsedThisBattle;
-    }
-    processUnitDeath(unit) {
-        return this.mutateUnits(this._processUnitDeath, unit);
-    }
     // The run's passive cards in a fight. A hit gains from the attacker's low health, the fight's first seconds and the
     // allies fallen so far; a unit hurt while low takes less. All of it is zero outside a tower climb.
-    passiveState(unit) {
-        if (unit.faction === FACTION_CONFIG.ENEMY) {
-            return { totals: this.tower.bossPassives, fallen: this.tower.bossFallen };
-        }
-        return { totals: this._temperamentTotals(unit.temperament), fallen: this.tower.fallen };
-    }
     // The run's cards plus the one passive a unit's temperament carries (its first-rarity value); rebuilt only when the
     // run's totals are replaced.
-    _temperamentTotals(temperament) {
-        const TOTALS = this.tower.passives;
-        if (this._temperamentTotalsSource !== TOTALS) {
-            this._temperamentTotalsSource = TOTALS;
-            this._temperamentTotalsByKind = TEMPERAMENT_PASSIVE_IDS.map((id) => ({
-                ...TOTALS,
-                [id]: (TOTALS[id] || 0) + passiveCard(id).values[0],
-            }));
-        }
-        return this._temperamentTotalsByKind[temperament] ?? TOTALS;
-    }
-    passiveAttackScale(source, sourceMaxHp) {
-        const TOWER = this.tower;
-        if (!TOWER.active) {
-            return 1;
-        }
-        const { totals: TOTALS, fallen: FALLEN } = this.passiveState(source),
-            SETTINGS = PASSIVE_SETTINGS;
-        let scale = 1;
-        scale +=
-            (source.hp <= sourceMaxHp * SETTINGS.lastStandBelow ? TOTALS['last-stand'] || 0 : 0) +
-            (this.farmBossEvent.elapsed <= SETTINGS.openingSeconds ? TOTALS.opening || 0 : 0) +
-            (TOTALS.vengeance || 0) * Math.min(FALLEN, SETTINGS.vengeanceMaxFallen);
-        return scale;
-    }
-    passiveDamageScale(source, sourceMaxHp, target, targetMaxHp) {
-        return this.passiveAttackScale(source, sourceMaxHp) * this.passiveReceivedScale(target, targetMaxHp);
-    }
-    passiveReceivedScale(unit, maxHp = unitMaxHpFor(unit)) {
-        const TOWER = this.tower;
-        if (!TOWER.active || unit.hp > maxHp * PASSIVE_SETTINGS.resolveBelow) {
-            return 1;
-        }
-        return 1 - Math.min(PASSIVE_SETTINGS.resolveMaxReduction, this.passiveState(unit).totals.resolve || 0);
-    }
     // A unit that took a killing blow holds on once per fight, at the card's share of its health.
-    passiveUndying(unit) {
-        const TOWER = this.tower,
-            RESTORE = TOWER.passives.undying;
-        if (
-            !TOWER.active ||
-            !RESTORE ||
-            unit.hp > 0 ||
-            !hasFaction(unit, FACTION_CONFIG.PLAYER) ||
-            unit.isBattleOnlySummon ||
-            TOWER.undyingUsed.has(unit.id)
-        ) {
-            return;
-        }
-        TOWER.undyingUsed.add(unit.id);
-        unit.hp = Math.max(1, unitMaxHpFor(unit) * Math.min(PASSIVE_SETTINGS.undyingMaxRestore, RESTORE));
-        this.combat('passive-undying', {
-            unit: unit.id,
-            x: unit.x,
-            y: unit.y,
-            z: unit.z,
-            radius: unit.radius,
-            height: unit.height,
-        });
-    }
     // An ally falls: vengeance counts it and the helper card heals the ones standing near.
-    passiveAllyFell(unit) {
-        const TOWER = this.tower;
-        if (
-            !TOWER.active ||
-            unit.isFormationClone ||
-            (unit.isBattleOnlySummon && unit.battleSummonKind !== 'boss-mouth-t1')
-        ) {
-            return;
-        }
-        const ENEMY = unit.faction === FACTION_CONFIG.ENEMY;
-        TOWER[ENEMY ? 'bossFallen' : 'fallen']++;
-        const TOTALS = this.passiveState(unit).totals,
-            HEAL = TOTALS.helper || 0,
-            VENGEANCE = TOTALS.vengeance || 0;
-        if (!HEAL && !VENGEANCE) {
-            return;
-        }
-        const NEAR = [...this.bosses, ...this.unitCollection.items]
-            .filter(
-                (other) =>
-                    other !== unit &&
-                    other.hp > 0 &&
-                    !other.isFormationClone &&
-                    (!this.isBoss(other) || other.active) &&
-                    (ENEMY || !other.isBattleOnlySummon) &&
-                    other.faction === unit.faction &&
-                    Math.hypot(other.x - unit.x, other.y - unit.y) <= PASSIVE_SETTINGS.helperRadius,
-            )
-            .sort(
-                (a, b) =>
-                    Math.hypot(a.x - unit.x, a.y - unit.y) - Math.hypot(b.x - unit.x, b.y - unit.y) || a.id - b.id,
-            );
-        if (HEAL) {
-            for (const OTHER of NEAR) {
-                applyHealing(OTHER, unitMaxHpFor(OTHER) * HEAL);
-            }
-        }
-        const TARGETS = NEAR.slice(0, 6).map((other) => ({ x: other.x, y: other.y, z: other.z, height: other.height }));
-        for (const KIND of [HEAL && 'passive-helper', VENGEANCE && 'passive-vengeance']) {
-            if (KIND) {
-                this.combat(KIND, { x: unit.x, y: unit.y, z: unit.z, height: unit.height, targets: TARGETS });
-            }
-        }
-    }
-    _processUnitDeath(unit) {
-        this.passiveAllyFell(unit);
-        unit.ability.interrupt();
-        unit.specialAbility?.interrupt();
-        unit.ability.resetCombatEffects?.();
-        this.clearPeaRecoveryBoost(unit);
-        this.onCombatResolved.emit({
-            allyDeaths:
-                !unit.isFormationClone && (!unit.isBattleOnlySummon || unit.battleSummonKind === 'boss-mouth-t1')
-                    ? 1
-                    : 0,
-            role: unit.faction === FACTION_CONFIG.ENEMY ? 'boss' : 'player',
-            sourceFaction: unit.faction,
-            targetFaction: unit.faction,
-        });
-        this._syncUnitAliveCount(unit);
-        if (!unit.isBattleOnlySummon) {
-            this.markProgressChanged();
-        }
-        if (unit.isBattleOnlySummon) {
-            if (unit.isFormationClone) {
-                this.emit('formation-copy-death', unit.x, unit.y, unit.z, { duration: 0.6 });
-            }
-            unit.down = 0;
-            this.removeUnit(unit, { keepStepSnapshot: true });
-            return false;
-        }
-        const IN_BATTLE = SIMULATION_SCENES[this.scene].inBattle(this);
-        const DESCRIPTORS = unit.ability.deathSplitDescriptors?.(this, IN_BATTLE) || [];
-        if (!DESCRIPTORS.length) {
-            return false;
-        }
-        unit.splitUsedThisBattle = true;
-        unit.down = CONFIG.unit.corpseRecoverySeconds;
-        for (let index = 0; index < DESCRIPTORS.length; index++) {
-            const DESC = DESCRIPTORS[index],
-                ANGLE = ((index + 0.5) * Math.PI * 2) / DESCRIPTORS.length,
-                ID = SIMULATION_SCENES[this.scene].summonId(this);
-            const X = unit.x + Math.cos(ANGLE) * 0.38,
-                Y = unit.y + Math.sin(ANGLE) * 0.38,
-                CHILD = new UNIT(ID, DESC.species, DESC.tier, X, Y);
-            Object.assign(CHILD, DESC, {
-                ownerId: unit.ownerId,
-                farmId: unit.farmId,
-                home: {
-                    x: X,
-                    y: Y,
-                },
-                down: 0,
-                generation: ++this.entityGenerationSerial,
-                growthElapsed: CHILD.growthDuration,
-                growth: CONFIG.farm.breeding.matureMeals,
-                meals: 1,
-                dropLanded: true,
-                deathSplitHandled: false,
-            });
-            CHILD.hp = resolveUnitStats(CHILD).maxHp;
-            this.addUnit(CHILD, { markProgress: false });
-        }
-        const EFFECT_ID = ++this.eventSequence;
-        this.effects.push({
-            kind: 'peanut-split',
-            eventId: EFFECT_ID,
-            owner: unit.id,
-            ownerGeneration: unit.generation,
-            species: unit.species,
-            x: unit.x,
-            y: unit.y,
-            z: 0,
-            life: 0,
-            duration: 0.7,
-        });
-        this.combat('peanut-split', {
-            effectId: EFFECT_ID,
-            unit: unit.id,
-            ownerId: unit.ownerId,
-            species: unit.species,
-            count: DESCRIPTORS.length,
-            x: unit.x,
-            y: unit.y,
-        });
-        return true;
-    }
-    processUnitRevival(unit) {
-        return this.mutateUnits(this._processUnitRevival, unit);
-    }
-    _processUnitRevival(unit) {
-        this._syncUnitAliveCount(unit);
-        this.combat('unit-recover', { unit: unit.id, x: unit.x, y: unit.y });
-        this.markProgressChanged();
-    }
-    cleanupBattleSummons() {
-        return this.mutateUnits(this._cleanupBattleSummons);
-    }
-    _cleanupBattleSummons() {
-        for (const BOSS of this.bosses) {
-            BOSS.ability.interrupt();
-            BOSS.specialAbility?.interrupt();
-            BOSS.ability.resetCombatEffects?.();
-        }
-        for (const UNIT_LOCAL of this.units) {
-            if (!UNIT_LOCAL.isBattleOnlySummon) {
-                UNIT_LOCAL.ability.resetCombatEffects?.();
-            }
-        }
-        this.unitCollection.removeWhere((unit) => unit.isBattleOnlySummon);
-        this.projectiles = [];
-        this.chestnutAttacks = [];
-        this.cornAttachments = CornAttachmentModel.createManager();
-        return true;
-    }
     senseEnemy(unit) {
         if (unit.hp <= 0 || !unit.dropLanded) {
             return null;
@@ -2141,129 +1892,6 @@ const GARDEN = class Garden extends GARDEN_BASE {
                 critChance: ATTACKER_STATS.critChance,
             },
         };
-    }
-    finishFarmBossEvent(outcome) {
-        return this.mutateUnits(this._finishFarmBossEvent, outcome);
-    }
-    _finishFarmBossEvent(outcome) {
-        if (this.scene !== 'farm' || this.farmBossEvent.phase !== 'fighting') {
-            return false;
-        }
-        if (outcome === 'victory' && this.bossEncounter && !this.bossEncounter.completed) {
-            return false;
-        }
-        this.formationSkills.end();
-        this.cleanupBattleSummons();
-        // A cleared floor keeps the hand for the next one; any other ending sends everyone back to the farm.
-        const SUMMIT = outcome === 'victory' && this.tower.active && this.tower.floor === CONFIG.farm.tower.topFloor,
-            CLIMBING = outcome === 'victory' && this.tower.active;
-        if (!CLIMBING) {
-            this._clearRunStats();
-            this.tower.active = false;
-            this.runProgressionSnapshot = null;
-            this.tower.doors = [];
-            this._benched.clear();
-            this._benchRevision++;
-            this._unitSpatialDirty = true;
-        }
-        for (const BOSS of this.bosses) {
-            BOSS.active = false;
-            BOSS.patternRuntime.active = null;
-        }
-        this.projectiles = [];
-        this.chestnutAttacks = [];
-        const ENCOUNTER_ID = this.farmBossEvent.encounterId;
-        this.farmBossEvent = {
-            phase: 'celebrating',
-            elapsed: 0,
-            outcome,
-            encounterId: ENCOUNTER_ID,
-            rewardStatus: 'none',
-            rewardChance: 0,
-            rewardRoll: 0,
-            rewardUnitId: 0,
-        };
-        for (const U of this.units) {
-            U.specialAbility?.interrupt();
-            this.clearPeaRecoveryBoost(U);
-            if (U.hp > 0) {
-                U.ability.interrupt();
-            }
-        }
-        if (outcome === 'victory') {
-            const REWARD_BOSS = this.bosses[0];
-            const EVENT_STAGE = REWARD_BOSS.stage,
-                STAGE_STATS = bossStageStats(EVENT_STAGE),
-                BEST = this.playerProgression.towerBest,
-                KIND = CONFIG.farm.tower[this.tower.floor ? this.tower.kind : 'battle'];
-            this.tower.record = EVENT_STAGE > BEST;
-            if (this.tower.record) {
-                this.playerProgression.towerBest = EVENT_STAGE;
-            }
-            // Every win pays by its floor and kind; a floor higher than ever before pays double.
-            const REWARD_SCALE = KIND.reward * (this.tower.record ? BOSS_REWARD_SETTINGS.recordMultiplier : 1),
-                // Every boss is the plain sprout, so the seed it drops, and the species whose mastery the win feeds,
-                // is drawn from the first-tier species.
-                DROP_SPECIES =
-                    SEED_SPECIES[Math.floor(lineageRandom(this.seed, ENCOUNTER_ID, 3)() * SEED_SPECIES.length)],
-                FIRST_CLEAR = !bossSpeciesOwned(this, DROP_SPECIES),
-                SETTLEMENT = settleBossKill(this, {
-                    encounterId: ENCOUNTER_ID,
-                    source: 'farm',
-                    stage: EVENT_STAGE,
-                    species: DROP_SPECIES,
-                    tier: 1,
-                    x: REWARD_BOSS.x,
-                    y: REWARD_BOSS.y,
-                    firstClear: FIRST_CLEAR,
-                    rollBudget: STAGE_STATS.rollBudget * REWARD_SCALE,
-                    xpAmount: STAGE_STATS.xp * REWARD_SCALE,
-                });
-            const REWARD = SETTLEMENT.receipt;
-            if (this.tower.rewardRunId) {
-                const OVERALL = awardTowerFloorXp(
-                    this.playerProgression,
-                    this.tower.rewardRunId,
-                    EVENT_STAGE,
-                    KIND.reward,
-                );
-                this.playerProgression = OVERALL.state;
-                this.combat('tower-overall-xp', {
-                    floor: EVENT_STAGE,
-                    xp: OVERALL.xpAwarded,
-                    levelsGained: OVERALL.levelsGained,
-                });
-            }
-            this.combat('farm-boss-xp', {
-                encounterId: ENCOUNTER_ID,
-                species: DROP_SPECIES,
-                xp: SETTLEMENT.xpAwarded,
-                levelsGained: SETTLEMENT.levelsGained,
-                pointsAwarded: SETTLEMENT.pointsAwarded,
-            });
-            this.combat('farm-boss-reward', {
-                acquired: REWARD.grantedCount > 0,
-                pending: REWARD.status === 'pending',
-                successCount: REWARD.successCount,
-                grantedCount: REWARD.grantedCount,
-                species: REWARD.species,
-                tier: REWARD.tier,
-                chance: REWARD.chance,
-                roll: REWARD.roll,
-                encounterId: ENCOUNTER_ID,
-            });
-        }
-        if (SUMMIT) {
-            this.tower.phase = 'summit';
-            this.tower.summitElapsed = 0;
-        }
-        this.markProgressChanged();
-        this.combat(outcome === 'victory' ? 'farm-boss-victory' : 'farm-boss-defeat', {
-            x: this.boss.x,
-            y: this.boss.y,
-            z: 0,
-        });
-        return true;
     }
     // An area attack is used only when it deals more in total than the basic attack's one strong hit.
     // Whether the unit's body touches the wedge from the boss out to `range` around bearing `aim`, `half` to each side.

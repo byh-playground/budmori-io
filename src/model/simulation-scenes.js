@@ -1,6 +1,10 @@
 import { FarmSimulationScene } from '../features/scenes/farm/model.js';
+import { createFarmBossEventPhases } from '../features/scenes/farm/boss-event-phases.js';
+import { CONFIG, STATS } from './farm-config.js';
+import { CREATE_UNIT_ATTACK_CYCLE } from '../units/attack-cycle.js';
+import { FARM_MODES } from './farm-mode-behaviors.js';
 
-export function createSimulationScenes(dependencies) {
+function createSimulationScenes(dependencies) {
     const {
         config: CONFIG,
         stats: STATS,
@@ -15,3 +19,11 @@ export function createSimulationScenes(dependencies) {
         ),
     );
 }
+
+export const SIMULATION_SCENES = createSimulationScenes({
+    config: CONFIG,
+    stats: STATS,
+    createUnitAttackCycle: CREATE_UNIT_ATTACK_CYCLE,
+    farmModes: FARM_MODES,
+    bossEventPhases: createFarmBossEventPhases(CONFIG),
+});
