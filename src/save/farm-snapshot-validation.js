@@ -1,3 +1,4 @@
+import { TEMPERAMENT_COUNT, SEED_FEEDS, SEED_FEED_COOLDOWN_SECONDS, isValidGenes } from '../model/lineage.js';
 import { isWheatAttackRecord } from '../features/species-growth/wheat-attack.js';
 import { isBarleyAttackRecord } from '../features/species-growth/barley-attack.js';
 import { isRiceAttackRecord } from '../features/species-growth/rice-attack.js';
@@ -1017,6 +1018,20 @@ export function validateSnapshot(raw, { allowLegacyBarleyShred = false } = {}) {
                 INTEGER(U.battleSummonEncounterId, 0, 1e12),
         );
         ASSERT(typeof U.dropLanded === 'boolean' && INTEGER(U.battleSummonParentGeneration, 0, 1e12));
+        ASSERT(INTEGER(U.temperament, 0, TEMPERAMENT_COUNT - 1) && isValidGenes(U.genes));
+        if (U.seedling !== null) {
+            ASSERT(
+                U.seedling &&
+                    typeof U.seedling === 'object' &&
+                    Object.keys(U.seedling).length === 2 &&
+                    INTEGER(U.seedling.fed, 0, SEED_FEEDS - 1) &&
+                    Number.isFinite(U.seedling.cooldown) &&
+                    U.seedling.cooldown >= 0 &&
+                    U.seedling.cooldown <= SEED_FEED_COOLDOWN_SECONDS + 1e-9 &&
+                    U.growthElapsed < U.growthDuration - 1e-9 &&
+                    !U.isBattleOnlySummon,
+            );
+        }
         if (U.hp <= 0) {
             ASSERT(U.down > 0 && !U.isBattleOnlySummon);
         } else {

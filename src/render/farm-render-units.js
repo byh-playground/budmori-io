@@ -70,6 +70,8 @@ const ATTACK_ACCENTS = ['#8fac68', '#dbb76b', '#b58b9c', '#9a6947', '#d7914f', '
 
 // The unit presentation owns its reusable indicator scratch and the ordering of
 // rear rings, native vector passes, front rings, and sleep feedback.
+// A seed is a dark silhouette until it has grown: what it will become stays hidden.
+const SEEDLING_TINT = Object.freeze([0.3, 0.26, 0.22, 1]);
 export class UnitPresentation {
     constructor(renderer) {
         this.renderer = renderer;
@@ -307,7 +309,7 @@ export class UnitPresentation {
             projection: this.renderer.ctx.vector.projection,
             matrix: MATRIX,
             alpha: u.isFormationClone ? 0.52 : 1,
-            color: u.isFormationClone ? [0.55, 0.82, 1, 1] : [1, 1, 1, 1],
+            color: u.isFormationClone ? [0.55, 0.82, 1, 1] : u.seedling ? SEEDLING_TINT : [1, 1, 1, 1],
         });
         drawUnitAttackContact(this.renderer, u, player, MATRIX);
         return true;

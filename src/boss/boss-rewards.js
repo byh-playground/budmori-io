@@ -212,7 +212,9 @@ function grantPendingBossAcquisitionsCommitted(world) {
             const INDEX = world.units.length,
                 ANGLE = INDEX * 2.399963229728653 + ((world.seed >>> 0) % 6283) / 1000,
                 RADIUS = Math.sqrt(INDEX + 0.5) * 0.35,
-                UNIT = world.spawn(GROUP.species, GROUP.tier, Math.cos(ANGLE) * RADIUS, Math.sin(ANGLE) * RADIUS);
+                UNIT = world.spawn(GROUP.species, GROUP.tier, Math.cos(ANGLE) * RADIUS, Math.sin(ANGLE) * RADIUS, {
+                    lineage: world.rollSeedLineage(),
+                });
             if (!UNIT) {
                 break;
             }
@@ -221,7 +223,9 @@ function grantPendingBossAcquisitionsCommitted(world) {
         }
         if (placed > 0) {
             if (NEW_SPECIES && placed === 1 && capacity - placed > 0) {
-                const PARTNER = world.spawn(GROUP.species, GROUP.tier, Math.cos(placed) * 0.6, Math.sin(placed) * 0.6);
+                const PARTNER = world.spawn(GROUP.species, GROUP.tier, Math.cos(placed) * 0.6, Math.sin(placed) * 0.6, {
+                    lineage: world.rollSeedLineage(),
+                });
                 if (PARTNER) {
                     GRANTED.push(PARTNER);
                     capacity -= 1;
@@ -548,7 +552,7 @@ function settleBossKillCommitted(world, options = {}) {
     const RESULT = awardMasteryXp(
         WALLET,
         RECEIPT_KEY,
-        RECEIPT.species,
+        options.masterySpecies ?? RECEIPT.species,
         options.xpAmount === undefined ? undefined : options.xpAmount,
     );
     if (RESULT.awarded) {

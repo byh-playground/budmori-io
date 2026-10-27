@@ -36,6 +36,9 @@ export const UNIT_SNAPSHOT_SHAPE = {
     statModifiers: null,
     permanentStatMultiplier: 1,
     growthMaxHpMultiplier: 1,
+    temperament: 0,
+    genes: [0, 0],
+    seedling: null,
     faction: 'player',
     meals: 0,
     growth: 0,
@@ -350,7 +353,11 @@ const ACTOR_ATTACK_FIELDS = {
     wheatCommandBuffs: [FIELDS('level bonus tier powerRank appliedAtTick expiresAtTick')],
     barleyArmorShredBuckets: [FIELDS('expiresAtTick amount')],
 };
-const UNIT = shapeFields(UNIT_SNAPSHOT_SHAPE, ACTOR_ATTACK_FIELDS);
+const UNIT = shapeFields(UNIT_SNAPSHOT_SHAPE, {
+    ...ACTOR_ATTACK_FIELDS,
+    genes: [true],
+    seedling: FIELDS('fed cooldown'),
+});
 const BOSS_ACTION = FIELDS(
     'id phase phaseElapsed motionDelay targetId aim locked traveled volleyCount released nextRelease criticalRoll',
     {

@@ -97,6 +97,3 @@ export function speciesById(id) {
 export function giantSpeciesName(id) {
     return `거대 ${speciesById(id).name}`;
 }
-export function speciesRewardName(id) {
-    return `${speciesById(id).name} 종`;
-}

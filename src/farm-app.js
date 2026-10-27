@@ -37,7 +37,8 @@ import {
 } from './boss/boss-rewards.js';
 import { workersBySpecies } from './model/farm-work.js';
 import { apportionBreedShares, adjustBreedShare } from './model/breed-allocation.js';
-import { speciesById, giantSpeciesName, speciesRewardName } from './units/species-catalog.js';
+import { speciesById, giantSpeciesName } from './units/species-catalog.js';
+import { SEED_SPECIES } from './model/lineage.js';
 import { HELP_MAX_FRAME_MS, HELP_PLAYBACK_RATE, helpSceneById } from './ui/help-scenes.js';
 import { createHelpPanel } from './ui/help-panel.js';
 const DOLLAR = (id) => document.getElementById(id),
@@ -198,15 +199,11 @@ function renderBossRewardBoxes(receipt) {
         receipt.acquiredCount > 0 &&
         bossRewardPortraitReceiptKey !== receipt.receiptKey
     ) {
-        const ENTRY = speciesById(receipt.species);
-        if (ENTRY) {
-            bossRewardPortraitReceiptKey = receipt.receiptKey;
-            // The source SVG itself draws the default pose, so a plain image is the portrait.
-            const PORTRAIT = DOLLAR('bossRewardPortrait');
-            PORTRAIT.src = `./assets/troops/${ENTRY.asset}`;
-            PORTRAIT.alt = speciesRewardName(receipt.species);
-            PORTRAIT.hidden = false;
-        }
+        bossRewardPortraitReceiptKey = receipt.receiptKey;
+        const PORTRAIT = DOLLAR('bossRewardPortrait');
+        PORTRAIT.src = './assets/seed.svg';
+        PORTRAIT.alt = '씨앗';
+        PORTRAIT.hidden = false;
     }
     DOLLAR('bossRewardOpenAll').disabled = receipt.status !== 'ready' || !HAS_PRESENTATION || REVEALED >= COUNT;
     DOLLAR('bossRewardOpenAll').hidden = receipt.status !== 'ready' || REVEALED >= COUNT;
@@ -2182,7 +2179,7 @@ function sync(display, now, notices) {
     syncText(
         'starter',
         PENDING_REWARD
-            ? `${speciesRewardName(PENDING_REWARD.species)} 보상 대기 · 공간이 생기면 합류해요`
+            ? '씨앗 보상 대기 · 공간이 생기면 합류해요'
             : !HAS_READY_TROOPS
               ? '모두 잠자는 중 · 회복을 기다려요'
               : WORLD_COUNT >= W.capacity
@@ -2208,9 +2205,12 @@ function sync(display, now, notices) {
                       (reward) => reward.source === 'farm' && reward.encounterId === FARM_EVENT.encounterId,
                   )
                 : null,
-        REWARD_NAME = speciesRewardName(BOSS.species),
+        REWARD_NAME = '씨앗',
         ENCOUNTER_NAME = giantSpeciesName(BOSS.species),
-        FIRST_MEETING = FARM_EVENT_ACTIVE && !bossSpeciesOwned(W, BOSS.species) ? ' · 첫 조우' : '';
+        FIRST_MEETING =
+            FARM_EVENT_ACTIVE && SEED_SPECIES.includes(BOSS.species) && !bossSpeciesOwned(W, BOSS.species)
+                ? ' · 첫 조우'
+                : '';
     syncText(
         'bossName',
         (W.tower.active

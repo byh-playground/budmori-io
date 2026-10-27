@@ -6,6 +6,7 @@ import {
     OVERALL_PROGRESSION_SETTINGS,
 } from './player-progression.js';
 import { BOSS_REWARD_SETTINGS } from '../boss/boss-rewards.js';
+import { TEMPERAMENT_COUNT, SEED_FEEDS, SEED_FEED_COOLDOWN_SECONDS, isValidGenes } from './lineage.js';
 const FAIL = () => {
     throw new TypeError('올바른 농장 진행 저장 데이터가 아니에요.');
 };
@@ -72,6 +73,9 @@ function cohortValues(unit) {
         unit.cooldown,
         unit.cooldownDuration,
         unit.hp <= 0 ? unit.down : 0,
+        unit.temperament,
+        unit.genes.join(','),
+        unit.seedling ? `${unit.seedling.fed}/${unit.seedling.cooldown}` : '',
     ];
 }
 // One disk contract: progress counts and entitlements, never the live world.
@@ -87,7 +91,8 @@ export function captureFarmProgress(world) {
         if (UNIT.isBattleOnlySummon || UNIT.countsTowardPermanentRoster === false || UNIT.faction !== 'player') {
             continue;
         }
-        const [SPECIES, TIER, FED, GROWTH, DURATION, COOLDOWN, COOLDOWN_DURATION, REST] = cohortValues(UNIT);
+        const [SPECIES, TIER, FED, GROWTH, DURATION, COOLDOWN, COOLDOWN_DURATION, REST, TEMPERAMENT, GENES, SEEDLING] =
+            cohortValues(UNIT);
         const KEY = [
             SPECIES,
             TIER,
@@ -97,6 +102,9 @@ export function captureFarmProgress(world) {
             COOLDOWN,
             COOLDOWN ? COOLDOWN_DURATION : 0,
             REST,
+            TEMPERAMENT,
+            GENES,
+            SEEDLING,
         ].join(':');
         const PREVIOUS = GROUPS.get(KEY);
         if (PREVIOUS) {
@@ -125,6 +133,15 @@ export function captureFarmProgress(world) {
         }
         if (REST > 0) {
             ROW.rest = REST;
+        }
+        if (TEMPERAMENT !== 0) {
+            ROW.temperament = TEMPERAMENT;
+        }
+        if (GENES !== '0,0') {
+            ROW.genes = [...UNIT.genes];
+        }
+        if (UNIT.seedling) {
+            ROW.seedling = { ...UNIT.seedling };
         }
         GROUPS.set(KEY, ROW);
     }
@@ -192,7 +209,11 @@ export function validateFarmProgress(data, { allowLegacy = false } = {}) {
         RESIDENT_IDS = new Set();
     let maxResidentId = 0;
     for (const ROW of data.roster) {
-        keys(ROW, ['species', 'tier', 'residentIds'], ['fed', 'growth', 'cooldown', 'rest']);
+        keys(
+            ROW,
+            ['species', 'tier', 'residentIds'],
+            ['fed', 'growth', 'cooldown', 'rest', 'temperament', 'genes', 'seedling'],
+        );
         ASSERT(
             INTEGER(ROW.species, 0, CONFIG.unit.speciesCount - 1) &&
                 INTEGER(ROW.tier, 1, CONFIG.unit.maxTier) &&
@@ -219,6 +240,21 @@ export function validateFarmProgress(data, { allowLegacy = false } = {}) {
         if (Object.hasOwn(ROW, 'rest')) {
             ASSERT(NUMBER(ROW.rest, Number.MIN_VALUE, CONFIG.unit.corpseRecoverySeconds));
         }
+        if (Object.hasOwn(ROW, 'temperament')) {
+            ASSERT(INTEGER(ROW.temperament, 1, TEMPERAMENT_COUNT - 1));
+        }
+        if (Object.hasOwn(ROW, 'genes')) {
+            ASSERT(isValidGenes(ROW.genes) && ROW.genes.some((gene) => gene !== 0));
+        }
+        if (Object.hasOwn(ROW, 'seedling')) {
+            keys(ROW.seedling, ['fed', 'cooldown']);
+            ASSERT(
+                INTEGER(ROW.seedling.fed, 0, SEED_FEEDS - 1) &&
+                    NUMBER(ROW.seedling.cooldown, 0, SEED_FEED_COOLDOWN_SECONDS) &&
+                    ROW.growth &&
+                    !ROW.rest,
+            );
+        }
         const SIGNATURE = [
             ROW.species,
             ROW.tier,
@@ -228,6 +264,9 @@ export function validateFarmProgress(data, { allowLegacy = false } = {}) {
             ROW.cooldown?.remaining || 0,
             ROW.cooldown?.duration || 0,
             ROW.rest || 0,
+            ROW.temperament || 0,
+            (ROW.genes || [0, 0]).join(','),
+            ROW.seedling ? `${ROW.seedling.fed}/${ROW.seedling.cooldown}` : '',
         ].join(':');
         ASSERT(!COHORTS.has(SIGNATURE));
         COHORTS.add(SIGNATURE);
@@ -483,6 +522,9 @@ export function restoreFarmProgress(data) {
             );
             UNIT.cooldown = ROW.cooldown?.remaining || 0;
             UNIT.cooldownDuration = ROW.cooldown?.duration || 0;
+            UNIT.temperament = ROW.temperament || 0;
+            UNIT.genes = ROW.genes ? [...ROW.genes] : [0, 0];
+            UNIT.seedling = ROW.seedling ? { ...ROW.seedling } : null;
             if (ROW.rest) {
                 UNIT.hp = 0;
                 UNIT.down = ROW.rest;

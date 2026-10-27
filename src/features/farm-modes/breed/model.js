@@ -75,6 +75,7 @@ export class BreedFarmMode extends FarmMode {
             b.mateId = a.id;
             const CHILD = world.spawn(a.species, 1, (a.x + b.x) / 2, (a.y + b.y) / 2, {
                 birthReservationOwner: OWNER,
+                lineage: world.inheritLineage([a, b]),
             });
             if (!CHILD) {
                 world.releaseMate(a);
