@@ -15,6 +15,8 @@ import { BarleyArmorShredPresentation } from '../features/abilities/barley-shred
 import { ATTACK_TYPES, CONFIG, clamp } from '../model/farm-model.js';
 import { farmBreedingCooldown, unitRestPresentation } from '../ui/farm-indicators.js';
 import { scenePresentation } from './farm-render-scenes.js';
+import { drawElementMark, drawFaceMarks } from './unit-face-overlay.js';
+import { towerElement } from '../tower/tower-theme.js';
 import { PassiveMarksPresentation } from '../tower/tower-passive-presentations.js';
 
 const BARLEY_SHRED_PRESENTATION = new BarleyArmorShredPresentation();
@@ -309,10 +311,37 @@ export class UnitPresentation {
             projection: this.renderer.ctx.vector.projection,
             matrix: MATRIX,
             alpha: u.isFormationClone ? 0.52 : 1,
-            color: u.isFormationClone ? [0.55, 0.82, 1, 1] : u.seedling ? SEEDLING_TINT : [1, 1, 1, 1],
+            color: u.isFormationClone ? [0.55, 0.82, 1, 1] : u.isSeedling ? SEEDLING_TINT : [1, 1, 1, 1],
         });
         drawUnitAttackContact(this.renderer, u, player, MATRIX);
+        this.drawLineageMarks(u, player, RECORD, MATRIX, sim);
         return true;
+    }
+    // Brows for a living ally's temperament, cheeks and a floating mark for its element; an enemy shows its band's element.
+    drawLineageMarks(u, player, record, matrix, sim) {
+        if (u.hp <= 0 || u.isSeedling || u.isFormationClone) {
+            return;
+        }
+        const ENEMY = u.faction === 'enemy',
+            ELEMENT = ENEMY ? towerElement(sim.tower.floor) : u.element;
+        if (ENEMY && (!sim.tower.active || u.isBoss)) {
+            return;
+        }
+        const REST = record.compiled.metadata.sockets.mouth.point,
+            NOW = player.getSocket('mouth'),
+            SHIFT = { x: NOW.x - REST[0], y: NOW.y - REST[1] },
+            CTX = this.renderer.ctx;
+        drawFaceMarks(CTX, u.species, ENEMY ? -1 : u.temperament, ELEMENT, matrix, SHIFT);
+        if (ELEMENT > 0) {
+            const TOP = this.renderer.project(u.x, u.y, u.z + u.height + 0.35);
+            drawElementMark(
+                CTX,
+                ELEMENT,
+                TOP.x + u.radius * this.renderer.scale * 0.5,
+                TOP.y,
+                this.renderer.scale * 0.55,
+            );
+        }
     }
     drawUnit(u, sim, rest) {
         const DEAD = u.hp <= 0,

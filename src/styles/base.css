@@ -1026,6 +1026,24 @@ details summary {
     color: var(--ui-ink-2);
     font-size: var(--ui-fs-1);
 }
+.codex-pic {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 40px;
+}
+.codex-pic .face-overlay {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+.codex-pic .element-icon {
+    position: absolute;
+    right: -3px;
+    top: -3px;
+}
 .codex-icon {
     display: block;
     width: 40px;

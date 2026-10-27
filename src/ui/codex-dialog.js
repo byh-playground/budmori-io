@@ -1,5 +1,6 @@
 import { RECIPES, TEMPERAMENTS, ELEMENTS, ELEMENT_COUNT, TEMPERAMENT_COUNT } from '../model/lineage.js';
 import { speciesById, SPECIES_COUNT } from '../units/species-catalog.js';
+import { elementIconSvg, faceOverlaySvg } from '../units/species-face.js';
 
 const TABS = Object.freeze([
     Object.freeze({ id: 'recipes', label: '조합식' }),
@@ -7,9 +8,14 @@ const TABS = Object.freeze([
     Object.freeze({ id: 'colors', label: '색' }),
 ]);
 
-function icon(species, known) {
-    const ENTRY = speciesById(species);
-    return `<img class="codex-icon${known ? '' : ' is-unknown'}" src="./assets/troops/${ENTRY.asset}" alt="${known ? ENTRY.name : '미발견'}" width="40" height="40" draggable="false">`;
+// A species picture; a known one in the grids also carries the temperament's brows and the element's cheeks and mark.
+function icon(species, known, look = null) {
+    const ENTRY = speciesById(species),
+        IMAGE = `<img class="codex-icon${known ? '' : ' is-unknown'}" src="./assets/troops/${ENTRY.asset}" alt="${known ? ENTRY.name : '미발견'}" width="40" height="40" draggable="false">`;
+    if (!known || !look) {
+        return IMAGE;
+    }
+    return `<span class="codex-pic">${IMAGE}${faceOverlaySvg(species, look.temperament, look.element)}${elementIconSvg(look.element, 14)}</span>`;
 }
 
 // The species tiers a recipe can be made at right now: both ingredients owned at the same tier.
@@ -46,12 +52,12 @@ function recipesHtml(world) {
     return `<p>조합할 식을 고르면 조합 버튼이 같은 등급 재료 두 마리를 합쳐요. 재료는 각각 3마리 이상 있어야 해요.</p><ul class="codex-recipes">${ROWS.join('')}</ul>`;
 }
 
-function gridHtml(list, columns, label) {
+function gridHtml(list, columns, label, lookFor) {
     const HEAD = columns.map((column) => `<th scope="col">${column}</th>`).join('');
     const ROWS = Array.from({ length: SPECIES_COUNT }, (_, species) => {
         const CELLS = columns.map((_, column) => {
             const HAS = list.includes(species * columns.length + column);
-            return `<td>${icon(species, HAS)}</td>`;
+            return `<td>${icon(species, HAS, lookFor(column))}</td>`;
         });
         return `<tr><th scope="row">${speciesById(species).name}</th>${CELLS.join('')}</tr>`;
     });
@@ -64,6 +70,7 @@ export function codexHtml(world, tab) {
             world.codex.forms,
             TEMPERAMENTS.map((entry) => entry.name),
             '성향 도감',
+            (column) => ({ temperament: column, element: 0 }),
         );
     }
     if (tab === 'colors') {
@@ -71,6 +78,7 @@ export function codexHtml(world, tab) {
             world.codex.colors,
             ELEMENTS.slice(1, ELEMENT_COUNT + 1).map((entry) => entry.name),
             '색 도감',
+            (column) => ({ temperament: 0, element: column + 1 }),
         );
     }
     return recipesHtml(world);

@@ -5,6 +5,7 @@ import { WheatCommandModel } from '../features/abilities/wheat-command/model.js'
 import { updateRicePresentation } from '../features/unit-attacks/rice/presentation.js';
 import { updateWalnutPresentation } from '../features/unit-attacks/walnut/presentation.js';
 import { Garden, bindPresentationClock } from '../model/farm-model.js';
+import { elementOf } from '../model/lineage.js';
 import { unitMaxHpFor, resolveUnitStats } from '../units/unit-stats.js';
 import { PASSIVE_SETTINGS } from '../tower/tower-run.js';
 import { BarleyArmorShredModel } from '../features/abilities/barley-shred/model.js';
@@ -224,6 +225,9 @@ class UnitRender extends RENDER_OBJECT {
         cloneBornAt: R.STEP,
         barleyArmorShredTotal: R.STEP,
         barleyArmorShredLeft: R.STEP,
+        temperament: R.STEP,
+        element: R.STEP,
+        isSeedling: R.STEP,
         lastStandOn: R.STEP,
         resolveOn: R.STEP,
         vengeanceStacks: R.STEP,
@@ -266,6 +270,9 @@ class UnitRender extends RENDER_OBJECT {
         this.faction = u.faction;
         this.farmId = u.farmId;
         this.dropLanded = u.dropLanded;
+        this.temperament = u.temperament;
+        this.element = elementOf(u.genes);
+        this.isSeedling = !!u.seedling;
         this.buffed = u.hp > 0 && !!WheatCommandModel.activeBuff(u, world.simulationTick);
         let lastCommandTick = -6;
         if (this.buffed) {
