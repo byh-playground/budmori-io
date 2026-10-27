@@ -1,4 +1,5 @@
-import { Garden, Unit, CONFIG } from './farm-model.js';
+import { Garden, CONFIG } from './farm-model.js';
+import { Unit } from './farm-unit.js';
 import {
     createPlayerProgressionState,
     isValidPlayerProgressionState,
