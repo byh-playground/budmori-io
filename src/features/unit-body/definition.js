@@ -1,4 +1,5 @@
 import { WORLD_HEIGHT_PROJECTION, bossVectorScale as BOSS_VECTOR_SCALE } from '../../vector-sockets.js';
+import { unitArtSpecies } from '../../units/species-catalog.js';
 
 // Neutral, named torso contours measured in the original SVG canvas, including
 // their authored round stroke. Hats, leaves, weapons, limbs and grade outlines
@@ -241,6 +242,9 @@ function unitBodyDefinition(species) {
     return BODY;
 }
 function unitVisualSize(unit) {
+    if (unit.seedling) {
+        return (UNIT_BODY_CONFIG.baseSize + UNIT_BODY_CONFIG.sizePerTier * unit.tier) * seedlingGrowthScale(unit);
+    }
     const MATURE = unit.growthElapsed >= unit.growthDuration - 1e-9,
         GROWTH =
             MATURE || !(unit.growthDuration > 0)
@@ -251,8 +255,11 @@ function unitVisualSize(unit) {
         (UNIT_BODY_CONFIG.birthScale + (1 - UNIT_BODY_CONFIG.birthScale) * GROWTH)
     );
 }
+function seedlingGrowthScale(unit) {
+    return unit.seedling ? 0.32 + 0.24 * unit.seedling.fed : 1;
+}
 function unitVectorScale(unit) {
-    const BODY = unitBodyDefinition(unit.species);
+    const BODY = unitBodyDefinition(unitArtSpecies(unit));
     return (unitVisualSize(unit) * 2 * UNIT_BODY_CONFIG.vectorRadiusScale) / Math.max(BODY.viewBox[2], BODY.viewBox[3]);
 }
 function bodyRadiusAtScale(body, scale) {
@@ -261,10 +268,10 @@ function bodyRadiusAtScale(body, scale) {
     return Math.max(body.ground.x - body.bounds.left, body.bounds.right - body.ground.x) * scale;
 }
 function unitBodyRadius(unit) {
-    return bodyRadiusAtScale(unitBodyDefinition(unit.species), unitVectorScale(unit));
+    return bodyRadiusAtScale(unitBodyDefinition(unitArtSpecies(unit)), unitVectorScale(unit));
 }
 function unitBodyHeight(unit) {
-    const BODY = unitBodyDefinition(unit.species);
+    const BODY = unitBodyDefinition(unitArtSpecies(unit));
     return ((BODY.ground.y - BODY.bounds.top) * unitVectorScale(unit)) / WORLD_HEIGHT_PROJECTION;
 }
 // A boss is drawn from the same authored troop art as a unit, only larger, so its drawn body is measured the same way:
@@ -281,7 +288,7 @@ function bossTorsoHeight(boss) {
     return ((BODY.bounds.bottom - BODY.bounds.top) * BOSS_VECTOR_SCALE()) / WORLD_HEIGHT_PROJECTION;
 }
 function unitTorsoHeight(unit) {
-    const BODY = unitBodyDefinition(unit.species);
+    const BODY = unitBodyDefinition(unitArtSpecies(unit));
     return ((BODY.bounds.bottom - BODY.bounds.top) * unitVectorScale(unit)) / WORLD_HEIGHT_PROJECTION;
 }
 function maximumUnitRadius(tier) {
@@ -321,5 +328,6 @@ export {
     unitTorsoHeight,
     maximumUnitRadius,
     unitDisplayScale,
+    seedlingGrowthScale,
     validateUnitBodySource,
 };

@@ -9,6 +9,8 @@ import { elementOf } from '../model/lineage.js';
 import { unitMaxHpFor, resolveUnitStats } from '../units/unit-stats.js';
 import { PASSIVE_SETTINGS } from '../tower/tower-run.js';
 import { BarleyArmorShredModel } from '../features/abilities/barley-shred/model.js';
+import { seedlingGrowthScale } from '../features/unit-body/definition.js';
+import { seedlingTransformPose } from '../features/seedling-growth/definition.js';
 const { PresentationRuntime: PRESENTATION_RUNTIME, RenderObject: RENDER_OBJECT } = globalThis.BloomGamekitInterpolation;
 const R = RENDER_OBJECT;
 const PRESENTATION_STEP_MS = 50;
@@ -228,6 +230,12 @@ class UnitRender extends RENDER_OBJECT {
         temperament: R.STEP,
         element: R.STEP,
         isSeedling: R.STEP,
+        seedlingScale: R.LINEAR,
+        growthActive: R.STEP,
+        growthLift: R.LINEAR,
+        growthBeforeFlash: R.STEP,
+        growthSourceBodyScale: R.STEP,
+        growthSourceSize: R.STEP,
         lastStandOn: R.STEP,
         resolveOn: R.STEP,
         vengeanceStacks: R.STEP,
@@ -237,7 +245,7 @@ class UnitRender extends RENDER_OBJECT {
         super();
         this.ability = {};
     }
-    update(u, world) {
+    update(u, world, session) {
         this.id = u.id;
         this.generation = u.generation;
         this.x = u.x;
@@ -265,7 +273,8 @@ class UnitRender extends RENDER_OBJECT {
         this.height = u.height;
         this.radius = u.radius;
         this.maxHp = unitMaxHpFor(u);
-        this.fed = u.fed;
+        // Model fed controls adult breeding/food targeting. The portrait reads the growing seed's own meals.
+        this.fed = u.seedling ? u.seedling.fed >= 1 : u.fed;
         this.ownerId = u.ownerId;
         this.faction = u.faction;
         this.farmId = u.farmId;
@@ -273,6 +282,15 @@ class UnitRender extends RENDER_OBJECT {
         this.temperament = u.temperament;
         this.element = elementOf(u.genes);
         this.isSeedling = !!u.seedling;
+        this.seedlingScale = seedlingGrowthScale(u);
+        const GROWTH = session.seedlingGrowthEffects.get(u.id),
+            ACTIVE = u.hp > 0 && GROWTH?.unitGeneration === u.generation,
+            POSE = ACTIVE ? seedlingTransformPose(GROWTH.life) : null;
+        this.growthActive = !!ACTIVE;
+        this.growthLift = POSE?.lift || 0;
+        this.growthBeforeFlash = !!POSE?.seedling;
+        this.growthSourceBodyScale = GROWTH?.sourceBodyScale || 0;
+        this.growthSourceSize = GROWTH?.sourceSize || 0;
         this.buffed = u.hp > 0 && !!WheatCommandModel.activeBuff(u, world.simulationTick);
         let lastCommandTick = -6;
         if (this.buffed) {
@@ -550,6 +568,10 @@ class EffectRender extends RENDER_OBJECT {
         radius: R.STEP,
         duration: R.STEP,
         owner: R.STEP,
+        tier: R.STEP,
+        seedlingGrowth: R.STEP,
+        unitId: R.STEP,
+        unitGeneration: R.STEP,
     });
     update(e) {
         this.x = e.x;
@@ -560,6 +582,10 @@ class EffectRender extends RENDER_OBJECT {
         this.radius = e.radius || 0;
         this.duration = e.duration || 0;
         this.owner = e.owner || 0;
+        this.tier = e.tier || 1;
+        this.seedlingGrowth = !!e.seedlingGrowth;
+        this.unitId = e.unitId || 0;
+        this.unitGeneration = e.unitGeneration || 0;
     }
 }
 class FormationEffectRender extends RENDER_OBJECT {
@@ -654,6 +680,7 @@ class GameClockRender extends RENDER_OBJECT {
 class FarmSession {
     constructor(world = new Garden(), { onError = console.error, now = () => globalThis.performance.now() } = {}) {
         this.world = world;
+        this.seedlingGrowthEffects = new Map();
         this.now = now;
         this.tick = 0;
         this.presentationTick = 0;
@@ -909,7 +936,7 @@ class FarmSession {
             this.presentationAdapters.set(source, entity);
         }
         entity.id = id;
-        entity.source.update(source, this.world);
+        entity.source.update(source, this.world, this);
         return entity;
     }
     get paused() {
@@ -981,6 +1008,12 @@ class FarmSession {
         ENTITIES.length = 0;
         if (this.presentationOriginWallMs === null) {
             this.presentationOriginWallMs = RECEIPT_NOW_MS;
+        }
+        this.seedlingGrowthEffects.clear();
+        for (const EFFECT of WORLD.effects) {
+            if (EFFECT.seedlingGrowth && EFFECT.life < EFFECT.duration) {
+                this.seedlingGrowthEffects.set(EFFECT.unitId, EFFECT);
+            }
         }
         for (const U of WORLD.units) {
             ENTITIES.push(this.presentationEntity('unit:' + U.id, U, UnitRender));

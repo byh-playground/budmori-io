@@ -90,10 +90,16 @@ export class UnitPresentation {
         this.restIndicator = {};
         this.preparedVisibleUnits = new Map();
         this.playerIdentities = new Map();
+        this.growthDisplayUnits = new Map();
     }
     prepareUnits(units, time, world) {
         this.preparedVisibleUnits.clear();
         const LIVE_PLAYER_IDS = new Set(units.map((unit) => unit.id));
+        for (const ID of this.growthDisplayUnits.keys()) {
+            if (!LIVE_PLAYER_IDS.has(ID)) {
+                this.growthDisplayUnits.delete(ID);
+            }
+        }
         for (const ID of this.playerIdentities.keys()) {
             if (!LIVE_PLAYER_IDS.has(ID)) {
                 this.playerIdentities.delete(ID);
@@ -153,7 +159,26 @@ export class UnitPresentation {
                   : unit.species === 6
                     ? this.riceDisplayUnits
                     : null;
-        return CACHE?.get(unit.id)?.unit || unit;
+        const BASE = CACHE?.get(unit.id)?.unit || unit;
+        if (!BASE.growthActive) {
+            this.growthDisplayUnits.delete(unit.id);
+            return BASE;
+        }
+        let visual = this.growthDisplayUnits.get(unit.id);
+        if (!visual) {
+            visual = {};
+            this.growthDisplayUnits.set(unit.id, visual);
+        }
+        Object.assign(visual, BASE);
+        visual.z = BASE.z + BASE.growthLift;
+        if (BASE.growthBeforeFlash) {
+            visual.isSeedling = true;
+            visual.bodyScale = BASE.growthSourceBodyScale;
+            visual.size = BASE.growthSourceSize;
+            visual.seedlingScale = 0.8;
+            visual.fed = true;
+        }
+        return visual;
     }
     addUnitRing(radius, color, width, progress) {
         const EFFECT = this.unitRingPool[this.unitRings.length];

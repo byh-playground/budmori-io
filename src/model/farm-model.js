@@ -1,4 +1,5 @@
 import { advanceChestnutAttacks } from '../features/species-growth/chestnut-attack.js';
+import { SEEDLING_TRANSFORM } from '../features/seedling-growth/definition.js';
 import { applyOffline } from '../save/farm-offline.js';
 import { Unit as UNIT } from './farm-unit.js';
 import { FARM_FOOD_FIELD } from './farm-food-field.js';
@@ -1060,15 +1061,39 @@ const GARDEN = class Garden extends GARDEN_BASE {
             return false;
         }
         this.clearFoodTargetSearch(unit);
+        const SOURCE_BODY_SCALE = unit.bodyScale,
+            SOURCE_SIZE = unit.size;
         SEEDLING.fed += 1;
         SEEDLING.cooldown = SEED_FEED_COOLDOWN_SECONDS;
         if (SEEDLING.fed >= SEED_FEEDS) {
+            const FIRST_SPECIES = !this.codex.forms.some(
+                (form) => Math.floor(form / TEMPERAMENT_COUNT) === unit.species,
+            );
             unit.seedling = null;
             unit.growthElapsed = unit.growthDuration;
             unit.growth = CONFIG.farm.breeding.matureMeals;
             this.metrics.births++;
             this.recordCodex(unit);
-            this.emit('birth', unit.x, unit.y, 0.7);
+            this.emit('merge', unit.x, unit.y, 0.7 + SEEDLING_TRANSFORM.lift, {
+                tier: unit.tier,
+                seedlingGrowth: true,
+                unitId: unit.id,
+                unitGeneration: unit.generation,
+                sourceBodyScale: SOURCE_BODY_SCALE,
+                sourceSize: SOURCE_SIZE,
+                delay: SEEDLING_TRANSFORM.apex,
+                span: SEEDLING_TRANSFORM.duration - SEEDLING_TRANSFORM.apex,
+            });
+            this.notice('seedling-grown', {
+                time: this.time,
+                unitId: unit.id,
+                generation: unit.generation,
+                species: unit.species,
+                tier: unit.tier,
+                temperament: unit.temperament,
+                element: elementOf(unit.genes),
+                firstSpecies: FIRST_SPECIES,
+            });
             this._nextWorkerRefreshTick = 0;
         } else {
             unit.growthElapsed = (unit.growthDuration * SEEDLING.fed * 0.8) / SEED_FEEDS;

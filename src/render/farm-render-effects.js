@@ -48,6 +48,14 @@ export function drawEffect(renderer, effect) {
         return;
     }
     const PROGRESS = Number.isFinite(effect.span) ? clamp((effect.life - DELAY) / SPAN, 0, 1) : effect.life;
+    if (effect.seedlingGrowth) {
+        const UNIT = renderer.unitPresentation.growthDisplayUnits.get(effect.unitId);
+        if (UNIT?.generation !== effect.unitGeneration) {
+            return;
+        }
+        PRESENTATION.draw(renderer, { ...effect, x: UNIT.x, y: UNIT.y, z: UNIT.z + 0.7 }, PROGRESS);
+        return;
+    }
     PRESENTATION.draw(renderer, effect, PROGRESS);
 }
 export function disposeEffectPresentations(renderer) {

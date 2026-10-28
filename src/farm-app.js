@@ -36,10 +36,12 @@ import { speciesById, giantSpeciesName } from './units/species-catalog.js';
 import { HELP_MAX_FRAME_MS, HELP_PLAYBACK_RATE, helpSceneById } from './ui/help-scenes.js';
 import { createHelpPanel } from './ui/help-panel.js';
 import { codexHtml, CODEX_TABS } from './ui/codex-dialog.js';
+import { SeedlingReveal } from './ui/seedling-reveal.js';
 const DOLLAR = (id) => document.getElementById(id),
     STORAGE = new FarmStorage();
 STORAGE.initializeIncompatible(new Garden());
 const HELP_PANEL = createHelpPanel(DOLLAR);
+const SEEDLING_REVEAL = new SeedlingReveal(DOLLAR('seedlingReveal'));
 DOLLAR('abilitySpeciesTabs').innerHTML = renderAbilitySpeciesTabsMarkup();
 let imported = null;
 let active = null;
@@ -2440,6 +2442,19 @@ function frame(now) {
         PERFORMANCE_DIAGNOSTICS.end('render', RENDER_START);
         const UI_START = PERFORMANCE_DIAGNOSTICS.start();
         sync(DISPLAY, now, NOTICES);
+        SEEDLING_REVEAL.update(
+            active.world,
+            DISPLAY,
+            NOTICES,
+            !home &&
+                !menuOpen &&
+                !HELP.scene &&
+                !document.hidden &&
+                !active.world.tower.active &&
+                DOLLAR('codexDialog').hidden &&
+                DOLLAR('deckDialog').hidden,
+            now,
+        );
         RELIC_DOCK.update(
             active.world,
             DISPLAY,
