@@ -99,7 +99,7 @@ function landedTroopsSnapshot() {
 }
 const WORLD = (fn, arg) => PAGE.evaluate(fn, arg);
 await PAGE.goto(`http://127.0.0.1:${PORT}/index.html`);
-await PAGE.waitForTimeout(2500);
+await PAGE.waitForFunction(() => !!globalThis.BUDMORI && !document.getElementById('bloom-module-loading'));
 
 await check('retreat landing observation requires all 46 troops and survives a later hop', async () => {
     const PROBE = await BROWSER.newPage();
@@ -795,8 +795,29 @@ await check('progress survives a reload', async () => {
         BUDMORI.sim.markProgressChanged();
     });
     await PAGE.waitForTimeout(3000);
-    await PAGE.reload();
-    await PAGE.waitForTimeout(4000);
+    let release;
+    const GATE = new Promise((resolve) => {
+        release = resolve;
+    });
+    const HOLD = async (route) => {
+        await GATE;
+        return route.continue();
+    };
+    await PAGE.route('**/src/farm-app.js', HOLD);
+    try {
+        const REQUESTED = PAGE.waitForRequest('**/src/farm-app.js');
+        await PAGE.reload({ waitUntil: 'commit' });
+        await REQUESTED;
+        // Reproduce a load longer than the old four-second assumption.
+        await PAGE.waitForTimeout(4100);
+        expect(await WORLD(() => !globalThis.BUDMORI), 'delayed initialization was not held');
+        expect(await PAGE.locator('#bloom-module-loading').isVisible(), 'loading UI missing during reload');
+        release();
+        await PAGE.waitForFunction(() => !!globalThis.BUDMORI && !document.getElementById('bloom-module-loading'));
+    } finally {
+        release();
+        await PAGE.unroute('**/src/farm-app.js', HOLD);
+    }
     const STAGE = await WORLD(() => BUDMORI.sim.playerProgression.towerBest);
     expect(STAGE >= 4, `best floor after reload is ${STAGE}`);
 });
