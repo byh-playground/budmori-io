@@ -1398,15 +1398,21 @@ for (const EVENT of ['pointerup', 'pointercancel']) {
         workSliderHeld = false;
     });
 }
-DOLLAR('workCutA').addEventListener('input', () => {
+function applyWorkCut() {
     paintRange(DOLLAR('workCutA'));
     const CUT = Number(DOLLAR('workCutA').value),
-        POINTS = (100 - CUT) * 100;
+        POINTS = (100 - CUT) * 100,
+        WORLD = personalGarden || active.world;
+    if (WORLD.workBasisPoints === POINTS) {
+        return;
+    }
     saveWorkSetting(POINTS);
-    (personalGarden || active.world).setWorkBasisPoints(POINTS);
+    WORLD.setWorkBasisPoints(POINTS);
     active.queue('farm-work', { basisPoints: POINTS });
     farmPanelRevision = -1;
-});
+}
+DOLLAR('workCutA').addEventListener('input', applyWorkCut);
+DOLLAR('workCutA').addEventListener('change', applyWorkCut);
 DOLLAR('progressionResetActions').onclick = (event) => {
     const BUTTON = event.target.closest('button[data-progression-reset]');
     if (!BUTTON || BUTTON.disabled) {

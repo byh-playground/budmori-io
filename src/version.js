@@ -1,2 +1,2 @@
-export const PRODUCT_VERSION = '0.49.4';
+export const PRODUCT_VERSION = '0.49.5';
 export const COMPATIBILITY = PRODUCT_VERSION.split('.').slice(0, 2).join('.');

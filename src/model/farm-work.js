@@ -70,12 +70,24 @@ export function workersBySpecies(lengths, ratio, weights) {
     }
     const ALLOC = new Map([...lengths.keys()].map((species) => [species, 0]));
     let remaining = total - Math.floor(ratio * total + 1e-9),
-        active = [...lengths.keys()].filter((species) => (weights[species] || 0) > 0 && lengths.get(species) > 0);
-    while (remaining > 0 && active.length) {
-        const WEIGHT = active.reduce((sum, species) => sum + weights[species], 0),
+        active = [...lengths.keys()].filter((species) => (weights[species] || 0) > 0 && lengths.get(species) > 0),
+        availableShare = false;
+    while (remaining > 0) {
+        // Preferences choose who breeds, but cannot turn unfilled breeding slots into extra workers.
+        // If preferred species are absent/full, distribute the remaining quota over available residents.
+        if (!active.length) {
+            active = [...lengths.keys()].filter((species) => lengths.get(species) > ALLOC.get(species));
+            availableShare = true;
+        }
+        if (!active.length) {
+            break;
+        }
+        const SHARE_WEIGHT = (species) =>
+                availableShare ? lengths.get(species) - ALLOC.get(species) : weights[species],
+            WEIGHT = active.reduce((sum, species) => sum + SHARE_WEIGHT(species), 0),
             FULL = active.filter(
                 (species) =>
-                    (remaining * weights[species]) / WEIGHT >= lengths.get(species) - ALLOC.get(species) - 1e-9,
+                    (remaining * SHARE_WEIGHT(species)) / WEIGHT >= lengths.get(species) - ALLOC.get(species) - 1e-9,
             );
         if (FULL.length) {
             for (const FULL_SPECIES of FULL) {
@@ -86,7 +98,7 @@ export function workersBySpecies(lengths, ratio, weights) {
             active = active.filter((species) => !FULL.includes(species));
             continue;
         }
-        const SHARES = active.map((species) => ({ species, exact: (remaining * weights[species]) / WEIGHT }));
+        const SHARES = active.map((species) => ({ species, exact: (remaining * SHARE_WEIGHT(species)) / WEIGHT }));
         let given = 0;
         for (const SHARE of SHARES) {
             const BASE = Math.floor(SHARE.exact + 1e-9);
