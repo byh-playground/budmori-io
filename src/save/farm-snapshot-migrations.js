@@ -19,6 +19,9 @@ export function normalizeSnapshot(raw, { clone = true } = {}) {
     const SNAPSHOT = clone ? structuredClone(raw) : raw,
         LEGACY_ENCOUNTER = Object.hasOwn(SNAPSHOT, 'boss') && !Object.hasOwn(SNAPSHOT, 'bosses');
     SNAPSHOT.playerProgression = migratePlayerProgressionState(SNAPSHOT.playerProgression);
+    if (!Object.hasOwn(SNAPSHOT, 'foodRuntime')) {
+        SNAPSHOT.foodRuntime = null;
+    }
     if (SNAPSHOT.runProgressionSnapshot) {
         SNAPSHOT.runProgressionSnapshot = migratePlayerProgressionState(SNAPSHOT.runProgressionSnapshot);
     }

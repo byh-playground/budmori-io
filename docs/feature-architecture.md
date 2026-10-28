@@ -14,6 +14,7 @@
 | `boss-patterns/*`                                              | 대상 선택, 사용 가능 여부, 공격 영역, 활성화·실행, 무기 위치·타격 분류 | 자세, 동작 clip, 소환 애니메이션 |
 | `scenes/farm`                                                  | 진입, 유닛 생명주기, 접촉, 전투 갱신, 진행 체크포인트                  | 카메라·지형·가시성·승패 표시     |
 | `farm-modes/breed`, `farm-modes/merge`                         | 먹이·짝·합체 이동과 접촉                                               | 탄생·합체·재료 이동 효과         |
+| `farm-modes/food-reservations`                                 | 새싹 우선 먹이 예약·해제, 예산 내 검색 큐, 내부 체크포인트             | 기존 주민 이동 표현 재사용       |
 | `projectiles/seed`, `projectiles/spike`, `projectiles/popcorn` | 비행, 충돌, 지연 폭발, 연쇄와 수명                                     | 비행·착탄·폭발 표시              |
 | `unit-attacks/lob`, `unit-attacks/dual-strike`                 | 기존 공격 capability mixin                                             | 해당 공격·회복 motion            |
 | `abilities/*`                                                  | 불변 능력 정의                                                         | 해당 능력의 순수 설명·제목 계산  |

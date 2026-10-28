@@ -47,6 +47,8 @@ jobs:
             - if: ${{ !cancelled() && steps.check.outcome == 'success' }}
               run: timeout 180s npm run test:breed-allocation
             - if: ${{ !cancelled() && steps.check.outcome == 'success' }}
+              run: timeout 180s npm run test:food-reservations
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' }}
               run: timeout 180s npm run test:hud-sampling
             - if: ${{ !cancelled() && steps.check.outcome == 'success' }}
               run: timeout 180s npm run test:codex

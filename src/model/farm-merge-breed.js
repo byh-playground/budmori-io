@@ -673,6 +673,7 @@ export const FARM_MERGE_BREED = (base) =>
                 return false;
             }
             for (const UNIT_LOCAL of MATERIALS) {
+                this.clearFoodTargetSearch(UNIT_LOCAL);
                 const MATE = this._unitById.get(UNIT_LOCAL.mateId);
                 UNIT_LOCAL.mateId = 0;
                 if (MATE?.mateId === UNIT_LOCAL.id) {

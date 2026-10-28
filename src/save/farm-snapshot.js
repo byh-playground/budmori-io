@@ -191,6 +191,7 @@ export const FARM_SNAPSHOT_SHAPE = {
         STARTER_UNIT(2, -1.5288560669869184, -0.5486694728024304),
     ],
     food: [],
+    foodRuntime: null,
     effects: [],
     events: [],
     time: 0,
@@ -399,6 +400,7 @@ const CORN_GROUP = FIELDS(
 );
 const SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
     food: [FIELDS('x y z vx vy vz seed phase tx ty')],
+    foodRuntime: JSON_PAYLOAD,
     formationRuntime: JSON_PAYLOAD,
     units: [UNIT],
     bosses: [BOSS],
@@ -488,6 +490,7 @@ export function snapshot(world) {
     // Raid settlement and save checkpoints copy the resident set from the collection's single owner.
     const SOURCE = {
         ...world,
+        foodRuntime: world._foodReservations.capture(),
         units: world?.unitCollection ? world.unitCollection.items : world.units,
         tower: world.tower
             ? {

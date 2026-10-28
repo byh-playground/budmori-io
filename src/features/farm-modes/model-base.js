@@ -47,7 +47,7 @@ export class FarmMode {
             this.wander(world, unit, dt);
             return;
         }
-        if (Math.hypot(TARGET.x - unit.x, TARGET.y - unit.y) < 0.42 && world.consumeGroundFood(TARGET)) {
+        if (Math.hypot(TARGET.x - unit.x, TARGET.y - unit.y) < 0.42 && world.consumeGroundFood(TARGET, unit)) {
             world.clearFoodTargetSearch(unit);
             unit.vz = 2;
             world.emit('eat', unit.x, unit.y, 0.5);
