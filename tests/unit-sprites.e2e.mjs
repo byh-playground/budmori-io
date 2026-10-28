@@ -199,7 +199,7 @@ try {
                 await PAGE.locator('#newGame').click();
                 await PAGE.waitForFunction(() => BUDMORI.runtime.presentationView?.units.length);
                 const RESULT = await PAGE.evaluate(
-                    async ({ count, warmup, samples, battle, expectedBackend }) => {
+                    async ({ count, warmup, samples, battle, expectedBackend, auditClocks }) => {
                         const APP = BUDMORI,
                             WORLD = APP.sim,
                             SESSION = APP.runtime,
@@ -214,9 +214,22 @@ try {
                                 throw new Error(message);
                             }
                         };
+                        const CLOCK_TRACE = [],
+                            ORIGINAL_PULSE = SESSION.pulse;
+                        let clockPhase = 'drain';
+                        if (auditClocks) {
+                            SESSION.pulse = function (now) {
+                                CLOCK_TRACE.push({ phase: clockPhase, now, tick: WORLD.simulationTick });
+                                return ORIGINAL_PULSE.call(this, now);
+                            };
+                        }
                         SESSION.paused = true;
                         window.requestAnimationFrame = () => 0;
-                        await new Promise((resolve) => setTimeout(resolve, 80));
+                        // One real RAF drains the app callback already queued
+                        // before the override. A timer can fire before that RAF
+                        // on a busy renderer and mix its wall clock into manual time.
+                        await NEXT();
+                        clockPhase = 'setup';
                         WORLD.seed = 731;
                         WORLD.reset();
                         WORLD.resetUnits([]);
@@ -242,6 +255,7 @@ try {
                         SESSION.presentationOriginWallMs = 0;
                         SESSION.loop.resetTiming();
                         let clock = 1000000;
+                        clockPhase = 'manual';
                         SESSION.pulse(clock);
                         if (battle) {
                             WORLD.playerProgression.towerBest = 99;
@@ -438,7 +452,9 @@ try {
                             globalThis.__unitSpriteMeter.loaderCalls === LOADS_AFTER_PREPARATION,
                             'Steady render called the SVG compile loader',
                         );
+                        SESSION.pulse = ORIGINAL_PULSE;
                         return {
+                            clockTrace: CLOCK_TRACE,
                             renderingCodeSetting: R.unitArtMode,
                             gpu: GPU,
                             width: R.canvas.width,
@@ -458,7 +474,14 @@ try {
                             errorVisible: !document.getElementById('error').hidden,
                         };
                     },
-                    { count: COUNT, warmup: WARMUP, samples: SAMPLES, battle: BATTLE, expectedBackend: BACKEND },
+                    {
+                        count: COUNT,
+                        warmup: WARMUP,
+                        samples: SAMPLES,
+                        battle: BATTLE,
+                        expectedBackend: BACKEND,
+                        auditClocks: !BENCHMARK,
+                    },
                 );
                 assert.equal(RESULT.errorVisible, false);
                 if (!BENCHMARK && BACKEND === 'sprite') {
@@ -509,9 +532,22 @@ try {
                     assert.doesNotMatch(RESULT.gpu, /swiftshader|software/i);
                 }
                 const STATE_HASH = createHash('sha256').update(RESULT.authoritativeSnapshot).digest('hex');
+                if (!BENCHMARK) {
+                    fs.writeFileSync(path.join(OUTPUT, `authority-${BACKEND}.json`), RESULT.authoritativeSnapshot);
+                }
                 delete RESULT.authoritativeSnapshot;
                 REPORT.runs.push({ round, backend: BACKEND, count: COUNT, stateSha256: STATE_HASH, ...RESULT });
                 fs.writeFileSync(path.join(OUTPUT, REPORT_NAME), JSON.stringify(REPORT, null, 2));
+                if (!BENCHMARK) {
+                    assert.deepEqual(
+                        RESULT.clockTrace.filter((entry) => entry.phase === 'manual').map((entry) => entry.now),
+                        Array.from(
+                            { length: WARMUP + SAMPLES + 1 + (BATTLE ? 80 : 0) },
+                            (_, index) => 1000000 + index * 50,
+                        ),
+                        'Live app RAF entered the controlled fixture clock',
+                    );
+                }
                 if (RESULT.visual) {
                     assert.equal(RESULT.visual.cases.length, 46, 'Every visual contract case ran');
                 }
