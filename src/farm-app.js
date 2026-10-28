@@ -2480,11 +2480,15 @@ const HELP = {
     scaled: 0,
     last: null,
     clock(now) {
+        // The first RAF can carry the timestamp of a frame that began before
+        // a long synchronous asset preparation. Never move the session clock
+        // behind the current startup anchor or backwards after restoration.
+        const NEXT = Math.max(this.last ?? performance.now(), now);
         this.scaled =
             this.last === null
-                ? now
-                : this.scaled + Math.min(now - this.last, HELP_MAX_FRAME_MS) * (this.scene.rate ?? HELP_PLAYBACK_RATE);
-        this.last = now;
+                ? NEXT
+                : this.scaled + Math.min(NEXT - this.last, HELP_MAX_FRAME_MS) * (this.scene.rate ?? HELP_PLAYBACK_RATE);
+        this.last = NEXT;
         return this.scaled;
     },
     run(event) {
@@ -2574,6 +2578,9 @@ globalThis.BUDMORI = {
     },
     get poseDiagnostics() {
         return RENDERER.meshes.poseStats();
+    },
+    get unitArtDiagnostics() {
+        return RENDERER.unitSprites.stats();
     },
     renderer: RENDERER,
     storage: STORAGE,

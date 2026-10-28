@@ -16,7 +16,8 @@ import { BarleyArmorShredPresentation } from '../features/abilities/barley-shred
 import { ATTACK_TYPES, CONFIG, clamp } from '../model/farm-model.js';
 import { farmBreedingCooldown, unitRestPresentation } from '../ui/farm-indicators.js';
 import { scenePresentation } from './farm-render-scenes.js';
-import { drawElementMark, drawFaceMarks } from './unit-face-overlay.js';
+import { drawElementMark } from './unit-face-overlay.js';
+import { selectUnitExpression } from '../units/species-face.js';
 import { elementPaintRegions } from '../units/species-paint.js';
 import { towerElement } from '../tower/tower-theme.js';
 import { PassiveMarksPresentation } from '../tower/tower-passive-presentations.js';
@@ -68,7 +69,10 @@ function unitExpression(u, sim, joyEffects, rest) {
     if (scenePresentation(sim.scene).victorious(sim)) {
         return 'happy';
     }
-    return unitCombatExpression(u) || scenePresentation(sim.scene).unitMood(u, joyEffects);
+    return selectUnitExpression(
+        unitCombatExpression(u) || scenePresentation(sim.scene).unitMood(u, joyEffects),
+        u.faction === 'enemy' || u.isSeedling ? -1 : u.temperament,
+    );
 }
 const ATTACK_ACCENTS = ['#8fac68', '#dbb76b', '#b58b9c', '#9a6947', '#d7914f', '#a86b32'];
 
@@ -285,9 +289,14 @@ export class UnitPresentation {
             });
             this.renderer.vectorPlayers.set(u.id, player);
             this.renderer.vectorPlayerAssets.set(player, RECORD);
-            this.playerIdentities.set(u.id, { seed: u.seed, generation: u.generation });
+            this.playerIdentities.set(u.id, {
+                seed: u.seed,
+                generation: u.generation,
+                startedAtMs: CLIP_START_AT_MS,
+            });
         } else if (player.currentClip !== MOTION_NAME) {
             player.play(MOTION_NAME, CLIP_START_AT_MS);
+            this.playerIdentities.get(u.id).startedAtMs = CLIP_START_AT_MS;
         }
         const ORIGINAL =
                 u.isFormationClone && sim.time - u.cloneBornAt < 0.5
@@ -308,6 +317,7 @@ export class UnitPresentation {
             phaseTimeMs: PHASE_TIME_MS,
             hasPhaseClock: HAS_PHASE_CLOCK,
             clip: CLIP,
+            startedAtMs: this.playerIdentities.get(u.id).startedAtMs,
         };
     }
     prepareVisibleUnit(u, sim) {
@@ -332,7 +342,24 @@ export class UnitPresentation {
                   ? REST.elapsed * 1000
                   : this.renderer.displayTimeMs,
         );
-        PLAYER.preparePose();
+        PREPARED.paintRegions = elementPaintRegions(
+            u.isSeedling || u.isFormationClone
+                ? 0
+                : u.faction === 'enemy'
+                  ? sim.tower.active && !u.isBoss
+                      ? towerElement(sim.tower.floor)
+                      : 0
+                  : u.element,
+        );
+        PREPARED.sprite = this.renderer.unitSprites.resolve(
+            u,
+            PREPARED,
+            PREPARED.paintRegions,
+            unitAttackDisplayScale(this.renderer, u, sim.time),
+        );
+        if (!PREPARED.sprite.entry) {
+            PLAYER.preparePose();
+        }
         const ENTRY = {
             ...PREPARED,
             unit: u,
@@ -367,27 +394,22 @@ export class UnitPresentation {
         // Preserve the established primitive/vector submission order. Changing
         // overlay ordering is a separate visual change from pose evaluation.
         this.renderer.ctx.vector.flush();
-        PLAYER.draw({
+        const DRAW_OPTIONS = {
             projection: this.renderer.ctx.vector.projection,
             matrix: MATRIX,
             alpha: u.isFormationClone ? 0.52 : 1,
             color: u.isFormationClone ? [0.55, 0.82, 1, 1] : [1, 1, 1, 1],
-            paintRegions: elementPaintRegions(
-                u.isSeedling || u.isFormationClone
-                    ? 0
-                    : u.faction === 'enemy'
-                      ? sim.tower.active && !u.isBoss
-                          ? towerElement(sim.tower.floor)
-                          : 0
-                      : u.element,
-            ),
-        });
+            paintRegions: PREPARED.paintRegions,
+        };
+        if (!this.renderer.unitSprites.draw(PREPARED, DRAW_OPTIONS)) {
+            PLAYER.draw(DRAW_OPTIONS);
+        }
         drawUnitAttackContact(this.renderer, u, PLAYER, MATRIX);
-        this.drawLineageMarks(u, PLAYER, RECORD, MATRIX, sim);
+        this.drawElementIndicator(u, sim);
         return true;
     }
-    // Brows for a living ally's temperament, cheeks and a floating mark for its element; an enemy shows its band's element.
-    drawLineageMarks(u, player, record, matrix, sim) {
+    // Faces/cheeks are authored SVG parts. Only the separate element icon remains.
+    drawElementIndicator(u, sim) {
         if (u.hp <= 0 || u.isSeedling || u.isFormationClone) {
             return;
         }
@@ -396,15 +418,10 @@ export class UnitPresentation {
         if (ENEMY && (!sim.tower.active || u.isBoss)) {
             return;
         }
-        const REST = record.compiled.metadata.sockets.mouth.point,
-            NOW = player.getSocket('mouth'),
-            SHIFT = { x: NOW.x - REST[0], y: NOW.y - REST[1] },
-            CTX = this.renderer.ctx;
-        drawFaceMarks(CTX, u.species, ENEMY ? -1 : u.temperament, matrix, SHIFT);
         if (ELEMENT > 0) {
             const TOP = this.renderer.project(u.x, u.y, u.z + u.height + 0.35);
             drawElementMark(
-                CTX,
+                this.renderer.ctx,
                 ELEMENT,
                 TOP.x + u.radius * this.renderer.scale * 0.5,
                 TOP.y,

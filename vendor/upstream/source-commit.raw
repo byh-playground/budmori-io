@@ -1,29 +1,23 @@
-tree e86f89fc82a0a08be93fee98876074c0bd0976ec
-parent df54a90f33d8859f9cc94aa2bacdbad1c7f44fa3
-author byh020907 <byh020907@naver.com> 1793102737 +0900
-committer GitHub <noreply@github.com> 1793102737 +0900
+tree 09e4351947d01061b3831b0aa2328fc5e1075cf7
+parent bb32a2048765cc53b02a6def9d786b9d998303bf
+author byh020907 <byh020907@naver.com> 1793144546 +0900
+committer GitHub <noreply@github.com> 1793144546 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq4JORCRC1aQ7uu5UhlAAAv6YQAKIQUeBFb5xK1iSO9YyU/J5R
- lfTMM7Z8HhVee7B3Us++cC7I8Lik8cjCjg2SD3DKAsyuFKnDENOyaw8zezo3YQLw
- oKzVhfwBorZzrQjOms57bd/St/AXMTdJiWXDnfktBuaQNhmtqqocy4XuQTYv9NhM
- EAeZI99tfsQGjf66RVqYJYbN1lHtPb5gsl22NnCQD234lHt7FPxKNchDK74OmrGQ
- i+KRE5bH9QR5tmT2u9EGXLiaXcxAc5+lap/Qkeume2dKUNTkdR4QpyF628IiXj5i
- Mr2exsNL5CYseSOd+uCbUmljTmVX5xoCr9SKjDmgmug+fEBXRbrz0pNgX5jxq4Sf
- 2XPD9Utme2ERzcOnmJhcZyYPZt/5FMAR9eUyGXaJ7irCoO3XJFXw3D0MMsUHPoBm
- BYg9wDZBXxUwgIzDS0VSB04NgkjBnqg9t2fne341mOBrZCxqhDU6b9Q3BJfmZYaz
- BYjj1zLBhU5ZFOusrVBWU8MkeYtY7QVGyyy/uYSNTJwhJ5YV9N9yFtczzjZ4Yies
- JtfZXcsLHQzexDZnUxU/dw1qaiuPRUyYcVL1PgF1oUxzqanHNpG5EckjzrqOG5Y/
- vYOFAKYRjEYIndyhSJT3RnZVN7Qa8ci26hyyQB+rTqgYvmx3BI5M1XNu0WsXnK/4
- ymKI5no+uy/amkcGroD6
- =ucND
+ wsFcBAABCAAQBQJq4TbiCRC1aQ7uu5UhlAAAn68QAKTjAhqExGp2lMPXpcJgQVCi
+ cz1QoRSOsRQ/2DIGymTZ61/WrRJJxN4ADFeC1jNQUvGuS7KS6Cuf5E7WAAOGlOgO
+ zyBqB7J8PmTiTOhuiKk3IVu53gxRZLtRA5GTzDDEbVrBvtG6n6RZyxMiY8I0zQ61
+ DDTMhl0V1d/tiIHMnuw50NglavMrRChcIETTLRvsu4Os/nPEne4rdI1oC3ef5pt8
+ v2LVZNZgB2O1Dfzng/JNa1DS1X1n6S+Eljd0iufXW+RsIY/5mqIM56zK8ZkmGI4q
+ luo0tMuU/ShdbMi9O399TbqxVnfjusTfT4d4NvNRUy91SgQzNoKjAt7uzIk2uEVB
+ cZZd8oWSnORiMP1wUwxSXr+pB96ox5WFW5YRauB+YftCMQh3MS4vae3butf7lxfM
+ oTTbokvF/Y+kOKlxJg4r9PlSdLPjVu7VzgA20nri4NZ4Di3eUUhoORlAP6Ftkgtw
+ GPl5WSwAPwfc/BYjUgQamwywomD/fhnaEtSIfXWsoDJQ8S1FIXrLH5mZh1bm3y59
+ 3dRz4PbgSHtbIsziMoNatsqQM+ognFEnQ6dn5eRHWgFC0WakTKOzMw5qh38SrCT/
+ 1hWwY7YEsg2gh7iUCML0GA4zIQF51nbMmee7K0Wy99ug6heiMAy5moRI+G0bRAwf
+ A63s0AgZbcytaQQFquyM
+ =UY3o
  -----END PGP SIGNATURE-----
  
 
-feat: SVG named fill region 팔레트 계약 (0.19.1) (#122)
-
-* feat: 원본 SVG named fill region 팔레트 계약
-
-* fix: 0.19.0 래스터와 팔레트 통합 검증 및 0.19.1 준비
-
-* fix: sparse RGB 입력 차단 및 GPU 경로 검증
+스프라이트 초기 bake의 coverage를 단계 축소로 보강 (#129)
