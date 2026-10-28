@@ -4,6 +4,7 @@ export const SPECIES_CATALOG = Object.freeze([
     Object.freeze({
         id: 0,
         name: '콩',
+        description: '적에게 다가가 박치기로 싸우는 병사예요.',
         asset: 'pea.svg',
         // The colours of the floating hands a boss of this species swings: fill and outline.
         limbFill: '#83ad47',
@@ -12,6 +13,7 @@ export const SPECIES_CATALOG = Object.freeze([
     Object.freeze({
         id: 1,
         name: '옥수수',
+        description: '옥수수 알을 붙여 폭발시키는 원거리 병사예요.',
         asset: 'corn-kernel.svg',
         // The colours of the floating hands a boss of this species swings: fill and outline.
         limbFill: '#f7cd36',
@@ -20,6 +22,7 @@ export const SPECIES_CATALOG = Object.freeze([
     Object.freeze({
         id: 2,
         name: '팥',
+        description: '적에게 도약해 착지 충격으로 공격하는 병사예요.',
         asset: 'kidney-bean.svg',
         // The colours of the floating hands a boss of this species swings: fill and outline.
         limbFill: '#d06a8f',
@@ -28,6 +31,7 @@ export const SPECIES_CATALOG = Object.freeze([
     Object.freeze({
         id: 3,
         name: '밤톨',
+        description: '가시를 날려 멀리 있는 적을 공격하는 병사예요.',
         asset: 'chestnut.svg',
         // The colours of the floating hands a boss of this species swings: fill and outline.
         limbFill: '#84472f',
@@ -36,6 +40,7 @@ export const SPECIES_CATALOG = Object.freeze([
     Object.freeze({
         id: 4,
         name: '땅콩',
+        description: '양쪽에서 협공하고 쓰러지면 분열체를 남기는 병사예요.',
         asset: 'peanut.svg',
         // The colours of the floating hands a boss of this species swings: fill and outline.
         limbFill: '#c89d67',
@@ -44,6 +49,7 @@ export const SPECIES_CATALOG = Object.freeze([
     Object.freeze({
         id: 5,
         name: '호두',
+        description: '단단한 몸으로 버티며 망치를 휘두르는 병사예요.',
         asset: 'walnut.svg',
         // The colours of the floating hands a boss of this species swings: fill and outline.
         limbFill: '#a96c18',
@@ -54,6 +60,7 @@ export const SPECIES_CATALOG = Object.freeze([
     Object.freeze({
         id: 6,
         name: '쌀',
+        description: '낫을 휘둘러 가까운 적을 베는 병사예요.',
         asset: 'rice.svg',
         // The colours of the floating hands a boss of this species swings: fill and outline.
         limbFill: '#f3efe4',
@@ -64,6 +71,7 @@ export const SPECIES_CATALOG = Object.freeze([
     Object.freeze({
         id: 7,
         name: '밀',
+        description: '지휘봉으로 싸우고 주변 아군의 공격을 돕는 병사예요.',
         asset: 'wheat.svg',
         // The colours of the floating hands a boss of this species swings: fill and outline.
         limbFill: '#e4b247',
@@ -74,6 +82,7 @@ export const SPECIES_CATALOG = Object.freeze([
     Object.freeze({
         id: 8,
         name: '보리',
+        description: '도리깨로 공격하며 적의 방어를 약하게 만드는 병사예요.',
         asset: 'barley.svg',
         // The colours of the floating hands a boss of this species swings: fill and outline.
         limbFill: '#ddaa43',
@@ -83,6 +92,7 @@ export const SPECIES_CATALOG = Object.freeze([
     Object.freeze({
         id: 9,
         name: '새싹',
+        description: '성장이 끝난 새싹 병사예요. 기본 공격으로 함께 싸워요.',
         asset: 'sprout.svg',
         limbFill: '#d9bd8a',
         limbOutline: '#2c201c',
@@ -93,7 +103,7 @@ export const SPECIES_COUNT = SPECIES_CATALOG.length;
 export const BOSS_SPECIES = 9;
 // The growing stage keeps its eventual species in the model, but wears the authored sprout art.
 export function unitArtSpecies(unit) {
-    return unit.isSeedling ? 9 : unit.species;
+    return unit.seedling || unit.isSeedling ? 9 : unit.species;
 }
 export function speciesById(id) {
     return SPECIES_CATALOG.find((species) => species.id === id) || SPECIES_CATALOG[SPECIES_CATALOG.length - 1];

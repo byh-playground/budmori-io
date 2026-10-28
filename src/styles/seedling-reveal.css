@@ -1,0 +1,43 @@
+.seedling-reveal {
+    position: fixed;
+    z-index: 25;
+    top: calc(env(safe-area-inset-top) + 70px);
+    left: 50%;
+    transform: translateX(-50%);
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr) 44px;
+    align-items: center;
+    gap: var(--ui-s2);
+    width: min(360px, calc(100vw - 24px));
+    padding: var(--ui-s3);
+    border: 2px solid var(--ui-primary);
+    border-radius: var(--ui-r-m);
+    background: var(--ui-panel);
+    color: var(--ui-ink);
+}
+.seedling-reveal[hidden] {
+    display: none;
+}
+.seedling-reveal img {
+    width: 64px;
+    height: 64px;
+}
+.seedling-reveal h2 {
+    margin: 4px 0;
+    font-size: var(--ui-fs-3);
+}
+.seedling-reveal small,
+.seedling-reveal p {
+    margin: 0;
+    color: var(--ui-ink-2);
+    font-size: var(--ui-fs-1);
+}
+.seedling-reveal button {
+    align-self: start;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+}
