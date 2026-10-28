@@ -36,6 +36,7 @@ npm run check
 node scripts/gamekit-provenance.cjs
 npm test
 npm run test:breed-allocation
+npm run test:codex
 npm run test:corn-growth
 ```
 

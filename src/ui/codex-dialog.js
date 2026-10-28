@@ -36,21 +36,36 @@ function craftableTiers(world, recipe) {
 }
 
 function recipesHtml(world) {
-    const KNOWN_SPECIES = new Set(world.codex.forms.map((form) => Math.floor(form / TEMPERAMENT_COUNT)));
-    const ROWS = RECIPES.map((recipe, index) => {
-        const FOUND = world.codex.recipes.includes(index),
-            SELECTED = world.combine.recipe === index,
-            RESULT_KNOWN = KNOWN_SPECIES.has(recipe.result),
+    const KNOWN_SPECIES = new Set(world.codex.forms.map((form) => Math.floor(form / TEMPERAMENT_COUNT))),
+        COUNTS = new Map();
+    for (const UNIT of world.roster.residents()) {
+        if (!UNIT.seedling) {
+            COUNTS.set(UNIT.species, (COUNTS.get(UNIT.species) || 0) + 1);
+        }
+    }
+    const PORTRAIT = (species) => {
+        const KNOWN = KNOWN_SPECIES.has(species);
+        return `<span class="codex-ingredient">${icon(species, KNOWN)}<span>${KNOWN ? speciesById(species).name : '미발견'}</span></span>`;
+    };
+    const ROW = (recipe, index, species) => {
+        const SELECTED = world.combine.recipe === index,
+            PARTNER = recipe.a === species ? recipe.b : recipe.a,
             TIERS = SELECTED ? craftableTiers(world, recipe) : [],
             CHIPS =
                 SELECTED && TIERS.length > 1
                     ? `<span class="codex-tiers">${TIERS.map((tier) => `<button type="button" class="codex-tier" data-tier="${tier}" aria-pressed="${tier === world.combine.tier}">T${tier}</button>`).join('')}</span>`
                     : '';
-        return `<li><button type="button" class="codex-recipe" data-recipe="${index}" aria-pressed="${SELECTED}">${
-            FOUND ? `${icon(recipe.a, true)}<b>+</b>${icon(recipe.b, true)}` : '<span class="codex-hidden">? + ?</span>'
-        }<b>→</b>${icon(recipe.result, RESULT_KNOWN)}${SELECTED ? '<small>선택됨</small>' : ''}</button>${CHIPS}</li>`;
-    });
-    return `<p>조합할 식을 고르면 조합 버튼이 같은 등급 재료 두 마리를 합쳐요. 재료는 각각 3마리 이상 있어야 해요.</p><ul class="codex-recipes">${ROWS.join('')}</ul>`;
+        return `<li><button type="button" class="codex-recipe" data-recipe="${index}" aria-pressed="${SELECTED}">${PORTRAIT(species)}<b>+</b>${PORTRAIT(PARTNER)}<b>→</b>${PORTRAIT(recipe.result)}<small>${SELECTED ? '선택됨' : world.codex.recipes.includes(index) ? '조합 발견' : '조합 미확인'}</small></button>${CHIPS}</li>`;
+    };
+    const GROUPS = [...KNOWN_SPECIES]
+        .sort((a, b) => a - b)
+        .map((species) => {
+            const ROWS = RECIPES.flatMap((recipe, index) =>
+                recipe.a === species || recipe.b === species ? [ROW(recipe, index, species)] : [],
+            );
+            return `<section class="codex-uses" data-ingredient="${species}"><h3>${speciesById(species).name}<span>현재 보유 ${COUNTS.get(species) || 0}마리</span></h3>${ROWS.length ? `<ul class="codex-recipes">${ROWS.join('')}</ul>` : '<p>이 병종을 재료로 쓰는 조합은 없어요.</p>'}</section>`;
+        });
+    return `<p>발견한 병종을 재료로 쓰는 조합이에요. 미발견 병종은 실루엣으로 보여요. 보유 수는 새싹을 제외한 전체 등급 합계예요.</p><p>조합식을 고른 뒤 조합 버튼을 누르세요. 같은 등급의 재료가 각각 3마리 이상 있어야 해요.</p>${GROUPS.length ? GROUPS.join('') : '<p>병종을 발견하면 활용할 수 있는 조합이 여기에 나타나요.</p>'}`;
 }
 
 function gridHtml(list, columns, label, lookFor) {
