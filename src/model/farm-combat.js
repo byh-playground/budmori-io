@@ -30,9 +30,6 @@ export const FARM_COMBAT = (base) =>
                 this.combatLog.shift();
             }
             if (kind === 'launch') {
-                if (this.tower.active && this.battleCommand === 'scatter' && hasFaction(u, FACTION_CONFIG.PLAYER)) {
-                    u.scatterAttackCount++;
-                }
                 this.combat('attack-launch', {
                     species: u.species,
                     unit: u.id,

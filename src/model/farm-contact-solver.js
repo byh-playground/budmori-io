@@ -140,10 +140,7 @@ export const FARM_CONTACT_SOLVER = (base) =>
                                 SCATTER_COMMAND &&
                                 hasFaction(UNIT_LOCAL, FACTION_CONFIG.PLAYER) &&
                                 hasFaction(OTHER, FACTION_CONFIG.PLAYER),
-                            GAP =
-                                SCATTER && !(this._armyAttackTurns.has(UNIT_LOCAL) && this._armyAttackTurns.has(OTHER))
-                                    ? CONFIG.farm.deploy.scatterGap
-                                    : 0.22,
+                            GAP = SCATTER ? CONFIG.farm.deploy.scatterGap : 0.22,
                             SOFT =
                                 DISTANCE >= RADIUS &&
                                 DISTANCE < RADIUS + GAP &&

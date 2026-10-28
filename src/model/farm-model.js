@@ -177,7 +177,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
         this._armySpacingRadius = 0;
         this._armySpacingNeighbors = [];
         this._armySpacingRadii = new Map();
-        this._armyAttackTurns = new Set();
+        this._armyScatterHeading = { x: 0, y: 0 };
         this._mergeNearestScratch = [];
         this._mergeMaterialsScratch = [];
         this._mergeIdScratch = [];
@@ -234,7 +234,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
             '_armySpacingRadius',
             '_armySpacingNeighbors',
             '_armySpacingRadii',
-            '_armyAttackTurns',
+            '_armyScatterHeading',
             '_mergeNearestScratch',
             '_mergeMaterialsScratch',
             '_mergeIdScratch',
@@ -526,7 +526,6 @@ const GARDEN = class Garden extends GARDEN_BASE {
         this._armySpacingTick = -1;
         this._armySpacingNeighbors.length = 0;
         this._armySpacingRadii.clear();
-        this._armyAttackTurns.clear();
         // True while the troops are inside the tower: the battlefield is its hall, not the farm.
         this.insideTower = false;
         this.tower = {

@@ -38,7 +38,6 @@ export class BossController {
             wheatCommandBuffs: [],
             barleyArmorShredBuckets: createBarleyArmorShredBuckets(),
             landingRecovery: 0,
-            scatterAttackCount: 0,
             kidneyLeapReadyTick: 0,
             kidneyLeapLastUseTick: 0,
             chestnutNextThornTick: 0,
