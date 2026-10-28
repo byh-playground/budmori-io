@@ -75,7 +75,11 @@ let mergeStatusCache = {
     value: null,
     combine: null,
 };
-const RENDERER = new Diorama(DOLLAR('world'));
+const RENDERER = new Diorama(DOLLAR('world'), { deferSpritePreparation: true });
+await RENDERER.prepareStartup({
+    onProgress: globalThis.BudmoriStartup?.report,
+    yieldControl: () => globalThis.BudmoriStartup?.yield() ?? new Promise((resolve) => setTimeout(resolve, 0)),
+});
 const RELIC_DOCK = new RelicDock({ onOpen: () => stopWorldInput() });
 const BOSS_RELIC_DOCK = new RelicDock({ role: 'boss', host: '#bossRelicHost', onOpen: () => stopWorldInput() });
 const PERFORMANCE_DIAGNOSTICS = new PerformanceDiagnostics();
