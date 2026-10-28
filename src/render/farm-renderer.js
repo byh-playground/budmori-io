@@ -77,7 +77,7 @@ const GRADE_RING_WIDTHS = UNIT_GRADES.map(({ tier }) => 0.05 + 0.012 * (tier - 2
 const CORN_ATTACHMENT_PRESENTATION = new CornAttachmentPresentation();
 const ZOOM_MAX = 1.8;
 const DIORAMA = class Diorama {
-    constructor(canvas) {
+    constructor(canvas, { deferSpritePreparation = false } = {}) {
         this.canvas = canvas;
         this.device = new WEB_GL_DEVICE(canvas, {
             alpha: false,
@@ -189,18 +189,25 @@ const DIORAMA = class Diorama {
             height: this.canvas.height,
             clearColor: [0.9, 0.92, 0.87, 1],
         });
-        this.unitSprites.prepare();
+        if (!deferSpritePreparation) {
+            this.unitSprites.prepare();
+        }
         this.bossPlayer.draw({
             projection: this.ctx.vector.projection,
             matrix: [0.001, 0, 0, 0.001, 100, 100],
         });
         this.prewarmStats = this.ctx.endFrame();
         this.prewarmDurationMs = performance.now() - PREWARM_AT;
-        this.assetsReady = true;
+        this.assetsReady = !deferSpritePreparation;
         // SDK resources restore first; the app resumes its suspended clock
         // after this listener, so image preparation cannot advance game time.
         this.onSpritesRestored = () => {
-            if (this.unitSprites.disposed || !this.unitSprites.enabled || this.device.state !== 'ready') {
+            if (
+                !this.assetsReady ||
+                this.unitSprites.disposed ||
+                !this.unitSprites.enabled ||
+                this.device.state !== 'ready'
+            ) {
                 return;
             }
             this.ctx.beginFrame({ width: this.canvas.width, height: this.canvas.height });
@@ -208,6 +215,24 @@ const DIORAMA = class Diorama {
             this.ctx.endFrame();
         };
         this.canvas.addEventListener('webglcontextrestored', this.onSpritesRestored);
+    }
+    async prepareStartup(options) {
+        const START = performance.now();
+        this.ctx.beginFrame({ width: this.canvas.width, height: this.canvas.height });
+        try {
+            await this.unitSprites.prepareAsync(options);
+            this.assetsReady = true;
+        } finally {
+            // A confirmed context loss invalidates the frame itself. Do not
+            // replace the preparation error with an unavailable-frame error.
+            if (this.device.state === 'ready' && !this.device.gl.isContextLost()) {
+                this.ctx.endFrame();
+            }
+            this.startupPreparationWallMs = performance.now() - START;
+        }
+        // A viewport change during cooperative preparation must not leave the
+        // first visible frame at the old canvas size.
+        this.resize();
     }
     resize() {
         const CENTER = this.view

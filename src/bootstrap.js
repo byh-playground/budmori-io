@@ -1,3 +1,5 @@
+import { createStartupLoading } from './startup-loading.js';
+
 // The intro is a public route, not a normal farm state.
 if (new URLSearchParams(location.search).get('showcaseDemo') !== '1' && location.hash === '#/showcase') {
     window.__BLOOM_SHOWCASE_DEEPLINK = true;
@@ -43,18 +45,10 @@ let initStage = 'bootstrap';
 let debugTools = null;
 let diagnosticRing = null;
 let gameScriptAttempted = false;
-const LOADING = document.createElement('div');
-LOADING.id = 'bloom-module-loading';
-LOADING.setAttribute('role', 'status');
-LOADING.style.cssText =
-    'position:fixed;inset:0;z-index:1000;display:grid;place-content:center;gap:16px;text-align:center;background:#183225;color:#ecf4d5;font:600 16px system-ui';
-const LABEL = document.createElement('span');
-const RETRY = document.createElement('button');
-LABEL.textContent = '게임을 준비하고 있어요';
-RETRY.textContent = '다시 시도';
-RETRY.hidden = true;
-LOADING.append(LABEL, RETRY);
-document.body.append(LOADING);
+const STARTUP = createStartupLoading();
+globalThis.BudmoriStartup = STARTUP;
+const LABEL = STARTUP.label;
+const RETRY = STARTUP.retry;
 const ERROR_POPUP = document.createElement('div');
 ERROR_POPUP.id = 'bloom-error-popup';
 ERROR_POPUP.hidden = true;
@@ -360,11 +354,12 @@ try {
     config = JSON.parse(MANIFEST.textContent);
 } catch (error) {
     initStage = 'manifest';
+    STARTUP.fail(fallbackText(error));
     recordDiagnostic(error, 'manifest-error');
     LABEL.textContent = '게임 설정을 읽지 못했어요. 진단 정보를 복사해 알려 주세요';
     RETRY.textContent = '다시 불러오기';
     RETRY.hidden = false;
-    showErrorPopup('게임 설정을 읽지 못했어요. 진단 정보를 복사해 알려 주세요.');
+    showErrorPopup('게임 준비를 마치지 못했어요. ' + fallbackText(error));
     console.error('Game manifest failed to initialize', error);
 }
 const READY = new Map();
@@ -372,6 +367,7 @@ let pending = false;
 let started = false;
 let vectorLoader = null;
 const VECTOR_SOURCE_TEXT = new Map();
+const VECTOR_RESPONSES = new Map();
 const DIGEST = async (bytes) =>
     Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), (b) =>
         b.toString(16).padStart(2, '0'),
@@ -452,29 +448,56 @@ async function launch() {
         return;
     }
     pending = true;
-    RETRY.hidden = true;
+    STARTUP.begin();
+    STARTUP.report('modules', 0, config.modules.length);
+    await STARTUP.yield();
     LABEL.textContent = '게임을 준비하고 있어요';
     try {
         if (!debugTools) {
             await loadDiagnostics();
         }
         initStage = 'loading-modules';
+        let modulesDone = 0;
         const MODULES = await Promise.all(
-            config.modules.map(async (entry) => ({
-                entry,
-                record: await namespace(entry),
-            })),
+            config.modules.map(async (entry) => {
+                const RECORD = await namespace(entry);
+                STARTUP.report('modules', ++modulesDone, config.modules.length);
+                return { entry, record: RECORD };
+            }),
         );
         for (const { entry: ENTRY, record: RECORD } of MODULES) {
             globalThis[ENTRY.globalName] = RECORD.exports;
         }
+        const VECTOR_URLS = [
+            ...new Set(
+                config.vectorAssets.map(
+                    (spec) => new URL(spec.file + '?version=' + spec.sha256, document.baseURI).href,
+                ),
+            ),
+        ];
+        let downloaded = 0;
+        STARTUP.report('vector-download', downloaded, VECTOR_URLS.length);
+        await Promise.all(
+            VECTOR_URLS.map(async (url) => {
+                const RESPONSE = await fetch(url, { cache: 'force-cache' });
+                if (!RESPONSE.ok) {
+                    throw new Error('Vector request failed: ' + RESPONSE.status + ' (' + new URL(url).pathname + ')');
+                }
+                // Download in parallel, then compile each quality variant between paints.
+                VECTOR_SOURCE_TEXT.set(url, await RESPONSE.clone().text());
+                VECTOR_RESPONSES.set(url, RESPONSE);
+                STARTUP.report('vector-download', ++downloaded, VECTOR_URLS.length);
+            }),
+        );
         initStage = 'loading-vector-assets';
         LABEL.textContent = '캐릭터를 준비하고 있어요';
         // Keep troop and giant variants in separate quality-keyed startup cache entries.
         vectorLoader ||= globalThis.BloomGamekitVectorAssetLoader.createVectorAssetLoader({
             maxEntries: config.vectorAssets.length,
             fetch: async (url, options) => {
-                const RESPONSE = await fetch(url, options);
+                const RESPONSE = VECTOR_RESPONSES.has(url)
+                    ? VECTOR_RESPONSES.get(url).clone()
+                    : await fetch(url, options);
                 if (RESPONSE.ok) {
                     VECTOR_SOURCE_TEXT.set(url, await RESPONSE.clone().text());
                 }
@@ -484,29 +507,30 @@ async function launch() {
         const TROOPS = {},
             BOSSES = {},
             SOURCES = {};
-        const RECORDS = await Promise.all(
-            config.vectorAssets.map(async (spec) => {
-                const URL_LOCAL = new URL(spec.file + '?version=' + spec.sha256, document.baseURI).href;
-                const PRESET =
-                    globalThis.BloomGamekitVectorAssetLoader.VECTOR_ASSET_QUALITY_PRESETS[spec.qualityPreset];
-                if (!PRESET) {
-                    throw new Error('Unknown shared SVG quality preset: ' + spec.qualityPreset);
-                }
-                const COMPILED = await vectorLoader.load(URL_LOCAL, {
-                    ...PRESET,
-                    sourcePath: spec.file,
-                    expectedSha256: spec.sha256,
-                    maxBytes: spec.bytes,
-                });
-                if (COMPILED.sourceSha256 !== spec.sha256) {
-                    throw new Error('Vector source integrity failed: ' + spec.file);
-                }
-                return {
-                    spec,
-                    compiled: COMPILED,
-                };
-            }),
-        );
+        const RECORDS = [];
+        STARTUP.report('vectors', 0, config.vectorAssets.length);
+        for (const SPEC of config.vectorAssets) {
+            await STARTUP.yield();
+            const URL_LOCAL = new URL(SPEC.file + '?version=' + SPEC.sha256, document.baseURI).href;
+            const PRESET = globalThis.BloomGamekitVectorAssetLoader.VECTOR_ASSET_QUALITY_PRESETS[SPEC.qualityPreset];
+            if (!PRESET) {
+                throw new Error('Unknown shared SVG quality preset: ' + SPEC.qualityPreset);
+            }
+            const COMPILED = await vectorLoader.load(URL_LOCAL, {
+                ...PRESET,
+                sourcePath: SPEC.file,
+                expectedSha256: SPEC.sha256,
+                maxBytes: SPEC.bytes,
+            });
+            if (COMPILED.sourceSha256 !== SPEC.sha256) {
+                throw new Error('Vector source integrity failed: ' + SPEC.file);
+            }
+            RECORDS.push({
+                spec: SPEC,
+                compiled: COMPILED,
+            });
+            STARTUP.report('vectors', RECORDS.length, config.vectorAssets.length);
+        }
         for (const { spec: SPEC, compiled: COMPILED } of RECORDS) {
             (SPEC.kind === 'troop' ? TROOPS : BOSSES)[SPEC.id] = COMPILED;
             if (SPEC.kind === 'troop') {
@@ -515,6 +539,7 @@ async function launch() {
                 );
             }
         }
+        VECTOR_RESPONSES.clear();
         globalThis.BudmoriVectorResources = Object.freeze({
             troops: Object.freeze(TROOPS),
             bosses: Object.freeze(BOSSES),
@@ -554,6 +579,8 @@ async function launch() {
             },
         });
         initStage = 'loading-game-script';
+        STARTUP.report('game');
+        await STARTUP.yield();
         // Native ES modules are the authored runtime; no generated IIFE or build artifact.
         const GAME_URL = new URL('./farm-app.js', import.meta.url).href;
         globalThis.BloomGameSourceURL = GAME_URL;
@@ -566,14 +593,15 @@ async function launch() {
         }
         started = true;
         initStage = 'ready';
-        LOADING.remove();
+        STARTUP.complete();
     } catch (error) {
+        STARTUP.fail(fallbackText(error));
         recordDiagnostic(error, 'startup-error');
         LABEL.textContent = '게임을 시작하지 못했어요. 진단 정보를 복사해 알려 주세요';
         RETRY.textContent = gameScriptAttempted && !globalThis.BUDMORI ? '다시 불러오기' : '다시 시도';
         RETRY.hidden = false;
         console.error('Game startup failed at ' + initStage, error);
-        showErrorPopup('게임을 시작하지 못했어요. 진단 정보를 복사해 알려 주세요.');
+        showErrorPopup('게임 준비를 마치지 못했어요. ' + fallbackText(error));
     } finally {
         pending = false;
     }
@@ -586,8 +614,9 @@ globalThis.BloomReportRuntimeFatal = (error) => {
     console.error('Farm render loop stopped', error);
     showErrorPopup('게임이 오류로 중단됐어요. 진단 정보를 복사해 알려 주세요.');
 };
-RETRY.addEventListener('click', () => {
-    if (!config || (gameScriptAttempted && !globalThis.BUDMORI)) {
+RETRY.addEventListener('click', (event) => {
+    event.preventDefault();
+    if (pending || !config || (gameScriptAttempted && !globalThis.BUDMORI)) {
         location.reload();
     } else {
         void launch();

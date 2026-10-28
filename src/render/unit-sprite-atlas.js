@@ -50,7 +50,7 @@ export class UnitSpriteAtlas {
         this.frame = { sprite: 0, vector: 0, reasons: {} };
         this.disposed = false;
     }
-    prepare() {
+    *preparationSteps() {
         if (!this.enabled || this.disposed) {
             return;
         }
@@ -59,7 +59,6 @@ export class UnitSpriteAtlas {
         if (GENERATION === this.restoreGeneration) {
             return;
         }
-        const START = performance.now();
         if (!this.entries.size) {
             const { createVectorSpriteAtlas: CREATE_ATLAS } = globalThis.BloomGamekitVectorAssets;
             // Prepare every species' common face combinations first. The fixed
@@ -75,6 +74,9 @@ export class UnitSpriteAtlas {
             );
             const PRIORITY = (clip) => (['idle', 'walk'].includes(clip) ? 0 : /^(windup|fire)/.test(clip) ? 1 : 2);
             SOURCES.sort((a, b) => PRIORITY(a.clip) - PRIORITY(b.clip));
+            const TOTAL = SOURCES.reduce((sum, source) => sum + clipExpressions(source.clip).length, 0);
+            let planned = 0;
+            yield { stage: 'atlas-plan', completed: 0, total: TOTAL };
             for (const { species: SPECIES, record: RECORD, clip: CLIP, definition: DEFINITION } of SOURCES) {
                 const PPU = IMAGE_SIZE / Math.max(RECORD.compiled.viewBox[2], RECORD.compiled.viewBox[3]);
                 // Only authored 1000ms weapon stages use normalized time.
@@ -122,11 +124,15 @@ export class UnitSpriteAtlas {
                         bytes: ENTRY.bytes,
                         reason: ENTRY.reason,
                     });
+                    yield { stage: 'atlas-plan', completed: ++planned, total: TOTAL };
                 }
             }
         }
         const { createSpriteAnimation: CREATE_ANIMATION } = globalThis.BloomGamekitRendering;
         this.imageBytes = 0;
+        const TOTAL = [...this.entries.values()].filter((entry) => entry.atlas).length;
+        let completed = 0;
+        yield { stage: 'atlas', completed, total: TOTAL };
         for (const [KEY, ENTRY] of this.entries) {
             if (!ENTRY.atlas) {
                 continue;
@@ -143,9 +149,52 @@ export class UnitSpriteAtlas {
                 ENTRY.animation = CREATE_ANIMATION(R.meshes, ENTRY.atlas.texture, ENTRY.atlas.definition);
                 ENTRY.player = ENTRY.animation.createPlayer({ clip: KEY.split(':')[1] });
             }
+            yield { stage: 'atlas', completed: ++completed, total: TOTAL };
         }
         this.restoreGeneration = GENERATION;
-        this.preparationCpuMs += performance.now() - START;
+    }
+    prepare() {
+        const START = performance.now();
+        try {
+            const STEPS = this.preparationSteps();
+            while (!STEPS.next().done) {
+                // Context restoration and direct renderer consumers stay synchronous.
+            }
+        } finally {
+            this.preparationCpuMs += performance.now() - START;
+        }
+    }
+    async prepareAsync({ onProgress, yieldControl }) {
+        const STEPS = this.preparationSteps(),
+            GENERATION = this.renderer.device.stats.restores ?? 0;
+        let yieldedAt = performance.now();
+        let stage = null;
+        try {
+            for (;;) {
+                if (
+                    this.disposed ||
+                    this.renderer.device.state !== 'ready' ||
+                    this.renderer.device.gl.isContextLost() ||
+                    (this.renderer.device.stats.restores ?? 0) !== GENERATION
+                ) {
+                    throw new Error('Graphics became unavailable during animation preparation');
+                }
+                const START = performance.now();
+                const NEXT = STEPS.next();
+                this.preparationCpuMs += performance.now() - START;
+                if (NEXT.done) {
+                    break;
+                }
+                onProgress?.(NEXT.value.stage, NEXT.value.completed, NEXT.value.total);
+                if (stage !== NEXT.value.stage || performance.now() - yieldedAt >= 32) {
+                    await yieldControl();
+                    yieldedAt = performance.now();
+                    stage = NEXT.value.stage;
+                }
+            }
+        } finally {
+            STEPS.return();
+        }
     }
     beginFrame() {
         this.frame = { sprite: 0, vector: 0, reasons: {} };
