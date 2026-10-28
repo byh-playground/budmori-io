@@ -65,7 +65,7 @@ function recipesHtml(world) {
             );
             return `<section class="codex-uses" data-ingredient="${species}"><h3>${speciesById(species).name}<span>현재 보유 ${COUNTS.get(species) || 0}마리</span></h3>${ROWS.length ? `<ul class="codex-recipes">${ROWS.join('')}</ul>` : '<p>이 병종을 재료로 쓰는 조합은 없어요.</p>'}</section>`;
         });
-    return `<p>발견한 병종을 재료로 쓰는 조합이에요. 미발견 병종은 실루엣으로 보여요. 보유 수는 새싹을 제외한 전체 등급 합계예요.</p><p>조합식을 고른 뒤 조합 버튼을 누르세요. 같은 등급의 재료가 각각 3마리 이상 있어야 해요.</p>${GROUPS.length ? GROUPS.join('') : '<p>병종을 발견하면 활용할 수 있는 조합이 여기에 나타나요.</p>'}`;
+    return `<p>발견한 병종을 재료로 쓰는 조합이에요. 미발견 병종은 실루엣으로 보여요. 보유 수는 새싹을 제외한 전체 등급 합계예요.</p><p>조합식을 고른 뒤 조합 버튼을 누르세요. 각 재료 병종은 번식을 위해 최소 2마리를 남겨요(전체 등급 합산). 남겨둘 2마리를 제외한 여유 유닛 중 같은 등급의 성체를 각 병종에서 1마리씩 조합해요.</p>${GROUPS.length ? GROUPS.join('') : '<p>병종을 발견하면 활용할 수 있는 조합이 여기에 나타나요.</p>'}`;
 }
 
 function gridHtml(list, columns, label, lookFor) {

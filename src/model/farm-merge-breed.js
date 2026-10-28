@@ -630,7 +630,7 @@ export const FARM_MERGE_BREED = (base) =>
                 return {
                     available: false,
                     code: 'no-eligible-materials',
-                    reason: `T${this.combine.tier} 재료가 부족해요. 각 병종이 3마리씩 있어야 해요.`,
+                    reason: `T${this.combine.tier} 재료가 부족해요. 번식을 위해 각 병종을 최소 2마리(전체 등급 합산) 남기고, 같은 등급의 성체를 각 1마리씩 사용할 수 있어야 해요.`,
                 };
             }
             return {

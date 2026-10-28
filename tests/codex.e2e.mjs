@@ -70,6 +70,9 @@ try {
         });
         await PAGE.locator('#codexOpen').click();
         assert.match(await PAGE.locator('#codexBody').innerText(), /병종을 발견하면/);
+        assert.match(await PAGE.locator('#codexBody').innerText(), /번식을 위해 최소 2마리를 남겨요\(전체 등급 합산\)/);
+        assert.match(await PAGE.locator('#codexBody').innerText(), /같은 등급의 성체를 각 병종에서 1마리씩 조합/);
+        assert.doesNotMatch(await PAGE.locator('#codexBody').innerText(), /각각 3마리/);
         assert.equal(await PAGE.locator('.codex-uses').count(), 0);
         await PAGE.locator('#codexClose').click();
         await PAGE.evaluate(() => {
@@ -87,8 +90,23 @@ try {
         assert.equal(await FIRST.locator('.codex-icon.is-unknown').count(), 2);
         assert.match(await FIRST.innerText(), /조합 미확인/);
         await PAGE.screenshot({ path: path.join(OUTPUT, `${NAME}-partial.png`) });
+        await FIRST.click();
         await PAGE.locator('#codexClose').click();
         await PAGE.evaluate(() => {
+            BUDMORI.runtime.paused = false;
+        });
+        await PAGE.waitForFunction(
+            () => document.getElementById('combine').dataset.availability === 'no-eligible-materials',
+        );
+        assert.match(
+            await PAGE.locator('#combine').getAttribute('aria-label'),
+            /번식을 위해 각 병종을 최소 2마리\(전체 등급 합산\) 남기고/,
+        );
+        assert.match(await PAGE.locator('#combine').getAttribute('aria-label'), /같은 등급의 성체를 각 1마리씩/);
+        assert.doesNotMatch(await PAGE.locator('#combine').getAttribute('aria-label'), /각 병종이 3마리씩/);
+        await PAGE.evaluate(() => {
+            BUDMORI.runtime.paused = true;
+            BUDMORI.sim.combine = { recipe: -1, tier: 1 };
             BUDMORI.sim.codex.forms = [0, 5];
         });
         await PAGE.locator('#codexOpen').click();
@@ -99,8 +117,16 @@ try {
             const W = BUDMORI.sim;
             for (const SPECIES of [0, 6]) {
                 for (const TIER of [1, 2]) {
-                    for (let count = 0; count < 3; count++) {
-                        W.spawn(SPECIES, TIER, count, SPECIES - 3);
+                    // The selected T1 only needs one adult; two T2 residents preserve the species for breeding.
+                    for (let count = 0; count < (TIER === 1 ? 1 : 2); count++) {
+                        const UNIT = W.spawn(SPECIES, TIER, count, SPECIES - 3);
+                        Object.assign(UNIT, {
+                            growth: 3,
+                            growthElapsed: UNIT.growthDuration,
+                            dropLanded: true,
+                            z: 0,
+                            vz: 0,
+                        });
                     }
                 }
             }
@@ -110,7 +136,7 @@ try {
             W.markProgressChanged();
         });
         await PAGE.locator('#codexOpen').click();
-        assert.match(await PEA.locator('h3').innerText(), /현재 보유 6마리/);
+        assert.match(await PEA.locator('h3').innerText(), /현재 보유 3마리/);
         assert.equal(await FIRST.locator('.codex-icon:not(.is-unknown)').count(), 3);
         assert.match(await FIRST.innerText(), /조합 발견/);
         assert.match(await PAGE.locator('[data-ingredient="1"]').innerText(), /재료로 쓰는 조합은 없어요/);
@@ -120,6 +146,9 @@ try {
         });
         await FIRST.click();
         await PAGE.waitForSelector('[data-ingredient="0"] [data-recipe="0"][aria-pressed="true"]');
+        await PAGE.locator('#codexClose').click();
+        await PAGE.waitForFunction(() => document.getElementById('combine').dataset.availability === 'ready');
+        await PAGE.locator('#codexOpen').click();
         await PEA.locator('[data-tier="2"]').click();
         await PAGE.waitForSelector('[data-ingredient="0"] [data-tier="2"][aria-pressed="true"]');
         assert.equal(await PAGE.locator('[data-recipe="0"][aria-pressed="true"]').count(), 2);
