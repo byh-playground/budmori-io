@@ -83,9 +83,66 @@ function expect(condition, message) {
         throw new Error(message);
     }
 }
+function landedTroopsSnapshot() {
+    const W = globalThis.BUDMORI.sim,
+        TROOPS = W.units.filter((unit) => !unit.isBattleOnlySummon),
+        OUT = {
+            inside: W.insideTower,
+            count: TROOPS.length,
+            landed: TROOPS.filter((unit) => unit.dropLanded && unit.z === 0).length,
+            queued: W._ejectQueue.length,
+            time: W.time,
+        };
+    // Preserve the successful observation. A later browser call can see a new
+    // eating/birth hop after everyone has already finished the tower drop.
+    return !OUT.inside && OUT.count > 0 && OUT.landed === OUT.count && OUT.queued === 0 ? OUT : null;
+}
 const WORLD = (fn, arg) => PAGE.evaluate(fn, arg);
 await PAGE.goto(`http://127.0.0.1:${PORT}/index.html`);
 await PAGE.waitForTimeout(2500);
+
+await check('retreat landing observation requires all 46 troops and survives a later hop', async () => {
+    const PROBE = await BROWSER.newPage();
+    try {
+        await PROBE.evaluate(() => {
+            globalThis.BUDMORI = {
+                sim: {
+                    insideTower: false,
+                    _ejectQueue: [],
+                    time: 10,
+                    units: Array.from({ length: 46 }, (_, index) => ({
+                        id: index + 1,
+                        dropLanded: index !== 45,
+                        z: index === 45 ? 1 : 0,
+                    })),
+                },
+            };
+        });
+        expect((await PROBE.evaluate(landedTroopsSnapshot)) === null, '45 of 46 troops passed');
+        const WAIT = PROBE.waitForFunction(landedTroopsSnapshot, null, { timeout: 2000 });
+        await PROBE.evaluate(() => {
+            Object.assign(BUDMORI.sim.units[45], { dropLanded: true, z: 0 });
+        });
+        const OBSERVATION = await WAIT;
+        // Deliberately reproduce the state change between the old wait and
+        // separate WORLD read; this hop must not replace the landed observation.
+        await PROBE.evaluate(() => {
+            BUDMORI.sim.time += 0.05;
+            BUDMORI.sim.units[45].z = 0.1;
+        });
+        const OUT = await OBSERVATION.jsonValue();
+        await OBSERVATION.dispose();
+        expect(OUT.count === 46 && OUT.landed === 46 && OUT.time === 10, JSON.stringify(OUT));
+        expect((await PROBE.evaluate(landedTroopsSnapshot)) === null, 'a new airborne troop passed');
+        await PROBE.evaluate(() => {
+            BUDMORI.sim.units[45].z = 0;
+            BUDMORI.sim._ejectQueue.push({});
+        });
+        expect((await PROBE.evaluate(landedTroopsSnapshot)) === null, 'queued troops passed');
+    } finally {
+        await PROBE.close();
+    }
+});
 
 await check('new game boots with a minimal HUD', async () => {
     await PAGE.locator('#newGame').click();
@@ -331,24 +388,9 @@ await check('challenge button starts a boss fight and retreat ends it', async ()
     const AFTER = await WORLD(() => BUDMORI.sim.farmBossEvent.phase);
     expect(AFTER === 'idle', `fight did not end (${AFTER})`);
     // The troops drop out one after another and bounce on landing: wait until every one is on the ground.
-    await PAGE.waitForFunction(
-        () => {
-            const W = BUDMORI.sim;
-            return !W._ejectQueue.length && W.units.every((u) => u.isBattleOnlySummon || (u.dropLanded && u.z === 0));
-        },
-        null,
-        { timeout: 8000 },
-    ).catch(() => {});
-    const OUT = await WORLD(() => {
-        const W = BUDMORI.sim,
-            LIVING = W.units.filter((u) => !u.isBattleOnlySummon);
-        return {
-            inside: W.insideTower,
-            count: LIVING.length,
-            landed: LIVING.filter((u) => u.dropLanded && u.z === 0).length,
-            queued: W._ejectQueue.length,
-        };
-    });
+    const LANDED = await PAGE.waitForFunction(landedTroopsSnapshot, null, { timeout: 8000 });
+    const OUT = await LANDED.jsonValue();
+    await LANDED.dispose();
     expect(!OUT.inside && OUT.count > 0, `still inside the tower ${JSON.stringify(OUT)}`);
     expect(OUT.landed === OUT.count && OUT.queued === 0, `troops did not all land ${JSON.stringify(OUT)}`);
 });
