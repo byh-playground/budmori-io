@@ -8,7 +8,7 @@ const AUTHORED_BODIES = [
         species: 0,
         asset: 'assets/troops/pea.svg',
         shapeId: 'body-outline',
-        sourceSha256: '22274fc019d7907c22fe50a507cc1fc89d4499bb53af607473c7689f86ee5d6c',
+        sourceSha256: '3d11c0bef609432dfc375d6f77f4e0995dd02d860f49b3bd6f5d6413a66062f6',
         viewBox: [0.0, 0.0, 320.0, 350.0],
         bounds: {
             left: 57.00453577435779,
@@ -29,7 +29,7 @@ const AUTHORED_BODIES = [
         species: 1,
         asset: 'assets/troops/corn-kernel.svg',
         shapeId: 'corn-body-outline',
-        sourceSha256: 'a11c5f39a5999aaa0f9ef49670e0dd9df95603af8787e0289906a38db1456d7b',
+        sourceSha256: '885de67bc288faa9a155310ed0cb018f22a018adccf3a2415506a063d8af812a',
         viewBox: [0.0, 0.0, 285.0, 295.0],
         bounds: {
             left: 23.038415422304524,
@@ -50,7 +50,7 @@ const AUTHORED_BODIES = [
         species: 2,
         asset: 'assets/troops/kidney-bean.svg',
         shapeId: 'bean-body-outline',
-        sourceSha256: '64c7df3fb78894f17f0ae231315efa44ed74ec3971cc9b4b27163346052eda3d',
+        sourceSha256: '7a8c3abeb8e8390c12f63cb182d640512478c3b91f8b65f731845ca261761331',
         viewBox: [0.0, 0.0, 260.0, 320.0],
         bounds: {
             left: 35.860000000000014,
@@ -71,7 +71,7 @@ const AUTHORED_BODIES = [
         species: 3,
         asset: 'assets/troops/chestnut.svg',
         shapeId: 'chestnut-shell',
-        sourceSha256: '5a446c4e9e6d80ded6fc3b413691f89538d8a79370f9059814d874b57a25a403',
+        sourceSha256: '31204217947db20fdf4a60072d8527e17894cae7a44654761ff1d7c4e729f5e5',
         viewBox: [0.0, 0.0, 320.0, 300.0],
         bounds: {
             left: 38.666666666666664,
@@ -92,7 +92,7 @@ const AUTHORED_BODIES = [
         species: 4,
         asset: 'assets/troops/peanut.svg',
         shapeId: 'peanut-pod-outline',
-        sourceSha256: '0e744efa95910257d4c9655ec93f2a6636234e34e15d828829cc18bfb66bbcc3',
+        sourceSha256: '9c758723459c227f422b25c783a056f9eca9d6117a2adce47ac39a7c8c60f150',
         viewBox: [0.0, 0.0, 320.0, 300.0],
         bounds: {
             left: 101.3125,
@@ -113,7 +113,7 @@ const AUTHORED_BODIES = [
         species: 5,
         asset: 'assets/troops/walnut.svg',
         shapeId: 'walnut-body-outline',
-        sourceSha256: 'f2b52632b38735f55d7081613438a06a3cd2bd3417c42311412752670aa32564',
+        sourceSha256: 'f1f07b15a41ad7461156945293608142fbf660bc17a51896cdbaafb589b307c7',
         viewBox: [0.0, 0.0, 320.0, 300.0],
         bounds: {
             left: 83.5,
@@ -134,7 +134,7 @@ const AUTHORED_BODIES = [
         species: 6,
         asset: 'assets/troops/rice.svg',
         shapeId: 'rice-body-outline',
-        sourceSha256: '03f7a117f6141fa3688902ced0adcab1be789e4ed0661b9f5275afb8c928a55d',
+        sourceSha256: '6976724f66805c497e348600f45bbb6064649a89e73122f54e6d360581282ae4',
         viewBox: [0.0, 0.0, 320.0, 350.0],
         bounds: {
             left: 70.60885389809643,
@@ -155,7 +155,7 @@ const AUTHORED_BODIES = [
         species: 7,
         asset: 'assets/troops/wheat.svg',
         shapeId: 'wheat-grain-outline',
-        sourceSha256: '09309ba23d2d26dccec4ad314f60f372389584ac4231cd779a060f1a10492c18',
+        sourceSha256: 'ae8b5e13138529f7de1aabcaa17487531f37527897b84e937c90f98d57954a09',
         viewBox: [0.0, 0.0, 320.0, 350.0],
         bounds: {
             left: 85.19999999999996,
@@ -176,7 +176,7 @@ const AUTHORED_BODIES = [
         species: 8,
         asset: 'assets/troops/barley.svg',
         shapeId: 'barley-seed-outline',
-        sourceSha256: '8f14d901ba7ed53e9bdb617da15e85b83e1304f248273b6a3cc0a98ac4993064',
+        sourceSha256: '43fd62e24d7b95e685716377acf6c720a8ac07bfa6ed4f8c563c10ee5864a6e4',
         viewBox: [0.0, 0.0, 320.0, 350.0],
         bounds: {
             left: 69.30899999999998,
@@ -197,7 +197,7 @@ const AUTHORED_BODIES = [
         species: 9,
         asset: 'assets/troops/sprout.svg',
         shapeId: 'body-outline',
-        sourceSha256: 'c27e9735809bd3fa5a7a5b6338c260b712600bcde73d9cd41f958c24c9ee73d8',
+        sourceSha256: '4c18589cd791c270c8349fac2acd01777c4ea4803b856720a4146214dc8dc5e6',
         viewBox: [0.0, 0.0, 320.0, 350.0],
         bounds: {
             left: 62.600001930191,

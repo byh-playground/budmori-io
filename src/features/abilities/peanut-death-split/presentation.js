@@ -1,3 +1,4 @@
+import { drawUnitFace } from '../../../render/unit-face-draw.js';
 const PEANUT_PLAYERS_BY_RENDERER = new WeakMap();
 
 export class PeanutDeathSplitPresentation {
@@ -44,16 +45,17 @@ export class PeanutDeathSplitPresentation {
             RADIUS = renderer.scale * 0.72,
             SCALE = (2 * RADIUS) / Math.max(WIDTH, HEIGHT),
             CENTER_Y = POSITION.y + (HEIGHT * 0.5 - GROUND.y) * SCALE,
-            MATRIX = [SCALE, 0, 0, SCALE, POSITION.x - GROUND.x * SCALE, CENTER_Y - GROUND.y * SCALE];
+            MATRIX = [SCALE, 0, 0, SCALE, POSITION.x - GROUND.x * SCALE, CENTER_Y - GROUND.y * SCALE],
+            ALPHA = Math.max(0, 1 - progress / 0.7);
         player.play('fire', 0);
-        player.setExpression('surprised');
         player.seek(ELAPSED_MS);
         renderer.ctx.vector.flush();
         player.draw({
             projection: renderer.ctx.vector.projection,
             matrix: MATRIX,
-            alpha: Math.max(0, 1 - progress / 0.7),
+            alpha: ALPHA,
         });
+        drawUnitFace(renderer.ctx, RECORD, player, 'surprised', null, MATRIX, ALPHA);
         if (ELAPSED_MS >= CLIP.durationMs) {
             player.dispose();
             players.delete(effect.eventId);

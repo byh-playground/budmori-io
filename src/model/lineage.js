@@ -5,10 +5,10 @@ import { SPECIES_COUNT } from '../units/species-catalog.js';
 // supplies the random source so every roll stays on the seeded stream.
 
 export const TEMPERAMENTS = Object.freeze([
-    Object.freeze({ id: 0, name: '끈기' }),
-    Object.freeze({ id: 1, name: '듬직' }),
+    Object.freeze({ id: 0, name: '느긋' }),
+    Object.freeze({ id: 1, name: '소심' }),
     Object.freeze({ id: 2, name: '발끈' }),
-    Object.freeze({ id: 3, name: '성급' }),
+    Object.freeze({ id: 3, name: '까불' }),
     Object.freeze({ id: 4, name: '다정' }),
 ]);
 export const TEMPERAMENT_COUNT = TEMPERAMENTS.length;

@@ -353,10 +353,11 @@ export async function unitSpriteContinuityScenario(app) {
                 repeatSum += Math.abs(NATIVE[offset] - REPEAT[offset]);
             }
             CHECK(repeatSum / NATIVE.length <= 1, 'Native repeat mean channel difference exceeds one level');
-            CHECK(R.unitSprites.frame.sprite === 3 && R.unitSprites.frame.vector === 2, 'Continuity backend coverage');
+            CHECK(R.unitSprites.frame.sprite === 4 && R.unitSprites.frame.vector === 1, 'Continuity backend coverage');
             CHECK(
-                R.unitSprites.frame.reasons.triangleAlpha === 1 && R.unitSprites.frame.reasons.paletteNotPrepared === 1,
-                'Clone/palette contract',
+                R.unitSprites.frame.reasons.triangleAlpha === 1 &&
+                    Object.keys(R.unitSprites.frame.reasons).length === 1,
+                'Only the clone keeps vector; element colour is the face layer, not a body palette',
             );
             let changed = 0,
                 max = 0,

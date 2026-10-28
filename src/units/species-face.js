@@ -1,20 +1,20 @@
 import { ELEMENTS } from '../model/lineage.js';
+import { TEMPERAMENT_FACES } from './face-layer.js';
 
-// Only authored face groups: neutral temperament mapping never triggers a combat action.
-const TEMPERAMENT_EXPRESSIONS = Object.freeze(['neutral', 'focused', 'attack', 'surprised', 'happy']);
-
-export function selectUnitExpression(stateExpression, temperament = -1) {
-    return stateExpression === 'neutral' ? (TEMPERAMENT_EXPRESSIONS[temperament] ?? stateExpression) : stateExpression;
+// A unit's look is two independent things: the body variant the SVG mesh draws ('guard' hides the whole
+// body inside the walnut shell) and the face layer drawn on top of it. Temperament only shows while nothing
+// else is going on; every state face takes priority over it.
+export function unitLook(state, temperament = -1) {
+    if (state === 'guard') {
+        return { body: 'guard', face: null };
+    }
+    const FACE = state === 'guard-attack' ? 'attack' : state === 'sleep' ? 'happy' : state;
+    return { body: 'neutral', face: FACE === 'neutral' ? (TEMPERAMENT_FACES[temperament] ?? 'neutral') : FACE };
 }
 
-export function idleUnitExpressions() {
-    return [
-        ...new Set([
-            'neutral',
-            'hungry',
-            ...TEMPERAMENT_EXPRESSIONS.map((_, temperament) => selectUnitExpression('neutral', temperament)),
-        ]),
-    ];
+// The face's cheeks are the unit's element colour; no element keeps the shared cheek colour.
+export function elementCheekColor(element) {
+    return element > 0 ? ELEMENTS[element].color : null;
 }
 
 export const ELEMENT_ICONS = Object.freeze([

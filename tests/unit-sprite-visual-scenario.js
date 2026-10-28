@@ -22,7 +22,7 @@ export function unitSpriteVisualScenario(app) {
     CASES.push(
         { species: 8, motion: 'windup', nativeBarley: true },
         { species: 8, motion: 'fire', nativeBarley: true },
-        { species: 0, motion: 'walk', element: 1, expectedFallback: 'paletteNotPrepared' },
+        { species: 0, motion: 'walk', element: 1 },
         { species: 0, motion: 'fire', clone: true, expectedFallback: 'triangleAlpha' },
         { species: 7, motion: 'walk', longBaton: true, expectedFallback: 'dynamicBasePose' },
         { species: 0, motion: 'walk', large: true },
