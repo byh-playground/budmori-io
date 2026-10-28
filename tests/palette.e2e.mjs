@@ -1,4 +1,4 @@
-// Authored SVG palette -> codex -> live farm -> tower boss; local pinned CDN bytes, no product test hooks.
+// Element cheek colour on the drawn face layer -> codex -> live farm -> tower boss; local pinned CDN bytes, no product test hooks.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -85,23 +85,22 @@ try {
             W.codex.colors = Array.from({ length: 50 }, (_, index) => index);
             W.markProgressChanged();
             const R = BUDMORI.renderer,
-                DRAW = R.meshes.drawMesh.bind(R.meshes);
-            globalThis.__paintAudit = { colours: new Set(), tagged: 0, plain: 0, disable: false };
-            R.meshes.drawMesh = (mesh, options) => {
+                FILL = R.ctx.fill.bind(R.ctx);
+            globalThis.__paintAudit = { colours: new Set(), fills: 0 };
+            R.ctx.fill = (...args) => {
                 const A = globalThis.__paintAudit;
-                if (options.paintRegions) {
-                    A.tagged++;
-                    A.colours.add(JSON.stringify(options.paintRegions));
-                } else {
-                    A.plain++;
-                }
-                return DRAW(mesh, A.disable ? { ...options, paintRegions: null } : options);
+                A.fills++;
+                A.colours.add(String(R.ctx.fillStyle).toLowerCase());
+                return FILL(...args);
             };
             BUDMORI.runtime.paused = false;
         });
-        await PAGE.waitForFunction(
-            () => globalThis.__paintAudit.colours.size === 5 && globalThis.__paintAudit.tagged >= 50,
-        );
+        await PAGE.waitForFunction(async () => {
+            const { ELEMENTS: ELEMENTS_LOCAL } = await import('../src/model/lineage.js');
+            return ELEMENTS_LOCAL.slice(1).every((element) =>
+                globalThis.__paintAudit.colours.has(element.color.toLowerCase()),
+            );
+        });
         const ENV = await PAGE.evaluate(() => {
             const GL = BUDMORI.renderer.device.gl,
                 DEBUG = GL.getExtension('WEBGL_debug_renderer_info');
@@ -122,28 +121,17 @@ try {
         const COST = await PAGE.evaluate(() => {
             BUDMORI.runtime.paused = true;
             const R = BUDMORI.renderer,
-                A = globalThis.__paintAudit,
-                W = R.cameraWorld;
-            function sample(disable) {
-                A.disable = disable;
-                const SAMPLES = [];
-                for (let frame = 0; frame < 12; frame++) {
-                    const START = performance.now();
-                    R.render(W, null, R.displayTimeMs);
-                    SAMPLES.push({ cpuMs: performance.now() - START, draws: R.device.stats.drawCalls });
-                }
-                return {
-                    cpuMs: SAMPLES.slice(2).reduce((sum, s) => sum + s.cpuMs, 0) / 10,
-                    draws: SAMPLES.at(-1).draws,
-                };
+                W = R.cameraWorld,
+                SAMPLES = [];
+            for (let frame = 0; frame < 12; frame++) {
+                const START = performance.now();
+                R.render(W, null, R.displayTimeMs);
+                SAMPLES.push({ cpuMs: performance.now() - START, draws: R.device.stats.drawCalls });
             }
-            const ORIGINAL = sample(true),
-                PALETTE = sample(false);
             return {
                 units: W.units.length,
-                original: ORIGINAL,
-                palette: PALETTE,
-                drawDelta: PALETTE.draws - ORIGINAL.draws,
+                cpuMs: SAMPLES.slice(2).reduce((sum, sample) => sum + sample.cpuMs, 0) / 10,
+                draws: SAMPLES.at(-1).draws,
             };
         });
         await PAGE.evaluate(() => {
@@ -157,27 +145,14 @@ try {
         });
         await PAGE.evaluate(async () => {
             const { towerElement: TOWER_ELEMENT } = await import('../src/tower/tower-theme.js');
-            const { elementPaintRegions: ELEMENT_PAINT } = await import('../src/units/species-paint.js');
-            const W = BUDMORI.sim,
-                R = BUDMORI.renderer,
-                DRAW = R.meshes.drawMesh.bind(R.meshes);
-            globalThis.__bossPaint = null;
-            globalThis.__expectedBossPaint = ELEMENT_PAINT(TOWER_ELEMENT(W.tower.floor));
-            R.meshes.drawMesh = (mesh, options) => {
-                if (mesh === R.bossPlayerAsset?.asset.mesh) {
-                    globalThis.__bossPaint = options.paintRegions;
-                }
-                return DRAW(mesh, options);
-            };
+            const { ELEMENTS: ELEMENTS_LOCAL } = await import('../src/model/lineage.js');
+            globalThis.__expectedBossCheek = ELEMENTS_LOCAL[TOWER_ELEMENT(BUDMORI.sim.tower.floor)].color.toLowerCase();
+            globalThis.__paintAudit.colours.clear();
         });
-        await PAGE.waitForFunction(
-            () =>
-                globalThis.__bossPaint &&
-                JSON.stringify(globalThis.__bossPaint) === JSON.stringify(globalThis.__expectedBossPaint),
-        );
+        await PAGE.waitForFunction(() => globalThis.__paintAudit.colours.has(globalThis.__expectedBossCheek));
         const BOSS = await PAGE.evaluate(() => ({
             floor: BUDMORI.sim.tower.floor,
-            palette: globalThis.__bossPaint,
+            cheek: globalThis.__expectedBossCheek,
             source: BUDMORI.renderer.bossPlayerAsset.compiled.sourcePath,
         }));
         await PAGE.screenshot({ path: path.join(OUTPUT, MOBILE ? 'tower-mobile.png' : 'tower-desktop.png') });

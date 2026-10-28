@@ -17,8 +17,8 @@ import { ATTACK_TYPES, CONFIG, clamp } from '../model/farm-model.js';
 import { farmBreedingCooldown, unitRestPresentation } from '../ui/farm-indicators.js';
 import { scenePresentation } from './farm-render-scenes.js';
 import { drawElementMark } from './unit-face-overlay.js';
-import { selectUnitExpression } from '../units/species-face.js';
-import { elementPaintRegions } from '../units/species-paint.js';
+import { elementCheekColor, unitLook } from '../units/species-face.js';
+import { drawUnitFace } from './unit-face-draw.js';
 import { towerElement } from '../tower/tower-theme.js';
 import { PassiveMarksPresentation } from '../tower/tower-passive-presentations.js';
 
@@ -61,15 +61,15 @@ function unitMotion(u, sim, rest) {
 function unitExpression(u, sim, joyEffects, rest) {
     const DEAD = u.hp <= 0 || u.down > 0;
     if (rest) {
-        return rest.phase === 'defeat' ? 'dead' : rest.phase === 'wake' ? 'neutral' : 'sleep';
+        return unitLook(rest.phase === 'defeat' ? 'dead' : rest.phase === 'wake' ? 'neutral' : 'sleep');
     }
     if (DEAD) {
-        return 'dead';
+        return unitLook('dead');
     }
     if (scenePresentation(sim.scene).victorious(sim)) {
-        return 'happy';
+        return unitLook('happy');
     }
-    return selectUnitExpression(
+    return unitLook(
         unitCombatExpression(u) || scenePresentation(sim.scene).unitMood(u, joyEffects),
         u.faction === 'enemy' || u.isSeedling ? -1 : u.temperament,
     );
@@ -302,9 +302,9 @@ export class UnitPresentation {
                 u.isFormationClone && sim.time - u.cloneBornAt < 0.5
                     ? sim.units.find((unit) => unit.id === u.cloneParentId)
                     : null,
-            EXPRESSION = unitExpression(ORIGINAL || u, sim, this.renderer.joyEffects, rest);
-        if (EXPRESSION !== player.currentExpression) {
-            player.setExpression(EXPRESSION);
+            LOOK = unitExpression(ORIGINAL || u, sim, this.renderer.joyEffects, rest);
+        if (LOOK.body !== player.currentExpression) {
+            player.setExpression(LOOK.body);
         }
         if (!u.isSeedling) {
             prepareUnitAttackPlayer(player, u);
@@ -312,6 +312,7 @@ export class UnitPresentation {
         return {
             record: RECORD,
             player,
+            face: LOOK.face,
             swing: SWING,
             rest,
             phaseTimeMs: PHASE_TIME_MS,
@@ -342,7 +343,7 @@ export class UnitPresentation {
                   ? REST.elapsed * 1000
                   : this.renderer.displayTimeMs,
         );
-        PREPARED.paintRegions = elementPaintRegions(
+        PREPARED.cheekColor = elementCheekColor(
             u.isSeedling || u.isFormationClone
                 ? 0
                 : u.faction === 'enemy'
@@ -354,7 +355,6 @@ export class UnitPresentation {
         PREPARED.sprite = this.renderer.unitSprites.resolve(
             u,
             PREPARED,
-            PREPARED.paintRegions,
             unitAttackDisplayScale(this.renderer, u, sim.time),
         );
         if (!PREPARED.sprite.entry) {
@@ -399,16 +399,24 @@ export class UnitPresentation {
             matrix: MATRIX,
             alpha: u.isFormationClone ? 0.52 : 1,
             color: u.isFormationClone ? [0.55, 0.82, 1, 1] : [1, 1, 1, 1],
-            paintRegions: PREPARED.paintRegions,
         };
         if (!this.renderer.unitSprites.draw(PREPARED, DRAW_OPTIONS)) {
             PLAYER.draw(DRAW_OPTIONS);
         }
+        drawUnitFace(
+            this.renderer.ctx,
+            PREPARED.record,
+            PLAYER,
+            PREPARED.face,
+            PREPARED.cheekColor,
+            MATRIX,
+            DRAW_OPTIONS.alpha,
+        );
         drawUnitAttackContact(this.renderer, u, PLAYER, MATRIX);
         this.drawElementIndicator(u, sim);
         return true;
     }
-    // Faces/cheeks are authored SVG parts. Only the separate element icon remains.
+    // The face is a layer drawn over the body (unit-face-draw.js); this is only the separate element icon.
     drawElementIndicator(u, sim) {
         if (u.hp <= 0 || u.isSeedling || u.isFormationClone) {
             return;

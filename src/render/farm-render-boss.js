@@ -21,7 +21,8 @@ import { ChargePresentation } from '../features/boss-patterns/charge/presentatio
 import { LeapSlamPresentation } from '../features/boss-patterns/leap-slam/presentation.js';
 import { FanSweepPresentation } from '../features/boss-patterns/fan-sweep/presentation.js';
 import { drawElementMark } from './unit-face-overlay.js';
-import { elementPaintRegions } from '../units/species-paint.js';
+import { elementCheekColor, unitLook } from '../units/species-face.js';
+import { drawUnitFace } from './unit-face-draw.js';
 import { towerElement } from '../tower/tower-theme.js';
 import { SIGNATURE_PRESENTATIONS } from '../features/boss-patterns/signature/presentation.js';
 import { MouthSummonPresentation } from '../features/boss-patterns/mouth-summon/presentation.js';
@@ -273,12 +274,9 @@ export class BossPresentation {
                             : B.flash > 0.07
                               ? 'hurt'
                               : 'neutral';
-        if (!METADATA.expressions?.[EXPRESSION] && !METADATA.expressions?.neutral) {
-            throw new Error('Boss asset is missing a supported expression');
-        }
-        const SAFE_EXPRESSION = METADATA.expressions?.[EXPRESSION] ? EXPRESSION : 'neutral';
-        if (PLAYER.currentExpression !== SAFE_EXPRESSION) {
-            PLAYER.setExpression(SAFE_EXPRESSION);
+        const LOOK = unitLook(EXPRESSION);
+        if (PLAYER.currentExpression !== LOOK.body) {
+            PLAYER.setExpression(LOOK.body);
         }
         prepareUnitAttackPlayer(PLAYER, B);
         if (BASIC) {
@@ -345,6 +343,7 @@ export class BossPresentation {
             record: RECORD,
             species: SPECIES,
             presentation: PRESENTATION,
+            look: LOOK,
             pose: POSE,
             matrix: MATRIX,
             scale: S_LOCAL,
@@ -361,6 +360,7 @@ export class BossPresentation {
             player: PLAYER,
             record: RECORD,
             presentation: PRESENTATION,
+            look: LOOK,
             pose: POSE,
             matrix: MATRIX,
             scale: S_LOCAL,
@@ -383,8 +383,15 @@ export class BossPresentation {
         PLAYER.draw({
             projection: this.renderer.ctx.vector.projection,
             matrix: MATRIX,
-            paintRegions: elementPaintRegions(world.tower.active ? towerElement(world.tower.floor) : 0),
         });
+        drawUnitFace(
+            this.renderer.ctx,
+            RECORD,
+            PLAYER,
+            LOOK.face,
+            elementCheekColor(world.tower.active ? towerElement(world.tower.floor) : 0),
+            MATRIX,
+        );
         PRESENTATION.drawRelease(this.renderer, B, POSE, MOUTH_SCREEN);
         if (world.tower.active && B.hp > 0) {
             // A boss shows its floor band's element like every other enemy: cheeks in its colour and a mark above.

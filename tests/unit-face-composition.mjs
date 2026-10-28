@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
-import * as VECTORS from '../vendor/upstream/vector-assets.js';
 import { speciesById, SPECIES_COUNT } from '../src/units/species-catalog.js';
-import { idleUnitExpressions, selectUnitExpression } from '../src/units/species-face.js';
+import { FACE_IDS, STATE_FACES, TEMPERAMENT_FACES, buildFace } from '../src/units/face-layer.js';
+import { elementCheekColor, unitLook } from '../src/units/species-face.js';
 import { speciesPortraitSource } from '../src/units/species-paint.js';
+import { TEMPERAMENTS } from '../src/model/lineage.js';
 
 globalThis.DOMParser = DOMParser;
 globalThis.XMLSerializer = XMLSerializer;
-globalThis.BloomGamekitVectorAssets = VECTORS;
 const SOURCES = Object.fromEntries(
     Array.from({ length: SPECIES_COUNT }, (_, species) => [
         species,
@@ -16,38 +16,25 @@ const SOURCES = Object.fromEntries(
     ]),
 );
 globalThis.BudmoriVectorResources = { sources: SOURCES };
-const EXPRESSIONS = ['neutral', 'focused', 'attack', 'surprised', 'happy'];
-assert.deepEqual(
-    idleUnitExpressions().sort(),
-    ['neutral', 'hungry', ...EXPRESSIONS].filter((value, index, array) => array.indexOf(value) === index).sort(),
-);
+
+// Bodies carry no face art: three anchor sockets are the only face resource of a species.
 for (let species = 0; species < SPECIES_COUNT; species++) {
     const SOURCE = new DOMParser().parseFromString(SOURCES[species], 'image/svg+xml').documentElement,
-        ORIGINAL = new XMLSerializer().serializeToString(SOURCE),
-        METADATA = JSON.parse(SOURCE.getElementsByTagName('metadata')[0].textContent);
-    const IDS = new Set([...SOURCE.getElementsByTagName('*')].map((node) => node.getAttribute('id'))),
-        PARTS = new Set(METADATA.parts.map((part) => part.id));
-    if (speciesById(species).asset === 'barley.svg') {
-        const NODES = [...SOURCE.getElementsByTagName('*')];
-        for (const SIDE of ['left', 'right']) {
-            const EYE = NODES.find((node) => node.getAttribute('id') === 'barley-hungry-eye-' + SIDE),
-                GLINT = NODES.find((node) => node.getAttribute('id') === 'barley-hungry-glint-' + SIDE);
-            assert.ok(
-                Math.hypot(
-                    Number(EYE.getAttribute('cx')) - Number(GLINT.getAttribute('cx')),
-                    Number(EYE.getAttribute('cy')) - Number(GLINT.getAttribute('cy')),
-                ) +
-                    Number(GLINT.getAttribute('r')) <=
-                    Number(EYE.getAttribute('r')),
-                'Barley hungry highlight stays inside its authored eye',
-            );
-        }
-    }
+        METADATA = JSON.parse(SOURCE.getElementsByTagName('metadata')[0].textContent),
+        IDS = new Set([...SOURCE.getElementsByTagName('*')].map((node) => node.getAttribute('id'))),
+        PARTS = new Set(METADATA.parts.map((part) => part.id)),
+        [VIEW_X, VIEW_Y, VIEW_W, VIEW_H] = SOURCE.getAttribute('viewBox').split(/\s+/).map(Number);
+    assert.ok(
+        ![...IDS, ...PARTS].some((id) => /^face-(neutral|happy|focused|attack|surprised|hurt|hungry|dead)$/.test(id)),
+        'No authored face art in the body',
+    );
+    assert.ok(PARTS.size <= 16, 'Body parts stay within the vector pose limit');
     for (const PART of METADATA.parts) {
         assert.ok(IDS.has(PART.id), 'Metadata part exists in authored SVG');
         assert.ok(PART.parent === null || PARTS.has(PART.parent), 'Part parent exists');
     }
-    for (const SELECTION of Object.values(METADATA.expressions)) {
+    for (const [NAME, SELECTION] of Object.entries(METADATA.expressions)) {
+        assert.ok(['neutral', 'guard'].includes(NAME), 'Body expressions are body variants only: ' + NAME);
         for (const ID of [...SELECTION.show, ...SELECTION.hide]) {
             assert.ok(PARTS.has(ID), 'Expression targets declared parts');
         }
@@ -59,43 +46,89 @@ for (let species = 0; species < SPECIES_COUNT; species++) {
             }
         }
     }
-    for (let temperament = 0; temperament < 5; temperament++) {
-        const EXPRESSION = selectUnitExpression('neutral', temperament);
-        assert.equal(EXPRESSION, EXPRESSIONS[temperament]);
-        assert.ok(METADATA.expressions[EXPRESSION], 'All ten species author the selected face');
+    const SOCKETS = ['face-eye-left', 'face-eye-right', 'face-mouth'].map((name) => {
+        const SOCKET = METADATA.sockets[name];
+        assert.equal(SOCKET?.part, 'body', name + ' belongs to body');
+        const [X, Y] = SOCKET.point;
+        assert.ok(X >= VIEW_X && X <= VIEW_X + VIEW_W && Y >= VIEW_Y && Y <= VIEW_Y + VIEW_H, name + ' is in canvas');
+        return SOCKET.point;
+    });
+    assert.ok(SOCKETS[0][0] < SOCKETS[1][0], 'Left eye lies left of the right eye');
+    assert.ok(SOCKETS[2][1] > SOCKETS[0][1], 'Mouth lies below the eyes');
+    assert.equal(METADATA.sockets.mouth.part, 'body', 'Attack mouth socket follows the body');
+
+    // One rule builds every face for every species; all of them are finite, drawn on the body and distinct.
+    const ANCHOR = { eyeLeft: SOCKETS[0], eyeRight: SOCKETS[1], mouth: SOCKETS[2] },
+        GAP = SOCKETS[1][0] - SOCKETS[0][0],
+        SEEN = new Set();
+    for (const FACE of FACE_IDS) {
+        const OPS = buildFace(FACE, ANCHOR, null);
+        assert.ok(OPS.length >= 3, FACE + ' has parts');
+        for (const OP of OPS) {
+            assert.ok(OP.fill || OP.stroke, 'Every operation has a colour');
+            for (const [, ...NUMBERS] of OP.path) {
+                assert.ok(NUMBERS.every(Number.isFinite), FACE + ' coordinates are finite');
+                for (let index = 0; index < NUMBERS.length; index += 2) {
+                    assert.ok(
+                        Math.abs(NUMBERS[index] - SOCKETS[0][0] - GAP / 2) < GAP * 1.5 &&
+                            Math.abs(NUMBERS[index + 1] - SOCKETS[0][1]) < GAP * 1.2,
+                        FACE + ' stays on the face of ' + SOURCE.getAttribute('id'),
+                    );
+                }
+            }
+        }
+        SEEN.add(JSON.stringify(OPS));
+    }
+    assert.equal(SEEN.size, FACE_IDS.length, 'All faces differ in every species');
+    assert.notDeepEqual(buildFace('neutral', ANCHOR, null), buildFace('neutral', ANCHOR, '#4a9de0'), 'Cheek colour');
+}
+
+// State faces take priority over temperament; temperament only shows while nothing else happens.
+assert.equal(TEMPERAMENT_FACES.length, TEMPERAMENTS.length);
+for (let temperament = 0; temperament < TEMPERAMENTS.length; temperament++) {
+    assert.deepEqual(unitLook('neutral', temperament), { body: 'neutral', face: TEMPERAMENT_FACES[temperament] });
+    for (const STATE of STATE_FACES.filter((face) => face !== 'neutral')) {
+        assert.deepEqual(unitLook(STATE, temperament), { body: 'neutral', face: STATE });
+    }
+    assert.deepEqual(unitLook('sleep', temperament), { body: 'neutral', face: 'happy' });
+    assert.deepEqual(unitLook('guard', temperament), { body: 'guard', face: null });
+    assert.deepEqual(unitLook('guard-attack', temperament), { body: 'neutral', face: 'attack' });
+}
+assert.deepEqual(unitLook('neutral', -1), { body: 'neutral', face: 'neutral' }, 'Enemies and seedlings');
+assert.deepEqual(
+    TEMPERAMENTS.map((entry) => entry.name),
+    ['느긋', '소심', '발끈', '까불', '다정'],
+);
+
+// Portraits are the body plus the same face; cheeks take the element colour; the cache is finite.
+for (let species = 0; species < SPECIES_COUNT; species++) {
+    const BODY = new DOMParser().parseFromString(SOURCES[species], 'image/svg+xml').documentElement,
+        BODY_COUNT = BODY.getElementsByTagName('*').length;
+    for (let temperament = 0; temperament < TEMPERAMENTS.length; temperament++) {
         const URI = speciesPortraitSource(species, 1, temperament),
             PORTRAIT = new DOMParser().parseFromString(
                 decodeURIComponent(URI.split(',').slice(1).join(',')),
                 'image/svg+xml',
             ).documentElement,
-            NODES = [...PORTRAIT.getElementsByTagName('*')],
-            FACE_GROUPS = NODES.filter((node) => node.tagName === 'g' && /^face-/.test(node.getAttribute('id')));
-        assert.equal(NODES.length, SOURCE.getElementsByTagName('*').length, 'No extra face geometry');
-        assert.deepEqual(
-            FACE_GROUPS.filter((node) => node.getAttribute('display') !== 'none').map((node) =>
-                node.getAttribute('id'),
-            ),
-            METADATA.expressions[EXPRESSION].show.filter((id) => /^face-/.test(id)),
-            'Exactly the authored selected face',
-        );
+            LAYER = [...PORTRAIT.getElementsByTagName('g')].filter((node) => node.getAttribute('id') === 'face-layer');
+        assert.equal(LAYER.length, 1, 'One face layer over the body');
+        assert.ok(PORTRAIT.getElementsByTagName('*').length > BODY_COUNT, 'Face is added to the body');
+        assert.ok(URI.includes(encodeURIComponent(elementCheekColor(1))), 'Cheeks use the element colour');
         assert.equal(speciesPortraitSource(species, 1, temperament), URI, 'Finite portrait cache');
-        for (const STATE of ['focused', 'attack', 'hurt', 'hungry', 'sleep', 'dead', 'happy', 'guard']) {
-            assert.equal(
-                selectUnitExpression(STATE, temperament),
-                STATE,
-                'State/guard faces take priority over temperament',
-            );
-        }
     }
-    assert.equal(new XMLSerializer().serializeToString(SOURCE), ORIGINAL, 'SVG source remains immutable');
 }
+assert.equal(elementCheekColor(0), null);
 for (const FILE of ['src/render/farm-render-units.js', 'src/ui/codex-dialog.js']) {
     assert.doesNotMatch(
         fs.readFileSync(new URL('../' + FILE, import.meta.url), 'utf8'),
         /drawFaceMarks|faceOverlaySvg/,
-        'No extra brow overlay submission',
+        'No second brow overlay',
     );
 }
 console.log(
-    'Authored body + one face composition passed: 10 species x 5 temperaments; state priority/palette/cache preserved',
+    'Face layer passed: ' +
+        SPECIES_COUNT +
+        ' species x ' +
+        FACE_IDS.length +
+        ' faces from three body sockets; state priority/portraits/cheek colour preserved',
 );

@@ -1,40 +1,12 @@
 // Images are prepared outside ordinary scene submission. Native players retain
 // the exact game clock and sockets; sampled art never feeds authority back.
-import { idleUnitExpressions } from '../units/species-face.js';
-
 const IMAGE_BUDGET_BYTES = 128 * 1024 * 1024;
 const IMAGE_SIZE = 96;
 // Keep at least two prepared texels per displayed source unit. Larger actors
 // (zoom, DPR, giant) retain native vector detail rather than magnifying a sheet.
 const MAX_DISPLAY_TO_IMAGE_SCALE = 0.5;
-
-function clipExpressions(clip) {
-    if (clip === 'idle' || clip === 'walk') {
-        return idleUnitExpressions();
-    }
-    if (clip.startsWith('windup')) {
-        return ['focused'];
-    }
-    if (clip.startsWith('fire')) {
-        return ['attack'];
-    }
-    if (clip === 'hit') {
-        return ['hurt'];
-    }
-    if (clip === 'death' || clip === 'defeat') {
-        return ['dead'];
-    }
-    if (clip === 'sleep') {
-        return ['sleep'];
-    }
-    if (clip === 'victory') {
-        return ['happy'];
-    }
-    if (clip === 'airborne') {
-        return ['surprised'];
-    }
-    return ['neutral', 'hungry', 'happy'];
-}
+// Faces are a separate layer drawn over the sampled body, so one body expression per clip is baked.
+const BAKED_EXPRESSION = 'neutral';
 
 export class UnitSpriteAtlas {
     constructor(renderer, enabled) {
@@ -74,7 +46,7 @@ export class UnitSpriteAtlas {
             );
             const PRIORITY = (clip) => (['idle', 'walk'].includes(clip) ? 0 : /^(windup|fire)/.test(clip) ? 1 : 2);
             SOURCES.sort((a, b) => PRIORITY(a.clip) - PRIORITY(b.clip));
-            const TOTAL = SOURCES.reduce((sum, source) => sum + clipExpressions(source.clip).length, 0);
+            const TOTAL = SOURCES.length;
             let planned = 0;
             yield { stage: 'atlas-plan', completed: 0, total: TOTAL };
             for (const { species: SPECIES, record: RECORD, clip: CLIP, definition: DEFINITION } of SOURCES) {
@@ -82,7 +54,7 @@ export class UnitSpriteAtlas {
                 // Only authored 1000ms weapon stages use normalized time.
                 // Peanut's short -tN clips retain their real-time sampling.
                 const INTERVAL = CLIP.includes('-') && DEFINITION.durationMs === 1000 ? 100 : 50;
-                for (const EXPRESSION of clipExpressions(CLIP)) {
+                for (const EXPRESSION of [BAKED_EXPRESSION]) {
                     const ATLAS = CREATE_ATLAS(R.meshes, RECORD.asset, RECORD.compiled, {
                         clip: CLIP,
                         expression: EXPRESSION,
@@ -202,7 +174,7 @@ export class UnitSpriteAtlas {
     beginFrame() {
         this.frame = { sprite: 0, vector: 0, reasons: {} };
     }
-    resolve(unit, prepared, paintRegions, displayScale) {
+    resolve(unit, prepared, displayScale) {
         if (!this.enabled) {
             return { reason: this.renderer.unitArtMode };
         }
@@ -216,9 +188,6 @@ export class UnitSpriteAtlas {
         }
         if (!unit.isSeedling && unit.species === 7 && unit.ability.wheatLongBaton) {
             return { reason: 'dynamicBasePose' };
-        }
-        if (paintRegions && Object.keys(paintRegions).length) {
-            return { reason: 'paletteNotPrepared' };
         }
         const SPECIES = unit.isSeedling ? 9 : unit.species,
             ENTRY = this.entries.get(`${SPECIES}:${prepared.player.currentClip}:${prepared.player.currentExpression}`);

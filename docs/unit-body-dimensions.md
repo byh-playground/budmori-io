@@ -2,15 +2,12 @@
 
 기준 버전: `0.8.2`.
 
-## 원본 SVG의 속성 색
+## 속성 색
 
-열 종의 원본 SVG에서 기존 볼 fill 66개만 `data-paint-region="element-cheeks"`로 표시합니다.
-표정별 볼도 같은 이름을 사용합니다. `species-paint.js`의 유한 팔레트를 UI의
-GameKit `applySvgPaintRegions`와 native player의 `paintRegions`가 공유합니다.
-RGB만 바꾸며 원본 alpha·stroke·눈·입·무기와 geometry는 유지합니다. 기존 볼 overlay와 볼 좌표표는 제거했습니다.
-기존 성향 눈썹과 머리 위 속성 아이콘은 그대로 사용합니다. 성장 중 새싹은 원본 기본색을 사용합니다.
-UI는 시작 시 무결성 검사를 통과한 같은 SVG 응답을 재사용하며 종·속성 조합별 이미지를 한 번만 만듭니다.
-매 프레임 SVG 컴파일이나 팔레트별 mesh 복제·geometry upload는 하지 않습니다.
+원본 SVG에는 색 영역이 없습니다. 속성 색은 [얼굴 레이어](./unit-face-layer.md)의 볼 색 하나로만 나타나며,
+몸체 팔레트(`paintRegions`)는 쓰지 않으므로 속성 유닛도 같은 스프라이트 몸체를 씁니다.
+성장 중 새싹과 복사체는 공통 볼 색을 사용합니다. 머리 위 속성 아이콘은 그대로입니다.
+UI 초상화는 종·성향·속성 조합별로 한 번만 만든 몸+얼굴 SVG를 재사용합니다.
 
 ## 하나의 몸 정의
 

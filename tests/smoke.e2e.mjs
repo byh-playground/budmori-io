@@ -1233,7 +1233,7 @@ await check('passive cards: damage scale, undying once per fight, helper heals, 
     });
     const NEAR = (a, b) => Math.abs(a - b) < 1e-9;
     expect(NEAR(R.FULL, 1 + 0.4 + 0.14), `opening + vengeance ${JSON.stringify(R)}`);
-    // A unit's own temperament (끈기 here) adds its passive: last stand 0.15 on top of the card's 0.24.
+    // A unit's own temperament (느긋 here) adds its passive: last stand 0.15 on top of the card's 0.24.
     expect(NEAR(R.LOW, 1 + 0.4 + 0.14 + 0.24 + 0.15), `last stand ${JSON.stringify(R)}`);
     expect(NEAR(R.LATE, 1 + 0.14 + 0.24 + 0.15), `opening over ${JSON.stringify(R)}`);
     expect(R.TAKEN_FULL === 1 && NEAR(R.TAKEN_LOW, 0.85), `resolve ${JSON.stringify(R)}`);

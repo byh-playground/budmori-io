@@ -1,5 +1,7 @@
 # SVG resource integration audit
 
+> Superseded for faces: the authored face groups, expression metadata, paint regions and per-expression sprite sheets described below were replaced by the code-drawn [face layer](./unit-face-layer.md). Body, clip and socket findings still apply.
+
 Scope: ten troop SVGs, authored body/expression/paint/clip metadata and their presentation consumers. No SVG geometry was redesigned; simulation, input and saves are unchanged.
 
 | Location                                                                | Finding                                                                                                                                                                                                                 | Decision                                                                                                                                                                                                        |

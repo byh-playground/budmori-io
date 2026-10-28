@@ -44,7 +44,7 @@ npm run test:corn-growth
 
 `node scripts/gamekit-provenance.cjs`는 고정 SDK의 Git 객체·manifest·SHA-256과 원본 import graph·SVG를 읽기 전용으로 검증합니다. `npm test`의 종료·복귀 흐름은 저장 뒤 렌더 프레임 취소, 자원 해제, 뒤로 가기 캐시의 `pageshow` 재로딩과 이어하기를 함께 확인합니다.
 
-`assets/troops/`의 SVG가 각 캐릭터 벡터 아트, 클립, 표정, 소켓의 단일 원본입니다. 고정 GameKit SVG 로더가 원본을 읽어 실행 메모리에서 메시를 만들며, 저장소 파일을 재작성하거나 배포용 메시를 생성하지 않습니다. `npm run check`는 원본 import graph와 자산 무결성을 읽기 전용으로 확인합니다. GameKit의 native `play`, `setExpression`, `seek`, `getSocket`, `draw` API를 사용하고 모든 캐릭터를 공통 `PresentationRuntime` 표시 시각에 맞춥니다. 수동 얼굴 그리기나 SVG 옆 모션 sidecar는 사용하지 않습니다.
+`assets/troops/`의 SVG가 각 캐릭터 몸체 벡터 아트, 클립, 소켓의 단일 원본입니다. 표정은 SVG에 그려 두지 않고 [얼굴 레이어](./docs/unit-face-layer.md)가 몸 위에 코드로 그립니다. 고정 GameKit SVG 로더가 원본을 읽어 실행 메모리에서 메시를 만들며, 저장소 파일을 재작성하거나 배포용 메시를 생성하지 않습니다. `npm run check`는 원본 import graph와 자산 무결성을 읽기 전용으로 확인합니다. GameKit의 native `play`, `setExpression`(몸 변형만), `seek`, `getSocket`, `draw` API를 사용하고 모든 캐릭터를 공통 `PresentationRuntime` 표시 시각에 맞춥니다. 얼굴은 몸의 세 anchor socket에서만 만들며 SVG 옆 모션 sidecar는 사용하지 않습니다.
 
 병력의 충돌 반경·높이와 표시 배율은 원본의 이름 있는 몸통 외곽선·지면 소켓을 공유합니다. 옥수수 낟알은 발사 순간 몸통 높이의 20%이며, 최소 표시 픽셀은 충돌 크기에 영향을 주지 않습니다. 측정 기준과 저장 호환성은 [몸 크기와 투사체 크기](docs/unit-body-dimensions.md)에 정리했습니다.
 
@@ -147,7 +147,8 @@ npm run test:corn-growth
 - `src/save/farm-save-codec.js`, `src/save/farm-storage.js`: 버전·크기 경계, 진행 데이터만 JSON 인코딩, 원본 백업과 저장 보호.
 - `src/app/farm-session.js`: 로컬 명령과 실행 세션.
 - `src/render/farm-renderer.js`: 실제 WebGL 투영, GameKit troop/boss vector assets, 전투 예고.
-- `assets/troops/*.svg`: 캐릭터 몸체·클립·표정·소켓 원본.
+- `assets/troops/*.svg`: 캐릭터 몸체·클립·소켓 원본(표정 없음).
+- `src/units/face-layer.js`, `src/render/unit-face-draw.js`: 모든 병종이 공유하는 표정 생성과 그리기.
 - `src/render/combat-feel.js`, `src/render/food-feel.js`: 확정 사건을 읽는 제한된 표현·오디오.
 - `src/farm-app.js`: 시작·복귀·농장 입력·라우팅·성장 UI.
 - `src/abilities/ability-progression.js`: 능력·일반 강화 구매, 환불, 적용 등급과 노드 상태 판정. 모델과 성장 UI가 같은 도메인 규칙을 사용합니다.
@@ -178,7 +179,7 @@ npm run test:corn-growth
 
 ### SVG 입·지면 좌표 계약
 
-모든 병종과 보스 SVG는 `mouth`와 `ground` socket을 명시합니다. `mouth`는 공격 표정의 입 중앙이며 `face-attack` part를 따르고, `ground`는 몸통이 움직여도 월드 그림자 기준을 고정하는 정적 canvas 좌표입니다. 원본 SVG transform은 컴파일 geometry에 이미 반영되므로 socket에 다시 적용하지 않습니다. 누락·잘못된 좌표는 원본 검증과 시작 시 asset/species를 포함한 오류로 중단하며 다른 병종이나 viewBox 값으로 대체하지 않습니다.
+모든 병종과 보스 SVG는 `mouth`와 `ground` socket을 명시합니다. `mouth`는 공격 표정의 입 중앙이며 `body` part를 따르고, 얼굴 anchor는 `face-eye-left`·`face-eye-right`·`face-mouth` socket(모두 `body`)이며, `ground`는 몸통이 움직여도 월드 그림자 기준을 고정하는 정적 canvas 좌표입니다. 원본 SVG transform은 컴파일 geometry에 이미 반영되므로 socket에 다시 적용하지 않습니다. 누락·잘못된 좌표는 원본 검증과 시작 시 asset/species를 포함한 오류로 중단하며 다른 병종이나 viewBox 값으로 대체하지 않습니다.
 
 시작에 한 번 읽은 compiled metadata와 native GameKit asset에서 모델·렌더가 같은 socket 계약을 사용합니다. 모델은 소환을 실제로 방출할 때만 별도 runtime player를 phase seek하여 애니메이션된 입을 읽습니다. 렌더의 소환도 동일 phase seek와 몸통 pose를 사용하며 이전 프레임의 crossfade나 피격 장식 변형에 의존하지 않습니다. 화면을 향한 보스 SVG의 가로축은 월드 x, 세로축은 기존 0.785 높이 투영으로 바꾸고 현재 보스 높이를 더합니다. 지면 기준은 애니메이션된 ground socket으로 흔들지 않습니다.
 
