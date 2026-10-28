@@ -1,5 +1,7 @@
 # Unit sprite render comparison
 
+Integration note: the measured source below predates main PR #397. The release candidate rebases onto that new element-hit-effect change and uses version 0.48.20, preserving its code. The sampled-body rendering/atlas/face implementation is unchanged. This fixture passes `null` for the optional `CombatFeel` presentation argument, so damage-number/impact cosmetics (including #397's new element hit visuals) are outside its render timing. It still includes model effects, projectiles and native bosses. These data are retained as a bounded renderer comparison; they are not a full new-main effects/FPS benchmark.
+
 Source: `b8c7b1695fec47e210a1c59f761b33f183eae392`, clean=true. Chromium 153.0.8010.12; NVIDIA GTX1660Ti/D3D11; 1100×850, DPR 1.
 
 CPU total = session pulse + presentation + renderer. Render and submit are subsets; GPU is measured separately. These are not whole-app FPS numbers. Two orders, 24 warmup +60 measured frames per run. Quantiles are nearest rank over 120 frames; per-run tails/raw samples are in the JSON.
