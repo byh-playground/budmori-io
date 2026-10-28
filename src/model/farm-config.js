@@ -29,7 +29,7 @@ const FARM_ARENA = Object.freeze({ radiusX: 23, radiusY: 17, shape: 'rect' });
 // migration. Only already-established capacity/growth relations are derived.
 export const CONFIG = Object.freeze({
     // Presentation only; SVG assets and native animation/socket data stay shared.
-    render: Object.freeze({ unitArt: 'sprite' }), // 'vector' | 'sprite'
+    render: Object.freeze({ unitArt: 'vector' }), // 'vector' | 'sprite'
     factions: FACTION_CONFIG,
     farm: Object.freeze({
         arena: FARM_ARENA,
