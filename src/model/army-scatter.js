@@ -1,8 +1,8 @@
 // Scatter is Reynolds-style separation blended with a seek toward the attack range.
 // Every neighbour inside the spacing radius pushes this unit away, weighted by how far
 // it intrudes. All inputs come from the current logical tick; there is no saved formation.
-const SEPARATION_WEIGHT = 2;
-const SEEK_WEIGHT = 0.6;
+const SEPARATION_WEIGHT = 3;
+const SEEK_WEIGHT = 0.35;
 const HOLD_BELOW = 0.05;
 
 // Returns a heading vector (length 0..~2, 1 = full speed) or null when the unit has room
