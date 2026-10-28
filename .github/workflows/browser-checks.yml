@@ -46,6 +46,8 @@ jobs:
               run: timeout 180s npm run test:breed-allocation
             - if: ${{ !cancelled() && steps.check.outcome == 'success' }}
               run: timeout 180s npm run test:hud-sampling
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' }}
+              run: timeout 180s npm run test:codex
             - uses: actions/upload-artifact@v4
               if: always()
               with:

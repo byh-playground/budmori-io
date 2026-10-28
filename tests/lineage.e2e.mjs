@@ -100,7 +100,7 @@ try {
         // With no recipe chosen the combine button opens the codex.
         await PRESS('#combine');
         assert.equal(await PAGE.locator('#codexDialog').isVisible(), true);
-        await PRESS('.codex-recipe[data-recipe="0"]');
+        await PRESS('[data-ingredient="0"] .codex-recipe[data-recipe="0"]');
         await PAGE.waitForSelector('.codex-recipe[data-recipe="0"][aria-pressed="true"]');
         await PAGE.screenshot({ path: path.join(OUTPUT, MOBILE ? 'codex-mobile.png' : 'codex-desktop.png') });
         await PRESS('#codexClose');
