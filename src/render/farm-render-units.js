@@ -19,6 +19,7 @@ import { scenePresentation } from './farm-render-scenes.js';
 import { drawElementMark } from './unit-face-overlay.js';
 import { elementCheekColor, unitLook } from '../units/species-face.js';
 import { drawUnitFace } from './unit-face-draw.js';
+import { CombinePresentation } from '../features/farm-modes/combine/presentation.js';
 import { towerElement } from '../tower/tower-theme.js';
 import { PassiveMarksPresentation } from '../tower/tower-passive-presentations.js';
 
@@ -91,9 +92,11 @@ export class UnitPresentation {
         this.preparedVisibleUnits = new Map();
         this.playerIdentities = new Map();
         this.growthDisplayUnits = new Map();
+        this.combinePresentation = new CombinePresentation();
     }
     prepareUnits(units, time, world) {
         this.preparedVisibleUnits.clear();
+        this.combinePresentation.prepare(world);
         const LIVE_PLAYER_IDS = new Set(units.map((unit) => unit.id));
         for (const ID of this.growthDisplayUnits.keys()) {
             if (!LIVE_PLAYER_IDS.has(ID)) {
@@ -160,9 +163,9 @@ export class UnitPresentation {
                     ? this.riceDisplayUnits
                     : null;
         const BASE = CACHE?.get(unit.id)?.unit || unit;
-        if (!BASE.growthActive) {
+        if (!BASE.growthActive || this.combinePresentation.parts.has(BASE.id)) {
             this.growthDisplayUnits.delete(unit.id);
-            return BASE;
+            return this.combinePresentation.display(BASE);
         }
         let visual = this.growthDisplayUnits.get(unit.id);
         if (!visual) {

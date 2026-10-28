@@ -4,6 +4,7 @@ import { mergeMaterialCostForTier } from '../units/unit-grades.js';
 import { applyRunGrowthHealth, unitMaxHpFor } from '../units/unit-stats.js';
 import { FARM_MODES } from './farm-mode-behaviors.js';
 import { Unit as UNIT } from './farm-unit.js';
+import { COMBINE_AIR } from '../features/farm-modes/combine/definition.js';
 
 // What a group of materials turns into: the same species one tier up, or - for two different species with a recipe -
 // the recipe's species at the same tier.
@@ -700,6 +701,7 @@ export const FARM_MERGE_BREED = (base) =>
                 this.effects.push({
                     kind: 'merge-material',
                     taskKey: OWNER,
+                    combine: !!combine,
                     x: unit.x,
                     y: unit.y,
                     z: unit.z,
@@ -919,6 +921,7 @@ export const FARM_MERGE_BREED = (base) =>
                         ORDERED.forEach((unit, index) =>
                             this.effects.push({
                                 kind: 'merge-material',
+                                combine: !!OUTCOME.recipe,
                                 x: unit.x,
                                 y: unit.y,
                                 z: 0.2,
@@ -940,8 +943,9 @@ export const FARM_MERGE_BREED = (base) =>
             ) {
                 return false;
             }
-            this.emit('merge', X, Y, 1, {
-                delay: SEQUENCE_WINDOW,
+            this.emit('merge', X, Y, OUTCOME.recipe ? Z : 1, {
+                combine: !!OUTCOME.recipe,
+                delay: OUTCOME.recipe ? COMBINE_AIR.revealDelay : SEQUENCE_WINDOW,
                 span: CONFIG.farm.merge.celebrationSeconds,
                 tier: RESULT.tier,
             });

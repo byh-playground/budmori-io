@@ -1,4 +1,5 @@
 import { clamp } from '../../../model/farm-model.js';
+import { COMBINE_AIR } from '../combine/definition.js';
 import { TAU, clamp01, easeOut, drawRay, drawSparkle, gradeColor, pop, rgba, strokeArc } from '../vfx-kit.js';
 
 const HOLE_PURPLE = '#7b58bd',
@@ -97,6 +98,9 @@ export function drawMergeBlackHoleFront(renderer, task) {
 }
 export function drawMergeBlackHoles(renderer, world) {
     for (const TASK of world.mergeTasks) {
+        if (TASK.partnerSpecies >= 0 && TASK.phase === 'animation' && TASK.elapsed >= COMBINE_AIR.revealDelay) {
+            continue;
+        }
         if (!Number.isFinite(TASK.centerX) || !Number.isFinite(TASK.centerY) || !Number.isFinite(TASK.centerZ)) {
             continue;
         }

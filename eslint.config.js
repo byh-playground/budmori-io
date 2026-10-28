@@ -11,6 +11,7 @@ const MODEL_FILES = [
     'src/features/farm-modes/food-reservations/model.js',
     'src/features/farm-modes/food-reservations/checkpoint.js',
     'src/features/seedling-growth/definition.js',
+    'src/features/farm-modes/combine/definition.js',
     'src/abilities/ability-catalog.js',
     'src/abilities/ability-progression.js',
     'src/abilities/ability-state.js',
