@@ -1,70 +1,54 @@
-// A spacing order owns locomotion before attack pursuit. Evaluate reachable
-// space, not the sum of neighbour pushes (which cancels inside a dense crowd).
-// All inputs come from the current logical tick; there is no saved formation.
-export function scatterDestination(unit, neighbors, threats, gap, bounds, enemy, attackDistance, radii) {
-    const RADIUS = radii.get(unit),
-        NEIGHBORS = [],
-        LOOK_AHEAD = gap * 1.5;
+// Scatter is Reynolds-style separation blended with a seek toward the attack range.
+// Every neighbour inside the spacing radius pushes this unit away, weighted by how far
+// it intrudes. All inputs come from the current logical tick; there is no saved formation.
+const SEPARATION_WEIGHT = 2;
+const SEEK_WEIGHT = 0.6;
+const HOLD_BELOW = 0.05;
+
+// Returns a heading vector (length 0..~2, 1 = full speed) or null when the unit has room
+// and should follow its normal engage behaviour.
+export function scatterHeading(unit, neighbors, gap, enemy, attackDistance, radii, out) {
+    const RADIUS = radii.get(unit);
+    let sepX = 0,
+        sepY = 0;
     for (const OTHER of neighbors) {
-        if (OTHER !== unit && OTHER.hp > 0 && OTHER.faction === unit.faction && OTHER.z <= 0.1) {
-            const DISTANCE = RADIUS + (radii.get(OTHER) ?? OTHER.radius) + gap;
-            NEIGHBORS.push({ x: OTHER.x, y: OTHER.y, distance: DISTANCE, distanceSquared: DISTANCE * DISTANCE });
+        if (OTHER === unit || OTHER.hp <= 0 || OTHER.faction !== unit.faction || OTHER.z > 0.1) {
+            continue;
+        }
+        const SPACING = RADIUS + (radii.get(OTHER) ?? OTHER.radius) + gap,
+            DX = unit.x - OTHER.x,
+            DY = unit.y - OTHER.y,
+            DISTANCE_SQUARED = DX * DX + DY * DY;
+        if (DISTANCE_SQUARED >= SPACING * SPACING) {
+            continue;
+        }
+        const DISTANCE = Math.sqrt(DISTANCE_SQUARED),
+            WEIGHT = (SPACING - DISTANCE) / SPACING;
+        if (DISTANCE > 0.01) {
+            sepX += (DX / DISTANCE) * WEIGHT;
+            sepY += (DY / DISTANCE) * WEIGHT;
+        } else {
+            // Exactly stacked units split along a stable per-pair direction.
+            const ANGLE = ((unit.id - OTHER.id) * 2.39996) % (Math.PI * 2);
+            sepX += Math.cos(ANGLE) * WEIGHT;
+            sepY += Math.sin(ANGLE) * WEIGHT;
         }
     }
-    const DX = unit.x - (enemy?.x ?? 0),
-        DY = unit.y - (enemy?.y ?? 0),
-        BEARING = Math.hypot(DX, DY) > 0.01 ? Math.atan2(DY, DX) : unit.seed * Math.PI * 2,
-        CURRENT = crowdCost(unit.x, unit.y, NEIGHBORS, gap, 0.08),
-        CROWDED = CURRENT > 0.08,
-        CLEAR_DISTANCE = attackDistance + gap * 2;
-    if (!CROWDED && (!enemy || Math.hypot(DX, DY) >= CLEAR_DISTANCE)) {
+    let headingX = sepX * SEPARATION_WEIGHT,
+        headingY = sepY * SEPARATION_WEIGHT;
+    if (Math.hypot(headingX, headingY) < HOLD_BELOW) {
         return null;
     }
-    let best = null,
-        bestScore = Infinity;
-    for (let index = 0; index < 16; index++) {
-        const ANGLE = BEARING + (index * Math.PI) / 8,
-            X = Math.max(-bounds.x, Math.min(bounds.x, unit.x + Math.cos(ANGLE) * LOOK_AHEAD)),
-            Y = Math.max(-bounds.y, Math.min(bounds.y, unit.y + Math.sin(ANGLE) * LOOK_AHEAD)),
-            TRAVEL = Math.hypot(X - unit.x, Y - unit.y);
-        if (TRAVEL < LOOK_AHEAD * 0.25) {
-            continue;
-        }
-        let score = crowdCost(X, Y, NEIGHBORS, gap, bestScore + 0.05);
-        if (enemy) {
-            const BLOCKING_APPROACH = Math.max(0, CLEAR_DISTANCE - Math.hypot(X - enemy.x, Y - enemy.y));
-            score += BLOCKING_APPROACH * BLOCKING_APPROACH;
-        }
-        for (const THREAT of threats) {
-            const OVERLAP = Math.max(0, THREAT.radius + RADIUS - Math.hypot(X - THREAT.x, Y - THREAT.y));
-            score += OVERLAP * OVERLAP * 4;
-        }
-        // Wait outside the approach space and leave room for the next attackers.
-        score -= Math.cos(ANGLE - BEARING) * 0.05;
-        score += (1 - TRAVEL / LOOK_AHEAD) * 0.05;
-        if (score < bestScore) {
-            bestScore = score;
-            best = { x: X, y: Y };
+    if (enemy) {
+        const TO_X = enemy.x - unit.x,
+            TO_Y = enemy.y - unit.y,
+            DISTANCE = Math.hypot(TO_X, TO_Y);
+        if (DISTANCE > attackDistance) {
+            headingX += (TO_X / DISTANCE) * SEEK_WEIGHT;
+            headingY += (TO_Y / DISTANCE) * SEEK_WEIGHT;
         }
     }
-    return best;
-}
-
-function crowdCost(x, y, neighbors, gap, cutoff) {
-    let cost = 0;
-    for (const OTHER of neighbors) {
-        const DX = x - OTHER.x,
-            DY = y - OTHER.y;
-        // Most queried neighbours cannot overlap this candidate. Keep the exact
-        // hypot-based deficit for contributors and avoid it for zero-cost pairs.
-        if (DX * DX + DY * DY >= OTHER.distanceSquared) {
-            continue;
-        }
-        const DEFICIT = Math.max(0, OTHER.distance - Math.hypot(DX, DY)) / gap;
-        cost += DEFICIT * DEFICIT;
-        if (cost > cutoff) {
-            break;
-        }
-    }
-    return cost;
+    out.x = headingX;
+    out.y = headingY;
+    return out;
 }

@@ -2,7 +2,7 @@ import { hasFaction, FACTION_CONFIG, areOpposingFactions } from '../core/faction
 import { scaleMoveSpeed } from '../units/unit-stats.js';
 import { ARENA_GEOMETRY } from './arena-geometry.js';
 import { CONFIG } from './farm-config.js';
-import { scatterDestination } from './army-scatter.js';
+import { scatterHeading } from './army-scatter.js';
 import { unitCapabilityComposition } from '../units/unit-abilities.js';
 
 export const FARM_ARMY_BATTLE = (base) =>
@@ -74,37 +74,20 @@ export const FARM_ARMY_BATTLE = (base) =>
                 this._armySpacingTick = this.simulationTick;
                 this._armySpacingRadius = 0;
                 this._armySpacingRadii.clear();
-                this._armyAttackTurns.clear();
-                const CANDIDATES = [];
                 for (const ALLY of this.units) {
                     if (ALLY.hp > 0 && hasFaction(ALLY, FACTION_CONFIG.PLAYER)) {
                         const RADIUS = ALLY.radius;
                         this._armySpacingRadius = Math.max(this._armySpacingRadius, RADIUS);
                         this._armySpacingRadii.set(ALLY, RADIUS);
-                        if (ALLY.dropLanded) {
-                            CANDIDATES.push(ALLY);
-                        }
                     }
-                }
-                // Successful launches rotate the scarce approach space. Priority is
-                // checkpointed on the actor, so the same inner troops cannot monopolize it.
-                CANDIDATES.sort((a, b) => a.scatterAttackCount - b.scatterAttackCount || a.id - b.id);
-                const LIMIT = Math.ceil(
-                    Math.min(CANDIDATES.length, CONFIG.farm.deploy.maxFrontline) *
-                        CONFIG.farm.deploy.scatterAttackShare,
-                );
-                for (const ALLY of CANDIDATES.slice(0, LIMIT)) {
-                    this._armyAttackTurns.add(ALLY);
                 }
             }
         }
+        // Returns true when separation moved the unit this tick; false lets it engage normally.
         _scatterArmyUnit(unit, dt, enemy, attackDistance) {
             this._prepareArmySpacing();
-            if (this._armyAttackTurns.has(unit)) {
-                return false;
-            }
             const GAP = CONFIG.farm.deploy.scatterGap,
-                QUERY_RADIUS = unit.radius + this._armySpacingRadius + GAP * 2.5;
+                QUERY_RADIUS = unit.radius + this._armySpacingRadius + GAP;
             this.unitSpatial.queryAABB(
                 unit.x - QUERY_RADIUS,
                 unit.y - QUERY_RADIUS,
@@ -112,21 +95,24 @@ export const FARM_ARMY_BATTLE = (base) =>
                 unit.y + QUERY_RADIUS,
                 this._armySpacingNeighbors,
             );
-            const DESTINATION = scatterDestination(
+            const HEADING = scatterHeading(
                 unit,
                 this._armySpacingNeighbors,
-                this._armyThreatsForTick(),
                 GAP,
-                ARENA_GEOMETRY.bounds(this, unit.radius + 0.1),
                 enemy,
                 attackDistance,
                 this._armySpacingRadii,
+                this._armyScatterHeading,
             );
-            if (!DESTINATION) {
-                unit.vx = unit.vy = 0;
-                return true;
+            if (!HEADING) {
+                return false;
             }
-            this.steer(unit, DESTINATION.x, DESTINATION.y, dt, scaleMoveSpeed(unit.bodyProfile ? 1 : 4.1, unit));
+            const LENGTH = Math.hypot(HEADING.x, HEADING.y),
+                BOUNDS = ARENA_GEOMETRY.bounds(this, unit.radius + 0.1),
+                LOOK_AHEAD = GAP * 1.5,
+                X = Math.max(-BOUNDS.x, Math.min(BOUNDS.x, unit.x + (HEADING.x / LENGTH) * LOOK_AHEAD)),
+                Y = Math.max(-BOUNDS.y, Math.min(BOUNDS.y, unit.y + (HEADING.y / LENGTH) * LOOK_AHEAD));
+            this.steer(unit, X, Y, dt, scaleMoveSpeed(unit.bodyProfile ? 1 : 4.1, unit) * Math.min(1, LENGTH));
             return true;
         }
         battleUnit(u, dt, enemy = null) {

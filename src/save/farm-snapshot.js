@@ -77,7 +77,6 @@ export const UNIT_SNAPSHOT_SHAPE = {
     lifetime: '',
     chestnutNextThornTick: 0,
     landingRecovery: 0,
-    scatterAttackCount: 0,
     walnutNextGuardTick: 0,
     walnutGuardUntilTick: 0,
     walnutStoredRawDamage: 0,
@@ -102,7 +101,7 @@ export const ACTOR_ATTACK_SNAPSHOT_SHAPE = Object.fromEntries(
         'peaRecoveryBoostExpiresAtTick peaRecoveryBoostMultiplier id generation species tier statProfile statModifiers',
         'permanentStatMultiplier growthMaxHpMultiplier faction growth growthElapsed growthDuration hp ownerId farmId',
         'isBattleOnlySummon peanutInheritedPowerRank peanutInheritedSpeedRank canSplit splitUsedThisBattle deathSplitHandled',
-        'chestnutNextThornTick landingRecovery scatterAttackCount walnutNextGuardTick walnutGuardUntilTick walnutStoredRawDamage',
+        'chestnutNextThornTick landingRecovery walnutNextGuardTick walnutGuardUntilTick walnutStoredRawDamage',
         'wheatCommandUntil wheatCommandCritBonus wheatCommandBuffs barleyArmorBreakUntil barleyArmorBreakReduction',
         'barleyArmorShredBuckets giantUntil giantSizeMultiplier giantEndedAt isFormationClone cloneBornAt',
     ]

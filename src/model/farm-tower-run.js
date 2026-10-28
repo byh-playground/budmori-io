@@ -430,9 +430,6 @@ export const FARM_TOWER_RUN = (base) =>
             return CACHE.list;
         }
         _beginArmyDeployment() {
-            for (const UNIT of this.unitCollection.items) {
-                UNIT.scatterAttackCount = 0;
-            }
             this.frontlineLimit = Math.min(CONFIG.farm.deploy.maxFrontline, Math.floor(this.capacity / 2));
             this._benched = new Set(this.unitCollection.items.filter((unit) => !unit.isBattleOnlySummon));
             this._benchRevision++;

@@ -76,7 +76,6 @@ export const CONFIG = Object.freeze({
             initialSeconds: 1.5,
             maxFrontline: 500,
             scatterGap: 1.2,
-            scatterAttackShare: 0.25,
         }),
         // Draft numbers for the tower: every 5th floor is a mid-boss; fallen units sleep tier (max 3) floors.
         tower: Object.freeze({
