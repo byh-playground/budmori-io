@@ -54,6 +54,8 @@ jobs:
               run: timeout 180s npm run test:codex
             - if: ${{ !cancelled() && steps.check.outcome == 'success' }}
               run: timeout 180s npm run test:seedling-growth
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' }}
+              run: timeout 180s npm run test:combine-air
             - uses: actions/upload-artifact@v4
               if: always()
               with:

@@ -572,6 +572,7 @@ class EffectRender extends RENDER_OBJECT {
         seedlingGrowth: R.STEP,
         unitId: R.STEP,
         unitGeneration: R.STEP,
+        combine: R.STEP,
     });
     update(e) {
         this.x = e.x;
@@ -586,6 +587,7 @@ class EffectRender extends RENDER_OBJECT {
         this.seedlingGrowth = !!e.seedlingGrowth;
         this.unitId = e.unitId || 0;
         this.unitGeneration = e.unitGeneration || 0;
+        this.combine = !!e.combine;
     }
 }
 class FormationEffectRender extends RENDER_OBJECT {

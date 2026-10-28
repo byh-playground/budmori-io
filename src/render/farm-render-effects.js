@@ -38,6 +38,9 @@ export function isJoyEffect(effect) {
     return effect.life < 0.85 && JOY_EFFECTS.has(effect.kind);
 }
 export function drawEffect(renderer, effect) {
+    if (effect.combine && effect.kind === 'merge-material') {
+        return;
+    }
     const PRESENTATION = EFFECT_PRESENTATIONS.get(effect.kind);
     if (!PRESENTATION) {
         return;

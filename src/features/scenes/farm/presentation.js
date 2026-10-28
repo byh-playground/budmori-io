@@ -1,6 +1,7 @@
 import { FEATURE } from './definition.js';
 import { isJoyEffect } from '../../../render/farm-render-effects.js';
 import { drawMergeBlackHoles } from '../../farm-modes/merge/presentation.js';
+import { COMBINE_AIR } from '../../farm-modes/combine/definition.js';
 
 export class FarmScenePresentation {
     constructor() {
@@ -26,6 +27,16 @@ export class FarmScenePresentation {
         const IDS = this.hiddenMergeUnitIds;
         IDS.clear();
         for (const TASK of world.mergeTasks || []) {
+            if (TASK.partnerSpecies >= 0) {
+                if (TASK.phase === 'approach' && TASK.elapsed / TASK.duration >= 0.99) {
+                    for (const ID of TASK.materialIds) {
+                        IDS.add(ID);
+                    }
+                } else if (TASK.phase === 'animation' && TASK.elapsed < COMBINE_AIR.revealDelay) {
+                    IDS.add(TASK.resultId);
+                }
+                continue;
+            }
             if (TASK.phase !== 'approach' || !(TASK.duration > 0) || TASK.elapsed / TASK.duration < 0.82) {
                 continue;
             }
