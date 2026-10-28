@@ -7,6 +7,9 @@ const SOURCE_FILES = ['src/**/*.{js,cjs,mjs}', 'scripts/**/*.{js,cjs,mjs}', 'tes
 // Deliberately explicit: new model owners must be added during code review.
 // Session, storage, DOM and presentation adapters are not model owners.
 const MODEL_FILES = [
+    'src/features/farm-modes/food-reservations/definition.js',
+    'src/features/farm-modes/food-reservations/model.js',
+    'src/features/farm-modes/food-reservations/checkpoint.js',
     'src/abilities/ability-catalog.js',
     'src/abilities/ability-progression.js',
     'src/abilities/ability-state.js',

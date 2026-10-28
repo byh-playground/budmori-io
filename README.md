@@ -14,6 +14,8 @@
 
 농장과 전장 모두 화면을 드래그해 이동하고, PC 휠이나 모바일 두 손가락으로 확대·축소합니다. 두 손가락의 중심을 옮기면 함께 패닝됩니다. 전장은 69×51, 야외 농장은 기존 46×34입니다. 기본 전투 시점은 기존 병력 크기를 유지하고, 직접 카메라를 움직인 뒤에는 새 층에 들어갈 때까지 자동 프레이밍하지 않습니다.
 
+농장 먹이는 새싹의 검색을 먼저 처리하고, 주민마다 가까운 미예약 먹이 하나를 선점합니다. 유효한 타깃은 유지하며 먹거나 이동이 막히면 해제합니다. [예약 수명·저장/rollback·비교 검증](docs/food-reservations.md)에 계약과 비용을 정리했습니다.
+
 ## 유물
 
 탑의 유물 문에서 9종 자동 스킬(낙뢰·운석·유성우·거대화·복사·치유의 비·거대 망치·우주선·뇌운) 중 하나를 얻거나, 이미 가진
@@ -36,6 +38,7 @@ npm run check
 node scripts/gamekit-provenance.cjs
 npm test
 npm run test:breed-allocation
+npm run test:food-reservations
 npm run test:codex
 npm run test:corn-growth
 ```

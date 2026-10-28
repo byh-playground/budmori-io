@@ -2,6 +2,7 @@ import { advanceChestnutAttacks } from '../features/species-growth/chestnut-atta
 import { applyOffline } from '../save/farm-offline.js';
 import { Unit as UNIT } from './farm-unit.js';
 import { FARM_FOOD_FIELD } from './farm-food-field.js';
+import { FoodReservations } from '../features/farm-modes/food-reservations/model.js';
 import { FARM_CONTACT_SOLVER } from './farm-contact-solver.js';
 import { FARM_MERGE_BREED } from './farm-merge-breed.js';
 import { FARM_BOSS_PATTERNS } from './farm-boss-patterns.js';
@@ -146,7 +147,8 @@ const GARDEN = class Garden extends GARDEN_BASE {
         this._groundedFoodCount = 0;
         this._groundedFoodRevision = 0;
         this._foodSearchSnapshot = { revision: 0, foods: this._groundedFoods, cells: new Map() };
-        this._foodSearchStates = new WeakMap();
+        this._foodSearchStates = new Map();
+        this._foodReservations = new FoodReservations(this);
         this._foodSearchJobSequence = 0;
         this._foodSearchScheduler = null;
         this._foodSearchWork = { candidateChecks: 0, cellVisits: 0 };
@@ -203,6 +205,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
             '_groundedFoodRevision',
             '_foodSearchSnapshot',
             '_foodSearchStates',
+            '_foodReservations',
             '_foodSearchJobSequence',
             '_foodSearchScheduler',
             '_foodSearchWork',
@@ -367,7 +370,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
         this._unitAliveState.set(unit, unit.hp > 0);
     }
     _trackUnitRemoved(unit, { keepStepSnapshot = false } = {}) {
-        this._cancelFoodTargetSearch(unit);
+        this.clearFoodTargetSearch(unit);
         this.clearPeaRecoveryBoost(unit);
         if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
             this._unitSpatialDirty = true;
@@ -494,7 +497,8 @@ const GARDEN = class Garden extends GARDEN_BASE {
         this._foodSearchScheduler?.dispose();
         this._foodSearchScheduler = CREATE_BUDGETED_SCHEDULER({ unitsPerTick: 24, quantumUnits: 1 });
         this._lastFoodSearchSchedulerMetrics = this._foodSearchScheduler.metrics;
-        this._foodSearchStates = new WeakMap();
+        this._foodSearchStates = new Map();
+        this._foodReservations.reset();
         this._foodSearchJobSequence = 0;
         this._foodSearchWork = { candidateChecks: 0, cellVisits: 0 };
         this._groundedFoods = [];
@@ -1055,6 +1059,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
         if (!SEEDLING) {
             return false;
         }
+        this.clearFoodTargetSearch(unit);
         SEEDLING.fed += 1;
         SEEDLING.cooldown = SEED_FEED_COOLDOWN_SECONDS;
         if (SEEDLING.fed >= SEED_FEEDS) {
@@ -1472,6 +1477,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
             PROJECTILE_BEHAVIORS.forProjectile(PROJECTILE).advanceLifecycle(this, PROJECTILE, dt);
         }
         this._rebuildFoodSpatialIndex();
+        this._foodReservations.advance();
         const WORK_START = this.profiler?.start(),
             PREVIOUS_WORK = this._lastFoodSearchSchedulerMetrics,
             CANDIDATES_BEFORE = this._foodSearchWork.candidateChecks,

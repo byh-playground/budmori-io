@@ -17,6 +17,7 @@ import { isRedbeanAttackRecord } from '../features/species-growth/redbean-attack
 import { isPeaAttackRecord } from '../features/species-growth/pea-attack.js';
 import { isValidFormationRuntime } from '../formation/formation-skill-state.js';
 import { CONFIG } from '../model/farm-model.js';
+import { validateFoodRuntime } from '../features/farm-modes/food-reservations/checkpoint.js';
 import { isValidPlayerProgressionState, FARM_BOSS_EVENT_MAX_STAGE } from '../model/player-progression.js';
 import { hasUnitCapability, specialAbilityCompositionFor } from '../units/unit-abilities.js';
 import { mergeMaterialCostForTier } from '../units/unit-grades.js';
@@ -1224,6 +1225,7 @@ function validateUnits(raw, context, allowLegacyBarleyShred) {
 }
 // Food piles.
 function validateFood(raw) {
+    validateFoodRuntime(raw.foodRuntime, raw, ASSERT);
     for (const F of raw.food) {
         ASSERT(['flight', 'bounce', 'grounded'].includes(F.phase));
         for (const K of ['x', 'y', 'z', 'vx', 'vy', 'vz', 'tx', 'ty']) {

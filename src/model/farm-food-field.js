@@ -1,5 +1,6 @@
 import { CONFIG } from './farm-config.js';
 import { scaleMoveSpeed } from '../units/unit-stats.js';
+import { FOOD_RESERVATION } from '../features/farm-modes/food-reservations/definition.js';
 
 const EMPTY_FOOD_SEARCH_BUCKET = Object.freeze([]);
 
@@ -74,8 +75,12 @@ export const FARM_FOOD_FIELD = (base) =>
                 this._groundedFoodRevision++;
             }
         }
-        consumeGroundFood(food) {
+        consumeGroundFood(food, unit = null) {
             if (food?.phase !== 'grounded' || !this.foodSpatial.itemCells.has(food)) {
+                return false;
+            }
+            const CLAIM = this._foodReservations.byFood.get(food);
+            if (CLAIM && CLAIM.unit !== unit) {
                 return false;
             }
             const INDEX = this.food.indexOf(food);
@@ -83,6 +88,7 @@ export const FARM_FOOD_FIELD = (base) =>
                 return false;
             }
             this.food.splice(INDEX, 1);
+            this._foodReservations.releaseFood(food);
             this.foodSpatial.remove(food);
             this._foodOrder.delete(food);
             this._groundedFoodCount = Math.max(0, this._groundedFoodCount - 1);
@@ -95,9 +101,11 @@ export const FARM_FOOD_FIELD = (base) =>
                 return false;
             }
             this._foodSearchStates.delete(unit);
-            return this._foodSearchScheduler?.cancel(STATE.key) ?? false;
+            this._foodReservations.cancel(STATE);
+            return true;
         }
         clearFoodTargetSearch(unit) {
+            this._foodReservations.releaseUnit(unit);
             this._cancelFoodTargetSearch(unit);
         }
         updateFoodSpatial(food) {
@@ -250,6 +258,9 @@ export const FARM_FOOD_FIELD = (base) =>
                 unit,
                 snapshot: this._foodSearchSnapshot,
                 revision: this._foodSearchSnapshot.revision,
+                claimRevision: this._foodReservations.revision,
+                availabilityRevision: this._foodReservations.availabilityRevision,
+                maxDistance: this._foodReservations.maxDistance(unit),
                 x: unit.x,
                 y: unit.y,
                 centerX: CX,
@@ -268,38 +279,31 @@ export const FARM_FOOD_FIELD = (base) =>
                 target: null,
             };
             this._foodSearchStates.set(unit, STATE);
-            this._foodSearchScheduler.enqueue({
-                key: STATE.key,
-                owner: this,
-                priority: 1,
-                isValid: () =>
-                    this.scene === 'farm' &&
-                    this._foodSearchStates.get(unit) === STATE &&
-                    this._unitById.get(unit.id) === unit &&
-                    unit.hp > 0 &&
-                    !unit.fed,
-                step: ({ maxUnits }) => this._stepFoodTargetSearch(STATE, maxUnits),
-                onComplete: ({ result }) => {
-                    if (this._foodSearchStates.get(unit) !== STATE) {
-                        return;
-                    }
-                    if (result && this._isCurrentGroundedFood(result)) {
-                        // Candidate selection is advisory until the authoritative tick validates it.
-                        STATE.target = result;
-                        STATE.status = 'ready';
-                        return;
-                    }
-                    if (STATE.revision !== this._groundedFoodRevision) {
-                        this._foodSearchStates.delete(unit);
-                        if (this.scene === 'farm' && this._unitById.get(unit.id) === unit && unit.hp > 0 && !unit.fed) {
-                            this._startFoodTargetSearch(unit);
-                        }
-                        return;
-                    }
-                    STATE.status = 'empty';
-                },
-            });
+            this._foodReservations.enqueue(STATE);
             return null;
+        }
+        _finishFoodTargetSearch(state, result) {
+            const UNIT = state.unit;
+            if (this._foodSearchStates.get(UNIT) !== state || !this._foodReservations.eligible(UNIT)) {
+                this.clearFoodTargetSearch(UNIT);
+                return;
+            }
+            if (result && this._foodReservations.claim(UNIT, result)) {
+                state.target = result;
+                state.status = 'ready';
+                return;
+            }
+            if (
+                this._foodReservations.availableCount &&
+                (result ||
+                    state.revision !== this._groundedFoodRevision ||
+                    state.availabilityRevision !== this._foodReservations.availabilityRevision)
+            ) {
+                this._foodSearchStates.delete(UNIT);
+                this._startFoodTargetSearch(UNIT);
+                return;
+            }
+            state.status = 'empty';
         }
         _stepFoodTargetSearch(state, maxUnits) {
             const GRID = this.foodSpatial,
@@ -382,8 +386,14 @@ export const FARM_FOOD_FIELD = (base) =>
             }
         }
         _considerFoodTarget(state, food) {
+            if (!this._foodReservations.available(food, state.unit)) {
+                return;
+            }
             const DISTANCE = Math.hypot(food.x - state.x, food.y - state.y),
                 ORDER = this._foodOrder.get(food) ?? Infinity;
+            if (DISTANCE > state.maxDistance) {
+                return;
+            }
             if (
                 DISTANCE < state.nearestDistance ||
                 (DISTANCE === state.nearestDistance && ORDER < state.nearestOrder)
@@ -397,18 +407,27 @@ export const FARM_FOOD_FIELD = (base) =>
             if (!this._spatialStepActive) {
                 this._rebuildFoodSpatialIndex();
             }
-            if (!unit || this.scene !== 'farm' || unit.hp <= 0 || unit.fed || !this._groundedFoodCount) {
-                this._cancelFoodTargetSearch(unit);
+            if (!this._foodReservations.eligible(unit) || !this._groundedFoodCount) {
+                this.clearFoodTargetSearch(unit);
                 return null;
             }
+            const RESERVED = this._foodReservations.target(unit);
+            if (RESERVED && this._foodReservations.available(RESERVED, unit)) {
+                return RESERVED;
+            }
             const STATE = this._foodSearchStates.get(unit);
-            if (STATE?.status === 'ready' && this._isCurrentGroundedFood(STATE.target)) {
-                return STATE.target;
+            if (!this._foodReservations.availableCount) {
+                return null;
             }
             if (STATE?.status === 'searching') {
                 return null;
             }
-            if (STATE?.status === 'empty' && STATE.revision === this._foodSearchSnapshot.revision) {
+            if (
+                STATE?.status === 'empty' &&
+                STATE.revision === this._foodSearchSnapshot.revision &&
+                STATE.availabilityRevision === this._foodReservations.availabilityRevision &&
+                Math.hypot(unit.x - STATE.x, unit.y - STATE.y) < FOOD_RESERVATION.retryDistance
+            ) {
                 return null;
             }
             if (STATE) {

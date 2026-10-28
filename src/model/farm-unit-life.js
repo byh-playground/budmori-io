@@ -141,6 +141,7 @@ export const FARM_UNIT_LIFE = (base) =>
             }
         }
         _processUnitDeath(unit) {
+            this.clearFoodTargetSearch(unit);
             this.passiveAllyFell(unit);
             unit.ability.interrupt();
             unit.specialAbility?.interrupt();

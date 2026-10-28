@@ -47,6 +47,7 @@ export function restore(raw) {
         ejectQueue: EJECT_QUEUE,
         deployReadyTime: DEPLOY_READY_TIME,
         deployCount: DEPLOY_COUNT,
+        foodRuntime: FOOD_RUNTIME,
         ...WORLD_DATA
     } = structuredClone(raw);
     G.resetUnits();
@@ -115,5 +116,6 @@ export function restore(raw) {
     G._deployReadyTime = DEPLOY_READY_TIME;
     G._deployCount = DEPLOY_COUNT;
     G.reconcileMateReservations();
+    G._foodReservations.restore(FOOD_RUNTIME);
     return G;
 }

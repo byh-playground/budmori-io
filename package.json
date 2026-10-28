@@ -11,6 +11,7 @@
         "format:check": "prettier --check .",
         "lint": "eslint . --max-warnings 0",
         "test:breed-allocation": "node tests/breed-allocation.e2e.mjs",
+        "test:food-reservations": "node tests/food-reservations.e2e.mjs",
         "test:lineage": "node tests/lineage.e2e.mjs",
         "test:codex": "node tests/codex.e2e.mjs",
         "test:seedling-motion": "node tests/seedling-motion.e2e.mjs",
