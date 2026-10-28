@@ -193,6 +193,7 @@ try {
                     suspended: RUNTIME.clockSuspendedAtMs !== null,
                     stats: { ...BUDMORI.renderer.device.stats },
                     pose: BUDMORI.renderer.meshes.state === 'disposed' ? null : BUDMORI.renderer.meshes.poseStats(),
+                    sprites: BUDMORI.renderer.unitSprites.stats(),
                     helpTick: globalThis.__budmoriHelp?.snapshot().tick ?? null,
                 };
             });
@@ -303,7 +304,10 @@ try {
                 throw error;
             });
         const ACTIVE = await farm.state();
-        assert(ACTIVE.pose.gpuDrawInstances > 0 || !budmoriGpuSupported(ACTIVE), `${label}: pose draws restored`);
+        assert(
+            ACTIVE.sprites.sprite > 0 || ACTIVE.pose.gpuDrawInstances > 0 || !budmoriGpuSupported(ACTIVE),
+            `${label}: prepared sprite or supported native pose draws restored`,
+        );
         if (PRE.paused) {
             await farm.page.waitForTimeout(250);
             const STILL_PAUSED = await farm.state();
@@ -469,6 +473,10 @@ try {
     const HELP_PAUSE = await openFarm('help-pause-during-loss', '?help=pea-t1');
     try {
         const BEFORE = await HELP_PAUSE.state();
+        assert(
+            BEFORE.frameClock - BEFORE.adjusted < 120,
+            'Initial prepared help clock cannot lag its captured session clock',
+        );
         assert.equal(BEFORE.paused, false);
         await HELP_PAUSE.lose();
         const LOST = await HELP_PAUSE.state();

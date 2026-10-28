@@ -8,6 +8,7 @@ import { drawFormationEffects, includeFormationEffectBounds } from '../formation
 import { scenePresentation } from './farm-render-scenes.js';
 import { FoodPresentation, ProjectilePresentation } from './farm-render-items.js';
 import { UnitPresentation } from './farm-render-units.js';
+import { UnitSpriteAtlas } from './unit-sprite-atlas.js';
 import { unitCullingEnabled, unitMayBeVisible } from './farm-render-visibility.js';
 import { UNIT_GRADES } from '../units/unit-grades.js';
 import { CornAttachmentPresentation } from '../features/abilities/corn-attachment/presentation.js';
@@ -28,6 +29,7 @@ import {
 import { bindBossSocketAsset, bossHandRig, unbindBossSocketAsset } from './boss-vector-sockets.js';
 import { BossPresentation, bossAttackPresentation } from './farm-render-boss.js';
 import { CONFIG, clamp, bossAttackArea, ArenaGeometry } from '../model/farm-model.js';
+import { BOSS_SPECIES } from '../units/species-catalog.js';
 import { bossDangerContour } from './attack-telegraph.js';
 import { drawFarmGrounds, drawTowerHall } from './farm-scenery.js';
 const { bosses: BOSS_VECTOR_ASSETS, troops: TROOP_VECTOR_ASSETS } = globalThis.BudmoriVectorResources;
@@ -127,6 +129,14 @@ const DIORAMA = class Diorama {
                 parts: new Set(COMPILED.metadata.parts.map((part) => part.id)),
             });
         }
+        // The single code setting chooses only body art, never game state.
+        // Help iframes retain native vectors instead of preparing a whole atlas.
+        const ART_QUERY = new URLSearchParams(globalThis.location?.search);
+        if (!['vector', 'sprite'].includes(CONFIG.render.unitArt)) {
+            throw new TypeError('CONFIG.render.unitArt must be vector or sprite');
+        }
+        this.unitArtMode = ART_QUERY.has('help') ? 'previewVector' : CONFIG.render.unitArt;
+        this.unitSprites = new UnitSpriteAtlas(this, this.unitArtMode === 'sprite');
         this.bossAssets = new Map(
             Object.entries(BOSS_VECTOR_ASSETS).map(([id, compiled]) => [
                 id,
@@ -156,11 +166,13 @@ const DIORAMA = class Diorama {
         this.bossTelegraph = null;
         this.bossPresentation = new BossPresentation(this);
         this.ctx.isBloomWebGL = true;
-        this.canvas.dataset.rendererBackend = 'Budmori authored 2.5D vectors';
+        this.canvas.dataset.rendererBackend = this.unitSprites.enabled
+            ? 'Budmori sampled sprite units + native vector exceptions'
+            : 'Budmori authored 2.5D vectors';
         this.resize();
-        const BOSS = this.bossAssets.get('species-3');
+        const BOSS = this.bossSpeciesAssets.get(BOSS_SPECIES);
         if (!BOSS) {
-            throw new Error('Pinned species-3 boss vector asset is required');
+            throw new Error('Pinned current boss vector asset is required');
         }
         const PREWARM_AT = performance.now();
         this.bossPlayer = BOSS.asset.createPlayer({
@@ -168,7 +180,7 @@ const DIORAMA = class Diorama {
             startedAtMs: 0,
         });
         this.bossPlayerAsset = BOSS;
-        this.bossPlayers.set(3, {
+        this.bossPlayers.set('prewarm', {
             record: BOSS,
             player: this.bossPlayer,
         });
@@ -177,6 +189,7 @@ const DIORAMA = class Diorama {
             height: this.canvas.height,
             clearColor: [0.9, 0.92, 0.87, 1],
         });
+        this.unitSprites.prepare();
         this.bossPlayer.draw({
             projection: this.ctx.vector.projection,
             matrix: [0.001, 0, 0, 0.001, 100, 100],
@@ -184,6 +197,17 @@ const DIORAMA = class Diorama {
         this.prewarmStats = this.ctx.endFrame();
         this.prewarmDurationMs = performance.now() - PREWARM_AT;
         this.assetsReady = true;
+        // SDK resources restore first; the app resumes its suspended clock
+        // after this listener, so image preparation cannot advance game time.
+        this.onSpritesRestored = () => {
+            if (this.unitSprites.disposed || !this.unitSprites.enabled || this.device.state !== 'ready') {
+                return;
+            }
+            this.ctx.beginFrame({ width: this.canvas.width, height: this.canvas.height });
+            this.unitSprites.prepare();
+            this.ctx.endFrame();
+        };
+        this.canvas.addEventListener('webglcontextrestored', this.onSpritesRestored);
     }
     resize() {
         const CENTER = this.view
@@ -955,6 +979,10 @@ const DIORAMA = class Diorama {
         ) {
             return;
         }
+        // A restored render target has lost its pixels. This is a distinct
+        // preparation generation; ordinary frames take an O(1) ready path.
+        this.unitSprites.prepare();
+        this.unitSprites.beginFrame();
         this.terrain(sim2, now);
         this.unitPresentation.prepareUnits(sim2.units, sim2.time, sim2);
         // Attachment targets need their native body transform even when their
@@ -1171,7 +1199,9 @@ const DIORAMA = class Diorama {
         return CAPTURED?.generation === group.targetGeneration ? CAPTURED : null;
     }
     dispose() {
+        this.canvas.removeEventListener('webglcontextrestored', this.onSpritesRestored);
         disposeEffectPresentations(this);
+        this.unitSprites.dispose();
         for (const SPECIES of this.vectorAssets.keys()) {
             unbindBossSocketAsset(SPECIES, this.bossSpeciesAssets.get(SPECIES));
         }

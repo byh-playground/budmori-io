@@ -176,7 +176,7 @@ const AUTHORED_BODIES = [
         species: 8,
         asset: 'assets/troops/barley.svg',
         shapeId: 'barley-seed-outline',
-        sourceSha256: '0999357eda5f9ef8600f86f63c31e6da0c0f16a5ba59ac2e72cdf4cbef12ccfe',
+        sourceSha256: '8f14d901ba7ed53e9bdb617da15e85b83e1304f248273b6a3cc0a98ac4993064',
         viewBox: [0.0, 0.0, 320.0, 350.0],
         bounds: {
             left: 69.30899999999998,

@@ -1,5 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="씨앗">
-    <ellipse cx="32" cy="38" rx="17" ry="20" fill="#5b4636" stroke="#2c201c" stroke-width="3" />
-    <path d="M32 18c0-6 3-10 9-11-1 6-4 10-9 11z" fill="#83ad47" stroke="#2c201c" stroke-width="2.5" stroke-linejoin="round" />
-    <path d="M25 33c2-4 5-6 8-6" fill="none" stroke="#8a6f57" stroke-width="3" stroke-linecap="round" />
-</svg>

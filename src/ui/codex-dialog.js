@@ -1,6 +1,6 @@
 import { RECIPES, TEMPERAMENTS, ELEMENTS, ELEMENT_COUNT, TEMPERAMENT_COUNT } from '../model/lineage.js';
 import { speciesById, SPECIES_COUNT } from '../units/species-catalog.js';
-import { elementIconSvg, faceOverlaySvg } from '../units/species-face.js';
+import { elementIconSvg } from '../units/species-face.js';
 import { speciesPortraitSource } from '../units/species-paint.js';
 
 const TABS = Object.freeze([
@@ -9,14 +9,14 @@ const TABS = Object.freeze([
     Object.freeze({ id: 'colors', label: '색' }),
 ]);
 
-// A species picture; a known one in the grids also carries the temperament's brows and the element's cheeks and mark.
+// The authored face selection and cheek fills match the native player's data.
 function icon(species, known, look = null) {
     const ENTRY = speciesById(species),
-        IMAGE = `<img class="codex-icon${known ? '' : ' is-unknown'}" src="${speciesPortraitSource(species, known ? look?.element : 0)}" alt="${known ? ENTRY.name : '미발견'}" width="40" height="40" draggable="false">`;
+        IMAGE = `<img class="codex-icon${known ? '' : ' is-unknown'}" src="${speciesPortraitSource(species, known ? look?.element : 0, known ? look?.temperament : -1)}" alt="${known ? ENTRY.name : '미발견'}" width="40" height="40" draggable="false">`;
     if (!known || !look) {
         return IMAGE;
     }
-    return `<span class="codex-pic">${IMAGE}${faceOverlaySvg(species, look.temperament)}${elementIconSvg(look.element, 14)}</span>`;
+    return `<span class="codex-pic">${IMAGE}${elementIconSvg(look.element, 14)}</span>`;
 }
 
 // The species tiers a recipe can be made at right now: both ingredients owned at the same tier.

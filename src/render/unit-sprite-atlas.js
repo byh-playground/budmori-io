@@ -1,0 +1,241 @@
+// Images are prepared outside ordinary scene submission. Native players retain
+// the exact game clock and sockets; sampled art never feeds authority back.
+import { idleUnitExpressions } from '../units/species-face.js';
+
+const IMAGE_BUDGET_BYTES = 128 * 1024 * 1024;
+const IMAGE_SIZE = 96;
+// Keep at least two prepared texels per displayed source unit. Larger actors
+// (zoom, DPR, giant) retain native vector detail rather than magnifying a sheet.
+const MAX_DISPLAY_TO_IMAGE_SCALE = 0.5;
+
+function clipExpressions(clip) {
+    if (clip === 'idle' || clip === 'walk') {
+        return idleUnitExpressions();
+    }
+    if (clip.startsWith('windup')) {
+        return ['focused'];
+    }
+    if (clip.startsWith('fire')) {
+        return ['attack'];
+    }
+    if (clip === 'hit') {
+        return ['hurt'];
+    }
+    if (clip === 'death' || clip === 'defeat') {
+        return ['dead'];
+    }
+    if (clip === 'sleep') {
+        return ['sleep'];
+    }
+    if (clip === 'victory') {
+        return ['happy'];
+    }
+    if (clip === 'airborne') {
+        return ['surprised'];
+    }
+    return ['neutral', 'hungry', 'happy'];
+}
+
+export class UnitSpriteAtlas {
+    constructor(renderer, enabled) {
+        this.renderer = renderer;
+        this.enabled = enabled;
+        this.entries = new Map();
+        this.manifest = [];
+        this.imageBytes = 0;
+        this.plannedImageBytes = 0;
+        this.bakeCount = 0;
+        this.preparationCpuMs = 0;
+        this.restoreGeneration = -1;
+        this.frame = { sprite: 0, vector: 0, reasons: {} };
+        this.disposed = false;
+    }
+    prepare() {
+        if (!this.enabled || this.disposed) {
+            return;
+        }
+        const R = this.renderer,
+            GENERATION = R.device.stats.restores ?? 0;
+        if (GENERATION === this.restoreGeneration) {
+            return;
+        }
+        const START = performance.now();
+        if (!this.entries.size) {
+            const { createVectorSpriteAtlas: CREATE_ATLAS } = globalThis.BloomGamekitVectorAssets;
+            // Prepare every species' common face combinations first. The fixed
+            // image budget then selects remaining clips; rejected entries keep
+            // their real expression and use the native path, never a neutral lie.
+            const SOURCES = [...R.vectorAssets].flatMap(([species, record]) =>
+                Object.entries(record.compiled.metadata.clips).map(([clip, definition]) => ({
+                    species,
+                    record,
+                    clip,
+                    definition,
+                })),
+            );
+            const PRIORITY = (clip) => (['idle', 'walk'].includes(clip) ? 0 : /^(windup|fire)/.test(clip) ? 1 : 2);
+            SOURCES.sort((a, b) => PRIORITY(a.clip) - PRIORITY(b.clip));
+            for (const { species: SPECIES, record: RECORD, clip: CLIP, definition: DEFINITION } of SOURCES) {
+                const PPU = IMAGE_SIZE / Math.max(RECORD.compiled.viewBox[2], RECORD.compiled.viewBox[3]);
+                // Only authored 1000ms weapon stages use normalized time.
+                // Peanut's short -tN clips retain their real-time sampling.
+                const INTERVAL = CLIP.includes('-') && DEFINITION.durationMs === 1000 ? 100 : 50;
+                for (const EXPRESSION of clipExpressions(CLIP)) {
+                    const ATLAS = CREATE_ATLAS(R.meshes, RECORD.asset, RECORD.compiled, {
+                        clip: CLIP,
+                        expression: EXPRESSION,
+                        sampleIntervalMs: INTERVAL,
+                        pixelsPerUnit: PPU,
+                        maxAtlasBytes: IMAGE_BUDGET_BYTES,
+                        supersample: 4,
+                    });
+                    const PLAN = ATLAS.stats,
+                        KEY = `${SPECIES}:${CLIP}:${EXPRESSION}`;
+                    const ENTRY = {
+                        atlas: ATLAS,
+                        animation: null,
+                        player: null,
+                        texture: null,
+                        pixelsPerUnit: PPU,
+                        ready: false,
+                        reason: PLAN.reason,
+                        bytes: PLAN.atlasBytes,
+                    };
+                    if (!ENTRY.reason && this.plannedImageBytes + ENTRY.bytes > IMAGE_BUDGET_BYTES) {
+                        ENTRY.reason = 'imageBudget';
+                    }
+                    if (ENTRY.reason) {
+                        ATLAS.dispose();
+                        ENTRY.atlas = null;
+                    } else {
+                        this.plannedImageBytes += ENTRY.bytes;
+                    }
+                    this.entries.set(KEY, ENTRY);
+                    this.manifest.push({
+                        species: SPECIES,
+                        clip: CLIP,
+                        expression: EXPRESSION,
+                        palette: 0,
+                        sampleIntervalMs: INTERVAL,
+                        pixelsPerUnit: PPU,
+                        frames: PLAN.frameCount,
+                        bytes: ENTRY.bytes,
+                        reason: ENTRY.reason,
+                    });
+                }
+            }
+        }
+        const { createSpriteAnimation: CREATE_ANIMATION } = globalThis.BloomGamekitRendering;
+        this.imageBytes = 0;
+        for (const [KEY, ENTRY] of this.entries) {
+            if (!ENTRY.atlas) {
+                continue;
+            }
+            const BEFORE = ENTRY.atlas.stats.bakeCount,
+                RESULT = ENTRY.atlas.bake();
+            this.bakeCount += ENTRY.atlas.stats.bakeCount - BEFORE;
+            this.imageBytes += ENTRY.atlas.stats.allocatedBytes;
+            ENTRY.ready = RESULT.backend === 'sprite';
+            ENTRY.reason = RESULT.reason;
+            if (ENTRY.ready && ENTRY.texture !== ENTRY.atlas.texture) {
+                ENTRY.animation?.dispose();
+                ENTRY.texture = ENTRY.atlas.texture;
+                ENTRY.animation = CREATE_ANIMATION(R.meshes, ENTRY.atlas.texture, ENTRY.atlas.definition);
+                ENTRY.player = ENTRY.animation.createPlayer({ clip: KEY.split(':')[1] });
+            }
+        }
+        this.restoreGeneration = GENERATION;
+        this.preparationCpuMs += performance.now() - START;
+    }
+    beginFrame() {
+        this.frame = { sprite: 0, vector: 0, reasons: {} };
+    }
+    resolve(unit, prepared, paintRegions, displayScale) {
+        if (!this.enabled) {
+            return { reason: this.renderer.unitArtMode };
+        }
+        if (unit.isBoss) {
+            return { reason: 'dynamicBoss' };
+        }
+        // Applying global alpha to a flattened image differs from applying it
+        // to each original overlapping triangle. Keep that original contract.
+        if (unit.isFormationClone) {
+            return { reason: 'triangleAlpha' };
+        }
+        if (!unit.isSeedling && unit.species === 7 && unit.ability.wheatLongBaton) {
+            return { reason: 'dynamicBasePose' };
+        }
+        if (paintRegions && Object.keys(paintRegions).length) {
+            return { reason: 'paletteNotPrepared' };
+        }
+        const SPECIES = unit.isSeedling ? 9 : unit.species,
+            ENTRY = this.entries.get(`${SPECIES}:${prepared.player.currentClip}:${prepared.player.currentExpression}`);
+        if (ENTRY && displayScale > ENTRY.pixelsPerUnit * MAX_DISPLAY_TO_IMAGE_SCALE) {
+            return { reason: 'magnification' };
+        }
+        return ENTRY?.ready ? { entry: ENTRY } : { reason: ENTRY?.reason || 'expressionNotPrepared' };
+    }
+    draw(prepared, options) {
+        const SELECTION = prepared.sprite;
+        if (!SELECTION?.entry) {
+            const REASON = SELECTION?.reason || 'notPrepared';
+            this.frame.vector++;
+            this.frame.reasons[REASON] = (this.frame.reasons[REASON] || 0) + 1;
+            return false;
+        }
+        const ENTRY = SELECTION.entry,
+            M = options.matrix,
+            PPU = ENTRY.pixelsPerUnit,
+            CLIP = prepared.clip;
+        if (Math.max(Math.hypot(M[0], M[1]), Math.hypot(M[2], M[3])) > PPU * MAX_DISPLAY_TO_IMAGE_SCALE) {
+            this.frame.vector++;
+            this.frame.reasons.magnification = (this.frame.reasons.magnification || 0) + 1;
+            return false;
+        }
+        let elapsed = prepared.player.currentTimeMs - prepared.startedAtMs;
+        if (CLIP.loop !== 'once') {
+            const PERIOD = CLIP.durationMs * (CLIP.loop === 'alternate' ? 2 : 1);
+            elapsed = ((elapsed % PERIOD) + PERIOD) % PERIOD;
+        }
+        ENTRY.player.seek(Math.max(0, elapsed), 0);
+        ENTRY.player.draw({
+            ...options,
+            timeMs: 0,
+            matrix: [M[0] / PPU, M[1] / PPU, M[2] / PPU, M[3] / PPU, M[4], M[5]],
+        });
+        this.frame.sprite++;
+        return true;
+    }
+    stats() {
+        return {
+            enabled: this.enabled,
+            imageBudgetBytes: IMAGE_BUDGET_BYTES,
+            imageBytes: this.imageBytes,
+            plannedImageBytes: this.plannedImageBytes,
+            maxDisplayToImageScale: MAX_DISPLAY_TO_IMAGE_SCALE,
+            manifestEntries: this.manifest.length,
+            bakeCount: this.bakeCount,
+            preparationCpuMs: this.preparationCpuMs,
+            bossVectorActors: this.renderer.displayBosses?.length ?? 0,
+            bodySubmissionSpriteRatio:
+                this.frame.sprite + this.frame.vector
+                    ? this.frame.sprite / (this.frame.sprite + this.frame.vector)
+                    : null,
+            restoreGeneration: this.restoreGeneration,
+            ...this.frame,
+        };
+    }
+    dispose() {
+        if (this.disposed) {
+            return;
+        }
+        this.disposed = true;
+        for (const ENTRY of this.entries.values()) {
+            ENTRY.animation?.dispose();
+            ENTRY.atlas?.dispose();
+        }
+        this.entries.clear();
+        this.manifest.length = 0;
+        this.imageBytes = 0;
+    }
+}

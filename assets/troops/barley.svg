@@ -54,7 +54,7 @@
     <g id="face-hungry" display="none">
       <circle id="barley-hungry-eye-left" cx="445.6" cy="114.2" r="6.5" fill="#4b211b"/>
       <circle id="barley-hungry-eye-right" cx="484.9" cy="114.3" r="6.5" fill="#4b211b"/>
-      <circle id="barley-hungry-glint-left" cx="436" cy="112" r="1.5" fill="#fff5d8"/>
+      <circle id="barley-hungry-glint-left" cx="444.7" cy="112" r="1.5" fill="#fff5d8"/>
       <circle id="barley-hungry-glint-right" cx="484" cy="112" r="1.5" fill="#fff5d8"/>
       <path id="barley-hungry-mouth" d="M459 125 Q465 129 471 125" fill="none" stroke="#2c1c18" stroke-width="2" stroke-linecap="round"/>
     </g>

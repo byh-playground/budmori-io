@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 import * as VECTORS from '../vendor/upstream/vector-assets.js';
 import { speciesById, SPECIES_COUNT } from '../src/units/species-catalog.js';
-import { faceMarks, faceOverlaySvg } from '../src/units/species-face.js';
 import { elementPaintRegions, speciesPortraitSource } from '../src/units/species-paint.js';
 
 globalThis.DOMParser = DOMParser;
@@ -48,8 +47,6 @@ for (let species = 0; species < SPECIES_COUNT; species++) {
         assert.equal(SERIALIZER.serializeToString(ROOT), ORIGINAL, 'Reusable original is unchanged');
         assert.ok(elementPaintRegions(element)['element-cheeks'].every(Number.isFinite));
     }
-    assert.ok(faceMarks(species, 0).every((mark) => mark.kind !== 'ellipse'));
-    assert.ok(!faceOverlaySvg(species, 0).includes('<ellipse'));
 }
 assert.equal(elementPaintRegions(0), null);
 assert.equal(regions, 66);
