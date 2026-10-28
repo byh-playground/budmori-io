@@ -479,6 +479,7 @@ class ProjectileRender extends RENDER_OBJECT {
         owner: R.STEP,
         species: R.STEP,
         tier: R.STEP,
+        element: R.STATE_KEY,
         radius: R.STEP,
         height: R.STEP,
         projectileKind: R.STATE_KEY,
@@ -516,6 +517,7 @@ class ProjectileRender extends RENDER_OBJECT {
         this.owner = p.owner;
         this.species = p.species;
         this.tier = p.tier;
+        this.element = p.element || 0;
         this.radius = p.radius;
         this.height = p.height;
         this.projectileKind = p.projectileKind || '';

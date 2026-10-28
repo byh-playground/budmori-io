@@ -3,6 +3,7 @@ import { CornProjectilePresentation } from '../features/projectiles/corn/present
 import { SpikeProjectilePresentation } from '../features/projectiles/spike/presentation.js';
 import { projectileFeature } from '../features/projectiles/definition.js';
 import { Ballistics } from '../model/farm-model.js';
+import { drawElementProjectile } from './element-projectile.js';
 
 export class FoodPresentation {
     constructor(renderer) {
@@ -57,5 +58,8 @@ export class ProjectilePresentation {
                 : PROJECTILE_PRESENTATIONS.get(projectileFeature(projectile).id);
         PRESENTATION.drawShadow(RENDERER, projectile);
         PRESENTATION.draw(RENDERER, projectile, P, TAIL);
+        if (projectile.element) {
+            drawElementProjectile(RENDERER, projectile, P, TAIL);
+        }
     }
 }

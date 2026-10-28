@@ -210,6 +210,7 @@ function emitChestnutShots(world, r) {
             ownerId: r.source.ownerId,
             species: 3,
             tier: r.tier,
+            element: world.attackElement(OWNER),
             isFormationClone: r.source.isFormationClone,
             path: { from: { ...r.origin }, to: { ...r.point }, height: 0, duration: DURATION },
             elapsed: 0,

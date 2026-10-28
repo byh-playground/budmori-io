@@ -10,7 +10,7 @@ const PARTICLES = Object.freeze({ 1: [6, 2], 2: [6, 2], 3: [5, 2], 4: [3, 1], 5:
 const TAU = Math.PI * 2;
 const FLASH = '#fff4d6';
 const LEAF_DARK_RGB = '86,130,84';
-const ELEMENT_RGB = Object.freeze(
+export const ELEMENT_RGB = Object.freeze(
     ELEMENTS.map((element) => {
         const N = parseInt(element.color.slice(1), 16);
         return `${(N >> 16) & 255},${(N >> 8) & 255},${N & 255}`;
