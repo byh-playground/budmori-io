@@ -11,6 +11,10 @@ import { towerElement } from '../tower/tower-theme.js';
 
 export const FARM_COMBAT = (base) =>
     class FarmCombat extends base {
+        // Only the player's coloured units carry an element into a fight; everyone else attacks plain.
+        attackElement(unit) {
+            return unit.faction === FACTION_CONFIG.PLAYER ? elementOf(unit.genes) : 0;
+        }
         combatEvent(kind, u, action, cycle = u.ability) {
             this.combatLog.push({
                 kind,
@@ -107,10 +111,7 @@ export const FARM_COMBAT = (base) =>
                         CONTEXT.criticalChanceSnapshot ?? CLAMP(ATTACKER_STATS.critChance + CRITICAL_BONUS, 0, 1),
                 };
             // A coloured unit's hit against the floor band's enemies carries element damage.
-            const HIT_ELEMENT =
-                    SOURCE.faction === FACTION_CONFIG.PLAYER && target.faction === FACTION_CONFIG.ENEMY
-                        ? elementOf(SOURCE.genes)
-                        : 0,
+            const HIT_ELEMENT = target.faction === FACTION_CONFIG.ENEMY ? this.attackElement(SOURCE) : 0,
                 ELEMENT_SCALE = elementHitScale(HIT_ELEMENT, towerElement(this.tower.floor)),
                 RAW_BASE_DAMAGE =
                     ATTACKER_STATS.attackPower *
