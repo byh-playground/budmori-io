@@ -3,6 +3,7 @@ import { SignatureEffectPresentation } from '../features/boss-patterns/signature
 import { DamageNumberPresentation } from './damage-numbers.js';
 import { BarleyArmorShredPresentation } from '../features/abilities/barley-shred/presentation.js';
 import { PASSIVE_PRESENTATION_EVENTS } from '../tower/tower-passive-presentations.js';
+import { drawElementHit, drawElementHitGround } from './element-hit-effects.js';
 const { ObjectPool: OBJECT_POOL } = globalThis.BloomGamekitObjectPool;
 const EMPTY_NOTICES = Object.freeze([]);
 // One place for the budget of a fight's feedback: how long an effect lives, how many may be alive, and when the
@@ -58,21 +59,24 @@ class BurstPresentation {
         if (ALPHA <= 0) {
             return;
         }
+        this.drawBurst(renderer, event, T, ALPHA, feel);
+    }
+    drawBurst(renderer, event, progress, alpha, feel) {
         const SIZE = this.size(event),
             COLOR = this.color;
         const CENTER = renderer.project(event.x, event.y, event.z || 0.1),
             N = feel?.dense ? Math.min(this.particleCount, COMBAT_FEEL_CONFIG.denseParticles) : this.particleCount;
         for (let i = 0; i < N; i++) {
             const ANGLE = (i * Math.PI * 2) / N + (event.sequence % 11) * 0.19,
-                DISTANCE = (0.12 + T * SIZE) * this.distanceMultiplier,
+                DISTANCE = (0.12 + progress * SIZE) * this.distanceMultiplier,
                 POINT = renderer.project(
                     event.x + Math.cos(ANGLE) * DISTANCE,
                     event.y + Math.sin(ANGLE) * DISTANCE,
-                    (event.z || 0.1) + this.elevation(T),
+                    (event.z || 0.1) + this.elevation(progress),
                 );
-            this.drawParticle(renderer, POINT, CENTER, ANGLE, ALPHA, COLOR, T);
+            this.drawParticle(renderer, POINT, CENTER, ANGLE, alpha, COLOR, progress);
         }
-        this.drawFlash?.(renderer, CENTER, T);
+        this.drawFlash?.(renderer, CENTER, progress);
     }
 }
 class HitPresentation extends BurstPresentation {
@@ -157,6 +161,21 @@ class HitPresentation extends BurstPresentation {
 }
 class BossHitPresentation extends HitPresentation {
     color = '245,199,102';
+    // A coloured unit's hit is drawn in its element; a plain unit keeps the generic sparks.
+    drawGround(renderer, event, progress) {
+        if (event.element) {
+            drawElementHitGround(renderer, event, Math.min(1, progress / this.durationFraction));
+        } else {
+            super.drawGround(renderer, event, progress);
+        }
+    }
+    drawBurst(renderer, event, progress, alpha, feel) {
+        if (event.element) {
+            drawElementHit(renderer, event, progress, Boolean(feel?.dense));
+        } else {
+            super.drawBurst(renderer, event, progress, alpha, feel);
+        }
+    }
     observe(feel, event, displayEvent) {
         feel.counts.hits++;
         feel.bossHits.set(event.targetId, displayEvent);
