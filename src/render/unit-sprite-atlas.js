@@ -154,6 +154,9 @@ export class UnitSpriteAtlas {
         this.restoreGeneration = GENERATION;
     }
     prepare() {
+        if (!this.enabled || this.disposed || this.restoreGeneration === (this.renderer.device.stats.restores ?? 0)) {
+            return;
+        }
         const START = performance.now();
         try {
             const STEPS = this.preparationSteps();
@@ -181,10 +184,10 @@ export class UnitSpriteAtlas {
                 }
                 const START = performance.now();
                 const NEXT = STEPS.next();
-                this.preparationCpuMs += performance.now() - START;
                 if (NEXT.done) {
                     break;
                 }
+                this.preparationCpuMs += performance.now() - START;
                 onProgress?.(NEXT.value.stage, NEXT.value.completed, NEXT.value.total);
                 if (stage !== NEXT.value.stage || performance.now() - yieldedAt >= 32) {
                     await yieldControl();

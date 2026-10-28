@@ -44,7 +44,6 @@ let config = null;
 let initStage = 'bootstrap';
 let debugTools = null;
 let diagnosticRing = null;
-let gameScriptAttempted = false;
 const STARTUP = createStartupLoading();
 globalThis.BudmoriStartup = STARTUP;
 const LABEL = STARTUP.label;
@@ -585,7 +584,6 @@ async function launch() {
         const GAME_URL = new URL('./farm-app.js', import.meta.url).href;
         globalThis.BloomGameSourceURL = GAME_URL;
         globalThis.BloomGameSourceIntegrity = null;
-        gameScriptAttempted = true;
         await import(GAME_URL);
         initStage = 'verifying-game-init';
         if (!globalThis.BUDMORI) {
@@ -598,7 +596,6 @@ async function launch() {
         STARTUP.fail(fallbackText(error));
         recordDiagnostic(error, 'startup-error');
         LABEL.textContent = '게임을 시작하지 못했어요. 진단 정보를 복사해 알려 주세요';
-        RETRY.textContent = gameScriptAttempted && !globalThis.BUDMORI ? '다시 불러오기' : '다시 시도';
         RETRY.hidden = false;
         console.error('Game startup failed at ' + initStage, error);
         showErrorPopup('게임 준비를 마치지 못했어요. ' + fallbackText(error));
@@ -614,14 +611,7 @@ globalThis.BloomReportRuntimeFatal = (error) => {
     console.error('Farm render loop stopped', error);
     showErrorPopup('게임이 오류로 중단됐어요. 진단 정보를 복사해 알려 주세요.');
 };
-RETRY.addEventListener('click', (event) => {
-    event.preventDefault();
-    if (pending || !config || (gameScriptAttempted && !globalThis.BUDMORI)) {
-        location.reload();
-    } else {
-        void launch();
-    }
-});
+
 if (config) {
     void launch();
 }

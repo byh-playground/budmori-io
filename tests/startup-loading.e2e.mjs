@@ -165,6 +165,7 @@ try {
         const BEFORE = await PAGE.evaluate(() => ({
             bake: BUDMORI.unitArtDiagnostics.bakeCount,
             image: BUDMORI.renderer.device.stats.imageTexUploadCount,
+            preparationCpuMs: BUDMORI.unitArtDiagnostics.preparationCpuMs,
             time: BUDMORI.sim.time,
         }));
         await PAGE.evaluate(
@@ -178,11 +179,13 @@ try {
         const AFTER = await PAGE.evaluate(() => ({
             bake: BUDMORI.unitArtDiagnostics.bakeCount,
             image: BUDMORI.renderer.device.stats.imageTexUploadCount,
+            preparationCpuMs: BUDMORI.unitArtDiagnostics.preparationCpuMs,
             time: BUDMORI.sim.time,
         }));
         assert.equal(AFTER.bake, BEFORE.bake);
         assert.equal(typeof BEFORE.image, 'number');
         assert.equal(AFTER.image, BEFORE.image, 'normal frames upload no new images');
+        assert.equal(AFTER.preparationCpuMs, BEFORE.preparationCpuMs, 'no-op frames do not accumulate preparation CPU');
         assert.ok(AFTER.time > BEFORE.time, 'game resumes after startup');
         assert.deepEqual(ERRORS, []);
         REPORT.scenarios[NAME] = { ...DATA, steady: { before: BEFORE, after: AFTER } };
@@ -192,7 +195,27 @@ try {
     const CONTEXT = await context(),
         PAGE = await CONTEXT.newPage();
     let fail = true;
-    await PAGE.route('**/debug-tools.js', (route) =>
+    let releaseOldInput;
+    let oldInputEntered;
+    let delayFirstInput = true;
+    const OLD_INPUT_RELEASED = new Promise((resolve) => {
+        releaseOldInput = resolve;
+    });
+    const OLD_INPUT_SEEN = new Promise((resolve) => {
+        oldInputEntered = resolve;
+    });
+    await PAGE.route('**/input.js', async (route) => {
+        if (delayFirstInput) {
+            delayFirstInput = false;
+            oldInputEntered();
+            await OLD_INPUT_RELEASED;
+            if (route.request().failure()) {
+                return;
+            }
+        }
+        return route.fallback();
+    });
+    await PAGE.route('**/camera.js', (route) =>
         fail
             ? route.fulfill({
                   status: 503,
@@ -205,12 +228,27 @@ try {
     await PAGE.locator('#bloom-error-popup').waitFor({ state: 'visible' });
     assert.match(await PAGE.locator('#bloom-error-popup').innerText(), /Module request failed: 503/);
     assert.equal(await PAGE.locator('#newGame').isVisible(), false);
+    await OLD_INPUT_SEEN;
+    await PAGE.evaluate(() => {
+        globalThis.__failedAttemptMarker = 'old-attempt';
+    });
     fail = false;
-    await PAGE.locator('#bloom-error-popup button').nth(1).click();
+    // The background HTML link is keyboard reachable even while the dialog
+    // covers it. Every retry must replace the realm, including this route.
+    await PAGE.locator('#bloom-loading-retry').focus();
+    await Promise.all([PAGE.waitForNavigation({ waitUntil: 'domcontentloaded' }), PAGE.keyboard.press('Enter')]);
+    releaseOldInput();
     await PAGE.waitForFunction(() => !!globalThis.BUDMORI && !document.getElementById('bloom-module-loading'), null, {
         timeout: 90000,
     });
-    REPORT.scenarios.moduleFailureRetry = 'PASS: exact cause visible, input blocked, full reload retry succeeds';
+    assert.equal(await PAGE.evaluate(() => globalThis.__failedAttemptMarker), undefined, 'old retry realm discarded');
+    const MODULE_STAGE = await PAGE.evaluate(() =>
+        globalThis.BudmoriStartup.snapshot().stages.find((stage) => stage.stage === 'modules'),
+    );
+    assert.equal(MODULE_STAGE.completed, MANIFEST.modules.length);
+    assert.equal(MODULE_STAGE.total, MANIFEST.modules.length);
+    REPORT.scenarios.moduleFailureRetry =
+        'PASS: failed Promise.all with pending input, keyboard HTML retry reloads, old realm discarded, exact module count';
     await CONTEXT.close();
     const FAILED_ATLAS = await context(),
         ATLAS_PAGE = await FAILED_ATLAS.newPage();
