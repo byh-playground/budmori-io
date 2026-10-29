@@ -174,7 +174,7 @@ export const FARM_TOWER_RUN = (base) =>
             if (T.nextKind === 'event') {
                 return rollEventOffers({ world: this, random: () => this.random() });
             }
-            return rollCardOffers({
+            const OFFERS = rollCardOffers({
                 floor: FLOOR,
                 cards: T.cards,
                 relics: T.relics,
@@ -184,6 +184,16 @@ export const FARM_TOWER_RUN = (base) =>
                 relicMaxLevel: CONFIG.farm.tower.relicMaxLevel,
                 random: () => this.random(),
             });
+            // The boss takes first from the same cards; the player chooses from what is left.
+            const LEFT = drawBossCard(
+                T,
+                OFFERS,
+                this.time,
+                CONFIG.farm.tower.relicSlots,
+                CONFIG.farm.tower.relicMaxLevel,
+            );
+            this._applyBossRunStats();
+            return LEFT;
         }
         afterFloor() {
             const T = this.tower;
@@ -220,23 +230,11 @@ export const FARM_TOWER_RUN = (base) =>
             if (DOOR.type === 'fight') {
                 return this._beginFloor(DOOR.kind);
             }
-            let playerReceipt = null;
             if (['skill', 'stat', 'passive'].includes(DOOR.type)) {
-                playerReceipt = applyTowerCard(T, DOOR);
+                T.playerPick = { serial: (T.playerPick?.serial || 0) + 1, receipt: applyTowerCard(T, DOOR) };
                 this._applyRunStats();
             } else {
                 TOWER_EVENTS.find((event) => event.id === DOOR.id).apply(this);
-            }
-            if (['skill', 'stat', 'passive'].includes(DOOR.type)) {
-                drawBossCard(
-                    T,
-                    () => this.random(),
-                    this.time,
-                    CONFIG.farm.tower.relicSlots,
-                    CONFIG.farm.tower.relicMaxLevel,
-                    playerReceipt,
-                );
-                this._applyBossRunStats();
             }
             // A floor reached without a fight still counts as reached.
             this.playerProgression.towerBest = Math.max(this.playerProgression.towerBest, T.floor);
