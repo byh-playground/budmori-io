@@ -672,48 +672,6 @@ const GARDEN = class Garden extends GARDEN_BASE {
             0,
         );
     }
-    sortActiveFarm(order = 'mixed') {
-        if (
-            this.scene !== 'farm' ||
-            this.farmBossEvent?.phase !== 'idle' ||
-            !['species', 'tier-high', 'tier-low'].includes(order)
-        ) {
-            return false;
-        }
-        const UNITS = this.roster.residents();
-        for (const UNIT_LOCAL of UNITS) {
-            if (this.unitCollection.reservationOwner(UNIT_LOCAL)?.startsWith('merge:')) {
-                return false;
-            }
-            if (UNIT_LOCAL.mateId) {
-                this.releaseMate(UNIT_LOCAL);
-            }
-        }
-        UNITS.sort((a, b) => {
-            if (order === 'species') {
-                return a.species - b.species || a.tier - b.tier || a.id - b.id;
-            }
-            if (order === 'tier-high') {
-                return b.tier - a.tier || a.species - b.species || a.id - b.id;
-            }
-            if (order === 'tier-low') {
-                return a.tier - b.tier || a.species - b.species || a.id - b.id;
-            }
-            return a.id - b.id;
-        });
-        if (!this.unitCollection.reorder(UNITS.map((unit) => unit.id))) {
-            return false;
-        }
-        UNITS.forEach((unitLocal, index) => {
-            const ANGLE = index * 2.399963229728653 + ((this.seed >>> 0) % 6283) / 1000,
-                RADIUS = Math.sqrt((index + 0.5) / Math.max(1, UNITS.length)) * 0.7;
-            unitLocal.x = Math.cos(ANGLE) * CONFIG.farm.arena.radiusX * RADIUS;
-            unitLocal.y = Math.sin(ANGLE) * CONFIG.farm.arena.radiusY * RADIUS;
-            unitLocal.vx = unitLocal.vy = 0;
-        });
-        this._rebuildUnitSpatialIndex(this.units);
-        return true;
-    }
     breedCooldownDuration() {
         return CONFIG.farm.breeding.cooldownSeconds;
     }

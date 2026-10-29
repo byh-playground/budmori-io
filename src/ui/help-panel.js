@@ -30,6 +30,13 @@ export function createHelpPanel(dollar) {
         visible = false,
         startedAt = 0,
         endedAt = 0;
+    // The frame boots the whole game, so its own start-up screen is hidden behind a plain placeholder until it plays.
+    function reveal() {
+        DEMO.dataset.loading = 'false';
+        if (frame) {
+            frame.style.visibility = '';
+        }
+    }
     function unmount() {
         cancelAnimationFrame(watch);
         watch = 0;
@@ -42,6 +49,7 @@ export function createHelpPanel(dollar) {
         }
         const SNAPSHOT = readSnapshot(frame);
         if (SNAPSHOT) {
+            reveal();
             CAPTION.textContent = HELP_SCENES[index].steps[SNAPSHOT.step] ?? '';
             if (SNAPSHOT.state !== 'ended') {
                 endedAt = 0;
@@ -52,6 +60,7 @@ export function createHelpPanel(dollar) {
                 return;
             }
         } else if (performance.now() - startedAt > LOAD_TIMEOUT_MS) {
+            reveal();
             CAPTION.textContent = '데모를 불러오지 못했어요. 잠시 뒤 다시 시도해 주세요';
             return;
         }
@@ -85,6 +94,8 @@ export function createHelpPanel(dollar) {
         frame = document.createElement('iframe');
         frame.title = `${SCENE.title} 데모`;
         frame.tabIndex = -1;
+        frame.style.visibility = 'hidden';
+        DEMO.dataset.loading = 'true';
         frame.src = new URL(`?help=${SCENE.id}`, location.href).href;
         DEMO.replaceChildren(frame);
         fit();

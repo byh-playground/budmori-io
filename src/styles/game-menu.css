@@ -129,12 +129,6 @@
 .farm-admin[hidden] {
     display: none;
 }
-#farmPlotActions {
-    display: grid;
-    gap: var(--ui-s2);
-    margin: var(--ui-s3) 0;
-}
-#farmPlotActions button,
 .breed-heading .farm-sort {
     min-height: var(--ui-tap);
     border-radius: var(--ui-r-s);
@@ -247,23 +241,6 @@
 .farm-hint {
     margin: 0 0 var(--ui-s2);
 }
-#farmPlotActions {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    margin: var(--ui-s2) 0 0;
-}
-#farmPlotActions h3 {
-    grid-column: 1 / -1;
-}
-#farmPlotActions .farm-sort {
-    padding: var(--ui-s2) var(--ui-s1);
-    font-size: var(--ui-fs-2);
-}
-@media (min-width: 560px) {
-    #farmPlotActions .farm-sort {
-        grid-column: span 1;
-    }
-}
-
 .breed-heading,
 .breed-editor__label {
     display: flex;
@@ -409,6 +386,27 @@ html.help-scene.barley-attack-preview #bossbar {
     transform-origin: 0 0;
     border: 0;
     pointer-events: none;
+}
+.help-demo[data-loading='true']::after {
+    content: '데모를 준비하고 있어요';
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: #dfe8d8;
+    font-size: var(--ui-fs-2);
+    font-weight: var(--ui-fw-b);
+    animation: help-demo-pulse 1.4s ease-in-out infinite;
+}
+@keyframes help-demo-pulse {
+    50% {
+        opacity: 0.45;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .help-demo[data-loading='true']::after {
+        animation: none;
+    }
 }
 .help-caption {
     min-height: 1.6em;
