@@ -59,9 +59,8 @@ import { createPlayerProgressionState, farmCapacityForProgression } from './play
 import {} from '../tower/tower-theme.js';
 import {} from '../units/species-catalog.js';
 import { TOWER_ENCOUNTER_SETTINGS } from '../tower/tower-encounter.js';
-import { createAbilityProgressionState } from '../abilities/ability-state.js';
+import { AUTO_FORM_PROGRESSION, NEUTRAL_FORM_PROGRESSION } from './auto-forms.js';
 import {} from '../vector-sockets.js';
-import { purchaseAbilityNode, resetPlayerProgression } from '../abilities/ability-progression.js';
 import { BOSS_PHASE_THRESHOLDS } from '../boss/boss-patterns.js';
 import { FACTION_CONFIG, hasFaction, areOpposingFactions } from '../core/factions.js';
 import { FixedSpatialGrid } from '../core/spatial-grid.js';
@@ -71,15 +70,6 @@ import { bossAttackArea } from '../boss/boss-behaviors.js';
 import { ARENA_GEOMETRY, BALLISTICS } from './arena-geometry.js';
 import { AttackCycle, CREATE_UNIT_ATTACK_CYCLE } from '../units/attack-cycle.js';
 import {} from '../boss/boss-controller.js';
-// Bosses reuse the neutral, tier-one species kit, never the player's investments.
-const BOSS_ATTACK_PROGRESSION = createAbilityProgressionState();
-for (const BUILD of Object.values(BOSS_ATTACK_PROGRESSION.abilities)) {
-    Object.freeze(BUILD.nodeRanks);
-    Object.freeze(BUILD.branchLevels);
-    Object.freeze(BUILD);
-}
-Object.freeze(BOSS_ATTACK_PROGRESSION.abilities);
-Object.freeze(BOSS_ATTACK_PROGRESSION);
 const PRESENTATION_CLOCKS = new WeakMap();
 const PRESENTATION_EVENT_TIMES = new WeakMap();
 export function presentationEventTimeMs(event) {
@@ -732,12 +722,12 @@ const GARDEN = class Garden extends GARDEN_BASE {
     }
     abilityProgressionFor(unit) {
         if (this.isBoss(unit)) {
-            return BOSS_ATTACK_PROGRESSION;
+            return NEUTRAL_FORM_PROGRESSION;
         }
         if (hasFaction(unit, FACTION_CONFIG.ENEMY)) {
             return null;
         }
-        return SIMULATION_SCENES[this.scene].progressionFor(this, unit);
+        return AUTO_FORM_PROGRESSION;
     }
     highestSpeciesTiers() {
         const TIERS = Array(CONFIG.unit.speciesCount).fill(0);
@@ -745,34 +735,6 @@ const GARDEN = class Garden extends GARDEN_BASE {
             TIERS[UNIT_LOCAL.species] = Math.max(TIERS[UNIT_LOCAL.species], UNIT_LOCAL.tier);
         }
         return TIERS;
-    }
-    investAbilityNode(abilityId, nodeId) {
-        const IN_COMBAT = this.farmBossEvent?.phase !== 'idle' || this.tower.active;
-        const RESULT = purchaseAbilityNode(this.playerProgression, abilityId, nodeId, {
-            location: this.scene,
-            inCombat: IN_COMBAT,
-            highestSpeciesTier: this.highestSpeciesTiers(),
-        });
-        if (RESULT.ok) {
-            this.playerProgression = RESULT.state;
-            this.markProgressChanged();
-        }
-        return RESULT;
-    }
-    resetProgression(scope) {
-        const IN_COMBAT = this.farmBossEvent?.phase !== 'idle' || this.tower.active;
-        const RESULT = resetPlayerProgression(this.playerProgression, scope, {
-            location: this.scene,
-            inCombat: IN_COMBAT,
-        });
-        if (RESULT.ok) {
-            this.playerProgression = RESULT.state;
-            this.markProgressChanged();
-        }
-        return RESULT;
-    }
-    resetAbilityTree() {
-        return this.resetProgression({ type: 'abilities' });
     }
     spawnLobProjectile(unit, action, shot, projectileEffect = null) {
         if (this.projectiles.length >= CONFIG.battle.capacity.projectiles) {
@@ -1119,7 +1081,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
             }
         }
         U.hp = unitMaxHpFor(U);
-        applyRunGrowthHealth(U, this.runProgressionSnapshot, { preserveRatio: true });
+        applyRunGrowthHealth(U, AUTO_FORM_PROGRESSION, { preserveRatio: true });
         this.addUnit(U);
         return U;
     }

@@ -1,5 +1,6 @@
 import { highestTowerStartFloor, beginTowerRewardRun } from './player-progression.js';
 import { CONFIG, CLAMP } from './farm-config.js';
+import { AUTO_FORM_PROGRESSION } from './auto-forms.js';
 import { applyRunGrowthHealth, unitMaxHpFor, setRunStatMods } from '../units/unit-stats.js';
 import {
     freshTowerRun,
@@ -54,7 +55,7 @@ export const FARM_TOWER_RUN = (base) =>
             this.battleCommand = 'engage';
             this.runProgressionSnapshot = structuredClone(this.playerProgression);
             for (const UNIT_LOCAL of this.unitCollection.items) {
-                applyRunGrowthHealth(UNIT_LOCAL, this.runProgressionSnapshot, { preserveRatio: true });
+                applyRunGrowthHealth(UNIT_LOCAL, AUTO_FORM_PROGRESSION, { preserveRatio: true });
             }
             this.tower = {
                 pendingKind: KIND,

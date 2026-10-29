@@ -196,7 +196,6 @@ try {
                 y: 0,
                 firstClear: true,
                 rollBudget: 1,
-                xpAmount: 20,
             });
         });
         await PAGE.waitForSelector('#bossRewardPortrait:not([hidden])');

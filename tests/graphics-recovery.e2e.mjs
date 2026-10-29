@@ -185,7 +185,6 @@ try {
                     glContextLost: GL.isContextLost(),
                     maxViewportDims: VIEWPORT_DIMS && [...VIEWPORT_DIMS],
                     menuOpen: !document.getElementById('gameMenuOverlay').hidden,
-                    menuTab: document.querySelector('#gameMenuTabs [aria-selected="true"]')?.dataset.menuTab ?? null,
                     errorVisible: !document.getElementById('error').hidden,
                     errorText: document.getElementById('error').textContent,
                     fatalPopupVisible: !document.getElementById('bloom-error-popup').hidden,
@@ -288,7 +287,6 @@ try {
         assert.equal(RESTORED.sameSession, true, `${label}: session not replaced`);
         assert.equal(RESTORED.paused, PRE.paused, `${label}: pause state after restore`);
         assert.equal(RESTORED.menuOpen, PRE.menuOpen, `${label}: menu after restore`);
-        assert.equal(RESTORED.menuTab, PRE.menuTab, `${label}: menu tab after restore`);
         assert.equal(RESTORED.errorVisible, false, `${label}: no error after restore`);
         assert.equal(RESTORED.suspended, false, `${label}: clock resumes after restore`);
         assert(

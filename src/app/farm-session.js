@@ -903,17 +903,6 @@ class FarmSession {
                 return W.scene === 'farm' && W.startManualMerge(true);
             case 'combine-select':
                 return W.scene === 'farm' && W.setCombineSelection(c.recipe, c.tier);
-            case 'progression-invest':
-                if (W.scene === 'farm' && typeof c.nodeId === 'string' && c.nodeId.length < 64) {
-                    if (c.scope === 'ability' && typeof c.abilityId === 'string' && c.abilityId.length < 64) {
-                        return W.investAbilityNode(c.abilityId, c.nodeId).ok;
-                    }
-                }
-                return false;
-            case 'progression-reset':
-                return W.scene === 'farm' && W.resetProgression(c.scope).ok;
-            case 'ability-reset':
-                return W.scene === 'farm' && W.resetAbilityTree().ok;
         }
         return false;
     }

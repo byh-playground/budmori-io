@@ -1,4 +1,4 @@
-import { awardMasteryXp, FARM_BOSS_EVENT_MAX_STAGE } from '../model/player-progression.js';
+import { FARM_BOSS_EVENT_MAX_STAGE } from '../model/player-progression.js';
 import { SPECIES_COUNT } from '../units/species-catalog.js';
 
 const PRD_UNITS_PER_TICK = 10;
@@ -534,47 +534,7 @@ export function settleBossKill(world, options) {
 }
 
 function settleBossKillCommitted(world, options = {}) {
-    const RECEIPT = resolveBossAcquisitionCommitted(world, options),
-        PROGRESSION_OWNER = options.progressionOwner || world,
-        WALLET = options.playerProgression || PROGRESSION_OWNER.playerProgression,
-        RECEIPT_KEY = RECEIPT.xpReceiptKey || options.receiptKey || RECEIPT.receiptKey;
-    if (RECEIPT.xpReceiptKey && ['awarded', 'already-awarded'].includes(RECEIPT.xpStatus)) {
-        return {
-            receipt: RECEIPT,
-            progression: WALLET,
-            awarded: false,
-            reason: 'duplicate-receipt',
-            xpAwarded: RECEIPT.xpAmount ?? 0,
-            levelsGained: RECEIPT.levelsGained ?? 0,
-            pointsAwarded: RECEIPT.pointsAwarded ?? 0,
-        };
-    }
-    const RESULT = awardMasteryXp(
-        WALLET,
-        RECEIPT_KEY,
-        RECEIPT.species,
-        options.xpAmount === undefined ? undefined : options.xpAmount,
-    );
-    if (RESULT.awarded) {
-        PROGRESSION_OWNER.playerProgression = RESULT.state;
-    }
-    if (RESULT.awarded || RESULT.reason === 'duplicate-receipt') {
-        RECEIPT.xpReceiptKey = RECEIPT_KEY;
-        RECEIPT.xpStatus = RESULT.awarded ? 'awarded' : 'already-awarded';
-        RECEIPT.xpAmount = RESULT.awarded ? RESULT.xpAwarded : 0;
-        RECEIPT.levelsGained = RESULT.levelsGained;
-        RECEIPT.pointsAwarded = RESULT.pointsAwarded;
-    } else {
-        RECEIPT.xpStatus = 'unsettled';
-    }
+    const RECEIPT = resolveBossAcquisitionCommitted(world, options);
     world.markProgressChanged?.();
-    return {
-        receipt: RECEIPT,
-        progression: RESULT.state,
-        awarded: RESULT.awarded,
-        reason: RESULT.reason,
-        xpAwarded: RESULT.xpAwarded,
-        levelsGained: RESULT.levelsGained,
-        pointsAwarded: RESULT.pointsAwarded,
-    };
+    return { receipt: RECEIPT };
 }
