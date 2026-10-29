@@ -27,7 +27,7 @@ export function faceOps(compiled, faceId, cheekColor) {
 }
 
 // Maps the rest anchor triangle onto the posed one, so squash, lean and bounce carry the face like the body.
-function posedFace(player, rest, out) {
+export function posedFace(player, rest, out) {
     const EL = player.getSocket(FACE_SOCKETS[0]),
         ER = player.getSocket(FACE_SOCKETS[1]),
         MO = player.getSocket(FACE_SOCKETS[2]);
@@ -49,7 +49,7 @@ function posedFace(player, rest, out) {
     out[5] = EL.y - (out[1] * rest.eyeLeft[0] + out[3] * rest.eyeLeft[1]);
     return out;
 }
-const POSED = [0, 0, 0, 0, 0, 0];
+export const POSED = [0, 0, 0, 0, 0, 0];
 
 // matrix: the screen transform the body was drawn with; alpha: the body's alpha. Call after the body's own submission.
 export function drawUnitFace(ctx, record, player, faceId, cheekColor, matrix, alpha = 1) {

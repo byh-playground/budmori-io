@@ -22,6 +22,7 @@ import { FanSweepPresentation } from '../features/boss-patterns/fan-sweep/presen
 import { drawElementMark } from './unit-face-overlay.js';
 import { elementCheekColor, unitLook } from '../units/species-face.js';
 import { drawUnitFace } from './unit-face-draw.js';
+import { drawBossGrowth } from './boss-growth-draw.js';
 import { towerElement } from '../tower/tower-theme.js';
 import { SIGNATURE_PRESENTATIONS } from '../features/boss-patterns/signature/presentation.js';
 import { MouthSummonPresentation } from '../features/boss-patterns/mouth-summon/presentation.js';
@@ -376,6 +377,16 @@ export class BossPresentation {
                 x: MOUTH_SOCKET.x * S_LOCAL + MATRIX[4],
                 y: MOUTH_SOCKET.y * S_LOCAL + MATRIX[5],
             };
+        if (world.tower.active && B.hp > 0) {
+            drawBossGrowth(
+                this.renderer.ctx,
+                RECORD,
+                PLAYER,
+                MATRIX,
+                towerElement(world.tower.floor),
+                world.tower.floor,
+            );
+        }
         this.renderer.ctx.drawVectorActor(PLAYER, { matrix: MATRIX });
         drawUnitFace(
             this.renderer.ctx,

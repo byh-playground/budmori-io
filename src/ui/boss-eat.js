@@ -1,4 +1,5 @@
 import { ELEMENTS } from '../model/lineage.js';
+import { bossLeafCount, bossAuraLevel, BOSS_LEAF_ANGLES } from '../tower/boss-growth.js';
 import { speciesFacePortraitSource, speciesMouthAnchor } from '../units/species-paint.js';
 
 // The boss that is choosing a card in the doors panel. It eats the card it picked: it watches the card come, opens its
@@ -8,8 +9,8 @@ import { speciesFacePortraitSource, speciesMouthAnchor } from '../units/species-
 const EAT_MS = 1000,
     GULP_MS = 860,
     FLIGHT_START_MS = 70,
-    FLIGHT_MS = 480,
-    LEAF_ANGLES = Object.freeze([0, -34, 34, -66, 66]);
+    FLIGHT_MS = 480;
+
 // Face changes in time: watch, mouth open, bite, two chews, swallow.
 const EAT_FACES = Object.freeze([
     [0, 'hungry'],
@@ -37,15 +38,6 @@ const BODY_KEYS = Object.freeze([
     [1, 'scale(1)'],
 ]);
 
-// More leaves as the floors go up.
-export function bossLeafCount(floor) {
-    return floor < 10 ? 1 : floor < 20 ? 2 : floor < 40 ? 3 : floor < 70 ? 4 : 5;
-}
-// No aura before floor 10, then it grows stronger.
-export function bossAuraLevel(floor) {
-    return floor < 10 ? 0 : Math.min(1, 0.25 + (floor - 10) / 120);
-}
-
 let currentFace = '',
     appearanceKey = '',
     chipsKey = '',
@@ -70,7 +62,7 @@ function drawGrowth(host, floor, element) {
     let leaves = '';
     for (let i = 0; i < bossLeafCount(floor); i++) {
         leaves +=
-            `<g transform="rotate(${LEAF_ANGLES[i]} 100 76)">` +
+            `<g transform="rotate(${BOSS_LEAF_ANGLES[i]} 100 76)">` +
             '<path d="M100 80 C84 56 90 30 100 16 C110 30 116 56 100 80Z" fill="#7bc96f" stroke="#1b2410" stroke-width="3.5"/>' +
             '<path d="M100 74 L100 28" stroke="#1b2410" stroke-width="2" opacity=".5"/></g>';
     }
