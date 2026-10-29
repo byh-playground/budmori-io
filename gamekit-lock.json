@@ -1,8 +1,8 @@
 {
     "schemaVersion": 3,
     "repository": "byh-playground/bloom-gamekit",
-    "sourceCommit": "d287ca4e2268486b00a8155585b0bf6855f71f0d",
-    "distCommit": "6ef60d922541329af05e070b464caf66c970a041",
+    "sourceCommit": "88630ef4dea7fd3a7fd7aad22090fe74cb3a6fbc",
+    "distCommit": "b83464e445efaf86d66499859d3d05463df2b22a",
     "status": "verified immutable distribution",
     "esbuild": "0.28.2",
     "modules": [
@@ -36,7 +36,7 @@
         },
         {
             "name": "rendering",
-            "bundleSHA256": "5d6620b7ff04434c42883d51629cc1307eda7ae7135f06e1b6d60ee8ea5b63e4"
+            "bundleSHA256": "dac868f1efd9eb8e12b5ae9874813e9944fe3e106eb2d6044856cc09f83c8835"
         },
         {
             "name": "vector-assets",
@@ -63,7 +63,7 @@
             "bundleSHA256": "b21a2be85b497588589c796f8e95f932c464474cc4ea3f703a8718e96a9946ce"
         }
     ],
-    "manifestSHA256": "d114896850e6f99d279bd80b549b0eb2c366b8ebd9afaa1f28d2c2dde9028130",
+    "manifestSHA256": "bb92d60e2f7f84397d9055f990ba99d6a4d61da2bf0c053acf90bf42dc379e53",
     "assets": [
         {
             "file": "assets/fonts/noto-sans-kr-700-v1.json",
