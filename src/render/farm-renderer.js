@@ -35,7 +35,8 @@ import { drawFarmGrounds, drawTowerHall } from './farm-scenery.js';
 const { bosses: BOSS_VECTOR_ASSETS, troops: TROOP_VECTOR_ASSETS } = globalThis.BudmoriVectorResources;
 // Original SVG sources are compiled once by the startup loader before this module runs.
 const { WebGLDevice: WEB_GL_DEVICE, VectorContext: VECTOR_CONTEXT } = globalThis.BloomGamekitRendering;
-const { createVectorActor: CREATE_VECTOR_ACTOR } = globalThis.BloomGamekitVectorAssets;
+const { createVectorActor: CREATE_VECTOR_ACTOR, holdVectorAsset: HOLD_VECTOR_ASSET } =
+    globalThis.BloomGamekitVectorAssets;
 function renderedBossAttackArea(boss, scene, scratch, area) {
     if (
         !boss?.patternId ||
@@ -120,13 +121,16 @@ const DIORAMA = class Diorama {
         if (
             ENTRIES.length !== CONFIG.unit.speciesCount ||
             ENTRIES.some(([species], index) => Number(species) !== index) ||
-            typeof CREATE_VECTOR_ACTOR !== 'function'
+            typeof CREATE_VECTOR_ACTOR !== 'function' ||
+            typeof HOLD_VECTOR_ASSET !== 'function'
         ) {
             throw new Error('All pinned GameKit troop and vector-assets sources are required');
         }
         for (const [SPECIES, COMPILED] of ENTRIES) {
             this.vectorAssets.set(Number(SPECIES), {
                 compiled: COMPILED,
+                // Keeps the mesh resident while no actor of this species exists.
+                hold: HOLD_VECTOR_ASSET(this.ctx, COMPILED),
                 anchors: readVectorSockets(COMPILED, `species ${SPECIES}, ${COMPILED.sourcePath}`),
                 parts: new Set(COMPILED.metadata.parts.map((part) => part.id)),
             });
@@ -137,6 +141,7 @@ const DIORAMA = class Diorama {
                 id,
                 {
                     compiled,
+                    hold: HOLD_VECTOR_ASSET(this.ctx, compiled),
                     parts: new Set(compiled.metadata.parts.map((part) => part.id)),
                 },
             ]),
@@ -1116,7 +1121,7 @@ const DIORAMA = class Diorama {
                 this.bossPresentation.prepareVisibleBoss(ACTOR.source, sim2);
             }
         }
-        C.acquireMeshRenderer().preparePoses();
+        C.preparePoses();
         for (const ACTOR of ACTORS) {
             if (!ACTOR.culled) {
                 ACTOR.presentation.draw(ACTOR.source, sim2);
@@ -1201,12 +1206,18 @@ const DIORAMA = class Diorama {
             PLAYER.dispose();
         }
         this.vectorPlayers.clear();
+        for (const RECORD of this.vectorAssets.values()) {
+            RECORD.hold.release();
+        }
         this.vectorAssets.clear();
         for (const { player: PLAYER } of this.bossPlayers.values()) {
             PLAYER.dispose();
         }
         this.bossPlayers.clear();
         this.bossPlayer = null;
+        for (const RECORD of this.bossAssets?.values() || []) {
+            RECORD.hold.release();
+        }
         this.bossAssets?.clear();
         this.bossSpeciesAssets.clear();
         this.bossPresentation.attackDisplays.clear();

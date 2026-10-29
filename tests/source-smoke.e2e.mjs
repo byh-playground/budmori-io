@@ -396,7 +396,7 @@ try {
                 CLIP = RENDERER.vectorPlayers.get(unit.id)?.currentClip,
                 SWING = world.workSwingOf?.(unit.id);
             OBS.nativeDraws++;
-            const POSES = RENDERER.ctx.acquireMeshRenderer().poseStats();
+            const POSES = RENDERER.ctx.stats().mesh.poses;
             OBS.maxGpuPoseInstances = Math.max(OBS.maxGpuPoseInstances, POSES.gpuDrawInstances);
             OBS.maxCpuPoseInstances = Math.max(OBS.maxCpuPoseInstances, POSES.cpuDrawInstances);
             if (unit.id === OBS.attackFlow?.unitId) {
@@ -434,7 +434,7 @@ try {
         const RENDER = RENDERER.render;
         RENDERER.render = function (...args) {
             const RESULT = RENDER.apply(this, args),
-                POSES = this.ctx.acquireMeshRenderer().poseStats();
+                POSES = this.ctx.stats().mesh.poses;
             OBS.poseFrames.push({
                 frame: this.device.stats.frame,
                 gpu: POSES.gpuDrawInstances,

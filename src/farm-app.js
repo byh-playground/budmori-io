@@ -2602,7 +2602,7 @@ globalThis.BUDMORI = {
         return active.latestPresentationDiagnostics;
     },
     get poseDiagnostics() {
-        return RENDERER.ctx.meshRenderer?.poseStats() ?? null;
+        return RENDERER.ctx.stats().mesh?.poses ?? null;
     },
     get unitArtDiagnostics() {
         return RENDERER.unitSprites.stats();

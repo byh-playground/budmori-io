@@ -1,26 +1,26 @@
-tree ad8a043b47f9cb15d0b67207f1fb2cec8cf531be
-parent b653131b1d09abc37c08dc5bac7910733603b18f
-parent 9ab6e506769a5ae88c76a7dc4caddc81f29f61ec
-author byh020907 <byh020907@naver.com> 1793248842 +0900
-committer GitHub <noreply@github.com> 1793248842 +0900
+tree c558d9462ab4a5975cb613b278b0e2f9bc176dc8
+parent 710bec0e70ff2171785e62d2c03d86dc55b66466
+parent 4c89810f3c93317d21585baa83431111505a9284
+author byh020907 <byh020907@naver.com> 1793263490 +0900
+committer GitHub <noreply@github.com> 1793263490 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq4s5KCRC1aQ7uu5UhlAAAkK4QAEhQZetST5xWdnIMEDP1dnD7
- dgOPwDIOt3BWnrNE8JPUdb5cidBKUIParFavnK8Pm5v12Dw9NfmQCVe9IJi4JwCM
- dv0Lk9h47CMJR24/v31lEriMOsseoBPo0vxoN03ROGuzsaJrRRf4Rq/qgVPE/vlA
- 3LMncnVZC2hOofnlNqz7uoy9SJvg6KWIOwJqStQOHCiLfT7+9OwDO1QziWo2z73h
- 5tMJqlY3XCcXIA3U8kN6Mv4aDb/Fj2E/NVFLDOK9wkfoeZJyoC54GW1vkZ4J18FQ
- XpKQsrqP10EIYfU1ID8H5Os4OqekWXaoh19gRBWMbzMFNslB3cNaMHUBumORqFeF
- zCzNSxfQE3y3Vh6iAjeHdFIsyA2OO50fq3agVV4K+wR/dzFyRYEoBY/Y+FJgeXgV
- tug4uv0xmldJNHEdM2CItQQkI8p+BgncZc0m6++0MRu27HrZpfFxlZd7v8VrcQhv
- pFnB3GxanzMXJ7V+yvOohrMGKlmEFeCKEabRuRpwK/waL1DCTjLHl/ycqw53ABPi
- fw2AAh1vu/PzliciEb4saRG858heioPUgEGSGJakZbTBrhg0HEL80w5mzVQDR9mr
- I79tkndHR3TsInT6Q2FGfXfUPd3xWmQq6kaJ7IqgPz0u7lscKq15cF9mGz3Z/aoM
- zRRRJ/295l9z3IzAr7jN
- =XC87
+ wsFcBAABCAAQBQJq4weCCRC1aQ7uu5UhlAAAji0QAFj6pQrj3584h8K95IvKyFTf
+ HWXqBbjXh0Ml/TniJ/kvD2AXXXGvLApD8d60DXkgKZrR5PGWR3a6qmurrdnGRl6G
+ tdmNw/0VpamcETSyi0XNR9iWBUHSe9lXJuVth7ABH8zQHUkNZ3hkylAZ0WsfZQ90
+ xpHmWUdJCQ++UF78VBedPhBKN0Q2iqSMnpWlJThgymzV66lVNzxiKbYYFV5+NbOh
+ iuQ4SLC1at3an2eKo5/L7q/FJfx3AmfB7Zuhhaeae7LRDT5kTFLApayGWx0qFIRM
+ rSIaRELRW4nnpH8BVMx3wjI5VivTWNy+MCCYRxcTfe8OngDZ3EJy0zyCQ3goo0QD
+ InAgySlprjglF5ohMLcx4pogvEoQ0ANfpqieeKFl8mB4tTtQKO2dNnRRh55GanNF
+ 25SlFCKhRKo7bqnDMLXXMXYv4o7+A4ey7BHBbUuBXdTfpKqFsUPJmI7MUv4Zq5tx
+ oer+puRMLdfZThJnkVlXNTe+AINMNQz8vhnD//cJlERqCGJlszYwOU6cyb0RZIi9
+ 8cJumJjEFSP79aTt2/5nwkNLYUEE9LKkSNDu20/m1v+Z53tKbkw+qYfdri2mXMPx
+ UklOP9FD0iFhu0r6YT/SF2r0o8QZU1SPaRdGv7JmBVJd1zxcNX/kZVWKKszeE4pq
+ tUSDtv8O9mfW2N3a5QDV
+ =NlUs
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #146 from byh-playground/claude/rendering-cpu-paths
+Merge pull request #149 from byh-playground/claude/module-gaps-budmori-bounko
 
-[rendering] 둥근 접합 버그와 정점 방출·그라디언트 램프 비효율을 고친다 (v0.26.2)
+[vector-assets] 메시 유지 핸들, preparePoses, 표정 외곽선, 알 수 없는 atlas 옵션 거부 (v0.26.5)

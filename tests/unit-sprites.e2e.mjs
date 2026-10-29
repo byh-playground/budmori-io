@@ -321,8 +321,8 @@ try {
                         };
                         let submitDepth = 0;
                         for (const NAME of ['drawMesh', 'flush']) {
-                            const ORIGINAL = R.ctx.acquireMeshRenderer()[NAME].bind(R.ctx.acquireMeshRenderer());
-                            R.ctx.acquireMeshRenderer()[NAME] = (...args) => {
+                            const ORIGINAL = R.ctx.meshRenderer[NAME].bind(R.ctx.meshRenderer);
+                            R.ctx.meshRenderer[NAME] = (...args) => {
                                 const OUTER = submitDepth++ === 0,
                                     START = performance.now();
                                 try {
@@ -402,7 +402,7 @@ try {
                                     gpuMs: null,
                                     sprite: R.unitSprites.stats(),
                                     device: { ...R.device.stats },
-                                    mesh: R.ctx.acquireMeshRenderer().stats(),
+                                    mesh: R.ctx.stats().mesh,
                                     actors: R.actors.length,
                                     culledActors: R.actors.filter((actor) => actor.culled).length,
                                     combatPhases: Object.fromEntries(

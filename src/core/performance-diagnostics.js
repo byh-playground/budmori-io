@@ -123,7 +123,7 @@ export class PerformanceDiagnostics {
             this.meter.endFrame();
             return;
         }
-        const POSES = renderer.ctx.meshRenderer?.poseStats();
+        const POSES = renderer.ctx.stats().mesh?.poses;
         if (POSES) {
             this.count('gpuPoseInstances', POSES.gpuDrawInstances);
             this.count('cpuPoseInstances', POSES.cpuDrawInstances);

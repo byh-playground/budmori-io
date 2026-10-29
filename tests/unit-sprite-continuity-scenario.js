@@ -256,7 +256,7 @@ export async function unitSpriteContinuityScenario(app) {
                         ENTRY.player.preparePose();
                     }
                 }
-                R.ctx.acquireMeshRenderer().preparePoses();
+                R.ctx.preparePoses();
                 for (const SLOT of ORDER) {
                     const ENTRY = PREPARED[SLOT],
                         CACHED = P.preparedVisibleUnits.get(ENTRY.unit.id);
