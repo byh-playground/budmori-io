@@ -2,6 +2,12 @@
 // the exact game clock and sockets; sampled art never feeds authority back.
 const IMAGE_BUDGET_BYTES = 128 * 1024 * 1024;
 const IMAGE_SIZE = 96;
+// The shared device atlas holds every baked sheet, so the byte budget is its layer count.
+const ATLAS_LAYER = { width: 2048, height: 1024 };
+export const UNIT_SPRITE_ATLAS = Object.freeze({
+    ...ATLAS_LAYER,
+    layers: IMAGE_BUDGET_BYTES / (ATLAS_LAYER.width * ATLAS_LAYER.height * 4),
+});
 // Keep at least two prepared texels per displayed source unit. Larger actors
 // (zoom, DPR, giant) retain native vector detail rather than magnifying a sheet.
 const MAX_DISPLAY_TO_IMAGE_SCALE = 0.5;
@@ -55,12 +61,11 @@ export class UnitSpriteAtlas {
                 // Peanut's short -tN clips retain their real-time sampling.
                 const INTERVAL = CLIP.includes('-') && DEFINITION.durationMs === 1000 ? 100 : 50;
                 for (const EXPRESSION of [BAKED_EXPRESSION]) {
-                    const ATLAS = CREATE_ATLAS(R.meshes, RECORD.asset, RECORD.compiled, {
+                    const ATLAS = CREATE_ATLAS(R.ctx, RECORD.compiled, {
                         clip: CLIP,
                         expression: EXPRESSION,
                         sampleIntervalMs: INTERVAL,
                         pixelsPerUnit: PPU,
-                        maxAtlasBytes: IMAGE_BUDGET_BYTES,
                         supersample: 4,
                     });
                     const PLAN = ATLAS.stats,
@@ -69,7 +74,7 @@ export class UnitSpriteAtlas {
                         atlas: ATLAS,
                         animation: null,
                         player: null,
-                        texture: null,
+                        region: null,
                         pixelsPerUnit: PPU,
                         ready: false,
                         reason: PLAN.reason,
@@ -115,10 +120,10 @@ export class UnitSpriteAtlas {
             this.imageBytes += ENTRY.atlas.stats.allocatedBytes;
             ENTRY.ready = RESULT.backend === 'sprite';
             ENTRY.reason = RESULT.reason;
-            if (ENTRY.ready && ENTRY.texture !== ENTRY.atlas.texture) {
+            if (ENTRY.ready && ENTRY.region !== ENTRY.atlas.region) {
                 ENTRY.animation?.dispose();
-                ENTRY.texture = ENTRY.atlas.texture;
-                ENTRY.animation = CREATE_ANIMATION(R.meshes, ENTRY.atlas.texture, ENTRY.atlas.definition);
+                ENTRY.region = ENTRY.atlas.region;
+                ENTRY.animation = CREATE_ANIMATION(R.ctx, ENTRY.atlas.region, ENTRY.atlas.definition);
                 ENTRY.player = ENTRY.animation.createPlayer({ clip: KEY.split(':')[1] });
             }
             yield { stage: 'atlas', completed: ++completed, total: TOTAL };

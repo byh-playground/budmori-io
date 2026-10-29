@@ -65,7 +65,7 @@ export async function unitSpriteContinuityScenario(app) {
     SHEET_CTX.font = '12px sans-serif';
     const TRACE = [],
         SOCKETS = [],
-        ORIGINAL_DRAW = R.meshes.drawMesh;
+        ORIGINAL_DRAW = R.ctx.drawVectorActor;
     // Diagnostic only: keep the exact-pixel assertion and record actual GPU
     // submissions so a state/input difference can be distinguished from resolve.
     const GPU_TRACES = [],
@@ -220,11 +220,11 @@ export async function unitSpriteContinuityScenario(app) {
         };
     }
     let current = null;
-    R.meshes.drawMesh = function (mesh, options) {
-        if (current && mesh === current.record.asset.mesh) {
+    R.ctx.drawVectorActor = function (actor, options) {
+        if (current && actor === current.player) {
             MATRICES.set(current.unit.id, [...options.matrix]);
         }
-        return ORIGINAL_DRAW.call(this, mesh, options);
+        return ORIGINAL_DRAW.call(this, actor, options);
     };
     const ENCODE_TILE = (pixels, x, y) => {
         const IMAGE = SHEET_CTX.createImageData(160, 160);
@@ -256,7 +256,7 @@ export async function unitSpriteContinuityScenario(app) {
                         ENTRY.player.preparePose();
                     }
                 }
-                R.meshes.preparePoses();
+                R.ctx.acquireMeshRenderer().preparePoses();
                 for (const SLOT of ORDER) {
                     const ENTRY = PREPARED[SLOT],
                         CACHED = P.preparedVisibleUnits.get(ENTRY.unit.id);
@@ -353,7 +353,10 @@ export async function unitSpriteContinuityScenario(app) {
                 repeatSum += Math.abs(NATIVE[offset] - REPEAT[offset]);
             }
             CHECK(repeatSum / NATIVE.length <= 1, 'Native repeat mean channel difference exceeds one level');
-            CHECK(R.unitSprites.frame.sprite === 4 && R.unitSprites.frame.vector === 1, 'Continuity backend coverage');
+            CHECK(
+                R.unitSprites.frame.sprite === 4 && R.unitSprites.frame.vector === 1,
+                'Continuity backend coverage ' + JSON.stringify(R.unitSprites.frame),
+            );
             CHECK(
                 R.unitSprites.frame.reasons.triangleAlpha === 1 &&
                     Object.keys(R.unitSprites.frame.reasons).length === 1,
@@ -397,7 +400,10 @@ export async function unitSpriteContinuityScenario(app) {
                 ATLAS_ENTRY.player.seek(Math.max(0, LOCAL_TIME), 0);
                 const FRAME_INDEX = ATLAS_ENTRY.player.sample(0).frameIndex,
                     SAMPLE_TIME = ATLAS_ENTRY.atlas.stats.sampleTimesMs[FRAME_INDEX],
-                    CONTROL = ENTRY.record.asset.createPlayer({ clip: ENTRY.player.currentClip, startedAtMs: 0 });
+                    CONTROL = globalThis.BloomGamekitVectorAssets.createVectorActor(R.ctx, ENTRY.record.compiled, {
+                        clip: ENTRY.player.currentClip,
+                        startedAtMs: 0,
+                    });
                 CONTROL.setExpression(ENTRY.player.currentExpression);
                 CONTROL.seek(LOCAL_TIME);
                 for (const NAME of ['mouth', 'weapon-tip']) {
@@ -455,7 +461,7 @@ export async function unitSpriteContinuityScenario(app) {
         for (const [NAME, ORIGINAL] of GL_ORIGINALS) {
             GL[NAME] = ORIGINAL;
         }
-        R.meshes.drawMesh = ORIGINAL_DRAW;
+        R.ctx.drawVectorActor = ORIGINAL_DRAW;
         R.joyEffects.length = 0;
         R.joyEffects.push(...SAVED_JOY);
         for (const UNIT of UNITS) {

@@ -3206,9 +3206,14 @@ function packPaintRegions(names, overrides, output) {
   return output;
 }
 
+// modules/rendering/yarn-material-record.js
+var MATERIAL_KIND = Object.freeze({ none: 0, yarnFill: 1, yarnEdge: 2, sketchFill: 3, sketchEdge: 4 });
+var MATERIAL_RECORD_FLOATS = 20;
+var MAX_MATERIAL_SURFACES = 16;
+
 // modules/vector-assets/schema.js
 var VECTOR_ASSET_SCHEMA_VERSION = 1;
-var VECTOR_ASSET_COMPILER_VERSION = "0.11.0";
+var VECTOR_ASSET_COMPILER_VERSION = "0.12.0";
 var ACCEPTED_COMPILER_VERSIONS = /* @__PURE__ */ new Set([
   "0.2.0",
   "0.3.0",
@@ -3219,19 +3224,18 @@ var ACCEPTED_COMPILER_VERSIONS = /* @__PURE__ */ new Set([
   "0.8.0",
   "0.9.0",
   "0.10.0",
+  "0.11.0",
   VECTOR_ASSET_COMPILER_VERSION
 ]);
 var NUMERIC_POSE_FIELDS = Object.freeze(["x", "y", "rotation", "scaleX", "scaleY", "opacity"]);
 var IS_OBJECT = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 var EXACT_KEYS = (value, keys) => IS_OBJECT(value) && Object.keys(value).length === keys.length && keys.every((key2) => Object.hasOwn(value, key2));
 function validateCompiledAsset(asset) {
-  const SHADER_SURFACES = asset?.geometry?.shaderSurfaces;
-  const SURFACE_ONLY = Array.isArray(SHADER_SURFACES) && SHADER_SURFACES.length > 0;
-  if (!IS_OBJECT(asset) || asset.schemaVersion !== VECTOR_ASSET_SCHEMA_VERSION || !ACCEPTED_COMPILER_VERSIONS.has(asset.compilerVersion) || typeof asset.sourceSha256 !== "string" || !/^[a-f0-9]{64}$/.test(asset.sourceSha256) || !IS_OBJECT(asset.metadata) || !IS_OBJECT(asset.geometry) || !(asset.geometry.vertices instanceof Float32Array) || asset.geometry.vertices.length < 33 && !(SURFACE_ONLY && asset.geometry.vertices.length === 0) || asset.geometry.vertices.length % 11 || asset.geometry.strideFloats !== 11 || asset.geometry.nonScalingStroke !== void 0 && typeof asset.geometry.nonScalingStroke !== "boolean" || asset.geometry.nonScalingStroke && asset.geometry.morphCount !== 0 || asset.geometry.partCount !== asset.metadata.parts?.length || ![0, 2].includes(asset.geometry.morphCount)) {
+  if (!IS_OBJECT(asset) || asset.schemaVersion !== VECTOR_ASSET_SCHEMA_VERSION || !ACCEPTED_COMPILER_VERSIONS.has(asset.compilerVersion) || typeof asset.sourceSha256 !== "string" || !/^[a-f0-9]{64}$/.test(asset.sourceSha256) || !IS_OBJECT(asset.metadata) || !IS_OBJECT(asset.geometry) || !(asset.geometry.vertices instanceof Float32Array) || asset.geometry.vertices.length < 33 || asset.geometry.vertices.length % 11 || asset.geometry.strideFloats !== 11 || asset.geometry.nonScalingStroke !== void 0 && typeof asset.geometry.nonScalingStroke !== "boolean" || asset.geometry.nonScalingStroke && asset.geometry.morphCount !== 0 || asset.geometry.partCount !== asset.metadata.parts?.length || ![0, 2].includes(asset.geometry.morphCount)) {
     throw new TypeError("Invalid compiled SVG vector asset");
   }
   const VERTEX_COUNT = asset.geometry.vertices.length / 11, INDICES = asset.geometry.indices;
-  if (INDICES !== void 0 && (!(INDICES instanceof Uint16Array) || INDICES.length < 3 && !(SURFACE_ONLY && INDICES.length === 0) || INDICES.length % 3 || VERTEX_COUNT > 65536 || INDICES.some((index) => index >= VERTEX_COUNT))) {
+  if (INDICES !== void 0 && (!(INDICES instanceof Uint16Array) || INDICES.length < 3 || INDICES.length % 3 || VERTEX_COUNT > 65536 || INDICES.some((index) => index >= VERTEX_COUNT))) {
     throw new TypeError("Invalid compiled SVG vertex indices");
   }
   if (INDICES === void 0 && VERTEX_COUNT % 3) {
@@ -3275,47 +3279,26 @@ function validateCompiledAsset(asset) {
       validatePaintRegionData(asset.geometry.paintRegions, VERTEX_COUNT, VARIANT);
     }
   }
-  const SURFACES = asset.geometry.shaderSurfaces;
-  const DRAW_ORDER = asset.geometry.drawOrder;
-  if (SURFACES !== void 0 || DRAW_ORDER !== void 0) {
-    if (!Array.isArray(SURFACES) || !Array.isArray(DRAW_ORDER) || !DRAW_ORDER.length || SURFACES.length > 128 || DRAW_ORDER.length > 512) {
-      throw new TypeError("Shader-backed SVG assets require bounded shaderSurfaces and drawOrder arrays");
+  if (asset.geometry.shaderSurfaces !== void 0 || asset.geometry.drawOrder !== void 0) {
+    throw new TypeError(
+      "Compiled SVG assets from compiler 0.11.0 or earlier keep shader surfaces outside the mesh; compile the SVG again"
+    );
+  }
+  const MATERIALS = asset.geometry.materials;
+  if (MATERIALS !== void 0) {
+    const SURFACES = MATERIALS?.table?.length / MATERIAL_RECORD_FLOATS;
+    if (!IS_OBJECT(MATERIALS) || !(MATERIALS.vertices instanceof Float32Array) || !(MATERIALS.table instanceof Float32Array) || MATERIALS.vertices.length !== VERTEX_COUNT * 4 || !Number.isSafeInteger(SURFACES) || SURFACES < 1 || SURFACES > MAX_MATERIAL_SURFACES || MATERIALS.table.some((value) => !Number.isFinite(value))) {
+      throw new TypeError("Invalid compiled SVG materials");
     }
-    for (const [INDEX, SURFACE] of SURFACES.entries()) {
-      const STYLE = asset.metadata.styles?.find(
-        (entry) => entry.target === SURFACE?.target && entry.backend === "shader"
-      );
-      const CONTOUR = SURFACE?.outline;
-      if (!STYLE || !Number.isSafeInteger(SURFACE.partIndex) || SURFACE.partIndex < 0 || SURFACE.partIndex >= asset.geometry.partCount || !(SURFACE.fillVertices instanceof Float32Array) || SURFACE.fillVertices.length < 18 || SURFACE.fillVertices.length % 18 || !(CONTOUR instanceof Float32Array) || CONTOUR.length < 6 || CONTOUR.length % 2 || !(SURFACE.edgeColors instanceof Float32Array) || SURFACE.edgeColors.length !== CONTOUR.length * 2) {
-        throw new TypeError("Invalid retained SVG shader surface at index " + INDEX);
-      }
-      if (SURFACE.fillVertices.some(
-        (value, offset) => !Number.isFinite(value) || offset % 6 >= 2 && (value < 0 || value > 1)
-      ) || CONTOUR.some((value) => !Number.isFinite(value)) || SURFACE.edgeColors.some((value) => !Number.isFinite(value) || value < 0 || value > 1)) {
-        throw new TypeError("SVG shader surface values must be finite and colors in [0,1]");
-      }
-      const SURFACE_STYLE = SURFACE.style, STYLE_KEYS = Object.keys(STYLE);
-      if (!IS_OBJECT(SURFACE_STYLE) || Object.keys(SURFACE_STYLE).length !== STYLE_KEYS.length || STYLE_KEYS.some((key2) => !Object.hasOwn(SURFACE_STYLE, key2) || SURFACE_STYLE[key2] !== STYLE[key2])) {
-        throw new TypeError("SVG shader surface style must exactly match its authored metadata target");
-      }
+    const SHADER_STYLES = (asset.metadata.styles ?? []).filter((style) => style.backend === "shader");
+    if (!SHADER_STYLES.length) {
+      throw new TypeError("Compiled SVG materials need a shader-backed style in the metadata");
     }
-    const REFERENCED = /* @__PURE__ */ new Set();
-    for (const COMMAND of DRAW_ORDER) {
-      if (COMMAND?.kind === "mesh") {
-        if (!Number.isSafeInteger(COMMAND.firstIndex) || !Number.isSafeInteger(COMMAND.indexCount) || COMMAND.firstIndex < 0 || !Number.isSafeInteger(COMMAND.partIndex) || COMMAND.partIndex < 0 || COMMAND.partIndex >= asset.geometry.partCount || COMMAND.indexCount < 3 || COMMAND.indexCount % 3 || COMMAND.firstIndex % 3 || COMMAND.firstIndex + COMMAND.indexCount > (INDICES?.length ?? VERTEX_COUNT)) {
-          throw new TypeError("Invalid ordered SVG mesh range");
-        }
-      } else if (COMMAND?.kind === "surface") {
-        if (!Number.isSafeInteger(COMMAND.surfaceIndex) || COMMAND.surfaceIndex < 0 || COMMAND.surfaceIndex >= SURFACES.length || REFERENCED.has(COMMAND.surfaceIndex)) {
-          throw new TypeError("Invalid or repeated ordered SVG shader surface reference");
-        }
-        REFERENCED.add(COMMAND.surfaceIndex);
-      } else {
-        throw new TypeError("Unsupported SVG painter-order command");
+    for (let at = 0; at < MATERIALS.vertices.length; at += 4) {
+      const KIND = MATERIALS.vertices[at], SURFACE = MATERIALS.vertices[at + 1];
+      if (!Number.isInteger(KIND) || KIND < MATERIAL_KIND.none || KIND > MATERIAL_KIND.sketchEdge || !Number.isInteger(SURFACE) || SURFACE < 0 || SURFACE >= SURFACES || !Number.isFinite(MATERIALS.vertices[at + 2]) || !Number.isFinite(MATERIALS.vertices[at + 3])) {
+        throw new TypeError("Invalid compiled SVG material vertex");
       }
-    }
-    if (REFERENCED.size !== SURFACES.length) {
-      throw new TypeError("Every retained SVG shader surface must appear once in drawOrder");
     }
   }
   return asset;
@@ -3631,61 +3614,6 @@ function multiply(a, b) {
     a[1] * b[4] + a[3] * b[5] + a[5]
   ];
 }
-function composeWorldMatrix(world, local) {
-  if (!world || world.length !== 16 || local.length !== 6 || Array.from(local).some((value) => !Number.isFinite(value))) {
-    throw new TypeError("Six finite root matrix values required");
-  }
-  const [A, B, C, D, E, F] = local, OUT = Float32Array.from(world);
-  for (const VALUE of OUT) {
-    if (!Number.isFinite(VALUE)) {
-      throw new TypeError("worldMatrix must contain 16 finite values");
-    }
-  }
-  if (Math.abs(OUT[3]) > 1e-7 || Math.abs(OUT[7]) > 1e-7 || Math.abs(OUT[11]) > 1e-7 || Math.abs(OUT[15] - 1) > 1e-7) {
-    throw new TypeError("worldMatrix must be an affine column-major 4x4 matrix");
-  }
-  OUT[0] = world[0] * A + world[4] * B;
-  OUT[1] = world[1] * A + world[5] * B;
-  OUT[2] = world[2] * A + world[6] * B;
-  OUT[3] = world[3] * A + world[7] * B;
-  OUT[4] = world[0] * C + world[4] * D;
-  OUT[5] = world[1] * C + world[5] * D;
-  OUT[6] = world[2] * C + world[6] * D;
-  OUT[7] = world[3] * C + world[7] * D;
-  OUT[12] = world[0] * E + world[4] * F + world[12];
-  OUT[13] = world[1] * E + world[5] * F + world[13];
-  OUT[14] = world[2] * E + world[6] * F + world[14];
-  OUT[15] = world[3] * E + world[7] * F + world[15];
-  return OUT;
-}
-function validateShaderSurfaceClipCapacity(clips, maxPlanes) {
-  if (!clips?.length) {
-    return;
-  }
-  if (!Array.isArray(clips)) {
-    throw new TypeError("clips must be an array of convex polygons");
-  }
-  let edgeCount = 0;
-  for (const POLYGON of clips) {
-    if (!Array.isArray(POLYGON) || POLYGON.length < 3 || POLYGON.some((point) => !Number.isFinite(point?.x) || !Number.isFinite(point?.y))) {
-      throw new TypeError("Finite convex clip polygons required");
-    }
-    let area = 0;
-    for (let i = 0; i < POLYGON.length; i++) {
-      const A = POLYGON[i], B = POLYGON[(i + 1) % POLYGON.length];
-      area += A.x * B.y - B.x * A.y;
-      if (Math.hypot(B.x - A.x, B.y - A.y) > 0) {
-        edgeCount++;
-      }
-    }
-    if (Math.abs(area) < 1e-8) {
-      throw new RangeError("A clip polygon must have nonzero area");
-    }
-    if (edgeCount > maxPlanes) {
-      throw new RangeError(`Vector asset clipping exceeds the shader surface limit of ${maxPlanes} edge planes`);
-    }
-  }
-}
 function transformPoint(matrix, point) {
   return {
     x: matrix[0] * point[0] + matrix[2] * point[1] + matrix[4],
@@ -3779,7 +3707,7 @@ function blendPoses(from, to, amount, partIds) {
   }
   return OUTPUT;
 }
-function createVectorAsset(meshRenderer, compiledAsset, { surfaceRenderer = null } = {}) {
+function retainVectorAsset(meshRenderer, compiledAsset) {
   if (!meshRenderer?.createMesh || !meshRenderer?.drawMesh || !meshRenderer?.deleteMesh) {
     throw new TypeError("A GameKit MeshRenderer is required");
   }
@@ -3796,26 +3724,14 @@ function createVectorAsset(meshRenderer, compiledAsset, { surfaceRenderer = null
     ).map(([name]) => name)
   );
   const POSE_API = typeof meshRenderer.createPoseSource === "function" && typeof meshRenderer.createPoseInstance === "function" && typeof meshRenderer.preparePose === "function" && typeof meshRenderer.prepareCpuPose === "function" && typeof meshRenderer.deletePoseInstance === "function" && typeof meshRenderer.deletePoseSource === "function";
-  const GEOMETRY = compiledAsset.geometry, SHADER_GEOMETRY = GEOMETRY.shaderSurfaces ?? [];
-  if (SHADER_GEOMETRY.length && (!surfaceRenderer?.createSurface || !surfaceRenderer?.drawSurface || !surfaceRenderer?.deleteSurface)) {
-    throw new TypeError(
-      'This SVG declares backend:"shader"; pass a GameKit YarnSurfaceRenderer when creating the vector asset'
-    );
-  }
-  const POSE_PROGRAM = POSE_API && !GEOMETRY.drawOrder && !SHADER_GEOMETRY.length ? compilePoseChannels(METADATA) : null;
+  const GEOMETRY = compiledAsset.geometry;
+  const POSE_PROGRAM = POSE_API ? compilePoseChannels(METADATA) : null;
   let mesh = null;
   let poseSource = null;
-  const RETAINED_SURFACES = [];
   try {
     mesh = GEOMETRY.vertices.length ? meshRenderer.createMesh(GEOMETRY) : null;
     poseSource = POSE_PROGRAM ? meshRenderer.createPoseSource(POSE_PROGRAM) : null;
-    for (const DESCRIPTOR of SHADER_GEOMETRY) {
-      RETAINED_SURFACES.push(surfaceRenderer.createSurface(DESCRIPTOR));
-    }
   } catch (error) {
-    for (const SURFACE of RETAINED_SURFACES) {
-      surfaceRenderer.deleteSurface(SURFACE);
-    }
     if (mesh) {
       meshRenderer.deleteMesh(mesh);
     }
@@ -3824,14 +3740,14 @@ function createVectorAsset(meshRenderer, compiledAsset, { surfaceRenderer = null
     }
     throw error;
   }
-  const PLAYERS = /* @__PURE__ */ new Set();
+  const ACTORS = /* @__PURE__ */ new Set();
   let disposed = false;
   const REQUIRE_READY = () => {
     if (disposed) {
       throw new Error("Vector asset is disposed");
     }
   };
-  const CREATE_PLAYER = ({ clip = Object.keys(CLIPS)[0], startedAtMs = 0 } = {}) => {
+  const CREATE_ACTOR = ({ clip = Object.keys(CLIPS)[0], startedAtMs = 0 } = {}, release = null) => {
     REQUIRE_READY();
     if (!Object.hasOwn(CLIPS, clip)) {
       throw new TypeError(`Unknown vector clip: ${clip}`);
@@ -3885,7 +3801,7 @@ function createVectorAsset(meshRenderer, compiledAsset, { surfaceRenderer = null
     let resolvedPose = null;
     let preparedPose = null;
     const RESOLVED_MATRICES = /* @__PURE__ */ new Map();
-    let playerDisposed = false;
+    let actorDisposed = false;
     const POSE_INSTANCE = poseSource ? meshRenderer.createPoseInstance(poseSource) : null;
     const POSE_METRICS = {
       fullSamples: 0,
@@ -3901,10 +3817,10 @@ function createVectorAsset(meshRenderer, compiledAsset, { surfaceRenderer = null
       poseRevision++;
       preparedPose = null;
     };
-    const ASSERT_PLAYER = () => {
+    const ASSERT_ACTOR = () => {
       REQUIRE_READY();
-      if (playerDisposed) {
-        throw new Error("Vector player is disposed");
+      if (actorDisposed) {
+        throw new Error("Vector actor is disposed");
       }
     };
     const SAMPLE_CLIP = (playback, timeMs) => {
@@ -3987,23 +3903,23 @@ function createVectorAsset(meshRenderer, compiledAsset, { surfaceRenderer = null
       }
     };
     const SEEK = (timeMs) => {
-      ASSERT_PLAYER();
+      ASSERT_ACTOR();
       const NEXT_TIME_MS = FINITE_TIME(timeMs, "displayTimeMs");
       if (NEXT_TIME_MS !== displayTimeMs || soughtPlaybackRevision !== playbackRevision) {
         displayTimeMs = NEXT_TIME_MS;
         soughtPlaybackRevision = playbackRevision;
         INVALIDATE_POSE();
       }
-      return PLAYER;
+      return ACTOR;
     };
     const SET_EXPRESSION = (name) => {
-      ASSERT_PLAYER();
+      ASSERT_ACTOR();
       const VARIANT = METADATA.expressions[name];
       if (!VARIANT) {
         throw new TypeError(`Unknown vector expression: ${name}`);
       }
       if (name === expression && !visibilityOverridden) {
-        return PLAYER;
+        return ACTOR;
       }
       for (const ID of EXPRESSION_PARTS) {
         VISIBLE.set(ID, false);
@@ -4017,20 +3933,20 @@ function createVectorAsset(meshRenderer, compiledAsset, { surfaceRenderer = null
       expression = name;
       visibilityOverridden = false;
       INVALIDATE_POSE();
-      return PLAYER;
+      return ACTOR;
     };
     const SET_PART_VISIBLE = (id, isVisible) => {
-      ASSERT_PLAYER();
+      ASSERT_ACTOR();
       if (!PART_INDICES.has(id) || typeof isVisible !== "boolean") {
         throw new TypeError("Known part id and boolean visibility required");
       }
       VISIBLE.set(id, isVisible);
       visibilityOverridden = true;
       INVALIDATE_POSE();
-      return PLAYER;
+      return ACTOR;
     };
     const SET_BASE_POSE = (id, pose) => {
-      ASSERT_PLAYER();
+      ASSERT_ACTOR();
       if (!PART_INDICES.has(id) || !pose || typeof pose !== "object" || Array.isArray(pose)) {
         throw new TypeError("Known part and pose object required");
       }
@@ -4056,10 +3972,10 @@ function createVectorAsset(meshRenderer, compiledAsset, { surfaceRenderer = null
       if (changed) {
         INVALIDATE_POSE();
       }
-      return PLAYER;
+      return ACTOR;
     };
     const PLAY = (name, atMs = displayTimeMs) => {
-      ASSERT_PLAYER();
+      ASSERT_ACTOR();
       if (!Object.hasOwn(CLIPS, name)) {
         throw new TypeError(`Unknown vector clip: ${name}`);
       }
@@ -4072,7 +3988,7 @@ function createVectorAsset(meshRenderer, compiledAsset, { surfaceRenderer = null
       return SEEK(atMs);
     };
     const TRANSITION_TO = (name, atMs = displayTimeMs, durationMs = 0) => {
-      ASSERT_PLAYER();
+      ASSERT_ACTOR();
       if (!Object.hasOwn(CLIPS, name)) {
         throw new TypeError(`Unknown vector clip: ${name}`);
       }
@@ -4158,7 +4074,7 @@ function createVectorAsset(meshRenderer, compiledAsset, { surfaceRenderer = null
       return { ...RESULT, visible };
     };
     const GET_SOCKET = (id) => {
-      ASSERT_PLAYER();
+      ASSERT_ACTOR();
       const SOCKET = METADATA.sockets[id];
       if (!SOCKET) {
         throw new TypeError(`Unknown vector socket: ${id}`);
@@ -4183,7 +4099,7 @@ function createVectorAsset(meshRenderer, compiledAsset, { surfaceRenderer = null
       };
     };
     const PART_POSES = () => {
-      ASSERT_PLAYER();
+      ASSERT_ACTOR();
       const RESOLVED = WORLD_MATRICES();
       return RESOLVED.parts.map((pose, index) => {
         return {
@@ -4212,7 +4128,7 @@ function createVectorAsset(meshRenderer, compiledAsset, { surfaceRenderer = null
       return excludedMask;
     };
     const PREPARE_POSE = ({ excludeParts = null } = {}) => {
-      ASSERT_PLAYER();
+      ASSERT_ACTOR();
       const EXCLUDED_MASK = VALIDATE_EXCLUSIONS(excludeParts);
       if (!POSE_INSTANCE) {
         return null;
@@ -4283,16 +4199,12 @@ function createVectorAsset(meshRenderer, compiledAsset, { surfaceRenderer = null
       strokeViewport = null,
       excludeParts = null
     } = {}) => {
-      ASSERT_PLAYER();
+      ASSERT_ACTOR();
       VALIDATE_EXCLUSIONS(excludeParts);
       if (!mesh && paintRegions !== null) {
         throw new TypeError("This asset has no named mesh fills");
       }
-      if (GEOMETRY.shaderSurfaces?.length) {
-        validateShaderSurfaceClipCapacity(clips, surfaceRenderer.maxClipPlanes);
-      }
-      const SPECIAL_GEOMETRY = Boolean(GEOMETRY.drawOrder || GEOMETRY.shaderSurfaces?.length);
-      if (!SPECIAL_GEOMETRY && POSE_INSTANCE) {
+      if (POSE_INSTANCE) {
         const POSE = PREPARE_POSE({ excludeParts });
         if (POSE) {
           const INDEX_VARIANT2 = !visibilityOverridden && compiledAsset.geometry.expressionIndices?.[expression] ? expression : null;
@@ -4313,14 +4225,13 @@ function createVectorAsset(meshRenderer, compiledAsset, { surfaceRenderer = null
             depthWrite,
             depthFunc,
             indexVariant: INDEX_VARIANT2,
-            strokeViewport
+            strokeViewport,
+            timeMs: displayTimeMs
           });
           return;
         }
       }
-      if (SPECIAL_GEOMETRY) {
-        meshRenderer.recordPoseFallback?.(GEOMETRY.drawOrder ? "drawOrder" : "shaderSurfaces");
-      } else if (!POSE_INSTANCE) {
+      if (!POSE_INSTANCE) {
         meshRenderer.recordPoseFallback?.("uniformPose");
       }
       const RESOLVED = WORLD_MATRICES();
@@ -4329,74 +4240,6 @@ function createVectorAsset(meshRenderer, compiledAsset, { surfaceRenderer = null
         opacity: pose.opacity,
         visible: pose.visible && !excludeParts?.has(METADATA.parts[index].id)
       }));
-      if (GEOMETRY.drawOrder) {
-        const WORLD_MODE2 = viewProjection !== void 0 || worldMatrix !== void 0;
-        for (const COMMAND of GEOMETRY.drawOrder) {
-          if (COMMAND.kind === "mesh") {
-            if (!POSES[COMMAND.partIndex].visible || POSES[COMMAND.partIndex].opacity <= 0) {
-              continue;
-            }
-            if (!mesh) {
-              throw new Error("SVG draw order references mesh geometry that was not retained");
-            }
-            meshRenderer.drawMesh(mesh, {
-              ...WORLD_MODE2 ? {
-                viewProjection,
-                worldMatrix
-              } : {
-                projection
-              },
-              matrix,
-              parts: POSES,
-              morph: RESOLVED.morph.slice(),
-              alpha,
-              color,
-              forceColor,
-              paintRegions,
-              whiteFlash,
-              clips,
-              stencilRef,
-              depth,
-              depthTest,
-              depthWrite,
-              depthFunc,
-              strokeViewport,
-              indexRange: [COMMAND.firstIndex, COMMAND.indexCount]
-            });
-            continue;
-          }
-          const SURFACE = RETAINED_SURFACES[COMMAND.surfaceIndex], POSE = POSES[GEOMETRY.shaderSurfaces[COMMAND.surfaceIndex].partIndex];
-          if (!POSE.visible || POSE.opacity <= 0) {
-            continue;
-          }
-          meshRenderer.flush("vectorShaderSurfaceBoundary");
-          const MATERIAL_TRANSFORM = WORLD_MODE2 ? POSE.transform : multiply(matrix, POSE.transform);
-          const SHADER_DEPTH = depthTest || depthWrite ? {
-            test: depthTest,
-            write: depthWrite,
-            func: depthFunc
-          } : false;
-          surfaceRenderer.drawSurface(SURFACE, {
-            ...WORLD_MODE2 ? {
-              viewProjection,
-              worldMatrix: composeWorldMatrix(worldMatrix, matrix)
-            } : {
-              projection
-            },
-            transform: MATERIAL_TRANSFORM,
-            color,
-            alpha: alpha * POSE.opacity,
-            forceColor,
-            whiteFlash: whiteFlash ? 1 : 0,
-            timeMs: displayTimeMs,
-            clips,
-            stencilRef,
-            z: depth,
-            depth: SHADER_DEPTH
-          });
-        }
-        return;
-      }
       const INDEX_VARIANT = !visibilityOverridden && compiledAsset.geometry.expressionIndices?.[expression] ? expression : null;
       const WORLD_MODE = viewProjection !== void 0 || worldMatrix !== void 0;
       meshRenderer.drawMesh(mesh, {
@@ -4421,11 +4264,12 @@ function createVectorAsset(meshRenderer, compiledAsset, { surfaceRenderer = null
         depthWrite,
         depthFunc,
         indexVariant: INDEX_VARIANT,
-        strokeViewport
+        strokeViewport,
+        timeMs: displayTimeMs
       });
     };
     const GET_PART_POSE = (id) => {
-      ASSERT_PLAYER();
+      ASSERT_ACTOR();
       if (!PART_INDICES.has(id)) {
         throw new TypeError(`Unknown vector part: ${id}`);
       }
@@ -4439,8 +4283,8 @@ function createVectorAsset(meshRenderer, compiledAsset, { surfaceRenderer = null
         transform: EFFECTIVE.transform.slice()
       };
     };
-    const DISPOSE_PLAYER = () => {
-      if (playerDisposed) {
+    const DISPOSE_ACTOR = () => {
+      if (actorDisposed) {
         return false;
       }
       for (const { timeline: TIMELINE } of TIMELINES.values()) {
@@ -4450,11 +4294,12 @@ function createVectorAsset(meshRenderer, compiledAsset, { surfaceRenderer = null
       if (POSE_INSTANCE) {
         meshRenderer.deletePoseInstance(POSE_INSTANCE);
       }
-      PLAYERS.delete(PLAYER);
-      playerDisposed = true;
+      ACTORS.delete(ACTOR);
+      actorDisposed = true;
+      release?.();
       return true;
     };
-    const PLAYER = Object.freeze({
+    const ACTOR = Object.freeze({
       seek: SEEK,
       play: PLAY,
       transitionTo: TRANSITION_TO,
@@ -4466,7 +4311,7 @@ function createVectorAsset(meshRenderer, compiledAsset, { surfaceRenderer = null
       partPoses: PART_POSES,
       preparePose: PREPARE_POSE,
       draw: DRAW,
-      dispose: DISPOSE_PLAYER,
+      dispose: DISPOSE_ACTOR,
       get currentClip() {
         return rootPlayback.kind === "clip" ? rootPlayback.name : rootPlayback.to.name;
       },
@@ -4488,28 +4333,25 @@ function createVectorAsset(meshRenderer, compiledAsset, { surfaceRenderer = null
         return false;
       },
       get disposed() {
-        return playerDisposed;
+        return actorDisposed;
       },
       get poseMetrics() {
         return { ...POSE_METRICS };
       }
     });
-    PLAYERS.add(PLAYER);
+    ACTORS.add(ACTOR);
     SEEK(startedAtMs);
-    return PLAYER;
+    return ACTOR;
   };
   const DISPOSE = () => {
     if (disposed) {
       return false;
     }
-    for (const PLAYER of [...PLAYERS]) {
-      PLAYER.dispose();
+    for (const ACTOR of [...ACTORS]) {
+      ACTOR.dispose();
     }
     if (mesh) {
       meshRenderer.deleteMesh(mesh);
-    }
-    for (const SURFACE of RETAINED_SURFACES) {
-      surfaceRenderer.deleteSurface(SURFACE);
     }
     if (poseSource) {
       meshRenderer.deletePoseSource(poseSource);
@@ -4525,24 +4367,75 @@ function createVectorAsset(meshRenderer, compiledAsset, { surfaceRenderer = null
     viewBox: Object.freeze([...compiledAsset.viewBox]),
     metadata: METADATA,
     mesh,
-    surfaces: Object.freeze(RETAINED_SURFACES),
-    createPlayer: CREATE_PLAYER,
-    ownsPlayer(player) {
-      return PLAYERS.has(player) && !player.disposed;
+    createActor: CREATE_ACTOR,
+    ownsActor(actor) {
+      return ACTORS.has(actor) && !actor.disposed;
     },
     dispose: DISPOSE,
     get disposed() {
       return disposed;
     },
-    get playerCount() {
-      return PLAYERS.size;
+    get actorCount() {
+      return ACTORS.size;
     }
   });
 }
+var SHARED_ASSETS = /* @__PURE__ */ new WeakMap();
+function acquireVectorAsset(context, compiledAsset) {
+  if (!context?.acquireMeshRenderer || !context?.onDispose) {
+    throw new TypeError("A GameKit VectorContext is required");
+  }
+  let table = SHARED_ASSETS.get(context);
+  if (!table) {
+    table = /* @__PURE__ */ new Map();
+    SHARED_ASSETS.set(context, table);
+    const TABLE2 = table;
+    context.onDispose(() => {
+      const ENTRIES = [...TABLE2.values()];
+      TABLE2.clear();
+      for (const ENTRY2 of ENTRIES) {
+        ENTRY2.asset.dispose();
+      }
+    });
+  }
+  let entry = table.get(compiledAsset);
+  if (!entry) {
+    entry = {
+      asset: retainVectorAsset(context.acquireMeshRenderer(), compiledAsset),
+      refs: 0
+    };
+    table.set(compiledAsset, entry);
+  }
+  entry.refs++;
+  const ENTRY = entry, TABLE = table;
+  let released = false;
+  return {
+    asset: ENTRY.asset,
+    release() {
+      if (released) {
+        return false;
+      }
+      released = true;
+      if (--ENTRY.refs === 0 && TABLE.get(compiledAsset) === ENTRY) {
+        TABLE.delete(compiledAsset);
+        ENTRY.asset.dispose();
+      }
+      return true;
+    }
+  };
+}
+function createVectorActor(context, compiledAsset, options = {}) {
+  const { asset: ASSET, release: RELEASE } = acquireVectorAsset(context, compiledAsset);
+  try {
+    return ASSET.createActor(options, RELEASE);
+  } catch (error) {
+    RELEASE();
+    throw error;
+  }
+}
 
 // modules/vector-assets/raster-atlas.js
-var DEFAULT_MAX_BYTES = 64 * 1024 * 1024;
-var WHITE = [1, 1, 1, 1];
+var IDENTITY_MATRIX = Object.freeze([1, 0, 0, 1, 0, 0]);
 var NOW2 = () => globalThis.performance?.now?.() ?? null;
 function nextPowerOfTwo(value) {
   return 2 ** Math.ceil(Math.log2(value));
@@ -4582,10 +4475,6 @@ function sourceRuns(geometry) {
   }
   return RUNS;
 }
-function sameGeometry(mesh, geometry) {
-  const VERTICES = mesh.vertices, INDICES = mesh.indices;
-  return VERTICES?.length === geometry.vertices.length && VERTICES.every((value, index) => value === geometry.vertices[index]) && (geometry.indices === void 0 ? INDICES === void 0 : INDICES instanceof Uint16Array && INDICES.length === geometry.indices.length && INDICES.every((value, index) => value === geometry.indices[index]));
-}
 function wholeRunExpressions(geometry, runs) {
   const SOURCE = geometry.indices;
   for (const VARIANT of Object.values(geometry.expressionIndices ?? {})) {
@@ -4611,13 +4500,13 @@ function wholeRunExpressions(geometry, runs) {
   }
   return true;
 }
-function packRuns(runs, maxSize, maxBytes) {
+function packRuns(runs, maxWidth, maxHeight) {
   const WIDEST = Math.max(...runs.map((run) => run.tileWidth));
-  if (WIDEST > maxSize || runs.some((run) => run.tileHeight > maxSize)) {
+  if (WIDEST > maxWidth || runs.some((run) => run.tileHeight > maxHeight)) {
     return null;
   }
-  const WIDTHS = /* @__PURE__ */ new Set([WIDEST, maxSize]);
-  for (let width = nextPowerOfTwo(WIDEST); width < maxSize; width *= 2) {
+  const WIDTHS = /* @__PURE__ */ new Set([WIDEST, maxWidth]);
+  for (let width = nextPowerOfTwo(WIDEST); width < maxWidth; width *= 2) {
     WIDTHS.add(width);
   }
   let best = null;
@@ -4636,51 +4525,63 @@ function packRuns(runs, maxSize, maxBytes) {
     }
     const HEIGHT = y + rowHeight;
     const BYTES = WIDTH * HEIGHT * 4;
-    if (HEIGHT > maxSize || BYTES > maxBytes || best && BYTES >= best.bytes) {
+    if (HEIGHT > maxHeight || best && BYTES >= best.bytes) {
       continue;
     }
     best = { width: WIDTH, height: HEIGHT, bytes: BYTES, positions: POSITIONS };
   }
   return best;
 }
-function quadGeometry(runs, packed, partCount, pixelsPerUnit, padding) {
-  const VERTICES = new Float32Array(runs.length * 4 * 11);
-  const UVS = new Float32Array(runs.length * 4 * 2);
-  const INDICES = new Uint16Array(runs.length * 6);
+function runTables(runs, packed, region, pixelsPerUnit, padding) {
+  const ATLAS = region.atlas, UV_RECTS = new Float32Array(runs.length * 4), LOCAL_RECTS = new Float32Array(runs.length * 4), PARTS = new Float32Array(runs.length);
   for (let runIndex = 0; runIndex < runs.length; runIndex++) {
-    const RUN = runs[runIndex], [TILE_X, TILE_Y] = packed.positions[runIndex], LEFT = RUN.minX - padding / pixelsPerUnit, TOP = RUN.minY - padding / pixelsPerUnit, RIGHT = LEFT + RUN.tileWidth / pixelsPerUnit, BOTTOM = TOP + RUN.tileHeight / pixelsPerUnit, U0 = TILE_X / packed.width, U1 = (TILE_X + RUN.tileWidth) / packed.width, V0 = 1 - TILE_Y / packed.height, V1 = 1 - (TILE_Y + RUN.tileHeight) / packed.height;
-    const CORNERS = [
-      [LEFT, TOP, U0, V0],
-      [RIGHT, TOP, U1, V0],
-      [RIGHT, BOTTOM, U1, V1],
-      [LEFT, BOTTOM, U0, V1]
-    ];
-    for (let corner = 0; corner < 4; corner++) {
-      const [X, Y, U, V] = CORNERS[corner], VERTEX = runIndex * 4 + corner, OFFSET = VERTEX * 11;
-      VERTICES.set([X, Y, ...WHITE, 0, 0, 0, 0, RUN.partIndex], OFFSET);
-      UVS.set([U, V], VERTEX * 2);
-    }
-    const FIRST = runIndex * 4;
-    INDICES.set([FIRST, FIRST + 1, FIRST + 2, FIRST, FIRST + 2, FIRST + 3], runIndex * 6);
+    const RUN = runs[runIndex], [TILE_X, TILE_Y] = packed.positions[runIndex];
+    UV_RECTS.set(
+      [
+        (region.x + TILE_X) / ATLAS.width,
+        (region.y + region.height - TILE_Y) / ATLAS.height,
+        RUN.tileWidth / ATLAS.width,
+        -RUN.tileHeight / ATLAS.height
+      ],
+      runIndex * 4
+    );
+    LOCAL_RECTS.set(
+      [
+        RUN.minX - padding / pixelsPerUnit,
+        RUN.minY - padding / pixelsPerUnit,
+        RUN.tileWidth / pixelsPerUnit,
+        RUN.tileHeight / pixelsPerUnit
+      ],
+      runIndex * 4
+    );
+    PARTS[runIndex] = RUN.partIndex;
   }
-  return { vertices: VERTICES, uvs: UVS, indices: INDICES, partCount, morphCount: 0, strideFloats: 11 };
+  return { uvRects: UV_RECTS, localRects: LOCAL_RECTS, parts: PARTS };
 }
-function createVectorRasterAtlas(meshRenderer, asset, compiledAsset, { pixelsPerUnit = 1, padding = 2, maxAtlasSize = null, maxAtlasBytes = DEFAULT_MAX_BYTES } = {}) {
-  validateCompiledAsset(compiledAsset);
-  const DEVICE = meshRenderer?.device;
-  const SOURCE_MESH_MATCHES = asset?.mesh ? asset.mesh.renderer === meshRenderer && asset.mesh.partCount === compiledAsset.geometry.partCount && sameGeometry(asset.mesh, compiledAsset.geometry) : compiledAsset.geometry.vertices.length === 0;
-  if (!DEVICE?.createRenderTarget || !DEVICE?.bindRenderTarget || !DEVICE?.unbindRenderTarget || !asset?.ownsPlayer || asset.disposed || asset.sourceSha256 !== compiledAsset.sourceSha256 || !SOURCE_MESH_MATCHES) {
-    throw new TypeError("A matching live vector asset and MeshRenderer are required");
+function createVectorRasterAtlas(context, compiledAsset, options = {}) {
+  const { asset: ASSET, release: RELEASE } = acquireVectorAsset(context, compiledAsset);
+  try {
+    return bakeRasterAtlas(context, ASSET, RELEASE, compiledAsset, options);
+  } catch (error) {
+    RELEASE();
+    throw error;
   }
-  maxAtlasSize ??= DEVICE.maxTextureSize;
-  if (!Number.isFinite(pixelsPerUnit) || pixelsPerUnit <= 0 || !Number.isSafeInteger(padding) || padding < 1 || !Number.isSafeInteger(maxAtlasSize) || maxAtlasSize < 1 || maxAtlasSize > DEVICE.maxTextureSize || !Number.isSafeInteger(maxAtlasBytes) || maxAtlasBytes < 4) {
-    throw new TypeError("Positive pixel scale, padding, atlas dimensions and byte budget required");
+}
+function bakeRasterAtlas(context, asset, release, compiledAsset, { pixelsPerUnit = 1, padding = 2 } = {}) {
+  const DEVICE = context.device;
+  const MESHES = context.meshRenderer;
+  if (!context.drawQuads || !context.drawVectorActor || !DEVICE?.createTextureLayerTarget || !DEVICE?.bindRenderTarget || !DEVICE?.unbindRenderTarget) {
+    throw new TypeError("A VectorContext is required");
   }
+  if (!Number.isFinite(pixelsPerUnit) || pixelsPerUnit <= 0 || !Number.isSafeInteger(padding) || padding < 1) {
+    throw new TypeError("A positive pixel scale and padding are required");
+  }
+  const ATLAS = DEVICE.textureAtlas;
   const GEOMETRY = compiledAsset.geometry;
   let unsupportedReason = null;
   if (GEOMETRY.morphCount) {
     unsupportedReason = "morphTargets";
-  } else if (GEOMETRY.shaderSurfaces?.length || GEOMETRY.drawOrder?.length) {
+  } else if (GEOMETRY.materials) {
     unsupportedReason = "shaderSurfaces";
   } else if (GEOMETRY.nonScalingStroke) {
     unsupportedReason = "nonScalingStroke";
@@ -4690,8 +4591,6 @@ function createVectorRasterAtlas(meshRenderer, asset, compiledAsset, { pixelsPer
     unsupportedReason = "partTriangles";
   } else if (!unsupportedReason && !wholeRunExpressions(GEOMETRY, RUNS)) {
     unsupportedReason = "expressionRunSelection";
-  } else if (!unsupportedReason && RUNS.length * 4 > 65536) {
-    unsupportedReason = "tooManyRuns";
   }
   if (!unsupportedReason) {
     for (const RUN of RUNS) {
@@ -4703,12 +4602,23 @@ function createVectorRasterAtlas(meshRenderer, asset, compiledAsset, { pixelsPer
       }
     }
   }
-  const PACKED = unsupportedReason ? null : packRuns(RUNS, maxAtlasSize, maxAtlasBytes);
+  const PACKED = unsupportedReason ? null : packRuns(RUNS, ATLAS.width - ATLAS.gutter * 2, ATLAS.height - ATLAS.gutter * 2);
   if (!unsupportedReason && !PACKED) {
     unsupportedReason = "atlasLimit";
   }
+  let region = null;
+  if (!unsupportedReason) {
+    try {
+      region = ATLAS.allocate(PACKED.width, PACKED.height);
+    } catch (error) {
+      if (!(error instanceof RangeError)) {
+        throw error;
+      }
+      unsupportedReason = "atlasLimit";
+    }
+  }
+  const TABLES = region ? runTables(RUNS, PACKED, region, pixelsPerUnit, padding) : null;
   let target = null;
-  let quad = null;
   let bakedRestores = -1;
   let failedFrame = -1;
   let failedRestores = -1;
@@ -4717,27 +4627,19 @@ function createVectorRasterAtlas(meshRenderer, asset, compiledAsset, { pixelsPer
   let bakeCount = 0;
   let bakeCpuMs = 0;
   let rasterDraws = 0;
-  let sampledCpuDraws = 0;
   let vectorDraws = 0;
   const FALLBACK_REASONS = /* @__PURE__ */ Object.create(null);
-  const FALLBACK = (player, options, reason) => {
+  const FALLBACK = (actor, options, reason) => {
     vectorDraws++;
     FALLBACK_REASONS[reason] = (FALLBACK_REASONS[reason] ?? 0) + 1;
-    player.draw(options);
+    context.drawVectorActor(actor, options);
     return { backend: "vector", reason };
   };
-  const RELEASE = () => {
-    const QUAD = quad, TARGET = target;
-    quad = null;
+  const RELEASE_TARGET = () => {
+    const TARGET = target;
     target = null;
-    try {
-      if (QUAD) {
-        meshRenderer.deleteMesh(QUAD);
-      }
-    } finally {
-      if (TARGET) {
-        DEVICE.deleteRenderTarget(TARGET);
-      }
+    if (TARGET) {
+      DEVICE.deleteRenderTarget(TARGET);
     }
   };
   const BAKE = () => {
@@ -4760,34 +4662,40 @@ function createVectorRasterAtlas(meshRenderer, asset, compiledAsset, { pixelsPer
     const START = NOW2();
     let bound = false;
     try {
-      meshRenderer.flush("rasterAtlasBakeBoundary");
+      DEVICE.flushBatchers("rasterAtlasBakeBoundary");
       if (target && !DEVICE.isRenderTargetAvailable(target)) {
-        DEVICE.deleteRenderTarget(target);
-        target = null;
+        RELEASE_TARGET();
       }
-      target ??= DEVICE.createRenderTarget(PACKED.width, PACKED.height, { format: "rgba", filter: "linear" });
-      quad ??= meshRenderer.createMesh(quadGeometry(RUNS, PACKED, GEOMETRY.partCount, pixelsPerUnit, padding));
+      target ??= DEVICE.createTextureLayerTarget(ATLAS.texture, region.layer);
+      DEVICE.clearTextureRegion(
+        ATLAS.texture,
+        region.layer,
+        region.paddedX,
+        region.paddedY,
+        region.width + ATLAS.gutter * 2,
+        region.height + ATLAS.gutter * 2
+      );
       DEVICE.bindRenderTarget(target);
       bound = true;
-      DEVICE.clear({ color: [0, 0, 0, 0] });
+      const TOP = ATLAS.height - (region.y + region.height);
       for (let index = 0; index < RUNS.length; index++) {
-        const RUN = RUNS[index], [TILE_X, TILE_Y] = PACKED.positions[index], TX = TILE_X + padding - pixelsPerUnit * RUN.minX, TY = TILE_Y + padding - pixelsPerUnit * RUN.minY;
-        meshRenderer.drawMesh(asset.mesh, {
+        const RUN = RUNS[index], [TILE_X, TILE_Y] = PACKED.positions[index], TX = region.x + TILE_X + padding - pixelsPerUnit * RUN.minX, TY = TOP + TILE_Y + padding - pixelsPerUnit * RUN.minY;
+        MESHES.drawMesh(asset.mesh, {
           projection: [
-            2 * pixelsPerUnit / PACKED.width,
+            2 * pixelsPerUnit / ATLAS.width,
             0,
             0,
             0,
-            -2 * pixelsPerUnit / PACKED.height,
+            -2 * pixelsPerUnit / ATLAS.height,
             0,
-            2 * TX / PACKED.width - 1,
-            1 - 2 * TY / PACKED.height,
+            2 * TX / ATLAS.width - 1,
+            1 - 2 * TY / ATLAS.height,
             1
           ],
           indexRange: [RUN.firstIndex, RUN.indexCount]
         });
       }
-      meshRenderer.flush("rasterAtlasBake");
+      MESHES.flush("rasterAtlasBake");
       DEVICE.unbindRenderTarget(target);
       bound = false;
       bakedRestores = RESTORES;
@@ -4799,14 +4707,14 @@ function createVectorRasterAtlas(meshRenderer, asset, compiledAsset, { pixelsPer
       return { backend: "raster", reason: null };
     } catch (error) {
       if (bound) {
-        meshRenderer.discard();
+        MESHES.discard();
         try {
           DEVICE.unbindRenderTarget(target);
         } catch {
         }
       }
       try {
-        RELEASE();
+        RELEASE_TARGET();
       } catch {
       }
       bakedRestores = -1;
@@ -4816,54 +4724,49 @@ function createVectorRasterAtlas(meshRenderer, asset, compiledAsset, { pixelsPer
       return { backend: "vector", reason: "bakeFailed" };
     }
   };
-  const DRAW = (player, options = {}) => {
+  const DRAW = (actor, options = {}) => {
     if (disposed || asset.disposed) {
       throw new Error("Vector raster atlas or source asset is disposed");
     }
-    if (!asset.ownsPlayer(player)) {
-      throw new TypeError("A live player owned by this vector asset is required");
+    if (!asset.ownsActor(actor)) {
+      throw new TypeError("A live actor owned by this vector asset is required");
     }
     if (unsupportedReason) {
-      return FALLBACK(player, options, unsupportedReason);
+      return FALLBACK(actor, options, unsupportedReason);
     }
     if (options.forceColor === true) {
-      return FALLBACK(player, options, "forceColor");
+      return FALLBACK(actor, options, "forceColor");
     }
     if (options.alpha !== void 0 && options.alpha < 1 || options.color?.[3] < 1) {
-      return FALLBACK(player, options, "globalOpacity");
+      return FALLBACK(actor, options, "globalOpacity");
     }
-    if (player.hasOpacityChannel) {
-      return FALLBACK(player, options, "opacityChannel");
+    if (actor.hasOpacityChannel) {
+      return FALLBACK(actor, options, "opacityChannel");
     }
-    if (player.hasNonUnitBaseOpacity) {
-      return FALLBACK(player, options, "baseOpacity");
+    if (actor.hasNonUnitBaseOpacity) {
+      return FALLBACK(actor, options, "baseOpacity");
     }
     if (options.depthWriteAlphaThreshold != null) {
-      return FALLBACK(player, options, "depthWriteAlphaThreshold");
+      return FALLBACK(actor, options, "depthWriteAlphaThreshold");
     }
     const RESULT = BAKE();
     if (RESULT.backend !== "raster") {
-      return FALLBACK(player, options, RESULT.reason);
+      return FALLBACK(actor, options, RESULT.reason);
     }
-    const { excludeParts: EXCLUDE_PARTS = null, ...DRAW_OPTIONS } = options;
-    const POSE = player.preparePose({ excludeParts: EXCLUDE_PARTS });
-    let parts = null;
+    const { excludeParts: EXCLUDE_PARTS = null, matrix: MATRIX = IDENTITY_MATRIX, ...DRAW_OPTIONS } = options;
+    const POSE = actor.preparePose({ excludeParts: EXCLUDE_PARTS });
     if (!POSE) {
-      parts = player.partPoses().map((part, index) => ({
-        ...part,
-        visible: part.visible && !EXCLUDE_PARTS?.has(compiledAsset.metadata.parts[index].id)
-      }));
+      return FALLBACK(actor, options, "poseUnavailable");
     }
-    meshRenderer.drawMesh(quad, {
+    context.drawQuads({
       ...DRAW_OPTIONS,
-      texture: target,
+      matrix: MATRIX,
+      layer: region.layer,
+      filter: region.filter,
       pose: POSE,
-      parts
+      ...TABLES
     });
     rasterDraws++;
-    if (!POSE) {
-      sampledCpuDraws++;
-    }
     return { backend: "raster", reason: null };
   };
   const DISPOSE = () => {
@@ -4871,12 +4774,19 @@ function createVectorRasterAtlas(meshRenderer, asset, compiledAsset, { pixelsPer
       return false;
     }
     if (DEVICE.state === "ready" && DEVICE.active) {
-      meshRenderer.flush("rasterAtlasDispose");
+      DEVICE.flushBatchers("rasterAtlasDispose");
     }
+    disposed = true;
     try {
-      RELEASE();
+      RELEASE_TARGET();
     } finally {
-      disposed = true;
+      try {
+        if (region && DEVICE.state === "ready") {
+          ATLAS.release(region);
+        }
+      } finally {
+        release();
+      }
     }
     return true;
   };
@@ -4892,16 +4802,16 @@ function createVectorRasterAtlas(meshRenderer, asset, compiledAsset, { pixelsPer
         disposed,
         reason: unsupportedReason ?? (lastFailure ? "bakeFailed" : null),
         lastError: lastFailure,
+        layer: region?.layer ?? null,
         runCount: RUNS?.length ?? 0,
+        // The packed runs' region of the shared atlas array.
         atlasWidth: PACKED?.width ?? 0,
         atlasHeight: PACKED?.height ?? 0,
-        // Planned RGBA capacity; allocatedBytes tracks the live target.
         atlasBytes: PACKED?.bytes ?? 0,
         allocatedBytes: !disposed && target ? PACKED?.bytes ?? 0 : 0,
         bakeCount,
         bakeCpuMs,
         rasterDraws,
-        sampledCpuDraws,
         vectorDraws,
         fallbackReasons: { ...FALLBACK_REASONS }
       };
@@ -4909,315 +4819,10 @@ function createVectorRasterAtlas(meshRenderer, asset, compiledAsset, { pixelsPer
   });
 }
 
-// modules/rendering/sprite-animation.js
-function createSpriteAnimation(meshRenderer, texture, definition) {
-  if (!meshRenderer?.createMesh || !meshRenderer?.drawMesh || !meshRenderer?.deleteMesh) {
-    throw new TypeError("A MeshRenderer is required");
-  }
-  if (!meshRenderer.device?.textures?.has(texture)) {
-    throw new TypeError("A live Device texture owned by the mesh renderer is required");
-  }
-  const ATLAS_WIDTH = texture.width;
-  const ATLAS_HEIGHT = texture.height;
-  const INPUT_FRAMES = definition?.frames;
-  const INPUT_CLIPS = definition?.clips;
-  const TEXTURE_ORIGIN = definition?.textureOrigin ?? "top-left";
-  if (TEXTURE_ORIGIN !== "top-left" && TEXTURE_ORIGIN !== "bottom-left") {
-    throw new TypeError("textureOrigin must be top-left or bottom-left");
-  }
-  if (!Array.isArray(INPUT_FRAMES) || INPUT_FRAMES.length < 1 || INPUT_FRAMES.length > 4096) {
-    throw new RangeError("Sprite animation requires 1..4096 atlas frames");
-  }
-  if (!INPUT_CLIPS || typeof INPUT_CLIPS !== "object" || Array.isArray(INPUT_CLIPS)) {
-    throw new TypeError("Named sprite clips are required");
-  }
-  const FRAMES = [];
-  const FRAME_RECTS = [];
-  const VERTICES = new Float32Array(4 * 11);
-  const UVS = new Float32Array(4 * 2);
-  const INDICES = new Uint16Array([0, 1, 2, 0, 2, 3]);
-  const VERTEX = (index, x, y, u, v) => {
-    const OFFSET = index * 11;
-    VERTICES.set([x, y, 1, 1, 1, 1], OFFSET);
-    UVS.set([u, v], index * 2);
-  };
-  const INTEGER = (value, name, minimum = 0) => {
-    if (!Number.isSafeInteger(value) || value < minimum) {
-      throw new TypeError(`${name} must be an integer >= ${minimum}`);
-    }
-  };
-  VERTEX(0, 0, 0, 0, 0);
-  VERTEX(1, 1, 0, 1, 0);
-  VERTEX(2, 1, 1, 1, 1);
-  VERTEX(3, 0, 1, 0, 1);
-  for (let index = 0; index < INPUT_FRAMES.length; index++) {
-    const FRAME = INPUT_FRAMES[index];
-    const X = FRAME?.x;
-    const Y = FRAME?.y;
-    const WIDTH = FRAME?.width;
-    const HEIGHT = FRAME?.height;
-    const GUTTER = FRAME?.gutter ?? definition.gutter ?? 0;
-    const SOURCE_WIDTH = FRAME?.sourceWidth ?? definition.sourceWidth ?? WIDTH;
-    const SOURCE_HEIGHT = FRAME?.sourceHeight ?? definition.sourceHeight ?? HEIGHT;
-    const SOURCE_X = FRAME?.sourceX ?? 0;
-    const SOURCE_Y = FRAME?.sourceY ?? 0;
-    const PIVOT_X = FRAME?.pivotX ?? definition.pivotX ?? 0;
-    const PIVOT_Y = FRAME?.pivotY ?? definition.pivotY ?? 0;
-    const DURATION_MS = FRAME?.durationMs;
-    for (const [NAME, VALUE, MINIMUM] of [
-      ["frame x", X, 0],
-      ["frame y", Y, 0],
-      ["frame width", WIDTH, 1],
-      ["frame height", HEIGHT, 1],
-      ["frame gutter", GUTTER, 0],
-      ["source width", SOURCE_WIDTH, 1],
-      ["source height", SOURCE_HEIGHT, 1],
-      ["source x", SOURCE_X, 0],
-      ["source y", SOURCE_Y, 0]
-    ]) {
-      INTEGER(VALUE, NAME, MINIMUM);
-    }
-    if (X - GUTTER < 0 || Y - GUTTER < 0 || X + WIDTH + GUTTER > ATLAS_WIDTH || Y + HEIGHT + GUTTER > ATLAS_HEIGHT || SOURCE_X + WIDTH > SOURCE_WIDTH || SOURCE_Y + HEIGHT > SOURCE_HEIGHT) {
-      throw new RangeError("Sprite frame, its gutter, or its trim exceeds its atlas/source viewport");
-    }
-    if (!Number.isFinite(PIVOT_X) || !Number.isFinite(PIVOT_Y)) {
-      throw new TypeError("Sprite pivot coordinates must be finite");
-    }
-    if (!Number.isFinite(DURATION_MS) || DURATION_MS <= 0 || DURATION_MS > 1e9) {
-      throw new RangeError("Sprite frame durationMs must be positive and at most 1,000,000,000");
-    }
-    const LEFT = SOURCE_X - PIVOT_X;
-    const TOP = SOURCE_Y - PIVOT_Y;
-    const U0 = X / ATLAS_WIDTH;
-    const V0 = TEXTURE_ORIGIN === "bottom-left" ? 1 - Y / ATLAS_HEIGHT : Y / ATLAS_HEIGHT;
-    const V1 = TEXTURE_ORIGIN === "bottom-left" ? 1 - (Y + HEIGHT) / ATLAS_HEIGHT : (Y + HEIGHT) / ATLAS_HEIGHT;
-    FRAME_RECTS.push(
-      Object.freeze({
-        localRect: Object.freeze([LEFT, TOP, WIDTH, HEIGHT]),
-        uvRect: Object.freeze([U0, V0, WIDTH / ATLAS_WIDTH, V1 - V0])
-      })
-    );
-    FRAMES.push(
-      Object.freeze({
-        index,
-        x: X,
-        y: Y,
-        width: WIDTH,
-        height: HEIGHT,
-        sourceX: SOURCE_X,
-        sourceY: SOURCE_Y,
-        sourceWidth: SOURCE_WIDTH,
-        sourceHeight: SOURCE_HEIGHT,
-        pivotX: PIVOT_X,
-        pivotY: PIVOT_Y,
-        gutter: GUTTER,
-        durationMs: DURATION_MS
-      })
-    );
-  }
-  const CLIPS = /* @__PURE__ */ new Map();
-  for (const [NAME, INPUT] of Object.entries(INPUT_CLIPS)) {
-    if (!/^[A-Za-z_][A-Za-z0-9_.:-]{0,127}$/.test(NAME) || !INPUT || typeof INPUT !== "object") {
-      throw new TypeError("Valid named sprite clips are required");
-    }
-    if (!Array.isArray(INPUT.frames) || !INPUT.frames.length || INPUT.frames.length > 4096) {
-      throw new RangeError("A sprite clip must reference 1..4096 frames");
-    }
-    const LOOP = INPUT.loop ?? "loop";
-    if (LOOP !== "loop" && LOOP !== "once") {
-      throw new TypeError("Sprite clip loop must be loop or once");
-    }
-    let durationMs = 0;
-    const ENDS = [];
-    for (const INDEX of INPUT.frames) {
-      INTEGER(INDEX, "clip frame index");
-      if (INDEX >= FRAMES.length) {
-        throw new RangeError("Clip frame index exceeds atlas frame count");
-      }
-      durationMs += FRAMES[INDEX].durationMs;
-      if (!Number.isFinite(durationMs) || durationMs > Number.MAX_SAFE_INTEGER) {
-        throw new RangeError("Sprite clip duration exceeds safe milliseconds");
-      }
-      ENDS.push(durationMs);
-    }
-    CLIPS.set(
-      NAME,
-      Object.freeze({
-        name: NAME,
-        frames: Object.freeze([...INPUT.frames]),
-        ends: Object.freeze(ENDS),
-        loop: LOOP,
-        durationMs
-      })
-    );
-  }
-  if (!CLIPS.size) {
-    throw new TypeError("At least one sprite clip is required");
-  }
-  const MESH = meshRenderer.createMesh({
-    vertices: VERTICES,
-    uvs: UVS,
-    indices: INDICES,
-    strideFloats: 11,
-    partCount: 1,
-    morphCount: 0
-  });
-  const PLAYERS = /* @__PURE__ */ new Set();
-  let disposed = false;
-  const READY = () => {
-    if (disposed) {
-      throw new Error("Sprite animation disposed");
-    }
-  };
-  const GET_CLIP = (name) => {
-    const CLIP = CLIPS.get(name);
-    if (!CLIP) {
-      throw new TypeError("Known sprite clip required");
-    }
-    return CLIP;
-  };
-  const CLOCK = (value) => {
-    if (!Number.isFinite(value)) {
-      throw new TypeError("Finite absolute timeMs required");
-    }
-  };
-  return Object.freeze({
-    createPlayer({ clip = CLIPS.keys().next().value, startedAtMs = 0, rate = 1 } = {}) {
-      READY();
-      CLOCK(startedAtMs);
-      if (!Number.isFinite(rate) || rate <= 0 || rate > 1e3) {
-        throw new RangeError("Sprite playback rate must be in (0,1000]");
-      }
-      let selectedClip = GET_CLIP(clip);
-      let anchorMs = startedAtMs;
-      let offsetMs = 0;
-      let playbackRate = rate;
-      let paused = false;
-      let playerDisposed = false;
-      const PLAYER_READY = () => {
-        READY();
-        if (playerDisposed) {
-          throw new Error("Sprite player disposed");
-        }
-      };
-      const ELAPSED = (timeMs) => {
-        PLAYER_READY();
-        CLOCK(timeMs);
-        const VALUE = Math.max(0, offsetMs + (paused ? 0 : (timeMs - anchorMs) * playbackRate));
-        if (!Number.isFinite(VALUE)) {
-          throw new RangeError("Sprite elapsed time exceeds finite milliseconds");
-        }
-        return VALUE;
-      };
-      const PLAYER = Object.freeze({
-        sample(timeMs) {
-          const ELAPSED_MS = ELAPSED(timeMs);
-          const TIME = selectedClip.loop === "loop" ? ELAPSED_MS % selectedClip.durationMs : Math.min(ELAPSED_MS, selectedClip.durationMs);
-          let slot = 0;
-          while (slot < selectedClip.ends.length - 1 && TIME >= selectedClip.ends[slot]) {
-            slot++;
-          }
-          const FRAME_INDEX = selectedClip.frames[slot];
-          return Object.freeze({
-            clip: selectedClip.name,
-            frameIndex: FRAME_INDEX,
-            frame: FRAMES[FRAME_INDEX],
-            elapsedMs: ELAPSED_MS,
-            finished: selectedClip.loop === "once" && ELAPSED_MS >= selectedClip.durationMs
-          });
-        },
-        draw({ timeMs, ...options } = {}) {
-          const SAMPLE = this.sample(timeMs);
-          meshRenderer.drawMesh(MESH, {
-            ...options,
-            ...FRAME_RECTS[SAMPLE.frameIndex],
-            texture
-          });
-          return SAMPLE;
-        },
-        seek(elapsedMs, timeMs) {
-          PLAYER_READY();
-          CLOCK(elapsedMs);
-          CLOCK(timeMs);
-          if (elapsedMs < 0) {
-            throw new RangeError("Sprite seek elapsedMs must be nonnegative");
-          }
-          offsetMs = elapsedMs;
-          anchorMs = timeMs;
-          return this;
-        },
-        setPaused(value, timeMs) {
-          PLAYER_READY();
-          if (typeof value !== "boolean") {
-            throw new TypeError("Sprite paused state must be boolean");
-          }
-          const CURRENT = ELAPSED(timeMs);
-          offsetMs = CURRENT;
-          anchorMs = timeMs;
-          paused = value;
-          return this;
-        },
-        setRate(value, timeMs) {
-          PLAYER_READY();
-          if (!Number.isFinite(value) || value <= 0 || value > 1e3) {
-            throw new RangeError("Sprite playback rate must be in (0,1000]");
-          }
-          const CURRENT = ELAPSED(timeMs);
-          offsetMs = CURRENT;
-          anchorMs = timeMs;
-          playbackRate = value;
-          return this;
-        },
-        setClip(name, timeMs) {
-          PLAYER_READY();
-          CLOCK(timeMs);
-          selectedClip = GET_CLIP(name);
-          offsetMs = 0;
-          anchorMs = timeMs;
-          return this;
-        },
-        dispose() {
-          if (playerDisposed) {
-            return false;
-          }
-          playerDisposed = true;
-          PLAYERS.delete(PLAYER);
-          return true;
-        }
-      });
-      PLAYERS.add(PLAYER);
-      return PLAYER;
-    },
-    stats() {
-      return Object.freeze({
-        frameCount: FRAMES.length,
-        clipCount: CLIPS.size,
-        playerCount: PLAYERS.size,
-        retainedBytes: disposed ? 0 : MESH.byteLength,
-        textureOwned: false
-      });
-    },
-    dispose() {
-      if (disposed) {
-        return false;
-      }
-      disposed = true;
-      PLAYERS.clear();
-      meshRenderer.deleteMesh(MESH);
-      return true;
-    }
-  });
-}
-
 // modules/vector-assets/sprite-atlas.js
 var CACHE = /* @__PURE__ */ new WeakMap();
-var DEFAULT_MAX_BYTES2 = 64 * 1024 * 1024;
 var MAX_FRAMES = 512;
 var NOW3 = () => globalThis.performance?.now?.() ?? null;
-function sameGeometry2(mesh, geometry) {
-  const VERTICES = mesh.vertices, INDICES = mesh.indices;
-  return VERTICES?.length === geometry.vertices.length && VERTICES.every((value, index) => value === geometry.vertices[index]) && (geometry.indices === void 0 ? INDICES === void 0 : INDICES instanceof Uint16Array && INDICES.length === geometry.indices.length && INDICES.every((value, index) => value === geometry.indices[index]));
-}
 function sampleFrames(clip, interval) {
   const COUNT = Math.ceil(clip.durationMs / interval);
   if (!Number.isSafeInteger(COUNT) || COUNT < 1 || COUNT > MAX_FRAMES) {
@@ -5231,12 +4836,12 @@ function sampleFrames(clip, interval) {
     };
   });
 }
-function sampledBounds(player, geometry, samples) {
+function sampledBounds(actor, geometry, samples) {
   const VERTICES = geometry.vertices;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const SAMPLE of samples) {
-    player.seek(SAMPLE.timeMs);
-    const POSES = player.partPoses();
+    actor.seek(SAMPLE.timeMs);
+    const POSES = actor.partPoses();
     for (let offset = 0; offset < VERTICES.length; offset += 11) {
       const POSE = POSES[VERTICES[offset + 10]];
       if (!POSE.visible || POSE.opacity <= 0) {
@@ -5251,14 +4856,14 @@ function sampledBounds(player, geometry, samples) {
   }
   return Number.isFinite(minX) ? { minX, minY, maxX, maxY } : null;
 }
-function packFrames(count, tileWidth, tileHeight, maxSize, maxBytes) {
-  if (tileWidth > maxSize || tileHeight > maxSize) {
+function packFrames(count, tileWidth, tileHeight, maxWidth, maxHeight) {
+  if (tileWidth > maxWidth || tileHeight > maxHeight) {
     return null;
   }
   let best = null;
-  for (let columns = 1; columns <= count && columns * tileWidth <= maxSize; columns++) {
+  for (let columns = 1; columns <= count && columns * tileWidth <= maxWidth; columns++) {
     const ROWS = Math.ceil(count / columns), WIDTH = columns * tileWidth, HEIGHT = ROWS * tileHeight, BYTES = WIDTH * HEIGHT * 4;
-    if (HEIGHT > maxSize || BYTES > maxBytes || best && BYTES >= best.bytes) {
+    if (HEIGHT > maxHeight || best && BYTES >= best.bytes) {
       continue;
     }
     best = { columns, width: WIDTH, height: HEIGHT, bytes: BYTES };
@@ -5298,28 +4903,34 @@ function spriteDefinition(clipName, clip, samples, packed, contentWidth, content
     })
   });
 }
-function createVectorSpriteAtlas(meshRenderer, asset, compiledAsset, {
+function createVectorSpriteAtlas(context, compiledAsset, options = {}) {
+  const { asset: ASSET, release: RELEASE } = acquireVectorAsset(context, compiledAsset);
+  try {
+    return bakeSpriteAtlas(context, ASSET, RELEASE, compiledAsset, options);
+  } catch (error) {
+    RELEASE();
+    throw error;
+  }
+}
+function bakeSpriteAtlas(context, asset, release, compiledAsset, {
   clip,
   expression = compiledAsset?.metadata?.defaultExpression,
   sampleIntervalMs = 100,
   pixelsPerUnit = 1,
   padding = 2,
-  maxAtlasSize = null,
-  maxAtlasBytes = DEFAULT_MAX_BYTES2,
   paintRegions = null,
   supersample = 1
 } = {}) {
   validateCompiledAsset(compiledAsset);
-  const DEVICE = meshRenderer?.device, GEOMETRY = compiledAsset.geometry, SOURCE_MESH_MATCHES = asset?.mesh ? asset.mesh.renderer === meshRenderer && asset.mesh.partCount === GEOMETRY.partCount && sameGeometry2(asset.mesh, GEOMETRY) : GEOMETRY.vertices.length === 0;
-  if (!DEVICE?.createRenderTarget || !DEVICE?.bindRenderTarget || !DEVICE?.unbindRenderTarget || !asset?.ownsPlayer || asset.disposed || asset.sourceSha256 !== compiledAsset.sourceSha256 || !SOURCE_MESH_MATCHES) {
-    throw new TypeError("A matching live vector asset and MeshRenderer are required");
+  const DEVICE = context.device, MESHES = context.meshRenderer, GEOMETRY = compiledAsset.geometry;
+  if (!context.drawQuads || !DEVICE?.createRenderTarget || !DEVICE?.blitRenderTarget || !DEVICE?.createTextureLayerTarget || !DEVICE?.bindRenderTarget || !DEVICE?.unbindRenderTarget) {
+    throw new TypeError("A VectorContext is required");
   }
   if (!Object.hasOwn(compiledAsset.metadata.clips, clip) || !Object.hasOwn(compiledAsset.metadata.expressions, expression)) {
     throw new TypeError("Known authored clip and expression required");
   }
-  maxAtlasSize ??= DEVICE.maxTextureSize;
-  if (!Number.isFinite(sampleIntervalMs) || sampleIntervalMs <= 0 || !Number.isFinite(pixelsPerUnit) || pixelsPerUnit <= 0 || !Number.isSafeInteger(padding) || padding < 1 || !Number.isSafeInteger(maxAtlasSize) || maxAtlasSize < 1 || maxAtlasSize > DEVICE.maxTextureSize || !Number.isSafeInteger(maxAtlasBytes) || maxAtlasBytes < 4) {
-    throw new TypeError("Finite positive sample interval, pixel scale, padding and atlas budgets required");
+  if (!Number.isFinite(sampleIntervalMs) || sampleIntervalMs <= 0 || !Number.isFinite(pixelsPerUnit) || pixelsPerUnit <= 0 || !Number.isSafeInteger(padding) || padding < 1) {
+    throw new TypeError("Finite positive sample interval, pixel scale and padding required");
   }
   if (![1, 2, 4].includes(supersample)) {
     throw new RangeError("Sprite bake supersample must be 1, 2 or 4");
@@ -5337,11 +4948,10 @@ function createVectorSpriteAtlas(meshRenderer, asset, compiledAsset, {
     sampleIntervalMs,
     pixelsPerUnit,
     padding,
-    maxAtlasSize,
-    maxAtlasBytes,
     Array.from(PAINT),
     supersample
   ]);
+  const ATLAS = DEVICE.textureAtlas;
   let cached = CACHE.get(asset);
   if (!cached) {
     cached = /* @__PURE__ */ new Map();
@@ -5351,7 +4961,7 @@ function createVectorSpriteAtlas(meshRenderer, asset, compiledAsset, {
   if (!record) {
     const DEFINITION = compiledAsset.metadata.clips[clip];
     let reason = null;
-    if (GEOMETRY.shaderSurfaces?.length || GEOMETRY.drawOrder?.length) {
+    if (GEOMETRY.materials) {
       reason = "shaderSurfaces";
     } else if (GEOMETRY.morphCount && compiledAsset.metadata.styles?.some((style) => style.kind === "sketch")) {
       reason = "timeDependentMorph";
@@ -5364,11 +4974,11 @@ function createVectorSpriteAtlas(meshRenderer, asset, compiledAsset, {
     if (!reason && !SAMPLES) {
       reason = "frameLimit";
     }
-    const PLAYER = reason ? null : asset.createPlayer({ clip, startedAtMs: 0 });
-    if (PLAYER && expression !== compiledAsset.metadata.defaultExpression) {
-      PLAYER.setExpression(expression);
+    const ACTOR = reason ? null : asset.createActor({ clip, startedAtMs: 0 });
+    if (ACTOR && expression !== compiledAsset.metadata.defaultExpression) {
+      ACTOR.setExpression(expression);
     }
-    const BOUNDS = PLAYER ? sampledBounds(PLAYER, GEOMETRY, SAMPLES) : null;
+    const BOUNDS = ACTOR ? sampledBounds(ACTOR, GEOMETRY, SAMPLES) : null;
     if (!reason && !BOUNDS) {
       reason = "emptyFrames";
     }
@@ -5377,21 +4987,32 @@ function createVectorSpriteAtlas(meshRenderer, asset, compiledAsset, {
       SAMPLES.length,
       TILE_WIDTH,
       TILE_HEIGHT,
-      Math.floor(maxAtlasSize / supersample),
-      Math.floor(maxAtlasBytes / WORKING_FACTOR)
+      Math.min(ATLAS.width - ATLAS.gutter * 2, Math.floor(DEVICE.maxTextureSize / supersample)),
+      Math.min(ATLAS.height - ATLAS.gutter * 2, Math.floor(DEVICE.maxTextureSize / supersample))
     );
     if (!reason && !PACKED) {
       reason = "atlasLimit";
     }
+    let region = null;
+    if (!reason) {
+      try {
+        region = ATLAS.allocate(PACKED.width, PACKED.height);
+      } catch (error) {
+        if (!(error instanceof RangeError)) {
+          throw error;
+        }
+        reason = "atlasLimit";
+      }
+    }
     if (reason) {
-      PLAYER?.dispose();
+      ACTOR?.dispose();
     }
     record = {
       key: KEY,
       refs: 0,
       reason,
       lastError: null,
-      player: reason ? null : PLAYER,
+      actor: reason ? null : ACTOR,
       samples: SAMPLES,
       bounds: BOUNDS,
       packed: PACKED,
@@ -5406,7 +5027,8 @@ function createVectorSpriteAtlas(meshRenderer, asset, compiledAsset, {
         BOUNDS,
         pixelsPerUnit
       ),
-      texture: null,
+      region,
+      target: null,
       bakedRestores: -1,
       failedFrame: -1,
       failedRestores: -1,
@@ -5428,7 +5050,7 @@ function createVectorSpriteAtlas(meshRenderer, asset, compiledAsset, {
       return { backend: "vector", reason: "frameUnavailable" };
     }
     const RESTORES = DEVICE.stats.restores ?? 0;
-    if (record.texture && record.bakedRestores === RESTORES && DEVICE.isRenderTargetAvailable(record.texture)) {
+    if (record.target && record.bakedRestores === RESTORES && DEVICE.isRenderTargetAvailable(record.target)) {
       return { backend: "sprite", reason: null };
     }
     if (record.failedFrame === DEVICE.stats.frame && record.failedRestores === RESTORES) {
@@ -5436,19 +5058,16 @@ function createVectorSpriteAtlas(meshRenderer, asset, compiledAsset, {
     }
     const START = NOW3();
     let boundTarget = null;
-    let reduction = null;
     const TRANSIENTS = /* @__PURE__ */ new Set();
     try {
-      meshRenderer.flush("spriteAtlasBakeBoundary");
-      if (record.texture && !DEVICE.isRenderTargetAvailable(record.texture)) {
-        DEVICE.deleteRenderTarget(record.texture);
-        record.texture = null;
+      DEVICE.flushBatchers("spriteAtlasBakeBoundary");
+      if (record.target && !DEVICE.isRenderTargetAvailable(record.target)) {
+        DEVICE.deleteRenderTarget(record.target);
+        record.target = null;
       }
-      record.texture ??= DEVICE.createRenderTarget(record.packed.width, record.packed.height, {
-        format: "rgba",
-        filter: "linear"
-      });
-      let source = record.texture;
+      const REGION = record.region;
+      record.target ??= DEVICE.createTextureLayerTarget(ATLAS.texture, REGION.layer);
+      let source = record.target;
       if (supersample > 1) {
         source = DEVICE.createRenderTarget(
           record.packed.width * supersample,
@@ -5459,58 +5078,60 @@ function createVectorSpriteAtlas(meshRenderer, asset, compiledAsset, {
           }
         );
         TRANSIENTS.add(source);
+      } else {
+        DEVICE.clearTextureRegion(
+          ATLAS.texture,
+          REGION.layer,
+          REGION.paddedX,
+          REGION.paddedY,
+          REGION.width + ATLAS.gutter * 2,
+          REGION.height + ATLAS.gutter * 2
+        );
       }
       DEVICE.bindRenderTarget(source);
       boundTarget = source;
-      DEVICE.clear({ color: [0, 0, 0, 0] });
+      if (supersample > 1) {
+        DEVICE.clear({ color: [0, 0, 0, 0] });
+      }
       const { minX: MIN_X, minY: MIN_Y } = record.bounds;
+      const DIRECT = supersample === 1, BAKE_WIDTH = DIRECT ? ATLAS.width : record.packed.width, BAKE_HEIGHT = DIRECT ? ATLAS.height : record.packed.height, ORIGIN_X = DIRECT ? REGION.x : 0, ORIGIN_Y = DIRECT ? ATLAS.height - (REGION.y + REGION.height) : 0;
       for (let index = 0; index < record.samples.length; index++) {
-        const SAMPLE = record.samples[index], FRAME = record.definition.frames[index], TX = FRAME.x - pixelsPerUnit * MIN_X, TY = FRAME.y - pixelsPerUnit * MIN_Y;
-        record.player.seek(SAMPLE.timeMs);
-        record.player.draw({
+        const SAMPLE = record.samples[index], FRAME = record.definition.frames[index], TX = ORIGIN_X + FRAME.x - pixelsPerUnit * MIN_X, TY = ORIGIN_Y + FRAME.y - pixelsPerUnit * MIN_Y;
+        record.actor.seek(SAMPLE.timeMs);
+        record.actor.draw({
           paintRegions: CAPTURED_PAINT,
           projection: [
-            2 * pixelsPerUnit / record.packed.width,
+            2 * pixelsPerUnit / BAKE_WIDTH,
             0,
             0,
             0,
-            -2 * pixelsPerUnit / record.packed.height,
+            -2 * pixelsPerUnit / BAKE_HEIGHT,
             0,
-            2 * TX / record.packed.width - 1,
-            1 - 2 * TY / record.packed.height,
+            2 * TX / BAKE_WIDTH - 1,
+            1 - 2 * TY / BAKE_HEIGHT,
             1
           ]
         });
-        meshRenderer.flush("spriteAtlasSample");
+        MESHES.flush("spriteAtlasSample");
       }
       DEVICE.unbindRenderTarget(source);
       boundTarget = null;
-      for (let scale = supersample / 2; scale >= 1; scale /= 2) {
-        const TARGET = scale === 1 ? record.texture : DEVICE.createRenderTarget(record.packed.width * scale, record.packed.height * scale, {
+      for (let scale = supersample / 2; supersample > 1 && scale >= 1; scale /= 2) {
+        if (scale === 1) {
+          DEVICE.blitRenderTarget(source, record.target, {
+            x: REGION.x,
+            y: REGION.y,
+            width: record.packed.width,
+            height: record.packed.height
+          });
+          break;
+        }
+        const TARGET = DEVICE.createRenderTarget(record.packed.width * scale, record.packed.height * scale, {
           format: "rgba",
           filter: "linear"
         });
-        if (scale > 1) {
-          TRANSIENTS.add(TARGET);
-        }
-        reduction = createSpriteAnimation(meshRenderer, source, {
-          textureOrigin: "bottom-left",
-          frames: [{ x: 0, y: 0, width: source.width, height: source.height, durationMs: 1 }],
-          clips: { reduction: { frames: [0], loop: "once" } }
-        });
-        DEVICE.bindRenderTarget(TARGET);
-        boundTarget = TARGET;
-        DEVICE.clear({ color: [0, 0, 0, 0] });
-        reduction.createPlayer().draw({
-          timeMs: 0,
-          projection: [2 / TARGET.width, 0, 0, 0, -2 / TARGET.height, 0, -1, 1, 1],
-          matrix: [0.5, 0, 0, 0.5, 0, 0]
-        });
-        meshRenderer.flush("spriteAtlasReduction");
-        DEVICE.unbindRenderTarget(TARGET);
-        boundTarget = null;
-        reduction.dispose();
-        reduction = null;
+        TRANSIENTS.add(TARGET);
+        DEVICE.blitRenderTarget(source, TARGET);
         DEVICE.deleteRenderTarget(source);
         TRANSIENTS.delete(source);
         source = TARGET;
@@ -5524,16 +5145,16 @@ function createVectorSpriteAtlas(meshRenderer, asset, compiledAsset, {
       return { backend: "sprite", reason: null };
     } catch (error) {
       if (boundTarget) {
-        meshRenderer.discard();
+        MESHES.discard();
         try {
           DEVICE.unbindRenderTarget(boundTarget);
         } catch {
         }
       }
       try {
-        if (record.texture) {
-          DEVICE.deleteRenderTarget(record.texture);
-          record.texture = null;
+        if (record.target) {
+          DEVICE.deleteRenderTarget(record.target);
+          record.target = null;
         }
       } catch {
       }
@@ -5543,7 +5164,6 @@ function createVectorSpriteAtlas(meshRenderer, asset, compiledAsset, {
       record.lastError = error.message;
       return { backend: "vector", reason: "bakeFailed" };
     } finally {
-      reduction?.dispose();
       for (const TARGET of TRANSIENTS) {
         DEVICE.deleteRenderTarget(TARGET);
       }
@@ -5558,27 +5178,32 @@ function createVectorSpriteAtlas(meshRenderer, asset, compiledAsset, {
     if (record.refs === 0) {
       try {
         if (DEVICE.state === "ready" && DEVICE.active) {
-          meshRenderer.flush("spriteAtlasDispose");
+          DEVICE.flushBatchers("spriteAtlasDispose");
         }
-        if (record.texture) {
-          DEVICE.deleteRenderTarget(record.texture);
-          record.texture = null;
+        if (record.target) {
+          DEVICE.deleteRenderTarget(record.target);
+          record.target = null;
         }
       } finally {
-        record.player?.dispose();
+        if (record.region && DEVICE.state === "ready") {
+          ATLAS.release(record.region);
+        }
+        record.actor?.dispose();
         cached.delete(KEY);
         if (cached.size === 0) {
           CACHE.delete(asset);
         }
       }
     }
+    release();
     return true;
   };
   return Object.freeze({
     bake: BAKE,
     dispose: DISPOSE,
-    get texture() {
-      return disposed ? null : record.texture;
+    /** The shared-atlas region holding the baked frames; pass it to createSpriteAnimation. */
+    get region() {
+      return disposed || !record.target ? null : record.region;
     },
     get definition() {
       return disposed ? null : record.definition;
@@ -5604,11 +5229,11 @@ function createVectorSpriteAtlas(meshRenderer, asset, compiledAsset, {
         atlasHeight: record.packed?.height ?? 0,
         // Planned RGBA capacity; allocatedBytes tracks the live shared texture.
         atlasBytes: record.packed?.bytes ?? 0,
-        allocatedBytes: !disposed && record.texture ? record.packed?.bytes ?? 0 : 0,
+        allocatedBytes: !disposed && record.target ? record.packed?.bytes ?? 0 : 0,
         bakeCount: record.bakeCount,
         bakeCpuMs: record.bakeCpuMs,
         baked: Boolean(
-          !disposed && !asset.disposed && record.texture && record.bakedRestores === (DEVICE.stats.restores ?? 0)
+          !disposed && !asset.disposed && record.target && record.bakedRestores === (DEVICE.stats.restores ?? 0)
         )
       };
     }
@@ -5671,7 +5296,7 @@ export {
   SVG_PAINT_REGION_ATTRIBUTE,
   VECTOR_ASSET_QUALITY_PRESETS,
   applySvgPaintRegions,
-  createVectorAsset,
+  createVectorActor,
   createVectorRasterAtlas,
   createVectorSpriteAtlas
 };

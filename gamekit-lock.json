@@ -1,8 +1,8 @@
 {
     "schemaVersion": 3,
     "repository": "byh-playground/bloom-gamekit",
-    "sourceCommit": "42ebe23125718f847e78a9b69f257d4425b2d64c",
-    "distCommit": "a0418c9bcf62f71297d098f4667b49fc9d19436f",
+    "sourceCommit": "81c1d1bc38518ef8a2b7dc84a8475374d1e716ed",
+    "distCommit": "da87816c348724f08434371be8b899f1d21bc18c",
     "status": "verified immutable distribution",
     "esbuild": "0.28.2",
     "modules": [
@@ -12,7 +12,7 @@
         },
         {
             "name": "camera",
-            "bundleSHA256": "c9d6f59a49e7ca0640b4f55fbe9aab2d1e5362d99ad0bb3871596a66fd3859c0"
+            "bundleSHA256": "99c1be43b6a38945028d029a5ecc594f7ff6dfc71075305264930748cafe88b6"
         },
         {
             "name": "deterministic",
@@ -36,15 +36,15 @@
         },
         {
             "name": "rendering",
-            "bundleSHA256": "f32080024990e6a81cad6b5363471e0739732fa81e74fdddb7c9a2981a53fa24"
+            "bundleSHA256": "594c0783ebbbba2bdec9654887671807fcd96971dc19eb1afc07c9e507233779"
         },
         {
             "name": "vector-assets",
-            "bundleSHA256": "2e7fea4c749daa68420f5277b965053164210d3782af586c5e201460f79c29b3"
+            "bundleSHA256": "0c8b859af42f66b7891ed054726e6c9debfe709deaf1b924e5fd0c7f423bfbbb"
         },
         {
             "name": "vector-assets-loader",
-            "bundleSHA256": "4948a4e8baad07b10dcc5d46cef0ab9bfda6b2ff1ca66ab0d373a63721bac798"
+            "bundleSHA256": "a9d9eaa61d891fb1dd9d7d8ac9d9781fe2545cc2a7f8ede6202556c2a7a2f48f"
         },
         {
             "name": "input",
@@ -63,7 +63,7 @@
             "bundleSHA256": "b21a2be85b497588589c796f8e95f932c464474cc4ea3f703a8718e96a9946ce"
         }
     ],
-    "manifestSHA256": "c2c3e971387205ecf2dc13a21bb88acf2d587aa138f3e288a77fe357b7e55387",
+    "manifestSHA256": "9709f4da1a798e9595ab2ec54ca8f8acf98131cb89cad04c96de704dadd84916",
     "assets": [
         {
             "file": "assets/fonts/noto-sans-kr-700-v1.json",

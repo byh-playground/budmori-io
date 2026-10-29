@@ -192,7 +192,7 @@ try {
                     fatalErrors: [...(OBS.fatalErrors ?? [])],
                     suspended: RUNTIME.clockSuspendedAtMs !== null,
                     stats: { ...BUDMORI.renderer.device.stats },
-                    pose: BUDMORI.renderer.meshes.state === 'disposed' ? null : BUDMORI.renderer.meshes.poseStats(),
+                    pose: BUDMORI.renderer.ctx.meshRenderer?.poseStats() ?? null,
                     sprites: BUDMORI.renderer.unitSprites.stats(),
                     helpTick: globalThis.__budmoriHelp?.snapshot().tick ?? null,
                 };

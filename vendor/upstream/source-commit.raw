@@ -1,23 +1,26 @@
-tree 09e4351947d01061b3831b0aa2328fc5e1075cf7
-parent bb32a2048765cc53b02a6def9d786b9d998303bf
-author byh020907 <byh020907@naver.com> 1793144546 +0900
-committer GitHub <noreply@github.com> 1793144546 +0900
+tree ad8a043b47f9cb15d0b67207f1fb2cec8cf531be
+parent b653131b1d09abc37c08dc5bac7910733603b18f
+parent 9ab6e506769a5ae88c76a7dc4caddc81f29f61ec
+author byh020907 <byh020907@naver.com> 1793248842 +0900
+committer GitHub <noreply@github.com> 1793248842 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq4TbiCRC1aQ7uu5UhlAAAn68QAKTjAhqExGp2lMPXpcJgQVCi
- cz1QoRSOsRQ/2DIGymTZ61/WrRJJxN4ADFeC1jNQUvGuS7KS6Cuf5E7WAAOGlOgO
- zyBqB7J8PmTiTOhuiKk3IVu53gxRZLtRA5GTzDDEbVrBvtG6n6RZyxMiY8I0zQ61
- DDTMhl0V1d/tiIHMnuw50NglavMrRChcIETTLRvsu4Os/nPEne4rdI1oC3ef5pt8
- v2LVZNZgB2O1Dfzng/JNa1DS1X1n6S+Eljd0iufXW+RsIY/5mqIM56zK8ZkmGI4q
- luo0tMuU/ShdbMi9O399TbqxVnfjusTfT4d4NvNRUy91SgQzNoKjAt7uzIk2uEVB
- cZZd8oWSnORiMP1wUwxSXr+pB96ox5WFW5YRauB+YftCMQh3MS4vae3butf7lxfM
- oTTbokvF/Y+kOKlxJg4r9PlSdLPjVu7VzgA20nri4NZ4Di3eUUhoORlAP6Ftkgtw
- GPl5WSwAPwfc/BYjUgQamwywomD/fhnaEtSIfXWsoDJQ8S1FIXrLH5mZh1bm3y59
- 3dRz4PbgSHtbIsziMoNatsqQM+ognFEnQ6dn5eRHWgFC0WakTKOzMw5qh38SrCT/
- 1hWwY7YEsg2gh7iUCML0GA4zIQF51nbMmee7K0Wy99ug6heiMAy5moRI+G0bRAwf
- A63s0AgZbcytaQQFquyM
- =UY3o
+ wsFcBAABCAAQBQJq4s5KCRC1aQ7uu5UhlAAAkK4QAEhQZetST5xWdnIMEDP1dnD7
+ dgOPwDIOt3BWnrNE8JPUdb5cidBKUIParFavnK8Pm5v12Dw9NfmQCVe9IJi4JwCM
+ dv0Lk9h47CMJR24/v31lEriMOsseoBPo0vxoN03ROGuzsaJrRRf4Rq/qgVPE/vlA
+ 3LMncnVZC2hOofnlNqz7uoy9SJvg6KWIOwJqStQOHCiLfT7+9OwDO1QziWo2z73h
+ 5tMJqlY3XCcXIA3U8kN6Mv4aDb/Fj2E/NVFLDOK9wkfoeZJyoC54GW1vkZ4J18FQ
+ XpKQsrqP10EIYfU1ID8H5Os4OqekWXaoh19gRBWMbzMFNslB3cNaMHUBumORqFeF
+ zCzNSxfQE3y3Vh6iAjeHdFIsyA2OO50fq3agVV4K+wR/dzFyRYEoBY/Y+FJgeXgV
+ tug4uv0xmldJNHEdM2CItQQkI8p+BgncZc0m6++0MRu27HrZpfFxlZd7v8VrcQhv
+ pFnB3GxanzMXJ7V+yvOohrMGKlmEFeCKEabRuRpwK/waL1DCTjLHl/ycqw53ABPi
+ fw2AAh1vu/PzliciEb4saRG858heioPUgEGSGJakZbTBrhg0HEL80w5mzVQDR9mr
+ I79tkndHR3TsInT6Q2FGfXfUPd3xWmQq6kaJ7IqgPz0u7lscKq15cF9mGz3Z/aoM
+ zRRRJ/295l9z3IzAr7jN
+ =XC87
  -----END PGP SIGNATURE-----
  
 
-스프라이트 초기 bake의 coverage를 단계 축소로 보강 (#129)
+Merge pull request #146 from byh-playground/claude/rendering-cpu-paths
+
+[rendering] 둥근 접합 버그와 정점 방출·그라디언트 램프 비효율을 고친다 (v0.26.2)

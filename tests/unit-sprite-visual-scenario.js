@@ -100,15 +100,20 @@ export function unitSpriteVisualScenario(app) {
         let nativeMatrix = null,
             spriteMatrix = null,
             spriteRect = null;
-        const DRAW_MESH = R.meshes.drawMesh;
-        R.meshes.drawMesh = function (mesh, options) {
-            if (mesh === PREPARED.record.asset.mesh) {
+        const DRAW_ACTOR = R.ctx.drawVectorActor,
+            DRAW_QUADS = R.ctx.drawQuads;
+        R.ctx.drawVectorActor = function (actor, options) {
+            if (actor === PREPARED.player) {
                 nativeMatrix = [...options.matrix];
-            } else if (SAMPLED && options.texture === SAMPLED.atlas.texture) {
-                spriteMatrix = [...options.matrix];
-                spriteRect = [...options.localRect];
             }
-            return DRAW_MESH.call(this, mesh, options);
+            return DRAW_ACTOR.call(this, actor, options);
+        };
+        R.ctx.drawQuads = function (options) {
+            if (SAMPLED && options.layer === SAMPLED.atlas.region.layer) {
+                spriteMatrix = [...options.matrix];
+                spriteRect = [...options.localRects.slice(0, 4)];
+            }
+            return DRAW_QUADS.call(this, options);
         };
         function pixels(sprite) {
             C.beginFrame({ width: R.canvas.width, height: R.canvas.height, clearColor: [1, 1, 1, 1] });
@@ -124,7 +129,8 @@ export function unitSpriteVisualScenario(app) {
         const VECTOR = pixels(false),
             REPEATED_VECTOR = pixels(false),
             CANDIDATE = pixels(true);
-        R.meshes.drawMesh = DRAW_MESH;
+        R.ctx.drawVectorActor = DRAW_ACTOR;
+        R.ctx.drawQuads = DRAW_QUADS;
         const REPEAT_MAX = VECTOR.reduce(
             (maximum, value, offset) => Math.max(maximum, Math.abs(value - REPEATED_VECTOR[offset])),
             0,

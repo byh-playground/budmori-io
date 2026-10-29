@@ -2170,7 +2170,7 @@ CANVAS.addEventListener('webglcontextrestored', () => {
         if (RENDERER.device.gl.isContextLost()) {
             return;
         }
-        if ([RENDERER.device, RENDERER.ctx, RENDERER.meshes].some((owner) => owner.state !== 'ready')) {
+        if ([RENDERER.device, RENDERER.ctx].some((owner) => owner.state !== 'ready')) {
             RECOVERY.failed = true;
             FAIL(Error('그래픽 화면을 복구하지 못했어요. 새로고침해 다시 이어가 주세요.'));
             return;
@@ -2602,7 +2602,7 @@ globalThis.BUDMORI = {
         return active.latestPresentationDiagnostics;
     },
     get poseDiagnostics() {
-        return RENDERER.meshes.poseStats();
+        return RENDERER.ctx.meshRenderer?.poseStats() ?? null;
     },
     get unitArtDiagnostics() {
         return RENDERER.unitSprites.stats();

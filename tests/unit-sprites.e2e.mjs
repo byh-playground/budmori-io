@@ -188,10 +188,10 @@ try {
                 // separate URL/runtime renderer switch in the product.
                 await PAGE.route('**/src/model/farm-config.js', (route) => {
                     const SOURCE = fs.readFileSync(path.join(ROOT, 'src/model/farm-config.js'), 'utf8');
-                    assert.match(SOURCE, /unitArt: 'sprite'/);
+                    assert.match(SOURCE, /unitArt: 'vector'/);
                     return route.fulfill({
                         contentType: 'text/javascript',
-                        body: SOURCE.replace("unitArt: 'sprite'", `unitArt: '${BACKEND}'`),
+                        body: SOURCE.replace("unitArt: 'vector'", `unitArt: '${BACKEND}'`),
                     });
                 });
                 await PAGE.goto(`http://127.0.0.1:${SERVER.address().port}/index.html`);
@@ -321,8 +321,8 @@ try {
                         };
                         let submitDepth = 0;
                         for (const NAME of ['drawMesh', 'flush']) {
-                            const ORIGINAL = R.meshes[NAME].bind(R.meshes);
-                            R.meshes[NAME] = (...args) => {
+                            const ORIGINAL = R.ctx.acquireMeshRenderer()[NAME].bind(R.ctx.acquireMeshRenderer());
+                            R.ctx.acquireMeshRenderer()[NAME] = (...args) => {
                                 const OUTER = submitDepth++ === 0,
                                     START = performance.now();
                                 try {
@@ -402,7 +402,7 @@ try {
                                     gpuMs: null,
                                     sprite: R.unitSprites.stats(),
                                     device: { ...R.device.stats },
-                                    mesh: R.meshes.stats(),
+                                    mesh: R.ctx.acquireMeshRenderer().stats(),
                                     actors: R.actors.length,
                                     culledActors: R.actors.filter((actor) => actor.culled).length,
                                     combatPhases: Object.fromEntries(

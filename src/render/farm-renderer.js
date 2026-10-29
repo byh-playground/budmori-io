@@ -8,7 +8,7 @@ import { drawFormationEffects, includeFormationEffectBounds } from '../formation
 import { scenePresentation } from './farm-render-scenes.js';
 import { FoodPresentation, ProjectilePresentation } from './farm-render-items.js';
 import { UnitPresentation } from './farm-render-units.js';
-import { UnitSpriteAtlas } from './unit-sprite-atlas.js';
+import { UnitSpriteAtlas, UNIT_SPRITE_ATLAS } from './unit-sprite-atlas.js';
 import { unitCullingEnabled, unitMayBeVisible } from './farm-render-visibility.js';
 import { UNIT_GRADES } from '../units/unit-grades.js';
 import { CornAttachmentPresentation } from '../features/abilities/corn-attachment/presentation.js';
@@ -34,12 +34,8 @@ import { bossDangerContour } from './attack-telegraph.js';
 import { drawFarmGrounds, drawTowerHall } from './farm-scenery.js';
 const { bosses: BOSS_VECTOR_ASSETS, troops: TROOP_VECTOR_ASSETS } = globalThis.BudmoriVectorResources;
 // Original SVG sources are compiled once by the startup loader before this module runs.
-const {
-    WebGLDevice: WEB_GL_DEVICE,
-    VectorContext: VECTOR_CONTEXT,
-    MeshRenderer: MESH_RENDERER,
-} = globalThis.BloomGamekitRendering;
-const { createVectorAsset: CREATE_VECTOR_ASSET } = globalThis.BloomGamekitVectorAssets;
+const { WebGLDevice: WEB_GL_DEVICE, VectorContext: VECTOR_CONTEXT } = globalThis.BloomGamekitRendering;
+const { createVectorActor: CREATE_VECTOR_ACTOR } = globalThis.BloomGamekitVectorAssets;
 function renderedBossAttackArea(boss, scene, scratch, area) {
     if (
         !boss?.patternId ||
@@ -79,11 +75,20 @@ const ZOOM_MAX = 1.8;
 const DIORAMA = class Diorama {
     constructor(canvas, { deferSpritePreparation = false } = {}) {
         this.canvas = canvas;
+        // The single code setting chooses only body art, never game state.
+        // Help iframes retain native vectors instead of preparing a whole atlas.
+        const ART_QUERY = new URLSearchParams(globalThis.location?.search);
+        if (!['vector', 'sprite'].includes(CONFIG.render.unitArt)) {
+            throw new TypeError('CONFIG.render.unitArt must be vector or sprite');
+        }
+        this.unitArtMode = ART_QUERY.has('help') ? 'previewVector' : CONFIG.render.unitArt;
         this.device = new WEB_GL_DEVICE(canvas, {
             alpha: false,
             depth: false,
             stencil: false,
             antialias: true,
+            // Sampled body art lives in the device's shared atlas, whose layers are allocated up front.
+            ...(this.unitArtMode === 'sprite' ? { textureAtlas: UNIT_SPRITE_ATLAS } : {}),
         });
         this.ctx = new VECTOR_CONTEXT(this.device);
         this.vectorAssets = new Map();
@@ -115,34 +120,23 @@ const DIORAMA = class Diorama {
         if (
             ENTRIES.length !== CONFIG.unit.speciesCount ||
             ENTRIES.some(([species], index) => Number(species) !== index) ||
-            typeof CREATE_VECTOR_ASSET !== 'function'
+            typeof CREATE_VECTOR_ACTOR !== 'function'
         ) {
             throw new Error('All pinned GameKit troop and vector-assets sources are required');
         }
-        this.meshes = new MESH_RENDERER(this.device);
-        this.ctx.meshRenderer = this.meshes;
         for (const [SPECIES, COMPILED] of ENTRIES) {
             this.vectorAssets.set(Number(SPECIES), {
                 compiled: COMPILED,
-                asset: CREATE_VECTOR_ASSET(this.meshes, COMPILED),
                 anchors: readVectorSockets(COMPILED, `species ${SPECIES}, ${COMPILED.sourcePath}`),
                 parts: new Set(COMPILED.metadata.parts.map((part) => part.id)),
             });
         }
-        // The single code setting chooses only body art, never game state.
-        // Help iframes retain native vectors instead of preparing a whole atlas.
-        const ART_QUERY = new URLSearchParams(globalThis.location?.search);
-        if (!['vector', 'sprite'].includes(CONFIG.render.unitArt)) {
-            throw new TypeError('CONFIG.render.unitArt must be vector or sprite');
-        }
-        this.unitArtMode = ART_QUERY.has('help') ? 'previewVector' : CONFIG.render.unitArt;
         this.unitSprites = new UnitSpriteAtlas(this, this.unitArtMode === 'sprite');
         this.bossAssets = new Map(
             Object.entries(BOSS_VECTOR_ASSETS).map(([id, compiled]) => [
                 id,
                 {
                     compiled,
-                    asset: CREATE_VECTOR_ASSET(this.meshes, compiled),
                     parts: new Set(compiled.metadata.parts.map((part) => part.id)),
                 },
             ]),
@@ -153,7 +147,7 @@ const DIORAMA = class Diorama {
             if (!RECORD) {
                 throw new Error('Missing required boss vector asset for species ' + SPECIES);
             }
-            RECORD.anchors = bindBossSocketAsset(SPECIES, RECORD);
+            RECORD.anchors = bindBossSocketAsset(SPECIES, RECORD, this.ctx);
             RECORD.hands = bossHandRig(RECORD.compiled);
             this.bossSpeciesAssets.set(SPECIES, RECORD);
         }
@@ -175,7 +169,7 @@ const DIORAMA = class Diorama {
             throw new Error('Pinned current boss vector asset is required');
         }
         const PREWARM_AT = performance.now();
-        this.bossPlayer = BOSS.asset.createPlayer({
+        this.bossPlayer = CREATE_VECTOR_ACTOR(this.ctx, BOSS.compiled, {
             clip: 'idle',
             startedAtMs: 0,
         });
@@ -192,8 +186,7 @@ const DIORAMA = class Diorama {
         if (!deferSpritePreparation) {
             this.unitSprites.prepare();
         }
-        this.bossPlayer.draw({
-            projection: this.ctx.vector.projection,
+        this.ctx.drawVectorActor(this.bossPlayer, {
             matrix: [0.001, 0, 0, 0.001, 100, 100],
         });
         this.prewarmStats = this.ctx.endFrame();
@@ -970,14 +963,13 @@ const DIORAMA = class Diorama {
             }
         }
     }
-    addActor(presentation, source, depth, id, vector = false, culled = false) {
+    addActor(presentation, source, depth, id, culled = false) {
         const INDEX = this.actors.length,
             ACTOR = this.actorPool[INDEX] || (this.actorPool[INDEX] = {});
         ACTOR.presentation = presentation;
         ACTOR.source = source;
         ACTOR.depth = depth;
         ACTOR.id = id;
-        ACTOR.vector = vector;
         ACTOR.culled = culled;
         this.actors.push(ACTOR);
     }
@@ -1075,19 +1067,12 @@ const DIORAMA = class Diorama {
                 visibleIndex++;
             }
             if (!HIDDEN_MERGE_RESULT_IDS.has(U.id)) {
-                this.addActor(
-                    this.unitPresentation,
-                    U,
-                    0.785 * U.y - 0.62 * U.z,
-                    U.id,
-                    this.vectorAssets.has(U.species),
-                    CULLED,
-                );
+                this.addActor(this.unitPresentation, U, 0.785 * U.y - 0.62 * U.z, U.id, CULLED);
             }
         }
         for (let index = 0; index < DISPLAY_BOSSES.length; index++) {
             const BOSS = DISPLAY_BOSSES[index];
-            this.addActor(this.bossPresentation, BOSS, 0.785 * BOSS.y - 0.62 * (BOSS.z || 0), -10000 - index, true);
+            this.addActor(this.bossPresentation, BOSS, 0.785 * BOSS.y - 0.62 * (BOSS.z || 0), -10000 - index);
         }
         if (!sim2.insideTower) {
             PRESENTATION.collectFood(this, sim2);
@@ -1117,7 +1102,7 @@ const DIORAMA = class Diorama {
                 -1000000 - index,
             );
         }
-        // Preserve stable source order for equal depth/id and every vector flush boundary.
+        // Preserve stable source order for equal depth/id; the context keeps submission order itself.
         ACTORS.sort(COMPARE_ACTORS);
         // Evaluate shared numeric poses before visible submission. Actor order and
         // every body/face/effect boundary below remain in painter order.
@@ -1131,30 +1116,12 @@ const DIORAMA = class Diorama {
                 this.bossPresentation.prepareVisibleBoss(ACTOR.source, sim2);
             }
         }
-        this.meshes.preparePoses();
-        let vectorRun = false;
+        C.acquireMeshRenderer().preparePoses();
         for (const ACTOR of ACTORS) {
-            if (ACTOR.vector && !vectorRun) {
-                C.flush();
-                vectorRun = true;
-            } else if (!ACTOR.vector && vectorRun) {
-                C.flush();
-                vectorRun = false;
-            }
-            if (ACTOR.culled) {
-                // A hidden native player can still separate earlier visible
-                // meshes from queued 2D primitives. Preserve that ordered
-                // boundary without evaluating its pose or submitting its art.
-                // Context.flush puts primitives first and changes this order.
-                C.vector.flush();
-                this.meshes.flush();
-            } else {
+            if (!ACTOR.culled) {
                 ACTOR.presentation.draw(ACTOR.source, sim2);
             }
             ACTOR.source = null;
-        }
-        if (vectorRun) {
-            C.flush();
         }
         const LIVE_UNIT_IDS = this.liveUnitIds;
         LIVE_UNIT_IDS.clear();
@@ -1234,18 +1201,12 @@ const DIORAMA = class Diorama {
             PLAYER.dispose();
         }
         this.vectorPlayers.clear();
-        for (const RECORD of this.vectorAssets.values()) {
-            RECORD.asset.dispose();
-        }
         this.vectorAssets.clear();
         for (const { player: PLAYER } of this.bossPlayers.values()) {
             PLAYER.dispose();
         }
         this.bossPlayers.clear();
         this.bossPlayer = null;
-        for (const RECORD of this.bossAssets?.values() || []) {
-            RECORD.asset.dispose();
-        }
         this.bossAssets?.clear();
         this.bossSpeciesAssets.clear();
         this.bossPresentation.attackDisplays.clear();
