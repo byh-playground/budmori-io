@@ -563,11 +563,11 @@ body > header {
     left: 50%;
     bottom: 0;
     transform: translateX(-50%);
-    width: min(360px, 100%);
+    width: min(240px, 100%);
     height: calc(var(--ui-nav-h) + var(--ui-safe-bottom));
     padding-bottom: var(--ui-safe-bottom);
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     background: var(--ui-base);
     border-radius: var(--ui-r-l) var(--ui-r-l) 0 0;
     pointer-events: auto;
@@ -1010,10 +1010,9 @@ details[open] summary::after {
 .work-hud__labels {
     font-size: var(--ui-fs-3);
 }
-/* 어두운 전투 홀 위에서는 상태 칩·체력·하단 아이콘이 어두운 글씨로 묻히므로 밝은 바탕을 깐다 */
+/* 어두운 전투 홀 위에서는 상태 칩·체력 막대가 어두운 글씨로 묻히므로 밝은 바탕을 깐다 */
 body:has(#bossbar:not([hidden])) .chip,
-body:has(#bossbar:not([hidden])) .bossbar,
-body:has(#bossbar:not([hidden])) .utility {
+body:has(#bossbar:not([hidden])) .bossbar {
     background: rgb(248 250 239 / 0.9);
     border: var(--ui-bw) solid var(--ui-line);
     text-shadow: none;
@@ -1021,8 +1020,52 @@ body:has(#bossbar:not([hidden])) .utility {
 body:has(#bossbar:not([hidden])) .bossbar {
     border-radius: var(--ui-r-m);
 }
-body:has(#bossbar:not([hidden])) .utility {
-    border-radius: var(--ui-r-l) var(--ui-r-l) 0 0;
+
+/* 설정은 어디서든 오른쪽 위에 둔다. 업그레이드·도움말은 농장에만 있고, 탑에 오르면 사라진다. */
+.corner-settings {
+    position: fixed;
+    z-index: calc(var(--ui-z-dock) + 1);
+    top: calc(var(--ui-safe-top) + var(--ui-s3));
+    right: calc(var(--ui-s3) + env(safe-area-inset-right, 0px));
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border-radius: 50%;
+    background: rgb(248 250 239 / 0.9);
+    border: var(--ui-bw) solid var(--ui-line);
+    color: var(--ui-ink);
+}
+.corner-settings svg {
+    width: 24px;
+    height: 24px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.corner-settings[aria-expanded='true'] {
+    color: var(--ui-primary);
+}
+.corner-settings:focus-visible {
+    outline: 3px solid var(--ui-focus);
+    outline-offset: 2px;
+}
+body[data-home='true'] .corner-settings {
+    visibility: hidden;
+}
+body > header {
+    right: calc(var(--ui-s3) + 44px + var(--ui-s2));
+}
+body:has(#floorChip:not([hidden])) #gameplayDock .utility {
+    display: none;
+}
+@media (max-width: 480px) {
+    body:has(#floorChip:not([hidden])) #overallGrowth {
+        display: none;
+    }
 }
 
 .mini-map__canvas {

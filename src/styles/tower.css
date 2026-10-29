@@ -485,20 +485,6 @@ body:has(#towerSummit:not([hidden])) #battleOutcome {
         line-height: 15px;
         font-size: 10px;
     }
-    #gameplayDock:has(#battleCommands:not([hidden])) > .utility {
-        grid-column: 2;
-        grid-row: 2;
-        align-self: end;
-        width: 120px;
-        height: 40px;
-        padding: 0;
-    }
-    #gameplayDock:has(#battleCommands:not([hidden])) > .utility > button {
-        min-height: 40px;
-    }
-    #gameplayDock:has(#battleCommands:not([hidden])) > .utility > button::after {
-        display: none;
-    }
     body:has(#battleCommands:not([hidden])) #bossbar {
         top: max(46px, calc(var(--ui-safe-top) + 38px));
     }

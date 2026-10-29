@@ -230,9 +230,9 @@
     .bossbar {
         top: calc(max(var(--ui-s3), var(--ui-safe-top)) + 2px);
         left: auto;
-        right: var(--ui-s3);
+        right: calc(var(--ui-s3) + 44px + var(--ui-s2));
         transform: none;
-        width: min(480px, calc(100% - 420px));
+        width: min(480px, calc(100% - 480px));
         grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
         column-gap: var(--ui-s3);
     }
@@ -317,17 +317,34 @@
         grid-row: 2;
         justify-self: start;
     }
+    /* 넓은 화면: 업그레이드·도움말은 설정 단추 왼쪽, 오른쪽 위 모서리에 둥근 단추로 둔다. */
     #gameplayDock .utility {
-        grid-column: 2;
-        grid-row: 2;
+        position: fixed;
+        top: calc(var(--ui-safe-top) + var(--ui-s3));
+        right: calc(var(--ui-s3) + 44px + var(--ui-s2) + env(safe-area-inset-right, 0px));
+        width: auto;
+        height: auto;
+        padding: 0;
+        gap: var(--ui-s2);
+        grid-template-columns: repeat(2, 44px);
+        background: transparent;
+        border-radius: 0;
+    }
+    #gameplayDock .utility > button {
+        min-height: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: rgb(248 250 239 / 0.9);
+        border: var(--ui-bw) solid var(--ui-line);
+        color: var(--ui-ink);
+    }
+    #gameplayDock .utility > button::after {
+        display: none;
     }
 }
 @media (min-width: 1250px) {
     #gameplayDock {
         grid-template-columns: minmax(0, 1fr) minmax(0, 620px) minmax(0, 1fr);
-    }
-    #gameplayDock .utility {
-        grid-column: 3;
     }
     #gameplayDock .bottom {
         grid-column: 2;
