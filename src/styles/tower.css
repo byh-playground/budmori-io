@@ -224,8 +224,12 @@
     opacity: 0.6;
 }
 /* Once chosen, the full-width actual effect replaces repeated preview descriptions. */
-.doors[data-phase='outcome'] .door small {
+.doors[data-owner='boss'][data-phase='outcome'] .door small {
     display: none;
+}
+.doors[data-owner='player'] .door[data-selected='true'] {
+    opacity: 0.6;
+    cursor: default;
 }
 .doors__receipts {
     display: grid;
