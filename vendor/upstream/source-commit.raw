@@ -1,26 +1,26 @@
-tree c558d9462ab4a5975cb613b278b0e2f9bc176dc8
-parent 710bec0e70ff2171785e62d2c03d86dc55b66466
-parent 4c89810f3c93317d21585baa83431111505a9284
-author byh020907 <byh020907@naver.com> 1793263490 +0900
-committer GitHub <noreply@github.com> 1793263490 +0900
+tree 113e0bd78f8025855f11cc7c6dca72b9fa81006c
+parent d287ca4e2268486b00a8155585b0bf6855f71f0d
+parent 22ebdd113c7816c7d7cc76216180a82704819dee
+author byh020907 <byh020907@naver.com> 1793277900 +0900
+committer GitHub <noreply@github.com> 1793277900 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq4weCCRC1aQ7uu5UhlAAAji0QAFj6pQrj3584h8K95IvKyFTf
- HWXqBbjXh0Ml/TniJ/kvD2AXXXGvLApD8d60DXkgKZrR5PGWR3a6qmurrdnGRl6G
- tdmNw/0VpamcETSyi0XNR9iWBUHSe9lXJuVth7ABH8zQHUkNZ3hkylAZ0WsfZQ90
- xpHmWUdJCQ++UF78VBedPhBKN0Q2iqSMnpWlJThgymzV66lVNzxiKbYYFV5+NbOh
- iuQ4SLC1at3an2eKo5/L7q/FJfx3AmfB7Zuhhaeae7LRDT5kTFLApayGWx0qFIRM
- rSIaRELRW4nnpH8BVMx3wjI5VivTWNy+MCCYRxcTfe8OngDZ3EJy0zyCQ3goo0QD
- InAgySlprjglF5ohMLcx4pogvEoQ0ANfpqieeKFl8mB4tTtQKO2dNnRRh55GanNF
- 25SlFCKhRKo7bqnDMLXXMXYv4o7+A4ey7BHBbUuBXdTfpKqFsUPJmI7MUv4Zq5tx
- oer+puRMLdfZThJnkVlXNTe+AINMNQz8vhnD//cJlERqCGJlszYwOU6cyb0RZIi9
- 8cJumJjEFSP79aTt2/5nwkNLYUEE9LKkSNDu20/m1v+Z53tKbkw+qYfdri2mXMPx
- UklOP9FD0iFhu0r6YT/SF2r0o8QZU1SPaRdGv7JmBVJd1zxcNX/kZVWKKszeE4pq
- tUSDtv8O9mfW2N3a5QDV
- =NlUs
+ wsFcBAABCAAQBQJq4z/MCRC1aQ7uu5UhlAAAYlAQAB+AE6uF8Y0x6eh8jECAUxIh
+ +xgAJPr3Swi0OUxCDmz2fRtGWFLnu/w2HGp+ujz3LSWkDeBcf7HWSmiDcIq7lFZx
+ kG+sCvnE9EOiDbOqU3dXJHddKVXhQN2Y6W4fJUf+sotmYzNUknIuDsJRo8hAyup6
+ I9MFr3bd0o8Qt4VavwhSLjUuagQyRA3bx2iQ/7AN9piFa5C3dGQjAr6hDLXzsmSc
+ 5HSK7En1jOIqb6dmgk2phEq+25uh/s8KuhvzP4OqANQobIa5eWBJxkEu8f0npsq+
+ PlDisVOamVp0cmnDwl5gfXV5VzD5xztNQ4e2jVAVv5eEik8Uu+dixWhykTFtFqDZ
+ vacac+51+5MJM075sewnbwlgvHzY2O49B6OFxDCHvaFopWjXOCfy29apfpEFg4p7
+ fhYXzE1LHeKDOny0yHrAHoTFGMiScRlN9F7QVGRvGQlDAdS//OFQf95DUS0lcypZ
+ 90b9O8gZ4T8/3iw2abZaLmxrGP4czg+wep4qJo8AaKAYGXxNXIcx6wB65pi2qDxq
+ KpH3Uhr/To6a16O/j7+a1sJn8eafyr/Xa5U5Kt7m/hqjn9/PlkWkcPZ60VowH2MC
+ wtWIoFz4lcMZV9Jt2ck6y/It3d7rSYzaxlEhEdBn6SG8rY2sYgU0/MqqxbfW3K6n
+ HlLVqzDKMYk3ZKddZNTL
+ =7XXX
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #149 from byh-playground/claude/module-gaps-budmori-bounko
+Merge pull request #150 from byh-playground/claude/gpu-pose-per-part
 
-[vector-assets] 메시 유지 핸들, preparePoses, 표정 외곽선, 알 수 없는 atlas 옵션 거부 (v0.26.5)
+[rendering] GPU 포즈 flush 비용 수정 (v0.26.6)
