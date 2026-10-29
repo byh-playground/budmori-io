@@ -57,8 +57,6 @@ const MODEL_FILES = [
     'src/features/boss-patterns/charge/model.js',
     'src/features/boss-patterns/fan-sweep/definition.js',
     'src/features/boss-patterns/fan-sweep/model.js',
-    'src/features/boss-patterns/front-slam/definition.js',
-    'src/features/boss-patterns/front-slam/model.js',
     'src/features/boss-patterns/leap-slam/definition.js',
     'src/features/boss-patterns/leap-slam/model.js',
     'src/features/boss-patterns/model-base.js',

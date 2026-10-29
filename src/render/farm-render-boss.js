@@ -15,7 +15,6 @@ import { visibleSkillCast, sampleSkillCastPose } from '../features/skill-cast/pr
 import { bossVectorScale } from '../vector-sockets.js';
 import { CONFIG, clamp } from '../model/farm-model.js';
 import { BossAttackPose, BossAttackPresentation } from '../features/boss-patterns/presentation-base.js';
-import { FrontSlamPresentation } from '../features/boss-patterns/front-slam/presentation.js';
 import { CircleSweepPresentation } from '../features/boss-patterns/sweep-360/presentation.js';
 import { ChargePresentation } from '../features/boss-patterns/charge/presentation.js';
 import { LeapSlamPresentation } from '../features/boss-patterns/leap-slam/presentation.js';
@@ -32,7 +31,6 @@ const IDLE_PRESENTATION = new BossAttackPresentation();
 const BARLEY_SHRED_PRESENTATION = new BarleyArmorShredPresentation();
 const BOSS_PRESENTATIONS = new Map(
     [
-        new FrontSlamPresentation(),
         new CircleSweepPresentation(),
         new ChargePresentation(),
         new LeapSlamPresentation(),

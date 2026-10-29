@@ -7,8 +7,7 @@ import {
     BOSS_PATTERN_IDS,
     BOSS_HIT_SPLIT,
     BOSS_PATTERN_CONFIG,
-    bossAttackTotal,
-    BOSS_BASIC_ID,
+    BOSS_AREA_MIN_HITS,
     BOSS_ENRAGE,
 } from '../boss/boss-patterns.js';
 import { bossMouthWorldPoint } from '../render/boss-vector-sockets.js';
@@ -302,15 +301,8 @@ export const FARM_BOSS_PATTERNS = (base) =>
             return ELIGIBLE;
         }
         bossAttackWorthIt(behavior, targets, boss = this.boss) {
-            if (behavior.id === BOSS_BASIC_ID) {
-                return true;
-            }
             const HITS = behavior.expectedHits(this, targets, boss);
-            return (
-                HITS === null ||
-                bossAttackTotal(behavior.config.damageMultiplier, HITS) >
-                    bossAttackTotal(BOSS_PATTERN_CONFIG[BOSS_BASIC_ID].damageMultiplier, 1)
-            );
+            return HITS === null || HITS >= BOSS_AREA_MIN_HITS;
         }
         bossWedgeContains(unit, range, aim, half, boss = this.boss) {
             const DX = unit.x - boss.x,

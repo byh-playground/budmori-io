@@ -193,7 +193,6 @@ try {
                 workOverlap: {},
                 enemyWheat: null,
                 hits: 0,
-                bossSlams: 0,
                 bossHitBatches: [],
                 regenerated: [],
                 splitCount: 0,
@@ -336,9 +335,6 @@ try {
             }
         });
         const OFF_MIXED_NOTICE = WORLD.onNotice.on((notice) => {
-            if (notice.kind === 'unit-hit' && notice.attackKind === 'attack.front-slam') {
-                OBS.bossSlams++;
-            }
             if (notice.kind === 'attack-launch') {
                 const UNIT = WORLD.units.find((unit) => unit.id === notice.unit);
                 if (UNIT) {
@@ -500,7 +496,6 @@ try {
             OBS.wheatForms.length === 2 &&
             OBS.workOverlap.windup &&
             OBS.hits > 0 &&
-            OBS.bossSlams > 0 &&
             OBS.telegraph &&
             [2, 4, 8].every((species) => OBS.regenerated.includes(species)) &&
             OBS.splitCount > 0 &&
@@ -513,7 +508,6 @@ try {
         await PAGE.evaluate(() => globalThis.__mixedCombat.unitCore.liveHealthChanges > 0),
         'native mixed-combat hits emit boss health changes before the later HP fixture',
     );
-    // The original full-health boss exposes its single-target front-slam special pattern.
     // After every nine-species condition is proven, arrange a crowd for one native unlocked sweep.
     if (CAPTURE_BOSS_SWEEP) {
         await PAGE.setViewportSize({ width: 1000, height: 700 });
@@ -880,7 +874,6 @@ try {
         COMBAT.telegraph.modelReach,
         'the native telegraph uses the same reach as its live model',
     );
-    assert.ok(COMBAT.bossSlams > 0, 'the oversized pea boss selects and lands its front-slam special pattern');
     assert.equal(COMBAT.unitCore.sameClass, true, 'the real tower boss and ordinary troop are the same Unit class');
     assert.equal(COMBAT.unitCore.sharedLookup, true, 'boss identity resolves through the common unit lookup');
     assert.ok(COMBAT.unitCore.liveHealthChanges > 0, 'actual mixed-combat damage emits the boss Unit health signal');
@@ -1878,7 +1871,7 @@ try {
         Object.assign(WORLD.boss, { hp: WORLD.boss.maxHp, x: 0, y: 0, z: 0, dropLanded: true, stun: 0 });
         WORLD.boss.patternRuntime.active = null;
         for (const ID of Object.keys(WORLD.boss.patternRuntime.cooldowns)) {
-            WORLD.boss.patternRuntime.cooldowns[ID] = ID === 'attack.front-slam' ? 0 : 1000;
+            WORLD.boss.patternRuntime.cooldowns[ID] = 1000;
         }
         for (const [INDEX, UNIT] of WORLD.units.entries()) {
             Object.assign(UNIT, {
