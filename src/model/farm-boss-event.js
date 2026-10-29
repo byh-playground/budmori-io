@@ -67,8 +67,7 @@ export const FARM_BOSS_EVENT = (base) =>
                 }
                 // Every win pays by its floor and kind; a floor higher than ever before pays double.
                 const REWARD_SCALE = KIND.reward * (this.tower.record ? BOSS_REWARD_SETTINGS.recordMultiplier : 1),
-                    // Every boss is the plain sprout, so the seed it drops, and the species whose mastery the win feeds,
-                    // is drawn from the first-tier species.
+                    // Every boss is the plain sprout, so the seed it drops is drawn from the first-tier species.
                     DROP_SPECIES =
                         SEED_SPECIES[Math.floor(lineageRandom(this.seed, ENCOUNTER_ID, 3)() * SEED_SPECIES.length)],
                     FIRST_CLEAR = !bossSpeciesOwned(this, DROP_SPECIES),
@@ -82,7 +81,6 @@ export const FARM_BOSS_EVENT = (base) =>
                         y: REWARD_BOSS.y,
                         firstClear: FIRST_CLEAR,
                         rollBudget: STAGE_STATS.rollBudget * REWARD_SCALE,
-                        xpAmount: STAGE_STATS.xp * REWARD_SCALE,
                     });
                 const REWARD = SETTLEMENT.receipt;
                 if (this.tower.rewardRunId) {
@@ -99,13 +97,6 @@ export const FARM_BOSS_EVENT = (base) =>
                         levelsGained: OVERALL.levelsGained,
                     });
                 }
-                this.combat('farm-boss-xp', {
-                    encounterId: ENCOUNTER_ID,
-                    species: DROP_SPECIES,
-                    xp: SETTLEMENT.xpAwarded,
-                    levelsGained: SETTLEMENT.levelsGained,
-                    pointsAwarded: SETTLEMENT.pointsAwarded,
-                });
                 this.combat('farm-boss-reward', {
                     acquired: REWARD.grantedCount > 0,
                     pending: REWARD.status === 'pending',

@@ -48,69 +48,6 @@
     font-size: var(--ui-fs-4);
     line-height: 1;
 }
-.game-menu__tabs[hidden] {
-    display: none;
-}
-.game-menu__tabs {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: var(--ui-s1);
-    padding: 0 var(--ui-s3) var(--ui-s3);
-    flex: 0 0 auto;
-}
-.game-menu__tabs button {
-    min-width: 0;
-    min-height: var(--ui-tap);
-    border-radius: var(--ui-r-s);
-    background: var(--ui-neutral);
-    border: var(--ui-bw) solid var(--ui-line);
-    color: var(--ui-ink);
-    font-size: var(--ui-fs-2);
-    font-weight: var(--ui-fw-b);
-    padding: 0 var(--ui-s1);
-    white-space: nowrap;
-}
-.game-menu__tabs button[aria-selected='true'] {
-    background: var(--ui-primary);
-    border: var(--ui-bw) solid transparent;
-    color: var(--ui-primary-ink);
-}
-.game-menu__tabs button:disabled {
-    background: var(--ui-disabled);
-    color: var(--ui-disabled-ink);
-}
-.progression-reset-actions[hidden] {
-    display: none;
-}
-.progression-reset-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--ui-s2);
-    padding: 0 var(--ui-s3) var(--ui-s3);
-    flex: 0 0 auto;
-}
-.progression-reset-actions button {
-    min-width: 0;
-    min-height: var(--ui-tap);
-    border-radius: var(--ui-r-s);
-    background: var(--ui-neutral);
-    border: var(--ui-bw) solid var(--ui-line);
-    color: var(--ui-ink);
-    font-size: var(--ui-fs-1);
-    font-weight: var(--ui-fw-b);
-    padding: 0 var(--ui-s2);
-}
-.progression-reset-actions button[data-progression-reset='all'] {
-    background: transparent;
-    border: var(--ui-bw) solid var(--ui-danger);
-    color: var(--ui-danger);
-}
-.progression-reset-actions button:disabled {
-    background: var(--ui-disabled);
-    color: var(--ui-disabled-ink);
-}
-.game-menu__tabs button:focus-visible,
-.progression-reset-actions button:focus-visible,
 #gameMenuClose:focus-visible,
 .game-menu__setting button:focus-visible,
 .game-menu__home:focus-visible {
@@ -207,55 +144,6 @@
     font-weight: var(--ui-fw-b);
 }
 /* 병종 특성 탭 */
-#abilityPanel {
-    position: static;
-    inset: auto;
-    margin: 0;
-    width: 100%;
-    height: 100%;
-    max-height: none;
-    z-index: auto;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    overflow: hidden;
-}
-#abilityPanel[hidden] {
-    display: none !important;
-}
-#abilityPanel .ability-panel__heading {
-    grid-template-columns: minmax(0, 1fr);
-    padding: var(--ui-s3) var(--ui-s4);
-}
-#abilityPanel .ability-panel__heading-main {
-    grid-column: 1;
-    grid-row: 1;
-}
-#abilityPanel .ability-panel__heading h2 {
-    font-size: var(--ui-fs-4);
-}
-#abilityPanel .ability-panel__species {
-    display: flex;
-    overflow-x: auto;
-    min-width: 0;
-    grid-column: 1;
-    grid-row: 2;
-}
-#abilityPanel .ability-panel__species button {
-    flex: 0 0 auto;
-    min-width: 64px;
-}
-#abilityPanel .ability-panel__heading > button {
-    display: none;
-}
-#abilityNodes {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-x: hidden;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    scrollbar-gutter: stable;
-}
 /* 도움말 탭 */
 #helpPanel {
     height: 100%;
@@ -295,9 +183,6 @@
     .game-menu {
         width: 100%;
         height: 100%;
-    }
-    .game-menu__tabs button {
-        font-size: var(--ui-fs-1);
     }
     .game-menu__pane,
     #helpPanel {
@@ -588,31 +473,4 @@ html.help-scene.barley-attack-preview #bossbar {
 
 html.growth-preview-scene #bossbar {
     display: none;
-}
-
-/* Short landscape windows must scroll the species heading with the tree.
-   Keeping both headings fixed left only a single text line for the actual content. */
-@media (max-height: 500px) and (min-width: 600px) {
-    .game-menu__header {
-        padding: 4px 8px;
-    }
-    .game-menu__tabs,
-    .progression-reset-actions {
-        padding-bottom: 4px;
-    }
-    #abilityPanel {
-        display: block;
-        overflow-y: auto;
-        padding: 4px;
-    }
-    #abilityPanel[hidden] {
-        display: none;
-    }
-    #abilityNodes {
-        overflow: visible;
-        flex: none;
-    }
-    #abilityPanel .growth-evolution-preview iframe {
-        height: 180px;
-    }
 }

@@ -55,11 +55,6 @@ const REWARD_EXTRAS = [
     'status',
     'calculation',
     'unitId',
-    'xpReceiptKey',
-    'xpStatus',
-    'xpAmount',
-    'levelsGained',
-    'pointsAwarded',
 ];
 function pendingReward(reward) {
     const RESULT = {};
@@ -464,17 +459,6 @@ export function validateFarmProgress(data, { allowLegacy = false } = {}) {
         }
         if (REWARD.acquisitionMultiplier !== undefined) {
             ASSERT(NUMBER(REWARD.acquisitionMultiplier, 0, 2));
-        }
-        if (REWARD.xpReceiptKey !== undefined) {
-            ASSERT(STRING(REWARD.xpReceiptKey));
-        }
-        if (REWARD.xpStatus !== undefined) {
-            ASSERT(['awarded', 'already-awarded', 'unsettled'].includes(REWARD.xpStatus));
-        }
-        for (const KEY of ['xpAmount', 'levelsGained', 'pointsAwarded']) {
-            if (REWARD[KEY] !== undefined) {
-                ASSERT(NUMBER(REWARD[KEY]));
-            }
         }
     }
     ASSERT(

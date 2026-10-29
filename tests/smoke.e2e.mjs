@@ -7,7 +7,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BOSS_PATTERN_CONFIG } from '../src/boss/boss-patterns.js';
 import { bossStageStats } from '../src/boss/boss-rewards.js';
-import { masteryPointsLeft } from '../src/abilities/ability-state.js';
 import { baseUnitStatsFor, setRunStatMods } from '../src/units/unit-stats.js';
 import {
     advanceSince,
@@ -579,93 +578,11 @@ await check(
                 seeds: W.unitCollection.items.filter(
                     (u) => !u.isBattleOnlySummon && u.species === RECEIPT?.species && u.seedling,
                 ).length,
-                xp: RECEIPT?.xpAmount,
             };
         });
         expect(
-            R.bossSpecies === 9 && R.record === false && R.first === true && R.seeds === 2 && R.xp > 0,
+            R.bossSpecies === 9 && R.record === false && R.first === true && R.seeds === 2,
             `first win ${JSON.stringify(R)}`,
-        );
-    },
-);
-await check(
-    'a boss win feeds only its species mastery; points stay with that species and a reset keeps them',
-    async () => {
-        const R = await WORLD(async () => {
-            const { Garden: GARDEN } = await import('./src/model/farm-model.js');
-            const W = new GARDEN(732);
-            const SNAP = () =>
-                JSON.stringify(
-                    Object.entries(W.playerProgression.abilities).map(([id, a]) => [id, a.masteryLevel, a.masteryXp]),
-                );
-            for (const U of [...W.units]) {
-                W.removeUnit(U);
-            }
-            for (let i = 0; i < 6; i++) {
-                W.spawn(0, 1, i * 0.4, 0);
-            }
-            W.playerProgression.towerBest = 50;
-            // Earlier fights in this run already fed mastery; start from empty xp so a level-up cannot wrap the count.
-            for (const ABILITY of Object.values(W.playerProgression.abilities)) {
-                ABILITY.masteryXp = 0;
-            }
-            const BEFORE = JSON.parse(SNAP());
-            W.startTower(1);
-            const TICK = () => {
-                W.step(1 / 30);
-                W.advanceWork(1 / 30);
-            };
-            for (let i = 0; i < 40; i++) {
-                TICK();
-            }
-            W.finishMarch();
-            for (let i = 0; i < 10; i++) {
-                TICK();
-            }
-            W.boss.hp = 0;
-            for (let i = 0; i < 200; i++) {
-                TICK();
-            }
-            const AFTER = JSON.parse(SNAP());
-            const CHANGED = AFTER.filter((row, i) => row[1] !== BEFORE[i][1] || row[2] !== BEFORE[i][2]);
-            const ID = CHANGED[0]?.[0];
-            // Every species now has a growth tree and a starting point. Spend the
-            // other species' own point before proving this reward cannot fund it.
-            const OTHER = AFTER.find((row) => row[0] !== ID)[0];
-            W.leaveTower();
-            W.playerProgression.abilities[ID].masteryLevel = 3;
-            const BEFORE_PURCHASE = JSON.parse(JSON.stringify(W.playerProgression.abilities[ID]));
-            const OWN_NODE = W.playerProgression.abilities[ID].nodeRanks ? 'basic-1' : 'power-1';
-            const OWN = W.investAbilityNode(ID, OWN_NODE).ok;
-            const AFTER_PURCHASE = JSON.parse(JSON.stringify(W.playerProgression.abilities[ID]));
-            // Evolved species use the growth-tree node; legacy species retain power-1.
-            const OTHER_START = W.investAbilityNode(OTHER, 'basic-1');
-            const OTHERS = W.investAbilityNode(OTHER, 'basic-2');
-            const RESET = W.resetProgression({ type: 'abilities' });
-            const KEPT = W.playerProgression.abilities[ID];
-            return {
-                changed: CHANGED.length,
-                gained: CHANGED[0] ? CHANGED[0][2] - BEFORE.find((row) => row[0] === ID)[2] : 0,
-                own: OWN,
-                other: OTHERS.reason,
-                otherStarted: OTHER_START.ok,
-                reset: RESET.ok,
-                keptLevel: KEPT.masteryLevel,
-                power: KEPT.nodeRanks ? KEPT.nodeRanks[OWN_NODE] || 0 : KEPT.powerLevel,
-                beforePurchase: BEFORE_PURCHASE,
-                afterPurchase: AFTER_PURCHASE,
-                afterReset: KEPT,
-            };
-        });
-        expect(
-            R.changed === 1 && R.gained === 20 && R.own === true && R.otherStarted && R.other === 'insufficient-points',
-            `mastery ${JSON.stringify(R)}`,
-        );
-        expect(R.reset === true && R.keptLevel === 3 && R.power === 0, `mastery reset ${JSON.stringify(R)}`);
-        expect(
-            masteryPointsLeft(R.beforePurchase) - masteryPointsLeft(R.afterPurchase) === 1 &&
-                masteryPointsLeft(R.afterReset) === masteryPointsLeft(R.beforePurchase),
-            `species-local purchase spends one point and reset refunds it ${JSON.stringify(R)}`,
         );
     },
 );
@@ -767,24 +684,15 @@ await check('a strengthening floor offers three different cards, stat : passive 
     expect(OFFER([], []).length === 3, 'three cards even with no passives to offer');
 });
 
-await check('upgrade menu opens on the species abilities without the old stat tab', async () => {
-    // The reward dialog can open late and cover the menu button, so close it by script first.
-    await PAGE.waitForTimeout(1500);
-    for (let attempt = 0; attempt < 4; attempt++) {
-        await WORLD(() => {
-            document.getElementById('bossRewardOpenAll')?.click();
-            document.getElementById('bossRewardClose')?.click();
-        });
-        await PAGE.waitForTimeout(400);
-    }
+await check('upgrade menu opens on the farm panel without ability tabs', async () => {
     await WORLD(() => document.getElementById('upgradeMenu').click());
     await PAGE.waitForTimeout(800);
     const MENU = await WORLD(() => ({
-        abilities: !document.getElementById('abilityPanel').hidden,
-        growthTab: !!document.getElementById('menuTabGrowth'),
-        tabs: document.querySelectorAll('#gameMenuTabs [role="tab"]').length,
+        farm: !document.getElementById('farmPanel').hidden,
+        abilityPanel: !!document.getElementById('abilityPanel'),
+        tabs: !!document.getElementById('gameMenuTabs'),
     }));
-    expect(MENU.abilities && !MENU.growthTab && MENU.tabs === 2, `menu ${JSON.stringify(MENU)}`);
+    expect(MENU.farm && !MENU.abilityPanel && !MENU.tabs, `menu ${JSON.stringify(MENU)}`);
     await PAGE.locator('#gameMenuClose').click();
     await PAGE.waitForTimeout(300);
 });
@@ -845,7 +753,6 @@ await check('help cards play the real game in an isolated frame and leave the sa
 
 await check('a full farm keeps queued rewards and the panel names their species', async () => {
     await WORLD(() => document.getElementById('upgradeMenu').click());
-    await PAGE.locator('#menuTabFarms').click();
     await WORLD(() => {
         const W = BUDMORI.sim;
         window.__fillers = [];
