@@ -1,7 +1,7 @@
 import { walnutContactGeometry } from './contact-geometry.js';
 import { UnitAttackPresentation } from '../presentation-base.js';
 
-// MeshRenderer owns upload, context restoration and disposal. This weak,
+// VectorContext owns mesh upload, context restoration and disposal. This weak,
 // bounded context cache never keys on animated radius or world coordinates.
 const CONTACT_MESHES = new WeakMap();
 const CONTACT_COLORS = [

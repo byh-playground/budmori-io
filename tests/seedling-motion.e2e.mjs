@@ -132,7 +132,7 @@ try {
             CHECK(!!CLIPS[expectedClip], 'Chosen clip must exist in the actual displayed asset');
             CHECK(PREPARED.hasPhaseClock === native, 'Common/native clock mismatch');
             const ELAPSED = Math.min(unit.ability.elapsed * 1000, CLIPS[expectedClip].durationMs);
-            const CONTROL = PREPARED.record.asset.createPlayer({
+            const CONTROL = globalThis.BloomGamekitVectorAssets.createVectorActor(R.ctx, PREPARED.record.compiled, {
                 clip: expectedClip,
                 startedAtMs: native ? 0 : R.displayTimeMs - ELAPSED,
             });

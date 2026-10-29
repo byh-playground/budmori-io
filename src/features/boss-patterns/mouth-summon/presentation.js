@@ -30,7 +30,6 @@ export class MouthSummonPresentation extends BossAttackPresentation {
         if (!(boss.patternReleased > 0 && pose.releasePulse > 0 && mouth)) {
             return;
         }
-        renderer.ctx.flush();
         const PULSE = 0.55 + 0.45 * pose.releasePulse,
             TARGET = Math.atan2(-0.62 * Math.sin(boss.patternAim), Math.cos(boss.patternAim));
         renderer.ellipse(

@@ -1,3 +1,182 @@
+// modules/rendering/texture-atlas.js
+var TextureAtlasArray = class {
+  constructor(device, { width = 2048, height = 1024, layers = 2, gutter = 1, filter = "linear" } = {}) {
+    if (!device?.createTextureArray || !device.updateTextureRegion) {
+      throw new TypeError("A WebGLDevice with texture arrays is required");
+    }
+    if (!Number.isSafeInteger(gutter) || gutter < 0) {
+      throw new RangeError("gutter must be a non-negative integer");
+    }
+    this.device = device;
+    this.gutter = gutter;
+    this.width = width;
+    this.height = height;
+    this.texture = device.createTextureArray(width, height, layers, { filter });
+    this.layerShelves = Array.from({ length: layers }, () => ({ shelves: [], usedHeight: 0 }));
+    this.free = /* @__PURE__ */ new Map();
+    this.regions = /* @__PURE__ */ new Set();
+    this.written = /* @__PURE__ */ new WeakSet();
+    this.disposed = false;
+  }
+  /** Reserves width x height content pixels. Returns the content rectangle, its normalized `uvRect` and its sampling `filter`
+   * (`nearest` snaps the lookup to texel centers in the shader, since the array has one hardware filter). */
+  allocate(width, height, { filter = "linear" } = {}) {
+    this._live();
+    if (filter !== "nearest" && filter !== "linear") {
+      throw new TypeError("filter must be nearest or linear");
+    }
+    if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1) {
+      throw new RangeError("Region size must be positive integers");
+    }
+    const G = this.gutter, PW = width + G * 2, PH = height + G * 2, KEY = `${PW}x${PH}`, REUSED = this.free.get(KEY)?.pop();
+    if (REUSED) {
+      return this._region(REUSED.layer, REUSED.x, REUSED.y, width, height, filter);
+    }
+    for (let layer = 0; layer < this.layerShelves.length; layer++) {
+      const STATE = this.layerShelves[layer];
+      for (const SHELF of STATE.shelves) {
+        if (SHELF.height >= PH && SHELF.x + PW <= this.width) {
+          const X = SHELF.x;
+          SHELF.x += PW;
+          return this._region(layer, X, SHELF.y, width, height, filter);
+        }
+      }
+      if (PW <= this.width && STATE.usedHeight + PH <= this.height) {
+        const SHELF = { y: STATE.usedHeight, height: PH, x: PW };
+        STATE.shelves.push(SHELF);
+        STATE.usedHeight += PH;
+        return this._region(layer, 0, SHELF.y, width, height, filter);
+      }
+    }
+    throw new RangeError("Texture atlas array is full");
+  }
+  _region(layer, paddedX, paddedY, width, height, filter) {
+    const G = this.gutter, REGION = Object.freeze({
+      layer,
+      x: paddedX + G,
+      y: paddedY + G,
+      width,
+      height,
+      filter,
+      atlas: this,
+      paddedX,
+      paddedY,
+      uvRect: Object.freeze([
+        (paddedX + G) / this.width,
+        (paddedY + G) / this.height,
+        width / this.width,
+        height / this.height
+      ])
+    });
+    this.regions.add(REGION);
+    return REGION;
+  }
+  /**
+   * Writes the region's pixels. `source` is a DOM image/canvas or `{ width, height, data }` RGBA bytes. A source
+   * of the region size fills it; a smaller source at content offset `x`, `y` updates only that rectangle.
+   * With `extendEdges`, a whole-region byte source also fills the gutter with its edge pixels (clamp-to-edge look).
+   */
+  upload(region, source, { premultiplied = false, extendEdges = false, x = 0, y = 0 } = {}) {
+    this._live();
+    if (!this.regions.has(region)) {
+      throw new TypeError("A live region from this atlas is required");
+    }
+    if (this.written.has(region) && this.device.active) {
+      this.device.flushBatchers("atlasRegionUpdate");
+    }
+    this.written.add(region);
+    const G = this.gutter, WIDTH = source?.naturalWidth ?? source?.width, HEIGHT = source?.naturalHeight ?? source?.height;
+    if (x !== 0 || y !== 0 || WIDTH !== region.width || HEIGHT !== region.height) {
+      if (extendEdges) {
+        throw new TypeError("extendEdges requires a whole-region upload");
+      }
+      if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y) || x < 0 || y < 0 || !(x + WIDTH <= region.width) || !(y + HEIGHT <= region.height)) {
+        throw new RangeError("Upload rectangle must lie inside the region");
+      }
+      this.device.updateTextureRegion(this.texture, region.layer, region.x + x, region.y + y, source, {
+        premultiplied
+      });
+      return;
+    }
+    if (source.data === void 0) {
+      if (extendEdges) {
+        throw new TypeError("extendEdges requires RGBA byte data");
+      }
+      this.device.updateTextureRegion(this.texture, region.layer, region.x, region.y, source, { premultiplied });
+      return;
+    }
+    if (!G) {
+      this.device.updateTextureRegion(this.texture, region.layer, region.x, region.y, source, { premultiplied });
+      return;
+    }
+    const PW = region.width + G * 2, PH = region.height + G * 2, PADDED = new Uint8Array(PW * PH * 4);
+    for (let y2 = 0; y2 < PH; y2++) {
+      for (let x2 = 0; x2 < PW; x2++) {
+        const SX = x2 - G, SY = y2 - G;
+        const INSIDE = SX >= 0 && SY >= 0 && SX < region.width && SY < region.height;
+        if (!INSIDE && !extendEdges) {
+          continue;
+        }
+        const FROM = (Math.min(region.height - 1, Math.max(0, SY)) * region.width + Math.min(region.width - 1, Math.max(0, SX))) * 4;
+        PADDED.set(source.data.subarray(FROM, FROM + 4), (y2 * PW + x2) * 4);
+      }
+    }
+    this.device.updateTextureRegion(
+      this.texture,
+      region.layer,
+      region.paddedX,
+      region.paddedY,
+      { width: PW, height: PH, data: PADDED },
+      { premultiplied }
+    );
+  }
+  /**
+   * Frees the region. Its pixels are cleared and the rectangle is reused for the next same-size allocation; when
+   * the last region goes, the array itself is deleted and the device creates a fresh one on next use.
+   */
+  release(region) {
+    if (this.disposed || !this.regions.delete(region)) {
+      return false;
+    }
+    if (!this.regions.size) {
+      this.dispose();
+      return true;
+    }
+    if (this.device.active) {
+      this.device.flushBatchers("atlasRegionRelease");
+    }
+    const G = this.gutter, PW = region.width + G * 2, PH = region.height + G * 2;
+    this.device.clearTextureRegion(this.texture, region.layer, region.paddedX, region.paddedY, PW, PH);
+    const KEY = `${PW}x${PH}`;
+    if (!this.free.has(KEY)) {
+      this.free.set(KEY, []);
+    }
+    this.free.get(KEY).push({ layer: region.layer, x: region.paddedX, y: region.paddedY });
+    return true;
+  }
+  get stats() {
+    return {
+      layers: this.layerShelves.length,
+      liveRegions: this.regions.size,
+      bytes: this.width * this.height * 4 * this.layerShelves.length
+    };
+  }
+  _live() {
+    if (this.disposed) {
+      throw new Error("TextureAtlasArray is disposed");
+    }
+  }
+  dispose() {
+    if (this.disposed) {
+      return false;
+    }
+    this.disposed = true;
+    this.regions.clear();
+    this.device.textureAtlasDisposed(this);
+    return true;
+  }
+};
+
 // modules/rendering/device.js
 var FUNCTIONS = Object.freeze({
   never: "NEVER",
@@ -48,7 +227,7 @@ function finiteArray(value, count, name) {
     throw new TypeError(`${name} needs ${count} finite numbers`);
   }
 }
-function normalizeShader(source, fragment3) {
+function normalizeShader(source, fragment2) {
   if (/^\s*#version\s+300\s+es\b/.test(source)) {
     return source.trimStart();
   }
@@ -57,8 +236,8 @@ function normalizeShader(source, fragment3) {
   } else if (/^\s*#version\b/.test(source)) {
     throw new Error("Only GLSL ES 100 and 300 shaders are supported");
   }
-  let converted = source.replace(/^\s*#extension\s+GL_OES_standard_derivatives\s*:\s*enable\s*$/gm, "").replace(/\battribute\b/g, "in").replace(/\bvarying\b/g, fragment3 ? "in" : "out").replace(/\btexture2D\b/g, "texture").replace(/\btextureCube\b/g, "texture");
-  if (fragment3) {
+  let converted = source.replace(/^\s*#extension\s+GL_OES_standard_derivatives\s*:\s*enable\s*$/gm, "").replace(/\battribute\b/g, "in").replace(/\bvarying\b/g, fragment2 ? "in" : "out").replace(/\btexture2D\b/g, "texture").replace(/\btextureCube\b/g, "texture");
+  if (fragment2) {
     converted = converted.replace(/\bgl_FragColor\b/g, "_deviceFragColor");
     return `#version 300 es
 precision mediump float;
@@ -82,6 +261,9 @@ function compile(gl, type, source) {
   }
   return SHADER;
 }
+function overlaps(a, b) {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+}
 var WebGLDevice = class {
   constructor(canvas, {
     alpha = false,
@@ -93,7 +275,8 @@ var WebGLDevice = class {
     failIfMajorPerformanceCaveat = false,
     checkGLErrors = false,
     maxTextures = 8,
-    maxBufferBytes = 128 * 1024 * 1024
+    maxBufferBytes = 128 * 1024 * 1024,
+    textureAtlas = {}
   } = {}) {
     if (!canvas?.getContext || !canvas?.addEventListener) {
       throw new TypeError("canvas required");
@@ -108,6 +291,9 @@ var WebGLDevice = class {
       throw new TypeError("checkGLErrors must be boolean");
     }
     this.checkGLErrors = checkGLErrors;
+    this.textureAtlasOptions = { ...textureAtlas };
+    this._textureAtlas = null;
+    this.batchers = /* @__PURE__ */ new Set();
     integer(maxTextures, "maxTextures", 1, 32);
     integer(maxBufferBytes, "maxBufferBytes", 4);
     this.canvas = canvas;
@@ -135,12 +321,14 @@ var WebGLDevice = class {
     this.maxVertexAttributes = this.gl.getParameter(this.gl.MAX_VERTEX_ATTRIBS);
     this.maxTextures = Math.min(maxTextures, this.gl.getParameter(this.gl.MAX_TEXTURE_IMAGE_UNITS));
     this.maxTextureSize = this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE);
+    this.maxArrayTextureLayers = this.gl.getParameter(this.gl.MAX_ARRAY_TEXTURE_LAYERS);
     this.depthAvailable = !!this.gl.getContextAttributes().depth;
     this.stencilAvailable = !!this.gl.getContextAttributes().stencil;
     this.state = "ready";
     this.failure = null;
     this.active = false;
     this.boundTextureCount = 0;
+    this.arrayTextureUnits = /* @__PURE__ */ new Set();
     this.pipelines = /* @__PURE__ */ new Map();
     this.buffers = /* @__PURE__ */ new Map();
     this.textures = /* @__PURE__ */ new Map();
@@ -151,6 +339,7 @@ var WebGLDevice = class {
       frame: 0,
       vectorFlushCalls: 0,
       vectorSubmissions: 0,
+      spriteRuns: 0,
       pathTessellations: 0,
       pathStrokeBuilds: 0,
       meshCreates: 0,
@@ -162,6 +351,7 @@ var WebGLDevice = class {
       textureUploads: 0,
       textureBytes: 0,
       imageTexUploadCount: 0,
+      regionClears: 0,
       imageTexUploadBytes: 0,
       frameCopies: 0,
       bufferAllocations: 0,
@@ -187,12 +377,14 @@ var WebGLDevice = class {
       }
       try {
         this.boundTextureCount = 0;
+        this.arrayTextureUnits.clear();
         this.floatRenderTargetsSupported = !!this.gl.getExtension("EXT_color_buffer_float");
         this.maxTextures = Math.min(
           this.requestedMaxTextures,
           this.gl.getParameter(this.gl.MAX_TEXTURE_IMAGE_UNITS)
         );
         this.maxTextureSize = this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE);
+        this.maxArrayTextureLayers = this.gl.getParameter(this.gl.MAX_ARRAY_TEXTURE_LAYERS);
         this.maxVertexAttributes = this.gl.getParameter(this.gl.MAX_VERTEX_ATTRIBS);
         this.depthAvailable = !!this.gl.getContextAttributes().depth;
         this.stencilAvailable = !!this.gl.getContextAttributes().stencil;
@@ -270,17 +462,17 @@ var WebGLDevice = class {
   _pipeline(record) {
     const GL = this.gl;
     let vertex;
-    let fragment3;
+    let fragment2;
     let program;
     try {
       vertex = compile(GL, GL.VERTEX_SHADER, record.vertex);
-      fragment3 = compile(GL, GL.FRAGMENT_SHADER, record.fragment);
+      fragment2 = compile(GL, GL.FRAGMENT_SHADER, record.fragment);
       program = GL.createProgram();
       if (!program) {
         throw new Error("Program allocation failed");
       }
       GL.attachShader(program, vertex);
-      GL.attachShader(program, fragment3);
+      GL.attachShader(program, fragment2);
       GL.linkProgram(program);
       if (!GL.getProgramParameter(program, GL.LINK_STATUS)) {
         throw new Error(`Program link failed: ${GL.getProgramInfoLog(program)}`);
@@ -303,15 +495,15 @@ var WebGLDevice = class {
       if (vertex) {
         GL.deleteShader(vertex);
       }
-      if (fragment3) {
-        GL.deleteShader(fragment3);
+      if (fragment2) {
+        GL.deleteShader(fragment2);
       }
     }
   }
   /** Attributes use interleaved FLOAT components and byte offsets in their vertex/instance source. */
-  createPipeline({ vertex, fragment: fragment3, stride, instanceStride = 0, attributes, uniforms = {} }) {
+  createPipeline({ vertex, fragment: fragment2, stride, instanceStride = 0, attributes, uniforms = {} }) {
     this._ready();
-    if (typeof vertex !== "string" || typeof fragment3 !== "string") {
+    if (typeof vertex !== "string" || typeof fragment2 !== "string") {
       throw new TypeError("Shader sources required");
     }
     integer(stride, "stride", 4, 255);
@@ -355,7 +547,7 @@ var WebGLDevice = class {
     }
     const RECORD = {
       vertex,
-      fragment: fragment3,
+      fragment: fragment2,
       stride,
       instanceStride,
       instanced: attributes.some((a) => a.source === "instance"),
@@ -579,26 +771,36 @@ var WebGLDevice = class {
       throw new Error("Texture allocation failed");
     }
     try {
-      GL.activeTexture(GL.TEXTURE0);
-      GL.bindTexture(GL.TEXTURE_2D, record.gpu);
-      GL.bindBuffer(GL.PIXEL_UNPACK_BUFFER, null);
+      this._bindTexture(0, record);
       this.boundTextureCount = Math.max(1, this.boundTextureCount);
-      GL.pixelStorei(GL.UNPACK_ALIGNMENT, 1);
-      GL.pixelStorei(GL.UNPACK_ROW_LENGTH, 0);
-      GL.pixelStorei(GL.UNPACK_SKIP_PIXELS, 0);
-      GL.pixelStorei(GL.UNPACK_SKIP_ROWS, 0);
-      GL.pixelStorei(GL.UNPACK_FLIP_Y_WEBGL, false);
-      GL.pixelStorei(GL.UNPACK_COLORSPACE_CONVERSION_WEBGL, GL.NONE);
-      const PIXELS = record.source === null || record.source instanceof Uint8Array || record.source instanceof Float32Array, FORMAT = record.copyFormat === "rgb" ? GL.RGB : record.format === "rgba" || record.format === "rgba32f" ? GL.RGBA : GL.LUMINANCE, INTERNAL = record.copyFormat === "rgb" ? GL.RGB8 : record.format === "rgba32f" ? GL.RGBA32F : record.format === "rgba" ? GL.RGBA8 : GL.LUMINANCE, TYPE = record.format === "rgba32f" ? GL.FLOAT : GL.UNSIGNED_BYTE;
-      GL.pixelStorei(GL.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !PIXELS);
-      if (PIXELS) {
-        GL.texImage2D(GL.TEXTURE_2D, 0, INTERNAL, record.width, record.height, 0, FORMAT, TYPE, record.source);
+      this._resetUnpackState();
+      if (record.target === "array") {
+        GL.texStorage3D(GL.TEXTURE_2D_ARRAY, 1, GL.RGBA8, record.width, record.height, record.layers);
+        for (let layer = 0; layer < record.layers; layer++) {
+          this._uploadLayer(record, layer);
+        }
       } else {
-        GL.texImage2D(GL.TEXTURE_2D, 0, INTERNAL, FORMAT, TYPE, record.source);
+        const PIXELS = record.source === null || record.source instanceof Uint8Array || record.source instanceof Float32Array, FORMAT = record.copyFormat === "rgb" ? GL.RGB : record.format === "rgba" || record.format === "rgba32f" ? GL.RGBA : GL.LUMINANCE, INTERNAL = record.copyFormat === "rgb" ? GL.RGB8 : record.format === "rgba32f" ? GL.RGBA32F : record.format === "rgba" ? GL.RGBA8 : GL.LUMINANCE, TYPE = record.format === "rgba32f" ? GL.FLOAT : GL.UNSIGNED_BYTE;
+        GL.pixelStorei(GL.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !PIXELS);
+        if (PIXELS) {
+          GL.texImage2D(
+            GL.TEXTURE_2D,
+            0,
+            INTERNAL,
+            record.width,
+            record.height,
+            0,
+            FORMAT,
+            TYPE,
+            record.source
+          );
+        } else {
+          GL.texImage2D(GL.TEXTURE_2D, 0, INTERNAL, FORMAT, TYPE, record.source);
+        }
       }
-      this._filter(record.filter);
-      GL.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, GL.CLAMP_TO_EDGE);
-      GL.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, GL.CLAMP_TO_EDGE);
+      this._filter(record.filter, record);
+      GL.texParameteri(this._glTarget(record), GL.TEXTURE_WRAP_S, GL.CLAMP_TO_EDGE);
+      GL.texParameteri(this._glTarget(record), GL.TEXTURE_WRAP_T, GL.CLAMP_TO_EDGE);
       const ERROR = GL.getError();
       if (ERROR !== GL.NO_ERROR) {
         throw new Error(`Texture upload error ${ERROR}`);
@@ -615,16 +817,99 @@ var WebGLDevice = class {
       throw error;
     }
   }
-  _textureBytes(record) {
-    return record.width * record.height * (record.copyFormat === "rgb" ? 3 : record.format === "rgba32f" ? 16 : record.format === "rgba" ? 4 : 1);
+  /** WebGL binding point of a texture record; the record's target is the only place that decides it. */
+  _glTarget(record) {
+    return record.target === "array" ? this.gl.TEXTURE_2D_ARRAY : this.gl.TEXTURE_2D;
   }
-  _filter(filter) {
+  /** Binds a record to a texture unit; leaves that unit active. */
+  _bindTexture(unit, record) {
+    const GL = this.gl;
+    GL.activeTexture(GL.TEXTURE0 + unit);
+    GL.bindTexture(this._glTarget(record), record.gpu);
+    if (record.target === "array") {
+      this.arrayTextureUnits.add(unit);
+    }
+  }
+  /** Pixel-unpack state every CPU upload assumes; premultiply is set per upload. */
+  _resetUnpackState() {
+    const GL = this.gl;
+    GL.bindBuffer(GL.PIXEL_UNPACK_BUFFER, null);
+    GL.pixelStorei(GL.UNPACK_ALIGNMENT, 1);
+    GL.pixelStorei(GL.UNPACK_ROW_LENGTH, 0);
+    GL.pixelStorei(GL.UNPACK_SKIP_PIXELS, 0);
+    GL.pixelStorei(GL.UNPACK_SKIP_ROWS, 0);
+    GL.pixelStorei(GL.UNPACK_FLIP_Y_WEBGL, false);
+    GL.pixelStorei(GL.UNPACK_COLORSPACE_CONVERSION_WEBGL, GL.NONE);
+  }
+  /** Clears the 2D binding point, and the array binding point only if this device bound an array to the unit. */
+  _unbindTextureUnit(unit) {
+    const GL = this.gl;
+    GL.activeTexture(GL.TEXTURE0 + unit);
+    GL.bindTexture(GL.TEXTURE_2D, null);
+    if (this.arrayTextureUnits.delete(unit)) {
+      GL.bindTexture(GL.TEXTURE_2D_ARRAY, null);
+    }
+  }
+  /** Uploads one retained layer of the array bound to the active unit; empty layers stay transparent. */
+  _uploadLayer(record, layer) {
+    for (const REGION of record.layerRegions[layer]) {
+      this._uploadRegion(layer, REGION);
+    }
+    const GL = this.gl, LAYER = record.layerSources[layer];
+    if (LAYER === null) {
+      return;
+    }
+    GL.pixelStorei(GL.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !(LAYER.source instanceof Uint8Array));
+    GL.texSubImage3D(
+      GL.TEXTURE_2D_ARRAY,
+      0,
+      0,
+      0,
+      layer,
+      record.width,
+      record.height,
+      1,
+      GL.RGBA,
+      GL.UNSIGNED_BYTE,
+      LAYER.source
+    );
+    this.stats.textureUploads++;
+    this.stats.textureBytes += record.width * record.height * 4;
+    this.stats.imageTexUploadCount++;
+    this.stats.imageTexUploadBytes += record.width * record.height * 4;
+  }
+  /** Uploads one retained rectangle of the array bound to the active unit. */
+  _uploadRegion(layer, region) {
+    const GL = this.gl;
+    GL.pixelStorei(GL.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !(region.source instanceof Uint8Array));
+    GL.texSubImage3D(
+      GL.TEXTURE_2D_ARRAY,
+      0,
+      region.x,
+      region.y,
+      layer,
+      region.width,
+      region.height,
+      1,
+      GL.RGBA,
+      GL.UNSIGNED_BYTE,
+      region.source
+    );
+    this.stats.textureUploads++;
+    this.stats.textureBytes += region.width * region.height * 4;
+    this.stats.imageTexUploadCount++;
+    this.stats.imageTexUploadBytes += region.width * region.height * 4;
+  }
+  _textureBytes(record) {
+    return record.width * record.height * (record.layers ?? 1) * (record.copyFormat === "rgb" ? 3 : record.format === "rgba32f" ? 16 : record.format === "rgba" ? 4 : 1);
+  }
+  _filter(filter, record) {
     if (filter !== "nearest" && filter !== "linear") {
       throw new TypeError("filter must be nearest or linear");
     }
-    const GL = this.gl, VALUE = filter === "nearest" ? GL.NEAREST : GL.LINEAR;
-    GL.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, VALUE);
-    GL.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, VALUE);
+    const GL = this.gl, TARGET = this._glTarget(record), VALUE = filter === "nearest" ? GL.NEAREST : GL.LINEAR;
+    GL.texParameteri(TARGET, GL.TEXTURE_MIN_FILTER, VALUE);
+    GL.texParameteri(TARGET, GL.TEXTURE_MAG_FILTER, VALUE);
   }
   _renderTarget(record) {
     const GL = this.gl, PREVIOUS = GL.getParameter(GL.FRAMEBUFFER_BINDING), PREVIOUS_RENDERBUFFER = GL.getParameter(GL.RENDERBUFFER_BINDING), FRAMEBUFFER_LOCAL = GL.createFramebuffer();
@@ -634,7 +919,17 @@ var WebGLDevice = class {
     }
     try {
       GL.bindFramebuffer(GL.FRAMEBUFFER, FRAMEBUFFER_LOCAL);
-      GL.framebufferTexture2D(GL.FRAMEBUFFER, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, record.gpu, 0);
+      if (record.arrayRecord) {
+        GL.framebufferTextureLayer(
+          GL.FRAMEBUFFER,
+          GL.COLOR_ATTACHMENT0,
+          record.arrayRecord.gpu,
+          0,
+          record.layer
+        );
+      } else {
+        GL.framebufferTexture2D(GL.FRAMEBUFFER, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, record.gpu, 0);
+      }
       if (record.stencil) {
         stencilBuffer = GL.createRenderbuffer();
         if (!stencilBuffer) {
@@ -717,6 +1012,71 @@ var WebGLDevice = class {
     this.stats.gpuRenderTargetBytes += width * height * (format === "rgba32f" ? 16 : 4) + width * height * (stencil ? 1 : 0);
     return HANDLE;
   }
+  /**
+   * Renders into one layer of a texture array. The handle works with bind/unbindRenderTarget but is not a draw
+   * texture: draw the array and select the layer. Contents are empty after context restoration, so the producer
+   * repaints them. The array stays owned by the caller and must outlive the target.
+   */
+  createTextureLayerTarget(array, layer) {
+    this._ready();
+    const ARRAY = this._handle(this.textures, array, "texture array");
+    if (ARRAY.target !== "array") {
+      throw new TypeError("A texture array is required");
+    }
+    integer(layer, "layer", 0, ARRAY.layers - 1);
+    const RECORD = {
+      kind: "renderTarget",
+      arrayRecord: ARRAY,
+      layer,
+      width: ARRAY.width,
+      height: ARRAY.height,
+      format: "rgba",
+      premultiplied: true,
+      stencil: false,
+      framebuffer: null,
+      stencilBuffer: null,
+      available: true
+    };
+    this._renderTarget(RECORD);
+    const HANDLE = Object.freeze({ width: ARRAY.width, height: ARRAY.height, layer });
+    this.renderTargets.set(HANDLE, RECORD);
+    this.stats.renderTargetCount = this.renderTargets.size;
+    return HANDLE;
+  }
+  /**
+   * Copies `source` into the rectangle (x, y, width, height) of `target`, measured from the target's bottom-left,
+   * with linear filtering when the sizes differ. A 2:1 copy averages exactly each 2x2 texel footprint.
+   */
+  blitRenderTarget(source, target, { x = 0, y = 0, width = target.width, height = target.height } = {}) {
+    this._ready();
+    if (!this.active) {
+      throw new Error("beginFrame required");
+    }
+    const FROM = this._handle(this.renderTargets, source, "render target"), TO = this._handle(this.renderTargets, target, "render target");
+    integer(x, "blit x", 0, TO.width - 1);
+    integer(y, "blit y", 0, TO.height - 1);
+    integer(width, "blit width", 1, TO.width - x);
+    integer(height, "blit height", 1, TO.height - y);
+    if (!FROM.available || !TO.available || FROM === TO) {
+      throw new Error("Blit needs two distinct available render targets");
+    }
+    const GL = this.gl, PREVIOUS = GL.getParameter(GL.FRAMEBUFFER_BINDING);
+    GL.bindFramebuffer(GL.READ_FRAMEBUFFER, FROM.framebuffer);
+    GL.bindFramebuffer(GL.DRAW_FRAMEBUFFER, TO.framebuffer);
+    GL.blitFramebuffer(
+      0,
+      0,
+      FROM.width,
+      FROM.height,
+      x,
+      y,
+      x + width,
+      y + height,
+      GL.COLOR_BUFFER_BIT,
+      width === FROM.width && height === FROM.height ? GL.NEAREST : GL.LINEAR
+    );
+    GL.bindFramebuffer(GL.FRAMEBUFFER, PREVIOUS);
+  }
   /** Float targets can become unavailable after restore while ordinary rendering stays ready. */
   isRenderTargetAvailable(handle) {
     const R = this._handle(this.renderTargets, handle, "render target");
@@ -773,6 +1133,11 @@ var WebGLDevice = class {
       throw new Error("Cannot delete a bound render target");
     }
     this.gl.deleteFramebuffer(RECORD.framebuffer);
+    if (RECORD.arrayRecord) {
+      this.renderTargets.delete(handle);
+      this.stats.renderTargetCount = this.renderTargets.size;
+      return true;
+    }
     if (RECORD.stencilBuffer) {
       this.gl.deleteRenderbuffer(RECORD.stencilBuffer);
     }
@@ -805,6 +1170,170 @@ var WebGLDevice = class {
     this.stats.textureCount = this.textures.size;
     this.stats.gpuTextureBytes += this._textureBytes(RECORD);
     return HANDLE;
+  }
+  /**
+   * One TEXTURE_2D_ARRAY of equally sized RGBA layers, bound as a single sampler2DArray. Every layer is allocated
+   * up front, so memory is width * height * 4 * layers regardless of how much of each layer an atlas fills;
+   * unused layers and unused layer area stay transparent.
+   */
+  createTextureArray(width, height, layers, { filter = "linear" } = {}) {
+    this._ready();
+    integer(width, "texture array width", 1, this.maxTextureSize);
+    integer(height, "texture array height", 1, this.maxTextureSize);
+    integer(layers, "texture array layers", 1, this.maxArrayTextureLayers);
+    if (filter !== "nearest" && filter !== "linear") {
+      throw new TypeError("Invalid filter");
+    }
+    const RECORD = {
+      kind: "imageArray",
+      target: "array",
+      width,
+      height,
+      layers,
+      layerSources: new Array(layers).fill(null),
+      layerRegions: Array.from({ length: layers }, () => []),
+      format: "rgba",
+      premultiplied: true,
+      source: null,
+      filter,
+      gpu: null
+    };
+    this._texture(RECORD);
+    const HANDLE = Object.freeze({ width, height, layers });
+    this.textures.set(HANDLE, RECORD);
+    this.stats.textureCount = this.textures.size;
+    this.stats.gpuTextureBytes += this._textureBytes(RECORD);
+    return HANDLE;
+  }
+  /** Replaces one whole layer; the source must have the array's width and height. */
+  updateTextureLayer(handle, layer, source, { premultiplied = false } = {}) {
+    this._ready();
+    const R = this._handle(this.textures, handle, "texture array");
+    if (R.target !== "array") {
+      throw new TypeError("A texture array is required");
+    }
+    integer(layer, "layer", 0, R.layers - 1);
+    const NEXT = this._source(source, "rgba", premultiplied);
+    if (NEXT.width !== R.width || NEXT.height !== R.height || NEXT.source === null) {
+      throw new RangeError("Layer source must supply every pixel at the array width and height");
+    }
+    const PREVIOUS = R.layerSources[layer];
+    R.layerSources[layer] = NEXT;
+    try {
+      this._bindTexture(0, R);
+      this.boundTextureCount = Math.max(1, this.boundTextureCount);
+      this._resetUnpackState();
+      this._uploadLayer(R, layer);
+      if (this.checkGLErrors) {
+        const ERROR = this.gl.getError();
+        if (ERROR !== this.gl.NO_ERROR) {
+          throw new Error(`Texture layer upload error ${ERROR}`);
+        }
+      }
+    } catch (error) {
+      R.layerSources[layer] = PREVIOUS;
+      throw error;
+    }
+  }
+  /**
+   * Writes a rectangle inside one layer without touching the rest, so many small images (glyph pages, gradient
+   * ramps, a 1x1 white texel) share a layer. The source is retained and replayed after context restoration; a
+   * rectangle replaces any retained rectangle it overlaps.
+   */
+  updateTextureRegion(handle, layer, x, y, source, { premultiplied = false } = {}) {
+    this._ready();
+    const R = this._handle(this.textures, handle, "texture array");
+    if (R.target !== "array") {
+      throw new TypeError("A texture array is required");
+    }
+    integer(layer, "layer", 0, R.layers - 1);
+    integer(x, "region x", 0, R.width - 1);
+    integer(y, "region y", 0, R.height - 1);
+    const NEXT = this._source(source, "rgba", premultiplied);
+    if (NEXT.source === null || x + NEXT.width > R.width || y + NEXT.height > R.height) {
+      throw new RangeError("Region must be fully supplied and inside the layer");
+    }
+    const REGION = { x, y, width: NEXT.width, height: NEXT.height, source: NEXT.source }, PREVIOUS = R.layerRegions[layer];
+    R.layerRegions[layer] = [...PREVIOUS.filter((r) => !overlaps(r, REGION)), REGION];
+    try {
+      this._bindTexture(0, R);
+      this.boundTextureCount = Math.max(1, this.boundTextureCount);
+      this._resetUnpackState();
+      this._uploadRegion(layer, REGION);
+      if (this.checkGLErrors) {
+        const ERROR = this.gl.getError();
+        if (ERROR !== this.gl.NO_ERROR) {
+          throw new Error(`Texture region upload error ${ERROR}`);
+        }
+      }
+    } catch (error) {
+      R.layerRegions[layer] = PREVIOUS;
+      throw error;
+    }
+  }
+  /** Forgets a retained rectangle and makes its pixels transparent so a later owner starts clean. */
+  clearTextureRegion(handle, layer, x, y, width, height) {
+    this._ready();
+    const R = this._handle(this.textures, handle, "texture array");
+    if (R.target !== "array") {
+      throw new TypeError("A texture array is required");
+    }
+    integer(layer, "layer", 0, R.layers - 1);
+    integer(width, "region width", 1, R.width);
+    integer(height, "region height", 1, R.height);
+    const IMAGE_UPLOADS = this.stats.imageTexUploadCount, IMAGE_BYTES = this.stats.imageTexUploadBytes;
+    this.updateTextureRegion(
+      handle,
+      layer,
+      x,
+      y,
+      { width, height, data: new Uint8Array(width * height * 4) },
+      { premultiplied: true }
+    );
+    this.stats.imageTexUploadCount = IMAGE_UPLOADS;
+    this.stats.imageTexUploadBytes = IMAGE_BYTES;
+    this.stats.regionClears++;
+    R.layerRegions[layer] = R.layerRegions[layer].filter(
+      (r) => !(r.x === x && r.y === y && r.width === width && r.height === height)
+    );
+  }
+  /**
+   * A renderer that queues draws registers its flush here, so a shared GPU resource that is about to change
+   * (pose rows, data textures) first submits everything already queued against its old contents.
+   * Returns the function that unregisters it.
+   */
+  registerBatcher(flush) {
+    if (typeof flush !== "function") {
+      throw new TypeError("A flush function is required");
+    }
+    this.batchers.add(flush);
+    return () => this.batchers.delete(flush);
+  }
+  flushBatchers(reason) {
+    for (const FLUSH of this.batchers) {
+      FLUSH(reason);
+    }
+  }
+  /**
+   * The device's shared image atlas (SSOT): vector fills, gradients and glyphs allocate regions here, so every
+   * vector draw samples one TEXTURE_2D_ARRAY. Created on first use from the `textureAtlas` device option.
+   */
+  get textureAtlas() {
+    this._ready();
+    this._textureAtlas ??= new TextureAtlasArray(this, this.textureAtlasOptions);
+    return this._textureAtlas;
+  }
+  /** Called by the atlas when it is disposed: deletes its array and lets the next user create a fresh atlas. */
+  textureAtlasDisposed(atlas) {
+    if (this._textureAtlas === atlas) {
+      this._textureAtlas = null;
+    }
+    if (this.state === "ready" && this.textures.has(atlas.texture)) {
+      this.deleteTexture(atlas.texture);
+    }
+  }
+  isTextureArray(handle) {
+    return this._handle(this.textures, handle, "texture").target === "array";
   }
   /** Retained RGBA32F pixels; usable for sampling without float render-target support. */
   createDataTexture(width, height, { data = null } = {}) {
@@ -849,8 +1378,7 @@ var WebGLDevice = class {
       throw new TypeError("RGBA32F region data must match dimensions");
     }
     const GL = this.gl;
-    GL.activeTexture(GL.TEXTURE0);
-    GL.bindTexture(GL.TEXTURE_2D, R.gpu);
+    this._bindTexture(0, R);
     GL.bindBuffer(GL.PIXEL_UNPACK_BUFFER, null);
     this.boundTextureCount = Math.max(1, this.boundTextureCount);
     GL.pixelStorei(GL.UNPACK_ALIGNMENT, 1);
@@ -877,6 +1405,9 @@ var WebGLDevice = class {
     }
     if (R.format === "rgba32f") {
       throw new TypeError("Use updateDataTexture for RGBA32F pixels");
+    }
+    if (R.target === "array") {
+      throw new TypeError("Use updateTextureLayer for texture arrays");
     }
     integer(x, "x");
     integer(y, "y");
@@ -939,8 +1470,7 @@ var WebGLDevice = class {
       }
       GL.pixelStorei(GL.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
     }
-    GL.activeTexture(GL.TEXTURE0);
-    GL.bindTexture(GL.TEXTURE_2D, R.gpu);
+    this._bindTexture(0, R);
     GL.bindBuffer(GL.PIXEL_UNPACK_BUFFER, null);
     this.boundTextureCount = Math.max(1, this.boundTextureCount);
     GL.pixelStorei(GL.UNPACK_ALIGNMENT, 1);
@@ -970,14 +1500,16 @@ var WebGLDevice = class {
     if (this.renderTargets.has(handle)) {
       throw new Error("Render targets cannot be copied from the default framebuffer");
     }
+    if (R.target === "array") {
+      throw new TypeError("Texture arrays cannot receive a framebuffer copy");
+    }
     integer(x, "x");
     integer(y, "y");
     if (R.format !== "rgba" || x + R.width > this.canvas.width || y + R.height > this.canvas.height) {
       throw new RangeError("Framebuffer copy outside bounds");
     }
     const GL = this.gl;
-    GL.activeTexture(GL.TEXTURE0);
-    GL.bindTexture(GL.TEXTURE_2D, R.gpu);
+    this._bindTexture(0, R);
     this.boundTextureCount = Math.max(1, this.boundTextureCount);
     let allocated = false;
     if (!GL.getContextAttributes().alpha && R.copyFormat !== "rgb") {
@@ -1005,6 +1537,9 @@ var WebGLDevice = class {
     }
     if (this.renderTargets.has(handle)) {
       throw new Error("Use deleteRenderTarget for render targets");
+    }
+    if (R.target === "array" && [...this.renderTargets.values()].some((target) => target.arrayRecord === R)) {
+      throw new Error("Delete the texture array layer targets first");
     }
     this.gl.deleteTexture(R.gpu);
     this.textures.delete(handle);
@@ -1046,6 +1581,7 @@ var WebGLDevice = class {
     for (const NAME of [
       "vectorFlushCalls",
       "vectorSubmissions",
+      "spriteRuns",
       "pathTessellations",
       "pathStrokeBuilds",
       "meshCreates",
@@ -1068,14 +1604,14 @@ var WebGLDevice = class {
     });
     return true;
   }
-  clear({ color: color2, depth, stencil } = {}) {
+  clear({ color, depth, stencil } = {}) {
     this._ready();
     const GL = this.gl;
     let flags = 0;
-    if (color2 !== void 0) {
-      finiteArray(color2, 4, "clear color");
+    if (color !== void 0) {
+      finiteArray(color, 4, "clear color");
       GL.colorMask(true, true, true, true);
-      GL.clearColor(...color2);
+      GL.clearColor(...color);
       flags |= GL.COLOR_BUFFER_BIT;
     }
     if (depth !== void 0) {
@@ -1249,11 +1785,12 @@ var WebGLDevice = class {
       }
       const TEXTURE_UNITS = Math.max(this.boundTextureCount, textures.length);
       for (let i = 0; i < TEXTURE_UNITS; i++) {
-        GL.activeTexture(GL.TEXTURE0 + i);
-        const R = i < textures.length ? this.textures.get(textures[i]) : null;
-        GL.bindTexture(GL.TEXTURE_2D, R?.gpu ?? null);
-        if (R) {
-          this._filter(filter ?? R.filter);
+        if (i < textures.length) {
+          const R = this.textures.get(textures[i]);
+          this._bindTexture(i, R);
+          this._filter(filter ?? R.filter, R);
+        } else {
+          this._unbindTextureUnit(i);
         }
       }
       if (TEXTURE_UNITS) {
@@ -1334,8 +1871,7 @@ var WebGLDevice = class {
     GL.bindBuffer(GL.ELEMENT_ARRAY_BUFFER, null);
     GL.bindRenderbuffer(GL.RENDERBUFFER, null);
     for (let i = 0; i < this.maxTextures; i++) {
-      GL.activeTexture(GL.TEXTURE0 + i);
-      GL.bindTexture(GL.TEXTURE_2D, null);
+      this._unbindTextureUnit(i);
     }
     GL.activeTexture(GL.TEXTURE0);
     for (const R of this.pipelines.values()) {
@@ -1369,33 +1905,642 @@ var WebGLDevice = class {
     this.renderTargetStack.length = 0;
     this.activeRenderTarget = null;
     this.regionCanvas = this.regionContext = this.regionBytes = null;
+    if (this._textureAtlas) {
+      this._textureAtlas.disposed = true;
+      this._textureAtlas = null;
+    }
     this.stats.pipelineCount = this.stats.bufferCount = this.stats.textureCount = this.stats.renderTargetCount = this.stats.gpuBufferBytes = this.stats.gpuRenderTargetBytes = this.stats.gpuTextureBytes = 0;
     this.active = false;
     this.state = "disposed";
   }
 };
 
+// modules/rendering/clip-planes.js
+var EMPTY_CLIP = Object.freeze({
+  key: "",
+  values: null,
+  count: 0
+});
+function clipPlanes(clips, maxPlanes) {
+  if (!clips?.length) {
+    return EMPTY_CLIP;
+  }
+  const VALUES = [], KEY = [];
+  for (const POLYGON of clips) {
+    if (!Array.isArray(POLYGON) || POLYGON.length < 3 || POLYGON.some((p) => !Number.isFinite(p?.x) || !Number.isFinite(p?.y))) {
+      throw new TypeError("Finite convex clip polygons required");
+    }
+    let area = 0;
+    for (let i = 0; i < POLYGON.length; i++) {
+      const P = POLYGON[i], Q = POLYGON[(i + 1) % POLYGON.length];
+      area += P.x * Q.y - Q.x * P.y;
+    }
+    if (Math.abs(area) < 1e-12) {
+      return {
+        key: "empty",
+        values: [0, 0, -1],
+        count: 1
+      };
+    }
+    const SIGN = area >= 0 ? 1 : -1;
+    for (let i = 0; i < POLYGON.length; i++) {
+      const P = POLYGON[i], Q = POLYGON[(i + 1) % POLYGON.length], DX = Q.x - P.x, DY = Q.y - P.y, LENGTH = Math.hypot(DX, DY);
+      if (!LENGTH) {
+        continue;
+      }
+      const A_LOCAL = -DY / LENGTH * SIGN, B_LOCAL = DX / LENGTH * SIGN, C_LOCAL = -(A_LOCAL * P.x + B_LOCAL * P.y);
+      VALUES.push(A_LOCAL, B_LOCAL, C_LOCAL);
+      KEY.push(A_LOCAL, B_LOCAL, C_LOCAL);
+    }
+  }
+  if (VALUES.length / 3 > maxPlanes) {
+    throw new RangeError(`Clipping exceeds ${maxPlanes} edge planes`);
+  }
+  return {
+    key: KEY.join(","),
+    values: VALUES,
+    count: VALUES.length / 3
+  };
+}
+
+// modules/rendering/pose-renderer.js
+var MAX_PARTS = 16;
+var POSE_WIDTH = MAX_PARTS * 3;
+var OVERRIDE_WIDTH = MAX_PARTS * 2;
+var PROGRAM_WIDTH = 256;
+var OWNERS = /* @__PURE__ */ new WeakMap();
+function poseRendererOf(handle) {
+  return OWNERS.get(handle) ?? null;
+}
+var PoseRenderer = class {
+  constructor(device, { backend = "auto", onBoundary = () => {
+  } } = {}) {
+    if (!["auto", "cpu", "uniform"].includes(backend)) {
+      throw new TypeError("poseBackend must be auto, cpu or uniform");
+    }
+    this.device = device;
+    this.backend = backend;
+    this.onBoundary = onBoundary;
+    this.sources = /* @__PURE__ */ new Map();
+    this.instances = /* @__PURE__ */ new Map();
+    this.rows = [];
+    this.freeRows = [];
+    this.capacity = 0;
+    this.programTexture = null;
+    this.stateTexture = null;
+    this.overrideTexture = null;
+    this.cpuTexture = null;
+    this.frameMetrics = {};
+    this.pendingUpdates = false;
+    this.disposed = false;
+    this.gpuUnavailableReason = backend !== "auto" ? "cpuRequested" : null;
+    this.onRestored = () => {
+      for (const RECORD of this.instances.values()) {
+        RECORD.stateDirty = true;
+        RECORD.overrideDirty = true;
+        RECORD.cpuDirty = RECORD.mode === "cpu";
+        RECORD.usedFrame = -1;
+      }
+      this.pendingUpdates = true;
+    };
+    device.canvas.addEventListener("webglcontextrestored", this.onRestored);
+    this.beginFrame();
+  }
+  _ready() {
+    if (this.disposed) {
+      throw new Error("Pose renderer is disposed");
+    }
+  }
+  beginFrame() {
+    this.frameMetrics = {
+      gpuDrawInstances: 0,
+      cpuDrawInstances: 0,
+      uniformDrawInstances: 0,
+      cpuPoseUploadBytes: 0,
+      stateUploadBytes: 0,
+      overrideUploadBytes: 0,
+      fallbackReasons: /* @__PURE__ */ Object.create(null),
+      flushCalls: 0,
+      flushRecordVisits: 0,
+      cleanFlushSkips: 0
+    };
+  }
+  _boundary() {
+    if (this.device.active) {
+      this.onBoundary();
+    }
+  }
+  createSource(program) {
+    this._ready();
+    if (this.backend === "uniform") {
+      return null;
+    }
+    if (!program || !(program.data instanceof Float32Array) || !Number.isSafeInteger(program.partCount) || program.partCount < 1 || program.partCount > MAX_PARTS || program.data.length % 4) {
+      throw new TypeError("A compiled pose channel program with 1..16 parts is required");
+    }
+    this._boundary();
+    const HANDLE = Object.freeze({});
+    this.sources.set(HANDLE, { program, offset: 0 });
+    try {
+      this._rebuildPrograms();
+    } catch (error) {
+      this.sources.delete(HANDLE);
+      throw error;
+    }
+    return HANDLE;
+  }
+  _rebuildPrograms() {
+    let length = 0;
+    const OFFSETS = /* @__PURE__ */ new Map();
+    for (const SOURCE of this.sources.values()) {
+      OFFSETS.set(SOURCE, length / 4);
+      length += SOURCE.program.data.length;
+    }
+    if (!length) {
+      if (this.programTexture) {
+        this.device.deleteTexture(this.programTexture);
+        this.programTexture = null;
+      }
+      return;
+    }
+    const WIDTH = Math.min(PROGRAM_WIDTH, this.device.maxTextureSize);
+    const HEIGHT = Math.ceil(length / (WIDTH * 4));
+    if (HEIGHT > this.device.maxTextureSize) {
+      throw new RangeError("Pose programs exceed data texture capacity");
+    }
+    const DATA = new Float32Array(WIDTH * HEIGHT * 4);
+    for (const SOURCE of this.sources.values()) {
+      DATA.set(SOURCE.program.data, OFFSETS.get(SOURCE) * 4);
+    }
+    const TEXTURE = this.device.createDataTexture(WIDTH, HEIGHT, { data: DATA });
+    for (const [SOURCE, OFFSET] of OFFSETS) {
+      SOURCE.offset = OFFSET;
+    }
+    if (this.programTexture) {
+      this.device.deleteTexture(this.programTexture);
+    }
+    this.programTexture = TEXTURE;
+    for (const RECORD of this.instances.values()) {
+      if (this.stateData) {
+        this.stateData[RECORD.row * 8 + 7] = this.sources.get(RECORD.source).offset;
+      }
+      RECORD.stateDirty = true;
+    }
+    this.pendingUpdates = true;
+  }
+  deleteSource(handle) {
+    if (!this.sources.has(handle)) {
+      return false;
+    }
+    if ([...this.instances.values()].some((record) => record.source === handle)) {
+      throw new Error("Dispose pose instances before their source");
+    }
+    this._boundary();
+    this.sources.delete(handle);
+    if (!this.sources.size && this.programTexture) {
+      this.device.deleteTexture(this.programTexture);
+      this.programTexture = null;
+    }
+    return true;
+  }
+  _releaseAtlas() {
+    for (const KEY of ["stateTexture", "overrideTexture", "cpuTexture"]) {
+      if (this[KEY]) {
+        this.device.deleteTexture(this[KEY]);
+        this[KEY] = null;
+      }
+    }
+    this.stateData = null;
+    this.overrideData = null;
+    this.cpuData = null;
+  }
+  _ensureCapacity(required) {
+    if (required <= this.capacity) {
+      return;
+    }
+    if (required > this.device.maxTextureSize) {
+      throw new RangeError("Pose instance rows exceed GPU texture capacity");
+    }
+    this._boundary();
+    const CAPACITY = Math.min(this.device.maxTextureSize, Math.max(32, this.capacity * 2, required));
+    const STATE = new Float32Array(CAPACITY * 8);
+    const OVERRIDES = new Float32Array(CAPACITY * OVERRIDE_WIDTH * 4);
+    const CPU = new Float32Array(CAPACITY * POSE_WIDTH * 4);
+    if (this.capacity) {
+      STATE.set(this.stateData);
+      OVERRIDES.set(this.overrideData);
+      CPU.set(this.cpuData);
+    }
+    let stateTexture = null;
+    let overrideTexture = null;
+    try {
+      stateTexture = this.device.createDataTexture(2, CAPACITY, { data: STATE });
+      overrideTexture = this.device.createDataTexture(OVERRIDE_WIDTH, CAPACITY, { data: OVERRIDES });
+    } catch (error) {
+      for (const TEXTURE of [stateTexture, overrideTexture]) {
+        if (TEXTURE) {
+          this.device.deleteTexture(TEXTURE);
+        }
+      }
+      throw error;
+    }
+    this._releaseAtlas();
+    this.capacity = CAPACITY;
+    this.stateData = STATE;
+    this.overrideData = OVERRIDES;
+    this.cpuData = CPU;
+    this.stateTexture = stateTexture;
+    this.overrideTexture = overrideTexture;
+    for (const RECORD of this.instances.values()) {
+      RECORD.stateDirty = true;
+      RECORD.overrideDirty = true;
+      RECORD.cpuDirty = RECORD.mode === "cpu";
+    }
+    this.pendingUpdates = true;
+  }
+  createInstance(source) {
+    this._ready();
+    const SOURCE = this.sources.get(source);
+    if (!SOURCE) {
+      throw new TypeError("A pose source owned by this renderer is required");
+    }
+    const ROW = this.freeRows.length ? this.freeRows.pop() : this.rows.length;
+    this._ensureCapacity(ROW + 1);
+    const HANDLE = Object.freeze({});
+    const RECORD = {
+      source,
+      row: ROW,
+      mode: null,
+      stateDirty: true,
+      overrideDirty: true,
+      cpuDirty: false,
+      usedFrame: -1,
+      reason: null,
+      baseScratch: new Float32Array(OVERRIDE_WIDTH * 4)
+    };
+    this.instances.set(HANDLE, RECORD);
+    OWNERS.set(HANDLE, this);
+    this.rows[ROW] = RECORD;
+    this.pendingUpdates = true;
+    return HANDLE;
+  }
+  deleteInstance(handle) {
+    const RECORD = this.instances.get(handle);
+    if (!RECORD) {
+      return false;
+    }
+    this._boundary();
+    this.instances.delete(handle);
+    this.rows[RECORD.row] = null;
+    this.freeRows.push(RECORD.row);
+    if (!this.instances.size) {
+      this._releaseAtlas();
+      this.capacity = 0;
+      this.rows = [];
+      this.freeRows = [];
+    }
+    return true;
+  }
+  _instance(handle) {
+    this._ready();
+    const RECORD = this.instances.get(handle);
+    if (!RECORD) {
+      throw new TypeError("A live pose instance owned by this renderer is required");
+    }
+    return RECORD;
+  }
+  prepare(handle, { clipName, elapsedMs, basePoses, visible, excluded = [], morph }) {
+    const RECORD = this._instance(handle);
+    const SOURCE = this.sources.get(RECORD.source);
+    const CLIP = SOURCE.program.clips[clipName];
+    if (this.gpuUnavailableReason || !CLIP?.supported) {
+      return null;
+    }
+    if (!Number.isFinite(elapsedMs) || basePoses.length !== SOURCE.program.partCount || visible.length !== basePoses.length || !morph || morph.length !== 2 || !morph.every(Number.isFinite)) {
+      throw new TypeError("Finite pose time, matching part overrides and two morph values required");
+    }
+    const CYCLE = CLIP.durationMs * (CLIP.loop === "alternate" ? 2 : 1);
+    const LOCAL_TIME = CLIP.loop === "once" ? Math.min(CLIP.durationMs, Math.max(0, elapsedMs)) : (elapsedMs % CYCLE + CYCLE) % CYCLE;
+    const EXCLUDED = excluded.reduce((mask, value, index) => value ? mask | 1 << index : mask, 0);
+    const STATE = [
+      CLIP.headerBase,
+      LOCAL_TIME,
+      CLIP.loop === "once" ? 0 : CLIP.loop === "repeat" ? 1 : 2,
+      CLIP.durationMs,
+      morph[0],
+      morph[1],
+      EXCLUDED,
+      // Slot 7: where this source's keyframes start in the shared program texture.
+      SOURCE.offset
+    ];
+    const BASE = RECORD.baseScratch;
+    for (let i = 0; i < basePoses.length; i++) {
+      const POSE = basePoses[i];
+      const OFFSET_LOCAL = i * 8;
+      BASE[OFFSET_LOCAL] = POSE.x;
+      BASE[OFFSET_LOCAL + 1] = POSE.y;
+      BASE[OFFSET_LOCAL + 2] = POSE.rotation;
+      BASE[OFFSET_LOCAL + 3] = POSE.scaleX;
+      BASE[OFFSET_LOCAL + 4] = POSE.scaleY;
+      BASE[OFFSET_LOCAL + 5] = POSE.opacity;
+      BASE[OFFSET_LOCAL + 6] = visible[i] ? 1 : 0;
+      BASE[OFFSET_LOCAL + 7] = 0;
+    }
+    const OFFSET = RECORD.row * 8;
+    const BASE_OFFSET = RECORD.row * OVERRIDE_WIDTH * 4;
+    const STATE_CHANGED = STATE.some((value, index) => Math.fround(value) !== this.stateData[OFFSET + index]);
+    const BASE_CHANGED = BASE.some((value, index) => value !== this.overrideData[BASE_OFFSET + index]);
+    if ((STATE_CHANGED || BASE_CHANGED || RECORD.mode !== "gpu") && RECORD.usedFrame === this.device.stats.frame) {
+      this._boundary();
+    }
+    if (STATE_CHANGED) {
+      this.stateData.set(STATE, OFFSET);
+      RECORD.stateDirty = true;
+    }
+    if (BASE_CHANGED) {
+      this.overrideData.set(BASE, BASE_OFFSET);
+      RECORD.overrideDirty = true;
+    }
+    this.pendingUpdates ||= STATE_CHANGED || BASE_CHANGED;
+    RECORD.mode = "gpu";
+    RECORD.reason = null;
+    return handle;
+  }
+  prepareCpu(handle, parts, morph, reason) {
+    const RECORD = this._instance(handle);
+    const PART_COUNT = this.sources.get(RECORD.source).program.partCount;
+    if (!Array.isArray(parts) || parts.length !== PART_COUNT || !morph || morph.length !== 2) {
+      throw new TypeError("Matching CPU part poses and morph weights required");
+    }
+    if (RECORD.usedFrame === this.device.stats.frame) {
+      this._boundary();
+    }
+    const OFFSET = RECORD.row * POSE_WIDTH * 4;
+    for (let i = 0; i < PART_COUNT; i++) {
+      const POSE = parts[i];
+      const MATRIX = POSE.transform;
+      this.cpuData.set(
+        [
+          MATRIX[0],
+          MATRIX[2],
+          MATRIX[4],
+          0,
+          MATRIX[1],
+          MATRIX[3],
+          MATRIX[5],
+          0,
+          morph[0] + (POSE.morph?.[0] ?? 0),
+          morph[1] + (POSE.morph?.[1] ?? 0),
+          POSE.visible === false ? 0 : POSE.opacity ?? 1,
+          POSE.depth ?? 0
+        ],
+        OFFSET + i * 12
+      );
+    }
+    RECORD.mode = "cpu";
+    RECORD.reason = reason;
+    RECORD.cpuDirty = true;
+    this.pendingUpdates = true;
+    return handle;
+  }
+  resolve(handle) {
+    const RECORD = this._instance(handle);
+    if (!RECORD.mode) {
+      throw new Error("Prepare a player pose before drawing");
+    }
+    if (RECORD.mode === "cpu" && !this.cpuTexture) {
+      this.cpuTexture = this.device.createDataTexture(POSE_WIDTH, this.capacity, { data: this.cpuData });
+      for (const ROW of this.instances.values()) {
+        ROW.cpuDirty = false;
+      }
+    }
+    const PART_COUNT = this.sources.get(RECORD.source).program.partCount;
+    if (RECORD.mode === "gpu") {
+      return {
+        row: RECORD.row,
+        kind: "program",
+        texture: this.programTexture,
+        textures: [this.programTexture, this.stateTexture, this.overrideTexture],
+        programWidth: this.programTexture.width,
+        partCount: PART_COUNT
+      };
+    }
+    return {
+      row: RECORD.row,
+      kind: "matrix",
+      texture: this.cpuTexture,
+      textures: [this.cpuTexture],
+      programWidth: 0,
+      partCount: PART_COUNT
+    };
+  }
+  noteDraw(handle) {
+    const RECORD = this._instance(handle);
+    RECORD.usedFrame = this.device.stats.frame;
+    if (RECORD.mode === "gpu") {
+      this.frameMetrics.gpuDrawInstances++;
+    } else {
+      this.frameMetrics.cpuDrawInstances++;
+      this._fallback(RECORD.reason ?? "cpuPose");
+    }
+  }
+  _fallback(reason) {
+    this.frameMetrics.fallbackReasons[reason] = (this.frameMetrics.fallbackReasons[reason] ?? 0) + 1;
+  }
+  recordFallback(reason) {
+    this.frameMetrics.uniformDrawInstances++;
+    this._fallback(reason);
+  }
+  _uploadRows(key, dirtyKey, texture, width, metric) {
+    let first = Infinity;
+    let last = -1;
+    const UPLOADING = [];
+    for (const RECORD of this.instances.values()) {
+      this.frameMetrics.flushRecordVisits++;
+      if (RECORD[dirtyKey]) {
+        first = Math.min(first, RECORD.row);
+        last = Math.max(last, RECORD.row);
+        UPLOADING.push(RECORD);
+      }
+    }
+    if (last < 0) {
+      return;
+    }
+    const DATA = this[key].subarray(first * width * 4, (last + 1) * width * 4);
+    this.device.updateDataTexture(texture, DATA, { y: first, width, height: last - first + 1 });
+    for (const RECORD of UPLOADING) {
+      RECORD[dirtyKey] = false;
+    }
+    this.frameMetrics[metric] += DATA.byteLength;
+  }
+  flushUpdates() {
+    this._ready();
+    this.frameMetrics.flushCalls++;
+    if (!this.instances.size) {
+      this.pendingUpdates = false;
+      return;
+    }
+    if (!this.pendingUpdates) {
+      this.frameMetrics.cleanFlushSkips++;
+      return;
+    }
+    if (this.cpuTexture) {
+      this._uploadRows("cpuData", "cpuDirty", this.cpuTexture, POSE_WIDTH, "cpuPoseUploadBytes");
+    }
+    this._uploadRows("stateData", "stateDirty", this.stateTexture, 2, "stateUploadBytes");
+    this._uploadRows("overrideData", "overrideDirty", this.overrideTexture, OVERRIDE_WIDTH, "overrideUploadBytes");
+    this.pendingUpdates = false;
+  }
+  stats() {
+    const TOTAL = this.frameMetrics.gpuDrawInstances + this.frameMetrics.cpuDrawInstances + this.frameMetrics.uniformDrawInstances;
+    return {
+      ...this.frameMetrics,
+      fallbackReasons: { ...this.frameMetrics.fallbackReasons },
+      totalDrawInstances: TOTAL,
+      cpuFallbackRatio: TOTAL ? (this.frameMetrics.cpuDrawInstances + this.frameMetrics.uniformDrawInstances) / TOTAL : 0,
+      liveInstances: this.instances.size,
+      sources: this.sources.size,
+      capacity: this.capacity,
+      gpuUnavailableReason: this.gpuUnavailableReason,
+      stateBytes: this.capacity * (8 + OVERRIDE_WIDTH * 4) * 4,
+      cpuPoseBytes: this.cpuTexture ? POSE_WIDTH * this.capacity * 16 : 0,
+      programBytes: this.programTexture ? this.programTexture.width * this.programTexture.height * 16 : 0
+    };
+  }
+  dispose() {
+    if (this.disposed) {
+      return;
+    }
+    this._boundary();
+    this._releaseAtlas();
+    if (this.programTexture) {
+      this.device.deleteTexture(this.programTexture);
+    }
+    this.instances.clear();
+    this.sources.clear();
+    this.device.canvas.removeEventListener("webglcontextrestored", this.onRestored);
+    this.disposed = true;
+  }
+};
+
+// modules/rendering/pose-shader.js
+var POSE_PROGRAM_FUNCTIONS = `uniform sampler2D u_program;uniform sampler2D u_state;uniform sampler2D u_overrides;uniform int u_programWidth;
+vec4 poseData(int base,int at){int i=at+base;return texelFetch(u_program,ivec2(i%u_programWidth,i/u_programWidth),0);}
+float poseChannel(int base,int header,float time){vec4 h=poseData(base,header);float value=h.z;
+ for(int i=0;i<64;i++){if(i>=int(h.y))break;vec4 s=poseData(base,int(h.x)+i*2);if(time<s.z)break;
+ if(time>=s.w){value=s.y;continue;}float t=clamp((time-s.z)/(s.w-s.z),0.0,1.0);float ease=poseData(base,int(h.x)+i*2+1).x;
+ if(ease>1.5)t=1.0-(1.0-t)*(1.0-t);else if(ease>0.5)t=0.5-0.5*cos(3.141592653589793*t);
+ value=mix(s.x,s.y,t);break;}return value;}
+mat3 poseLocal(int base,int part,int header,float time,int row,out float opacity){
+ vec4 b0=texelFetch(u_overrides,ivec2(part*2,row),0);vec4 b1=texelFetch(u_overrides,ivec2(part*2+1,row),0);
+ int at=header+part*6;vec2 translation=b0.xy+vec2(poseChannel(base,at,time),poseChannel(base,at+1,time));
+ float rotation=b0.z+poseChannel(base,at+2,time);float sx=b0.w*poseChannel(base,at+3,time);float sy=b1.x*poseChannel(base,at+4,time);
+ float c=cos(rotation);float s=sin(rotation);vec2 x=vec2(c,s)*sx;vec2 y=vec2(-s,c)*sy;vec2 pivot=poseData(base,part).xy;
+ opacity=b1.y*b1.z*poseChannel(base,at+5,time);return mat3(vec3(x,0.0),vec3(y,0.0),vec3(pivot+translation-x*pivot.x-y*pivot.y,1.0));}
+void poseEval(int part,int row,out vec4 row0,out vec4 row1,out vec4 pose){
+ vec4 playback=texelFetch(u_state,ivec2(0,row),0);vec4 morph=texelFetch(u_state,ivec2(1,row),0);
+ int base=int(morph.w);float time;
+ if(playback.z<0.5)time=clamp(playback.y,0.0,playback.w);
+ else if(playback.z<1.5)time=mod(playback.y,playback.w);
+ else{float point=mod(playback.y,playback.w*2.0);time=point<=playback.w?point:playback.w*2.0-point;}
+ mat3 matrix=mat3(1.0);float alpha=1.0;int current=part;
+ for(int depth=0;depth<16;depth++){if(current<0)break;float opacity;mat3 m=poseLocal(base,current,int(playback.x),time,row,opacity);matrix=m*matrix;alpha*=opacity;current=int(poseData(base,current).z);}
+ if((int(morph.z)&(1<<part))!=0)alpha=0.0;
+ row0=vec4(matrix[0][0],matrix[1][0],matrix[2][0],0.0);row1=vec4(matrix[0][1],matrix[1][1],matrix[2][1],0.0);pose=vec4(morph.xy,alpha,0.0);}
+`;
+
 // modules/rendering/vector-renderer.js
 var IDENTITY = Object.freeze([1, 0, 0, 1, 0, 0]);
-var VERTEX = `attribute vec2 a_position; attribute vec2 a_uv; attribute vec4 a_color;
-uniform mat3 u_projection; varying vec2 v_uv; varying vec4 v_color;
-void main(){vec3 p=u_projection*vec3(a_position,1.0);gl_Position=vec4(p.xy,0.0,1.0);v_uv=a_uv;v_color=a_color;}`;
+var VERTEX_FLOATS = 20;
+var VERTEX_BYTES = VERTEX_FLOATS * 4;
+var MODE_POSED = 4;
+var ARC_TOLERANCE = 0.125;
+var MODE_PRIMITIVE = 5;
+var POSED_CORNERS = [
+  [0, 0],
+  [1, 0],
+  [1, 1],
+  [0, 0],
+  [1, 1],
+  [0, 1]
+];
+var VERTEX_ATTRIBUTES = [
+  { name: "a_position", size: 2, offset: 0 },
+  { name: "a_uv", size: 2, offset: 8 },
+  { name: "a_color", size: 4, offset: 16 },
+  { name: "a_paint", size: 4, offset: 32 },
+  { name: "a_radial", size: 4, offset: 48 },
+  { name: "a_rect", size: 4, offset: 64 }
+];
+var FRAGMENT_VARYINGS = "varying highp vec2 v_uv; varying vec4 v_color; varying highp vec4 v_paint; varying highp vec4 v_radial; varying highp vec4 v_rect;";
+var POSED_CORNER = `if(a_paint.z>3.5&&a_paint.z<4.5){vec4 row0;vec4 row1;vec4 pose;
+poseEval(int(a_rect.w+0.5),int(a_rect.z+0.5),row0,row1,pose);
+vec2 q=vec2(dot(row0.xy,a_position)+row0.z,dot(row1.xy,a_position)+row1.z);
+position=vec2(a_radial.x*q.x+a_radial.z*q.y+a_rect.x,a_radial.y*q.x+a_radial.w*q.y+a_rect.y);
+color.a*=pose.z;paint.z=0.0;radial=vec4(0.0);rect=vec4(0.0);}`;
+function vertexShader(posed) {
+  return `attribute vec2 a_position; attribute vec2 a_uv; attribute vec4 a_color; attribute vec4 a_paint; attribute vec4 a_radial; attribute vec4 a_rect;
+uniform mat3 u_projection; ${FRAGMENT_VARYINGS}${posed ? " varying highp vec2 v_position;" : ""}
+${posed ? POSE_PROGRAM_FUNCTIONS : ""}
+void main(){vec2 position=a_position;vec4 color=a_color;vec4 paint=a_paint;vec4 radial=a_radial;vec4 rect=a_rect;
+${posed ? POSED_CORNER : ""}
+vec3 p=u_projection*vec3(position,1.0);gl_Position=vec4(p.xy,0.0,1.0);${posed ? "v_position=position;" : ""}v_uv=a_uv;v_color=color;v_paint=paint;v_radial=radial;v_rect=rect;}`;
+}
+var VERTEX = vertexShader(false);
 var CLIP_VERTEX = `attribute vec2 a_position;uniform mat3 u_projection;uniform mat3 u_transform;void main(){vec3 p=u_projection*u_transform*vec3(a_position,1.0);gl_Position=vec4(p.xy,0.0,1.0);}`;
 var CLIP_FRAGMENT = "precision mediump float;void main(){gl_FragColor=vec4(1.0);}";
-var FRAGMENT = `precision mediump float; uniform sampler2D u_texture; uniform float u_textured; uniform float u_radial; uniform vec4 u_radial_params; uniform float u_whiteFlash;
-varying vec2 v_uv; varying vec4 v_color;
+var FINISH = "float a=texel.a*v_color.a;vec3 rgb=v_paint.y>1.5?v_color.rgb*a:mix(texel.rgb*v_color.rgb*v_color.a,vec3(a),v_paint.y);gl_FragColor=vec4(rgb,a);";
+var PRIMITIVE_OUTSIDE = `bool primitiveOutside(vec2 l,vec4 p,vec4 m){
+  float kind=p.x,stroke=p.y,width=p.z,option=p.w;
+  if(kind<0.5){
+    if(stroke<0.5)return length(l)>1.0;
+    float ql=length(l);vec2 n=ql>0.000001?l/ql:vec2(1.0,0.0);float det=m.x*m.w-m.y*m.z;
+    vec2 g=vec2(m.w*n.x-m.z*n.y,-m.y*n.x+m.x*n.y)/max(abs(det),0.000001);
+    return abs((ql-1.0)/max(length(g),0.000001))>width*0.5;
+  }
+  if(kind<1.5){
+    if(stroke<0.5)return max(abs(l.x),abs(l.y))>1.0;
+    float sx=length(vec2(m.x,m.z));float sy=length(vec2(m.y,m.w));
+    if(option>0.5){
+      float ox=1.0+width/(2.0*max(sx,0.000001));float oy=1.0+width/(2.0*max(sy,0.000001));
+      float ix=max(0.0,1.0-width/(2.0*max(sx,0.000001)));float iy=max(0.0,1.0-width/(2.0*max(sy,0.000001)));
+      return max(abs(l.x)/ox,abs(l.y)/oy)>1.0||max(abs(l.x)/max(ix,0.000001),abs(l.y)/max(iy,0.000001))<1.0;
+    }
+    vec2 q=(abs(l)-vec2(1.0))*vec2(sx,sy);float sd=length(max(q,vec2(0.0)))+min(max(q.x,q.y),0.0);
+    return abs(sd)>width*0.5;
+  }
+  float halfLength=length(vec2(m.x,m.z));float halfWidth=length(vec2(m.y,m.w));
+  float x=l.x*halfLength;float y=l.y*halfWidth;float center=halfLength-(option>0.5?halfWidth:0.0);float d;
+  if(option<0.5)d=max(abs(x)-center,abs(y)-halfWidth);
+  else if(option<1.5)d=max(abs(x)-center-halfWidth,abs(y)-halfWidth);
+  else d=length(vec2(max(abs(x)-center,0.0),y))-halfWidth;
+  return d>0.0;
+}`;
+function fragmentShader(planes) {
+  const PLANES = planes ? `varying highp vec2 v_position; uniform vec3 u_planes[${planes}]; uniform int u_planeCount;` : "";
+  const CLIP = planes ? `for(int i=0;i<${planes};i++){if(i>=u_planeCount)break;if(dot(u_planes[i],vec3(v_position,1.0))<0.0)discard;}` : "";
+  return `precision mediump float; precision mediump sampler2DArray; uniform sampler2DArray u_texture;
+${FRAGMENT_VARYINGS}${PLANES}
 float radialParameter(vec2 q){
-  vec2 d=u_radial_params.xy;float r0=u_radial_params.z,dr=u_radial_params.w;
+  vec2 d=v_radial.xy;float r0=v_radial.z,dr=v_radial.w;
   float a=dot(d,d)-dr*dr,b=-2.0*(dot(q,d)+r0*dr),c=dot(q,q)-r0*r0;
   if(abs(a)<0.000001){if(abs(b)<0.000001)return -10000.0;float t=-c/b;return r0+dr*t>0.0?t:-10000.0;}
   float discriminant=b*b-4.0*a*c;if(discriminant<0.0)return -10000.0;
   float root=sqrt(max(discriminant,0.0)),t0=(-b-root)/(2.0*a),t1=(-b+root)/(2.0*a),chosen=-10000.0;
   if(r0+dr*t0>0.0)chosen=t0;if(r0+dr*t1>0.0)chosen=max(chosen,t1);return chosen;
 }
-void main(){if(u_radial>1.5)discard;float t=u_radial>0.5?radialParameter(v_uv):0.0;if(u_radial>0.5&&t< -1000.0)discard;vec2 uv=u_radial>0.5?vec2(clamp(t,0.0,1.0),0.5):v_uv;vec4 texel=mix(vec4(1.0),texture2D(u_texture,uv),u_textured);float a=texel.a*v_color.a;vec3 rgb=mix(texel.rgb*v_color.rgb*v_color.a,vec3(a),u_whiteFlash);gl_FragColor=vec4(rgb,a);}`;
-var NON_RADIAL_FRAGMENT = `precision mediump float; uniform sampler2D u_texture; uniform float u_textured; uniform float u_whiteFlash;
-varying vec2 v_uv; varying vec4 v_color;
-void main(){vec4 texel=mix(vec4(1.0),texture2D(u_texture,v_uv),u_textured);float a=texel.a*v_color.a;vec3 rgb=mix(texel.rgb*v_color.rgb*v_color.a,vec3(a),u_whiteFlash);gl_FragColor=vec4(rgb,a);}`;
+${PRIMITIVE_OUTSIDE}
+void main(){${CLIP}if(v_paint.z>4.5){if(primitiveOutside(v_uv,v_radial,v_rect))discard;gl_FragColor=vec4(v_color.rgb*v_color.a,v_color.a);return;}
+if(v_paint.z>1.5&&v_paint.z<2.5)discard;vec2 uv=v_uv;
+if(v_paint.z>2.5){uv=v_rect.xy+vec2(clamp(v_uv.x,0.0,1.0),0.5)*v_rect.zw;}
+else if(v_paint.z>0.5){float t=radialParameter(v_uv);if(t< -1000.0)discard;uv=v_rect.xy+vec2(clamp(t,0.0,1.0),0.5)*v_rect.zw;}
+if(v_paint.w>0.5){vec2 size=vec2(textureSize(u_texture,0).xy);uv=(floor(uv*size)+0.5)/size;}
+vec4 texel=texture2D(u_texture,vec3(uv,floor(v_paint.x+0.5)));${FINISH}}`;
+}
+var FRAGMENT = fragmentShader(0);
+var GROUP_FRAGMENT = `precision mediump float; uniform sampler2D u_texture;
+${FRAGMENT_VARYINGS}
+void main(){vec4 texel=texture2D(u_texture,v_uv);${FINISH}}`;
 var FINITE = (n, label) => {
   if (!Number.isFinite(n)) {
     throw new TypeError(`${label} must be finite`);
@@ -1608,14 +2753,14 @@ var VectorRenderer = class {
     if (!Number.isSafeInteger(maxVertices) || maxVertices < 3 || !Number.isSafeInteger(initialVertices) || initialVertices < 3 || initialVertices > maxVertices) {
       throw new RangeError("3 <= initialVertices <= maxVertices is required");
     }
-    if (initialVertices * 32 > device.maxBufferBytes) {
+    if (initialVertices * VERTEX_BYTES > device.maxBufferBytes) {
       throw new RangeError("initial vector buffer exceeds the device byte limit");
     }
     this.device = device;
     this.gl = device.gl;
     this.canvas = device.canvas;
     this.glyphAtlas = glyphAtlas;
-    this.maxVertices = Math.min(maxVertices, Math.floor(device.maxBufferBytes / 32));
+    this.maxVertices = Math.min(maxVertices, Math.floor(device.maxBufferBytes / VERTEX_BYTES));
     this.maxClipPlanes = Math.max(
       1,
       Math.min(32, device.gl.getParameter(device.gl.MAX_FRAGMENT_UNIFORM_VECTORS) - 2)
@@ -1623,33 +2768,18 @@ var VectorRenderer = class {
     this.pipeline = device.createPipeline({
       vertex: VERTEX,
       fragment: FRAGMENT,
-      stride: 32,
-      attributes: [
-        {
-          name: "a_position",
-          size: 2,
-          offset: 0
-        },
-        {
-          name: "a_uv",
-          size: 2,
-          offset: 8
-        },
-        {
-          name: "a_color",
-          size: 4,
-          offset: 16
-        }
-      ],
+      stride: VERTEX_BYTES,
+      attributes: VERTEX_ATTRIBUTES,
       uniforms: {
         u_projection: "matrix3fv",
-        u_texture: "1i",
-        u_textured: "1f",
-        u_radial: "1f",
-        u_radial_params: "4f",
-        u_whiteFlash: "1f"
+        u_texture: "1i"
       }
     });
+    this.posePipeline = null;
+    this.poseBatch = null;
+    this.clipSerial = 0;
+    this.batchSerial = 0;
+    this.planeScratch = new Float32Array(this.maxClipPlanes * 3);
     this.clipPipeline = device.createPipeline({
       vertex: CLIP_VERTEX,
       fragment: CLIP_FRAGMENT,
@@ -1667,24 +2797,19 @@ var VectorRenderer = class {
       }
     });
     this.buffer = device.createVertexBuffer({
-      capacityBytes: initialVertices * 32
+      capacityBytes: initialVertices * VERTEX_BYTES
     });
     this.dynamicClipBuffer = device.createVertexBuffer({
       capacityBytes: 0
     });
-    this.white = device.createTexture(
-      {
-        width: 1,
-        height: 1,
-        data: new Uint8Array([255, 255, 255, 255])
-      },
-      {
-        format: "rgba",
-        premultiplied: true,
-        filter: "nearest"
-      }
+    this.atlas = device.textureAtlas;
+    this.whiteRegion = this.atlas.allocate(1, 1);
+    this.atlas.upload(
+      this.whiteRegion,
+      { width: 1, height: 1, data: new Uint8Array([255, 255, 255, 255]) },
+      { premultiplied: true, extendEdges: true }
     );
-    this.vertices = new Float32Array(initialVertices * 8);
+    this.vertices = new Float32Array(initialVertices * VERTEX_FLOATS);
     this.count = 0;
     this.matrix = IDENTITY.slice();
     this.stack = [];
@@ -1694,10 +2819,13 @@ var VectorRenderer = class {
     this.clips = [];
     this.groups = [];
     this.groupTargets = [];
-    this.activeTexture = this.white;
+    this.activeTarget = null;
+    this.activePaint = null;
     this.activeRadial = false;
     this.activeWhiteFlash = false;
     this.activeGradient = null;
+    this.paintTemplate = new Float32Array(12);
+    this._setPaint(this.whiteRegion);
     this.blend = "source-over";
     this.stencilClips = [];
     this.clipPaths = /* @__PURE__ */ new Map();
@@ -1705,8 +2833,14 @@ var VectorRenderer = class {
     this.stencilDepth = 0;
     this.stencilNeedsRebuild = false;
     this.state = "ready";
+    this.unregisterBatcher = device.registerBatcher(() => {
+      if (this.state === "ready" && this.device.active) {
+        this._submit();
+      }
+    });
     this.onLost = () => {
       this.count = 0;
+      this.poseBatch = null;
       this.stencilNeedsRebuild = this.stencilClips.length > 0;
     };
     this.onRestored = () => {
@@ -1724,34 +2858,16 @@ var VectorRenderer = class {
     this.canvas.addEventListener("webglcontextlost", this.onLost);
     this.canvas.addEventListener("webglcontextrestored", this.onRestored);
     this.projection = new Float32Array([2 / this.canvas.width, 0, 0, 0, -2 / this.canvas.height, 0, -1, 1, 1]);
-    this.nonRadialPipeline = null;
+    this.groupPipeline = null;
     try {
-      this.nonRadialPipeline = device.createPipeline({
+      this.groupPipeline = device.createPipeline({
         vertex: VERTEX,
-        fragment: NON_RADIAL_FRAGMENT,
-        stride: 32,
-        attributes: [
-          {
-            name: "a_position",
-            size: 2,
-            offset: 0
-          },
-          {
-            name: "a_uv",
-            size: 2,
-            offset: 8
-          },
-          {
-            name: "a_color",
-            size: 4,
-            offset: 16
-          }
-        ],
+        fragment: GROUP_FRAGMENT,
+        stride: VERTEX_BYTES,
+        attributes: VERTEX_ATTRIBUTES,
         uniforms: {
           u_projection: "matrix3fv",
-          u_texture: "1i",
-          u_textured: "1f",
-          u_whiteFlash: "1f"
+          u_texture: "1i"
         }
       });
     } catch (error) {
@@ -1761,6 +2877,18 @@ var VectorRenderer = class {
       }
       throw error;
     }
+  }
+  get clips() {
+    return this._clips;
+  }
+  // Every change bumps the serial, so a batch can tell cheaply whether its clip may have changed.
+  set clips(value) {
+    this._clips = value;
+    this.clipSerial++;
+  }
+  _pushClip(contour) {
+    this._clips.push(contour);
+    this.clipSerial++;
   }
   _frame() {
     if (this.state !== "ready") {
@@ -1876,10 +3004,10 @@ var VectorRenderer = class {
     if (!S) {
       throw new Error("restore without save");
     }
-    this._submit();
     this.matrix = S.matrix;
     this.clips = S.clips;
     if (S.stencilClips.length !== this.stencilClips.length || S.stencilClips.some((clip, i) => clip !== this.stencilClips[i])) {
+      this._submit();
       this.stencilClips = S.stencilClips;
       this._rebuildStencil();
     }
@@ -1921,7 +3049,7 @@ var VectorRenderer = class {
       point(this.matrix, x, y + height)
     ];
     if (width === 0 || height === 0) {
-      this.clips.push(CONTOUR);
+      this._pushClip(CONTOUR);
     } else {
       this._addConvexClip(CONTOUR);
     }
@@ -1939,7 +3067,7 @@ var VectorRenderer = class {
       0
     );
     if (Math.abs(AREA) < 1e-9) {
-      this.clips.push(contour);
+      this._pushClip(contour);
       return;
     }
     const PLANE_COUNT = this.clips.reduce((sum, polygon) => sum + polygon.length, 0);
@@ -1947,7 +3075,7 @@ var VectorRenderer = class {
       this._pushDynamicStencilClip(contour);
       return;
     }
-    this.clips.push(contour);
+    this._pushClip(contour);
   }
   _pushDynamicStencilClip(contour) {
     if (!this.device.activeStencilAvailable) {
@@ -2190,30 +3318,51 @@ var VectorRenderer = class {
     }
     return poly;
   }
-  _emitTriangle(a, b, c, color2, uv = null) {
-    rgba(color2);
+  /** Makes room for `vertexCount` more vertices, submitting first when the buffer limit would be exceeded. */
+  _reserve(vertexCount) {
+    if (this.count + vertexCount > this.maxVertices) {
+      this._submit();
+    }
+    if (!this.count) {
+      this.batchSerial = this.clipSerial;
+    }
+    if ((this.count + vertexCount) * VERTEX_FLOATS > this.vertices.length) {
+      const SIZE = Math.min(this.maxVertices, Math.max(this.count + vertexCount, this.count * 2));
+      const NEXT = new Float32Array(SIZE * VERTEX_FLOATS);
+      NEXT.set(this.vertices.subarray(0, this.count * VERTEX_FLOATS));
+      this.vertices = NEXT;
+    }
+  }
+  /** A batch holding posed sprites tests one plane set per fragment; CPU-clipped vertices must lie inside it. */
+  _planesAllow() {
+    const BATCH = this.poseBatch;
+    if (!BATCH || BATCH.planeCount === 0 || BATCH.serial === this.clipSerial) {
+      return true;
+    }
+    return clipPlanes(this.clips, this.maxClipPlanes).key === BATCH.planeKey;
+  }
+  _emitTriangle(a, b, c, color, uv = null) {
+    rgba(color);
+    this._emit(a, b, c, color, uv);
+  }
+  /**
+   * Emits one triangle; the caller has validated `color`. Without a clip, uv or gradient (the common case of every
+   * fill and stroke) the three vertices are written directly, without temporary arrays.
+   */
+  _emit(a, b, c, color, uv = null) {
+    if (!this._planesAllow()) {
+      this._submit();
+    }
+    if (!uv && !this.clips.length && !this.activeGradient) {
+      this._reserve(3);
+      const U = this.flatUV[0], V = this.flatUV[1];
+      this._writeVertex(a.x, a.y, a.u ?? U, a.v ?? V, color);
+      this._writeVertex(b.x, b.y, b.u ?? U, b.v ?? V, color);
+      this._writeVertex(c.x, c.y, c.u ?? U, c.v ?? V, color);
+      return;
+    }
     if (this.activeGradient && !uv) {
       uv = [this._gradientUV(a), this._gradientUV(b), this._gradientUV(c)];
-    }
-    if (!this.clips.length && !uv) {
-      if (this.count + 3 > this.maxVertices) {
-        this._submit();
-      }
-      if (this.count + 3 > this.vertices.length / 8) {
-        const SIZE = Math.min(this.maxVertices, Math.max(this.count + 3, this.vertices.length / 4));
-        const NEXT = new Float32Array(SIZE * 8);
-        NEXT.set(this.vertices);
-        this.vertices = NEXT;
-      }
-      const DATA = this.vertices;
-      for (let i = 0; i < 3; i++) {
-        const POINT = i === 0 ? a : i === 1 ? b : c, K = this.count++ * 8;
-        DATA[K] = POINT.x;
-        DATA[K + 1] = POINT.y;
-        DATA[K + 2] = DATA[K + 3] = 0;
-        DATA.set(color2, K + 4);
-      }
-      return;
     }
     const POLY = this.clips.length ? this._clipTriangle(a, b, c, uv) : uv ? [a, b, c].map((point2, i) => ({
       ...point2,
@@ -2221,47 +3370,64 @@ var VectorRenderer = class {
       v: uv[i][1]
     })) : [a, b, c];
     for (let i = 1; i + 1 < POLY.length; i++) {
-      if (this.count + 3 > this.maxVertices) {
-        this._submit();
-      }
-      if (this.count + 3 > this.vertices.length / 8) {
-        const SIZE = Math.min(this.maxVertices, Math.max(this.count + 3, this.vertices.length / 4));
-        const NEXT = new Float32Array(SIZE * 8);
-        NEXT.set(this.vertices);
-        this.vertices = NEXT;
-      }
+      this._reserve(3);
       for (const POINT of [POLY[0], POLY[i], POLY[i + 1]]) {
-        const K = this.count++ * 8;
+        const K = this.count++ * VERTEX_FLOATS;
         this.vertices[K] = POINT.x;
         this.vertices[K + 1] = POINT.y;
-        this.vertices[K + 2] = POINT.u ?? 0;
-        this.vertices[K + 3] = POINT.v ?? 0;
-        this.vertices.set(color2, K + 4);
+        this.vertices[K + 2] = POINT.u ?? this.flatUV[0];
+        this.vertices[K + 3] = POINT.v ?? this.flatUV[1];
+        this.vertices.set(color, K + 4);
+        this.vertices.set(this.paintTemplate, K + 8);
       }
     }
+  }
+  _writeVertex(x, y, u, v, color) {
+    const K = this.count++ * VERTEX_FLOATS, DATA = this.vertices;
+    DATA[K] = x;
+    DATA[K + 1] = y;
+    DATA[K + 2] = u;
+    DATA[K + 3] = v;
+    DATA[K + 4] = color[0];
+    DATA[K + 5] = color[1];
+    DATA[K + 6] = color[2];
+    DATA[K + 7] = color[3];
+    DATA.set(this.paintTemplate, K + 8);
   }
   _submit() {
     if (!this.count) {
       return;
     }
     this.device.stats.vectorSubmissions++;
-    const TEXTURE = this.activeTexture ?? this.white, GRADIENT = this.activeGradient, RADIAL = this.activeRadial;
-    this.device.uploadVertices(this.buffer, this.vertices.subarray(0, this.count * 8));
+    const POSED = this.poseBatch;
+    this.poseBatch = null;
+    if (POSED) {
+      POSED.owner.flushUpdates();
+      this.posePipeline ??= this._createPosePipeline();
+      this.planeScratch.fill(0);
+      if (POSED.planes) {
+        this.planeScratch.set(POSED.planes);
+      }
+    }
+    this.device.uploadVertices(this.buffer, this.vertices.subarray(0, this.count * VERTEX_FLOATS));
     this.device.draw({
-      pipeline: RADIAL ? this.pipeline : this.nonRadialPipeline,
+      pipeline: POSED ? this.posePipeline : this.activeTarget ? this.groupPipeline : this.pipeline,
       buffer: this.buffer,
       count: this.count,
-      uniforms: {
+      uniforms: POSED ? {
         u_projection: this.projection,
-        u_texture: 0,
-        u_textured: TEXTURE === this.white ? 0 : 1,
-        u_whiteFlash: this.activeWhiteFlash ? 1 : 0,
-        ...RADIAL ? {
-          u_radial: GRADIENT?.radialEmpty ? 2 : 1,
-          u_radial_params: GRADIENT?.radialParams ?? [0, 0, 0, 0]
-        } : {}
+        u_program: 0,
+        u_state: 1,
+        u_overrides: 2,
+        u_texture: 3,
+        u_programWidth: POSED.programWidth,
+        "u_planes[0]": this.planeScratch,
+        u_planeCount: POSED.planeCount
+      } : {
+        u_projection: this.projection,
+        u_texture: 0
       },
-      textures: [TEXTURE],
+      textures: POSED ? [...POSED.textures, this.atlas.texture] : [this.activeTarget ?? this.atlas.texture],
       blend: this.blend,
       stencil: this.stencilDepth ? {
         func: "equal",
@@ -2273,6 +3439,24 @@ var VectorRenderer = class {
     });
     this.count = 0;
   }
+  _createPosePipeline() {
+    return this.device.createPipeline({
+      vertex: vertexShader(true),
+      fragment: fragmentShader(this.maxClipPlanes),
+      stride: VERTEX_BYTES,
+      attributes: VERTEX_ATTRIBUTES,
+      uniforms: {
+        u_projection: "matrix3fv",
+        u_program: "1i",
+        u_state: "1i",
+        u_overrides: "1i",
+        u_texture: "1i",
+        u_programWidth: "1i",
+        "u_planes[0]": "3fv",
+        u_planeCount: "1i"
+      }
+    });
+  }
   // Only source-over and the additive 'lighter' are offered; a change submits what the other operation queued.
   setBlend(blend) {
     if (blend !== "source-over" && blend !== "lighter") {
@@ -2283,33 +3467,223 @@ var VectorRenderer = class {
       this.blend = blend;
     }
   }
-  _useTexture(texture, { radial = false, whiteFlash = false, gradient = null } = {}) {
-    if (this.activeTexture !== texture || this.activeRadial !== radial || this.activeWhiteFlash !== whiteFlash || this.activeGradient?.gradient !== gradient?.gradient) {
+  /**
+   * Selects the atlas region later vertices sample. Paint is vertex data, so changing it never submits: only the
+   * switch between the atlas and an offscreen group target (a different sampler) does.
+   */
+  _setPaint(region, { radial = false, whiteFlash = false, gradient = null } = {}) {
+    if (this.activeTarget) {
       this._submit();
+      this.activeTarget = null;
     }
-    this.activeTexture = texture;
+    const [U, V, W, H] = region.uvRect, MODE = radial ? gradient?.radialEmpty ? 2 : 1 : gradient ? 3 : 0, PARAMS = radial ? gradient?.radialParams ?? [0, 0, 0, 0] : [0, 0, 0, 0];
     this.activeRadial = radial;
     this.activeWhiteFlash = whiteFlash;
     this.activeGradient = gradient;
+    this.activeRegion = region;
+    this.flatUV = [U + W / 2, V + H / 2];
+    this.paintTemplate.set([
+      region.layer,
+      whiteFlash ? 1 : 0,
+      MODE,
+      region.filter === "nearest" ? 1 : 0,
+      ...PARAMS,
+      U,
+      V,
+      W,
+      H
+    ]);
+  }
+  /** Switches later vertices to plain per-vertex paint (no atlas region, gradient or group target). */
+  _useVertexPaint(template, whiteFlash = false) {
+    if (this.activeTarget) {
+      this._submit();
+      this.activeTarget = null;
+    }
+    this.activeRegion = null;
+    this.activeRadial = false;
+    this.activeWhiteFlash = whiteFlash;
+    this.activeGradient = null;
+    this.paintTemplate.set(template);
+  }
+  /**
+   * Fills or strokes one analytic primitive: `matrix` maps the local square [-1,1]^2 to screen space (the caller
+   * has applied the current transform) and `params` is [kind (0 ellipse, 1 rectangle, 2 line), stroke, width, option].
+   */
+  drawPrimitive({ matrix, color, params }) {
+    this._frame();
+    rgba(color);
+    if (matrix?.length !== 6 || params?.length !== 4) {
+      throw new TypeError("drawPrimitive requires a 6-value matrix and 4 parameters");
+    }
+    for (const VALUE of [...matrix, ...params]) {
+      FINITE(VALUE, "drawPrimitive value");
+    }
+    const M = matrix;
+    this._useVertexPaint([0, 0, MODE_PRIMITIVE, 0, ...params, M[0], M[2], M[1], M[3]]);
+    const CORNERS = [
+      [-1, -1],
+      [1, -1],
+      [1, 1],
+      [-1, 1]
+    ];
+    const WORLD = CORNERS.map((corner) => point(M, corner[0], corner[1]));
+    this._emitTriangle(WORLD[0], WORLD[1], WORLD[2], color, [CORNERS[0], CORNERS[1], CORNERS[2]]);
+    this._emitTriangle(WORLD[0], WORLD[2], WORLD[3], color, [CORNERS[0], CORNERS[2], CORNERS[3]]);
+  }
+  /**
+   * Draws atlas rectangles in painter order. Run i places `localRects[i]` (x, y, width, height) on the current
+   * transform composed with `matrix` and samples `uvRects[i]` of `layer`; uv and size may be negative for content that
+   * was rendered rather than uploaded. With `pose` (a handle of a PoseRenderer, evaluated on the GPU from its
+   * keyframe program) every run also follows the pose part `parts[i]`. All runs join the current batch, so one
+   * blend/clip state is one draw whatever mix of sprites, shapes and glyphs it holds.
+   */
+  drawQuads({
+    layer,
+    uvRects,
+    localRects,
+    parts = null,
+    pose = null,
+    matrix = IDENTITY,
+    color = [1, 1, 1, 1],
+    alpha = 1,
+    whiteFlash = false,
+    forceColor = false,
+    filter = "linear"
+  } = {}) {
+    this._frame();
+    const COUNT = uvRects?.length / 4;
+    if (!Number.isSafeInteger(layer) || layer < 0 || !Number.isInteger(COUNT) || COUNT < 1 || localRects?.length !== COUNT * 4 || matrix.length !== 6 || filter !== "linear" && filter !== "nearest") {
+      throw new TypeError("drawQuads requires a layer and matching uvRects and localRects");
+    }
+    for (const LIST of [uvRects, localRects, matrix]) {
+      for (let i = 0; i < LIST.length; i++) {
+        FINITE(LIST[i], "drawQuads value");
+      }
+    }
+    if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) {
+      throw new RangeError("alpha must be in [0,1]");
+    }
+    rgba(color);
+    const TINT = [color[0], color[1], color[2], color[3] * alpha], M = compose(this.matrix, matrix);
+    this._useVertexPaint(
+      [layer, whiteFlash ? 1 : forceColor ? 2 : 0, 0, filter === "nearest" ? 1 : 0, 0, 0, 0, 0, 0, 0, 1, 1],
+      whiteFlash
+    );
+    if (pose === null) {
+      if (parts !== null) {
+        throw new TypeError("parts require a pose");
+      }
+      this.device.stats.spriteRuns += COUNT;
+      for (let i = 0; i < COUNT; i++) {
+        const [LX, LY, LW, LH] = localRects.subarray(i * 4, i * 4 + 4), [U, V, UW, VH] = uvRects.subarray(i * 4, i * 4 + 4), CORNERS = [
+          [point(M, LX, LY), [U, V]],
+          [point(M, LX + LW, LY), [U + UW, V]],
+          [point(M, LX + LW, LY + LH), [U + UW, V + VH]],
+          [point(M, LX, LY + LH), [U, V + VH]]
+        ];
+        this._emitTriangle(CORNERS[0][0], CORNERS[1][0], CORNERS[2][0], TINT, [
+          CORNERS[0][1],
+          CORNERS[1][1],
+          CORNERS[2][1]
+        ]);
+        this._emitTriangle(CORNERS[0][0], CORNERS[2][0], CORNERS[3][0], TINT, [
+          CORNERS[0][1],
+          CORNERS[2][1],
+          CORNERS[3][1]
+        ]);
+      }
+      return;
+    }
+    const OWNER = poseRendererOf(pose);
+    if (!OWNER || parts?.length !== COUNT) {
+      throw new TypeError("A live pose handle and one part per run are required");
+    }
+    const DRAW = OWNER.resolve(pose);
+    if (DRAW.kind !== "program") {
+      throw new TypeError("Posed sprites require a keyframe program pose");
+    }
+    for (let i = 0; i < COUNT; i++) {
+      if (!Number.isInteger(parts[i]) || parts[i] < 0 || parts[i] >= DRAW.partCount) {
+        throw new RangeError("parts must be pose part indices");
+      }
+    }
+    this._beginPosed(OWNER, DRAW);
+    OWNER.noteDraw(pose);
+    this.device.stats.spriteRuns += COUNT;
+    for (let i = 0; i < COUNT; i++) {
+      const [LX, LY, LW, LH] = localRects.subarray(i * 4, i * 4 + 4), [U, V, UW, VH] = uvRects.subarray(i * 4, i * 4 + 4);
+      this._reserve(6);
+      for (const [CX, CY] of POSED_CORNERS) {
+        const K = this.count++ * VERTEX_FLOATS;
+        this.vertices[K] = LX + CX * LW;
+        this.vertices[K + 1] = LY + CY * LH;
+        this.vertices[K + 2] = U + CX * UW;
+        this.vertices[K + 3] = V + CY * VH;
+        this.vertices.set(TINT, K + 4);
+        this.vertices.set(this.paintTemplate, K + 8);
+        this.vertices[K + 10] = MODE_POSED;
+        this.vertices[K + 12] = M[0];
+        this.vertices[K + 13] = M[1];
+        this.vertices[K + 14] = M[2];
+        this.vertices[K + 15] = M[3];
+        this.vertices[K + 16] = M[4];
+        this.vertices[K + 17] = M[5];
+        this.vertices[K + 18] = DRAW.row;
+        this.vertices[K + 19] = parts[i];
+      }
+    }
+  }
+  /** Joins or opens the batch's posed section: one pose texture set and one clip plane set per draw. */
+  _beginPosed(owner, draw) {
+    const PLANES = clipPlanes(this.clips, this.maxClipPlanes), BATCH = this.poseBatch;
+    if (BATCH && (BATCH.owner !== owner || BATCH.textures.some((texture, i) => texture !== draw.textures[i]) || BATCH.planeKey !== PLANES.key && BATCH.planeCount + PLANES.count > 0)) {
+      this._submit();
+    } else if (!BATCH && this.count && PLANES.count > 0 && this.batchSerial !== this.clipSerial) {
+      this._submit();
+    }
+    if (!this.poseBatch) {
+      this.poseBatch = {
+        owner,
+        textures: draw.textures,
+        programWidth: draw.programWidth,
+        planeKey: PLANES.key,
+        planeCount: PLANES.count,
+        planes: PLANES.values,
+        serial: this.clipSerial
+      };
+    }
+  }
+  _useTarget(target) {
+    if (this.activeTarget !== target) {
+      this._submit();
+    }
+    this.activeTarget = target;
+    this.activeRegion = null;
+    this.activeRadial = false;
+    this.activeWhiteFlash = false;
+    this.activeGradient = null;
+    this.flatUV = [0, 0];
+    this.paintTemplate.set([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1]);
   }
   fill(colorValue = [0, 0, 0, 1], rule = "nonzero") {
     this._frame();
     if (rule !== "nonzero" && rule !== "evenodd") {
       throw new TypeError("rule must be nonzero or evenodd");
     }
-    this._useTexture(this.white);
+    this._setPaint(this.whiteRegion);
     this.device.stats.pathTessellations++;
     const COL = rgba(colorValue), VERTICES = tessellate(this.path, rule);
     for (let i = 0; i + 2 < VERTICES.length; i += 3) {
-      this._emitTriangle(VERTICES[i], VERTICES[i + 1], VERTICES[i + 2], COL);
+      this._emit(VERTICES[i], VERTICES[i + 1], VERTICES[i + 2], COL);
     }
   }
   fillRadialGradient(gradient) {
     this._frame();
-    if (!gradient?.texture || !gradient.matrixInverse || !Number.isFinite(gradient.radialScale) || gradient.radialScale <= 0 || !Array.isArray(gradient.radialParams) || gradient.radialParams.length !== 4 || gradient.radialParams.some((value) => !Number.isFinite(value))) {
+    if (!gradient?.region || !gradient.matrixInverse || !Number.isFinite(gradient.radialScale) || gradient.radialScale <= 0 || !Array.isArray(gradient.radialParams) || gradient.radialParams.length !== 4 || gradient.radialParams.some((value) => !Number.isFinite(value))) {
       throw new TypeError("valid two-circle radial gradient texture and transform are required");
     }
-    this._useTexture(gradient.texture, {
+    this._setPaint(gradient.region, {
       radial: true,
       whiteFlash: gradient.whiteFlash,
       gradient
@@ -2322,10 +3696,10 @@ var VectorRenderer = class {
   }
   fillLinearGradient(gradient) {
     this._frame();
-    if (!gradient?.texture || !gradient.matrixInverse || ![gradient.x0, gradient.y0, gradient.x1, gradient.y1].every(Number.isFinite)) {
+    if (!gradient?.region || !gradient.matrixInverse || ![gradient.x0, gradient.y0, gradient.x1, gradient.y1].every(Number.isFinite)) {
       throw new TypeError("valid linear gradient texture and transform are required");
     }
-    this._useTexture(gradient.texture, {
+    this._setPaint(gradient.region, {
       whiteFlash: gradient.whiteFlash,
       gradient
     });
@@ -2344,7 +3718,7 @@ var VectorRenderer = class {
   }
   stroke(colorValue = [0, 0, 0, 1], width = 1, { lineCap = "butt", lineJoin = "miter", miterLimit = 10 } = {}, gradient = null) {
     this._frame();
-    this._useTexture(gradient?.texture ?? this.white, {
+    this._setPaint(gradient?.region ?? this.whiteRegion, {
       radial: gradient?.kind === "radial",
       whiteFlash: gradient?.whiteFlash ?? false,
       gradient
@@ -2357,9 +3731,9 @@ var VectorRenderer = class {
     if (!["butt", "round", "square"].includes(lineCap) || !["miter", "round", "bevel"].includes(lineJoin) || !Number.isFinite(miterLimit) || miterLimit <= 0) {
       throw new TypeError("invalid stroke style");
     }
-    const HALF = width / 2, FAN = (center, points) => {
+    const HALF = width / 2, ARC_STEP = HALF > ARC_TOLERANCE ? Math.min(Math.PI / 2, 2 * Math.acos(1 - ARC_TOLERANCE / HALF)) : Math.PI / 2, FAN = (center, points) => {
       for (let i = 1; i < points.length; i++) {
-        this._emitTriangle(center, points[i - 1], points[i], colorValue);
+        this._emit(center, points[i - 1], points[i], colorValue);
       }
     };
     for (const SOURCE of this.path) {
@@ -2412,8 +3786,8 @@ var VectorRenderer = class {
           x: AX - N.x,
           y: AY - N.y
         };
-        this._emitTriangle(P, Q, R, colorValue);
-        this._emitTriangle(P, R, S, colorValue);
+        this._emit(P, Q, R, colorValue);
+        this._emit(P, R, S, colorValue);
       }
       const JOIN_START = CLOSED ? 0 : 1, JOIN_END = CLOSED ? CONTOUR.length : CONTOUR.length - 1;
       for (let i = JOIN_START; i < JOIN_END; i++) {
@@ -2430,18 +3804,14 @@ var VectorRenderer = class {
         };
         if (lineJoin === "round") {
           const START = Math.atan2(A.y - V.y, A.x - V.x);
-          const END = Math.atan2(B.y - V.y, B.x - V.x);
-          let sweep = END - START;
-          if (CROSS > 0) {
-            while (sweep > 0) {
-              sweep -= Math.PI * 2;
-            }
-          } else {
-            while (sweep < 0) {
-              sweep += Math.PI * 2;
-            }
+          let sweep = Math.atan2(B.y - V.y, B.x - V.x) - START;
+          while (sweep > Math.PI) {
+            sweep -= Math.PI * 2;
           }
-          const STEPS = Math.max(1, Math.ceil(Math.abs(sweep) / (Math.PI / 8))), ARC = [A];
+          while (sweep < -Math.PI) {
+            sweep += Math.PI * 2;
+          }
+          const STEPS = Math.max(1, Math.ceil(Math.abs(sweep) / ARC_STEP)), ARC = [A];
           for (let j = 1; j <= STEPS; j++) {
             const T = START + sweep * j / STEPS;
             ARC.push({
@@ -2457,12 +3827,12 @@ var VectorRenderer = class {
               x: V.x + MX / ML * MITER,
               y: V.y + MY / ML * MITER
             };
-            this._emitTriangle(A, TIP, B, colorValue);
+            this._emit(A, TIP, B, colorValue);
           } else {
-            this._emitTriangle(V, A, B, colorValue);
+            this._emit(V, A, B, colorValue);
           }
         } else {
-          this._emitTriangle(V, A, B, colorValue);
+          this._emit(V, A, B, colorValue);
         }
       }
       if (!CLOSED && lineCap === "round") {
@@ -2471,8 +3841,9 @@ var VectorRenderer = class {
           [COUNT - 1, Math.atan2(DIRS[COUNT - 1].y, DIRS[COUNT - 1].x)]
         ]) {
           const V = CONTOUR[INDEX === 0 ? 0 : CONTOUR.length - 1], START = ANGLE - Math.PI / 2, ARC = [];
-          for (let j = 0; j <= 8; j++) {
-            const T = START + Math.PI * j / 8;
+          const CAP_STEPS = Math.max(2, Math.ceil(Math.PI / ARC_STEP));
+          for (let j = 0; j <= CAP_STEPS; j++) {
+            const T = START + Math.PI * j / CAP_STEPS;
             ARC.push({
               x: V.x + Math.cos(T) * HALF,
               y: V.y + Math.sin(T) * HALF
@@ -2495,7 +3866,7 @@ var VectorRenderer = class {
     if (!points || points.length < 3) {
       return;
     }
-    this._useTexture(this.white);
+    this._setPaint(this.whiteRegion);
     const M = this.matrix, ANCHOR = point(M, points[0][0], points[0][1]);
     let previous = point(M, points[1][0], points[1][1]);
     for (let i = 2; i < points.length; i++) {
@@ -2524,9 +3895,10 @@ var VectorRenderer = class {
     }
     return this.glyphAtlas.measureText(text, options);
   }
-  drawGlyphQuad(texture, x, y, width, height, uv, colorValue) {
+  /** `region` is the glyph atlas region (its layer selects the page); `uv` is already in array coordinates. */
+  drawGlyphQuad(region, x, y, width, height, uv, colorValue) {
     this._frame();
-    this._useTexture(texture);
+    this._setPaint(region);
     const A = {
       ...point(this.matrix, x, y)
     }, B = {
@@ -2663,7 +4035,7 @@ var VectorRenderer = class {
     this.stencilClips = GROUP.stencilClips;
     this.stencilDepth = this.stencilClips.length;
     this.projection.set(GROUP.projection);
-    this._useTexture(GROUP.target);
+    this._useTarget(GROUP.target);
     const { x: X, y: Y, width: WIDTH, height: HEIGHT } = GROUP.bounds, U = WIDTH / GROUP.target.width, V = HEIGHT / GROUP.target.height, A = {
       x: X,
       y: Y
@@ -2688,7 +4060,7 @@ var VectorRenderer = class {
       [0, 1 - V]
     ]);
     this._submit();
-    this._useTexture(this.white);
+    this._setPaint(this.whiteRegion);
   }
   dispose() {
     if (this.state === "disposed") {
@@ -2708,616 +4080,17 @@ var VectorRenderer = class {
     this.device.deleteVertexBuffer(this.dynamicClipBuffer);
     this.device.deleteVertexBuffer(this.buffer);
     this.device.deletePipeline(this.clipPipeline);
-    this.device.deletePipeline(this.nonRadialPipeline);
+    this.device.deletePipeline(this.groupPipeline);
     this.device.deletePipeline(this.pipeline);
-    this.device.deleteTexture(this.white);
-    this.buffer = this.dynamicClipBuffer = this.clipPipeline = this.nonRadialPipeline = this.pipeline = this.white = null;
+    if (this.posePipeline) {
+      this.device.deletePipeline(this.posePipeline);
+    }
+    this.unregisterBatcher();
+    if (this.whiteRegion && this.device.state === "ready") {
+      this.atlas.release(this.whiteRegion);
+    }
+    this.buffer = this.dynamicClipBuffer = this.clipPipeline = this.groupPipeline = this.posePipeline = this.pipeline = this.whiteRegion = null;
     this.state = "disposed";
-  }
-};
-
-// modules/rendering/pose-renderer.js
-var MAX_PARTS = 16;
-var POSE_WIDTH = MAX_PARTS * 3;
-var OVERRIDE_WIDTH = MAX_PARTS * 2;
-var PROGRAM_WIDTH = 256;
-var QUAD = new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1]);
-var VERTEX2 = `#version 300 es
-precision highp float;
-in vec2 a_position;in float i_row;uniform float u_capacity;
-void main(){gl_Position=vec4(a_position.x*2.0-1.0,(i_row+a_position.y)*2.0/u_capacity-1.0,0,1);}`;
-var FRAGMENT2 = `#version 300 es
-precision highp float;precision highp int;
-uniform sampler2D u_program;uniform sampler2D u_state;uniform sampler2D u_overrides;
-uniform int u_programBase;uniform int u_partCount;uniform int u_programWidth;
-out vec4 outPose;
-vec4 data(int at){int i=at+u_programBase;return texelFetch(u_program,ivec2(i%u_programWidth,i/u_programWidth),0);}
-float channel(int header,float time){vec4 h=data(header);float value=h.z;
- for(int i=0;i<64;i++){if(i>=int(h.y))break;vec4 s=data(int(h.x)+i*2);if(time<s.z)break;
- if(time>=s.w){value=s.y;continue;}float t=clamp((time-s.z)/(s.w-s.z),0.0,1.0),ease=data(int(h.x)+i*2+1).x;
- if(ease>1.5)t=1.0-(1.0-t)*(1.0-t);else if(ease>0.5)t=0.5-0.5*cos(3.141592653589793*t);
- value=mix(s.x,s.y,t);break;}return value;}
-mat3 local(int part,int header,float time,int row,out float opacity){
- vec4 b0=texelFetch(u_overrides,ivec2(part*2,row),0),b1=texelFetch(u_overrides,ivec2(part*2+1,row),0);
- int at=header+part*6;vec2 translation=b0.xy+vec2(channel(at,time),channel(at+1,time));
- float rotation=b0.z+channel(at+2,time),sx=b0.w*channel(at+3,time),sy=b1.x*channel(at+4,time);
- float c=cos(rotation),s=sin(rotation);vec2 x=vec2(c,s)*sx,y=vec2(-s,c)*sy,pivot=data(part).xy;
- opacity=b1.y*b1.z*channel(at+5,time);return mat3(vec3(x,0),vec3(y,0),vec3(pivot+translation-x*pivot.x-y*pivot.y,1));}
-void main(){int col=int(gl_FragCoord.x),row=int(gl_FragCoord.y),part=col/3,component=col%3;
- if(part>=u_partCount){outPose=component==0?vec4(1,0,0,0):component==1?vec4(0,1,0,0):vec4(0);return;}
- vec4 playback=texelFetch(u_state,ivec2(0,row),0),morph=texelFetch(u_state,ivec2(1,row),0);
- float time;if(playback.z<0.5)time=clamp(playback.y,0.0,playback.w);
- else if(playback.z<1.5)time=mod(playback.y,playback.w);
- else{float point=mod(playback.y,playback.w*2.0);time=point<=playback.w?point:playback.w*2.0-point;}
- mat3 matrix=mat3(1);float alpha=1.0;int current=part;
- for(int depth=0;depth<16;depth++){if(current<0)break;float opacity;mat3 m=local(current,int(playback.x),time,row,opacity);matrix=m*matrix;alpha*=opacity;current=int(data(current).z);}
- if((int(morph.z)&(1<<part))!=0)alpha=0.0;
- outPose=component==0?vec4(matrix[0][0],matrix[1][0],matrix[2][0],0):component==1?vec4(matrix[0][1],matrix[1][1],matrix[2][1],0):vec4(morph.xy,alpha,0);
-}`;
-var PoseRenderer = class {
-  constructor(device, { backend = "auto", onBoundary = () => {
-  } } = {}) {
-    if (!["auto", "cpu", "uniform"].includes(backend)) {
-      throw new TypeError("poseBackend must be auto, cpu or uniform");
-    }
-    this.device = device;
-    this.backend = backend;
-    this.onBoundary = onBoundary;
-    this.sources = /* @__PURE__ */ new Map();
-    this.instances = /* @__PURE__ */ new Map();
-    this.rows = [];
-    this.freeRows = [];
-    this.capacity = 0;
-    this.programTexture = null;
-    this.stateTexture = null;
-    this.overrideTexture = null;
-    this.cpuTexture = null;
-    this.gpuTarget = null;
-    this.pipeline = null;
-    this.quadBuffer = null;
-    this.rowBuffer = null;
-    this.frameMetrics = {};
-    this.pendingUpdates = false;
-    this.disposed = false;
-    this.gpuUnavailableReason = backend !== "auto" ? "cpuRequested" : !device.floatRenderTargetsSupported ? "floatRenderTargets" : null;
-    this.onRestored = () => {
-      this.gpuUnavailableReason = this.backend !== "auto" ? "cpuRequested" : !device.floatRenderTargetsSupported ? "floatRenderTargets" : null;
-      if (this.gpuTarget && !device.isRenderTargetAvailable(this.gpuTarget)) {
-        device.deleteRenderTarget(this.gpuTarget);
-        this.gpuTarget = null;
-        this.gpuUnavailableReason = "floatRenderTargetRestore";
-      }
-      if (this.quadBuffer) {
-        device.uploadVertices(this.quadBuffer, QUAD);
-      }
-      if (!this.gpuTarget && !this.gpuUnavailableReason && this.capacity) {
-        try {
-          this.gpuTarget = device.createRenderTarget(POSE_WIDTH, this.capacity, {
-            format: "rgba32f",
-            filter: "nearest"
-          });
-        } catch (error) {
-          this.gpuUnavailableReason = `floatRenderTargetRestore:${error.message}`;
-        }
-      }
-      for (const RECORD of this.instances.values()) {
-        RECORD.dirty = true;
-        RECORD.stateDirty = true;
-        RECORD.overrideDirty = true;
-        RECORD.cpuDirty = RECORD.mode === "cpu";
-        RECORD.usedFrame = -1;
-      }
-      this.pendingUpdates = true;
-    };
-    device.canvas.addEventListener("webglcontextrestored", this.onRestored);
-    this.beginFrame();
-  }
-  _ready() {
-    if (this.disposed) {
-      throw new Error("Pose renderer is disposed");
-    }
-  }
-  beginFrame() {
-    this.frameMetrics = {
-      gpuDrawInstances: 0,
-      cpuDrawInstances: 0,
-      uniformDrawInstances: 0,
-      gpuPoseRows: 0,
-      gpuPoseDraws: 0,
-      cpuPoseUploadBytes: 0,
-      stateUploadBytes: 0,
-      overrideUploadBytes: 0,
-      fallbackReasons: /* @__PURE__ */ Object.create(null),
-      flushCalls: 0,
-      flushRecordVisits: 0,
-      cleanFlushSkips: 0
-    };
-  }
-  _boundary() {
-    if (this.device.active) {
-      this.onBoundary();
-    }
-  }
-  createSource(program) {
-    this._ready();
-    if (this.backend === "uniform") {
-      return null;
-    }
-    if (!program || !(program.data instanceof Float32Array) || !Number.isSafeInteger(program.partCount) || program.partCount < 1 || program.partCount > MAX_PARTS || program.data.length % 4) {
-      throw new TypeError("A compiled pose channel program with 1..16 parts is required");
-    }
-    this._boundary();
-    const HANDLE = Object.freeze({});
-    this.sources.set(HANDLE, { program, offset: 0 });
-    try {
-      this._rebuildPrograms();
-    } catch (error) {
-      this.sources.delete(HANDLE);
-      throw error;
-    }
-    return HANDLE;
-  }
-  _rebuildPrograms() {
-    let length = 0;
-    const OFFSETS = /* @__PURE__ */ new Map();
-    for (const SOURCE of this.sources.values()) {
-      OFFSETS.set(SOURCE, length / 4);
-      length += SOURCE.program.data.length;
-    }
-    if (!length) {
-      if (this.programTexture) {
-        this.device.deleteTexture(this.programTexture);
-        this.programTexture = null;
-      }
-      return;
-    }
-    const WIDTH = Math.min(PROGRAM_WIDTH, this.device.maxTextureSize);
-    const HEIGHT = Math.ceil(length / (WIDTH * 4));
-    if (HEIGHT > this.device.maxTextureSize) {
-      throw new RangeError("Pose programs exceed data texture capacity");
-    }
-    const DATA = new Float32Array(WIDTH * HEIGHT * 4);
-    for (const SOURCE of this.sources.values()) {
-      DATA.set(SOURCE.program.data, OFFSETS.get(SOURCE) * 4);
-    }
-    const TEXTURE = this.device.createDataTexture(WIDTH, HEIGHT, { data: DATA });
-    for (const [SOURCE, OFFSET] of OFFSETS) {
-      SOURCE.offset = OFFSET;
-    }
-    if (this.programTexture) {
-      this.device.deleteTexture(this.programTexture);
-    }
-    this.programTexture = TEXTURE;
-    for (const RECORD of this.instances.values()) {
-      RECORD.dirty = true;
-    }
-    this.pendingUpdates = true;
-  }
-  deleteSource(handle) {
-    if (!this.sources.has(handle)) {
-      return false;
-    }
-    if ([...this.instances.values()].some((record) => record.source === handle)) {
-      throw new Error("Dispose pose instances before their source");
-    }
-    this._boundary();
-    this.sources.delete(handle);
-    if (!this.sources.size && this.programTexture) {
-      this.device.deleteTexture(this.programTexture);
-      this.programTexture = null;
-    }
-    return true;
-  }
-  _releaseAtlas() {
-    for (const KEY of ["stateTexture", "overrideTexture", "cpuTexture"]) {
-      if (this[KEY]) {
-        this.device.deleteTexture(this[KEY]);
-        this[KEY] = null;
-      }
-    }
-    if (this.gpuTarget) {
-      this.device.deleteRenderTarget(this.gpuTarget);
-      this.gpuTarget = null;
-    }
-    this.stateData = null;
-    this.overrideData = null;
-    this.cpuData = null;
-  }
-  _ensureCapacity(required) {
-    if (required <= this.capacity) {
-      return;
-    }
-    if (required > this.device.maxTextureSize) {
-      throw new RangeError("Pose instance rows exceed GPU texture capacity");
-    }
-    this._boundary();
-    const CAPACITY = Math.min(this.device.maxTextureSize, Math.max(32, this.capacity * 2, required));
-    const STATE = new Float32Array(CAPACITY * 8);
-    const OVERRIDES = new Float32Array(CAPACITY * OVERRIDE_WIDTH * 4);
-    const CPU = new Float32Array(CAPACITY * POSE_WIDTH * 4);
-    if (this.capacity) {
-      STATE.set(this.stateData);
-      OVERRIDES.set(this.overrideData);
-      CPU.set(this.cpuData);
-    }
-    let stateTexture = null;
-    let overrideTexture = null;
-    let gpuTarget = null;
-    try {
-      stateTexture = this.device.createDataTexture(2, CAPACITY, { data: STATE });
-      overrideTexture = this.device.createDataTexture(OVERRIDE_WIDTH, CAPACITY, { data: OVERRIDES });
-    } catch (error) {
-      for (const TEXTURE of [stateTexture, overrideTexture]) {
-        if (TEXTURE) {
-          this.device.deleteTexture(TEXTURE);
-        }
-      }
-      throw error;
-    }
-    if (!this.gpuUnavailableReason) {
-      try {
-        gpuTarget = this.device.createRenderTarget(POSE_WIDTH, CAPACITY, {
-          format: "rgba32f",
-          filter: "nearest"
-        });
-      } catch (error) {
-        this.gpuUnavailableReason = `floatRenderTarget:${error.message}`;
-      }
-    }
-    this._releaseAtlas();
-    this.capacity = CAPACITY;
-    this.stateData = STATE;
-    this.overrideData = OVERRIDES;
-    this.cpuData = CPU;
-    this.stateTexture = stateTexture;
-    this.overrideTexture = overrideTexture;
-    this.gpuTarget = gpuTarget;
-    for (const RECORD of this.instances.values()) {
-      RECORD.dirty = true;
-      RECORD.stateDirty = true;
-      RECORD.overrideDirty = true;
-      RECORD.cpuDirty = RECORD.mode === "cpu";
-    }
-    this.pendingUpdates = true;
-    if (this.rowBuffer) {
-      this.device.deleteVertexBuffer(this.rowBuffer);
-      this.rowBuffer = null;
-    }
-  }
-  createInstance(source) {
-    this._ready();
-    const SOURCE = this.sources.get(source);
-    if (!SOURCE) {
-      throw new TypeError("A pose source owned by this renderer is required");
-    }
-    const ROW = this.freeRows.length ? this.freeRows.pop() : this.rows.length;
-    this._ensureCapacity(ROW + 1);
-    const HANDLE = Object.freeze({});
-    const RECORD = {
-      source,
-      row: ROW,
-      mode: null,
-      dirty: true,
-      stateDirty: true,
-      overrideDirty: true,
-      cpuDirty: false,
-      usedFrame: -1,
-      reason: null,
-      baseScratch: new Float32Array(OVERRIDE_WIDTH * 4)
-    };
-    this.instances.set(HANDLE, RECORD);
-    this.rows[ROW] = RECORD;
-    this.pendingUpdates = true;
-    return HANDLE;
-  }
-  deleteInstance(handle) {
-    const RECORD = this.instances.get(handle);
-    if (!RECORD) {
-      return false;
-    }
-    this._boundary();
-    this.instances.delete(handle);
-    this.rows[RECORD.row] = null;
-    this.freeRows.push(RECORD.row);
-    if (!this.instances.size) {
-      this._releaseAtlas();
-      this.capacity = 0;
-      this.rows = [];
-      this.freeRows = [];
-      if (this.rowBuffer) {
-        this.device.deleteVertexBuffer(this.rowBuffer);
-        this.rowBuffer = null;
-      }
-    }
-    return true;
-  }
-  _instance(handle) {
-    this._ready();
-    const RECORD = this.instances.get(handle);
-    if (!RECORD) {
-      throw new TypeError("A live pose instance owned by this renderer is required");
-    }
-    return RECORD;
-  }
-  prepare(handle, { clipName, elapsedMs, basePoses, visible, excluded = [], morph }) {
-    const RECORD = this._instance(handle);
-    const SOURCE = this.sources.get(RECORD.source);
-    const CLIP = SOURCE.program.clips[clipName];
-    if (this.gpuUnavailableReason || !this.gpuTarget || !CLIP?.supported) {
-      return null;
-    }
-    if (!Number.isFinite(elapsedMs) || basePoses.length !== SOURCE.program.partCount || visible.length !== basePoses.length || !morph || morph.length !== 2 || !morph.every(Number.isFinite)) {
-      throw new TypeError("Finite pose time, matching part overrides and two morph values required");
-    }
-    const CYCLE = CLIP.durationMs * (CLIP.loop === "alternate" ? 2 : 1);
-    const LOCAL_TIME = CLIP.loop === "once" ? Math.min(CLIP.durationMs, Math.max(0, elapsedMs)) : (elapsedMs % CYCLE + CYCLE) % CYCLE;
-    const EXCLUDED = excluded.reduce((mask, value, index) => value ? mask | 1 << index : mask, 0);
-    const STATE = [
-      CLIP.headerBase,
-      LOCAL_TIME,
-      CLIP.loop === "once" ? 0 : CLIP.loop === "repeat" ? 1 : 2,
-      CLIP.durationMs,
-      morph[0],
-      morph[1],
-      EXCLUDED,
-      0
-    ];
-    const BASE = RECORD.baseScratch;
-    for (let i = 0; i < basePoses.length; i++) {
-      const POSE = basePoses[i];
-      const OFFSET_LOCAL = i * 8;
-      BASE[OFFSET_LOCAL] = POSE.x;
-      BASE[OFFSET_LOCAL + 1] = POSE.y;
-      BASE[OFFSET_LOCAL + 2] = POSE.rotation;
-      BASE[OFFSET_LOCAL + 3] = POSE.scaleX;
-      BASE[OFFSET_LOCAL + 4] = POSE.scaleY;
-      BASE[OFFSET_LOCAL + 5] = POSE.opacity;
-      BASE[OFFSET_LOCAL + 6] = visible[i] ? 1 : 0;
-      BASE[OFFSET_LOCAL + 7] = 0;
-    }
-    const OFFSET = RECORD.row * 8;
-    const BASE_OFFSET = RECORD.row * OVERRIDE_WIDTH * 4;
-    const STATE_CHANGED = STATE.some((value, index) => Math.fround(value) !== this.stateData[OFFSET + index]);
-    const BASE_CHANGED = BASE.some((value, index) => value !== this.overrideData[BASE_OFFSET + index]);
-    if ((STATE_CHANGED || BASE_CHANGED || RECORD.mode !== "gpu") && RECORD.usedFrame === this.device.stats.frame) {
-      this._boundary();
-    }
-    if (STATE_CHANGED) {
-      this.stateData.set(STATE, OFFSET);
-      RECORD.stateDirty = true;
-    }
-    if (BASE_CHANGED) {
-      this.overrideData.set(BASE, BASE_OFFSET);
-      RECORD.overrideDirty = true;
-    }
-    RECORD.dirty ||= STATE_CHANGED || BASE_CHANGED || RECORD.mode !== "gpu";
-    this.pendingUpdates ||= RECORD.dirty;
-    RECORD.mode = "gpu";
-    RECORD.reason = null;
-    return handle;
-  }
-  prepareCpu(handle, parts, morph, reason) {
-    const RECORD = this._instance(handle);
-    const PART_COUNT = this.sources.get(RECORD.source).program.partCount;
-    if (!Array.isArray(parts) || parts.length !== PART_COUNT || !morph || morph.length !== 2) {
-      throw new TypeError("Matching CPU part poses and morph weights required");
-    }
-    if (RECORD.usedFrame === this.device.stats.frame) {
-      this._boundary();
-    }
-    const OFFSET = RECORD.row * POSE_WIDTH * 4;
-    for (let i = 0; i < PART_COUNT; i++) {
-      const POSE = parts[i];
-      const MATRIX = POSE.transform;
-      this.cpuData.set(
-        [
-          MATRIX[0],
-          MATRIX[2],
-          MATRIX[4],
-          0,
-          MATRIX[1],
-          MATRIX[3],
-          MATRIX[5],
-          0,
-          morph[0] + (POSE.morph?.[0] ?? 0),
-          morph[1] + (POSE.morph?.[1] ?? 0),
-          POSE.visible === false ? 0 : POSE.opacity ?? 1,
-          POSE.depth ?? 0
-        ],
-        OFFSET + i * 12
-      );
-    }
-    RECORD.mode = "cpu";
-    RECORD.reason = reason;
-    RECORD.cpuDirty = true;
-    RECORD.dirty = false;
-    this.pendingUpdates = true;
-    return handle;
-  }
-  resolve(handle) {
-    const RECORD = this._instance(handle);
-    if (!RECORD.mode) {
-      throw new Error("Prepare a player pose before drawing");
-    }
-    if (RECORD.mode === "cpu" && !this.cpuTexture) {
-      this.cpuTexture = this.device.createDataTexture(POSE_WIDTH, this.capacity, { data: this.cpuData });
-      for (const ROW of this.instances.values()) {
-        ROW.cpuDirty = false;
-      }
-    }
-    return {
-      row: RECORD.row,
-      texture: RECORD.mode === "gpu" ? this.gpuTarget : this.cpuTexture,
-      partCount: this.sources.get(RECORD.source).program.partCount
-    };
-  }
-  noteDraw(handle) {
-    const RECORD = this._instance(handle);
-    RECORD.usedFrame = this.device.stats.frame;
-    if (RECORD.mode === "gpu") {
-      this.frameMetrics.gpuDrawInstances++;
-    } else {
-      this.frameMetrics.cpuDrawInstances++;
-      this._fallback(RECORD.reason ?? "cpuPose");
-    }
-  }
-  _fallback(reason) {
-    this.frameMetrics.fallbackReasons[reason] = (this.frameMetrics.fallbackReasons[reason] ?? 0) + 1;
-  }
-  recordFallback(reason) {
-    this.frameMetrics.uniformDrawInstances++;
-    this._fallback(reason);
-  }
-  _uploadRows(key, dirtyKey, texture, width, metric) {
-    let first = Infinity;
-    let last = -1;
-    const UPLOADING = [];
-    for (const RECORD of this.instances.values()) {
-      this.frameMetrics.flushRecordVisits++;
-      if (RECORD[dirtyKey]) {
-        first = Math.min(first, RECORD.row);
-        last = Math.max(last, RECORD.row);
-        UPLOADING.push(RECORD);
-      }
-    }
-    if (last < 0) {
-      return;
-    }
-    const DATA = this[key].subarray(first * width * 4, (last + 1) * width * 4);
-    this.device.updateDataTexture(texture, DATA, { y: first, width, height: last - first + 1 });
-    for (const RECORD of UPLOADING) {
-      RECORD[dirtyKey] = false;
-    }
-    this.frameMetrics[metric] += DATA.byteLength;
-  }
-  flushUpdates() {
-    this._ready();
-    this.frameMetrics.flushCalls++;
-    if (!this.instances.size) {
-      this.pendingUpdates = false;
-      return;
-    }
-    if (!this.pendingUpdates) {
-      this.frameMetrics.cleanFlushSkips++;
-      return;
-    }
-    if (this.cpuTexture) {
-      this._uploadRows("cpuData", "cpuDirty", this.cpuTexture, POSE_WIDTH, "cpuPoseUploadBytes");
-    }
-    const GROUPS = /* @__PURE__ */ new Map();
-    for (const RECORD of this.instances.values()) {
-      this.frameMetrics.flushRecordVisits++;
-      if (RECORD.dirty && RECORD.mode === "gpu") {
-        if (!GROUPS.has(RECORD.source)) {
-          GROUPS.set(RECORD.source, []);
-        }
-        GROUPS.get(RECORD.source).push(RECORD.row);
-      }
-    }
-    if (!GROUPS.size) {
-      this.pendingUpdates = false;
-      return;
-    }
-    this._uploadRows("stateData", "stateDirty", this.stateTexture, 2, "stateUploadBytes");
-    this._uploadRows("overrideData", "overrideDirty", this.overrideTexture, OVERRIDE_WIDTH, "overrideUploadBytes");
-    if (!this.pipeline) {
-      this.pipeline = this.device.createPipeline({
-        vertex: VERTEX2,
-        fragment: FRAGMENT2,
-        stride: 8,
-        instanceStride: 4,
-        attributes: [
-          { name: "a_position", size: 2, offset: 0 },
-          { name: "i_row", size: 1, offset: 0, source: "instance" }
-        ],
-        uniforms: {
-          u_capacity: "1f",
-          u_program: "1i",
-          u_state: "1i",
-          u_overrides: "1i",
-          u_programBase: "1i",
-          u_programWidth: "1i",
-          u_partCount: "1i"
-        }
-      });
-      this.quadBuffer = this.device.createVertexBuffer({ capacityBytes: QUAD.byteLength });
-      this.device.uploadVertices(this.quadBuffer, QUAD);
-    }
-    if (!this.rowBuffer) {
-      this.rowBuffer = this.device.createVertexBuffer({ capacityBytes: this.capacity * 4 });
-    }
-    this.device.bindRenderTarget(this.gpuTarget);
-    try {
-      for (const [HANDLE, ROWS] of GROUPS) {
-        const SOURCE = this.sources.get(HANDLE);
-        this.device.uploadVertices(this.rowBuffer, Float32Array.from(ROWS));
-        this.device.draw({
-          pipeline: this.pipeline,
-          buffer: this.quadBuffer,
-          instanceBuffer: this.rowBuffer,
-          instances: ROWS.length,
-          count: 6,
-          blend: false,
-          uniforms: {
-            u_capacity: this.capacity,
-            u_program: 0,
-            u_state: 1,
-            u_overrides: 2,
-            u_programBase: SOURCE.offset,
-            u_programWidth: this.programTexture.width,
-            u_partCount: SOURCE.program.partCount
-          },
-          textures: [this.programTexture, this.stateTexture, this.overrideTexture]
-        });
-        this.frameMetrics.gpuPoseRows += ROWS.length;
-        this.frameMetrics.gpuPoseDraws++;
-        for (const ROW of ROWS) {
-          this.rows[ROW].dirty = false;
-        }
-      }
-    } finally {
-      this.device.unbindRenderTarget(this.gpuTarget);
-    }
-    this.pendingUpdates = false;
-  }
-  stats() {
-    const TOTAL = this.frameMetrics.gpuDrawInstances + this.frameMetrics.cpuDrawInstances + this.frameMetrics.uniformDrawInstances;
-    return {
-      ...this.frameMetrics,
-      fallbackReasons: { ...this.frameMetrics.fallbackReasons },
-      totalDrawInstances: TOTAL,
-      cpuFallbackRatio: TOTAL ? (this.frameMetrics.cpuDrawInstances + this.frameMetrics.uniformDrawInstances) / TOTAL : 0,
-      liveInstances: this.instances.size,
-      sources: this.sources.size,
-      capacity: this.capacity,
-      gpuUnavailableReason: this.gpuUnavailableReason,
-      stateBytes: this.capacity * (8 + OVERRIDE_WIDTH * 4) * 4,
-      gpuPoseBytes: this.gpuTarget ? POSE_WIDTH * this.capacity * 16 : 0,
-      cpuPoseBytes: this.cpuTexture ? POSE_WIDTH * this.capacity * 16 : 0,
-      programBytes: this.programTexture ? this.programTexture.width * this.programTexture.height * 16 : 0
-    };
-  }
-  dispose() {
-    if (this.disposed) {
-      return;
-    }
-    this._boundary();
-    this._releaseAtlas();
-    for (const BUFFER of [this.quadBuffer, this.rowBuffer]) {
-      if (BUFFER) {
-        this.device.deleteVertexBuffer(BUFFER);
-      }
-    }
-    if (this.pipeline) {
-      this.device.deletePipeline(this.pipeline);
-    }
-    if (this.programTexture) {
-      this.device.deleteTexture(this.programTexture);
-    }
-    this.instances.clear();
-    this.sources.clear();
-    this.device.canvas.removeEventListener("webglcontextrestored", this.onRestored);
-    this.disposed = true;
   }
 };
 
@@ -3374,16 +4147,268 @@ function packPaintRegions(names, overrides, output) {
   return output;
 }
 
+// modules/rendering/yarn-material-record.js
+var MATERIAL_KIND = Object.freeze({ none: 0, yarnFill: 1, yarnEdge: 2, sketchFill: 3, sketchEdge: 4 });
+var MATERIAL_RECORD_FLOATS = 20;
+var MAX_MATERIAL_SURFACES = 16;
+function materialRecord(style, bounds, contourLength) {
+  const YARN = style.kind === "yarn";
+  const STITCH_PATTERN = style.pattern !== false;
+  const EFFECT0 = YARN ? [style.seed, style.stitchWidth, style.stitchHeight, (STITCH_PATTERN ? 1 : -1) * style.thickness] : [style.seed, style.periodMs, style.frequency, 0];
+  const EFFECT1 = YARN ? [style.irregularity, style.contrast, style.edgeSpacing, style.edgeWidth] : [style.amplitude, style.echoX, style.echoWidth, style.echoOpacity];
+  const EFFECT2 = YARN ? [style.fiberSpacing ?? 4, style.fiberLength, style.fiberWidth, style.fiberOpacity] : [style.hatchWidth, style.hatchOpacity, style.hatchAngle, style.hatchSpacing];
+  const EFFECT3 = YARN ? [
+    style.fiber === false ? 0 : style.fiberMax,
+    contourLength,
+    style.curved === false ? 0 : 1,
+    style.edgeRelief * (style.detail ? 0.3 : 1)
+  ] : [0, style.echoY, 0, 0];
+  return Float32Array.from([...bounds, ...EFFECT0, ...EFFECT1, ...EFFECT2, ...EFFECT3]);
+}
+
+// modules/rendering/yarn-material.js
+var STITCH_FIELD_SIZE = 256;
+var STITCH_FIELD_EXTENT = 0.8;
+var STITCH_FIELD_MAX_DISTANCE = 0.25;
+var STITCH_STRANDS = {
+  left: [
+    [-0.34, -0.36],
+    [-0.32, -0.06],
+    [-0.18, 0.17],
+    [-0.025, 0.34]
+  ],
+  right: [
+    [0.34, -0.36],
+    [0.32, -0.06],
+    [0.18, 0.17],
+    [0.025, 0.34]
+  ],
+  under: [
+    [-0.48, -0.46],
+    [-0.22, -0.57],
+    [0.22, -0.57],
+    [0.48, -0.46]
+  ]
+};
+var STITCH_TWISTS = [
+  [
+    [-0.32, -0.12],
+    [-0.16, -0.13]
+  ],
+  [
+    [0.22, 0.18],
+    [0.37, 0.08]
+  ]
+];
+var stitchFieldCache = null;
+function stitchSegmentDistance(px, py, a, b) {
+  const DX = b[0] - a[0], DY = b[1] - a[1];
+  const T = Math.max(0, Math.min(1, ((px - a[0]) * DX + (py - a[1]) * DY) / Math.max(DX * DX + DY * DY, 1e-6)));
+  return Math.hypot(px - (a[0] + DX * T), py - (a[1] + DY * T));
+}
+function stitchPolyline([a, b, c, d]) {
+  const POINTS = [a];
+  for (let i = 1; i <= 5; i++) {
+    const T = i * 0.2, S = 1 - T;
+    POINTS.push([
+      S * S * S * a[0] + 3 * S * S * T * b[0] + 3 * S * T * T * c[0] + T * T * T * d[0],
+      S * S * S * a[1] + 3 * S * S * T * b[1] + 3 * S * T * T * c[1] + T * T * T * d[1]
+    ]);
+  }
+  return POINTS;
+}
+function stitchPolylineDistance(points, px, py) {
+  let best = Infinity;
+  for (let i = 1; i < points.length; i++) {
+    best = Math.min(best, stitchSegmentDistance(px, py, points[i - 1], points[i]));
+  }
+  return best;
+}
+function stitchFieldPixels() {
+  if (stitchFieldCache) {
+    return stitchFieldCache;
+  }
+  const N = STITCH_FIELD_SIZE;
+  const LEFT = stitchPolyline(STITCH_STRANDS.left), RIGHT = stitchPolyline(STITCH_STRANDS.right), UNDER = stitchPolyline(STITCH_STRANDS.under);
+  const PACK = (distance) => Math.round(Math.min(1, distance / STITCH_FIELD_MAX_DISTANCE) * 255);
+  const DATA = new Uint8Array(N * N * 4);
+  for (let j = 0; j < N; j++) {
+    for (let i = 0; i < N; i++) {
+      const QX = -STITCH_FIELD_EXTENT + (i + 0.5) / N * STITCH_FIELD_EXTENT * 2, QY = -STITCH_FIELD_EXTENT + (j + 0.5) / N * STITCH_FIELD_EXTENT * 2;
+      const AT = (j * N + i) * 4;
+      DATA[AT] = PACK(Math.min(stitchPolylineDistance(LEFT, QX, QY), stitchPolylineDistance(RIGHT, QX, QY)));
+      DATA[AT + 1] = PACK(stitchPolylineDistance(UNDER, QX, QY));
+      DATA[AT + 2] = PACK(
+        Math.min(
+          stitchSegmentDistance(QX, QY, STITCH_TWISTS[0][0], STITCH_TWISTS[0][1]),
+          stitchSegmentDistance(QX, QY, STITCH_TWISTS[1][0], STITCH_TWISTS[1][1])
+        )
+      );
+      DATA[AT + 3] = 255;
+    }
+  }
+  stitchFieldCache = DATA;
+  return DATA;
+}
+var HELPERS = `float hashCell(vec2 cell, float salt) {
+  return fract(sin(dot(cell, vec2(127.1, 311.7)) + u_effect0.x * 74.7 + salt * 19.19) * 43758.5453);
+}
+float lineMask(float distanceToLine, float width) {
+  float aa = max(width * 0.16, 0.025);
+  return 1.0 - smoothstep(max(0.0, width * 0.5 - aa), width * 0.5 + aa, distanceToLine);
+}
+vec3 tintTo(vec3 base, float amount) {
+  return amount < 0.0 ? mix(base, vec3(0.0), -amount) : mix(base, vec3(1.0), amount);
+}`;
+var YARN_FRAGMENT_BODY = `
+vec3 shadeYarnFill(vec3 base) {
+  float stitchWidth = abs(u_effect0.y), stitchHeight = u_effect0.z;
+  if (u_effect0.w < 0.0 || stitchWidth <= 0.0 || stitchHeight <= 0.0) return base;
+  float cols = max(2.0, ceil(u_bounds.z / stitchWidth));
+  float rows = max(2.0, ceil(u_bounds.w / stitchHeight));
+  float sx = u_bounds.z / cols, sy = u_bounds.w / rows;
+  vec2 local = v_local;
+  if (u_effect3.z > 0.5) {
+    float rx = max(u_bounds.z * 0.5, 0.0001), ry = max(u_bounds.w * 0.5, 0.0001);
+    float nx = clamp((local.x - (u_bounds.x + rx)) / rx, -1.35, 1.35);
+    float ny = (local.y - (u_bounds.y + ry)) / ry;
+    local.x += (sin(nx * 1.1) / 0.89120736 - nx) * rx;
+    local.y += ry * 0.13 * nx * nx * (1.0 - ny * 0.24);
+  }
+  vec2 cell = (local - u_bounds.xy) / vec2(sx, sy);
+  vec2 index = floor(cell);
+  float jitterX = (hashCell(index, 71.0) - 0.5) * u_effect1.x;
+  float jitterY = (hashCell(index, 39.0) - 0.5) * u_effect1.x;
+  float scaleX = 1.0 + (hashCell(index, 57.0) - 0.5) * u_effect1.x;
+  float scaleY = 1.0 + (hashCell(index, 91.0) - 0.5) * u_effect1.x;
+  vec2 p = (fract(cell) - vec2(0.5 + jitterX, 0.5 + jitterY)) / vec2(scaleX, scaleY);
+  p *= vec2(sx, sy);
+  float stroke = min(sx, sy) * (abs(u_effect0.w) / stitchHeight);
+  vec2 cellSize = vec2(sx, sy);
+  float fieldScale = ${STITCH_FIELD_MAX_DISTANCE.toFixed(4)} * sqrt(sx * sy);
+  vec2 qBase = p / cellSize;
+  vec2 grooveShift = vec2(0.0, stroke * 0.06) / cellSize;
+  vec2 lightShift = vec2(stroke * 0.14, stroke * 0.13) / cellSize;
+  vec4 fieldMain = texture2D(u_stitchField, (qBase + ${STITCH_FIELD_EXTENT.toFixed(4)}) / ${(STITCH_FIELD_EXTENT * 2).toFixed(4)});
+  vec4 fieldGroove = texture2D(u_stitchField, (qBase - grooveShift + ${STITCH_FIELD_EXTENT.toFixed(4)}) / ${(STITCH_FIELD_EXTENT * 2).toFixed(4)});
+  vec4 fieldLight = texture2D(u_stitchField, (qBase + lightShift + ${STITCH_FIELD_EXTENT.toFixed(4)}) / ${(STITCH_FIELD_EXTENT * 2).toFixed(4)});
+  float under = lineMask(fieldGroove.g * fieldScale, stroke*0.5) * 0.5;
+  float groove = lineMask(fieldGroove.r * fieldScale, stroke*1.08) * 0.85;
+  float yarn = lineMask(fieldMain.r * fieldScale, stroke*0.89);
+  float light = lineMask(fieldLight.r * fieldScale, stroke*0.34) * 0.57;
+  float twist = 0.0;
+  if (mod(index.x + index.y, 2.0) < 1.0) {
+    twist = lineMask(fieldMain.b * fieldScale, stroke*0.075) * 0.5;
+  }
+  vec3 dark = tintTo(base,-0.28), grooveColor = tintTo(base,-u_effect1.y);
+  vec3 yarnColor = tintTo(base,0.10), highlight = tintTo(base,0.38);
+  vec3 color = mix(base,dark,under);
+  color = mix(color,grooveColor,groove);
+  color = mix(color,yarnColor,yarn);
+  color = mix(color,highlight,max(light*0.57,twist));
+  return color;
+}
+void shadeYarnEdge(inout vec3 rgb, float alpha) {
+  float radial = v_material.w;
+  float along = v_material.z * u_effect3.y;
+  float edgeWidth = u_effect1.w;
+  float lobe = fract(along / max(u_effect1.z, 0.001));
+  float relief = min(u_effect3.w, edgeWidth * 0.75);
+  float wave = sin(lobe * 6.2831853) * relief * 0.35;
+  float seam = lineMask(abs(radial - wave),edgeWidth*0.56);
+  float seamDark = lineMask(abs(radial - wave - edgeWidth*0.06),edgeWidth*0.8)*0.7;
+  float seamLight = lineMask(abs(radial - wave + edgeWidth*0.09),edgeWidth*0.17)*0.55;
+  float spacing = max(u_effect2.x,0.001);
+  float fiberIndex = floor(along / spacing);
+  float jitter = hashCell(vec2(fiberIndex,0.0),22.0);
+  float start = spacing * (fiberIndex + 0.22 + jitter * 0.48);
+  float randomLength = 0.45 + hashCell(vec2(fiberIndex,0.0),5.0) * 0.95;
+  float lengthLimit = min(u_effect2.y,max(u_bounds.z,u_bounds.w)*0.12)*randomLength;
+  float lean = (hashCell(vec2(fiberIndex,0.0),14.0)-0.5)*lengthLimit*1.5;
+  float alongDistance = abs(along - start - lean * clamp(radial/max(lengthLimit,0.001),0.0,1.0));
+  float fiber = 0.0;
+  if (u_effect3.x > 0.0 && fiberIndex < u_effect3.x && radial >= 0.0 && radial <= lengthLimit) {
+    fiber = lineMask(alongDistance,u_effect2.z);
+  }
+  float coverage = max(max(seam,seamDark*0.6),max(seamLight,fiber*u_effect2.w));
+  if (coverage < 0.012) discard;
+  vec3 dark=tintTo(rgb,-0.28), yarn=tintTo(rgb,0.10), light=tintTo(rgb,0.38);
+  rgb=mix(rgb,dark,seamDark*0.7);
+  rgb=mix(rgb,yarn,seam);
+  rgb=mix(rgb,light,max(seamLight,fiber*0.7));
+  float outAlpha=alpha*coverage;
+  gl_FragColor=vec4(rgb*outAlpha,outAlpha);
+}`;
+var SKETCH_FRAGMENT_BODY = `
+vec3 shadeSketchFill(vec3 base) {
+  float angle=u_effect2.z, spacing=max(u_effect2.w,0.001);
+  vec2 direction=vec2(cos(angle),sin(angle));
+  float phase=dot(v_local,direction)/spacing + hashCell(vec2(u_effect0.x,0.0),31.0);
+  float distanceToHatch=abs(fract(phase)-0.5)*spacing;
+  float hatch=lineMask(distanceToHatch,u_effect2.x)*u_effect2.y;
+  return mix(base,tintTo(base,-0.48),hatch);
+}
+void shadeSketchEdge(inout vec3 rgb, float alpha) {
+  float phase=mod(v_time,max(u_effect0.y,16.0))/max(u_effect0.y,16.0)*6.2831853;
+  float wobble=sin(v_material.z*u_effect0.z*6.2831853+phase+u_effect0.x)*u_effect1.x;
+  float offset=(u_effect1.y+wobble);
+  float echo=lineMask(abs(v_material.w-offset),u_effect1.z)*u_effect1.w;
+  if(echo<0.012)discard;
+  rgb=mix(rgb,tintTo(rgb,-0.52),echo);
+  float outAlpha=alpha*echo;
+  gl_FragColor=vec4(rgb*outAlpha,outAlpha);
+}`;
+function materialFragment(maxPlanes, clipped, surfaceCount) {
+  const PLANES = clipped ? `varying vec2 v_position; uniform vec3 u_planes[${maxPlanes}]; uniform int u_planeCount;` : "";
+  const CLIP = clipped ? `for(int i=0;i<${maxPlanes};i++){if(i>=u_planeCount)break;if(dot(u_planes[i],vec3(v_position,1.0))<0.0)discard;}` : "";
+  return `precision mediump float;
+varying vec4 v_color; varying vec2 v_local; varying vec4 v_material; varying highp float v_time;
+uniform vec4 u_materials[${surfaceCount * 5}]; uniform sampler2D u_stitchField;
+${PLANES}
+vec4 surfaceBounds; vec4 surfaceEffect0; vec4 surfaceEffect1; vec4 surfaceEffect2; vec4 surfaceEffect3;
+#define u_bounds surfaceBounds
+#define u_effect0 surfaceEffect0
+#define u_effect1 surfaceEffect1
+#define u_effect2 surfaceEffect2
+#define u_effect3 surfaceEffect3
+${HELPERS}
+${YARN_FRAGMENT_BODY}
+${SKETCH_FRAGMENT_BODY}
+void main() {
+  ${CLIP}
+  int kind = int(v_material.x + 0.5);
+  if (kind == 0) {
+    gl_FragColor = v_color;
+    return;
+  }
+  float alpha = v_color.a;
+  if (alpha <= 0.0001) discard;
+  // The surface constants are read once; the shading code below uses them dozens of times.
+  int base = int(v_material.y + 0.5) * 5;
+  surfaceBounds = u_materials[base];
+  surfaceEffect0 = u_materials[base + 1];
+  surfaceEffect1 = u_materials[base + 2];
+  surfaceEffect2 = u_materials[base + 3];
+  surfaceEffect3 = u_materials[base + 4];
+  vec3 rgb = v_color.rgb / alpha;
+  if (kind == 1) {
+    rgb = shadeYarnFill(rgb);
+    gl_FragColor = vec4(rgb * alpha, alpha);
+  } else if (kind == 2) {
+    shadeYarnEdge(rgb, alpha);
+  } else if (kind == 3) {
+    rgb = shadeSketchFill(rgb);
+    gl_FragColor = vec4(rgb * alpha, alpha);
+  } else {
+    shadeSketchEdge(rgb, alpha);
+  }
+}`;
+}
+
 // modules/rendering/mesh-renderer.js
 var IDENTITY2 = Object.freeze([1, 0, 0, 1, 0, 0]);
 var ZERO_MORPH = Object.freeze([0, 0]);
-var EMPTY_CLIP = Object.freeze({
-  key: "",
-  values: null,
-  count: 0
-});
 var WHITE = Object.freeze([1, 1, 1, 1]);
-var IDENTITY_RECT = Object.freeze([0, 0, 1, 1]);
 var ATTRIBUTES = [
   {
     name: "a_position",
@@ -3418,13 +4443,14 @@ var WORLD_INSTANCE_ATTRIBUTES = ["i_row0", "i_row1", "i_row2", "i_params"].map((
   offset: i * 16,
   source: "instance"
 }));
-var TEXTURE_INSTANCE_ATTRIBUTES = ["i_uvRect", "i_localRect"].map((name, i) => ({
-  name,
-  size: 4,
-  offset: 64 + i * 16,
-  source: "instance"
-}));
-function shader(instanced, partCount, morphCount, clipped, nonScalingStroke, worldMode = false, textured = false, poseTexture = false, paintRegionCount = 0) {
+var PLAIN_INSTANCE_FLOATS = 16;
+var MATERIAL_INSTANCE_FLOATS = 20;
+var MATERIAL_INSTANCE_ATTRIBUTE = { name: "i_extra", size: 4, offset: 64, source: "instance" };
+var MATERIAL_VERTEX_FLOATS = 4;
+var NO_TEXTURES = Object.freeze([]);
+function shader(instanced, partCount, morphCount, clipped, nonScalingStroke, worldMode = false, poseTexture = false, paintRegionCount = 0, materials = false) {
+  const MATERIAL_INPUT = materials ? `attribute vec4 a_material; ${instanced ? "attribute" : "uniform"} vec4 i_extra;
+varying vec2 v_local; varying vec4 v_material; varying highp float v_time;` : "", MATERIAL_OUTPUT = materials ? "v_local=local;v_material=a_material;v_time=i_extra.x;" : "";
   const PAINT_INPUT = paintRegionCount ? `attribute float a_paintRegion;uniform vec4 u_paintRegions[${paintRegionCount + 1}];` : "", PAINT_COLOR = paintRegionCount ? "vec4 authored=a_color;vec4 paint=u_paintRegions[int(a_paintRegion)];authored.rgb=mix(authored.rgb,paint.rgb,paint.a);" : "", BASE_COLOR = paintRegionCount ? "authored" : "a_color";
   const PART_POSE = partCount > 1 || poseTexture;
   const PART_INPUTS = PART_POSE ? `${partCount > 1 ? "attribute float a_part;" : ""}uniform vec4 u_parts[${partCount * 3}];` : "";
@@ -3433,10 +4459,8 @@ function shader(instanced, partCount, morphCount, clipped, nonScalingStroke, wor
   const LOCAL = morphCount ? "a_position+a_morph.xy*(i_params.x" + (PART_POSE ? "+pose.x" : "") + ")" + (morphCount > 1 ? "+a_morph.zw*(i_params.y" + (PART_POSE ? "+pose.y" : "") + ")" : "") : "a_position";
   const STROKE_INPUTS = nonScalingStroke ? "attribute vec4 a_stroke;uniform vec2 u_strokeViewportSize;" : "";
   const STROKE_VARYING = clipped && nonScalingStroke ? "uniform mat3 u_inverseProjection;" : "";
-  const TEXTURE_INPUTS = textured ? `attribute highp vec2 a_uv;${instanced ? "attribute" : "uniform"} highp vec4 i_uvRect;${instanced ? "attribute" : "uniform"} vec4 i_localRect;varying highp vec2 v_uv;varying float v_forceColor;varying float v_whiteFlash;` : "";
-  const RECT_LOCAL = textured ? "local=i_localRect.xy+local*i_localRect.zw;" : "";
   const STROKE_POSITION = nonScalingStroke ? `
-vec2 tangentLocal=local+a_stroke.xy${textured ? "*i_localRect.zw" : ""};
+vec2 tangentLocal=local+a_stroke.xy;
 vec2 tangentPart=${PART_POSE ? "vec2(dot(row0.xyz,vec3(tangentLocal,1.0)),dot(row1.xyz,vec3(tangentLocal,1.0)))" : "tangentLocal"};
 vec2 tangentWorld=vec2(dot(i_row0.xyz,vec3(tangentPart,1.0)),dot(i_row1.xyz,vec3(tangentPart,1.0)));
 vec3 tangentProjected=u_projection*vec3(tangentWorld,1.0);
@@ -3455,7 +4479,7 @@ if(dot(a_stroke.xy,a_stroke.xy)>0.5){
     const WORLD_INPUTS = ["i_row0", "i_row1", "i_row2", "i_params"].map((name) => `${instanced ? "attribute" : "uniform"} vec4 ${name};`).join("\n");
     const WORLD_STROKE_INPUTS = nonScalingStroke ? "attribute vec4 a_stroke;uniform vec2 u_strokeViewportSize;" + (clipped ? "uniform mat4 u_inverseViewProjection;" : "") : "";
     const WORLD_STROKE = nonScalingStroke ? `
-vec2 tangentLocal=local+a_stroke.xy${textured ? "*i_localRect.zw" : ""};
+vec2 tangentLocal=local+a_stroke.xy;
 vec2 tangentPlane=${partCount > 1 ? "vec2(dot(row0.xyz,vec3(tangentLocal,1.0)),dot(row1.xyz,vec3(tangentLocal,1.0)))" : "tangentLocal"};
 vec3 tangentWorld=vec3(dot(i_row0.xyz,vec3(tangentPlane,1.0)),dot(i_row1.xyz,vec3(tangentPlane,1.0)),dot(i_row2.xyz,vec3(tangentPlane,1.0)));
 vec4 tangentProjected=u_viewProjection*vec4(tangentWorld,1.0);vec2 tangent=(tangentProjected.xy/tangentProjected.w-projected.xy/projected.w)*u_strokeViewportSize*0.5;float tangentLength=length(tangent);
@@ -3465,37 +4489,34 @@ if(dot(a_stroke.xy,a_stroke.xy)>0.5){
     projected.xy+=pxOffset*2.0/u_strokeViewportSize*projected.w;${clipped ? "vec4 clippedWorld=u_inverseViewProjection*projected;v_position=clippedWorld.xy/clippedWorld.w;" : ""}}
 }` : "";
     return `attribute vec2 a_position; attribute vec4 a_color; ${morphCount ? "attribute vec4 a_morph;" : ""} ${PART_INPUTS}
-${WORLD_INPUTS}${WORLD_STROKE_INPUTS}${TEXTURE_INPUTS}${PAINT_INPUT}
+${WORLD_INPUTS}${WORLD_STROKE_INPUTS}${PAINT_INPUT}${MATERIAL_INPUT}
 uniform mat4 u_viewProjection; uniform vec4 u_color; varying vec4 v_color; ${clipped ? "varying vec2 v_position;" : ""}
 void main(){${PART_SETUP}
-vec2 local=${LOCAL};${RECT_LOCAL}vec2 plane=${PART_POSE ? "vec2(dot(row0.xyz,vec3(local,1.0)),dot(row1.xyz,vec3(local,1.0)))" : "local"};
+vec2 local=${LOCAL};${MATERIAL_OUTPUT}vec2 plane=${PART_POSE ? "vec2(dot(row0.xyz,vec3(local,1.0)),dot(row1.xyz,vec3(local,1.0)))" : "local"};
 vec3 world=vec3(dot(i_row0.xyz,vec3(plane,1.0)),dot(i_row1.xyz,vec3(plane,1.0)),dot(i_row2.xyz,vec3(plane,1.0)));
 vec4 projected=u_viewProjection*vec4(world,1.0);${clipped ? "v_position=world.xy;" : ""}${WORLD_STROKE}
 projected.z+=(i_params.w+${PART_POSE ? "pose.w" : "0.0"})*projected.w;gl_Position=projected;
-${PAINT_COLOR}vec4 color=mix(${BASE_COLOR}*u_color,u_color,i_row1.w);color.a*=i_row0.w${PART_POSE ? "*pose.z" : ""};color.rgb=mix(color.rgb,vec3(1.0),i_row2.w);v_color=vec4(color.rgb*color.a,color.a);${textured ? "v_uv=i_uvRect.xy+a_uv*i_uvRect.zw;v_forceColor=i_row1.w;v_whiteFlash=i_row2.w;" : ""}
+${PAINT_COLOR}vec4 color=mix(${BASE_COLOR}*u_color,u_color,i_row1.w);color.a*=i_row0.w${PART_POSE ? "*pose.z" : ""};color.rgb=mix(color.rgb,vec3(1.0),i_row2.w);v_color=vec4(color.rgb*color.a,color.a);
 }`;
   }
   return `attribute vec2 a_position; attribute vec4 a_color; ${morphCount ? "attribute vec4 a_morph;" : ""} ${PART_INPUTS}
-${INPUTS}${STROKE_INPUTS}${TEXTURE_INPUTS}${PAINT_INPUT}
+${INPUTS}${STROKE_INPUTS}${PAINT_INPUT}${MATERIAL_INPUT}
 uniform mat3 u_projection; varying vec4 v_color; ${clipped ? "varying vec2 v_position;" : ""}${STROKE_VARYING}
 void main(){${PART_SETUP}
-vec2 local=${LOCAL};${RECT_LOCAL}vec2 p=${PART_POSE ? "vec2(dot(row0.xyz,vec3(local,1.0)),dot(row1.xyz,vec3(local,1.0)))" : "local"};
+vec2 local=${LOCAL};${MATERIAL_OUTPUT}vec2 p=${PART_POSE ? "vec2(dot(row0.xyz,vec3(local,1.0)),dot(row1.xyz,vec3(local,1.0)))" : "local"};
 vec2 world=vec2(dot(i_row0.xyz,vec3(p,1.0)),dot(i_row1.xyz,vec3(p,1.0)));
 vec3 projected=u_projection*vec3(world,1.0);${clipped ? "v_position=world;" : ""}${STROKE_POSITION}
 gl_Position=vec4(projected.xy,(i_params.w+${PART_POSE ? "pose.w" : "0.0"})*projected.z,projected.z);
 ${PAINT_COLOR}vec4 color=mix(${BASE_COLOR}*i_color,i_color,i_row1.w);color.a*=i_row0.w${PART_POSE ? "*pose.z" : ""};
-color.rgb=mix(color.rgb,vec3(1.0),i_params.z);v_color=vec4(color.rgb*color.a,color.a);${textured ? "v_uv=i_uvRect.xy+a_uv*i_uvRect.zw;v_forceColor=i_row1.w;v_whiteFlash=i_params.z;" : ""}}`;
+color.rgb=mix(color.rgb,vec3(1.0),i_params.z);v_color=vec4(color.rgb*color.a,color.a);}`;
 }
-function fragment(maxPlanes, clipped, textured = false) {
-  const TEXTURE_INPUTS = textured ? "uniform sampler2D u_texture;varying highp vec2 v_uv;varying float v_forceColor;varying float v_whiteFlash;" : "";
-  const OUTPUT = textured ? "vec4 sampleColor=texture2D(u_texture,v_uv);float alpha=sampleColor.a*v_color.a;vec3 rgb=v_whiteFlash>0.5?vec3(alpha):v_forceColor>0.5?sampleColor.a*v_color.rgb:sampleColor.rgb*v_color.rgb;gl_FragColor=vec4(rgb,alpha);" : "gl_FragColor=v_color;";
+function fragment(maxPlanes, clipped) {
   if (!clipped) {
-    return `precision mediump float;varying vec4 v_color;${TEXTURE_INPUTS}void main(){${OUTPUT}}`;
+    return "precision mediump float;varying vec4 v_color;void main(){gl_FragColor=v_color;}";
   }
   return `precision mediump float; varying vec4 v_color; varying vec2 v_position;
-${TEXTURE_INPUTS}
 uniform vec3 u_planes[${maxPlanes}]; uniform int u_planeCount;
-void main(){for(int i=0;i<${maxPlanes};i++){if(i>=u_planeCount)break;if(dot(u_planes[i],vec3(v_position,1.0))<0.0)discard;}${OUTPUT}}`;
+void main(){for(int i=0;i<${maxPlanes};i++){if(i>=u_planeCount)break;if(dot(u_planes[i],vec3(v_position,1.0))<0.0)discard;}gl_FragColor=v_color;}`;
 }
 function poseTextureShader(source) {
   return source.replace(/uniform vec4 u_parts\[\d+\];/, "uniform sampler2D u_poseTexture;").replace(
@@ -3503,14 +4524,28 @@ function poseTextureShader(source) {
     "$1int poseRow=int(-i_params.x-1.0);vec4 row0=texelFetch(u_poseTexture,ivec2(index,poseRow),0);vec4 row1=texelFetch(u_poseTexture,ivec2(index+1,poseRow),0);vec4 pose=texelFetch(u_poseTexture,ivec2(index+2,poseRow),0);"
   ).replaceAll("(i_params.x+pose.x)", "(pose.x)").replaceAll("(i_params.y+pose.y)", "(pose.y)");
 }
-function paintVertexStream(vertices, regions) {
-  if (!regions) {
+function poseProgramShader(source) {
+  return source.replace(/uniform vec4 u_parts\[\d+\];/, POSE_PROGRAM_FUNCTIONS).replace(
+    /int index=(int\(a_part\)\*3|0);vec4 row0=u_parts\[index\];vec4 row1=u_parts\[index\+1\];vec4 pose=u_parts\[index\+2\];/,
+    (_match, expression) => `int poseRow=int(-i_params.x-1.0);vec4 row0;vec4 row1;vec4 pose;poseEval(${expression === "0" ? "0" : expression.slice(0, -2)},poseRow,row0,row1,pose);`
+  ).replaceAll("(i_params.x+pose.x)", "(pose.x)").replaceAll("(i_params.y+pose.y)", "(pose.y)");
+}
+function gpuVertexStream(vertices, regions, materials) {
+  if (!regions && !materials) {
     return vertices;
   }
-  const PACKED = new Float32Array(vertices.length / 11 * 12);
-  for (let index = 0; index < regions.length; index++) {
-    PACKED.set(vertices.subarray(index * 11, index * 11 + 11), index * 12);
-    PACKED[index * 12 + 11] = regions[index];
+  const COUNT = vertices.length / 11, STRIDE = 11 + (regions ? 1 : 0) + (materials ? MATERIAL_VERTEX_FLOATS : 0);
+  const PACKED = new Float32Array(COUNT * STRIDE);
+  for (let index = 0; index < COUNT; index++) {
+    const AT = index * STRIDE;
+    PACKED.set(vertices.subarray(index * 11, index * 11 + 11), AT);
+    let next = AT + 11;
+    if (regions) {
+      PACKED[next++] = regions[index];
+    }
+    if (materials) {
+      PACKED.set(materials.subarray(index * MATERIAL_VERTEX_FLOATS, (index + 1) * MATERIAL_VERTEX_FLOATS), next);
+    }
   }
   return PACKED;
 }
@@ -3615,47 +4650,6 @@ function packParts(parts, count, output) {
     output[AT + 11] = DEPTH;
   }
 }
-function clipState(clips, maxPlanes) {
-  if (!clips?.length) {
-    return EMPTY_CLIP;
-  }
-  const VALUES = [], KEY = [];
-  for (const POLYGON of clips) {
-    if (!Array.isArray(POLYGON) || POLYGON.length < 3 || POLYGON.some((p) => !Number.isFinite(p?.x) || !Number.isFinite(p?.y))) {
-      throw new TypeError("Finite convex clip polygons required");
-    }
-    let area = 0;
-    for (let i = 0; i < POLYGON.length; i++) {
-      const P = POLYGON[i], Q = POLYGON[(i + 1) % POLYGON.length];
-      area += P.x * Q.y - Q.x * P.y;
-    }
-    if (Math.abs(area) < 1e-12) {
-      return {
-        key: "empty",
-        values: [0, 0, -1],
-        count: 1
-      };
-    }
-    const SIGN = area >= 0 ? 1 : -1;
-    for (let i = 0; i < POLYGON.length; i++) {
-      const P = POLYGON[i], Q = POLYGON[(i + 1) % POLYGON.length], DX = Q.x - P.x, DY = Q.y - P.y, LENGTH = Math.hypot(DX, DY);
-      if (!LENGTH) {
-        continue;
-      }
-      const A_LOCAL = -DY / LENGTH * SIGN, B_LOCAL = DX / LENGTH * SIGN, C_LOCAL = -(A_LOCAL * P.x + B_LOCAL * P.y);
-      VALUES.push(A_LOCAL, B_LOCAL, C_LOCAL);
-      KEY.push(A_LOCAL, B_LOCAL, C_LOCAL);
-    }
-  }
-  if (VALUES.length / 3 > maxPlanes) {
-    throw new RangeError(`Mesh clipping exceeds ${maxPlanes} edge planes`);
-  }
-  return {
-    key: KEY.join(","),
-    values: VALUES,
-    count: VALUES.length / 3
-  };
-}
 function meshPartBounds(vertices, partCount, morphCount) {
   const BOUNDS = Array.from(
     {
@@ -3740,13 +4734,15 @@ var MeshRenderer = class {
     }
     this.maxPlanes = Math.max(1, Math.min(32, device.gl.getParameter(device.gl.MAX_FRAGMENT_UNIFORM_VECTORS) - 2));
     this.instanced = device.instancingSupported === true;
-    this.maxTexturedInstances = this.instanced ? Math.min(maxInstances, Math.floor(device.maxBufferBytes / 96)) : maxInstances;
     this.instances = new Float32Array(maxInstances * 16);
-    this.texturedInstances = null;
     this.instanceBuffer = this.instanced ? device.createVertexBuffer({
       capacityBytes: this.instances.byteLength
     }) : null;
     this.pipelines = /* @__PURE__ */ new Map();
+    this.materialInstances = null;
+    this.materialRunCache = /* @__PURE__ */ new WeakMap();
+    this.stitchField = null;
+    this.materialTextureSets = /* @__PURE__ */ new WeakMap();
     this.meshes = /* @__PURE__ */ new Set();
     this.bytes = 0;
     this.count = 0;
@@ -3830,13 +4826,14 @@ var MeshRenderer = class {
     };
     device.canvas.addEventListener("webglcontextlost", this.onLost);
     device.canvas.addEventListener("webglcontextrestored", this.onRestored);
+    this.unregisterBatcher = device.registerBatcher((reason) => this.flush(reason));
     this.disposed = false;
   }
   _poses() {
     if (!this.poseRenderer) {
       this.poseRenderer = new PoseRenderer(this.device, {
         backend: this.poseBackend,
-        onBoundary: () => this.flush("poseResourceBoundary")
+        onBoundary: () => this.device.flushBatchers("poseResourceBoundary")
       });
     }
     return this.poseRenderer;
@@ -3869,8 +4866,8 @@ var MeshRenderer = class {
   poseStats() {
     return this.poseRenderer?.stats() ?? null;
   }
-  _pipeline(mesh, clipped, worldMode = false, poseTexture = false) {
-    const KEY = mesh.partCount + ":" + mesh.morphCount + ":" + Number(clipped) + ":" + Number(mesh.hasNonScalingStroke) + ":" + Number(worldMode) + ":" + Number(poseTexture) + ":" + Number(mesh.hasTextureCoordinates) + ":" + (mesh.paintRegionNames?.length ?? 0);
+  _pipeline(mesh, clipped, worldMode = false, poseMode = 0) {
+    const KEY = mesh.partCount + ":" + mesh.morphCount + ":" + Number(clipped) + ":" + Number(mesh.hasNonScalingStroke) + ":" + Number(worldMode) + ":" + poseMode + ":" + (mesh.paintRegionNames?.length ?? 0) + ":" + (mesh.materials?.count ?? 0);
     let pipeline = this.pipelines.get(KEY);
     if (pipeline) {
       return pipeline;
@@ -3896,47 +4893,48 @@ var MeshRenderer = class {
         UNIFORMS2.u_inverseProjection = "matrix3fv";
       }
     }
-    if (poseTexture) {
+    if (poseMode === 1) {
       UNIFORMS2.u_poseTexture = "1i";
+    } else if (poseMode === 2) {
+      Object.assign(UNIFORMS2, { u_program: "1i", u_state: "1i", u_overrides: "1i", u_programWidth: "1i" });
     } else if (mesh.partCount > 1) {
       UNIFORMS2["u_parts[0]"] = "4fv";
     }
-    if (mesh.hasTextureCoordinates) {
-      UNIFORMS2.u_texture = "1i";
-      if (!this.instanced) {
-        UNIFORMS2.i_uvRect = "4f";
-        UNIFORMS2.i_localRect = "4f";
-      }
-    }
     if (mesh.paintRegionNames) {
       UNIFORMS2["u_paintRegions[0]"] = "4fv";
+    }
+    if (mesh.materials) {
+      UNIFORMS2["u_materials[0]"] = "4fv";
+      UNIFORMS2.u_stitchField = "1i";
     }
     if (!this.instanced) {
       for (const NAME of worldMode ? ["i_row0", "i_row1", "i_row2", "i_params"] : ["i_row0", "i_row1", "i_color", "i_params"]) {
         UNIFORMS2[NAME] = "4f";
       }
+      if (mesh.materials) {
+        UNIFORMS2.i_extra = "4f";
+      }
     }
     pipeline = this.device.createPipeline({
-      vertex: (poseTexture ? poseTextureShader : (source) => source)(
+      vertex: [(source) => source, poseTextureShader, poseProgramShader][poseMode](
         shader(
           this.instanced,
-          poseTexture ? Math.max(2, mesh.partCount) : mesh.partCount,
+          poseMode ? Math.max(2, mesh.partCount) : mesh.partCount,
           mesh.morphCount,
           clipped,
           mesh.hasNonScalingStroke,
           worldMode,
-          mesh.hasTextureCoordinates,
-          poseTexture,
-          mesh.paintRegionNames?.length ?? 0
+          poseMode,
+          mesh.paintRegionNames?.length ?? 0,
+          Boolean(mesh.materials)
         )
       ),
-      fragment: fragment(this.maxPlanes, clipped, mesh.hasTextureCoordinates),
+      fragment: mesh.materials ? materialFragment(this.maxPlanes, clipped, mesh.materials.count) : fragment(this.maxPlanes, clipped),
       stride: mesh.bufferStrideFloats * 4,
-      ...this.instanced ? {
-        instanceStride: mesh.hasTextureCoordinates ? 96 : 64
-      } : {},
+      ...this.instanced ? { instanceStride: mesh.instanceFloats * 4 } : {},
       attributes: [
         ...mesh.paintRegionNames ? [{ name: "a_paintRegion", size: 1, offset: 44 }] : [],
+        ...mesh.materials ? [{ name: "a_material", size: 4, offset: 44 + (mesh.paintRegionNames ? 4 : 0) }] : [],
         ...mesh.hasNonScalingStroke ? ATTRIBUTES.filter((attribute) => attribute.name !== "a_morph") : ATTRIBUTES,
         ...mesh.hasNonScalingStroke ? [
           {
@@ -3945,15 +4943,8 @@ var MeshRenderer = class {
             offset: 24
           }
         ] : [],
-        ...mesh.hasTextureCoordinates ? [
-          {
-            name: "a_uv",
-            size: 2,
-            offset: 44
-          }
-        ] : [],
         ...this.instanced ? worldMode ? WORLD_INSTANCE_ATTRIBUTES : INSTANCE_ATTRIBUTES : [],
-        ...this.instanced && mesh.hasTextureCoordinates ? TEXTURE_INSTANCE_ATTRIBUTES : []
+        ...this.instanced && mesh.materials ? [MATERIAL_INSTANCE_ATTRIBUTE] : []
       ],
       uniforms: UNIFORMS2
     });
@@ -3963,7 +4954,6 @@ var MeshRenderer = class {
   createMesh(data) {
     this._ready();
     const INDICES = data?.indices;
-    const UVS = data?.uvs === void 0 ? null : data.uvs;
     const EXPRESSION_INDICES = data?.expressionIndices === void 0 ? {} : data.expressionIndices;
     const INDEX_VARIANTS = data?.indexVariants === void 0 ? {} : data.indexVariants;
     const NON_SCALING_STROKE = data?.nonScalingStroke ?? false;
@@ -3978,9 +4968,6 @@ var MeshRenderer = class {
       ([name, variant]) => !/^[A-Za-z_][A-Za-z0-9_.:-]{0,127}$/.test(name) || VARIANT_NAMES.has(name) || !(variant instanceof Uint16Array) || variant.length % 3 || variant.some((index) => index >= data.vertices.length / 11)
     )) {
       throw new TypeError("Invalid named mesh index variants or expression index variants");
-    }
-    if (UVS !== null && (!(UVS instanceof Float32Array) || UVS.length !== data.vertices.length / 11 * 2 || UVS.some((value) => !Number.isFinite(value)))) {
-      throw new TypeError("uvs must contain two finite coordinates per mesh vertex");
     }
     if (data.vertices.some((n) => !Number.isFinite(n))) {
       throw new TypeError("Mesh values must be finite");
@@ -4004,31 +4991,40 @@ var MeshRenderer = class {
       0
     );
     validatePaintRegionData(data.paintRegions, data.vertices.length / 11, INDICES);
-    if (data.paintRegions && UVS !== null) {
-      throw new TypeError("Named fill regions require an untextured solid-fill mesh");
-    }
     if (data.paintRegions) {
       for (const [, VARIANT] of [...EXPRESSION_ENTRIES, ...INDEX_VARIANT_ENTRIES]) {
         validatePaintRegionData(data.paintRegions, data.vertices.length / 11, VARIANT);
       }
     }
-    const PAINT_INDICES = data.paintRegions?.indices, BUFFER_STRIDE = UVS !== null ? 13 : PAINT_INDICES ? 12 : 11;
+    const MATERIALS = data.materials;
+    let ownedMaterials = null;
+    if (MATERIALS !== void 0) {
+      const SURFACES = MATERIALS?.table?.length / MATERIAL_RECORD_FLOATS;
+      if (!(MATERIALS?.vertices instanceof Float32Array) || !(MATERIALS.table instanceof Float32Array) || MATERIALS.vertices.length !== data.vertices.length / 11 * MATERIAL_VERTEX_FLOATS || !Number.isSafeInteger(SURFACES) || SURFACES < 1 || SURFACES > MAX_MATERIAL_SURFACES || MATERIALS.table.some((n) => !Number.isFinite(n))) {
+        throw new TypeError("Mesh materials need a per-vertex stream and a table of 1..16 surfaces");
+      }
+      for (let at = 0; at < MATERIALS.vertices.length; at += MATERIAL_VERTEX_FLOATS) {
+        const KIND = MATERIALS.vertices[at], SURFACE = MATERIALS.vertices[at + 1];
+        if (!Number.isInteger(KIND) || KIND < MATERIAL_KIND.none || KIND > MATERIAL_KIND.sketchEdge || !Number.isInteger(SURFACE) || SURFACE < 0 || SURFACE >= SURFACES || !Number.isFinite(MATERIALS.vertices[at + 2]) || !Number.isFinite(MATERIALS.vertices[at + 3])) {
+          throw new RangeError("Mesh material kind or surface index is invalid");
+        }
+      }
+      ownedMaterials = Object.freeze({
+        vertices: MATERIALS.vertices.slice(),
+        table: MATERIALS.table.slice(),
+        count: SURFACES
+      });
+    }
+    const PAINT_INDICES = data.paintRegions?.indices, BUFFER_STRIDE = 11 + (PAINT_INDICES ? 1 : 0) + (ownedMaterials ? MATERIAL_VERTEX_FLOATS : 0);
     const GPU_VERTEX_BYTES = data.vertices.length / 11 * BUFFER_STRIDE * 4;
     const UPLOAD_BYTE_LENGTH = GPU_VERTEX_BYTES + (INDICES?.byteLength ?? 0) + VARIANT_BYTE_LENGTH;
-    const BYTE_LENGTH = UPLOAD_BYTE_LENGTH + (UVS !== null || PAINT_INDICES ? data.vertices.byteLength : 0);
+    const BYTE_LENGTH = UPLOAD_BYTE_LENGTH + (PAINT_INDICES || ownedMaterials ? data.vertices.byteLength : 0) + (ownedMaterials ? ownedMaterials.vertices.byteLength + ownedMaterials.table.byteLength : 0);
     if (this.meshes.size >= this.maxMeshes || this.bytes + BYTE_LENGTH > this.maxMeshBytes) {
       throw new RangeError("Retained mesh budget exceeded");
     }
-    const VERTICES = data.vertices.slice(), GPU_VERTICES = UVS === null ? paintVertexStream(VERTICES, PAINT_INDICES) : new Float32Array(VERTICES.length / 11 * 13), OWNED_INDICES = INDICES?.slice(), BUFFER = this.device.createVertexBuffer({
+    const VERTICES = data.vertices.slice(), GPU_VERTICES = gpuVertexStream(VERTICES, PAINT_INDICES, ownedMaterials?.vertices), OWNED_INDICES = INDICES?.slice(), BUFFER = this.device.createVertexBuffer({
       capacityBytes: GPU_VERTICES.byteLength
     });
-    if (UVS !== null) {
-      for (let vertex = 0; vertex < VERTICES.length / 11; vertex++) {
-        GPU_VERTICES.set(VERTICES.subarray(vertex * 11, vertex * 11 + 11), vertex * 13);
-        GPU_VERTICES[vertex * 13 + 11] = UVS[vertex * 2];
-        GPU_VERTICES[vertex * 13 + 12] = UVS[vertex * 2 + 1];
-      }
-    }
     let indexBuffer;
     const OWNED_EXPRESSIONS = /* @__PURE__ */ new Map(), OWNED_VARIANTS = /* @__PURE__ */ new Map();
     try {
@@ -4102,12 +5098,16 @@ var MeshRenderer = class {
       strideFloats: 11,
       bufferStrideFloats: BUFFER_STRIDE,
       paintRegionNames: data.paintRegions ? Object.freeze(data.paintRegions.names.slice()) : null,
-      hasTextureCoordinates: UVS !== null,
+      materials: ownedMaterials,
+      instanceFloats: ownedMaterials ? MATERIAL_INSTANCE_FLOATS : PLAIN_INSTANCE_FLOATS,
       hasNonScalingStroke: NON_SCALING_STROKE,
       partBounds: meshPartBounds(VERTICES, data.partCount, data.morphCount)
     });
     this.meshes.add(MESH);
     this.bytes += BYTE_LENGTH;
+    if (ownedMaterials) {
+      this._materialTextures(null);
+    }
     this.device.stats.meshCreates++;
     this.metrics.geometryUploads++;
     this.metrics.geometryBytesUploaded += UPLOAD_BYTE_LENGTH;
@@ -4141,15 +5141,14 @@ var MeshRenderer = class {
   }
   /** Captures state by value; subsequent transform/paint changes do not alter queued instances. */
   drawMesh(mesh, options = {}) {
+    this._drawPublic(mesh, options, options.matrix ?? IDENTITY2, 1);
+  }
+  _drawPublic(mesh, options, matrices, count) {
     const {
-      matrix: MATRIX = IDENTITY2,
       projection: PROJECTION,
       morph: MORPH = [0, 0],
       parts: PARTS = null,
       pose: POSE = null,
-      texture: TEXTURE = null,
-      uvRect: UV_RECT = IDENTITY_RECT,
-      localRect: LOCAL_RECT = IDENTITY_RECT,
       color: COLOR = WHITE,
       paintRegions: PAINT_REGIONS = null,
       forceColor: FORCE_COLOR = false,
@@ -4165,21 +5164,19 @@ var MeshRenderer = class {
       indexRange: INDEX_RANGE = null,
       strokeViewport: STROKE_VIEWPORT = null,
       stencilRef: STENCIL_REF = null,
+      timeMs: TIME_MS = 0,
       viewProjection: VIEW_PROJECTION,
       worldMatrix: WORLD_MATRIX
     } = options;
-    this._drawMeshInstances(mesh, {
-      matrices: MATRIX,
-      count: 1,
+    this.drawMeshInstances(mesh, {
+      matrices,
+      count,
       projection: PROJECTION,
       viewProjection: VIEW_PROJECTION,
       worldMatrix: WORLD_MATRIX,
       morph: MORPH,
       parts: PARTS,
       pose: POSE,
-      texture: TEXTURE,
-      uvRect: UV_RECT,
-      localRect: LOCAL_RECT,
       color: COLOR,
       paintRegions: PAINT_REGIONS,
       forceColor: FORCE_COLOR,
@@ -4194,7 +5191,8 @@ var MeshRenderer = class {
       depthWriteAlphaThreshold: DEPTH_WRITE_ALPHA_THRESHOLD,
       depthFunc: DEPTH_FUNC,
       strokeViewport: STROKE_VIEWPORT,
-      stencilRef: STENCIL_REF
+      stencilRef: STENCIL_REF,
+      timeMs: TIME_MS
     });
   }
   _setPaintRegions(mesh, overrides) {
@@ -4367,8 +5365,54 @@ var MeshRenderer = class {
     this.alphaQueueCount = 0;
     this.alphaQueueState = null;
   }
-  /** Internal ordered instance append used when one retained pose has several transforms. */
-  _drawMeshInstances(mesh, {
+  /**
+   * Ordered instance append used when one retained pose has several transforms (silhouettes). `matrices` holds
+   * six floats per instance and the first `prefixCount` instances use `prefixColor`. A mesh with materials that
+   * writes depth is drawn in runs so a yarn or sketch edge, whose pixels are only partly covered, never writes depth;
+   * the runs keep the triangle order, so painter order is unchanged.
+   */
+  drawMeshInstances(mesh, options = {}) {
+    if (mesh?.materials && options.depthWrite === true && (options.depthWriteAlphaThreshold ?? null) === null && (options.indexRange ?? null) === null && this.meshes.has(mesh)) {
+      const RUNS = this._materialRuns(mesh, options.indexVariant ?? null);
+      if (RUNS.length > 1) {
+        for (const RUN of RUNS) {
+          this._drawMeshRange(mesh, {
+            ...options,
+            indexRange: [RUN.first, RUN.count],
+            depthWrite: !RUN.edge
+          });
+        }
+        return;
+      }
+    }
+    this._drawMeshRange(mesh, options);
+  }
+  /** Contiguous runs of fill and edge triangles of one index list, cached per mesh. */
+  _materialRuns(mesh, indexVariant) {
+    let cache = this.materialRunCache.get(mesh);
+    if (!cache) {
+      cache = /* @__PURE__ */ new Map();
+      this.materialRunCache.set(mesh, cache);
+    }
+    const KEY = indexVariant ?? "";
+    let runs = cache.get(KEY);
+    if (!runs) {
+      const VARIANT = indexVariant === null ? null : mesh.indexVariants.get(indexVariant) ?? mesh.expressionIndices.get(indexVariant);
+      const INDICES = VARIANT ? VARIANT.indices : mesh.indices, COUNT = VARIANT ? VARIANT.count : mesh.count;
+      runs = [];
+      for (let at = 0; at < COUNT; at += 3) {
+        const VERTEX2 = INDICES ? INDICES[at] : at, KIND = mesh.materials.vertices[VERTEX2 * MATERIAL_VERTEX_FLOATS], EDGE = KIND === MATERIAL_KIND.yarnEdge || KIND === MATERIAL_KIND.sketchEdge, LAST = runs.at(-1);
+        if (LAST && LAST.edge === EDGE) {
+          LAST.count += 3;
+        } else {
+          runs.push({ first: at, count: 3, edge: EDGE });
+        }
+      }
+      cache.set(KEY, runs);
+    }
+    return runs;
+  }
+  _drawMeshRange(mesh, {
     matrices,
     count,
     projection,
@@ -4377,10 +5421,7 @@ var MeshRenderer = class {
     morph = [0, 0],
     parts = null,
     pose = null,
-    texture = null,
-    uvRect = IDENTITY_RECT,
-    localRect = IDENTITY_RECT,
-    color: color2 = WHITE,
+    color = WHITE,
     paintRegions = null,
     forceColor = false,
     alpha = 1,
@@ -4397,26 +5438,15 @@ var MeshRenderer = class {
     indexVariant = null,
     indexRange = null,
     strokeViewport = null,
-    stencilRef = null
+    stencilRef = null,
+    timeMs = 0
   } = {}) {
     this._ready();
     if (!this.meshes.has(mesh)) {
       throw new TypeError("Mesh owned by this renderer required");
     }
-    if (mesh.hasTextureCoordinates !== (texture !== null) || texture !== null && !this.device.textures.has(texture)) {
-      throw new TypeError("Textured meshes require a live texture; plain meshes cannot sample one");
-    }
-    if (uvRect !== IDENTITY_RECT) {
-      finiteArray2(uvRect, 4, "uvRect");
-    }
-    if (localRect !== IDENTITY_RECT) {
-      finiteArray2(localRect, 4, "localRect");
-    }
-    if (!mesh.hasTextureCoordinates && (uvRect !== IDENTITY_RECT && Array.from(uvRect).some((value, index) => value !== IDENTITY_RECT[index]) || localRect !== IDENTITY_RECT && Array.from(localRect).some((value, index) => value !== IDENTITY_RECT[index]))) {
-      throw new TypeError("uvRect and localRect require a textured mesh");
-    }
-    if (mesh.hasTextureCoordinates && this.maxTexturedInstances < 1) {
-      throw new RangeError("A textured instance exceeds device maxBufferBytes");
+    if (!Number.isFinite(timeMs)) {
+      throw new TypeError("timeMs must be finite");
     }
     if (indexVariant !== null && (typeof indexVariant !== "string" || !mesh.expressionIndices.has(indexVariant) && !mesh.indexVariants.has(indexVariant))) {
       throw new TypeError("Known mesh index variant required");
@@ -4451,7 +5481,7 @@ var MeshRenderer = class {
       finiteArray2(projection, 9, "projection");
     }
     finiteArray2(morph, 2, "morph");
-    finiteArray2(color2, 4, "color");
+    finiteArray2(color, 4, "color");
     let strokeSize = null;
     let inverseStrokeProjection = null;
     let inverseViewProjection = null;
@@ -4470,11 +5500,11 @@ var MeshRenderer = class {
       }
       if (!WORLD_MODE) {
         inverseStrokeProjection = invertProjection(projection);
-      } else if (clipState(clips, this.maxPlanes).count) {
+      } else if (clipPlanes(clips, this.maxPlanes).count) {
         inverseViewProjection = invertMatrix4(viewProjection);
       }
     }
-    if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1 || color2.some((n) => n < 0 || n > 1)) {
+    if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1 || color.some((n) => n < 0 || n > 1)) {
       throw new RangeError("RGBA/alpha in [0,1] required");
     }
     if (!Number.isFinite(depth) || depth < -1 || depth > 1) {
@@ -4488,6 +5518,9 @@ var MeshRenderer = class {
     }
     if (WORLD_MODE && depthWriteAlphaThreshold !== null) {
       throw new TypeError("depthWriteAlphaThreshold is currently supported only for 2D mesh draws");
+    }
+    if (mesh.materials && depthWriteAlphaThreshold !== null) {
+      throw new TypeError("Meshes with materials do not support depthWriteAlphaThreshold");
     }
     if (!["never", "less", "equal", "lequal", "greater", "notequal", "gequal", "always"].includes(depthFunc)) {
       throw new TypeError("Unsupported depthFunc");
@@ -4507,15 +5540,13 @@ var MeshRenderer = class {
     if (WORLD_MODE && (prefixCount || forceColorPrefixCount)) {
       throw new TypeError("Per-instance color prefixes are not supported for 3D mesh draws");
     }
-    if (indexRange !== null && (indexVariant !== null || !Array.isArray(indexRange) || indexRange.length !== 2 || !Number.isSafeInteger(indexRange[0]) || !Number.isSafeInteger(indexRange[1]) || indexRange[0] < 0 || indexRange[1] < 0 || indexRange[0] % 3 || indexRange[1] % 3)) {
-      throw new TypeError(
-        "indexRange must be [firstIndex, triangleAlignedCount] and cannot be combined with indexVariant"
-      );
+    if (indexRange !== null && (!Array.isArray(indexRange) || indexRange.length !== 2 || !Number.isSafeInteger(indexRange[0]) || !Number.isSafeInteger(indexRange[1]) || indexRange[0] < 0 || indexRange[1] < 0 || indexRange[0] % 3 || indexRange[1] % 3)) {
+      throw new TypeError("indexRange must be [firstIndex, triangleAlignedCount]");
     }
     if (indexRange !== null && depthWriteAlphaThreshold !== null) {
       throw new TypeError("indexRange is currently supported only for ordinary ordered mesh draws");
     }
-    const CLIP = clipState(clips, this.maxPlanes);
+    const CLIP = clipPlanes(clips, this.maxPlanes);
     const VARIANT = indexVariant === null ? null : mesh.indexVariants.get(indexVariant) ?? mesh.expressionIndices.get(indexVariant);
     const FIRST_INDEX = indexRange?.[0] ?? 0, INDEX_COUNT = indexRange?.[1] ?? VARIANT?.count ?? mesh.count;
     if (FIRST_INDEX + INDEX_COUNT > (VARIANT?.count ?? mesh.count)) {
@@ -4527,12 +5558,6 @@ var MeshRenderer = class {
     }
     if (POSE_DRAW && depthWriteAlphaThreshold !== null) {
       throw new TypeError("Alpha depth classification requires ordinary CPU part poses");
-    }
-    if (texture !== null && depthWriteAlphaThreshold !== null) {
-      throw new TypeError("Alpha depth classification cannot inspect raster texel alpha");
-    }
-    if (texture !== null && POSE_DRAW?.texture && this.device.maxTextures < 2) {
-      throw new RangeError("Textured GPU poses require two texture units");
     }
     packParts(parts, mesh.partCount, this.partScratch);
     for (let i = 0; i < mesh.partCount; i++) {
@@ -4547,16 +5572,16 @@ var MeshRenderer = class {
     const DEPTH_STATE_KEY = Number(depthTest) + ":" + Number(depthWrite) + ":" + depthFunc;
     const ALPHA_DEPTH_WRITE = depthWrite && depthWriteAlphaThreshold !== null;
     if (!ALPHA_DEPTH_WRITE) {
-      const INSTANCE_LIMIT = mesh.hasTextureCoordinates ? this.maxTexturedInstances : this.maxInstances;
-      const INSTANCE_FLOATS = mesh.hasTextureCoordinates ? 24 : 16;
-      const DATA = mesh.hasTextureCoordinates ? this.texturedInstances ??= new Float32Array(this.maxTexturedInstances * 24) : this.instances;
+      const INSTANCE_LIMIT = this.maxInstances;
+      const INSTANCE_FLOATS = mesh.instanceFloats;
+      const DATA = this._instanceData(mesh);
       if (this.alphaQueueCount) {
         this._flushAlphaQueue("alphaBoundary");
       }
       if (PENDING) {
         const MATRIX = WORLD_MODE ? viewProjection : projection;
         const PREVIOUS_COLOR = PENDING.color;
-        const REASON = (PENDING.poseTexture ?? null) !== (POSE_DRAW?.texture ?? null) ? "poseBackend" : PENDING.texture !== texture ? "texture" : PENDING.mesh !== mesh ? "mesh" : PENDING.worldMode !== WORLD_MODE ? "transformMode" : PENDING.indexVariant !== indexVariant ? "indexVariant" : PENDING.firstIndex !== FIRST_INDEX || PENDING.indexCount !== INDEX_COUNT ? "indexRange" : PENDING.clip.key !== CLIP.key ? "clip" : PENDING.stencilRef !== stencilRef ? "stencil" : PENDING.depthStateKey !== DEPTH_STATE_KEY ? "depthState" : MATRIX.some((n, i) => Math.fround(n) !== PENDING.projection[i]) ? "projection" : strokeSize && strokeSize.some((n, i) => n !== PENDING.strokeSize?.[i]) ? "strokeViewport" : WORLD_MODE && color2.some((n, i) => n !== PREVIOUS_COLOR[i]) ? "color" : !POSE_DRAW && mesh.partCount > 1 && PENDING.parts.some((n, i) => n !== this.partScratch[i]) ? "parts" : this.count === INSTANCE_LIMIT ? "capacity" : null;
+        const REASON = (PENDING.poseTexture ?? null) !== (POSE_DRAW?.texture ?? null) ? "poseBackend" : PENDING.mesh !== mesh ? "mesh" : PENDING.worldMode !== WORLD_MODE ? "transformMode" : PENDING.indexVariant !== indexVariant ? "indexVariant" : PENDING.firstIndex !== FIRST_INDEX || PENDING.indexCount !== INDEX_COUNT ? "indexRange" : PENDING.clip.key !== CLIP.key ? "clip" : PENDING.stencilRef !== stencilRef ? "stencil" : PENDING.depthStateKey !== DEPTH_STATE_KEY ? "depthState" : MATRIX.some((n, i) => Math.fround(n) !== PENDING.projection[i]) ? "projection" : strokeSize && strokeSize.some((n, i) => n !== PENDING.strokeSize?.[i]) ? "strokeViewport" : WORLD_MODE && color.some((n, i) => n !== PREVIOUS_COLOR[i]) ? "color" : !POSE_DRAW && mesh.partCount > 1 && PENDING.parts.some((n, i) => n !== this.partScratch[i]) ? "parts" : this.count === INSTANCE_LIMIT ? "capacity" : null;
         if (REASON) {
           this.flush(REASON);
         }
@@ -4573,10 +5598,12 @@ var MeshRenderer = class {
           this.pending = {
             mesh,
             poseTexture: POSE_DRAW?.texture ?? null,
-            texture,
+            poseTextures: POSE_DRAW?.textures ?? null,
+            poseKind: POSE_DRAW?.kind ?? null,
+            poseProgramWidth: POSE_DRAW?.programWidth ?? 0,
             projection: Float32Array.from(WORLD_MODE ? viewProjection : projection),
             worldMode: WORLD_MODE,
-            color: Float32Array.from(color2),
+            color: Float32Array.from(color),
             clip: CLIP,
             stencilRef,
             depthStateKey: DEPTH_STATE_KEY,
@@ -4616,7 +5643,7 @@ var MeshRenderer = class {
           weight0 += PART2[8];
           weight1 += PART2[9];
         }
-        const INSTANCE_COLOR = i < prefixCount ? prefixColor : color2;
+        const INSTANCE_COLOR = i < prefixCount ? prefixColor : color;
         const INSTANCE_FORCE_COLOR = i < forceColorPrefixCount ? true : forceColor, AT = this.count++ * INSTANCE_FLOATS;
         const INSTANCE_DEPTH = depth + (SINGLE_PART2 ? PART2[11] : 0);
         if (POSE_DRAW) {
@@ -4657,9 +5684,11 @@ var MeshRenderer = class {
           DATA[AT + 14] = whiteFlash ? 1 : 0;
           DATA[AT + 15] = INSTANCE_DEPTH;
         }
-        if (mesh.hasTextureCoordinates) {
-          DATA.set(uvRect, AT + 16);
-          DATA.set(localRect, AT + 20);
+        if (mesh.materials) {
+          DATA[AT + 16] = timeMs;
+          DATA[AT + 17] = 0;
+          DATA[AT + 18] = 0;
+          DATA[AT + 19] = 0;
         }
       }
       return;
@@ -4693,7 +5722,7 @@ var MeshRenderer = class {
         weight0 += PART[8];
         weight1 += PART[9];
       }
-      const INSTANCE_COLOR = i < prefixCount ? prefixColor : color2;
+      const INSTANCE_COLOR = i < prefixCount ? prefixColor : color;
       const INSTANCE_FORCE_COLOR = i < forceColorPrefixCount ? true : forceColor, AT = slot * 16, DATA = this.instances;
       DATA[AT] = m0;
       DATA[AT + 1] = m2;
@@ -4713,7 +5742,7 @@ var MeshRenderer = class {
       DATA[AT + 15] = depth + (SINGLE_PART ? PART[11] : 0);
     };
     for (let i = 0; i < count; i++) {
-      const INSTANCE_COLOR = i < prefixCount ? prefixColor : color2;
+      const INSTANCE_COLOR = i < prefixCount ? prefixColor : color;
       const INSTANCE_FORCE_COLOR = i < forceColorPrefixCount ? true : forceColor;
       const RUNS = this._collectAlphaDepthRuns(
         mesh,
@@ -4802,7 +5831,7 @@ var MeshRenderer = class {
       }
       const WRITE = RUNS[2], STATE_KEY = Number(depthTest) + ":" + Number(WRITE) + ":" + depthFunc;
       if (this.pending) {
-        const CURRENT = this.pending, REASON = CURRENT.mesh !== mesh ? "mesh" : CURRENT.texture !== texture ? "texture" : CURRENT.worldMode ? "transformMode" : CURRENT.indexVariant !== indexVariant ? "indexVariant" : CURRENT.firstIndex !== FIRST_INDEX || CURRENT.indexCount !== INDEX_COUNT ? "indexRange" : CURRENT.clip.key !== CLIP.key ? "clip" : CURRENT.stencilRef !== stencilRef ? "stencil" : CURRENT.depthStateKey !== STATE_KEY ? "depthState" : projection.some((n, j) => Math.fround(n) !== CURRENT.projection[j]) ? "projection" : strokeSize && strokeSize.some((n, j) => n !== CURRENT.strokeSize?.[j]) ? "strokeViewport" : mesh.partCount > 1 && CURRENT.parts.some((n, j) => n !== this.partScratch[j]) ? "parts" : this.count === this.maxInstances ? "capacity" : null;
+        const CURRENT = this.pending, REASON = CURRENT.mesh !== mesh ? "mesh" : CURRENT.worldMode ? "transformMode" : CURRENT.indexVariant !== indexVariant ? "indexVariant" : CURRENT.firstIndex !== FIRST_INDEX || CURRENT.indexCount !== INDEX_COUNT ? "indexRange" : CURRENT.clip.key !== CLIP.key ? "clip" : CURRENT.stencilRef !== stencilRef ? "stencil" : CURRENT.depthStateKey !== STATE_KEY ? "depthState" : projection.some((n, j) => Math.fround(n) !== CURRENT.projection[j]) ? "projection" : strokeSize && strokeSize.some((n, j) => n !== CURRENT.strokeSize?.[j]) ? "strokeViewport" : mesh.partCount > 1 && CURRENT.parts.some((n, j) => n !== this.partScratch[j]) ? "parts" : this.count === this.maxInstances ? "capacity" : null;
         if (REASON) {
           this.flush(REASON);
         }
@@ -4810,7 +5839,6 @@ var MeshRenderer = class {
       if (!this.pending) {
         this.pending = {
           mesh,
-          texture,
           projection: Float32Array.from(projection),
           worldMode: false,
           clip: CLIP,
@@ -5026,7 +6054,9 @@ var MeshRenderer = class {
       inverseViewProjection: INVERSE_VIEW_PROJECTION,
       stencilRef: STENCIL_REF,
       poseTexture: POSE_TEXTURE,
-      texture: TEXTURE
+      poseTextures: POSE_TEXTURES,
+      poseKind: POSE_KIND,
+      poseProgramWidth: POSE_PROGRAM_WIDTH
     } = this.pending;
     const VARIANT = INDEX_VARIANT === null ? null : MESH.indexVariants.get(INDEX_VARIANT) ?? MESH.expressionIndices.get(INDEX_VARIANT);
     this.planes.fill(0);
@@ -5036,7 +6066,12 @@ var MeshRenderer = class {
     if (POSE_TEXTURE) {
       this.poseRenderer.flushUpdates();
     }
-    const PIPELINE = this._pipeline(MESH, CLIP.count > 0, WORLD_MODE, !!POSE_TEXTURE), UNIFORMS2 = WORLD_MODE ? {
+    const PIPELINE = this._pipeline(
+      MESH,
+      CLIP.count > 0,
+      WORLD_MODE,
+      POSE_KIND === "program" ? 2 : POSE_KIND === "matrix" ? 1 : 0
+    ), UNIFORMS2 = WORLD_MODE ? {
       u_viewProjection: PROJECTION,
       u_color: COLOR
     } : {
@@ -5061,18 +6096,24 @@ var MeshRenderer = class {
     if (MESH.paintRegionNames) {
       UNIFORMS2["u_paintRegions[0]"] = this.paintState;
     }
-    if (POSE_TEXTURE) {
+    if (POSE_KIND === "program") {
+      Object.assign(UNIFORMS2, { u_program: 0, u_state: 1, u_overrides: 2, u_programWidth: POSE_PROGRAM_WIDTH });
+    } else if (POSE_KIND === "matrix") {
       UNIFORMS2.u_poseTexture = 0;
     } else if (MESH.partCount > 1) {
       UNIFORMS2["u_parts[0]"] = PARTS;
     }
-    if (TEXTURE) {
-      UNIFORMS2.u_texture = POSE_TEXTURE ? 1 : 0;
+    const TEXTURES = MESH.materials ? this._materialTextures(POSE_TEXTURES) : POSE_TEXTURES ?? NO_TEXTURES;
+    if (MESH.materials) {
+      UNIFORMS2["u_materials[0]"] = MESH.materials.table;
+      UNIFORMS2.u_stitchField = TEXTURES.length - 1;
     }
-    const TEXTURES = POSE_TEXTURE ? TEXTURE ? [POSE_TEXTURE, TEXTURE] : [POSE_TEXTURE] : TEXTURE ? [TEXTURE] : [];
-    const INSTANCE_UNIFORMS = WORLD_MODE ? ["i_row0", "i_row1", "i_row2", "i_params"] : ["i_row0", "i_row1", "i_color", "i_params"];
-    const INSTANCE_FLOATS = MESH.hasTextureCoordinates ? 24 : 16;
-    const INSTANCE_DATA = MESH.hasTextureCoordinates ? this.texturedInstances : this.instances;
+    const INSTANCE_UNIFORMS = [
+      ...WORLD_MODE ? ["i_row0", "i_row1", "i_row2", "i_params"] : ["i_row0", "i_row1", "i_color", "i_params"],
+      ...MESH.materials ? ["i_extra"] : []
+    ];
+    const INSTANCE_FLOATS = MESH.instanceFloats;
+    const INSTANCE_DATA = this._instanceData(MESH);
     if (this.instanced) {
       this.device.uploadVertices(this.instanceBuffer, INSTANCE_DATA.subarray(0, this.count * INSTANCE_FLOATS));
       this.device.draw({
@@ -5102,15 +6143,11 @@ var MeshRenderer = class {
       }
     } else {
       for (let i = 0; i < this.count; i++) {
-        for (let j = 0; j < 4; j++) {
+        for (let j = 0; j < INSTANCE_UNIFORMS.length; j++) {
           UNIFORMS2[INSTANCE_UNIFORMS[j]] = INSTANCE_DATA.subarray(
             i * INSTANCE_FLOATS + j * 4,
             i * INSTANCE_FLOATS + j * 4 + 4
           );
-        }
-        if (MESH.hasTextureCoordinates) {
-          UNIFORMS2.i_uvRect = INSTANCE_DATA.subarray(i * 24 + 16, i * 24 + 20);
-          UNIFORMS2.i_localRect = INSTANCE_DATA.subarray(i * 24 + 20, i * 24 + 24);
         }
         this.device.draw({
           pipeline: PIPELINE,
@@ -5139,6 +6176,28 @@ var MeshRenderer = class {
     this.metrics.instances += this.count;
     this.metrics.flushReasons[reason] = (this.metrics.flushReasons[reason] ?? 0) + 1;
     this.discard();
+  }
+  /** The staging array holding this mesh's instance records. */
+  _instanceData(mesh) {
+    if (mesh.instanceFloats === PLAIN_INSTANCE_FLOATS) {
+      return this.instances;
+    }
+    this.materialInstances ??= new Float32Array(this.maxInstances * MATERIAL_INSTANCE_FLOATS);
+    return this.materialInstances;
+  }
+  /** Pose textures followed by the shared stitch distance field; the field's unit is the last one. */
+  _materialTextures(poseTextures) {
+    this.stitchField ??= this.device.createTexture(
+      { width: STITCH_FIELD_SIZE, height: STITCH_FIELD_SIZE, data: stitchFieldPixels() },
+      { premultiplied: true, filter: "linear" }
+    );
+    const KEY = poseTextures ?? NO_TEXTURES;
+    let set = this.materialTextureSets.get(KEY);
+    if (!set) {
+      set = Object.freeze([...KEY, this.stitchField]);
+      this.materialTextureSets.set(KEY, set);
+    }
+    return set;
   }
   discard() {
     this.count = 0;
@@ -5178,7 +6237,7 @@ var MeshRenderer = class {
       pipelineCount: this.pipelines.size,
       meshCount: this.meshes.size,
       retainedBytes: this.bytes,
-      stagingBytes: this.instances.byteLength + (this.texturedInstances?.byteLength ?? 0) + this.planes.byteLength + this.partScratch.byteLength,
+      stagingBytes: this.instances.byteLength + (this.materialInstances?.byteLength ?? 0) + this.planes.byteLength + this.partScratch.byteLength,
       instanced: this.instanced,
       maxClipPlanes: this.maxPlanes,
       poses: this.poseStats()
@@ -5189,8 +6248,8 @@ var MeshRenderer = class {
       return;
     }
     this.discard();
-    this.texturedInstances = null;
     this.poseRenderer?.dispose();
+    this.unregisterBatcher();
     this.device.canvas.removeEventListener("webglcontextlost", this.onLost);
     this.device.canvas.removeEventListener("webglcontextrestored", this.onRestored);
     for (const MESH of this.meshes) {
@@ -5216,316 +6275,16 @@ var MeshRenderer = class {
     if (this.instanceBuffer) {
       this.device.deleteVertexBuffer(this.instanceBuffer);
     }
+    if (this.stitchField) {
+      this.device.deleteTexture(this.stitchField);
+      this.stitchField = null;
+    }
     for (const PIPELINE of this.pipelines.values()) {
       this.device.deletePipeline(PIPELINE);
     }
     this.pipelines.clear();
     this.disposed = true;
     this.state = "disposed";
-  }
-};
-
-// modules/rendering/primitive-renderer.js
-var MAX_INSTANCES = 2048;
-var MAX_CLIP_PLANES = 32;
-var INSTANCE_STRIDE_FLOATS = 16;
-var INSTANCE_STRIDE_BYTES = INSTANCE_STRIDE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
-var QUAD_VERTICES = new Float32Array([-1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1]);
-var INSTANCE_VERTEX = "attribute vec2 a_position;attribute vec4 i_row0;attribute vec4 i_row1;attribute vec4 i_color;attribute vec4 i_params;uniform mat3 u_projection;varying vec2 v_local;varying vec2 v_world;varying vec4 v_row0;varying vec4 v_row1;varying vec4 v_color;varying vec4 v_params;void main(){vec2 p=vec2(i_row0.x*a_position.x+i_row0.y*a_position.y+i_row0.z,i_row1.x*a_position.x+i_row1.y*a_position.y+i_row1.z);vec3 q=u_projection*vec3(p,1.0);gl_Position=vec4(q.xy,0.0,1.0);v_local=a_position;v_world=p;v_row0=i_row0;v_row1=i_row1;v_color=i_color;v_params=i_params;}";
-var UNIFORM_VERTEX = "attribute vec2 a_position;uniform mat3 u_projection;uniform mat3 u_transform;uniform vec4 u_color;uniform vec4 u_params;varying vec2 v_local;varying vec2 v_world;varying vec4 v_row0;varying vec4 v_row1;varying vec4 v_color;varying vec4 v_params;void main(){vec3 p=u_transform*vec3(a_position,1.0);vec3 q=u_projection*p;gl_Position=vec4(q.xy,0.0,1.0);v_local=a_position;v_world=p.xy;v_row0=vec4(u_transform[0][0],u_transform[1][0],u_transform[2][0],0.0);v_row1=vec4(u_transform[0][1],u_transform[1][1],u_transform[2][1],0.0);v_color=u_color;v_params=u_params;}";
-var FRAGMENT_SHADER = "precision mediump float;varying vec2 v_local;varying vec2 v_world;varying vec4 v_row0;varying vec4 v_row1;varying vec4 v_color;varying vec4 v_params;uniform vec3 u_planes[32];uniform int u_planeCount;void main(){for(int i=0;i<32;i++){if(i>=u_planeCount)break;if(dot(u_planes[i],vec3(v_world,1.0))<0.0)discard;}float kind=v_params.x;float stroke=v_params.y;float width=v_params.z;float option=v_params.w;float d=1.0;if(kind<0.5){if(stroke<0.5){if(length(v_local)>1.0)discard;}else{float ql=length(v_local);vec2 n=ql>0.000001?v_local/ql:vec2(1.0,0.0);float det=v_row0.x*v_row1.y-v_row0.y*v_row1.x;vec2 g=vec2(v_row1.y*n.x-v_row1.x*n.y,-v_row0.y*n.x+v_row0.x*n.y)/max(abs(det),0.000001);d=(ql-1.0)/max(length(g),0.000001);if(abs(d)>width*0.5)discard;}}else if(kind<1.5){if(stroke<0.5){if(max(abs(v_local.x),abs(v_local.y))>1.0)discard;}else{float sx=length(vec2(v_row0.x,v_row1.x));float sy=length(vec2(v_row0.y,v_row1.y));if(option>0.5){float ox=1.0+width/(2.0*max(sx,0.000001));float oy=1.0+width/(2.0*max(sy,0.000001));float ix=max(0.0,1.0-width/(2.0*max(sx,0.000001)));float iy=max(0.0,1.0-width/(2.0*max(sy,0.000001)));if(max(abs(v_local.x)/ox,abs(v_local.y)/oy)>1.0||max(abs(v_local.x)/max(ix,0.000001),abs(v_local.y)/max(iy,0.000001))<1.0)discard;}else{vec2 q=(abs(v_local)-vec2(1.0))*vec2(sx,sy);float sd=length(max(q,vec2(0.0)))+min(max(q.x,q.y),0.0);if(abs(sd)>width*0.5)discard;}}}else{float halfLength=length(vec2(v_row0.x,v_row1.x));float halfWidth=length(vec2(v_row0.y,v_row1.y));float x=v_local.x*halfLength;float y=v_local.y*halfWidth;float center=halfLength-(option>0.5?halfWidth:0.0);if(option<0.5){d=max(abs(x)-center,abs(y)-halfWidth);}else if(option<1.5){d=max(abs(x)-center-halfWidth,abs(y)-halfWidth);}else{d=length(vec2(max(abs(x)-center,0.0),y))-halfWidth;}if(d>0.0)discard;}gl_FragColor=vec4(v_color.rgb*v_color.a,v_color.a);}";
-function createClipState(clips) {
-  const VALUES = [];
-  const KEY = [];
-  for (const POLYGON of clips) {
-    let area = 0;
-    for (let i = 0; i < POLYGON.length; i++) {
-      const P = POLYGON[i];
-      const Q = POLYGON[(i + 1) % POLYGON.length];
-      area += P.x * Q.y - Q.x * P.y;
-    }
-    if (Math.abs(area) < 1e-12) {
-      VALUES.push(0, 0, -1);
-      KEY.push("empty");
-      continue;
-    }
-    const SIGN = area >= 0 ? 1 : -1;
-    for (let i = 0; i < POLYGON.length; i++) {
-      const P = POLYGON[i];
-      const Q = POLYGON[(i + 1) % POLYGON.length];
-      const DX = Q.x - P.x;
-      const DY = Q.y - P.y;
-      const LENGTH = Math.hypot(DX, DY);
-      if (!LENGTH) {
-        continue;
-      }
-      const A = -DY / LENGTH * SIGN;
-      const B = DX / LENGTH * SIGN;
-      const C = -(A * P.x + B * P.y);
-      VALUES.push(A, B, C);
-      KEY.push(A, B, C);
-    }
-  }
-  if (VALUES.length / 3 > MAX_CLIP_PLANES) {
-    return null;
-  }
-  return {
-    key: KEY.join(","),
-    values: Float32Array.from(VALUES),
-    count: VALUES.length / 3
-  };
-}
-function stencilState(stencilRef) {
-  return stencilRef === null ? false : {
-    func: "equal",
-    ref: stencilRef,
-    mask: 255,
-    writeMask: 0,
-    pass: "keep"
-  };
-}
-function transformUniform(matrix) {
-  return new Float32Array([matrix[0], matrix[1], 0, matrix[2], matrix[3], 0, matrix[4], matrix[5], 1]);
-}
-var PrimitiveRenderer = class {
-  constructor(device) {
-    if (!device?.createVertexBuffer || !device?.createPipeline || !device?.draw) {
-      throw new TypeError("WebGLDevice is required");
-    }
-    this.device = device;
-    this.instanced = device.instancingSupported === true;
-    this.vertexBuffer = device.createVertexBuffer({
-      capacityBytes: QUAD_VERTICES.byteLength
-    });
-    device.uploadVertices(this.vertexBuffer, QUAD_VERTICES);
-    this.instanceBuffer = this.instanced ? device.createVertexBuffer({
-      capacityBytes: MAX_INSTANCES * INSTANCE_STRIDE_BYTES
-    }) : null;
-    this.instances = this.instanced ? new Float32Array(MAX_INSTANCES * INSTANCE_STRIDE_FLOATS) : null;
-    this.pipeline = device.createPipeline({
-      vertex: this.instanced ? INSTANCE_VERTEX : UNIFORM_VERTEX,
-      fragment: FRAGMENT_SHADER,
-      stride: 8,
-      instanceStride: this.instanced ? INSTANCE_STRIDE_BYTES : 0,
-      attributes: [
-        {
-          name: "a_position",
-          size: 2,
-          offset: 0
-        },
-        ...this.instanced ? [
-          {
-            name: "i_row0",
-            size: 4,
-            offset: 0,
-            source: "instance"
-          },
-          {
-            name: "i_row1",
-            size: 4,
-            offset: 16,
-            source: "instance"
-          },
-          {
-            name: "i_color",
-            size: 4,
-            offset: 32,
-            source: "instance"
-          },
-          {
-            name: "i_params",
-            size: 4,
-            offset: 48,
-            source: "instance"
-          }
-        ] : []
-      ],
-      uniforms: {
-        u_projection: "matrix3fv",
-        "u_planes[0]": "3fv",
-        u_planeCount: "1i",
-        ...this.instanced ? {} : {
-          u_transform: "matrix3fv",
-          u_color: "4f",
-          u_params: "4f"
-        }
-      }
-    });
-    this.pendingCount = 0;
-    this.pendingState = null;
-    this.frameStats = this._emptyStats();
-    this.total = this._emptyStats();
-    this.disposed = false;
-    this.onLost = () => {
-      this.pendingCount = 0;
-      this.pendingState = null;
-    };
-    this.onRestored = () => {
-      if (this.disposed) {
-        return;
-      }
-      try {
-        this.device.uploadVertices(this.vertexBuffer, QUAD_VERTICES);
-      } catch {
-        this.pendingCount = 0;
-        this.pendingState = null;
-      }
-    };
-    device.canvas.addEventListener("webglcontextlost", this.onLost);
-    device.canvas.addEventListener("webglcontextrestored", this.onRestored);
-  }
-  _emptyStats() {
-    return {
-      instances: 0,
-      instanceUploads: 0,
-      instanceBytesUploaded: 0,
-      draws: 0,
-      instancedDraws: 0,
-      flushes: 0
-    };
-  }
-  beginFrame() {
-    this.frameStats = this._emptyStats();
-  }
-  _sameState(state, next) {
-    if (state.clip.key !== next.clip.key || state.stencilRef !== next.stencilRef || state.blend !== next.blend || state.projection.length !== next.projection.length) {
-      return false;
-    }
-    for (let i = 0; i < state.projection.length; i++) {
-      if (state.projection[i] !== next.projection[i]) {
-        return false;
-      }
-    }
-    return true;
-  }
-  draw({ matrix, color: color2, params, projection, clips, stencilRef = null, blend = "source-over" }) {
-    if (this.disposed) {
-      throw new Error("PrimitiveRenderer is disposed");
-    }
-    const CLIP = createClipState(clips);
-    if (!CLIP) {
-      return false;
-    }
-    const NEXT_STATE = {
-      clip: CLIP,
-      projection,
-      stencilRef,
-      blend
-    };
-    if (this.pendingCount && !this._sameState(this.pendingState, NEXT_STATE)) {
-      this.flush("stateChange");
-    }
-    if (!this.instanced) {
-      this.pendingState = NEXT_STATE;
-      this._drawUniform(matrix, color2, params, NEXT_STATE);
-      this.frameStats.instances++;
-      this.frameStats.draws++;
-      this.total.instances++;
-      this.total.draws++;
-      return true;
-    }
-    if (this.pendingCount === MAX_INSTANCES) {
-      this.flush("capacity");
-    }
-    if (!this.pendingCount) {
-      this.pendingState = NEXT_STATE;
-    }
-    const AT = this.pendingCount++ * INSTANCE_STRIDE_FLOATS;
-    this.instances.set([matrix[0], matrix[2], matrix[4], 0], AT);
-    this.instances.set([matrix[1], matrix[3], matrix[5], 0], AT + 4);
-    this.instances.set(color2, AT + 8);
-    this.instances.set(params, AT + 12);
-    this.frameStats.instances++;
-    this.total.instances++;
-    return true;
-  }
-  _drawUniform(matrix, color2, params, state) {
-    const UNIFORMS2 = {
-      u_projection: state.projection,
-      u_transform: transformUniform(matrix),
-      u_color: color2,
-      u_params: params,
-      u_planeCount: state.clip.count
-    };
-    if (state.clip.count) {
-      UNIFORMS2["u_planes[0]"] = state.clip.values;
-    }
-    this.device.draw({
-      pipeline: this.pipeline,
-      buffer: this.vertexBuffer,
-      count: QUAD_VERTICES.length / 2,
-      uniforms: UNIFORMS2,
-      blend: state.blend,
-      stencil: stencilState(state.stencilRef)
-    });
-  }
-  flush(reason = "explicit") {
-    if (!this.pendingCount) {
-      return;
-    }
-    const STATE = this.pendingState;
-    const BYTES = this.pendingCount * INSTANCE_STRIDE_BYTES;
-    const UNIFORMS2 = {
-      u_projection: STATE.projection,
-      u_planeCount: STATE.clip.count
-    };
-    if (STATE.clip.count) {
-      UNIFORMS2["u_planes[0]"] = STATE.clip.values;
-    }
-    this.device.uploadVertices(
-      this.instanceBuffer,
-      this.instances.subarray(0, this.pendingCount * INSTANCE_STRIDE_FLOATS)
-    );
-    this.frameStats.instanceUploads++;
-    this.total.instanceUploads++;
-    this.frameStats.instanceBytesUploaded += BYTES;
-    this.total.instanceBytesUploaded += BYTES;
-    this.device.draw({
-      pipeline: this.pipeline,
-      buffer: this.vertexBuffer,
-      instanceBuffer: this.instanceBuffer,
-      instances: this.pendingCount,
-      count: QUAD_VERTICES.length / 2,
-      uniforms: UNIFORMS2,
-      blend: STATE.blend,
-      stencil: stencilState(STATE.stencilRef)
-    });
-    this.frameStats.draws++;
-    this.frameStats.instancedDraws++;
-    this.frameStats.flushes++;
-    this.total.draws++;
-    this.total.instancedDraws++;
-    this.total.flushes++;
-    this.pendingCount = 0;
-    this.pendingState = null;
-    this.frameStats.lastFlushReason = reason;
-  }
-  stats() {
-    return {
-      instanced: this.instanced,
-      pendingInstances: this.pendingCount,
-      frame: {
-        ...this.frameStats
-      },
-      total: {
-        ...this.total
-      }
-    };
-  }
-  dispose() {
-    if (this.disposed) {
-      return;
-    }
-    this.device.canvas.removeEventListener("webglcontextlost", this.onLost);
-    this.device.canvas.removeEventListener("webglcontextrestored", this.onRestored);
-    this.device.deleteVertexBuffer(this.vertexBuffer);
-    if (this.instanceBuffer) {
-      this.device.deleteVertexBuffer(this.instanceBuffer);
-    }
-    this.device.deletePipeline(this.pipeline);
-    this.pendingCount = 0;
-    this.pendingState = null;
-    this.disposed = true;
   }
 };
 
@@ -5718,6 +6477,18 @@ function invert(matrix) {
     (matrix[1] * matrix[4] - matrix[0] * matrix[5]) / D
   ];
 }
+var RAMP_KEY = (gradient) => (gradient instanceof LinearGradient ? "L" : "R") + gradient.stops.map((stop) => `${stop.offset}:${stop.color.join(",")}`).join(";");
+var COMPOSE_AFFINE = (outer, inner) => {
+  const [A, B, C, D, E, F] = inner;
+  return [
+    outer[0] * A + outer[2] * B,
+    outer[1] * A + outer[3] * B,
+    outer[0] * C + outer[2] * D,
+    outer[1] * C + outer[3] * D,
+    outer[0] * E + outer[2] * F + outer[4],
+    outer[1] * E + outer[3] * F + outer[5]
+  ];
+};
 var RadialGradient = class {
   constructor(matrix, x0, y0, r0, x1, y1, r1) {
     for (const [N, V] of Object.entries({
@@ -5867,35 +6638,35 @@ var LinearGradient = class {
 };
 var VectorContext = class {
   constructor(device, {
-    vectorRenderer = null,
-    glyphAtlas = vectorRenderer?.glyphAtlas ?? null,
+    glyphAtlas = null,
     initialVertices = 4096,
     maxVertices = 262144,
     onError = null,
-    safeAlphaRunBatching = true
+    safeAlphaRunBatching = true,
+    mesh = {}
   } = {}) {
     if (!device?.beginFrame || !device?.endFrame || !device?.createVertexBuffer) {
       throw new TypeError("WebGLDevice is required");
     }
-    if (vectorRenderer && vectorRenderer.device !== device) {
-      throw new TypeError("vectorRenderer must use the supplied WebGLDevice");
+    if (mesh === null || typeof mesh !== "object") {
+      throw new TypeError("mesh must be an option object");
     }
     this.device = device;
     this.canvas = device.canvas;
-    this.vector = vectorRenderer ?? new VectorRenderer(device, {
+    this.vector = new VectorRenderer(device, {
       initialVertices,
       maxVertices,
       glyphAtlas
     });
-    this.ownsVector = !vectorRenderer;
     this.glyphAtlas = glyphAtlas ?? this.vector.glyphAtlas;
+    this.meshOptions = mesh;
+    this.disposers = [];
     this.onError = typeof onError === "function" ? onError : null;
     if (typeof safeAlphaRunBatching !== "boolean") {
       throw new TypeError("safeAlphaRunBatching must be a boolean");
     }
     this.safeAlphaRunBatching = safeAlphaRunBatching;
     this.meshRenderer = null;
-    this.primitiveRenderer = null;
     this.primitivePath = {
       type: "empty"
     };
@@ -5906,6 +6677,8 @@ var VectorContext = class {
     this.staticMeshes = /* @__PURE__ */ new Set();
     this.deferredMeshes = [];
     this.gradientTextures = /* @__PURE__ */ new Map();
+    this.rampCache = /* @__PURE__ */ new Map();
+    this.lostGradientRegions = [];
     this._silhouetteMatrices = new Float32Array(60);
     this._scaledSilhouetteMatrices = new Float32Array(12);
     this._silhouetteColorCache = /* @__PURE__ */ new Map();
@@ -5914,6 +6687,11 @@ var VectorContext = class {
       this.active = false;
       this.state = "lost";
       this.meshRenderer?.discard();
+      for (const RAMP of this.rampCache.values()) {
+        this.lostGradientRegions.push(RAMP.region);
+      }
+      this.rampCache.clear();
+      this.gradientTextures.clear();
     };
     this.onRestored = () => {
       if (this.state === "disposed") {
@@ -5922,6 +6700,9 @@ var VectorContext = class {
       try {
         for (const MESH of this.staticMeshes) {
           this.device.uploadVertices(MESH.buffer, MESH.vertices);
+        }
+        for (const REGION of this.lostGradientRegions.splice(0)) {
+          REGION.atlas.release(REGION);
         }
         this.state = "ready";
       } catch (error) {
@@ -6095,48 +6876,14 @@ var VectorContext = class {
   }
   _gradientPaint(gradient) {
     let cached = this.gradientTextures.get(gradient);
-    if (!cached) {
-      if (this.gradientTextures.size >= MAX_GRADIENT_TEXTURES) {
-        const EXPIRED = [...this.gradientTextures].find(([, entry]) => entry.lastFrame < this.frame);
-        if (!EXPIRED) {
-          throw new RangeError(
-            `VectorContext supports at most ${MAX_GRADIENT_TEXTURES} distinct gradients in one frame`
-          );
-        }
-        this.device.deleteTexture(EXPIRED[1].texture);
-        this.gradientTextures.delete(EXPIRED[0]);
-      }
-      const LINEAR = gradient instanceof LinearGradient, WIDTH = LINEAR ? LINEAR_GRADIENT_SIZE : 256, HEIGHT = 1, DATA = gradient.raster();
+    if (!cached || cached.revision !== gradient.revision) {
       cached = {
-        texture: this.device.createTexture(
-          {
-            width: WIDTH,
-            height: HEIGHT,
-            data: DATA
-          },
-          {
-            format: "rgba",
-            premultiplied: true,
-            filter: "linear"
-          }
-        ),
-        revision: gradient.revision,
-        lastFrame: this.frame,
-        linear: LINEAR
+        ramp: this._ramp(gradient),
+        revision: gradient.revision
       };
       this.gradientTextures.set(gradient, cached);
-    } else if (cached.revision !== gradient.revision) {
-      this.vector.flush();
-      const LINEAR = gradient instanceof LinearGradient, WIDTH = LINEAR ? LINEAR_GRADIENT_SIZE : 256;
-      this.device.updateTexture(cached.texture, {
-        width: WIDTH,
-        height: 1,
-        data: gradient.raster()
-      });
-      cached.revision = gradient.revision;
-      cached.linear = LINEAR;
     }
-    cached.lastFrame = this.frame;
+    cached.ramp.lastFrame = this.frame;
     const MATRIX_INVERSE = invert(gradient.matrix);
     if (!MATRIX_INVERSE) {
       throw new RangeError("Gradient transform is singular");
@@ -6145,7 +6892,7 @@ var VectorContext = class {
     COLOR[3] *= this._globalAlpha;
     if (gradient instanceof LinearGradient) {
       return {
-        texture: cached.texture,
+        region: cached.ramp.region,
         kind: "linear",
         gradient,
         x0: gradient.x0,
@@ -6159,7 +6906,7 @@ var VectorContext = class {
     }
     const DX = gradient.x1 - gradient.x0, DY = gradient.y1 - gradient.y0, DR = gradient.r1 - gradient.r0, SCALE = Math.max(1, Math.hypot(DX, DY), Math.abs(gradient.r0), Math.abs(gradient.r1));
     return {
-      texture: cached.texture,
+      region: cached.ramp.region,
       kind: "radial",
       gradient,
       x0: gradient.x0,
@@ -6172,10 +6919,38 @@ var VectorContext = class {
       whiteFlash: this._filter === "brightness(0) invert(1)"
     };
   }
+  /** Returns the retained ramp texture for the gradient's stops, rasterizing and uploading it on first use. */
+  _ramp(gradient) {
+    const KEY = RAMP_KEY(gradient);
+    let ramp = this.rampCache.get(KEY);
+    if (ramp) {
+      return ramp;
+    }
+    if (this.rampCache.size >= MAX_GRADIENT_TEXTURES) {
+      const EXPIRED = [...this.rampCache].find(([, entry]) => entry.lastFrame < this.frame);
+      if (!EXPIRED) {
+        throw new RangeError(
+          `VectorContext supports at most ${MAX_GRADIENT_TEXTURES} distinct gradients in one frame`
+        );
+      }
+      EXPIRED[1].region.atlas.release(EXPIRED[1].region);
+      this.rampCache.delete(EXPIRED[0]);
+    }
+    const WIDTH = gradient instanceof LinearGradient ? LINEAR_GRADIENT_SIZE : 256, REGION = this.device.textureAtlas.allocate(WIDTH, 1);
+    this.device.textureAtlas.upload(
+      REGION,
+      { width: WIDTH, height: 1, data: gradient.raster() },
+      { premultiplied: true, extendEdges: true }
+    );
+    gradient.pixels = null;
+    ramp = { region: REGION, lastFrame: this.frame };
+    this.rampCache.set(KEY, ramp);
+    return ramp;
+  }
   _releaseGradientTextures() {
-    for (const [GRADIENT, CACHED] of this.gradientTextures) {
+    for (const CACHED of this.rampCache.values()) {
       try {
-        this.device.deleteTexture(CACHED.texture);
+        CACHED.region.atlas.release(CACHED.region);
       } catch (error) {
         try {
           this.onError?.(error, {
@@ -6183,10 +6958,9 @@ var VectorContext = class {
           });
         } catch {
         }
-      } finally {
-        GRADIENT.pixels = null;
       }
     }
+    this.rampCache.clear();
     this.gradientTextures.clear();
   }
   beginFrame({ width = this.canvas.width, height = this.canvas.height, clearColor = [0, 0, 0, 0] } = {}) {
@@ -6210,7 +6984,6 @@ var VectorContext = class {
       }
       this.active = true;
       this.meshRenderer?.beginFrame();
-      this.primitiveRenderer?.beginFrame();
       this.frame++;
       this.pathCount = 0;
       this.vector.beginPath();
@@ -6231,6 +7004,7 @@ var VectorContext = class {
       this.flush("frameEnd");
       const STATS = this.device.endFrame();
       this.active = false;
+      this.gradientTextures.clear();
       for (const MESH of this.deferredMeshes.splice(0)) {
         this.deleteStaticMesh(MESH);
       }
@@ -6241,8 +7015,7 @@ var VectorContext = class {
         textureUploads: STATS.textureUploads ?? 0,
         textureBytes: STATS.textureBytes ?? 0,
         gpuRenderTargetBytes: STATS.gpuRenderTargetBytes ?? 0,
-        paths: this.pathCount,
-        primitives: this.primitiveRenderer?.stats().frame ?? null
+        paths: this.pathCount
       };
       this.total.frames++;
       this.total.drawCalls += this.frameStats.drawCalls;
@@ -6286,7 +7059,6 @@ var VectorContext = class {
     if (!S) {
       return;
     }
-    this.primitiveRenderer?.flush("stateRestore");
     this.meshRenderer?.flush("stateRestore");
     this.vector.restore();
     Object.assign(this, {
@@ -6544,19 +7316,10 @@ var VectorContext = class {
     }
     return composeTransform(path.matrix, local);
   }
-  _submitPrimitive(matrix, color2, params) {
+  _submitPrimitive(matrix, color, params) {
     this.meshRenderer?.flush("primitiveBoundary");
-    this.vector.flush();
-    this.primitiveRenderer ??= new PrimitiveRenderer(this.device);
-    return this.primitiveRenderer.draw({
-      matrix,
-      color: color2,
-      params,
-      projection: this.vector.projection,
-      clips: this.vector.clips,
-      stencilRef: this.vector.stencilDepth || null,
-      blend: this._composite
-    });
+    this.vector.drawPrimitive({ matrix, color, params });
+    return true;
   }
   _tryPrimitiveFill() {
     const PATH = this.primitivePath;
@@ -6646,7 +7409,6 @@ var VectorContext = class {
       return;
     }
     this._materializePrimitivePath();
-    this.primitiveRenderer?.flush("vectorBoundary");
     this.meshRenderer?.flush("vectorBoundary");
     if (this._fillStyle instanceof RadialGradient) {
       this.vector.fillRadialGradient({
@@ -6684,7 +7446,6 @@ var VectorContext = class {
       return;
     }
     this._materializePrimitivePath();
-    this.primitiveRenderer?.flush("vectorBoundary");
     this.meshRenderer?.flush("vectorBoundary");
     if (!DASH.length || !PERIOD) {
       this.vector.stroke(PAINT, WIDTH, STYLE, GRADIENT);
@@ -6749,7 +7510,6 @@ var VectorContext = class {
   clip(rule = "nonzero") {
     this._frame();
     this._materializePrimitivePath();
-    this.primitiveRenderer?.flush("clipBoundary");
     this.meshRenderer?.flush("clipBoundary");
     if (this.vector.path.filter((p) => p.length >= 3).length > 1) {
       throw new RangeError("clip supports one contour per clip call");
@@ -6763,7 +7523,6 @@ var VectorContext = class {
   }
   clipPath(handle, { transform = null } = {}) {
     this._frame();
-    this.primitiveRenderer?.flush("stencilChange");
     this.meshRenderer?.flush("stencilChange");
     this.vector.flush();
     this.vector.clipPath(handle, {
@@ -6775,13 +7534,11 @@ var VectorContext = class {
   }
   clipRect(x, y, w, h) {
     this._frame();
-    this.primitiveRenderer?.flush("clipBoundary");
     this.meshRenderer?.flush("clipBoundary");
     this.vector.clipRect(x, y, w, h);
   }
   fillTriangleFan(points, paint = this._fillStyle) {
     this._frame();
-    this.primitiveRenderer?.flush("vectorBoundary");
     this.meshRenderer?.flush("vectorBoundary");
     if (points.length < 3) {
       return;
@@ -6790,7 +7547,6 @@ var VectorContext = class {
   }
   beginGroup(opacity = 1, bounds = null) {
     this._frame();
-    this.primitiveRenderer?.flush("groupBoundary");
     if (opacity !== 1) {
       this.meshRenderer?.flush("groupBoundary");
     }
@@ -6798,7 +7554,6 @@ var VectorContext = class {
   }
   endGroup() {
     if (!this.vector.groups.at(-1)?.direct) {
-      this.primitiveRenderer?.flush("groupBoundary");
       this.meshRenderer?.flush("groupBoundary");
     }
     this.vector.endGroup();
@@ -6827,21 +7582,21 @@ var VectorContext = class {
       height: R * 2
     };
   }
-  withColor(color2, callback) {
+  withColor(color, callback) {
     const PREVIOUS = this.forceColor;
-    this.forceColor = normalizeColor(color2);
+    this.forceColor = normalizeColor(color);
     try {
       return callback();
     } finally {
       this.forceColor = PREVIOUS;
     }
   }
-  withSilhouette(color2, width, paint, radius = 128) {
+  withSilhouette(color, width, paint, radius = 128) {
     const ALPHA = this._globalAlpha, BOUNDS = this.groupBounds(0, 0, radius + width);
     return this.withGroupOpacity(
       ALPHA,
       () => {
-        this.withColor(color2, () => {
+        this.withColor(color, () => {
           for (let i = 0; i < 8; i++) {
             this.save();
             const A = i * TAU / 8;
@@ -6883,7 +7638,6 @@ var VectorContext = class {
   }
   fillText(text, x, y, maxWidth) {
     this._frame();
-    this.primitiveRenderer?.flush("vectorBoundary");
     this.meshRenderer?.flush("vectorBoundary");
     if (!this.glyphAtlas) {
       throw new Error("GlyphAtlas is not configured");
@@ -6912,7 +7666,6 @@ var VectorContext = class {
   }
   strokeText(text, x, y, maxWidth) {
     this._frame();
-    this.primitiveRenderer?.flush("vectorBoundary");
     this.meshRenderer?.flush("vectorBoundary");
     if (!this.glyphAtlas) {
       throw new Error("GlyphAtlas is not configured");
@@ -6949,39 +7702,84 @@ var VectorContext = class {
   }
   /** Retains caller-authored local-space triangles once; caller explicitly releases the handle. */
   createMesh(data) {
+    return this.acquireMeshRenderer().createMesh(data);
+  }
+  /** The retained-mesh renderer this context shares with the vector assets and atlases built on it. */
+  acquireMeshRenderer() {
     if (this.state !== "ready" || this.device.state !== "ready") {
       throw new Error("VectorContext is not ready");
     }
     this.meshRenderer ??= new MeshRenderer(this.device, {
+      ...this.meshOptions,
       safeAlphaRunBatching: this.safeAlphaRunBatching
     });
-    return this.meshRenderer.createMesh(data);
+    return this.meshRenderer;
+  }
+  /** Registers cleanup that `dispose()` runs, newest first, before it disposes the renderers it owns. */
+  onDispose(callback) {
+    if (typeof callback !== "function") {
+      throw new TypeError("onDispose requires a function");
+    }
+    this.disposers.push(callback);
+  }
+  /**
+   * Atlas rectangles (sprites, baked vector runs, posed parts) on the current transform and clip; they join the
+   * vector stream, so they share a draw with the shapes and text around them. See VectorRenderer.drawQuads.
+   */
+  drawQuads(options) {
+    this._frame();
+    this.meshRenderer?.flush("quadBoundary");
+    this.vector.drawQuads(options);
+  }
+  /**
+   * Draws a texture atlas region like Canvas `drawImage(image, x, y, width, height)`: top-left anchored on the
+   * current transform, in the same stream draw as the surrounding paint. `source` (`[x, y, width, height]` region
+   * pixels) selects part of the region. Uses `globalAlpha`, white flash and `forceColor` like other paint.
+   */
+  drawRegion(region, x, y, width = region?.width, height = region?.height, { source = null } = {}) {
+    if (!region?.atlas?.regions?.has(region) || region.atlas !== this.device.textureAtlas) {
+      throw new TypeError("A live region of the device texture atlas is required");
+    }
+    const [SX, SY, SW, SH] = source ?? [0, 0, region.width, region.height];
+    for (const VALUE of [x, y, width, height, SX, SY, SW, SH]) {
+      finite(VALUE, "drawRegion value");
+    }
+    if (SX < 0 || SY < 0 || SW <= 0 || SH <= 0 || SX + SW > region.width || SY + SH > region.height) {
+      throw new RangeError("source must lie inside the region");
+    }
+    const ATLAS = region.atlas;
+    this.drawQuads({
+      layer: region.layer,
+      filter: region.filter,
+      uvRects: Float32Array.of(
+        (region.x + SX) / ATLAS.width,
+        (region.y + SY) / ATLAS.height,
+        SW / ATLAS.width,
+        SH / ATLAS.height
+      ),
+      localRects: Float32Array.of(x, y, width, height),
+      color: normalizeColor(this.forceColor ?? [1, 1, 1, 1]),
+      forceColor: this.forceColor !== null,
+      alpha: this._globalAlpha,
+      whiteFlash: this._filter === "brightness(0) invert(1)"
+    });
   }
   deleteMesh(mesh) {
     return this.meshRenderer?.deleteMesh(mesh) ?? false;
   }
   /** Local transform composes with current Canvas-style transform; all paint state is captured by value. */
-  drawMesh(mesh, { transform = null, morph = [0, 0], parts = null, texture = null, uvRect, localRect } = {}) {
+  drawMesh(mesh, { transform = null, morph = [0, 0], parts = null } = {}) {
     this._frame();
     if (!this.meshRenderer) {
       throw new TypeError("createMesh required");
     }
-    this.primitiveRenderer?.flush("meshBoundary");
     this.vector.flush();
     let matrix = this.vector.matrix;
     if (transform) {
       if (transform.length !== 6 || Array.from(transform).some((n) => !Number.isFinite(n))) {
         throw new TypeError("Six finite transform values required");
       }
-      const M = matrix, [A, B, C, D, E, F] = transform;
-      matrix = [
-        M[0] * A + M[2] * B,
-        M[1] * A + M[3] * B,
-        M[0] * C + M[2] * D,
-        M[1] * C + M[3] * D,
-        M[0] * E + M[2] * F + M[4],
-        M[1] * E + M[3] * F + M[5]
-      ];
+      matrix = COMPOSE_AFFINE(matrix, transform);
     }
     this.meshRenderer.drawMesh(mesh, {
       matrix,
@@ -6989,9 +7787,6 @@ var VectorContext = class {
       clips: this.vector.clips,
       morph,
       parts,
-      texture,
-      uvRect,
-      localRect,
       color: this.forceColor ?? [1, 1, 1, 1],
       forceColor: this.forceColor !== null,
       alpha: this._globalAlpha,
@@ -7004,7 +7799,7 @@ var VectorContext = class {
     transform = null,
     morph = [0, 0],
     parts = null,
-    color: color2 = "black",
+    color = "black",
     width,
     radius = 128,
     outlineScale = null
@@ -7013,6 +7808,40 @@ var VectorContext = class {
     if (!this.meshRenderer) {
       throw new TypeError("createMesh required");
     }
+    return this._silhouette(
+      { transform, color, width, radius, outlineScale },
+      (instances) => this.meshRenderer.drawMeshInstances(mesh, {
+        ...instances,
+        morph,
+        parts,
+        color: this.forceColor ?? WHITE2,
+        forceColor: this.forceColor !== null,
+        alpha: this._globalAlpha,
+        whiteFlash: this._filter === "brightness(0) invert(1)",
+        clips: this.vector.clips,
+        stencilRef: this.vector.stencilDepth || null
+      })
+    );
+  }
+  /**
+   * Draw a vector actor's silhouette and body in one ordered instance batch, like drawMeshSilhouette. `matrix` is
+   * the actor's local matrix; the other options are drawVectorActor's (no world mode).
+   */
+  drawVectorActorSilhouette(actor, { matrix = null, color = "black", width, radius = 128, outlineScale = null, ...options } = {}) {
+    this._frame();
+    if (typeof actor?.draw !== "function") {
+      throw new TypeError("A vector actor is required");
+    }
+    if (options.viewProjection !== void 0 || options.worldMatrix !== void 0) {
+      throw new TypeError("Actor silhouettes are 2D only");
+    }
+    return this._silhouette(
+      { transform: matrix, color, width, radius, outlineScale },
+      (instances) => actor.draw({ ...this._actorParams(options), projection: instances.projection, instances })
+    );
+  }
+  /** Silhouette instance transforms for the current context transform; `submit` appends them as one draw. */
+  _silhouette({ transform, color, width, radius, outlineScale }, submit) {
     finite(width, "silhouette width");
     finite(radius, "silhouette radius");
     if (width < 0 || radius < 0) {
@@ -7025,17 +7854,17 @@ var VectorContext = class {
       }
     }
     let outline;
-    if (typeof color2 === "string" && color2[0] === "#") {
-      outline = this._silhouetteColorCache.get(color2);
+    if (typeof color === "string" && color[0] === "#") {
+      outline = this._silhouetteColorCache.get(color);
       if (!outline) {
-        outline = normalizeColor(color2);
+        outline = normalizeColor(color);
         if (this._silhouetteColorCache.size === 16) {
           this._silhouetteColorCache.delete(this._silhouetteColorCache.keys().next().value);
         }
-        this._silhouetteColorCache.set(color2, outline);
+        this._silhouetteColorCache.set(color, outline);
       }
     } else {
-      outline = normalizeColor(color2);
+      outline = normalizeColor(color);
     }
     const OUTLINE_INSTANCES = outlineScale === null ? 9 : 1, COUNT = OUTLINE_INSTANCES + 1, MATRICES = outlineScale === null ? this._silhouetteMatrices : this._scaledSilhouetteMatrices;
     const BOUNDS = this.groupBounds(0, 0, Math.max(radius + width, radius * (outlineScale ?? 1)));
@@ -7066,45 +7895,58 @@ var VectorContext = class {
           MATRICES[AT + 4] = A * te + C * tf + E_OFFSET;
           MATRICES[AT + 5] = B * te + D * tf + F_OFFSET;
         }
-        this.meshRenderer._drawMeshInstances(mesh, {
+        submit({
           matrices: MATRICES,
           count: COUNT,
           projection: this.vector.projection,
-          morph,
-          parts,
-          color: this.forceColor ?? WHITE2,
-          forceColor: this.forceColor !== null,
           prefixColor: outline,
           prefixCount: OUTLINE_INSTANCES,
-          forceColorPrefixCount: OUTLINE_INSTANCES,
-          alpha: this._globalAlpha,
-          whiteFlash: this._filter === "brightness(0) invert(1)",
-          clips: this.vector.clips,
-          stencilRef: this.vector.stencilDepth || null
+          forceColorPrefixCount: OUTLINE_INSTANCES
         });
       },
       BOUNDS
     );
   }
-  /** Submit a native vector player after earlier paint, without flushing a compatible mesh run. */
-  drawVectorAsset(player, options = {}) {
-    this._frame();
-    if (typeof player?.draw !== "function") {
-      throw new TypeError("A vector asset player is required");
-    }
-    this.primitiveRenderer?.flush("vectorAssetBoundary");
-    this.vector.flush();
-    const WORLD_MODE = options.viewProjection !== void 0 || options.worldMatrix !== void 0;
-    player.draw({
-      ...!WORLD_MODE ? { projection: this.vector.projection } : {},
+  /** Actor draw parameters from the context state: paint state applies and the caller's alpha multiplies. */
+  _actorParams(options) {
+    const FORCED = options.forceColor ?? this.forceColor !== null;
+    return {
       clips: this.vector.clips,
       stencilRef: this.vector.stencilDepth || null,
-      ...options
-    });
+      ...options,
+      alpha: (options.alpha ?? 1) * this._globalAlpha,
+      forceColor: FORCED,
+      color: options.color ?? (this.forceColor && FORCED ? this.forceColor : [1, 1, 1, 1]),
+      whiteFlash: options.whiteFlash ?? this._filter === "brightness(0) invert(1)"
+    };
+  }
+  /** Submit a vector actor after earlier paint, without flushing a compatible mesh run. */
+  drawVectorActor(actor, options = {}) {
+    this._frame();
+    if (typeof actor?.draw !== "function") {
+      throw new TypeError("A vector actor is required");
+    }
+    this.vector.flush();
+    const WORLD_MODE = options.viewProjection !== void 0 || options.worldMatrix !== void 0, PARAMS = this._actorParams(options);
+    if (!WORLD_MODE) {
+      PARAMS.projection = this.vector.projection;
+      if (options.matrix) {
+        if (options.matrix.length !== 6 || Array.from(options.matrix).some((n) => !Number.isFinite(n))) {
+          throw new TypeError("Six finite matrix values required");
+        }
+        PARAMS.matrix = COMPOSE_AFFINE(this.vector.matrix, options.matrix);
+      } else {
+        PARAMS.matrix = this.vector.matrix.slice();
+      }
+    }
+    actor.draw(PARAMS);
+  }
+  /** Evaluates every prepared actor pose now, before the actors are submitted. */
+  preparePoses() {
+    this.meshRenderer?.preparePoses();
   }
   flush(reason = "explicit") {
     this._frame();
-    this.primitiveRenderer?.flush(reason);
     this.meshRenderer?.flush(reason);
     this.vector.flush();
   }
@@ -7182,12 +8024,12 @@ var VectorContext = class {
       frame: this.frame,
       ...this.frameStats,
       mesh: this.meshRenderer?.stats() ?? null,
-      primitives: this.primitiveRenderer?.stats() ?? null,
       stagingBytes: this.vector.vertices.byteLength,
       gpuBufferBytes: this.device.stats.gpuBufferBytes ?? 0,
       gpuRenderTargetBytes: this.device.stats.gpuRenderTargetBytes ?? 0,
       textureCount: this.device.stats.textureCount ?? 0,
       activeGradientTextureCount: this.gradientTextures.size,
+      retainedGradientRampCount: this.rampCache.size,
       renderTargetCount: this.device.stats.renderTargetCount ?? 0,
       bufferAllocations: this.device.stats.bufferAllocations ?? 0,
       totals: {
@@ -7202,7 +8044,9 @@ var VectorContext = class {
     this.vector.count = 0;
     this.canvas.removeEventListener("webglcontextlost", this.onLost);
     this.canvas.removeEventListener("webglcontextrestored", this.onRestored);
-    this.primitiveRenderer?.dispose();
+    for (const CALLBACK of this.disposers.splice(0).reverse()) {
+      CALLBACK();
+    }
     this.meshRenderer?.dispose();
     for (const MESH of this.staticMeshes) {
       this.device.deleteVertexBuffer(MESH.buffer);
@@ -7210,9 +8054,7 @@ var VectorContext = class {
     this._releaseGradientTextures();
     this.staticMeshes.clear();
     this.deferredMeshes.length = 0;
-    if (this.ownsVector) {
-      this.vector.dispose();
-    }
+    this.vector.dispose();
     this.active = false;
     this.state = "disposed";
   }
@@ -7288,18 +8130,28 @@ var PrimitivePainter = class {
     if (sides < 3 || radius <= 0) {
       return;
     }
-    let unit = PRIMITIVE_DIRECTIONS.get(`${sides}|${rotation}`);
-    if (!unit) {
-      unit = Array.from(
-        {
-          length: sides
-        },
-        (_, i) => [Math.cos(rotation + i / sides * TAU), Math.sin(rotation + i / sides * TAU)]
-      );
-      PRIMITIVE_DIRECTIONS.set(`${sides}|${rotation}`, unit);
-    }
     this.poly(
-      unit.map((p) => [x + p[0] * radius, y + p[1] * radius]),
+      unitDirections(sides, rotation).map((p) => [x + p[0] * radius, y + p[1] * radius]),
+      paint
+    );
+  }
+  ellipse(x, y, radiusX, radiusY, paint, segments = 24, rotation = 0) {
+    if (segments < 3 || radiusX <= 0 || radiusY <= 0) {
+      return;
+    }
+    const COS = Math.cos(rotation), SIN = Math.sin(rotation);
+    this.poly(
+      unitDirections(segments, 0).map((p) => {
+        const PX = p[0] * radiusX, PY = p[1] * radiusY;
+        return [x + PX * COS - PY * SIN, y + PX * SIN + PY * COS];
+      }),
+      paint
+    );
+  }
+  box(centerX, centerY, width, height, paint, angle = 0) {
+    const HALF_W = width / 2, HALF_H = height / 2, COS = Math.cos(angle), SIN = Math.sin(angle), CORNER = (dx, dy) => [centerX + dx * COS - dy * SIN, centerY + dx * SIN + dy * COS];
+    this.poly(
+      [CORNER(-HALF_W, -HALF_H), CORNER(HALF_W, -HALF_H), CORNER(HALF_W, HALF_H), CORNER(-HALF_W, HALF_H)],
       paint
     );
   }
@@ -7318,6 +8170,20 @@ var PrimitivePainter = class {
   }
 };
 var PRIMITIVE_DIRECTIONS = /* @__PURE__ */ new Map();
+function unitDirections(sides, rotation) {
+  const KEY = `${sides}|${rotation}`;
+  let unit = PRIMITIVE_DIRECTIONS.get(KEY);
+  if (!unit) {
+    unit = Array.from(
+      {
+        length: sides
+      },
+      (_, i) => [Math.cos(rotation + i / sides * TAU), Math.sin(rotation + i / sides * TAU)]
+    );
+    PRIMITIVE_DIRECTIONS.set(KEY, unit);
+  }
+  return unit;
+}
 
 // modules/rendering/mesh-builder.js
 var INDEX_NAME = /^[A-Za-z_][A-Za-z0-9_.:-]{0,127}$/;
@@ -7489,15 +8355,17 @@ var MeshBuilder = class _MeshBuilder {
 };
 
 // modules/rendering/sprite-animation.js
-function createSpriteAnimation(meshRenderer, texture, definition) {
-  if (!meshRenderer?.createMesh || !meshRenderer?.drawMesh || !meshRenderer?.deleteMesh) {
-    throw new TypeError("A MeshRenderer is required");
+function createSpriteAnimation(context, region, definition) {
+  if (!context?.drawQuads || !context?.device?.textureAtlas) {
+    throw new TypeError("A VectorContext is required");
   }
-  if (!meshRenderer.device?.textures?.has(texture)) {
-    throw new TypeError("A live Device texture owned by the mesh renderer is required");
+  if (!region?.atlas?.regions?.has(region) || region.atlas !== context.device.textureAtlas) {
+    throw new TypeError("A live region of the device texture atlas is required");
   }
-  const ATLAS_WIDTH = texture.width;
-  const ATLAS_HEIGHT = texture.height;
+  const ATLAS_WIDTH = region.atlas.width;
+  const ATLAS_HEIGHT = region.atlas.height;
+  const REGION_WIDTH = region.width;
+  const REGION_HEIGHT = region.height;
   const INPUT_FRAMES = definition?.frames;
   const INPUT_CLIPS = definition?.clips;
   const TEXTURE_ORIGIN = definition?.textureOrigin ?? "top-left";
@@ -7512,23 +8380,11 @@ function createSpriteAnimation(meshRenderer, texture, definition) {
   }
   const FRAMES = [];
   const FRAME_RECTS = [];
-  const VERTICES = new Float32Array(4 * 11);
-  const UVS = new Float32Array(4 * 2);
-  const INDICES = new Uint16Array([0, 1, 2, 0, 2, 3]);
-  const VERTEX5 = (index, x, y, u, v) => {
-    const OFFSET = index * 11;
-    VERTICES.set([x, y, 1, 1, 1, 1], OFFSET);
-    UVS.set([u, v], index * 2);
-  };
   const INTEGER = (value, name, minimum = 0) => {
     if (!Number.isSafeInteger(value) || value < minimum) {
       throw new TypeError(`${name} must be an integer >= ${minimum}`);
     }
   };
-  VERTEX5(0, 0, 0, 0, 0);
-  VERTEX5(1, 1, 0, 1, 0);
-  VERTEX5(2, 1, 1, 1, 1);
-  VERTEX5(3, 0, 1, 0, 1);
   for (let index = 0; index < INPUT_FRAMES.length; index++) {
     const FRAME = INPUT_FRAMES[index];
     const X = FRAME?.x;
@@ -7556,8 +8412,8 @@ function createSpriteAnimation(meshRenderer, texture, definition) {
     ]) {
       INTEGER(VALUE, NAME, MINIMUM);
     }
-    if (X - GUTTER < 0 || Y - GUTTER < 0 || X + WIDTH + GUTTER > ATLAS_WIDTH || Y + HEIGHT + GUTTER > ATLAS_HEIGHT || SOURCE_X + WIDTH > SOURCE_WIDTH || SOURCE_Y + HEIGHT > SOURCE_HEIGHT) {
-      throw new RangeError("Sprite frame, its gutter, or its trim exceeds its atlas/source viewport");
+    if (X - GUTTER < 0 || Y - GUTTER < 0 || X + WIDTH + GUTTER > REGION_WIDTH || Y + HEIGHT + GUTTER > REGION_HEIGHT || SOURCE_X + WIDTH > SOURCE_WIDTH || SOURCE_Y + HEIGHT > SOURCE_HEIGHT) {
+      throw new RangeError("Sprite frame, its gutter, or its trim exceeds its region/source viewport");
     }
     if (!Number.isFinite(PIVOT_X) || !Number.isFinite(PIVOT_Y)) {
       throw new TypeError("Sprite pivot coordinates must be finite");
@@ -7567,13 +8423,14 @@ function createSpriteAnimation(meshRenderer, texture, definition) {
     }
     const LEFT = SOURCE_X - PIVOT_X;
     const TOP = SOURCE_Y - PIVOT_Y;
-    const U0 = X / ATLAS_WIDTH;
-    const V0 = TEXTURE_ORIGIN === "bottom-left" ? 1 - Y / ATLAS_HEIGHT : Y / ATLAS_HEIGHT;
-    const V1 = TEXTURE_ORIGIN === "bottom-left" ? 1 - (Y + HEIGHT) / ATLAS_HEIGHT : (Y + HEIGHT) / ATLAS_HEIGHT;
+    const BOTTOM_UP = TEXTURE_ORIGIN === "bottom-left";
+    const U0 = (region.x + X) / ATLAS_WIDTH;
+    const V0 = BOTTOM_UP ? (region.y + REGION_HEIGHT - Y) / ATLAS_HEIGHT : (region.y + Y) / ATLAS_HEIGHT;
+    const V_HEIGHT = (BOTTOM_UP ? -HEIGHT : HEIGHT) / ATLAS_HEIGHT;
     FRAME_RECTS.push(
       Object.freeze({
-        localRect: Object.freeze([LEFT, TOP, WIDTH, HEIGHT]),
-        uvRect: Object.freeze([U0, V0, WIDTH / ATLAS_WIDTH, V1 - V0])
+        localRect: Float32Array.of(LEFT, TOP, WIDTH, HEIGHT),
+        uvRect: Float32Array.of(U0, V0, WIDTH / ATLAS_WIDTH, V_HEIGHT)
       })
     );
     FRAMES.push(
@@ -7633,14 +8490,6 @@ function createSpriteAnimation(meshRenderer, texture, definition) {
   if (!CLIPS.size) {
     throw new TypeError("At least one sprite clip is required");
   }
-  const MESH = meshRenderer.createMesh({
-    vertices: VERTICES,
-    uvs: UVS,
-    indices: INDICES,
-    strideFloats: 11,
-    partCount: 1,
-    morphCount: 0
-  });
   const PLAYERS = /* @__PURE__ */ new Set();
   let disposed = false;
   const READY = () => {
@@ -7705,12 +8554,16 @@ function createSpriteAnimation(meshRenderer, texture, definition) {
             finished: selectedClip.loop === "once" && ELAPSED_MS >= selectedClip.durationMs
           });
         },
+        /** options: matrix (composed with the context transform), color, alpha, whiteFlash, forceColor. */
         draw({ timeMs, ...options } = {}) {
           const SAMPLE = this.sample(timeMs);
-          meshRenderer.drawMesh(MESH, {
+          PLAYER_READY();
+          context.drawQuads({
             ...options,
-            ...FRAME_RECTS[SAMPLE.frameIndex],
-            texture
+            uvRects: FRAME_RECTS[SAMPLE.frameIndex].uvRect,
+            localRects: FRAME_RECTS[SAMPLE.frameIndex].localRect,
+            layer: region.layer,
+            filter: region.filter
           });
           return SAMPLE;
         },
@@ -7772,7 +8625,7 @@ function createSpriteAnimation(meshRenderer, texture, definition) {
         frameCount: FRAMES.length,
         clipCount: CLIPS.size,
         playerCount: PLAYERS.size,
-        retainedBytes: disposed ? 0 : MESH.byteLength,
+        retainedBytes: 0,
         textureOwned: false
       });
     },
@@ -7782,247 +8635,13 @@ function createSpriteAnimation(meshRenderer, texture, definition) {
       }
       disposed = true;
       PLAYERS.clear();
-      meshRenderer.deleteMesh(MESH);
       return true;
     }
   });
 }
 
-// modules/rendering/yarn-shader.js
+// modules/rendering/yarn-geometry.js
 var STRIDE_FLOATS = 9;
-var STRIDE_BYTES = STRIDE_FLOATS * 4;
-var MAX_SURFACES = 512;
-var DEFAULT_LIMIT_BYTES = 32 * 1024 * 1024;
-var ATTRIBUTES2 = [
-  {
-    name: "a_position",
-    size: 2,
-    offset: 0
-  },
-  {
-    name: "a_color",
-    size: 4,
-    offset: 8
-  },
-  {
-    name: "a_surface",
-    size: 3,
-    offset: 24
-  }
-];
-var IDENTITY4 = Object.freeze([1, 0, 0, 1, 0, 0]);
-var WHITE3 = Object.freeze([1, 1, 1, 1]);
-var VERTEX3 = `
-attribute vec2 a_position;
-attribute vec4 a_color;
-attribute vec3 a_surface;
-uniform mat3 u_projection;
-uniform mat3 u_transform;
-uniform float u_depth;
-varying vec2 v_position;
-varying vec2 v_world;
-varying vec4 v_color;
-varying vec3 v_surface;
-void main() {
-  vec3 world = u_transform * vec3(a_position, 1.0);
-  vec3 projected = u_projection * world;
-  gl_Position = vec4(projected.xy, u_depth * projected.z, projected.z);
-  v_position = a_position;
-  v_world = world.xy / world.z;
-  v_color = a_color;
-  v_surface = a_surface;
-}`;
-var VERTEX_WORLD = `
-attribute vec2 a_position;
-attribute vec4 a_color;
-attribute vec3 a_surface;
-uniform mat4 u_viewProjection;
-uniform mat4 u_worldMatrix;
-uniform mat3 u_transform;
-uniform float u_depth;
-varying vec2 v_position;
-varying vec2 v_world;
-varying vec4 v_color;
-varying vec3 v_surface;
-void main() {
-  vec3 plane = u_transform * vec3(a_position, 1.0);
-  vec4 world = u_worldMatrix * vec4(plane.xy / plane.z, 0.0, 1.0);
-  vec4 projected = u_viewProjection * world;
-  projected.z += u_depth * projected.w;
-  gl_Position = projected;
-  v_position = a_position;
-  v_world = world.xy / world.w;
-  v_color = a_color;
-  v_surface = a_surface;
-}`;
-function fragment2(kind, maxClipPlanes) {
-  const CLIPS = maxClipPlanes ? `
-uniform vec3 u_planes[${maxClipPlanes}];
-void clipWorld() {
-  for (int i = 0; i < ${maxClipPlanes}; i++) {
-    vec3 plane = u_planes[i];
-    if (dot(plane.xy, plane.xy) > 0.0000001 && dot(plane, vec3(v_world, 1.0)) < 0.0) discard;
-  }
-}` : "void clipWorld() {}";
-  const BODY = kind === "yarn" ? YARN_FRAGMENT_BODY : SKETCH_FRAGMENT_BODY;
-  return `precision mediump float;
-varying vec2 v_position; varying vec2 v_world; varying vec4 v_color; varying vec3 v_surface;
-uniform vec4 u_bounds; uniform vec4 u_effect0; uniform vec4 u_effect1; uniform vec4 u_effect2; uniform vec4 u_effect3;
-uniform vec4 u_tint; uniform float u_flash; uniform float u_forceColor;
-${kind === "sketch" ? "uniform float u_timeMs;" : ""}
-${CLIPS}
-float hashCell(vec2 cell, float salt) {
-  return fract(sin(dot(cell, vec2(127.1, 311.7)) + u_effect0.x * 74.7 + salt * 19.19) * 43758.5453);
-}
-float segmentDistance(vec2 p, vec2 a, vec2 b) {
-  vec2 delta = b - a;
-  float denom = max(dot(delta, delta), 0.000001);
-  float t = clamp(dot(p - a, delta) / denom, 0.0, 1.0);
-  return length(p - (a + delta * t));
-}
-vec2 cubicPoint(float t, vec2 a, vec2 b, vec2 c, vec2 d) {
-  float s = 1.0 - t;
-  return s*s*s*a + 3.0*s*s*t*b + 3.0*s*t*t*c + t*t*t*d;
-}
-float cubicDistance(vec2 p, vec2 a, vec2 b, vec2 c, vec2 d) {
-  float result = 100000.0;
-  vec2 previous = a;
-  for (int i = 1; i <= 5; i++) {
-    vec2 next = cubicPoint(float(i) * 0.2, a, b, c, d);
-    result = min(result, segmentDistance(p, previous, next));
-    previous = next;
-  }
-  return result;
-}
-float lineMask(float distanceToLine, float width) {
-  float aa = max(width * 0.16, 0.025);
-  return 1.0 - smoothstep(max(0.0, width * 0.5 - aa), width * 0.5 + aa, distanceToLine);
-}
-vec3 tintTo(vec3 base, float amount) {
-  return amount < 0.0 ? mix(base, vec3(0.0), -amount) : mix(base, vec3(1.0), amount);
-}
-${BODY}
-void main() {
-  clipWorld();
-  float alpha = mix(v_color.a, 1.0, u_forceColor) * u_tint.a;
-  if (alpha <= 0.0001) discard;
-  vec3 base = mix(mix(v_color.rgb * u_tint.rgb, u_tint.rgb, u_forceColor), vec3(1.0), clamp(u_flash, 0.0, 1.0));
-  vec3 rgb = base;
-  float effect = v_surface.x;
-  if (effect < 0.5) {
-    ${kind === "yarn" ? "rgb = shadeYarnFill(rgb);" : "rgb = shadeSketchFill(rgb);"}
-    gl_FragColor = vec4(rgb * alpha, alpha);
-    return;
-  }
-  ${kind === "yarn" ? "shadeYarnEdge(rgb, alpha);" : "shadeSketchEdge(rgb, alpha);"}
-}`;
-}
-var YARN_FRAGMENT_BODY = `
-vec3 shadeYarnFill(vec3 base) {
-  float stitchWidth = abs(u_effect0.y), stitchHeight = u_effect0.z;
-  if (u_effect0.w < 0.0 || stitchWidth <= 0.0 || stitchHeight <= 0.0) return base;
-  float cols = max(2.0, ceil(u_bounds.z / stitchWidth));
-  float rows = max(2.0, ceil(u_bounds.w / stitchHeight));
-  float sx = u_bounds.z / cols, sy = u_bounds.w / rows;
-  vec2 local = v_position;
-  if (u_effect3.z > 0.5) {
-    float rx = max(u_bounds.z * 0.5, 0.0001), ry = max(u_bounds.w * 0.5, 0.0001);
-    float nx = clamp((local.x - (u_bounds.x + rx)) / rx, -1.35, 1.35);
-    float ny = (local.y - (u_bounds.y + ry)) / ry;
-    local.x += (sin(nx * 1.1) / 0.89120736 - nx) * rx;
-    local.y += ry * 0.13 * nx * nx * (1.0 - ny * 0.24);
-  }
-  vec2 cell = (local - u_bounds.xy) / vec2(sx, sy);
-  vec2 index = floor(cell);
-  float jitterX = (hashCell(index, 71.0) - 0.5) * u_effect1.x;
-  float jitterY = (hashCell(index, 39.0) - 0.5) * u_effect1.x;
-  float scaleX = 1.0 + (hashCell(index, 57.0) - 0.5) * u_effect1.x;
-  float scaleY = 1.0 + (hashCell(index, 91.0) - 0.5) * u_effect1.x;
-  vec2 p = (fract(cell) - vec2(0.5 + jitterX, 0.5 + jitterY)) / vec2(scaleX, scaleY);
-  p *= vec2(sx, sy);
-  float stroke = min(sx, sy) * (abs(u_effect0.w) / stitchHeight);
-  float underDistance = cubicDistance(p-vec2(0.0,stroke*0.06), vec2(-0.48,-0.46)*vec2(sx,sy), vec2(-0.22,-0.57)*vec2(sx,sy), vec2(0.22,-0.57)*vec2(sx,sy), vec2(0.48,-0.46)*vec2(sx,sy));
-  vec2 leftA=vec2(-0.34,-0.36)*vec2(sx,sy), leftB=vec2(-0.32,-0.06)*vec2(sx,sy), leftC=vec2(-0.18,0.17)*vec2(sx,sy), leftD=vec2(-0.025,0.34)*vec2(sx,sy);
-  vec2 rightA=vec2(0.34,-0.36)*vec2(sx,sy), rightB=vec2(0.32,-0.06)*vec2(sx,sy), rightC=vec2(0.18,0.17)*vec2(sx,sy), rightD=vec2(0.025,0.34)*vec2(sx,sy);
-  float leftDistance = cubicDistance(p,leftA,leftB,leftC,leftD);
-  float rightDistance = cubicDistance(p,rightA,rightB,rightC,rightD);
-  float under = lineMask(underDistance, stroke*0.5) * 0.5;
-  float grooveLeft = cubicDistance(p-vec2(0.0,stroke*0.06),leftA,leftB,leftC,leftD);
-  float grooveRight = cubicDistance(p-vec2(0.0,stroke*0.06),rightA,rightB,rightC,rightD);
-  float groove = max(lineMask(grooveLeft,stroke*1.08),lineMask(grooveRight,stroke*1.08))*0.85;
-  float yarn = max(lineMask(leftDistance,stroke*0.89),lineMask(rightDistance,stroke*0.89));
-  float lightLeft = cubicDistance(p+vec2(stroke*0.14,stroke*0.13),leftA,leftB,leftC,leftD);
-  float lightRight = cubicDistance(p+vec2(stroke*0.14,stroke*0.13),rightA,rightB,rightC,rightD);
-  float light = max(lineMask(lightLeft,stroke*0.34),lineMask(lightRight,stroke*0.34))*0.57;
-  float twist = 0.0;
-  if (mod(index.x + index.y, 2.0) < 1.0) {
-    float a = segmentDistance(p,vec2(-0.32,-0.12)*vec2(sx,sy),vec2(-0.16,-0.13)*vec2(sx,sy));
-    float b = segmentDistance(p,vec2(0.22,0.18)*vec2(sx,sy),vec2(0.37,0.08)*vec2(sx,sy));
-    twist = max(lineMask(a,stroke*0.075),lineMask(b,stroke*0.075))*0.5;
-  }
-  vec3 dark = tintTo(base,-0.28), grooveColor = tintTo(base,-u_effect1.y);
-  vec3 yarnColor = tintTo(base,0.10), highlight = tintTo(base,0.38);
-  vec3 color = mix(base,dark,under);
-  color = mix(color,grooveColor,groove);
-  color = mix(color,yarnColor,yarn);
-  color = mix(color,highlight,max(light*0.57,twist));
-  return color;
-}
-void shadeYarnEdge(inout vec3 rgb, float alpha) {
-  float radial = v_surface.z;
-  float along = v_surface.y * u_effect3.y;
-  float edgeWidth = u_effect1.w;
-  float lobe = fract(along / max(u_effect1.z, 0.001));
-  float relief = min(u_effect3.w, edgeWidth * 0.75);
-  float wave = sin(lobe * 6.2831853) * relief * 0.35;
-  float seam = lineMask(abs(radial - wave),edgeWidth*0.56);
-  float seamDark = lineMask(abs(radial - wave - edgeWidth*0.06),edgeWidth*0.8)*0.7;
-  float seamLight = lineMask(abs(radial - wave + edgeWidth*0.09),edgeWidth*0.17)*0.55;
-  float spacing = max(u_effect2.x,0.001);
-  float fiberIndex = floor(along / spacing);
-  float jitter = hashCell(vec2(fiberIndex,0.0),22.0);
-  float start = spacing * (fiberIndex + 0.22 + jitter * 0.48);
-  float randomLength = 0.45 + hashCell(vec2(fiberIndex,0.0),5.0) * 0.95;
-  float lengthLimit = min(u_effect2.y,max(u_bounds.z,u_bounds.w)*0.12)*randomLength;
-  float lean = (hashCell(vec2(fiberIndex,0.0),14.0)-0.5)*lengthLimit*1.5;
-  float alongDistance = abs(along - start - lean * clamp(radial/max(lengthLimit,0.001),0.0,1.0));
-  float fiber = 0.0;
-  if (u_effect3.x > 0.0 && fiberIndex < u_effect3.x && radial >= 0.0 && radial <= lengthLimit) {
-    fiber = lineMask(alongDistance,u_effect2.z);
-  }
-  float coverage = max(max(seam,seamDark*0.6),max(seamLight,fiber*u_effect2.w));
-  if (coverage < 0.012) discard;
-  vec3 dark=tintTo(rgb,-0.28), yarn=tintTo(rgb,0.10), light=tintTo(rgb,0.38);
-  rgb=mix(rgb,dark,seamDark*0.7);
-  rgb=mix(rgb,yarn,seam);
-  rgb=mix(rgb,light,max(seamLight,fiber*0.7));
-  float outAlpha=alpha*coverage;
-  gl_FragColor=vec4(rgb*outAlpha,outAlpha);
-}`;
-var SKETCH_FRAGMENT_BODY = `
-vec3 shadeSketchFill(vec3 base) {
-  float angle=u_effect1.z, spacing=max(u_effect1.w,0.001);
-  vec2 direction=vec2(cos(angle),sin(angle));
-  float phase=dot(v_position,direction)/spacing + hashCell(vec2(u_effect0.x,0.0),31.0);
-  float distanceToHatch=abs(fract(phase)-0.5)*spacing;
-  float hatch=lineMask(distanceToHatch,u_effect2.x)*u_effect2.y;
-  return mix(base,tintTo(base,-0.48),hatch);
-}
-void shadeSketchEdge(inout vec3 rgb, float alpha) {
-  float phase=mod(u_timeMs,max(u_effect0.y,16.0))/max(u_effect0.y,16.0)*6.2831853;
-  float wobble=sin(v_surface.y*u_effect0.z*6.2831853+phase+u_effect0.x)*u_effect1.x;
-  float offset=(u_effect1.y+wobble);
-  float echo=lineMask(abs(v_surface.z-offset),u_effect1.z)*u_effect1.w;
-  if(echo<0.012)discard;
-  rgb=mix(rgb,tintTo(rgb,-0.52),echo);
-  float outAlpha=alpha*echo;
-  gl_FragColor=vec4(rgb*outAlpha,outAlpha);
-}`;
-function finiteArray3(value, count, name) {
-  if (!value || value.length !== count || Array.from(value).some((number) => !Number.isFinite(number))) {
-    throw new TypeError(`${name} needs ${count} finite numbers`);
-  }
-}
 function validateStyle(style) {
   if (!style || typeof style !== "object" || Array.isArray(style)) {
     throw new TypeError("A complete SVG-authored yarn or sketch style is required");
@@ -8256,342 +8875,56 @@ function surfaceGeometry(fillVertices, outline, edgeColors, style) {
     contourLength: total
   });
 }
-function clipPlanes(clips, maxPlanes) {
-  const PACKED = new Float32Array(maxPlanes * 3);
-  if (!clips?.length) {
-    return PACKED;
-  }
-  if (!Array.isArray(clips)) {
-    throw new TypeError("clips must be an array of convex polygons");
-  }
-  let cursor = 0;
-  for (const POLYGON of clips) {
-    if (!Array.isArray(POLYGON) || POLYGON.length < 3 || POLYGON.some((point2) => !Number.isFinite(point2?.x) || !Number.isFinite(point2?.y))) {
-      throw new TypeError("Finite convex clip polygons required");
-    }
-    let area = 0;
-    for (let i = 0; i < POLYGON.length; i++) {
-      const A = POLYGON[i], B = POLYGON[(i + 1) % POLYGON.length];
-      area += A.x * B.y - B.x * A.y;
-    }
-    if (Math.abs(area) < 1e-8) {
-      throw new RangeError("A clip polygon must have nonzero area");
-    }
-    const SIGN = area >= 0 ? 1 : -1;
-    for (let i = 0; i < POLYGON.length; i++) {
-      const A = POLYGON[i], B = POLYGON[(i + 1) % POLYGON.length], DX = B.x - A.x, DY = B.y - A.y, LENGTH = Math.hypot(DX, DY);
-      if (!LENGTH) {
-        continue;
-      }
-      if (cursor >= maxPlanes) {
-        throw new RangeError(`Shader surface clipping exceeds the device limit of ${maxPlanes} edge planes`);
-      }
-      const AT = cursor++ * 3, NX = -DY / LENGTH * SIGN, NY = DX / LENGTH * SIGN;
-      PACKED[AT] = NX;
-      PACKED[AT + 1] = NY;
-      PACKED[AT + 2] = -(NX * A.x + NY * A.y);
-    }
-  }
-  return PACKED;
-}
-function toMatrix3(matrix) {
-  finiteArray3(matrix, 6, "transform");
-  return Float32Array.of(matrix[0], matrix[1], 0, matrix[2], matrix[3], 0, matrix[4], matrix[5], 1);
-}
-function affineMatrix42(matrix, name) {
-  finiteArray3(matrix, 16, name);
-  if (Math.abs(matrix[3]) > 1e-7 || Math.abs(matrix[7]) > 1e-7 || Math.abs(matrix[11]) > 1e-7 || Math.abs(matrix[15] - 1) > 1e-7) {
-    throw new TypeError(`${name} must be an affine column-major 4x4 matrix`);
-  }
-}
-var YarnSurfaceRenderer = class {
-  constructor(device, { maxSurfaces = MAX_SURFACES, maxSurfaceBytes = DEFAULT_LIMIT_BYTES } = {}) {
-    if (!device?.createPipeline || !device?.uploadVertices || !device?.draw) {
-      throw new TypeError("A ready GameKit WebGLDevice is required");
-    }
-    if (!Number.isSafeInteger(maxSurfaces) || maxSurfaces < 1 || maxSurfaces > MAX_SURFACES) {
-      throw new RangeError(`maxSurfaces must be 1..${MAX_SURFACES}`);
-    }
-    if (!Number.isSafeInteger(maxSurfaceBytes) || maxSurfaceBytes < STRIDE_BYTES * 3 || maxSurfaceBytes > device.maxBufferBytes) {
-      throw new RangeError("maxSurfaceBytes must fit the device buffer limit");
-    }
-    this.device = device;
-    this.maxSurfaces = maxSurfaces;
-    this.maxSurfaceBytes = maxSurfaceBytes;
-    this.maxClipPlanes = Math.max(
-      1,
-      Math.min(8, device.gl.getParameter(device.gl.MAX_FRAGMENT_UNIFORM_VECTORS) - 8)
+function appendSurfaceVertices(vertices, materials, surface, surfaceIndex, style, partIndex) {
+  const YARN = style.kind === "yarn";
+  for (let record = 0; record < surface.fillCount + surface.edgeCount; record++) {
+    const AT = record * STRIDE_FLOATS, EDGE = record >= surface.edgeFirst;
+    vertices.push(
+      surface.vertices[AT],
+      surface.vertices[AT + 1],
+      surface.vertices[AT + 2],
+      surface.vertices[AT + 3],
+      surface.vertices[AT + 4],
+      surface.vertices[AT + 5],
+      0,
+      0,
+      0,
+      0,
+      partIndex
     );
-    this.surfaces = /* @__PURE__ */ new Set();
-    this.bytes = 0;
-    this.pipelines = /* @__PURE__ */ new Map();
-    this.state = "ready";
-    this.failure = null;
-    this.disposed = false;
-    this.onLost = () => {
-      this.state = "lost";
-    };
-    this.onRestored = () => {
-      try {
-        for (const SURFACE of this.surfaces) {
-          device.uploadVertices(SURFACE.buffer, SURFACE.vertices);
-        }
-        this.state = "ready";
-        this.failure = null;
-      } catch (error) {
-        this.state = "failed";
-        this.failure = error.message;
-      }
-    };
-    device.canvas.addEventListener("webglcontextlost", this.onLost);
-    device.canvas.addEventListener("webglcontextrestored", this.onRestored);
+    materials.push(
+      EDGE ? YARN ? MATERIAL_KIND.yarnEdge : MATERIAL_KIND.sketchEdge : YARN ? MATERIAL_KIND.yarnFill : MATERIAL_KIND.sketchFill,
+      surfaceIndex,
+      EDGE ? surface.vertices[AT + 7] : 0,
+      EDGE ? surface.vertices[AT + 8] : 0
+    );
   }
-  _pipeline(kind, worldMode = false) {
-    const KEY = kind + ":" + Number(worldMode);
-    let pipeline = this.pipelines.get(KEY);
-    if (pipeline) {
-      return pipeline;
-    }
-    const UNIFORMS2 = {
-      ...worldMode ? {
-        u_viewProjection: "matrix4fv",
-        u_worldMatrix: "matrix4fv"
-      } : {
-        u_projection: "matrix3fv"
-      },
-      u_transform: "matrix3fv",
-      u_depth: "1f",
-      u_bounds: "4f",
-      u_effect0: "4f",
-      u_effect1: "4f",
-      u_effect2: "4f",
-      u_effect3: "4f",
-      u_tint: "4f",
-      u_flash: "1f",
-      u_forceColor: "1f",
-      "u_planes[0]": "3fv",
-      ...kind === "sketch" ? {
-        u_timeMs: "1f"
-      } : {}
-    };
-    pipeline = this.device.createPipeline({
-      vertex: worldMode ? VERTEX_WORLD : VERTEX3,
-      fragment: fragment2(kind, this.maxClipPlanes),
-      stride: STRIDE_BYTES,
-      attributes: ATTRIBUTES2,
-      uniforms: UNIFORMS2
-    });
-    this.pipelines.set(KEY, pipeline);
-    return pipeline;
+}
+function buildYarnSurfaceMesh(surfaces) {
+  const LIST = Array.isArray(surfaces) ? surfaces : [surfaces];
+  if (!LIST.length || LIST.length > MAX_MATERIAL_SURFACES) {
+    throw new RangeError("A mesh holds 1.." + MAX_MATERIAL_SURFACES + " surfaces");
   }
-  createSurface({ fillVertices, outline, edgeColors, style }) {
-    if (this.disposed || this.state !== "ready") {
-      throw new Error(`YarnSurfaceRenderer is ${this.state}`);
-    }
+  const VERTICES = [], MATERIALS = [], TABLE = [];
+  let partCount = 1;
+  LIST.forEach(({ fillVertices, outline, edgeColors, style, partIndex = 0 }, index) => {
     validateStyle(style);
-    if (this.surfaces.size >= this.maxSurfaces) {
-      throw new RangeError("Retained yarn surface count limit exceeded");
+    const SURFACE = surfaceGeometry(fillVertices, outline, edgeColors, style);
+    TABLE.push(...materialRecord(style, SURFACE.bounds, SURFACE.contourLength));
+    appendSurfaceVertices(VERTICES, MATERIALS, SURFACE, index, style, partIndex);
+    partCount = Math.max(partCount, partIndex + 1);
+  });
+  return {
+    vertices: Float32Array.from(VERTICES),
+    strideFloats: 11,
+    partCount,
+    morphCount: 0,
+    materials: {
+      vertices: Float32Array.from(MATERIALS),
+      table: Float32Array.from(TABLE)
     }
-    const GEOMETRY = surfaceGeometry(fillVertices, outline, edgeColors, style);
-    const VERTICES = GEOMETRY.vertices.slice();
-    if (this.bytes + VERTICES.byteLength > this.maxSurfaceBytes) {
-      throw new RangeError("Retained yarn surface byte budget exceeded");
-    }
-    const PIPELINE = this._pipeline(style.kind);
-    const BUFFER = this.device.createVertexBuffer({
-      capacityBytes: VERTICES.byteLength
-    });
-    try {
-      this.device.uploadVertices(BUFFER, VERTICES);
-    } catch (error) {
-      this.device.deleteVertexBuffer(BUFFER);
-      throw error;
-    }
-    const SURFACE = Object.freeze({
-      renderer: this,
-      buffer: BUFFER,
-      vertices: VERTICES,
-      byteLength: VERTICES.byteLength,
-      style: Object.freeze({
-        ...style
-      }),
-      kind: style.kind,
-      fillFirst: GEOMETRY.fillFirst,
-      fillCount: GEOMETRY.fillCount,
-      edgeFirst: GEOMETRY.edgeFirst,
-      edgeCount: GEOMETRY.edgeCount,
-      edgeByteOffset: GEOMETRY.edgeByteOffset,
-      bounds: GEOMETRY.bounds,
-      contourLength: GEOMETRY.contourLength,
-      pipeline: PIPELINE
-    });
-    this.surfaces.add(SURFACE);
-    this.bytes += SURFACE.byteLength;
-    return SURFACE;
-  }
-  drawSurface(surface, {
-    projection,
-    viewProjection,
-    worldMatrix,
-    transform = IDENTITY4,
-    color: color2 = WHITE3,
-    alpha = 1,
-    forceColor = false,
-    whiteFlash = 0,
-    timeMs = 0,
-    clips = [],
-    stencilRef = null,
-    z = 0,
-    depth = false,
-    blend = "source-over"
-  } = {}) {
-    if (this.disposed || this.state !== "ready") {
-      throw new Error(`YarnSurfaceRenderer is ${this.state}${this.failure ? ": " + this.failure : ""}`);
-    }
-    if (!this.surfaces.has(surface)) {
-      throw new TypeError("Surface must belong to this YarnSurfaceRenderer");
-    }
-    const WORLD_MODE = viewProjection !== void 0 || worldMatrix !== void 0;
-    if (WORLD_MODE) {
-      if (projection !== void 0 || viewProjection === void 0 || worldMatrix === void 0) {
-        throw new TypeError(
-          "3D surface draws require viewProjection and worldMatrix and cannot include projection"
-        );
-      }
-      finiteArray3(viewProjection, 16, "viewProjection");
-      affineMatrix42(worldMatrix, "worldMatrix");
-    } else {
-      finiteArray3(projection, 9, "projection");
-    }
-    finiteArray3(color2, 4, "color");
-    if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1 || color2.some((value) => value < 0 || value > 1)) {
-      throw new RangeError("Surface tint/alpha must be in [0,1]");
-    }
-    if (typeof forceColor !== "boolean") {
-      throw new TypeError("forceColor must be boolean");
-    }
-    if (!Number.isFinite(whiteFlash) || whiteFlash < 0 || whiteFlash > 1) {
-      throw new RangeError("whiteFlash must be in [0,1]");
-    }
-    if (!Number.isFinite(timeMs)) {
-      throw new TypeError("timeMs must be finite");
-    }
-    if (!Number.isFinite(z) || z < -1 || z > 1) {
-      throw new RangeError("z must be in [-1,1]");
-    }
-    if (stencilRef !== null && (!Number.isSafeInteger(stencilRef) || stencilRef < 0 || stencilRef > 255)) {
-      throw new RangeError("stencilRef must be null or in [0,255]");
-    }
-    if (stencilRef !== null && !this.device.activeStencilAvailable) {
-      throw new Error("A stencil-tested yarn surface requires an active stencil attachment");
-    }
-    const PLANES = clipPlanes(clips, this.maxClipPlanes), STYLE = surface.style;
-    const YARN = surface.kind === "yarn";
-    const STITCH_PATTERN = STYLE.pattern !== false;
-    const EFFECT0 = YARN ? [STYLE.seed, STYLE.stitchWidth, STYLE.stitchHeight, (STITCH_PATTERN ? 1 : -1) * STYLE.thickness] : [STYLE.seed, STYLE.periodMs, STYLE.frequency, 0];
-    const EFFECT1 = YARN ? [STYLE.irregularity, STYLE.contrast, STYLE.edgeSpacing, STYLE.edgeWidth] : [STYLE.amplitude, STYLE.echoX, STYLE.echoWidth, STYLE.echoOpacity];
-    const EFFECT2 = YARN ? [STYLE.fiberSpacing ?? 4, STYLE.fiberLength, STYLE.fiberWidth, STYLE.fiberOpacity] : [STYLE.hatchWidth, STYLE.hatchOpacity, STYLE.hatchAngle, STYLE.hatchSpacing];
-    const EFFECT3 = YARN ? [
-      STYLE.fiber === false ? 0 : STYLE.fiberMax,
-      surface.contourLength,
-      STYLE.curved === false ? 0 : 1,
-      STYLE.edgeRelief * (STYLE.detail ? 0.3 : 1)
-    ] : [0, STYLE.echoY, 0, 0];
-    const UNIFORMS2 = {
-      ...WORLD_MODE ? {
-        u_viewProjection: viewProjection,
-        u_worldMatrix: worldMatrix
-      } : {
-        u_projection: projection
-      },
-      u_transform: toMatrix3(transform),
-      u_depth: z,
-      u_bounds: surface.bounds,
-      u_effect0: EFFECT0,
-      u_effect1: EFFECT1,
-      u_effect2: EFFECT2,
-      u_effect3: EFFECT3,
-      u_tint: [color2[0], color2[1], color2[2], color2[3] * alpha],
-      u_flash: whiteFlash,
-      u_forceColor: forceColor ? 1 : 0,
-      "u_planes[0]": PLANES,
-      ...YARN ? {} : {
-        u_timeMs: (timeMs % STYLE.periodMs + STYLE.periodMs) % STYLE.periodMs
-      }
-    };
-    const COMMON = {
-      pipeline: this._pipeline(surface.kind, WORLD_MODE),
-      buffer: surface.buffer,
-      uniforms: UNIFORMS2,
-      blend,
-      depth,
-      stencil: stencilRef === null ? false : {
-        func: "equal",
-        ref: stencilRef,
-        mask: 255,
-        writeMask: 0,
-        pass: "keep"
-      }
-    };
-    this.device.draw({
-      ...COMMON,
-      first: surface.fillFirst,
-      count: surface.fillCount
-    });
-    if (surface.edgeCount) {
-      const EDGE_DEPTH = depth === true ? {
-        test: true,
-        write: false
-      } : depth && typeof depth === "object" ? {
-        ...depth,
-        write: false
-      } : depth;
-      this.device.draw({
-        ...COMMON,
-        first: surface.edgeFirst,
-        count: surface.edgeCount,
-        depth: EDGE_DEPTH
-      });
-    }
-  }
-  deleteSurface(surface) {
-    if (!this.surfaces.has(surface)) {
-      return false;
-    }
-    this.device.deleteVertexBuffer(surface.buffer);
-    this.surfaces.delete(surface);
-    this.bytes -= surface.byteLength;
-    return true;
-  }
-  stats() {
-    return Object.freeze({
-      state: this.state,
-      surfaceCount: this.surfaces.size,
-      retainedBytes: this.bytes,
-      pipelineCount: this.pipelines.size,
-      maxClipPlanes: this.maxClipPlanes
-    });
-  }
-  dispose() {
-    if (this.disposed) {
-      return false;
-    }
-    this.device.canvas.removeEventListener("webglcontextlost", this.onLost);
-    this.device.canvas.removeEventListener("webglcontextrestored", this.onRestored);
-    for (const SURFACE of this.surfaces) {
-      this.device.deleteVertexBuffer(SURFACE.buffer);
-    }
-    for (const PIPELINE of this.pipelines.values()) {
-      this.device.deletePipeline(PIPELINE);
-    }
-    this.surfaces.clear();
-    this.pipelines.clear();
-    this.bytes = 0;
-    this.disposed = true;
-    this.state = "disposed";
-    return true;
-  }
-};
+  };
+}
 function buildYarnSurfaceGeometry(options) {
   validateStyle(options?.style);
   return surfaceGeometry(options.fillVertices, options.outline, options.edgeColors, options.style);
@@ -8611,8 +8944,8 @@ var GlyphAtlas = class {
     missingGlyph = "error",
     replacement = "�"
   } = {}) {
-    if (!device || typeof device.createTexture !== "function" || typeof device.deleteTexture !== "function") {
-      throw new TypeError("device must provide WebGLDevice createTexture/deleteTexture");
+    if (!device?.textureAtlas) {
+      throw new TypeError("device must provide a WebGLDevice texture atlas");
     }
     positiveInteger(width, "width");
     positiveInteger(height, "height");
@@ -8647,17 +8980,13 @@ var GlyphAtlas = class {
     if (filter !== "nearest" && filter !== "linear") {
       throw new RangeError("filter must be nearest or linear");
     }
-    this.texture = device.createTexture(
-      {
-        width,
-        height,
-        data
-      },
-      {
-        format: "rgba",
-        filter
-      }
-    );
+    this.region = device.textureAtlas.allocate(width, height, { filter });
+    try {
+      device.textureAtlas.upload(this.region, { width, height, data }, { extendEdges: true });
+    } catch (error) {
+      device.textureAtlas.release(this.region);
+      throw error;
+    }
     this.disposed = false;
   }
   /** Returns the metrics in the same units as the requested fontSize. */
@@ -8677,10 +9006,10 @@ var GlyphAtlas = class {
     };
   }
   /**
-   * Emits one callback per visible glyph. The callback receives texture, atlas
+   * Emits one callback per visible glyph. The callback receives region (atlas array layer), atlas
    * UVs, destination rectangle, RGBA color, and operation='fill'.
    * Also accepts `(renderer, text, x, y, options)` when renderer provides
-   * `drawGlyphQuad(texture, x, y, width, height, uv, color)`.
+   * `drawGlyphQuad(region, x, y, width, height, uv, color)`.
    */
   fillText(textOrRenderer, xOrText, yOrX, optionsOrY = {}, drawGlyphOrOptions = {}) {
     const ARGS = normalizeDrawArguments(textOrRenderer, xOrText, yOrX, optionsOrY, drawGlyphOrOptions);
@@ -8727,6 +9056,7 @@ var GlyphAtlas = class {
     positive(FONT_SIZE, "fontSize");
     validateAlign(ALIGN);
     validateColor(COLOR, "color");
+    const [RU, RV, RW, RH] = this.region.uvRect;
     const RESOLVED = this._resolve(text);
     const SCALE = FONT_SIZE / this.unitsPerEm;
     const ADVANCE = RESOLVED.reduce((sum, glyph) => sum + glyph.advance, 0) * SCALE;
@@ -8748,17 +9078,17 @@ var GlyphAtlas = class {
         const TOP = BASELINE_Y - GLYPH.bearingY * SCALE;
         for (const [OX, OY] of OFFSETS) {
           drawGlyph({
-            texture: this.texture,
+            region: this.region,
             glyph: GLYPH,
             codePoint: GLYPH.codePoint,
             x: LEFT + OX * lineWidth,
             y: TOP + OY * lineWidth,
             width: GLYPH.width * SCALE,
             height: GLYPH.height * SCALE,
-            u0: GLYPH.x / this.width,
-            v0: GLYPH.y / this.height,
-            u1: (GLYPH.x + GLYPH.width) / this.width,
-            v1: (GLYPH.y + GLYPH.height) / this.height,
+            u0: RU + GLYPH.x / this.width * RW,
+            v0: RV + GLYPH.y / this.height * RH,
+            u1: RU + (GLYPH.x + GLYPH.width) / this.width * RW,
+            v1: RV + (GLYPH.y + GLYPH.height) / this.height * RH,
             color: COLOR,
             operation: lineWidth ? "stroke" : operation
           });
@@ -8803,8 +9133,10 @@ var GlyphAtlas = class {
       return false;
     }
     this.disposed = true;
-    this.device.deleteTexture(this.texture);
-    this.texture = null;
+    if (this.device.state === "ready") {
+      this.region.atlas.release(this.region);
+    }
+    this.region = null;
     return true;
   }
 };
@@ -8830,7 +9162,7 @@ function normalizeDrawArguments(first, second, third, fourth, fifth) {
       y: Y2,
       options: OPTIONS2,
       drawGlyph: (glyph) => RENDERER.drawGlyphQuad(
-        glyph.texture,
+        glyph.region,
         glyph.x,
         glyph.y,
         glyph.width,
@@ -9375,770 +9707,17 @@ var FontAssetLoader = class {
     return true;
   }
 };
-
-// modules/rendering/index.js
-var WHITE4 = Object.freeze([1, 1, 1, 1]);
-var CLEAR = Object.freeze([0, 0, 0, 0]);
-var VERTEX4 = `#version 300 es
-in vec2 a_position;
-in vec2 a_uv;
-in vec4 a_color;
-uniform mat3 u_projection;
-out vec2 v_uv;
-out vec4 v_color;
-void main() {
-  vec3 p = u_projection * vec3(a_position, 1.0);
-  gl_Position = vec4(p.xy, 0.0, 1.0);
-  v_uv = a_uv; v_color = a_color;
-}`;
-var FRAGMENT3 = `#version 300 es
-precision mediump float;
-uniform sampler2D u_texture;
-in vec2 v_uv;
-in vec4 v_color;
-out vec4 outColor;
-void main() {
-  vec4 t = texture(u_texture, v_uv);
-  float alpha = t.a * v_color.a;
-  outColor = vec4(t.rgb * v_color.rgb * v_color.a, alpha);
-}`;
-function finite3(value, name) {
-  if (!Number.isFinite(value)) {
-    throw new TypeError(`${name} must be finite`);
-  }
-}
-function positive2(value, name) {
-  finite3(value, name);
-  if (value <= 0) {
-    throw new RangeError(`${name} must be positive`);
-  }
-}
-function premultiplyBytes(bytes, start, end) {
-  let opaque = true;
-  for (let i = start + 3; i < end; i += 4) {
-    if (bytes[i] !== 255) {
-      opaque = false;
-      break;
-    }
-  }
-  if (opaque) {
-    return;
-  }
-  for (let i = start; i < end; i += 4) {
-    const A = bytes[i + 3] / 255;
-    bytes[i] = Math.round(bytes[i] * A);
-    bytes[i + 1] = Math.round(bytes[i + 1] * A);
-    bytes[i + 2] = Math.round(bytes[i + 2] * A);
-  }
-}
-function color(value) {
-  if (!value || value.length !== 4) {
-    throw new TypeError("color must be [r,g,b,a]");
-  }
-  for (let i = 0; i < 4; i++) {
-    if (!Number.isFinite(value[i]) || value[i] < 0 || value[i] > 1) {
-      throw new RangeError("color channels must be in [0,1]");
-    }
-  }
-}
-function compile2(gl, type, source) {
-  const SHADER = gl.createShader(type);
-  if (!SHADER) {
-    throw new Error("WebGL shader allocation failed");
-  }
-  gl.shaderSource(SHADER, source);
-  gl.compileShader(SHADER);
-  if (!gl.getShaderParameter(SHADER, gl.COMPILE_STATUS)) {
-    const MESSAGE = gl.getShaderInfoLog(SHADER);
-    gl.deleteShader(SHADER);
-    throw new Error(`WebGL shader: ${MESSAGE}`);
-  }
-  return SHADER;
-}
-var Renderer2D = class {
-  constructor(canvas, { batchVertices = 6144, antialias = true, depth = false, preserveDrawingBuffer = false } = {}) {
-    if (!canvas?.getContext || !canvas?.addEventListener) {
-      throw new TypeError("canvas is required");
-    }
-    if (!Number.isSafeInteger(batchVertices) || batchVertices < 6 || batchVertices > 1048576) {
-      throw new RangeError("batchVertices must be 6..1048576");
-    }
-    if (typeof depth !== "boolean") {
-      throw new TypeError("depth must be boolean");
-    }
-    this.canvas = canvas;
-    this.gl = canvas.getContext("webgl2", {
-      alpha: true,
-      premultipliedAlpha: true,
-      antialias,
-      depth,
-      stencil: false,
-      preserveDrawingBuffer
-    });
-    if (!this.gl) {
-      throw new Error("WebGL 2 is required");
-    }
-    this.state = "ready";
-    this.failure = null;
-    this.active = false;
-    this.vertices = new Float32Array(batchVertices * 8);
-    this.vertexCount = 0;
-    this.projection = new Float32Array(9);
-    this.textures = /* @__PURE__ */ new Map();
-    this.width = canvas.width || 1;
-    this.height = canvas.height || 1;
-    this.dpr = 1;
-    this.camera = {
-      x: this.width / 2,
-      y: this.height / 2,
-      zoom: 1,
-      rotation: 0
-    };
-    this.stats = {
-      backend: "webgl2",
-      frame: 0,
-      drawCalls: 0,
-      vertices: 0,
-      uploadedBytes: 0,
-      bufferViews: 0,
-      textureUploads: 0,
-      totalTextureUploads: 0,
-      textureCount: 0,
-      stagingBytes: this.vertices.byteLength,
-      bufferAllocations: 0
-    };
-    this.onLost = (event) => {
-      event.preventDefault();
-      this.state = "lost";
-      this.active = false;
-      this.vertexCount = 0;
-      this.batchTexture = null;
-    };
-    this.onRestored = () => {
-      if (this.state === "disposed") {
-        return;
-      }
-      try {
-        this._initialize();
-        this.state = "ready";
-        this.failure = null;
-      } catch (error) {
-        this.state = "failed";
-        this.failure = error.message;
-        this._deleteGPU();
-      }
-    };
-    try {
-      this._initialize();
-    } catch (error) {
-      this._deleteGPU();
-      this.state = "failed";
-      throw error;
-    }
-    canvas.addEventListener("webglcontextlost", this.onLost);
-    canvas.addEventListener("webglcontextrestored", this.onRestored);
-  }
-  _ready() {
-    if (this.state !== "ready") {
-      throw new Error(`Renderer is ${this.state}${this.failure ? `: ${this.failure}` : ""}`);
-    }
-  }
-  _frame() {
-    this._ready();
-    if (!this.active) {
-      throw new Error("beginFrame is required");
-    }
-  }
-  _initialize() {
-    const GL = this.gl;
-    let vertex;
-    let fragment3;
-    try {
-      vertex = compile2(GL, GL.VERTEX_SHADER, VERTEX4);
-      fragment3 = compile2(GL, GL.FRAGMENT_SHADER, FRAGMENT3);
-      this.program = GL.createProgram();
-      if (!this.program) {
-        throw new Error("WebGL program allocation failed");
-      }
-      GL.attachShader(this.program, vertex);
-      GL.attachShader(this.program, fragment3);
-      GL.linkProgram(this.program);
-      if (!GL.getProgramParameter(this.program, GL.LINK_STATUS)) {
-        throw new Error(`WebGL link: ${GL.getProgramInfoLog(this.program)}`);
-      }
-    } finally {
-      if (vertex) {
-        GL.deleteShader(vertex);
-      }
-      if (fragment3) {
-        GL.deleteShader(fragment3);
-      }
-    }
-    this.buffer = GL.createBuffer();
-    if (!this.buffer) {
-      throw new Error("WebGL buffer allocation failed");
-    }
-    GL.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
-    GL.bufferData(GL.ARRAY_BUFFER, this.vertices.byteLength, GL.DYNAMIC_DRAW);
-    this.stats.bufferAllocations++;
-    GL.useProgram(this.program);
-    GL.bindVertexArray(null);
-    this.maxVertexAttributes = GL.getParameter(GL.MAX_VERTEX_ATTRIBS);
-    this.attributeLocations = [];
-    for (const [NAME, SIZE, OFFSET] of [
-      ["a_position", 2, 0],
-      ["a_uv", 2, 8],
-      ["a_color", 4, 16]
-    ]) {
-      const LOCATION = GL.getAttribLocation(this.program, NAME);
-      this.attributeLocations.push([LOCATION, SIZE, OFFSET]);
-      GL.enableVertexAttribArray(LOCATION);
-      GL.vertexAttribDivisor(LOCATION, 0);
-      GL.vertexAttribPointer(LOCATION, SIZE, GL.FLOAT, false, 32, OFFSET);
-    }
-    this.uProjection = GL.getUniformLocation(this.program, "u_projection");
-    this.uTexture = GL.getUniformLocation(this.program, "u_texture");
-    GL.uniform1i(this.uTexture, 0);
-    GL.activeTexture(GL.TEXTURE0);
-    GL.disable(GL.DEPTH_TEST);
-    GL.disable(GL.CULL_FACE);
-    GL.disable(GL.DITHER);
-    GL.enable(GL.BLEND);
-    GL.blendEquation(GL.FUNC_ADD);
-    GL.blendFunc(GL.ONE, GL.ONE_MINUS_SRC_ALPHA);
-    GL.pixelStorei(GL.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
-    GL.pixelStorei(GL.UNPACK_FLIP_Y_WEBGL, false);
-    GL.pixelStorei(GL.UNPACK_COLORSPACE_CONVERSION_WEBGL, GL.NONE);
-    this.white = {
-      width: 1,
-      height: 1,
-      source: new Uint8Array([255, 255, 255, 255]),
-      filter: "nearest",
-      texture: null
-    };
-    this._upload(this.white);
-    for (const RECORD of this.textures.values()) {
-      RECORD.texture = null;
-      this._upload(RECORD);
-    }
-    this.batchTexture = null;
-    this.vertexCount = 0;
-    GL.viewport(0, 0, this.canvas.width, this.canvas.height);
-    this._projection();
-  }
-  _projection() {
-    const { x: X, y: Y, zoom: ZOOM, rotation: ROTATION } = this.camera;
-    const C = Math.cos(ROTATION) * ZOOM, S = Math.sin(ROTATION) * ZOOM;
-    const M = this.projection, W = this.width, H = this.height;
-    M[0] = 2 * C / W;
-    M[1] = 2 * S / H;
-    M[2] = 0;
-    M[3] = 2 * S / W;
-    M[4] = -2 * C / H;
-    M[5] = 0;
-    M[6] = -2 * (C * X + S * Y) / W;
-    M[7] = 2 * (C * Y - S * X) / H;
-    M[8] = 1;
-    this.gl.useProgram(this.program);
-    this.gl.uniformMatrix3fv(this.uProjection, false, M);
-  }
-  /** CSS viewport dimensions; does not change CSS style. Game controls camera separately. */
-  resize(width, height, dpr = 1) {
-    this._ready();
-    positive2(width, "width");
-    positive2(height, "height");
-    positive2(dpr, "dpr");
-    const PIXEL_WIDTH = Math.max(1, Math.round(width * dpr)), PIXEL_HEIGHT = Math.max(1, Math.round(height * dpr));
-    const LIMIT = this.gl.getParameter(this.gl.MAX_VIEWPORT_DIMS);
-    if (PIXEL_WIDTH > LIMIT[0] || PIXEL_HEIGHT > LIMIT[1]) {
-      throw new RangeError("viewport exceeds WebGL limits");
-    }
-    if (this.active) {
-      throw new Error("resize must be outside beginFrame/endFrame");
-    }
-    this.width = width;
-    this.height = height;
-    this.dpr = dpr;
-    if (this.canvas.width !== PIXEL_WIDTH) {
-      this.canvas.width = PIXEL_WIDTH;
-    }
-    if (this.canvas.height !== PIXEL_HEIGHT) {
-      this.canvas.height = PIXEL_HEIGHT;
-    }
-    this.gl.viewport(0, 0, PIXEL_WIDTH, PIXEL_HEIGHT);
-    this._projection();
-  }
-  /** Camera center in world units; zoom is CSS pixels per world unit. */
-  setCamera({ x = this.camera.x, y = this.camera.y, zoom = this.camera.zoom, rotation = this.camera.rotation } = {}) {
-    this._ready();
-    finite3(x, "x");
-    finite3(y, "y");
-    positive2(zoom, "zoom");
-    finite3(rotation, "rotation");
-    if (this.active) {
-      this.flush();
-    }
-    this.camera.x = x;
-    this.camera.y = y;
-    this.camera.zoom = zoom;
-    this.camera.rotation = rotation;
-    this._projection();
-  }
-  /** Caller-owned output; no world/simulation state is read or changed. */
-  worldToScreenInto(x, y, out) {
-    finite3(x, "x");
-    finite3(y, "y");
-    const CAMERA = this.camera;
-    const C = Math.cos(CAMERA.rotation), S = Math.sin(CAMERA.rotation), DX = x - CAMERA.x, DY = y - CAMERA.y;
-    out.x = (C * DX + S * DY) * CAMERA.zoom + this.width / 2;
-    out.y = (-S * DX + C * DY) * CAMERA.zoom + this.height / 2;
-    return out;
-  }
-  screenToWorldInto(x, y, out) {
-    finite3(x, "x");
-    finite3(y, "y");
-    const CAMERA = this.camera;
-    const C = Math.cos(CAMERA.rotation), S = Math.sin(CAMERA.rotation), DX = (x - this.width / 2) / CAMERA.zoom, DY = (y - this.height / 2) / CAMERA.zoom;
-    out.x = C * DX - S * DY + CAMERA.x;
-    out.y = S * DX + C * DY + CAMERA.y;
-    return out;
-  }
-  _source(source, filter, premultiplied = false) {
-    if (filter !== "nearest" && filter !== "linear") {
-      throw new RangeError("filter must be nearest or linear");
-    }
-    if (Object.prototype.toString.call(source) === "[object ImageBitmap]") {
-      throw new TypeError("ImageBitmap alpha mode cannot be inspected; use an image/canvas or RGBA bytes");
-    }
-    const WIDTH = source?.naturalWidth ?? source?.videoWidth ?? source?.width;
-    const HEIGHT = source?.naturalHeight ?? source?.videoHeight ?? source?.height;
-    const MAX = this.maxTextureSize ??= this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE);
-    if (!Number.isSafeInteger(WIDTH) || !Number.isSafeInteger(HEIGHT) || WIDTH < 1 || HEIGHT < 1 || WIDTH > MAX || HEIGHT > MAX) {
-      throw new RangeError("texture dimensions are invalid");
-    }
-    let retained = source;
-    if (source.data !== void 0) {
-      if (!(source.data instanceof Uint8Array || source.data instanceof Uint8ClampedArray) || source.data.length !== WIDTH * HEIGHT * 4) {
-        throw new TypeError("texture data must be width*height*4 RGBA bytes");
-      }
-      retained = new Uint8Array(source.data);
-      if (!premultiplied) {
-        premultiplyBytes(retained, 0, retained.length);
-      }
-    }
-    return {
-      width: WIDTH,
-      height: HEIGHT,
-      source: retained,
-      filter,
-      premultiplied,
-      texture: null
-    };
-  }
-  _upload(record) {
-    const GL = this.gl;
-    const TEXTURE = GL.createTexture();
-    if (!TEXTURE) {
-      throw new Error("WebGL texture allocation failed");
-    }
-    record.texture = TEXTURE;
-    try {
-      GL.activeTexture(GL.TEXTURE0);
-      GL.bindTexture(GL.TEXTURE_2D, TEXTURE);
-      GL.bindBuffer(GL.PIXEL_UNPACK_BUFFER, null);
-      GL.pixelStorei(GL.UNPACK_ALIGNMENT, 1);
-      GL.pixelStorei(GL.UNPACK_ROW_LENGTH, 0);
-      GL.pixelStorei(GL.UNPACK_SKIP_PIXELS, 0);
-      GL.pixelStorei(GL.UNPACK_SKIP_ROWS, 0);
-      GL.pixelStorei(GL.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !(record.source instanceof Uint8Array));
-      if (record.source instanceof Uint8Array) {
-        GL.texImage2D(
-          GL.TEXTURE_2D,
-          0,
-          GL.RGBA8,
-          record.width,
-          record.height,
-          0,
-          GL.RGBA,
-          GL.UNSIGNED_BYTE,
-          record.source
-        );
-      } else {
-        GL.texImage2D(GL.TEXTURE_2D, 0, GL.RGBA8, GL.RGBA, GL.UNSIGNED_BYTE, record.source);
-      }
-      const FILTER = record.filter === "linear" ? GL.LINEAR : GL.NEAREST;
-      GL.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, FILTER);
-      GL.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, FILTER);
-      GL.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, GL.CLAMP_TO_EDGE);
-      GL.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, GL.CLAMP_TO_EDGE);
-      const ERROR = GL.getError();
-      if (ERROR !== GL.NO_ERROR) {
-        throw new Error(`WebGL texture upload error ${ERROR}`);
-      }
-      this.stats.textureUploads++;
-      this.stats.totalTextureUploads++;
-    } catch (error) {
-      GL.deleteTexture(TEXTURE);
-      record.texture = null;
-      throw error;
-    }
-  }
-  /**
-   * Loaded origin-clean image/canvas, or {width,height,data: RGBA bytes}.
-   * `premultiplied:true` declares that RGBA bytes already have alpha multiplied into RGB, so no CPU pass runs.
-   */
-  createTexture(source, { filter = "linear", premultiplied = false } = {}) {
-    this._ready();
-    if (typeof premultiplied !== "boolean") {
-      throw new TypeError("premultiplied must be boolean");
-    }
-    const RECORD = this._source(source, filter, premultiplied);
-    if (this.active) {
-      this.flush();
-    }
-    this._upload(RECORD);
-    const HANDLE = Object.freeze({
-      width: RECORD.width,
-      height: RECORD.height
-    });
-    this.textures.set(HANDLE, RECORD);
-    this.stats.textureCount = this.textures.size;
-    return HANDLE;
-  }
-  /**
-   * Replacement dimensions must match the handle. Upload is explicit, never per sprite.
-   * RGBA byte sources update the existing GPU texture in place (no reallocation) and may name the changed
-   * `{x,y,width,height}` region: only those rows are copied, premultiplied and uploaded. The source is still the
-   * full image, and pixels outside the region must be unchanged since the previous upload. Bytes follow the
-   * `premultiplied` flag the texture was created with.
-   */
-  updateTexture(handle, source, { x = 0, y = 0, width = handle.width, height = handle.height } = {}) {
-    this._ready();
-    const PREVIOUS = this.textures.get(handle);
-    if (!PREVIOUS) {
-      throw new Error("unknown/deleted texture");
-    }
-    const PREMULTIPLIED = PREVIOUS.premultiplied === true;
-    const WHOLE = x === 0 && y === 0 && width === handle.width && height === handle.height;
-    const IN_PLACE = source?.data !== void 0 && PREVIOUS.source instanceof Uint8Array;
-    if (!IN_PLACE) {
-      if (!WHOLE) {
-        throw new TypeError("region updates require RGBA byte data on a byte texture");
-      }
-      const RECORD = this._source(source, PREVIOUS.filter, PREMULTIPLIED);
-      if (RECORD.width !== handle.width || RECORD.height !== handle.height) {
-        throw new RangeError("texture update dimensions must match");
-      }
-      if (this.active) {
-        this.flush();
-      }
-      this._upload(RECORD);
-      this.gl.deleteTexture(PREVIOUS.texture);
-      this.textures.set(handle, RECORD);
-      return;
-    }
-    for (const [VALUE, NAME] of [
-      [x, "x"],
-      [y, "y"],
-      [width, "width"],
-      [height, "height"]
-    ]) {
-      if (!Number.isSafeInteger(VALUE) || VALUE < (NAME === "width" || NAME === "height" ? 1 : 0)) {
-        throw new RangeError(`${NAME} must be an integer`);
-      }
-    }
-    if (x + width > handle.width || y + height > handle.height) {
-      throw new RangeError("texture region outside bounds");
-    }
-    const DATA = source.data;
-    if (source.width !== handle.width || source.height !== handle.height || !(DATA instanceof Uint8Array || DATA instanceof Uint8ClampedArray) || DATA.length !== handle.width * handle.height * 4) {
-      throw new RangeError("texture update dimensions must match");
-    }
-    if (this.active) {
-      this.flush();
-    }
-    const RETAINED = PREVIOUS.source, ROW = handle.width * 4;
-    if (WHOLE) {
-      RETAINED.set(DATA);
-      if (!PREMULTIPLIED) {
-        premultiplyBytes(RETAINED, 0, RETAINED.length);
-      }
-    } else {
-      for (let row = 0; row < height; row++) {
-        const START = (y + row) * ROW + x * 4;
-        RETAINED.set(DATA.subarray(START, START + width * 4), START);
-        if (!PREMULTIPLIED) {
-          premultiplyBytes(RETAINED, START, START + width * 4);
-        }
-      }
-    }
-    const GL = this.gl;
-    let pixels = RETAINED;
-    if (!WHOLE) {
-      const NEEDED = width * height * 4;
-      if (!this.regionBytes || this.regionBytes.length !== NEEDED) {
-        this.regionBytes = new Uint8Array(NEEDED);
-      }
-      for (let row = 0; row < height; row++) {
-        const START = (y + row) * ROW + x * 4;
-        this.regionBytes.set(RETAINED.subarray(START, START + width * 4), row * width * 4);
-      }
-      pixels = this.regionBytes;
-    }
-    GL.activeTexture(GL.TEXTURE0);
-    GL.bindTexture(GL.TEXTURE_2D, PREVIOUS.texture);
-    GL.bindBuffer(GL.PIXEL_UNPACK_BUFFER, null);
-    GL.pixelStorei(GL.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-    GL.pixelStorei(GL.UNPACK_ALIGNMENT, 1);
-    GL.pixelStorei(GL.UNPACK_ROW_LENGTH, 0);
-    GL.pixelStorei(GL.UNPACK_SKIP_PIXELS, 0);
-    GL.pixelStorei(GL.UNPACK_SKIP_ROWS, 0);
-    GL.texSubImage2D(GL.TEXTURE_2D, 0, x, y, width, height, GL.RGBA, GL.UNSIGNED_BYTE, pixels);
-    const ERROR = GL.getError();
-    if (ERROR !== GL.NO_ERROR) {
-      throw new Error(`WebGL texture upload error ${ERROR}`);
-    }
-    this.stats.textureUploads++;
-    this.stats.totalTextureUploads++;
-  }
-  deleteTexture(handle) {
-    if (this.state === "disposed") {
-      return false;
-    }
-    const RECORD = this.textures.get(handle);
-    if (!RECORD) {
-      return false;
-    }
-    if (this.active) {
-      this.flush();
-    }
-    this.gl.deleteTexture(RECORD.texture);
-    this.textures.delete(handle);
-    this.stats.textureCount = this.textures.size;
-    return true;
-  }
-  /** Returns false while context is lost. Caller skips that frame; restore is automatic. */
-  beginFrame(clear = CLEAR) {
-    if (this.state === "lost") {
-      return false;
-    }
-    this._ready();
-    if (this.active) {
-      throw new Error("endFrame is required");
-    }
-    color(clear);
-    this.active = true;
-    this.vertexCount = 0;
-    this.batchTexture = null;
-    const STATS = this.stats;
-    STATS.frame++;
-    STATS.drawCalls = STATS.vertices = STATS.uploadedBytes = STATS.bufferViews = STATS.textureUploads = 0;
-    const GL = this.gl;
-    GL.viewport(0, 0, this.canvas.width, this.canvas.height);
-    GL.disable(GL.SCISSOR_TEST);
-    GL.colorMask(true, true, true, true);
-    GL.clearColor(clear[0] * clear[3], clear[1] * clear[3], clear[2] * clear[3], clear[3]);
-    GL.clear(GL.COLOR_BUFFER_BIT);
-    return true;
-  }
-  _reserve(count, texture) {
-    this._frame();
-    if (this.batchTexture !== texture || this.vertexCount + count > this.vertices.length / 8) {
-      this.flush();
-    }
-    this.batchTexture = texture;
-  }
-  _vertex(x, y, u, v, tint) {
-    const DATA = this.vertices;
-    let i = this.vertexCount++ * 8;
-    DATA[i++] = x;
-    DATA[i++] = y;
-    DATA[i++] = u;
-    DATA[i++] = v;
-    DATA[i++] = tint[0];
-    DATA[i++] = tint[1];
-    DATA[i++] = tint[2];
-    DATA[i] = tint[3];
-  }
-  triangle(x0, y0, x1, y1, x2, y2, tint = WHITE4) {
-    finite3(x0, "x0");
-    finite3(y0, "y0");
-    finite3(x1, "x1");
-    finite3(y1, "y1");
-    finite3(x2, "x2");
-    finite3(y2, "y2");
-    color(tint);
-    this._reserve(3, this.white.texture);
-    this._vertex(x0, y0, 0, 0, tint);
-    this._vertex(x1, y1, 0, 0, tint);
-    this._vertex(x2, y2, 0, 0, tint);
-  }
-  _quad(texture, x, y, width, height, angle, tint, u0, v0, u1, v1) {
-    finite3(x, "x");
-    finite3(y, "y");
-    positive2(width, "width");
-    positive2(height, "height");
-    finite3(angle, "angle");
-    color(tint);
-    this._reserve(6, texture);
-    const C = Math.cos(angle), S = Math.sin(angle), HX = width / 2, HY = height / 2;
-    const AX = x - C * HX + S * HY, AY = y - S * HX - C * HY;
-    const BX = x + C * HX + S * HY, BY = y + S * HX - C * HY;
-    const CX = x + C * HX - S * HY, CY = y + S * HX + C * HY;
-    const DX = x - C * HX - S * HY, DY = y - S * HX + C * HY;
-    this._vertex(AX, AY, u0, v0, tint);
-    this._vertex(BX, BY, u1, v0, tint);
-    this._vertex(CX, CY, u1, v1, tint);
-    this._vertex(AX, AY, u0, v0, tint);
-    this._vertex(CX, CY, u1, v1, tint);
-    this._vertex(DX, DY, u0, v1, tint);
-  }
-  /** Center-anchored rectangle, positive size, clockwise rotation in y-down world. */
-  rect(x, y, width, height, tint = WHITE4, angle = 0) {
-    this._quad(this.white.texture, x, y, width, height, angle, tint, 0, 0, 1, 1);
-  }
-  /** Atlas UV edges are top-left based; reversing endpoints flips the image. */
-  sprite(texture, x, y, width = texture.width, height = texture.height, { angle = 0, tint = WHITE4, u0 = 0, v0 = 0, u1 = 1, v1 = 1 } = {}) {
-    const RECORD = this.textures.get(texture);
-    if (!RECORD) {
-      throw new Error("unknown/deleted texture");
-    }
-    if (!Number.isFinite(u0) || !Number.isFinite(v0) || !Number.isFinite(u1) || !Number.isFinite(v1) || Math.min(u0, v0, u1, v1) < 0 || Math.max(u0, v0, u1, v1) > 1) {
-      throw new RangeError("UV must be in [0,1]");
-    }
-    this._quad(RECORD.texture, x, y, width, height, angle, tint, u0, v0, u1, v1);
-  }
-  /** Bounded fan tessellation; game chooses quality. No path/tessellation engine. */
-  ellipse(x, y, radiusX, radiusY, tint = WHITE4, segments = 24) {
-    finite3(x, "x");
-    finite3(y, "y");
-    positive2(radiusX, "radiusX");
-    positive2(radiusY, "radiusY");
-    color(tint);
-    if (!Number.isSafeInteger(segments) || segments < 3 || segments > 256) {
-      throw new RangeError("segments must be 3..256");
-    }
-    for (let i = 0; i < segments; i++) {
-      const A = i / segments * Math.PI * 2, B = (i + 1) / segments * Math.PI * 2;
-      this._reserve(3, this.white.texture);
-      this._vertex(x, y, 0, 0, tint);
-      this._vertex(x + Math.cos(A) * radiusX, y + Math.sin(A) * radiusY, 0, 0, tint);
-      this._vertex(x + Math.cos(B) * radiusX, y + Math.sin(B) * radiusY, 0, 0, tint);
-    }
-  }
-  line(x0, y0, x1, y1, width, tint = WHITE4) {
-    finite3(x0, "x0");
-    finite3(y0, "y0");
-    finite3(x1, "x1");
-    finite3(y1, "y1");
-    positive2(width, "width");
-    color(tint);
-    this._frame();
-    const LENGTH = Math.hypot(x1 - x0, y1 - y0);
-    if (!LENGTH) {
-      return;
-    }
-    this.rect((x0 + x1) / 2, (y0 + y1) / 2, LENGTH, width, tint, Math.atan2(y1 - y0, x1 - x0));
-  }
-  flush() {
-    this._frame();
-    if (!this.vertexCount) {
-      return;
-    }
-    const GL = this.gl, VIEW = this.vertices.subarray(0, this.vertexCount * 8);
-    GL.useProgram(this.program);
-    GL.bindVertexArray(null);
-    for (let index = 0; index < this.maxVertexAttributes; index++) {
-      GL.disableVertexAttribArray(index);
-      GL.vertexAttribDivisor(index, 0);
-    }
-    GL.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
-    for (const [LOCATION, SIZE, OFFSET] of this.attributeLocations) {
-      GL.enableVertexAttribArray(LOCATION);
-      GL.vertexAttribDivisor(LOCATION, 0);
-      GL.vertexAttribPointer(LOCATION, SIZE, GL.FLOAT, false, 32, OFFSET);
-    }
-    GL.activeTexture(GL.TEXTURE0);
-    GL.bindTexture(GL.TEXTURE_2D, this.batchTexture);
-    GL.uniform1i(this.uTexture, 0);
-    GL.uniformMatrix3fv(this.uProjection, false, this.projection);
-    GL.disable(GL.SCISSOR_TEST);
-    GL.disable(GL.DEPTH_TEST);
-    GL.depthMask(false);
-    GL.disable(GL.STENCIL_TEST);
-    GL.disable(GL.CULL_FACE);
-    GL.disable(GL.DITHER);
-    GL.colorMask(true, true, true, true);
-    GL.enable(GL.BLEND);
-    GL.blendEquation(GL.FUNC_ADD);
-    GL.blendFunc(GL.ONE, GL.ONE_MINUS_SRC_ALPHA);
-    GL.bufferSubData(GL.ARRAY_BUFFER, 0, VIEW);
-    GL.drawArrays(GL.TRIANGLES, 0, this.vertexCount);
-    this.stats.drawCalls++;
-    this.stats.vertices += this.vertexCount;
-    this.stats.uploadedBytes += VIEW.byteLength;
-    this.stats.bufferViews++;
-    this.vertexCount = 0;
-  }
-  /** Stats is a reused object, valid until next frame; CPU submission, not GPU timing. */
-  endFrame() {
-    this.flush();
-    this.active = false;
-    this.batchTexture = null;
-    return this.stats;
-  }
-  _deleteGPU() {
-    const GL = this.gl;
-    if (GL.isContextLost()) {
-      return;
-    }
-    GL.useProgram(null);
-    GL.bindVertexArray(null);
-    GL.bindBuffer(GL.ARRAY_BUFFER, null);
-    GL.bindTexture(GL.TEXTURE_2D, null);
-    for (const RECORD of this.textures.values()) {
-      if (RECORD.texture) {
-        GL.deleteTexture(RECORD.texture);
-      }
-    }
-    if (this.white?.texture) {
-      GL.deleteTexture(this.white.texture);
-    }
-    if (this.buffer) {
-      GL.deleteBuffer(this.buffer);
-    }
-    if (this.program) {
-      GL.deleteProgram(this.program);
-    }
-  }
-  /** Idempotent. Removes context listeners and releases retained sources/GPU resources. */
-  dispose() {
-    if (this.state === "disposed") {
-      return;
-    }
-    this.canvas.removeEventListener("webglcontextlost", this.onLost);
-    this.canvas.removeEventListener("webglcontextrestored", this.onRestored);
-    this._deleteGPU();
-    this.textures.clear();
-    this.white = null;
-    this.buffer = this.program = null;
-    this.stats.textureCount = 0;
-    this.active = false;
-    this.vertexCount = 0;
-    this.state = "disposed";
-  }
-};
 export {
   FontAssetLoader,
   GlyphAtlas,
   MeshBuilder,
   MeshRenderer,
   PrimitivePainter,
-  Renderer2D,
+  TextureAtlasArray,
   VectorContext,
   VectorRenderer,
   WebGLDevice,
-  YarnSurfaceRenderer,
   buildYarnSurfaceGeometry,
+  buildYarnSurfaceMesh,
   createSpriteAnimation
 };

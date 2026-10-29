@@ -30,7 +30,7 @@ const CONTACT_SOCKETS = new WeakMap();
 // Read the endpoint through the pinned native player once per asset/stage.
 // This player is never drawn and is disposed immediately; live draw poses are
 // still driven solely by the actual committed action's phase clock.
-function contactSocket(record, stage) {
+function contactSocket(context, record, stage) {
     let cache = CONTACT_SOCKETS.get(record);
     if (!cache) {
         cache = new Map();
@@ -40,7 +40,10 @@ function contactSocket(record, stage) {
         const CLIP = Object.keys(record.compiled.metadata.clips).find(
             (name) => name.startsWith('fire-rice-') && name.endsWith(`-${stage}`),
         );
-        const PLAYER = record.asset.createPlayer({ clip: CLIP, startedAtMs: 0 });
+        const PLAYER = globalThis.BloomGamekitVectorAssets.createVectorActor(context, record.compiled, {
+            clip: CLIP,
+            startedAtMs: 0,
+        });
         try {
             PLAYER.seek(1000);
             cache.set(stage, PLAYER.getSocket('weapon-tip'));
@@ -65,7 +68,10 @@ export function ricePreviewEnvelope(renderer, unit) {
             );
             PREVIEW_LIFT.set(
                 RECORD,
-                Math.max(0, ...[...STAGES].map((stage) => BODY.ground.y - contactSocket(RECORD, stage).y)),
+                Math.max(
+                    0,
+                    ...[...STAGES].map((stage) => BODY.ground.y - contactSocket(renderer.ctx, RECORD, stage).y),
+                ),
             );
         }
         lift = PREVIEW_LIFT.get(RECORD) * unit.bodyScale;
@@ -87,7 +93,7 @@ export class RiceAttackPresentation extends UnitAttackPresentation {
             return { x: 0, y: 0 };
         }
         const BODY = unitBodyDefinition(6),
-            TIP = contactSocket(RECORD, stage),
+            TIP = contactSocket(renderer.ctx, RECORD, stage),
             SCALE = unitAttackDisplayScale(renderer, unit, time),
             FACE = unit.ability.ricePointX < unit.x ? -1 : 1,
             POINT = renderer.project(unit.ability.ricePointX, unit.ability.ricePointY, 0),

@@ -7,15 +7,15 @@
     },
     {
       "file": "rendering.js",
-      "sha256": "f32080024990e6a81cad6b5363471e0739732fa81e74fdddb7c9a2981a53fa24"
+      "sha256": "5d6620b7ff04434c42883d51629cc1307eda7ae7135f06e1b6d60ee8ea5b63e4"
     },
     {
       "file": "vector-assets.js",
-      "sha256": "2e7fea4c749daa68420f5277b965053164210d3782af586c5e201460f79c29b3"
+      "sha256": "de7093c51d5ffd80d6bd716a0023a9b78586a1a9b10d607eb730109ba1af694c"
     },
     {
       "file": "vector-assets-loader.js",
-      "sha256": "4948a4e8baad07b10dcc5d46cef0ab9bfda6b2ff1ca66ab0d373a63721bac798"
+      "sha256": "a9d9eaa61d891fb1dd9d7d8ac9d9781fe2545cc2a7f8ede6202556c2a7a2f48f"
     },
     {
       "file": "input.js",
@@ -43,11 +43,11 @@
     },
     {
       "file": "rollback.js",
-      "sha256": "9414ade68ac6a891beea7a89e4a4dade145ef0e59deb54099925fcc568b82bce"
+      "sha256": "5bbc3d210dd14b9b6fe2efee7f3e471208f47fec51316c3b512cfc433f974ab5"
     },
     {
       "file": "camera.js",
-      "sha256": "c9d6f59a49e7ca0640b4f55fbe9aab2d1e5362d99ad0bb3871596a66fd3859c0"
+      "sha256": "99c1be43b6a38945028d029a5ecc594f7ff6dfc71075305264930748cafe88b6"
     },
     {
       "file": "presentation-events.js",

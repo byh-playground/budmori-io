@@ -311,7 +311,7 @@ export class UnitPresentation {
                 ? 0
                 : this.renderer.displayTimeMs - (SWING ? SWING.elapsed : motionElapsedMs(u, MOTION_NAME, CLIP));
         if (!player) {
-            player = RECORD.asset.createPlayer({
+            player = globalThis.BloomGamekitVectorAssets.createVectorActor(this.renderer.ctx, RECORD.compiled, {
                 clip: MOTION_NAME,
                 startedAtMs: CLIP_START_AT_MS,
             });
@@ -419,17 +419,13 @@ export class UnitPresentation {
         if (this.renderer.cornAttachmentBodies.has(u.id)) {
             this.renderer.captureCornAttachmentBody(u, u.id, PLAYER, MATRIX);
         }
-        // Preserve the established primitive/vector submission order. Changing
-        // overlay ordering is a separate visual change from pose evaluation.
-        this.renderer.ctx.vector.flush();
         const DRAW_OPTIONS = {
-            projection: this.renderer.ctx.vector.projection,
             matrix: MATRIX,
             alpha: u.isFormationClone ? 0.52 : 1,
             color: u.isFormationClone ? [0.55, 0.82, 1, 1] : [1, 1, 1, 1],
         };
         if (!this.renderer.unitSprites.draw(PREPARED, DRAW_OPTIONS)) {
-            PLAYER.draw(DRAW_OPTIONS);
+            this.renderer.ctx.drawVectorActor(PLAYER, DRAW_OPTIONS);
         }
         drawUnitFace(
             this.renderer.ctx,

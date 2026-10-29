@@ -201,7 +201,7 @@ export class BossPresentation {
             instance = null;
         }
         if (!instance) {
-            const PLAYER = RECORD.asset.createPlayer({
+            const PLAYER = globalThis.BloomGamekitVectorAssets.createVectorActor(this.renderer.ctx, RECORD.compiled, {
                 clip: 'idle',
                 startedAtMs: this.renderer.displayTimeMs,
             });
@@ -378,12 +378,7 @@ export class BossPresentation {
                 x: MOUTH_SOCKET.x * S_LOCAL + MATRIX[4],
                 y: MOUTH_SOCKET.y * S_LOCAL + MATRIX[5],
             };
-        // Keep the main branch's actual overlay submission order unchanged.
-        this.renderer.ctx.vector.flush();
-        PLAYER.draw({
-            projection: this.renderer.ctx.vector.projection,
-            matrix: MATRIX,
-        });
+        this.renderer.ctx.drawVectorActor(PLAYER, { matrix: MATRIX });
         drawUnitFace(
             this.renderer.ctx,
             RECORD,

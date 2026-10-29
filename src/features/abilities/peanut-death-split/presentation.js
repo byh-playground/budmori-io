@@ -34,7 +34,10 @@ export class PeanutDeathSplitPresentation {
         }
         let player = players.get(effect.eventId);
         if (!player) {
-            player = RECORD.asset.createPlayer({ clip: 'fire', startedAtMs: 0 });
+            player = globalThis.BloomGamekitVectorAssets.createVectorActor(renderer.ctx, RECORD.compiled, {
+                clip: 'fire',
+                startedAtMs: 0,
+            });
             players.set(effect.eventId, player);
         }
         const CLIP = RECORD.compiled.metadata.clips.fire,
@@ -49,9 +52,7 @@ export class PeanutDeathSplitPresentation {
             ALPHA = Math.max(0, 1 - progress / 0.7);
         player.play('fire', 0);
         player.seek(ELAPSED_MS);
-        renderer.ctx.vector.flush();
-        player.draw({
-            projection: renderer.ctx.vector.projection,
+        renderer.ctx.drawVectorActor(player, {
             matrix: MATRIX,
             alpha: ALPHA,
         });

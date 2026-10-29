@@ -2,13 +2,15 @@ import { BOSS_PATTERN_CONFIG } from '../boss/boss-patterns.js';
 import { bossVectorScale, readVectorSockets, socketWorldPoint, WORLD_DEPTH_PROJECTION } from '../vector-sockets.js';
 const CLAMP = (x, a, b) => Math.max(a, Math.min(b, x));
 const BOSS_ASSETS = new Map();
-// Runtime-only assets/players are never attached to a Garden or save snapshot.
-export function bindBossSocketAsset(species, record) {
+// Runtime-only assets/actors are never attached to a Garden or save snapshot.
+// The context owns the GPU mesh the socket-reading actor shares with the drawn bosses.
+export function bindBossSocketAsset(species, record, context) {
     const LABEL = `species ${species}, ${record.compiled.sourcePath || record.compiled.metadata.id}`;
     const ANCHORS = readVectorSockets(record.compiled, LABEL);
     BOSS_ASSETS.get(species)?.player?.dispose();
     BOSS_ASSETS.set(species, {
         record,
+        context,
         anchors: ANCHORS,
         player: null,
     });
@@ -165,14 +167,14 @@ export function bossMouthWorldPoint(boss, released) {
     if (!ENTRY) {
         throw new Error(`Vector socket contract (species ${boss.species}): startup boss asset binding is missing`);
     }
-    const { record: RECORD, anchors: ANCHORS } = ENTRY,
+    const { record: RECORD, context: CONTEXT, anchors: ANCHORS } = ENTRY,
         ACTION = boss.patternRuntime?.active;
     if (ACTION?.id !== 'summon.mouth-t1') {
         throw new Error(
             `Vector socket contract (species ${boss.species}): mouth spawn requires the active summon pattern`,
         );
     }
-    ENTRY.player ||= RECORD.asset.createPlayer({
+    ENTRY.player ||= globalThis.BloomGamekitVectorAssets.createVectorActor(CONTEXT, RECORD.compiled, {
         clip: 'idle',
         startedAtMs: 0,
     });

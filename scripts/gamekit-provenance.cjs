@@ -61,6 +61,8 @@ const SOURCE_FILES = Object.freeze([
     'modules/vector-assets/schema.js',
     'modules/vector-assets/paint-regions.js',
     'modules/rendering/paint-regions.js',
+    'modules/rendering/yarn-geometry.js',
+    'modules/rendering/yarn-material-record.js',
 ]);
 const SHA = (bytes, algorithm = 'sha256') => CRYPTO.createHash(algorithm).update(bytes).digest('hex');
 const OBJECT_ID = (type, bytes) => SHA(Buffer.concat([Buffer.from(`${type} ${bytes.length}\0`), bytes]), 'sha1');

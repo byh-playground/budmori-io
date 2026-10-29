@@ -33,7 +33,7 @@ const CONTACT_SOCKETS = new WeakMap();
 // Read the endpoint through the pinned native player once per asset/stage.
 // This player is never drawn and is disposed immediately; live draw poses are
 // still driven solely by the actual committed action's phase clock.
-function contactSocket(record, stage, longBaton = false) {
+function contactSocket(context, record, stage, longBaton = false) {
     let cache = CONTACT_SOCKETS.get(record);
     if (!cache) {
         cache = new Map();
@@ -44,7 +44,10 @@ function contactSocket(record, stage, longBaton = false) {
         const CLIP = Object.keys(record.compiled.metadata.clips).find(
             (name) => name.startsWith('fire-wheat-') && name.endsWith(`-${stage}`),
         );
-        const PLAYER = record.asset.createPlayer({ clip: CLIP, startedAtMs: 0 });
+        const PLAYER = globalThis.BloomGamekitVectorAssets.createVectorActor(context, record.compiled, {
+            clip: CLIP,
+            startedAtMs: 0,
+        });
         try {
             setWheatBatonLength(PLAYER, longBaton);
             PLAYER.seek(1000);
@@ -80,7 +83,10 @@ export function wheatPreviewEnvelope(renderer, unit) {
             );
             PREVIEW_LIFT.set(
                 RECORD,
-                Math.max(0, ...[...STAGES].map((stage) => BODY.ground.y - contactSocket(RECORD, stage, true).y)),
+                Math.max(
+                    0,
+                    ...[...STAGES].map((stage) => BODY.ground.y - contactSocket(renderer.ctx, RECORD, stage, true).y),
+                ),
             );
         }
         lift = PREVIEW_LIFT.get(RECORD) * unit.bodyScale;
@@ -102,7 +108,7 @@ export class WheatAttackPresentation extends UnitAttackPresentation {
             return { x: 0, y: 0 };
         }
         const BODY = unitBodyDefinition(7),
-            TIP = contactSocket(RECORD, stage, unit.ability.wheatLongBaton),
+            TIP = contactSocket(renderer.ctx, RECORD, stage, unit.ability.wheatLongBaton),
             SCALE = unitAttackDisplayScale(renderer, unit, time),
             FACE = unit.ability.wheatFace,
             POINT = renderer.project(unit.ability.wheatPointX, unit.ability.wheatPointY, 0),
