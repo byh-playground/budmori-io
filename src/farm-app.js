@@ -58,7 +58,6 @@ let cameraGesture = null;
 const CAMERA_POINTERS = new Map();
 let suppressCanvasClick = false;
 let handKey = '';
-let farmSortTransition = null;
 let farmPanelRevision = -1;
 let bossRewardRevealTimer = null;
 let bossRewardCalculationTimer = null;
@@ -537,7 +536,6 @@ function workCut(world) {
 function install(world) {
     if (active) {
         stopWorldInput();
-        cancelFarmSortTransition();
     }
     active?.dispose();
     HUD_COUNTS.bind(world);
@@ -1141,16 +1139,13 @@ function drawFarmPanel() {
         return;
     }
     farmPanelRevision = W.progressRevision;
-    const LOCKED = !!farmSortTransition || active?.world?.scene !== 'farm' || W.farmBossEvent?.phase !== 'idle';
+    const LOCKED = active?.world?.scene !== 'farm' || W.farmBossEvent?.phase !== 'idle';
     DOLLAR('farmStatPlaced').textContent = String(W.ownedPopulation);
     DOLLAR('farmStatCapacity').textContent = `/ ${W.capacity}`;
     DOLLAR('farmStatPending').textContent = String(W.pendingRewardPopulation);
     drawRewardQueue(W);
-    syncFlag('farmLockNote', 'hidden', !LOCKED || !!farmSortTransition);
+    syncFlag('farmLockNote', 'hidden', !LOCKED);
     drawSpeciesRoles(W);
-    for (const BUTTON of DOLLAR('farmPlotActions').querySelectorAll('[data-farm-sort]')) {
-        BUTTON.disabled = LOCKED;
-    }
 }
 const MENU_ROUTES = {
     play: '#/menu',
@@ -1243,12 +1238,6 @@ DOLLAR('gameMenu').onclick = () => (menuOpen && menuTab === 'play' ? closeMenu()
 DOLLAR('upgradeMenu').onclick = () => openMenu('farms');
 DOLLAR('helpMenu').onclick = () => openMenu('help');
 DOLLAR('gameMenuClose').onclick = () => closeMenu();
-DOLLAR('farmPlotActions').addEventListener('click', (e) => {
-    const BUTTON = e.target.closest('[data-farm-sort]');
-    if (BUTTON) {
-        beginFarmSortTransition(BUTTON.dataset.farmSort);
-    }
-});
 // The track colour split follows the slider value.
 function paintRange(node) {
     const RANGE = Number(node.max) - Number(node.min) || 1;
@@ -1741,7 +1730,7 @@ DOLLAR('handCards').addEventListener('click', (e) => {
     }
 });
 function canUseWorldInput() {
-    return !home && !menuOpen && !active.paused && !farmSortTransition;
+    return !home && !menuOpen && !active.paused;
 }
 function canUseCamera() {
     return (
@@ -1758,48 +1747,6 @@ function canUseCamera() {
 function cameraPlace() {
     const WORLD = active.world;
     return WORLD.insideTower ? 'tower:' + WORLD.tower.floor : WORLD.scene;
-}
-function cancelFarmSortTransition() {
-    if (!farmSortTransition) {
-        return false;
-    }
-    clearTimeout(farmSortTransition.commitTimer);
-    clearTimeout(farmSortTransition.finishTimer);
-    farmSortTransition = null;
-    CANVAS.style.transition = '';
-    CANVAS.style.opacity = '';
-    CANVAS.style.transform = '';
-    farmPanelRevision = -1;
-    if (menuOpen && menuTab === 'farms' && personalGarden) {
-        drawFarmPanel();
-    }
-    return true;
-}
-function beginFarmSortTransition(order) {
-    if (farmSortTransition || active.world.scene !== 'farm' || active.world.farmBossEvent?.phase !== 'idle') {
-        return false;
-    }
-    [...document.querySelectorAll('#farmPlotActions button, #farmPlotList button, #farmRatioList input')].forEach(
-        (button) => (button.disabled = true),
-    );
-    farmSortTransition = { commitTimer: null, finishTimer: null };
-    CANVAS.style.transition = 'opacity 250ms ease, transform 250ms ease';
-    CANVAS.style.opacity = '0';
-    CANVAS.style.transform = 'scale(0.96)';
-    farmSortTransition.commitTimer = setTimeout(() => {
-        if (!farmSortTransition || active.world.scene !== 'farm') {
-            cancelFarmSortTransition();
-            return;
-        }
-        if (!active.queue('farm-sort', { order })) {
-            cancelFarmSortTransition();
-            return;
-        }
-        CANVAS.style.opacity = '1';
-        CANVAS.style.transform = 'scale(1)';
-        farmSortTransition.finishTimer = setTimeout(cancelFarmSortTransition, 250);
-    }, 250);
-    return true;
 }
 function pointerSpan() {
     const [A, B] = [...CAMERA_POINTERS.values()];
@@ -2229,7 +2176,6 @@ function sync(display, now, notices) {
         note = '일꾼이 없어서 먹이가 안 만들어져요';
         warn = true;
     }
-    DOLLAR('workCutA').disabled = !!farmSortTransition;
     if (document.activeElement !== DOLLAR('workCutA') && !workSliderHeld) {
         DOLLAR('workCutA').value = String(CUT);
     }

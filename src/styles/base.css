@@ -133,8 +133,8 @@ body > header {
     font-size: var(--ui-fs-3);
 }
 .chip small {
-    font-size: var(--ui-fs-1);
-    opacity: 0.8;
+    font-size: 13px;
+    opacity: 0.9;
 }
 .chip__label {
     opacity: 0.85;
@@ -868,7 +868,16 @@ details summary {
     min-height: var(--ui-tap);
     display: flex;
     align-items: center;
+    justify-content: space-between;
     font-weight: var(--ui-fw-b);
+    cursor: pointer;
+}
+details summary::after {
+    content: '▾';
+    transition: transform 0.15s ease;
+}
+details[open] summary::after {
+    transform: rotate(180deg);
 }
 .plot-bar__label {
     display: grid;
@@ -919,13 +928,13 @@ details summary {
     gap: var(--ui-s1);
 }
 .chip {
-    min-height: 30px;
+    min-height: 34px;
     gap: 4px;
     padding: 0 var(--ui-s2);
-    font-size: 12px;
+    font-size: var(--ui-fs-2);
 }
 .chip b {
-    font-size: var(--ui-fs-2);
+    font-size: var(--ui-fs-3);
 }
 .hud__note,
 .hud__version,

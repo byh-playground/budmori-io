@@ -895,8 +895,6 @@ class FarmSession {
                 return W.scene === 'farm' && W.finishTowerSummit();
             case 'tower-leave':
                 return W.scene === 'farm' && W.leaveTower();
-            case 'farm-sort':
-                return W.scene === 'farm' && W.sortActiveFarm(c.order);
             case 'merge':
                 return W.scene === 'farm' && W.startManualMerge();
             case 'combine':
