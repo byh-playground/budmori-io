@@ -133,8 +133,8 @@ body > header {
     font-size: var(--ui-fs-3);
 }
 .chip small {
-    font-size: var(--ui-fs-1);
-    opacity: 0.8;
+    font-size: 13px;
+    opacity: 0.9;
 }
 .chip__label {
     opacity: 0.85;
@@ -868,7 +868,16 @@ details summary {
     min-height: var(--ui-tap);
     display: flex;
     align-items: center;
+    justify-content: space-between;
     font-weight: var(--ui-fw-b);
+    cursor: pointer;
+}
+details summary::after {
+    content: '▾';
+    transition: transform 0.15s ease;
+}
+details[open] summary::after {
+    transform: rotate(180deg);
 }
 .plot-bar__label {
     display: grid;
@@ -919,13 +928,13 @@ details summary {
     gap: var(--ui-s1);
 }
 .chip {
-    min-height: 30px;
+    min-height: 34px;
     gap: 4px;
     padding: 0 var(--ui-s2);
-    font-size: 12px;
+    font-size: var(--ui-fs-2);
 }
 .chip b {
-    font-size: var(--ui-fs-2);
+    font-size: var(--ui-fs-3);
 }
 .hud__note,
 .hud__version,
@@ -964,7 +973,6 @@ details summary {
 .hud__note,
 .offline-notice,
 .bossbar,
-.work-hud,
 .utility {
     background: transparent;
     border-color: transparent;
@@ -988,6 +996,35 @@ details summary {
 .utility {
     border-radius: 0;
 }
+/* 농장 컨트롤: 풀밭 위에서도 읽히도록 반투명 바탕을 깔고 글씨를 키운다 */
+.work-hud {
+    background: rgb(248 250 239 / 0.84);
+    border: var(--ui-bw) solid var(--ui-line);
+    color: var(--ui-ink);
+    text-shadow: none;
+}
+.work-hud__row small {
+    font-size: var(--ui-fs-2);
+    color: var(--ui-ink);
+}
+.work-hud__labels {
+    font-size: var(--ui-fs-3);
+}
+/* 어두운 전투 홀 위에서는 상태 칩·체력·하단 아이콘이 어두운 글씨로 묻히므로 밝은 바탕을 깐다 */
+body:has(#bossbar:not([hidden])) .chip,
+body:has(#bossbar:not([hidden])) .bossbar,
+body:has(#bossbar:not([hidden])) .utility {
+    background: rgb(248 250 239 / 0.9);
+    border: var(--ui-bw) solid var(--ui-line);
+    text-shadow: none;
+}
+body:has(#bossbar:not([hidden])) .bossbar {
+    border-radius: var(--ui-r-m);
+}
+body:has(#bossbar:not([hidden])) .utility {
+    border-radius: var(--ui-r-l) var(--ui-r-l) 0 0;
+}
+
 .mini-map__canvas {
     box-shadow: 0 0 0 2px var(--ui-panel);
 }
