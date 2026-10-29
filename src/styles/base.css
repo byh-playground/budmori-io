@@ -572,42 +572,29 @@ body > header {
         transition: none;
     }
 }
-/* 하단 내비게이션 바. 라벨은 title 속성을 그대로 씁니다. */
+/* 업그레이드·도움말: 설정 단추 왼쪽, 오른쪽 위 모서리의 둥근 단추. 라벨은 title 속성을 씁니다. */
 .utility {
     position: fixed;
     z-index: calc(var(--ui-z-dock) + 1);
-    left: 50%;
-    bottom: 0;
-    transform: translateX(-50%);
-    width: min(240px, 100%);
-    height: calc(var(--ui-nav-h) + var(--ui-safe-bottom));
-    padding-bottom: var(--ui-safe-bottom);
+    top: calc(var(--ui-safe-top) + var(--ui-s3));
+    right: calc(var(--ui-s3) + 44px + var(--ui-s2) + env(safe-area-inset-right, 0px));
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    background: var(--ui-base);
-    border-radius: var(--ui-r-l) var(--ui-r-l) 0 0;
+    grid-template-columns: repeat(2, 44px);
+    gap: var(--ui-s2);
     pointer-events: auto;
 }
 .utility > button {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
     min-width: 0;
-    min-height: var(--ui-nav-h);
     padding: 0;
-    background: transparent;
-    color: var(--ui-ink-on-base);
-    font-size: 20px;
+    border-radius: 50%;
+    background: rgb(248 250 239 / 0.9);
+    border: var(--ui-bw) solid var(--ui-line);
+    color: var(--ui-ink);
     line-height: 1;
-}
-.utility > button::after {
-    content: attr(title);
-    font-size: var(--ui-fs-1);
-    font-weight: var(--ui-fw-m);
-    line-height: 1.2;
-    white-space: nowrap;
 }
 .utility > button svg {
     width: 24px;
@@ -1074,6 +1061,9 @@ body[data-home='true'] .corner-settings {
 }
 body > header {
     right: calc(var(--ui-s3) + 44px + var(--ui-s2));
+}
+body:not(:has(#floorChip:not([hidden]))) > header {
+    right: calc(var(--ui-s3) + 3 * 44px + 3 * var(--ui-s2));
 }
 body:has(#floorChip:not([hidden])) #gameplayDock .utility {
     display: none;

@@ -284,8 +284,7 @@
         max(8px, env(safe-area-inset-left));
     pointer-events: none;
 }
-#gameplayDock .bottom,
-#gameplayDock .utility {
+#gameplayDock .bottom {
     position: static;
     inset: auto;
     transform: none;
@@ -297,12 +296,8 @@
 }
 #gameplayDock .controls,
 #gameplayDock .start-floor,
-#gameplayDock .raid-panel,
-#gameplayDock .utility {
+#gameplayDock .raid-panel {
     pointer-events: auto;
-}
-#gameplayDock .utility {
-    justify-self: end;
 }
 @media (min-width: 700px) {
     #gameplayDock {
@@ -316,30 +311,6 @@
         grid-column: 1;
         grid-row: 2;
         justify-self: start;
-    }
-    /* 넓은 화면: 업그레이드·도움말은 설정 단추 왼쪽, 오른쪽 위 모서리에 둥근 단추로 둔다. */
-    #gameplayDock .utility {
-        position: fixed;
-        top: calc(var(--ui-safe-top) + var(--ui-s3));
-        right: calc(var(--ui-s3) + 44px + var(--ui-s2) + env(safe-area-inset-right, 0px));
-        width: auto;
-        height: auto;
-        padding: 0;
-        gap: var(--ui-s2);
-        grid-template-columns: repeat(2, 44px);
-        background: transparent;
-        border-radius: 0;
-    }
-    #gameplayDock .utility > button {
-        min-height: 44px;
-        height: 44px;
-        border-radius: 50%;
-        background: rgb(248 250 239 / 0.9);
-        border: var(--ui-bw) solid var(--ui-line);
-        color: var(--ui-ink);
-    }
-    #gameplayDock .utility > button::after {
-        display: none;
     }
 }
 @media (min-width: 1250px) {
