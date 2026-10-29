@@ -165,9 +165,9 @@ const CHESTNUT_STEP = (world) =>
           ? 'recover'
           : 'prepare';
 
-// One tier-by-tier preview card set per species: the unit is built at the given tier with its ability tree
-// evolved to match, then stands a species-specific distance from a stunned training boss.
-function speciesPreviewScenes({ id, name, species, ability, durationMs, distance, step, steps }) {
+// One tier-by-tier preview card set per species: the unit is built at the given tier (its attack form follows the tier),
+// then stands a species-specific distance from a stunned training boss.
+function speciesPreviewScenes({ id, name, species, durationMs, distance, step, steps }) {
     return Object.freeze(
         Array.from({ length: 6 }, (_, index) => {
             const TIER = index + 1;
@@ -181,11 +181,6 @@ function speciesPreviewScenes({ id, name, species, ability, durationMs, distance
                 setup(world) {
                     world.resetUnits();
                     world.setWorkBasisPoints(0);
-                    const BUILD = world.playerProgression.abilities[ability];
-                    BUILD.masteryLevel = 50;
-                    BUILD.nodeRanks = Object.fromEntries(
-                        Array.from({ length: TIER - 1 }, (_value, tierIndex) => [`evolution-${tierIndex + 2}`, 1]),
-                    );
                     const UNIT = world.spawn(species, TIER, -7, 0);
                     UNIT.growth = 3;
                     UNIT.growthElapsed = UNIT.growthDuration;
@@ -213,7 +208,6 @@ const CORN_PREVIEW_SCENES = speciesPreviewScenes({
     id: 'corn',
     name: '옥수수',
     species: 1,
-    ability: 'corn-kernel-chain',
     durationMs: 6500,
     distance: (radius, tier) => radius + 4.1 + (tier - 1) * 0.12,
     step: CORN_STEP,
@@ -228,7 +222,6 @@ const PEA_PREVIEW_SCENES = speciesPreviewScenes({
     id: 'pea',
     name: '콩',
     species: 0,
-    ability: 'pea-recovery-boost',
     durationMs: 9000,
     distance: (radius) => radius + 1.45,
     step: CONTACT_STEP,
@@ -243,7 +236,6 @@ const REDBEAN_PREVIEW_SCENES = speciesPreviewScenes({
     id: 'redbean',
     name: '팥',
     species: 2,
-    ability: 'kidney-continuous-leap',
     durationMs: 9000,
     distance: (radius) => radius + 1.45,
     step: CONTACT_STEP,
@@ -258,7 +250,6 @@ const CHESTNUT_PREVIEW_SCENES = speciesPreviewScenes({
     id: 'chestnut',
     name: '밤톨',
     species: 3,
-    ability: 'chestnut-target-thorns',
     durationMs: 9000,
     distance: (radius, tier) => radius + (tier >= 3 ? 2 : 1.45),
     step: CHESTNUT_STEP,
@@ -273,7 +264,6 @@ const PEANUT_PREVIEW_SCENES = speciesPreviewScenes({
     id: 'peanut',
     name: '땅콩',
     species: 4,
-    ability: 'peanut-death-split',
     durationMs: 9000,
     distance: (radius) => radius + 1.35,
     step: CONTACT_STEP,
@@ -288,7 +278,6 @@ const WALNUT_PREVIEW_SCENES = speciesPreviewScenes({
     id: 'walnut',
     name: '호두',
     species: 5,
-    ability: 'walnut-raw-guard',
     durationMs: 9000,
     distance: (radius) => radius + 1.35,
     step: CONTACT_STEP,
@@ -303,7 +292,6 @@ const RICE_PREVIEW_SCENES = speciesPreviewScenes({
     id: 'rice',
     name: '쌀',
     species: 6,
-    ability: 'rice-low-health-harvest',
     durationMs: 9000,
     distance: (radius) => radius + 1.35,
     step: CONTACT_STEP,
@@ -318,7 +306,6 @@ const WHEAT_PREVIEW_SCENES = speciesPreviewScenes({
     id: 'wheat',
     name: '밀',
     species: 7,
-    ability: 'wheat-command-crit',
     durationMs: 9000,
     distance: (radius) => radius + 1.35,
     step: CONTACT_STEP,
@@ -333,7 +320,6 @@ const BARLEY_PREVIEW_SCENES = speciesPreviewScenes({
     id: 'barley',
     name: '보리',
     species: 8,
-    ability: 'barley-armor-break',
     durationMs: 9000,
     distance: (radius) => radius + 1.35,
     step: CONTACT_STEP,
