@@ -23,7 +23,8 @@ import { FarmAutosave } from './save/farm-autosave.js';
 import { snapshot, restore } from './model/farm-state.js';
 import { PRODUCT_VERSION } from './version.js';
 import { highestTowerStartFloor, overallLevel, overallXpForLevel } from './model/player-progression.js';
-import { towerTheme } from './tower/tower-theme.js';
+import { towerTheme, towerElement } from './tower/tower-theme.js';
+import { syncBossChoiceMascot } from './ui/boss-eat.js';
 import { FoodFeel } from './render/food-feel.js';
 import { CombatFeel } from './render/combat-feel.js';
 import { renderAbilityTreeMarkup, renderAbilitySpeciesTabsMarkup } from './abilities/ability-tree.js';
@@ -1630,6 +1631,35 @@ function syncBossChoice(tower, draw, phase) {
         }
     }
 }
+// What the boss has picked so far, for the row of cards under it.
+function bossCardChips(tower) {
+    const CHIPS = [...tower.bossRelics].map(([id, level]) => ({
+        id,
+        level,
+        name: FORMATION_SKILL_DEFINITIONS.find((item) => item.id === id)?.name || id,
+    }));
+    const COUNTS = new Map();
+    for (const CARD of tower.bossCards) {
+        COUNTS.set(CARD.id, (COUNTS.get(CARD.id) || 0) + 1);
+    }
+    for (const [ID, LEVEL] of COUNTS) {
+        CHIPS.push({ id: ID, level: LEVEL, name: statCard(ID)?.name ?? passiveCard(ID)?.name ?? ID });
+    }
+    return CHIPS.slice(-14);
+}
+function syncBossMascot(tower, draw, phase, visible) {
+    syncBossChoiceMascot(DOLLAR('doorBoss'), {
+        visible,
+        species: BOSS_SPECIES,
+        floor: tower.floor,
+        element: towerElement(tower.floor),
+        serial: draw?.serial || 0,
+        phase,
+        selectedEl: visible ? DOLLAR('doorCards').children[draw.selectedIndex] : null,
+        cards: visible ? bossCardChips(tower) : [],
+        pickedId: draw?.card?.id ?? null,
+    });
+}
 function syncCardReceipts(tower, draw, phase) {
     const HOST = DOLLAR('doorReceipts'),
         VISIBLE = !!draw && ['receipt', 'outcome', ''].includes(phase);
@@ -1756,6 +1786,7 @@ function syncTower(garden, home, event) {
             }
         }
         syncCardReceipts(T, DRAW, PHASE);
+        syncBossMascot(T, DRAW, PHASE, BOSS_CHOICE);
         if (BOSS_CHOICE) {
             syncText(
                 'doorsTitle',
@@ -1783,6 +1814,7 @@ function syncTower(garden, home, event) {
             );
         }
     } else {
+        syncBossMascot(T, DRAW, '', false);
         doorKey = '';
         doorPointerPress = null;
         DOLLAR('doorCards').dataset.receipt = '';

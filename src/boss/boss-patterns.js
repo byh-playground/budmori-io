@@ -20,6 +20,8 @@ export const BOSS_PATTERN_IDS = Object.freeze([
 // takes just over 35% each, so a tight pack is hurt a little more but never in proportion to its size.
 export const BOSS_HIT_SPLIT = Object.freeze({ everyone: 0.35 });
 // The boss's basic attack is its own fast single-target unit attack (no pattern); every pattern here is a special.
+// The boss's basic attack comes once per half second (windup + recovery + the strike itself), faster than the same species in the army.
+export const BOSS_BASIC_TIMING = Object.freeze({ windup: 0.2, recovery: 0.25 });
 // A pattern worth using must reach at least this many units, otherwise the basic attack does the job.
 export const BOSS_AREA_MIN_HITS = 2;
 // Rhythm: `basicsPerSpecial` basic attacks, then one special; every `specialsPerArea`-th special is an area pattern

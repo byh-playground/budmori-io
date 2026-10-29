@@ -330,7 +330,8 @@ export function applyTowerCard(state, card, role = 'player') {
     };
 }
 
-const CARD_CHOICE_TIMING = Object.freeze({ receipt: 0.2, offers: 0.55, selected: 0.75, total: 1.8 });
+// 'selected' is the time the boss spends eating the card it picked; its outcome shows once it has swallowed.
+const CARD_CHOICE_TIMING = Object.freeze({ receipt: 0.2, offers: 0.45, selected: 1.3, total: 1.8 });
 export function cardChoicePhase(draw, time) {
     if (!draw || time >= draw.until) {
         return '';
