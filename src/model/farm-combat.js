@@ -12,8 +12,13 @@ import { towerElement } from '../tower/tower-theme.js';
 export const FARM_COMBAT = (base) =>
     class FarmCombat extends base {
         // Only the player's coloured units carry an element into a fight; everyone else attacks plain.
+        // A shot whose shooter already fell carries a source snapshot without genes; the shooter's body still has them.
         attackElement(unit) {
-            return unit.faction === FACTION_CONFIG.PLAYER ? elementOf(unit.genes) : 0;
+            if (unit.faction !== FACTION_CONFIG.PLAYER) {
+                return 0;
+            }
+            const GENES = unit.genes ?? this._unitForId(unit.id)?.genes;
+            return GENES ? elementOf(GENES) : 0;
         }
         combatEvent(kind, u, action, cycle = u.ability) {
             this.combatLog.push({
@@ -30,9 +35,6 @@ export const FARM_COMBAT = (base) =>
                 this.combatLog.shift();
             }
             if (kind === 'launch') {
-                if (this.tower.active && this.battleCommand === 'scatter' && hasFaction(u, FACTION_CONFIG.PLAYER)) {
-                    u.scatterAttackCount++;
-                }
                 this.combat('attack-launch', {
                     species: u.species,
                     unit: u.id,

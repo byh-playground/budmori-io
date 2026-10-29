@@ -79,9 +79,7 @@ export function normalizeSnapshot(raw, { clone = true } = {}) {
     // Older runtime checkpoints have no interrupted-recovery cache or aim
     // state. Preserve their original action rather than reopening preparation.
     for (const UNIT of [...SNAPSHOT.units, ...SNAPSHOT.bosses]) {
-        if (!Object.hasOwn(UNIT, 'scatterAttackCount')) {
-            UNIT.scatterAttackCount = 0;
-        }
+        delete UNIT.scatterAttackCount;
         UNIT.ability.interruptedRecoverySeconds ??= null;
         if (UNIT.specialAbility) {
             UNIT.specialAbility.interruptedRecoverySeconds ??= null;

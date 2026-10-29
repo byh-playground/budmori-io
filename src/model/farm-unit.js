@@ -183,7 +183,6 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
             hp: statProfile?.maxHp ?? STATS(tier, species).maxHp,
             down: 0,
             seed: typeof id === 'number' ? id * 2.39996 : 0,
-            scatterAttackCount: 0,
             ownerId: '',
             farmId: 0,
             dropLanded: true,
