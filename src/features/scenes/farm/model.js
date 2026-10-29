@@ -10,11 +10,6 @@ export class FarmSimulationScene extends SimulationScene {
         this.dropLandingEvent = 'boss-add-land';
         this.battleCapacity = CONFIG.farm.capacity.battleUnits;
     }
-    progressionFor(world, _unit) {
-        return world.tower.active && world.runProgressionSnapshot
-            ? world.runProgressionSnapshot
-            : world.playerProgression;
-    }
     inBattle(world) {
         return world.farmBossEvent?.phase === 'fighting';
     }

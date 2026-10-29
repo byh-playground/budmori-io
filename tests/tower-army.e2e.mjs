@@ -113,7 +113,6 @@ async function openAndCloseReward() {
             revealed: RECEIPT.revealedCount,
             boxes: RECEIPT.boxCount,
             acquired: RECEIPT.acquiredCount,
-            xp: RECEIPT.xpAmount,
         };
     });
 }
@@ -477,10 +476,8 @@ try {
             revealed: receipt.revealedCount,
             boxes: receipt.boxCount,
             acquired: receipt.acquiredCount,
-            xp: receipt.xpAmount,
         })),
     }));
-    assert.equal(REPORT.stages.reload.xp, REPORT.stages.summit.xp);
     assert.equal(REPORT.stages.reload.towerActive, false);
     assert.equal(REPORT.stages.reload.farm, 'idle');
     assert.equal(REPORT.stages.reload.cap, 1000);

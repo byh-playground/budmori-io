@@ -23,12 +23,10 @@ import { FarmAutosave } from './save/farm-autosave.js';
 import { snapshot, restore } from './model/farm-state.js';
 import { PRODUCT_VERSION } from './version.js';
 import { highestTowerStartFloor, overallLevel, overallXpForLevel } from './model/player-progression.js';
-import { towerTheme } from './tower/tower-theme.js';
+import { towerTheme, towerElement } from './tower/tower-theme.js';
+import { syncBossChoiceMascot } from './ui/boss-eat.js';
 import { FoodFeel } from './render/food-feel.js';
 import { CombatFeel } from './render/combat-feel.js';
-import { renderAbilityTreeMarkup, renderAbilitySpeciesTabsMarkup } from './abilities/ability-tree.js';
-import { canResetPlayerProgression, getAbilityPointsLeft } from './abilities/ability-progression.js';
-import { SPECIES_ABILITY_DEFINITIONS } from './abilities/ability-catalog.js';
 import { advanceBossRewardReveal, openAllBossRewardBoxes, bossRewardQueueBySpecies } from './boss/boss-rewards.js';
 import { workersBySpecies } from './model/farm-work.js';
 import { apportionBreedShares, adjustBreedShare } from './model/breed-allocation.js';
@@ -43,7 +41,6 @@ const DOLLAR = (id) => document.getElementById(id),
 STORAGE.initializeIncompatible(new Garden());
 const HELP_PANEL = createHelpPanel(DOLLAR);
 const SEEDLING_REVEAL = new SeedlingReveal(DOLLAR('seedlingReveal'));
-DOLLAR('abilitySpeciesTabs').innerHTML = renderAbilitySpeciesTabsMarkup();
 let imported = null;
 let active = null;
 let frameRequest = null;
@@ -63,7 +60,6 @@ let suppressCanvasClick = false;
 let handKey = '';
 let farmSortTransition = null;
 let farmPanelRevision = -1;
-let abilityTreeProgression = null;
 let bossRewardRevealTimer = null;
 let bossRewardCalculationTimer = null;
 let bossRewardDialogReceiptKey = null;
@@ -150,14 +146,6 @@ function bossRewardChestTier(receipt) {
     return BOSS_REWARD_CHEST_TIERS[(receipt.stage - 1) % BOSS_REWARD_CHEST_TIERS.length];
 }
 
-function bossRewardMasteryLine(receipt) {
-    if (!receipt.xpAmount) {
-        return '';
-    }
-    const LEVEL_UP = receipt.pointsAwarded > 0 ? ' · 숙련 포인트 +' + receipt.pointsAwarded : '';
-    return speciesById(receipt.species).name + ' 숙련 +' + receipt.xpAmount + ' XP' + LEVEL_UP;
-}
-
 function renderBossRewardBoxes(receipt) {
     DOLLAR('bossRewardChest').dataset.tier = bossRewardChestTier(receipt);
     const COUNT = receipt.boxCount || 0,
@@ -194,9 +182,7 @@ function renderBossRewardBoxes(receipt) {
     DOLLAR('bossRewardTotals').textContent =
         receipt.status === 'calculating'
             ? '보상 준비 ' + PROCESSED + '/' + COUNT
-            : [bossRewardMasteryLine(receipt), '현재 합계 ' + CUMULATIVE + '마리 · ' + bossRewardSummary(receipt)]
-                  .filter(Boolean)
-                  .join('\n');
+            : '현재 합계 ' + CUMULATIVE + '마리 · ' + bossRewardSummary(receipt);
     DOLLAR('bossRewardRevealCount').textContent =
         receipt.status === 'calculating' ? '추첨 ' + PROCESSED + '/' + COUNT : REVEALED + '/' + COUNT + ' 상자 공개';
     const SCENE = DOLLAR('bossRewardChestScene');
@@ -473,7 +459,6 @@ const AUTOSAVE = new FarmAutosave(() => writeCheckpoint());
 function replacePersonalGarden(world) {
     unsubscribeProgress?.();
     personalGarden = world;
-    abilityTreeProgression = null;
     // The saved garden remains an owner while a separate raid session is active.
     unsubscribeProgress =
         world?.onProgressChanged.on(() => {
@@ -481,12 +466,6 @@ function replacePersonalGarden(world) {
             if (world.tower.phase === 'summit') {
                 // The final receipt is durable before the next frame can offer Skip.
                 AUTOSAVE.flush();
-            }
-            // Purchases/reset publish their new state before this signal. A wall-time
-            // delay can run before the queued command; refresh only committed state.
-            // Other farm progress keeps the same identity and must not kill previews.
-            if (menuOpen && menuTab === 'abilities' && abilityTreeProgression !== world.playerProgression) {
-                drawAbilityTree();
             }
         }) ?? null;
 }
@@ -1173,95 +1152,15 @@ function drawFarmPanel() {
         BUTTON.disabled = LOCKED;
     }
 }
-function stopGrowthPreview() {
-    DOLLAR('abilityNodes').querySelector('.growth-evolution-preview')?.replaceChildren();
-}
-function mountGrowthPreview(species, tier) {
-    stopGrowthPreview();
-    const HOST = DOLLAR('abilityNodes').querySelector('.growth-evolution-preview');
-    if (
-        !HOST ||
-        !['corn', 'pea', 'redbean', 'chestnut', 'peanut', 'walnut', 'rice', 'wheat', 'barley'].includes(species) ||
-        !Number.isInteger(tier) ||
-        tier < 1 ||
-        tier > 6
-    ) {
-        return;
-    }
-    const FRAME = document.createElement('iframe');
-    FRAME.title = `${{ pea: '콩', corn: '옥수수', redbean: '팥', chestnut: '밤톨', peanut: '땅콩', walnut: '호두', rice: '쌀', wheat: '밀', barley: '보리' }[species]} T${tier} 공격 미리보기`;
-    FRAME.src = new URL(`?help=${species}-t${tier}`, location.href).href.split('#')[0];
-    HOST.replaceChildren(FRAME);
-    for (const BUTTON of DOLLAR('abilityNodes').querySelectorAll('[data-growth-preview-tier]')) {
-        BUTTON.setAttribute('aria-pressed', String(Number(BUTTON.dataset.growthPreviewTier) === tier));
-    }
-    DOLLAR('abilityNodes').querySelector('[data-growth-preview-caption]').textContent =
-        `T${tier} · 공격 미리보기 0.6배속 · 같은 단계를 누르면 다시 재생`;
-}
-function drawAbilityTree() {
-    stopGrowthPreview();
-    const W = personalGarden || active.world,
-        IN_COMBAT = W.farmBossEvent?.phase !== 'idle' || W.tower.active;
-    const SELECTED_SPECIES = Number(DOLLAR('abilityPanel').dataset.selectedSpecies || 0);
-    const MASTERY_DEFINITION = SPECIES_ABILITY_DEFINITIONS.find(
-        (definition) => definition.species === SELECTED_SPECIES,
-    );
-    DOLLAR('abilityPoints').textContent = String(
-        MASTERY_DEFINITION ? getAbilityPointsLeft(W.playerProgression, MASTERY_DEFINITION.id) : 0,
-    );
-    for (const BUTTON of DOLLAR('abilitySpeciesTabs').querySelectorAll('[data-ability-species]')) {
-        BUTTON.setAttribute('aria-pressed', String(Number(BUTTON.dataset.abilitySpecies) === SELECTED_SPECIES));
-    }
-    DOLLAR('abilityNodes').innerHTML = renderAbilityTreeMarkup(W.playerProgression, {
-        highestSpeciesTier: W.highestSpeciesTiers(),
-        location: active.world.scene,
-        inCombat: IN_COMBAT,
-        runActive: W.tower.active,
-        selectedSpecies: SELECTED_SPECIES,
-    });
-    abilityTreeProgression = W.playerProgression;
-    renderProgressionResetActions();
-}
-function currentProgressionResetScope() {
-    if (menuTab === 'abilities') {
-        return { type: 'abilities', speciesId: Number(DOLLAR('abilityPanel').dataset.selectedSpecies || 0) };
-    }
-    return null;
-}
-function renderProgressionResetActions() {
-    const HOST = DOLLAR('progressionResetActions'),
-        CURRENT = DOLLAR('progressionResetCurrent'),
-        ALL = DOLLAR('progressionResetAll');
-    if (!active || !menuOpen || menuTab !== 'abilities') {
-        HOST.hidden = true;
-        return;
-    }
-    const W = personalGarden || active.world,
-        IN_COMBAT = W.farmBossEvent?.phase !== 'idle' || W.tower.active,
-        CONTEXT = { location: active.world.scene, inCombat: IN_COMBAT },
-        SCOPE = currentProgressionResetScope(),
-        CURRENT_CHECK = canResetPlayerProgression(W.playerProgression, SCOPE, CONTEXT),
-        ALL_CHECK = canResetPlayerProgression(W.playerProgression, { type: 'all' }, CONTEXT),
-        LABEL = '이 종 특성 초기화';
-    HOST.hidden = false;
-    CURRENT.hidden = menuTab === 'abilities';
-    CURRENT.disabled = !CURRENT_CHECK.allowed;
-    CURRENT.textContent = `${LABEL} · ${CURRENT_CHECK.refunded}P`;
-    ALL.disabled = !ALL_CHECK.allowed;
-    ALL.textContent = `전체 초기화 · ${ALL_CHECK.refunded}P`;
-}
 const MENU_ROUTES = {
     play: '#/menu',
     farms: '#/farms',
-    abilities: '#/abilities',
     help: '#/help',
 };
 const ROUTE_MENU_TAB = (route) => Object.keys(MENU_ROUTES).find((tab) => MENU_ROUTES[tab] === route) || 'play';
 function applyMenuTab(tab) {
-    stopGrowthPreview();
     menuTab = tab;
-    const UPGRADES = ['farms', 'abilities'].includes(tab);
-    DOLLAR('gameMenuTabs').hidden = !UPGRADES;
+    const UPGRADES = tab === 'farms';
     DOLLAR('gameMenuTitle').textContent = UPGRADES ? '업그레이드' : tab === 'help' ? '도움말' : '설정';
     DOLLAR('gameMenuClose').setAttribute('aria-label', `${DOLLAR('gameMenuTitle').textContent} 닫기`);
     for (const [ID, SELECTED] of [
@@ -1271,16 +1170,10 @@ function applyMenuTab(tab) {
     ]) {
         DOLLAR(ID).setAttribute('aria-expanded', String(menuOpen && SELECTED));
     }
-    for (const BUTTON of DOLLAR('gameMenuTabs').querySelectorAll('[data-menu-tab]')) {
-        const SELECTED = BUTTON.dataset.menuTab === tab;
-        BUTTON.setAttribute('aria-selected', String(SELECTED));
-        BUTTON.tabIndex = SELECTED ? 0 : -1;
-    }
     HELP_PANEL.setVisible(menuOpen && tab === 'help');
     for (const [NAME, ID] of [
         ['play', 'menuPlayPanel'],
         ['farms', 'farmPanel'],
-        ['abilities', 'abilityPanel'],
         ['help', 'helpPanel'],
     ]) {
         DOLLAR(ID).hidden = NAME !== tab;
@@ -1288,10 +1181,7 @@ function applyMenuTab(tab) {
     if (tab === 'farms') {
         farmPanelRevision = -1;
         drawFarmPanel();
-    } else if (tab === 'abilities') {
-        drawAbilityTree();
     }
-    renderProgressionResetActions();
 }
 function syncMenuPause(tab) {
     if (tab === 'play') {
@@ -1327,31 +1217,13 @@ function openMenu(tab = 'play', push = true) {
     if (push) {
         history.pushState(null, '', MENU_ROUTES[tab] || MENU_ROUTES.play);
     }
-    (DOLLAR('gameMenuTabs').querySelector(`[data-menu-tab="${tab}"]`) || DOLLAR('gameMenuClose')).focus();
-}
-function switchMenuTab(tab, push = true) {
-    if (!Object.hasOwn(MENU_ROUTES, tab)) {
-        return;
-    }
-    if (!menuOpen) {
-        openMenu(tab, push);
-        return;
-    }
-    if (menuTab === tab) {
-        return;
-    }
-    syncMenuPause(tab);
-    applyMenuTab(tab);
-    if (push) {
-        history.pushState(null, '', MENU_ROUTES[tab]);
-    }
+    DOLLAR('gameMenuClose').focus();
 }
 function closeMenu(push = true) {
     if (!menuOpen) {
         return;
     }
     menuOpen = false;
-    stopGrowthPreview();
     HELP_PANEL.setVisible(false);
     DOLLAR('gameMenuOverlay').hidden = true;
     for (const ID of ['gameMenu', 'upgradeMenu', 'helpMenu']) {
@@ -1365,20 +1237,12 @@ function closeMenu(push = true) {
     if (push) {
         history.pushState(null, '', '#/farm');
     }
-    DOLLAR(
-        ['farms', 'abilities'].includes(menuTab) ? 'upgradeMenu' : menuTab === 'help' ? 'helpMenu' : 'gameMenu',
-    ).focus();
+    DOLLAR(menuTab === 'farms' ? 'upgradeMenu' : menuTab === 'help' ? 'helpMenu' : 'gameMenu').focus();
 }
 DOLLAR('gameMenu').onclick = () => (menuOpen && menuTab === 'play' ? closeMenu() : openMenu());
-DOLLAR('upgradeMenu').onclick = () => openMenu('abilities');
+DOLLAR('upgradeMenu').onclick = () => openMenu('farms');
 DOLLAR('helpMenu').onclick = () => openMenu('help');
 DOLLAR('gameMenuClose').onclick = () => closeMenu();
-DOLLAR('gameMenuTabs').onclick = (e) => {
-    const BUTTON = e.target.closest('[data-menu-tab]');
-    if (BUTTON && !BUTTON.disabled) {
-        switchMenuTab(BUTTON.dataset.menuTab);
-    }
-};
 DOLLAR('farmPlotActions').addEventListener('click', (e) => {
     const BUTTON = e.target.closest('[data-farm-sort]');
     if (BUTTON) {
@@ -1414,37 +1278,6 @@ function applyWorkCut() {
 }
 DOLLAR('workCutA').addEventListener('input', applyWorkCut);
 DOLLAR('workCutA').addEventListener('change', applyWorkCut);
-DOLLAR('progressionResetActions').onclick = (event) => {
-    const BUTTON = event.target.closest('button[data-progression-reset]');
-    if (!BUTTON || BUTTON.disabled) {
-        return;
-    }
-    const SCOPE = BUTTON.dataset.progressionReset === 'all' ? { type: 'all' } : currentProgressionResetScope();
-    if (SCOPE) {
-        active.queue('progression-reset', { scope: SCOPE });
-    }
-};
-DOLLAR('gameMenuTabs').onkeydown = (e) => {
-    const BUTTONS = [...DOLLAR('gameMenuTabs').querySelectorAll('[role="tab"]:not(:disabled)')],
-        INDEX = BUTTONS.indexOf(document.activeElement);
-    let next;
-    if (e.key === 'ArrowRight') {
-        next = (INDEX + 1) % BUTTONS.length;
-    } else if (e.key === 'ArrowLeft') {
-        next = (INDEX - 1 + BUTTONS.length) % BUTTONS.length;
-    } else if (e.key === 'Home') {
-        next = 0;
-    } else if (e.key === 'End') {
-        next = BUTTONS.length - 1;
-    } else {
-        return;
-    }
-    e.preventDefault();
-    BUTTONS[next]?.focus();
-    if (BUTTONS[next]) {
-        switchMenuTab(BUTTONS[next].dataset.menuTab);
-    }
-};
 const GAME_MENU_OVERLAY = DOLLAR('gameMenuOverlay'),
     CLOSE_MENU_FROM_BACKDROP = (e) => {
         if (e.target === GAME_MENU_OVERLAY) {
@@ -1452,41 +1285,6 @@ const GAME_MENU_OVERLAY = DOLLAR('gameMenuOverlay'),
         }
     };
 GAME_MENU_OVERLAY.addEventListener('click', CLOSE_MENU_FROM_BACKDROP);
-DOLLAR('abilitySpeciesTabs').onclick = (e) => {
-    const BUTTON = e.target.closest('[data-ability-species]');
-    if (!BUTTON) {
-        return;
-    }
-    DOLLAR('abilityPanel').dataset.selectedSpecies = BUTTON.dataset.abilitySpecies;
-    drawAbilityTree();
-};
-DOLLAR('abilityNodes').onclick = (e) => {
-    const PREVIEW = e.target.closest('[data-growth-preview-tier]');
-    if (PREVIEW) {
-        mountGrowthPreview(PREVIEW.dataset.growthPreviewSpecies, Number(PREVIEW.dataset.growthPreviewTier));
-        return;
-    }
-    const BUTTON = e.target.closest('button[data-ability-action],button[data-ability-node]');
-    if (!BUTTON || BUTTON.getAttribute('aria-disabled') === 'true') {
-        return;
-    }
-    if (BUTTON.dataset.abilityAction === 'reset') {
-        active.queue('progression-reset', {
-            scope: {
-                type: 'abilities',
-                speciesId: Number(DOLLAR('abilityPanel').dataset.selectedSpecies || 0),
-            },
-        });
-    } else if (BUTTON.dataset.abilityNode) {
-        const [ABILITY_ID, KIND, LEVEL] = BUTTON.dataset.abilityNode.split(':');
-        const NODE_ID = KIND === 'root' ? 'root' : `${KIND}-${LEVEL}`;
-        active.queue('progression-invest', {
-            scope: 'ability',
-            abilityId: ABILITY_ID,
-            nodeId: NODE_ID,
-        });
-    }
-};
 function focusableMenuButtons() {
     return [...DOLLAR('gameMenuPanel').querySelectorAll('button:not(:disabled):not([aria-disabled="true"])')].filter(
         (button) => button.getClientRects().length > 0,
@@ -1630,6 +1428,35 @@ function syncBossChoice(tower, draw, phase) {
         }
     }
 }
+// What the boss has picked so far, for the row of cards under it.
+function bossCardChips(tower) {
+    const CHIPS = [...tower.bossRelics].map(([id, level]) => ({
+        id,
+        level,
+        name: FORMATION_SKILL_DEFINITIONS.find((item) => item.id === id)?.name || id,
+    }));
+    const COUNTS = new Map();
+    for (const CARD of tower.bossCards) {
+        COUNTS.set(CARD.id, (COUNTS.get(CARD.id) || 0) + 1);
+    }
+    for (const [ID, LEVEL] of COUNTS) {
+        CHIPS.push({ id: ID, level: LEVEL, name: statCard(ID)?.name ?? passiveCard(ID)?.name ?? ID });
+    }
+    return CHIPS.slice(-14);
+}
+function syncBossMascot(tower, draw, phase, visible) {
+    syncBossChoiceMascot(DOLLAR('doorBoss'), {
+        visible,
+        species: BOSS_SPECIES,
+        floor: tower.floor,
+        element: towerElement(tower.floor),
+        serial: draw?.serial || 0,
+        phase,
+        selectedEl: visible ? DOLLAR('doorCards').children[draw.selectedIndex] : null,
+        cards: visible ? bossCardChips(tower) : [],
+        pickedId: draw?.card?.id ?? null,
+    });
+}
 function syncCardReceipts(tower, draw, phase) {
     const HOST = DOLLAR('doorReceipts'),
         VISIBLE = !!draw && ['receipt', 'outcome', ''].includes(phase);
@@ -1756,6 +1583,7 @@ function syncTower(garden, home, event) {
             }
         }
         syncCardReceipts(T, DRAW, PHASE);
+        syncBossMascot(T, DRAW, PHASE, BOSS_CHOICE);
         if (BOSS_CHOICE) {
             syncText(
                 'doorsTitle',
@@ -1783,6 +1611,7 @@ function syncTower(garden, home, event) {
             );
         }
     } else {
+        syncBossMascot(T, DRAW, '', false);
         doorKey = '';
         doorPointerPress = null;
         DOLLAR('doorCards').dataset.receipt = '';
@@ -2209,9 +2038,9 @@ function route() {
             start(new Garden(), false);
         }
     }
-    if (R === '#/help' || R === '#/farms' || R === '#/abilities' || R === '#/menu') {
+    if (R === '#/help' || R === '#/farms' || R === '#/menu') {
         const FARM_EVENT_ACTIVE = personalGarden?.farmBossEvent?.phase !== 'idle';
-        const RESTRICTED = (R === '#/farms' && FARM_EVENT_ACTIVE) || (R === '#/abilities' && !personalGarden);
+        const RESTRICTED = R === '#/farms' && FARM_EVENT_ACTIVE;
         if (RESTRICTED) {
             closeMenu(false);
             history.replaceState(null, '', '#/farm');
@@ -2386,8 +2215,6 @@ function sync(display, now, notices) {
     syncText('bossChallenge', '탑 오르기');
     syncFlag('bossChallenge', 'hidden', FARM_EVENT_ACTIVE || home);
     syncAttribute('bossChallenge', 'aria-disabled', String(raidStartBlockReason() !== ''));
-    syncFlag('menuTabFarms', 'disabled', FARM_EVENT_ACTIVE);
-    syncFlag('menuTabAbilities', 'disabled', !personalGarden);
     const WORK_WORLD = personalGarden || W,
         WORKERS = WORK_WORLD.workerCount,
         CUT = workCut(WORK_WORLD),

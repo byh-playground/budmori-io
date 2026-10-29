@@ -1,6 +1,5 @@
 import { scaleAttackRecovery } from '../units/unit-stats.js';
 import { SweepBossPattern } from '../features/boss-patterns/sweep-360/model.js';
-import { SlamBossPattern } from '../features/boss-patterns/front-slam/model.js';
 import { ChargeBossPattern } from '../features/boss-patterns/charge/model.js';
 import { LeapBossPattern } from '../features/boss-patterns/leap-slam/model.js';
 import { FanBossPattern } from '../features/boss-patterns/fan-sweep/model.js';
@@ -23,7 +22,6 @@ export function createBossPatternBehaviors(dependencies) {
         Object.fromEntries(
             [
                 new SweepBossPattern(DEPENDENCIES),
-                new SlamBossPattern(DEPENDENCIES),
                 new ChargeBossPattern(DEPENDENCIES),
                 new LeapBossPattern(DEPENDENCIES),
                 new FanBossPattern(DEPENDENCIES),

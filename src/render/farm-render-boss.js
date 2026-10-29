@@ -15,7 +15,6 @@ import { visibleSkillCast, sampleSkillCastPose } from '../features/skill-cast/pr
 import { bossVectorScale } from '../vector-sockets.js';
 import { CONFIG, clamp } from '../model/farm-model.js';
 import { BossAttackPose, BossAttackPresentation } from '../features/boss-patterns/presentation-base.js';
-import { FrontSlamPresentation } from '../features/boss-patterns/front-slam/presentation.js';
 import { CircleSweepPresentation } from '../features/boss-patterns/sweep-360/presentation.js';
 import { ChargePresentation } from '../features/boss-patterns/charge/presentation.js';
 import { LeapSlamPresentation } from '../features/boss-patterns/leap-slam/presentation.js';
@@ -23,6 +22,7 @@ import { FanSweepPresentation } from '../features/boss-patterns/fan-sweep/presen
 import { drawElementMark } from './unit-face-overlay.js';
 import { elementCheekColor, unitLook } from '../units/species-face.js';
 import { drawUnitFace } from './unit-face-draw.js';
+import { drawBossGrowth } from './boss-growth-draw.js';
 import { towerElement } from '../tower/tower-theme.js';
 import { SIGNATURE_PRESENTATIONS } from '../features/boss-patterns/signature/presentation.js';
 import { MouthSummonPresentation } from '../features/boss-patterns/mouth-summon/presentation.js';
@@ -32,7 +32,6 @@ const IDLE_PRESENTATION = new BossAttackPresentation();
 const BARLEY_SHRED_PRESENTATION = new BarleyArmorShredPresentation();
 const BOSS_PRESENTATIONS = new Map(
     [
-        new FrontSlamPresentation(),
         new CircleSweepPresentation(),
         new ChargePresentation(),
         new LeapSlamPresentation(),
@@ -378,6 +377,16 @@ export class BossPresentation {
                 x: MOUTH_SOCKET.x * S_LOCAL + MATRIX[4],
                 y: MOUTH_SOCKET.y * S_LOCAL + MATRIX[5],
             };
+        if (world.tower.active && B.hp > 0) {
+            drawBossGrowth(
+                this.renderer.ctx,
+                RECORD,
+                PLAYER,
+                MATRIX,
+                towerElement(world.tower.floor),
+                world.tower.floor,
+            );
+        }
         this.renderer.ctx.drawVectorActor(PLAYER, { matrix: MATRIX });
         drawUnitFace(
             this.renderer.ctx,

@@ -3,6 +3,7 @@ import { RECIPES, inheritGenes, inheritTemperament, lineageRandom, recipeFor } f
 import { mergeMaterialCostForTier } from '../units/unit-grades.js';
 import { applyRunGrowthHealth, unitMaxHpFor } from '../units/unit-stats.js';
 import { FARM_MODES } from './farm-mode-behaviors.js';
+import { AUTO_FORM_PROGRESSION } from './auto-forms.js';
 import { Unit as UNIT } from './farm-unit.js';
 import { COMBINE_AIR } from '../features/farm-modes/combine/definition.js';
 
@@ -885,7 +886,7 @@ export const FARM_MERGE_BREED = (base) =>
                 LINEAGE_RANDOM,
             );
             RESULT.hp = unitMaxHpFor(RESULT);
-            applyRunGrowthHealth(RESULT, this.runProgressionSnapshot, { preserveRatio: true });
+            applyRunGrowthHealth(RESULT, AUTO_FORM_PROGRESSION, { preserveRatio: true });
             RESULT.dropLanded = false;
             RESULT.meals = 1;
             RESULT.growth = CONFIG.farm.breeding.matureMeals;

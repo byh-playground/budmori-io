@@ -45,7 +45,6 @@ async function setShare(page, value) {
 }
 async function openFarm(page) {
     await page.locator('#upgradeMenu').click();
-    await page.locator('#menuTabFarms').click();
 }
 async function weights(page) {
     return page.evaluate(() => localStorage.getItem('budmori.breed.weights'));

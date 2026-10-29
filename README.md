@@ -43,7 +43,6 @@ npm test
 npm run test:breed-allocation
 npm run test:food-reservations
 npm run test:codex
-npm run test:corn-growth
 ```
 
 정적 서버로 저장소 루트를 열면 `index.html` → `src/bootstrap.js` → `src/farm-app.js`와 그 원본 ES 모듈을 직접 실행합니다. 별도 번들·concat·생성 산출물 배포 단계는 없습니다. GameKit은 `gamekit-lock.json`의 불변 CDN ESM을 검증 후 로드합니다.
@@ -54,7 +53,7 @@ npm run test:corn-growth
 
 병력의 충돌 반경·높이와 표시 배율은 원본의 이름 있는 몸통 외곽선·지면 소켓을 공유합니다. 옥수수 낟알은 발사 순간 몸통 높이의 20%이며, 최소 표시 픽셀은 충돌 크기에 영향을 주지 않습니다. 측정 기준과 저장 호환성은 [몸 크기와 투사체 크기](docs/unit-body-dimensions.md)에 정리했습니다.
 
-기본 PR CI는 검증 도구 준비 후 `npm run check`와 실제 9종 혼합 전투 source smoke만 실행합니다. 같은 흐름 안에서 9종 보스의 자연 기본 공격·고유 효과와 공통 FarmSession/native 렌더도 확인합니다. 보스는 동일 병종 SVG 원본을 standard 품질로 사용하고, 병종 기본 공격·특수 패턴·카드 시전은 한 번에 하나만 준비합니다. 병종별 사용자 흐름과 카메라·산개·탑 검사는 필요할 때 workflow_dispatch로만 실행하며, 자동으로 매 변경마다 전체 행렬을 실행하지 않습니다. 병종 선택의 `all`은 기존 옥수수·완두콩·팥·밤톨·땅콩 5종이며, 기능 통합은 `functional`, 성능은 기본 꺼짐인 `performance` 입력으로 별도 선택합니다. skipped 작업은 통과로 세지 않습니다. 브라우저 스모크 테스트(`tests/smoke.e2e.mjs`)는 필요할 때 `npm test`로 실행하며, 게임 라이브러리를 `vendor/upstream`에서 받아 오프라인으로 돌고 약 70초 걸립니다. 필요한 변경에서는 번식 몫 UI 시나리오와 기존 전체 스모크도 검사하며, `npm run test:breed-allocation`으로 따로 실행할 수 있습니다. 옥수수 성장 흐름은 `npm run test:corn-growth`로 구매·초기화·실제 형태 미리보기·저장 복원·런 잠금을 검증하고 `tests/output/corn-growth/`에 프레임과 보고서를 남깁니다. 각 브라우저 검증 명령은180초 이내로 실행합니다. 콩의 동일 사용자 흐름은 `npm run test:pea-growth:case -- ui desktop` (또는 `previews`/`battle`, `mobile`/`landscape`)로 실행하며 `tests/output/pea-growth/`에 기록합니다. 팥은 `npm run test:redbean-growth:case -- ui desktop`으로 실행하며 `previews-low`/`previews-high`/`battle`/`battle-extra`/`continuity`/`migration` 사용자 흐름을 각각180초 이내로 검사합니다. 병종별 브라우저 작업은 병종·뷰포트별로 분리되어 기존 검증을 생략하지 않습니다. 밤톨은 `node tests/chestnut-growth.e2e.mjs desktop` (또는 `landscape`)으로 투자·농장 저장·런 흐름을, `node tests/chestnut-motion.e2e.mjs desktop`으로 여섯 가시 평타·보스 경계·실제 발사·취소·연속성을 검증합니다. 땅콩은 `npm run test:peanut-growth:case -- ui desktop` 및 같은7개 사용자 흐름으로 한 본체의 실제 두 알 동작·사망 분열·저장 복원을 검사합니다. 별도 `PEANUT_PERFORMANCE_BASE_ROOT=/path/to/0.34.0 npm run test:peanut-performance`는 정확한0.34.0 기준본과 최대200 영구 유닛·실제 분열체2마리 장면을 세 번 교대 비교합니다. 모바일은 Chromium 터치 에뮬레이션이며 실제 기기 검증과 구분합니다.
+기본 PR CI는 검증 도구 준비 후 `npm run check`와 실제 9종 혼합 전투 source smoke만 실행합니다. 같은 흐름 안에서 9종 보스의 자연 기본 공격·고유 효과와 공통 FarmSession/native 렌더도 확인합니다. 보스는 동일 병종 SVG 원본을 standard 품질로 사용하고, 병종 기본 공격·특수 패턴·카드 시전은 한 번에 하나만 준비합니다. 병종별 사용자 흐름과 카메라·산개·탑 검사는 필요할 때 workflow_dispatch로만 실행하며, 자동으로 매 변경마다 전체 행렬을 실행하지 않습니다. 병종 선택의 `all`은 기존 옥수수·완두콩·팥·밤톨·땅콩 5종이며, 기능 통합은 `functional`, 성능은 기본 꺼짐인 `performance` 입력으로 별도 선택합니다. skipped 작업은 통과로 세지 않습니다. 브라우저 스모크 테스트(`tests/smoke.e2e.mjs`)는 필요할 때 `npm test`로 실행하며, 게임 라이브러리를 `vendor/upstream`에서 받아 오프라인으로 돌고 약 70초 걸립니다. 필요한 변경에서는 번식 몫 UI 시나리오와 기존 전체 스모크도 검사하며, `npm run test:breed-allocation`으로 따로 실행할 수 있습니다. 각 브라우저 검증 명령은180초 이내로 실행합니다. 콩의 동일 사용자 흐름은 `npm run test:pea-growth:case -- ui desktop` (또는 `previews`/`battle`, `mobile`/`landscape`)로 실행하며 `tests/output/pea-growth/`에 기록합니다. 팥은 `npm run test:redbean-growth:case -- ui desktop`으로 실행하며 `previews-low`/`previews-high`/`battle`/`battle-extra`/`continuity`/`migration` 사용자 흐름을 각각180초 이내로 검사합니다. 병종별 브라우저 작업은 병종·뷰포트별로 분리되어 기존 검증을 생략하지 않습니다. 밤톨은 `node tests/chestnut-growth.e2e.mjs desktop` (또는 `landscape`)으로 투자·농장 저장·런 흐름을, `node tests/chestnut-motion.e2e.mjs desktop`으로 여섯 가시 평타·보스 경계·실제 발사·취소·연속성을 검증합니다. 땅콩은 `npm run test:peanut-growth:case -- ui desktop` 및 같은7개 사용자 흐름으로 한 본체의 실제 두 알 동작·사망 분열·저장 복원을 검사합니다. 별도 `PEANUT_PERFORMANCE_BASE_ROOT=/path/to/0.34.0 npm run test:peanut-performance`는 정확한0.34.0 기준본과 최대200 영구 유닛·실제 분열체2마리 장면을 세 번 교대 비교합니다. 모바일은 Chromium 터치 에뮬레이션이며 실제 기기 검증과 구분합니다.
 
 ## 농장
 
@@ -98,7 +97,7 @@ npm run test:corn-growth
 
 ## 화면과 싱글 실행
 
-설정 `#/menu`에는 효과음을 두고, 업그보스전 안에 병종 특성 `#/abilities` 탭을 둡니다. [현재 병종 특성 효과 표](docs/ability-reference.md)는 제품 정의에서 생성하고 정적 검사에서 일치 여부를 확인합니다.
+설정 `#/menu`에는 효과음을 두고, 업그레이드 `#/farms`는 농장 화면만 엽니다. 병종 특성 화면은 쓰지 않으며 공격 형태는 합성 등급을 따라 자동으로 정해집니다. 특성 노드·숙련 규칙은 이후 다른 방식으로 스탯을 붙일 수 있도록 코드에 남겨 둡니다.
 
 도움말 `#/help`, 농장 `#/farm`, 시작 `#/`는 화면·이력·F5와 동기화됩니다.
 

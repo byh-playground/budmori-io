@@ -87,7 +87,6 @@ jobs:
             - run: timeout 300s npm run test:camera -- landscape
             - run: timeout 300s npm run test:scatter-command -- 100 1 center
             - run: timeout 300s npm run test:scatter-command -- 500 1 wall
-            - run: timeout 300s npm run test:corn-growth:case -- battle landscape
             - run: timeout 300s node tests/walnut-growth.e2e.mjs desktop
             - run: timeout 300s node tests/rice-growth.e2e.mjs desktop
             - run: timeout 300s node tests/wheat-growth.e2e.mjs desktop

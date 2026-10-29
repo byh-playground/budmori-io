@@ -153,7 +153,7 @@ export const BOSS_SNAPSHOT_SHAPE = {
     encounterId: 0,
     active: false,
     facing: 0,
-    swings: 0,
+    specialCount: 0,
     basicCount: 0,
     attackId: 0,
     sweepClock: 0,
@@ -368,7 +368,7 @@ const BOSS = shapeFields(BOSS_SNAPSHOT_SHAPE, {
     }),
 });
 const REWARD = FIELDS(
-    'encounterId source receiptKey acquisitionMultiplier stage species tier x y firstClear chance baselineChance roll unitId rollBudget bonusRollChance rollCount boxCount successCount acquiredCount grantedCount placedCount queuedCount status xpReceiptKey xpStatus xpAmount levelsGained pointsAwarded',
+    'encounterId source receiptKey acquisitionMultiplier stage species tier x y firstClear chance baselineChance roll unitId rollBudget bonusRollChance rollCount boxCount successCount acquiredCount grantedCount placedCount queuedCount status',
     {
         calculation: JSON_PAYLOAD,
     },
