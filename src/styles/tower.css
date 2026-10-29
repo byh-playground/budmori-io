@@ -499,6 +499,8 @@ body:has(#towerSummit:not([hidden])) #battleOutcome {
     display: grid;
     justify-items: center;
     gap: var(--ui-s1);
+    /* The leaves of a grown boss rise above its body; keep them clear of the note above. */
+    padding-top: 30px;
 }
 .doors__boss[hidden] {
     display: none;
@@ -557,6 +559,18 @@ body:has(#towerSummit:not([hidden])) #battleOutcome {
 .doors__boss-cards i[data-new='true'] {
     border-color: var(--boss-elem, var(--ui-focus));
     animation: card-received 360ms ease-out;
+}
+@media (max-height: 550px) {
+    .doors__boss {
+        padding-top: 18px;
+    }
+    .doors__boss-body {
+        width: 56px;
+        height: 56px;
+    }
+    .doors__boss-cards {
+        display: none;
+    }
 }
 .boss-eat-ghost {
     position: fixed;

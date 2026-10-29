@@ -1583,13 +1583,11 @@ function syncTower(garden, home, event) {
                     ? PHASE === 'offers'
                         ? '보스가 먼저 고르는 중'
                         : `보스 선택 · ${bossCardName(DRAW.card)}`
-                    : `보스가 ${bossCardName(DRAW.card)} 선택 · 남은 카드를 고르세요`,
+                    : `보스가 ${bossCardName(DRAW.card)} 선택`,
             );
             syncText(
                 'doorsNote',
-                BOSS_CHOICE
-                    ? '보스가 같은 카드 3장에서 먼저 한 장을 가져가요'
-                    : `${T.floor + 1}층 강화 · 카드 한 장을 고르세요`,
+                BOSS_CHOICE ? '보스가 같은 카드 3장에서 먼저 한 장을 가져가요' : '남은 카드에서 한 장을 고르세요',
             );
         } else {
             syncText('doorsTitle', `${T.floor + 1}층 ${NEXT_FLOOR_TEXT[T.nextKind]}`);
