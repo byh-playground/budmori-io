@@ -37,6 +37,7 @@ export function freshTowerRun() {
         bossPassives: {},
         bossFallen: 0,
         bossCardDraw: null,
+        playerPick: null,
         since: { battle: 0, power: 1, event: 1 },
         // This fight's: allies fallen so far and the units whose undying card is already spent.
         fallen: 0,
@@ -331,51 +332,71 @@ export function applyTowerCard(state, card, role = 'player') {
 }
 
 // 'selected' is the time the boss spends eating the card it picked; its outcome shows once it has swallowed.
-const CARD_CHOICE_TIMING = Object.freeze({ receipt: 0.2, offers: 0.45, selected: 1.3, total: 1.8 });
+const CARD_CHOICE_TIMING = Object.freeze({ offers: 0.45, selected: 1.3, total: 1.8 });
 export function cardChoicePhase(draw, time) {
     if (!draw || time >= draw.until) {
         return '';
     }
     const ELAPSED = Math.max(0, time - draw.startedAt);
-    return ELAPSED < CARD_CHOICE_TIMING.receipt && draw.player
-        ? 'receipt'
-        : ELAPSED < CARD_CHOICE_TIMING.offers
-          ? 'offers'
-          : ELAPSED < CARD_CHOICE_TIMING.selected
-            ? 'selected'
-            : 'outcome';
+    return ELAPSED < CARD_CHOICE_TIMING.offers
+        ? 'offers'
+        : ELAPSED < CARD_CHOICE_TIMING.selected
+          ? 'selected'
+          : 'outcome';
 }
 
-// Same offers, rarity and limits as the player, with only explicit content exclusions.
-export function drawBossCard(tower, random, time, slots = 3, maxLevel = 5, player = null) {
+// The boss takes first from the same three cards the player is offered, and only a card it can use: a boss skill or
+// passive (never 'undying'), a stat card, all within its own caps. Among those: higher rarity first, then
+// skill, passive, stat. A skill has no rarity and ranks as the lowest one. With nothing usable it takes nothing.
+const BOSS_PICK_TYPE_ORDER = Object.freeze({ skill: 0, passive: 1, stat: 2 });
+function bossCanUse(tower, card, slots, maxLevel) {
+    if (card.type === 'skill') {
+        const LEVEL = tower.bossRelics.get(card.id) || 0;
+        return BOSS_SKILL_IDS.includes(card.id) && (LEVEL ? LEVEL < maxLevel : tower.bossRelics.size < slots);
+    }
+    return (
+        !(card.type === 'passive' && card.id === 'undying') &&
+        cardStacks(tower.bossCards, card.id) < TOWER_RUN_SETTINGS.cardCap
+    );
+}
+export function pickBossCardIndex(tower, offers, slots = 3, maxLevel = 5) {
+    let best = -1;
+    for (const [INDEX, CARD] of offers.entries()) {
+        if (!bossCanUse(tower, CARD, slots, maxLevel)) {
+            continue;
+        }
+        const BEST = offers[best];
+        if (
+            !BEST ||
+            (CARD.rarity || 0) > (BEST.rarity || 0) ||
+            ((CARD.rarity || 0) === (BEST.rarity || 0) &&
+                BOSS_PICK_TYPE_ORDER[CARD.type] < BOSS_PICK_TYPE_ORDER[BEST.type])
+        ) {
+            best = INDEX;
+        }
+    }
+    return best;
+}
+// `offers` are the shared cards of the floor about to be chosen. Returns the cards left for the player.
+export function drawBossCard(tower, offers, time, slots = 3, maxLevel = 5) {
     const STATE = { cards: tower.bossCards, relics: tower.bossRelics },
         OFFER_STATE = { cards: STATE.cards.map((card) => ({ ...card })), relics: [...STATE.relics] },
-        OFFERS = rollCardOffers({
-            ...STATE,
-            floor: tower.floor,
-            skillIds: BOSS_SKILL_IDS,
-            passiveIds: PASSIVE_CARDS.filter((card) => card.id !== 'undying').map((card) => card.id),
-            relicSlots: slots,
-            relicMaxLevel: maxLevel,
-            random,
-        }),
-        SELECTED_INDEX = OFFERS.length ? Math.floor(random() * OFFERS.length) : -1,
-        CARD = OFFERS[SELECTED_INDEX] || null,
+        SELECTED_INDEX = pickBossCardIndex(tower, offers, slots, maxLevel),
+        CARD = offers[SELECTED_INDEX] || null,
         RECEIPT = CARD ? applyTowerCard(STATE, CARD, 'boss') : null;
     tower.bossCardDraw = {
         serial: (tower.bossCardDraw?.serial || 0) + 1,
         floor: tower.floor,
-        offers: OFFERS,
+        offers: offers.map((card) => ({ ...card })),
         offerState: OFFER_STATE,
         selectedIndex: SELECTED_INDEX,
         card: CARD,
         id: CARD?.id || '',
         level: RECEIPT?.level || 0,
         status: RECEIPT?.status || 'maxed',
-        player,
         receipt: RECEIPT,
         startedAt: time,
         until: time + (CARD ? CARD_CHOICE_TIMING.total : 0),
     };
-    return tower.bossCardDraw;
+    return offers.filter((_, index) => index !== SELECTED_INDEX);
 }

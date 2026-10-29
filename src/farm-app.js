@@ -1390,31 +1390,17 @@ function readonlyDoor(button, label, selected) {
         badge.hidden = !selected;
     }
 }
-function syncBossChoice(tower, draw, phase) {
+function syncBossChoice(draw, phase) {
     const HOST = DOLLAR('doorCards'),
-        OWNER = phase === 'receipt' ? 'player' : 'boss',
-        RAIL_KEY = `${draw.serial}:${OWNER}`;
+        RAIL_KEY = `${draw.serial}:boss`;
     if (HOST.dataset.receipt !== RAIL_KEY) {
         HOST.dataset.receipt = RAIL_KEY;
-        if (phase === 'receipt') {
-            HOST.innerHTML = doorCard(tower, draw.player.card, 0, 'player', draw.player);
-            HOST.firstElementChild.dataset.playerReceipt = 'true';
-        } else {
-            const PREVIEW = { cards: draw.offerState.cards, relics: new Map(draw.offerState.relics) };
-            HOST.innerHTML = draw.offers.map((card, index) => doorCard(PREVIEW, card, index, 'boss')).join('');
-        }
+        const PREVIEW = { cards: draw.offerState.cards, relics: new Map(draw.offerState.relics) };
+        HOST.innerHTML = draw.offers.map((card, index) => doorCard(PREVIEW, card, index, 'boss')).join('');
     }
     for (const [INDEX, BUTTON] of [...HOST.children].entries()) {
-        if (phase === 'receipt') {
-            readonlyDoor(BUTTON, '✓ 내 카드 획득', true);
-        } else {
-            BUTTON.dataset.bossOffer = String(INDEX);
-            readonlyDoor(
-                BUTTON,
-                '✓ 보스 선택',
-                ['selected', 'outcome'].includes(phase) && INDEX === draw.selectedIndex,
-            );
-        }
+        BUTTON.dataset.bossOffer = String(INDEX);
+        readonlyDoor(BUTTON, '✓ 보스 선택', ['selected', 'outcome'].includes(phase) && INDEX === draw.selectedIndex);
     }
 }
 // What the boss has picked so far, for the row of cards under it.
@@ -1448,7 +1434,7 @@ function syncBossMascot(tower, draw, phase, visible) {
 }
 function syncCardReceipts(tower, draw, phase) {
     const HOST = DOLLAR('doorReceipts'),
-        VISIBLE = !!draw && ['receipt', 'outcome', ''].includes(phase);
+        VISIBLE = !!draw && draw.floor === tower.floor && ['outcome', ''].includes(phase);
     HOST.hidden = !VISIBLE;
     if (!VISIBLE) {
         return;
@@ -1458,11 +1444,7 @@ function syncCardReceipts(tower, draw, phase) {
         HOST.dataset.receipt = KEY;
         HOST.dataset.phase = phase || 'summary';
         HOST.replaceChildren();
-        for (const RECEIPT of phase === 'receipt'
-            ? [draw.player]
-            : phase === 'outcome'
-              ? [draw.receipt]
-              : [draw.player, draw.receipt]) {
+        for (const RECEIPT of [draw.receipt]) {
             if (!RECEIPT) {
                 continue;
             }
@@ -1491,7 +1473,7 @@ function syncCardReceipts(tower, draw, phase) {
         doorAnnouncementSerial = draw.serial;
         syncText(
             'doorAnnouncement',
-            [draw.player, draw.receipt]
+            [tower.playerPick?.receipt, draw.receipt]
                 .filter(Boolean)
                 .map(
                     (receipt) =>
@@ -1565,7 +1547,7 @@ function syncTower(garden, home, event) {
         if (KEY !== doorKey) {
             doorKey = KEY;
             if (BOSS_CHOICE) {
-                syncBossChoice(T, DRAW, PHASE);
+                syncBossChoice(DRAW, PHASE);
             } else {
                 DOLLAR('doorCards').dataset.receipt = '';
                 DOLLAR('doorCards').innerHTML = T.doors.map((door, i) => doorCard(T, door, i)).join('');
@@ -1576,26 +1558,20 @@ function syncTower(garden, home, event) {
         if (BOSS_CHOICE) {
             syncText(
                 'doorsTitle',
-                PHASE === 'receipt'
-                    ? '내 카드 확정'
-                    : PHASE === 'offers'
-                      ? '보스의 카드 선택'
-                      : `보스 선택 · ${bossCardName(DRAW.card)}`,
+                PHASE === 'offers' ? '보스가 먼저 고르는 중' : `보스 선택 · ${bossCardName(DRAW.card)}`,
             );
             syncText(
                 'doorsNote',
-                PHASE === 'receipt'
-                    ? '획득한 강화가 적용됐어요'
-                    : PHASE === 'outcome'
-                      ? '선택한 강화는 다음 보스부터 적용돼요'
-                      : '보스 차례 · 같은 카드풀에서 한 장을 선택해요',
+                PHASE === 'outcome'
+                    ? '남은 카드 중에서 고를 수 있어요'
+                    : '보스가 같은 카드 3장에서 먼저 한 장을 가져가요',
             );
         } else {
             syncText('doorsTitle', `${T.floor + 1}층 ${NEXT_FLOOR_TEXT[T.nextKind]}`);
             syncText(
                 'doorsNote',
-                DRAW
-                    ? `최근 강화 · ${DRAW.floor}층 · 다음 문을 고르세요`
+                DRAW?.floor === T.floor && DRAW.card
+                    ? `보스가 ${bossCardName(DRAW.card)}을(를) 가져갔어요 · 남은 카드에서 고르세요`
                     : `${T.floor}층 돌파 · 잠든 병력 ${SLEEPERS}마리 · 강화 카드 ${T.cards.length}장`,
             );
         }

@@ -201,7 +201,7 @@ export class RelicDock {
     // This never changes the model's receipt, skill level or cooldown.
     syncAcquisitions(world) {
         const TOWER = world.tower,
-            DRAW = TOWER.bossCardDraw,
+            DRAW = this.role === 'boss' ? TOWER.bossCardDraw : TOWER.playerPick,
             BATTLE = ['dropping', 'fighting'].includes(world.farmBossEvent?.phase);
         if (this.acquisitionTower !== TOWER) {
             this.acquisitionTower = TOWER;
@@ -221,7 +221,7 @@ export class RelicDock {
         }
         if (DRAW && DRAW.serial !== this.acquisitionSerial) {
             this.acquisitionSerial = DRAW.serial;
-            const RECEIPT = this.role === 'boss' ? DRAW.receipt : DRAW.player;
+            const RECEIPT = DRAW.receipt;
             if (RECEIPT?.card.type === 'skill') {
                 this.acquisitions.set(RECEIPT.card.id, { receipt: RECEIPT, battleFloor: null });
             }
