@@ -84,7 +84,12 @@ export const FARM_ARMY_BATTLE = (base) =>
             }
         }
         // Returns true when separation moved the unit this tick; false lets it engage normally.
-        _scatterArmyUnit(unit, dt, enemy, attackDistance) {
+        _scatterArmyUnit(unit, dt, enemy, attackDistance, recovering) {
+            // An idle unit that already reaches the target attacks; steering would keep it moving and it
+            // would never start an attack. Only the recovery after an attack is spent spreading.
+            if (!recovering && enemy && Math.hypot(unit.x - enemy.x, unit.y - enemy.y) <= attackDistance) {
+                return false;
+            }
             this._prepareArmySpacing();
             const GAP = CONFIG.farm.deploy.scatterGap,
                 QUERY_RADIUS = unit.radius + this._armySpacingRadius + GAP;
@@ -151,7 +156,15 @@ export const FARM_ARMY_BATTLE = (base) =>
                 this._retreatArmyUnit(u, dt);
                 return;
             }
-            if (ATTACK_BUSY || u.stun > 0 || u.z > 0.1 || u.landingRecovery > 0) {
+            // Scatter is separation on top of the same attack rule: a unit pushed out of reach cannot attack.
+            // The recovery after an attack is free time, so a scattering unit keeps spreading through it.
+            const RECOVER_SPREAD =
+                ATTACK_BUSY &&
+                ACTIVE_ATTACK.phase === 'recover' &&
+                this.tower.active &&
+                this.battleCommand === 'scatter' &&
+                hasFaction(u, FACTION_CONFIG.PLAYER);
+            if ((ATTACK_BUSY && !RECOVER_SPREAD) || u.stun > 0 || u.z > 0.1 || u.landingRecovery > 0) {
                 return;
             }
             if (!PARALLEL_GUARD && u.ability.isGuarding?.(this.simulationTick)) {
@@ -175,8 +188,12 @@ export const FARM_ARMY_BATTLE = (base) =>
                 this.tower.active &&
                 this.battleCommand === 'scatter' &&
                 hasFaction(u, FACTION_CONFIG.PLAYER) &&
-                this._scatterArmyUnit(u, dt, enemy, MAX)
+                this._scatterArmyUnit(u, dt, enemy, MAX, RECOVER_SPREAD)
             ) {
+                return;
+            }
+            if (RECOVER_SPREAD) {
+                u.vx = u.vy = 0;
                 return;
             }
             if (N > MAX || (BEHAVIOR.retreatWithinRange && N < MIN)) {
