@@ -1390,17 +1390,31 @@ function readonlyDoor(button, label, selected) {
         badge.hidden = !selected;
     }
 }
-function syncBossChoice(draw, phase) {
+// The three shared cards: the boss's is taken and cannot be chosen; the player's choices map back to `tower.doors`.
+function syncSharedChoice(tower, draw, phase, locked) {
     const HOST = DOLLAR('doorCards'),
-        RAIL_KEY = `${draw.serial}:boss`;
+        LOCKED = locked,
+        RAIL_KEY = `${draw.serial}:shared:${LOCKED}`;
     if (HOST.dataset.receipt !== RAIL_KEY) {
         HOST.dataset.receipt = RAIL_KEY;
-        const PREVIEW = { cards: draw.offerState.cards, relics: new Map(draw.offerState.relics) };
-        HOST.innerHTML = draw.offers.map((card, index) => doorCard(PREVIEW, card, index, 'boss')).join('');
+        const BOSS_VIEW = { cards: draw.offerState.cards, relics: new Map(draw.offerState.relics) };
+        let doorIndex = 0;
+        HOST.innerHTML = draw.offers
+            .map((card, index) =>
+                index === draw.selectedIndex
+                    ? doorCard(BOSS_VIEW, card, index, 'boss')
+                    : doorCard(tower, card, doorIndex++, 'player'),
+            )
+            .join('');
     }
     for (const [INDEX, BUTTON] of [...HOST.children].entries()) {
+        const TAKEN = INDEX === draw.selectedIndex;
         BUTTON.dataset.bossOffer = String(INDEX);
-        readonlyDoor(BUTTON, '✓ 보스 선택', ['selected', 'outcome'].includes(phase) && INDEX === draw.selectedIndex);
+        if (TAKEN) {
+            readonlyDoor(BUTTON, '✓ 보스 선택', ['selected', 'outcome'].includes(phase));
+        } else if (LOCKED) {
+            readonlyDoor(BUTTON, '', false);
+        }
     }
 }
 // What the boss has picked so far, for the row of cards under it.
@@ -1536,35 +1550,46 @@ function syncTower(garden, home, event) {
     }
     const DRAW = T.bossCardDraw,
         DRAW_LOCKED = CLIMBING && garden.time < (DRAW?.until || 0),
+        // The boss's card stays on screen, taken, while the player picks from the rest of the same three.
+        SHARED =
+            CLIMBING &&
+            !!DRAW?.card &&
+            DRAW.floor === T.floor &&
+            T.doors.length > 0 &&
+            T.doors.every((door) => door.type !== 'fight' && door.type !== 'event'),
         BOSS_CHOICE = DRAW_LOCKED && Array.isArray(DRAW.offers),
-        PHASE = BOSS_CHOICE ? cardChoicePhase(DRAW, garden.time) : '',
+        PHASE = BOSS_CHOICE ? cardChoicePhase(DRAW, garden.time) : SHARED ? 'outcome' : '',
         DOORS = CLIMBING && event?.phase === 'idle' && (T.doors.length > 0 || BOSS_CHOICE);
     syncFlag('towerDoors', 'hidden', !DOORS);
     if (DOORS) {
-        const KEY = `${JSON.stringify(T.doors)}|${T.floor}|${SLEEPERS}|${T.cards.length}|${T.relics.size}|${DRAW?.serial || 0}|${BOSS_CHOICE}|${PHASE}`;
+        const KEY = `${JSON.stringify(T.doors)}|${T.floor}|${SLEEPERS}|${T.cards.length}|${T.relics.size}|${DRAW?.serial || 0}|${BOSS_CHOICE}|${SHARED}|${PHASE}`;
         syncData('towerDoors', 'owner', BOSS_CHOICE ? 'boss' : 'player');
         syncData('towerDoors', 'phase', PHASE);
         if (KEY !== doorKey) {
             doorKey = KEY;
-            if (BOSS_CHOICE) {
-                syncBossChoice(DRAW, PHASE);
+            if (SHARED) {
+                syncSharedChoice(T, DRAW, PHASE, BOSS_CHOICE);
             } else {
                 DOLLAR('doorCards').dataset.receipt = '';
                 DOLLAR('doorCards').innerHTML = T.doors.map((door, i) => doorCard(T, door, i)).join('');
             }
         }
         syncCardReceipts(T, DRAW, PHASE);
-        syncBossMascot(T, DRAW, PHASE, BOSS_CHOICE);
-        if (BOSS_CHOICE) {
+        syncBossMascot(T, DRAW, PHASE, SHARED);
+        if (SHARED) {
             syncText(
                 'doorsTitle',
-                PHASE === 'offers' ? '보스가 먼저 고르는 중' : `보스 선택 · ${bossCardName(DRAW.card)}`,
+                BOSS_CHOICE
+                    ? PHASE === 'offers'
+                        ? '보스가 먼저 고르는 중'
+                        : `보스 선택 · ${bossCardName(DRAW.card)}`
+                    : `보스가 ${bossCardName(DRAW.card)} 선택 · 남은 카드를 고르세요`,
             );
             syncText(
                 'doorsNote',
-                PHASE === 'outcome'
-                    ? '남은 카드 중에서 고를 수 있어요'
-                    : '보스가 같은 카드 3장에서 먼저 한 장을 가져가요',
+                BOSS_CHOICE
+                    ? '보스가 같은 카드 3장에서 먼저 한 장을 가져가요'
+                    : `${T.floor + 1}층 강화 · 카드 한 장을 고르세요`,
             );
         } else {
             syncText('doorsTitle', `${T.floor + 1}층 ${NEXT_FLOOR_TEXT[T.nextKind]}`);
