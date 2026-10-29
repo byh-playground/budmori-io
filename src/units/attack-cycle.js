@@ -10,6 +10,7 @@ import { AttackAction } from '../features/species-growth/attack-action.js';
 import { composeUnitAttackCycles } from './unit-attack-capabilities.js';
 import { areOpposingFactions } from '../core/factions.js';
 import { CONFIG } from '../model/farm-config.js';
+import { BOSS_BASIC_TIMING } from '../boss/boss-patterns.js';
 import { ARENA_GEOMETRY, BALLISTICS } from '../model/arena-geometry.js';
 
 // Initial correction limits are tuning defaults, not extra attack range.
@@ -20,6 +21,18 @@ const PREPARE_AIM_PROFILE = Object.freeze({
     lockFraction: 0.25,
     cancelRecoverySeconds: 0.1,
 });
+
+// A boss swings its basic attack faster than the army does; only the two timings differ.
+const BOSS_PROFILES = new WeakMap();
+function bossBasicProfile(profile) {
+    if (!BOSS_PROFILES.has(profile)) {
+        BOSS_PROFILES.set(
+            profile,
+            Object.freeze({ ...profile, timing: Object.freeze({ ...profile.timing, ...BOSS_BASIC_TIMING }) }),
+        );
+    }
+    return BOSS_PROFILES.get(profile);
+}
 
 // The common cycle owns phase, action identity, recovery and bounded prepare aim.
 // Capability mixins own their action geometry, budgets and committed behavior.
@@ -34,7 +47,8 @@ export class AttackCycle {
         this._attackSpeedMultiplier = 1;
     }
     get spec() {
-        return abilityProfile(this.owner.species);
+        const PROFILE = abilityProfile(this.owner.species);
+        return this.owner.patternRuntime ? bossBasicProfile(PROFILE) : PROFILE;
     }
     get composition() {
         return unitCapabilityComposition(this.owner.species);
