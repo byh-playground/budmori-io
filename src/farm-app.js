@@ -32,7 +32,8 @@ import { SPECIES_ABILITY_DEFINITIONS } from './abilities/ability-catalog.js';
 import { advanceBossRewardReveal, openAllBossRewardBoxes, bossRewardQueueBySpecies } from './boss/boss-rewards.js';
 import { workersBySpecies } from './model/farm-work.js';
 import { apportionBreedShares, adjustBreedShare } from './model/breed-allocation.js';
-import { speciesById, giantSpeciesName } from './units/species-catalog.js';
+import { speciesById, giantSpeciesName, BOSS_SPECIES } from './units/species-catalog.js';
+import { speciesPortraitSource } from './units/species-paint.js';
 import { HELP_MAX_FRAME_MS, HELP_PLAYBACK_RATE, helpSceneById } from './ui/help-scenes.js';
 import { createHelpPanel } from './ui/help-panel.js';
 import { codexHtml, CODEX_TABS } from './ui/codex-dialog.js';
@@ -206,7 +207,7 @@ function renderBossRewardBoxes(receipt) {
     ) {
         bossRewardPortraitReceiptKey = receipt.receiptKey;
         const PORTRAIT = DOLLAR('bossRewardPortrait');
-        PORTRAIT.src = './assets/troops/sprout.svg';
+        PORTRAIT.src = speciesPortraitSource(BOSS_SPECIES);
         PORTRAIT.alt = '새싹';
         PORTRAIT.hidden = false;
     }
@@ -1056,7 +1057,7 @@ function drawSpeciesRoles(world) {
         HOST.innerHTML = STATE.ids
             .map((id) => {
                 const SPECIES = speciesById(id);
-                return `<button type="button" class="breed-chip" data-breed-species="${id}" aria-pressed="false"><img src="./assets/troops/${SPECIES.asset}" alt="" width="36" height="36"><span>${SPECIES.name}</span><b data-breed-percent></b></button>`;
+                return `<button type="button" class="breed-chip" data-breed-species="${id}" aria-pressed="false"><img src="${speciesPortraitSource(id)}" alt="" width="36" height="36"><span>${SPECIES.name}</span><b data-breed-percent></b></button>`;
             })
             .join('');
     }
@@ -1148,7 +1149,7 @@ function drawRewardQueue(world) {
         BOX = DOLLAR('farmQueue'),
         HTML = QUEUE.map(
             ([species, count]) =>
-                `<span class="farm-queue__chip"><img src="./assets/troops/${speciesById(species).asset}" alt="${speciesById(species).name}" width="20" height="20"><b>${count}</b></span>`,
+                `<span class="farm-queue__chip"><img src="${speciesPortraitSource(species)}" alt="${speciesById(species).name}" width="20" height="20"><b>${count}</b></span>`,
         ).join('');
     BOX.hidden = QUEUE.length === 0;
     if (BOX.innerHTML !== HTML) {
@@ -1863,7 +1864,7 @@ function saveDeployOrder(order) {
 }
 function deckCardHtml(id, count, slot) {
     const SPECIES = speciesById(id);
-    return `<button type="button" class="deck-card" data-deploy="${id}" aria-label="${slot}번 ${SPECIES.name}"><i>${slot}</i><img src="./assets/troops/${SPECIES.asset}" alt="" width="40" height="40" draggable="false"><b>×${count}</b></button>`;
+    return `<button type="button" class="deck-card" data-deploy="${id}" aria-label="${slot}번 ${SPECIES.name}"><i>${slot}</i><img src="${speciesPortraitSource(id)}" alt="" width="40" height="40" draggable="false"><b>×${count}</b></button>`;
 }
 function ownedCounts(garden) {
     const COUNTS = new Map();
