@@ -33,6 +33,8 @@ export class BossController {
             walnutStoredRawDamage: 0,
             walnutGuardUntilTick: 0,
             walnutNextGuardTick: 0,
+            basicCount: 0,
+            specialCount: 0,
             wheatCommandUntil: 0,
             wheatCommandCritBonus: 0,
             wheatCommandBuffs: [],
@@ -80,10 +82,12 @@ export class BossController {
             const TARGETS = world.bossPatternTargets(living, this.unit),
                 TARGET = TARGETS.nearest || world.nearestBossTarget(living, undefined, this.unit),
                 ELIGIBLE = world.eligibleBossPatterns(living, TARGETS, this.unit),
-                SELECTED = chooseBossPattern(RUNTIME, ELIGIBLE, () => world.random());
+                SELECTED = chooseBossPattern(RUNTIME, ELIGIBLE, () => world.random(), B_LOCAL);
             if (SELECTED) {
                 const BEHAVIOR = BOSS_BEHAVIORS.forId(SELECTED),
                     PICK = BEHAVIOR.selectedTarget(world, TARGETS, TARGET, this.unit);
+                B_LOCAL.basicCount = 0;
+                B_LOCAL.specialCount++;
                 world.beginBossPattern(SELECTED, PICK, this.unit);
                 action = RUNTIME.active;
                 BEHAVIOR.selected(world, this.unit);
@@ -183,6 +187,10 @@ export class BossController {
         if (!this.updatePattern(world, dt, LIVING)) {
             world.battleUnit(B_LOCAL, dt, world.nearestBossTarget(LIVING, undefined, this.unit));
             B_LOCAL.facing = B_LOCAL.angle;
+            // A basic attack that just started counts toward the next special.
+            if (B_LOCAL.ability.phase !== 'idle') {
+                B_LOCAL.basicCount++;
+            }
         }
         world._settleBossHits(this.unit);
     }

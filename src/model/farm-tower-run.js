@@ -591,7 +591,7 @@ export const FARM_TOWER_RUN = (base) =>
                 angle: 0,
                 facing: 0,
                 flash: 0,
-                swings: 0,
+                specialCount: 0,
                 basicCount: 0,
                 attackId: 0,
                 sweepClock: 0,

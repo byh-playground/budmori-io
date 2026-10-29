@@ -2,7 +2,6 @@
 // only selects the authored body and the T1 reward/summon identity.
 export const BOSS_PATTERN_IDS = Object.freeze([
     'attack.sweep-360',
-    'attack.front-slam',
     'attack.charge',
     'attack.leap-slam',
     'attack.fan-sweep',
@@ -20,14 +19,12 @@ export const BOSS_PATTERN_IDS = Object.freeze([
 // every unit hit and the rest (65%) is split among all the units hit in the same moment: one unit takes it all, a crowd
 // takes just over 35% each, so a tight pack is hurt a little more but never in proportion to its size.
 export const BOSS_HIT_SPLIT = Object.freeze({ everyone: 0.35 });
-// The boss's basic attack is the single strong hit; every other attack is an area attack.
-export const BOSS_BASIC_ID = 'attack.front-slam';
-// Shared standoff used by pursuit and the basic attack on oversized bodies.
-export const BOSS_CONTACT_MARGIN = 0.2;
-// All the damage an attack of this strength deals when it reaches `hits` units (what BOSS_HIT_SPLIT adds up to).
-export function bossAttackTotal(multiplier, hits) {
-    return multiplier * (BOSS_HIT_SPLIT.everyone * hits + (1 - BOSS_HIT_SPLIT.everyone));
-}
+// The boss's basic attack is its own fast single-target unit attack (no pattern); every pattern here is a special.
+// A pattern worth using must reach at least this many units, otherwise the basic attack does the job.
+export const BOSS_AREA_MIN_HITS = 2;
+// Rhythm: `basicsPerSpecial` basic attacks, then one special; every `specialsPerArea`-th special is an area pattern
+// and the others are the boss's own element skill. An unavailable special is skipped for the other kind, never queued.
+export const BOSS_RHYTHM = Object.freeze({ basicsPerSpecial: 4, specialsPerArea: 3 });
 // Each element band's boss has one signature skill. All of its damage is element damage (see elementDamageTaken) and it
 // is used on the shared cooldown. Water: a narrow jet that pushes. Grass: roots erupt under the target. Fire: a long
 // breath that burns several times. Ice: a pulse around the boss that freezes. Lightning: a chain that jumps `hops` times,
@@ -129,20 +126,6 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
         lift: 10.2,
         groundOnly: true,
     }),
-    'attack.front-slam': Object.freeze({
-        kind: 'front-slam',
-        unlockHp: 1,
-        windup: 0.75,
-        active: 0,
-        recover: 0.75,
-        cooldown: 5,
-        reach: 5.5,
-        sector: Math.PI / 3,
-        damageMultiplier: 4,
-        knockback: 13,
-        lift: 10.2,
-        groundOnly: true,
-    }),
     'attack.charge': Object.freeze({
         kind: 'charge',
         unlockHp: 1,
@@ -201,8 +184,6 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
         landingRadius: 4.8,
     }),
 });
-// The basic attack and the area attacks are chosen 1 : 1 whenever both can be used.
-const BOSS_BASIC_SHARE = 0.5;
 const BOSS_PATTERN_WEIGHT_DEFAULTS = Object.freeze({
     base: 1,
     eligibleBonus: 0.5,
@@ -228,26 +209,30 @@ export function createBossPatternRuntime() {
     };
 }
 
-// Caller supplies only currently eligible IDs. The basic attack takes BOSS_BASIC_SHARE of the picks when an area attack
-// is also possible; the area attacks share the rest by weight. Ineligible patterns are never touched, so their
+// Caller supplies only currently eligible IDs and the boss's rhythm counters. Returns null while the boss should keep
+// using its basic attack. Area patterns share their slot by weight; ineligible patterns are never touched, so their
 // accumulated weights remain frozen until they can be used.
-export function chooseBossPattern(runtime, eligibleIds, random) {
-    if (!runtime || !runtime.weights || !Array.isArray(eligibleIds) || typeof random !== 'function') {
-        throw new TypeError('Boss pattern selection requires runtime, eligible patterns, and a seeded random source');
+export function chooseBossPattern(runtime, eligibleIds, random, rhythm) {
+    if (!runtime || !runtime.weights || !Array.isArray(eligibleIds) || typeof random !== 'function' || !rhythm) {
+        throw new TypeError(
+            'Boss pattern selection requires runtime, eligible patterns, rhythm and a seeded random source',
+        );
+    }
+    if (rhythm.basicCount < BOSS_RHYTHM.basicsPerSpecial) {
+        return null;
     }
     const ELIGIBLE = [...new Set(eligibleIds)]
         .filter((id) => BOSS_PATTERN_IDS.includes(id))
         .sort((a, b) => BOSS_PATTERN_IDS.indexOf(a) - BOSS_PATTERN_IDS.indexOf(b));
-    if (!ELIGIBLE.length) {
-        return null;
-    }
-    const AREA = ELIGIBLE.filter((id) => id !== BOSS_BASIC_ID);
-    if (ELIGIBLE.includes(BOSS_BASIC_ID) && (!AREA.length || random() < BOSS_BASIC_SHARE)) {
-        return BOSS_BASIC_ID;
+    const AREA = ELIGIBLE.filter((id) => !BOSS_PATTERN_CONFIG[id].element),
+        SIGNATURE = ELIGIBLE.filter((id) => BOSS_PATTERN_CONFIG[id].element);
+    const AREA_DUE = (rhythm.specialCount + 1) % BOSS_RHYTHM.specialsPerArea === 0;
+    if (!(AREA_DUE && AREA.length)) {
+        return SIGNATURE[0] ?? null;
     }
     const TOTAL = AREA.reduce((sum, id) => sum + Math.max(0, runtime.weights[id] || 0), 0);
     if (!(TOTAL > 0)) {
-        return null;
+        return SIGNATURE[0] ?? null;
     }
     let roll = random() * TOTAL;
     let chosen = AREA.at(-1);
