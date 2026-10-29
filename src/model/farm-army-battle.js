@@ -85,11 +85,6 @@ export const FARM_ARMY_BATTLE = (base) =>
         }
         // Returns true when separation moved the unit this tick; false lets it engage normally.
         _scatterArmyUnit(unit, dt, enemy, attackDistance) {
-            // A unit that already reaches the target attacks; the contact solver keeps its spacing.
-            // Steering would otherwise keep a crowded unit moving and it would never start an attack.
-            if (enemy && Math.hypot(unit.x - enemy.x, unit.y - enemy.y) <= attackDistance) {
-                return false;
-            }
             this._prepareArmySpacing();
             const GAP = CONFIG.farm.deploy.scatterGap,
                 QUERY_RADIUS = unit.radius + this._armySpacingRadius + GAP;
