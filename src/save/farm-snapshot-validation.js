@@ -20,6 +20,7 @@ import { CONFIG } from '../model/farm-model.js';
 import { validateFoodRuntime } from '../features/farm-modes/food-reservations/checkpoint.js';
 import { isValidPlayerProgressionState, FARM_BOSS_EVENT_MAX_STAGE } from '../model/player-progression.js';
 import { hasUnitCapability, specialAbilityCompositionFor } from '../units/unit-abilities.js';
+import { kitSpecies } from '../units/species-catalog.js';
 import { mergeMaterialCostForTier } from '../units/unit-grades.js';
 import { BOSS_PATTERN_IDS, BOSS_PATTERN_CONFIG } from '../boss/boss-patterns.js';
 import { BOSS_REWARD_SETTINGS, bossStageStats } from '../boss/boss-rewards.js';
@@ -257,13 +258,13 @@ function validateActorAttackState(actor, raw, cornActions, chestnutActions, allo
             U.permanentStatMultiplier <= 2.25 &&
             Number.isFinite(U.growthMaxHpMultiplier) &&
             (U.growthMaxHpMultiplier === 1 ||
-                ((U.species === 2 ||
-                    U.species === 3 ||
-                    U.species === 4 ||
-                    U.species === 5 ||
-                    U.species === 6 ||
-                    U.species === 7 ||
-                    U.species === 8) &&
+                ((kitSpecies(U) === 2 ||
+                    kitSpecies(U) === 3 ||
+                    kitSpecies(U) === 4 ||
+                    kitSpecies(U) === 5 ||
+                    kitSpecies(U) === 6 ||
+                    kitSpecies(U) === 7 ||
+                    kitSpecies(U) === 8) &&
                     !U.isBattleOnlySummon &&
                     !U.isFormationClone &&
                     hasFaction(U, FACTION_CONFIG.PLAYER) &&
@@ -313,7 +314,7 @@ function validateActorAttackState(actor, raw, cornActions, chestnutActions, allo
             INTEGER(U.peanutInheritedSpeedRank, 0, 10) &&
             INTEGER(U.chestnutNextThornTick, 0, 1e12),
     );
-    ASSERT(!!specialAbilityCompositionFor(U.species) === (U.specialAbility !== null));
+    ASSERT(!!specialAbilityCompositionFor(kitSpecies(U)) === (U.specialAbility !== null));
     if (U.specialAbility) {
         validateAttackCycle(U.specialAbility);
         ASSERT(
@@ -359,7 +360,7 @@ function validateActorAttackState(actor, raw, cornActions, chestnutActions, allo
         if (A.peanutAttack !== undefined) {
             const R = A.peanutAttack;
             ASSERT(
-                U.species === 4 &&
+                kitSpecies(U) === 4 &&
                     isPeanutAttackRecord(R) &&
                     R.id === A.id &&
                     R.owner === U.id &&
@@ -388,7 +389,7 @@ function validateActorAttackState(actor, raw, cornActions, chestnutActions, allo
         if (A.walnutAttack !== undefined) {
             const R = A.walnutAttack;
             ASSERT(
-                U.species === 5 &&
+                kitSpecies(U) === 5 &&
                     isWalnutAttackRecord(R) &&
                     R.id === A.id &&
                     R.owner === U.id &&
@@ -412,7 +413,7 @@ function validateActorAttackState(actor, raw, cornActions, chestnutActions, allo
         if (A.riceAttack !== undefined) {
             const R = A.riceAttack;
             ASSERT(
-                U.species === 6 &&
+                kitSpecies(U) === 6 &&
                     isRiceAttackRecord(R) &&
                     R.id === A.id &&
                     R.owner === U.id &&
@@ -438,7 +439,7 @@ function validateActorAttackState(actor, raw, cornActions, chestnutActions, allo
         if (A.wheatAttack !== undefined) {
             const R = A.wheatAttack;
             ASSERT(
-                U.species === 7 &&
+                kitSpecies(U) === 7 &&
                     isWheatAttackRecord(R) &&
                     R.id === A.id &&
                     R.owner === U.id &&
@@ -464,7 +465,7 @@ function validateActorAttackState(actor, raw, cornActions, chestnutActions, allo
         if (A.barleyAttack !== undefined) {
             const R = A.barleyAttack;
             ASSERT(
-                U.species === 8 &&
+                kitSpecies(U) === 8 &&
                     isBarleyAttackRecord(R) &&
                     R.id === A.id &&
                     R.owner === U.id &&
@@ -489,7 +490,7 @@ function validateActorAttackState(actor, raw, cornActions, chestnutActions, allo
         }
         if (A.redbeanAttack !== undefined) {
             ASSERT(
-                U.species === 2 &&
+                kitSpecies(U) === 2 &&
                     isRedbeanAttackRecord(A.redbeanAttack) &&
                     A.redbeanAttack.id === A.id &&
                     A.redbeanAttack.owner === U.id &&
@@ -499,7 +500,7 @@ function validateActorAttackState(actor, raw, cornActions, chestnutActions, allo
         }
         if (A.peaAttack !== undefined) {
             ASSERT(
-                U.species === 0 &&
+                kitSpecies(U) === 0 &&
                     isPeaAttackRecord(A.peaAttack) &&
                     A.peaAttack.id === A.id &&
                     A.peaAttack.owner === U.id &&
@@ -511,7 +512,7 @@ function validateActorAttackState(actor, raw, cornActions, chestnutActions, allo
             const R = A.chestnutAttack,
                 C = chestnutActions.get(A.id);
             ASSERT(
-                U.species === 3 &&
+                kitSpecies(U) === 3 &&
                     isChestnutAttackRecord(R, { pending: true }) &&
                     R.id === A.id &&
                     R.owner === U.id &&
@@ -532,7 +533,7 @@ function validateActorAttackState(actor, raw, cornActions, chestnutActions, allo
                     : CANONICAL && sameCheckpointValue(A.cornAttack, CANONICAL),
             );
             ASSERT(
-                U.species === 1 &&
+                kitSpecies(U) === 1 &&
                     isCornAttackRecord(A.cornAttack, { pending: true }) &&
                     A.cornAttack.id === A.id &&
                     A.cornAttack.owner === U.id &&
@@ -540,7 +541,7 @@ function validateActorAttackState(actor, raw, cornActions, chestnutActions, allo
                     A.cornAttack.tier === U.tier,
             );
         }
-        if (hasUnitCapability(U.species, 'repeatedStrike') && !A.peanutAttack) {
+        if (hasUnitCapability(kitSpecies(U), 'repeatedStrike') && !A.peanutAttack) {
             ASSERT(
                 INTEGER(A.peanutStrikeCount, 2, 5) &&
                     Number.isFinite(A.peanutAttackMultiplier) &&
@@ -555,7 +556,7 @@ function validateActorAttackState(actor, raw, cornActions, chestnutActions, allo
                 INTEGER(A.resolvedMask, 0, MASK) && INTEGER(A.hitMask, 0, MASK) && (A.hitMask & ~A.resolvedMask) === 0,
             );
         }
-        if (U.species === 3 && A.thornShotsRemaining !== undefined) {
+        if (kitSpecies(U) === 3 && A.thornShotsRemaining !== undefined) {
             ASSERT(
                 INTEGER(A.thornTargetGeneration, 1, 1e12) &&
                     validActorId(raw, A.thornTargetId) &&

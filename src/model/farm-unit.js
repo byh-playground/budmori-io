@@ -11,6 +11,7 @@ import {
     unitTorsoHeight,
 } from '../features/unit-body/definition.js';
 import { baseUnitStatsFor, resolveUnitStats, resolveKnockback, resolveStatusDuration } from '../units/unit-stats.js';
+import { kitSpecies } from '../units/species-catalog.js';
 
 const BODY = class Body {
     constructor(x, y) {
@@ -84,7 +85,7 @@ const ATTACKING_BODY = (baseLocal) =>
             }
             if (SOURCE && areOpposingFactions(SOURCE, this)) {
                 this.peaRecoveryPending = true;
-                if (this.species === 0) {
+                if (kitSpecies(this) === 0) {
                     this.peaCounterPending = true;
                     this.peaCounterExpiresAtTick = 0;
                 }
@@ -241,6 +242,18 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         this.ability = CREATE_UNIT_ATTACK_CYCLE(this);
         this.specialAbility = CREATE_UNIT_ATTACK_CYCLE.createSpecial(this);
     }
+    // The one writer of the growing stage. A seed fights as the plain sprout, so entering or leaving the stage
+    // swaps the attack, ability and stats it plays by; health keeps its share of the new maximum.
+    setSeedling(state) {
+        const PREVIOUS_MAX_HP = this.maxHp,
+            HEALTH_SHARE = PREVIOUS_MAX_HP > 0 ? this.hp / PREVIOUS_MAX_HP : 1;
+        this.seedling = state;
+        this.initializeActions();
+        if (this.hp > 0) {
+            this.hp = Math.min(1, HEALTH_SHARE) * this.maxHp;
+        }
+        this.notifyHealthCapacity(PREVIOUS_MAX_HP);
+    }
     attachWorld(world) {
         Object.defineProperty(this, '_world', { value: world, writable: true, configurable: true });
         for (const SIGNAL of [this.onDied, this.onRevived, this.onHealthChanged]) {
@@ -262,7 +275,7 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
     }
     setBaseStats(values) {
         const PREVIOUS_MAX_HP = this.maxHp;
-        this.statProfile = { ...(this.statProfile ?? baseUnitStatsFor(this.tier, this.species)), ...values };
+        this.statProfile = { ...(this.statProfile ?? baseUnitStatsFor(this.tier, kitSpecies(this))), ...values };
         this.notifyHealthCapacity(PREVIOUS_MAX_HP);
     }
     setStatModifiers(modifiers) {

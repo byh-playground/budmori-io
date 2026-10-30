@@ -99,11 +99,14 @@ export const SPECIES_CATALOG = Object.freeze([
     }),
 ]);
 export const SPECIES_COUNT = SPECIES_CATALOG.length;
-// Every boss is the plain sprout; the species a win pays is drawn separately.
-export const BOSS_SPECIES = 9;
-// The growing stage keeps its eventual species in the model, but wears the authored sprout art.
-export function unitArtSpecies(unit) {
-    return unit.seedling || unit.isSeedling ? 9 : unit.species;
+// The plain sprout is a unit of its own: no ability, the shared rules alone. Every boss is one; the species a win
+// pays is drawn separately.
+export const SPROUT_SPECIES = 9;
+export const BOSS_SPECIES = SPROUT_SPECIES;
+// What a unit is in play: its art, body, attack and stats. A growing seed is the plain sprout in all of them; its
+// eventual species stays in `unit.species` for the lineage, the codex and what it grows into.
+export function kitSpecies(unit) {
+    return unit?.seedling || unit?.isSeedling ? SPROUT_SPECIES : unit?.species;
 }
 export function speciesById(id) {
     return SPECIES_CATALOG.find((species) => species.id === id) || SPECIES_CATALOG[SPECIES_CATALOG.length - 1];

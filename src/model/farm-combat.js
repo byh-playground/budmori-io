@@ -2,6 +2,7 @@ import { PROJECTILE_BEHAVIORS } from './projectile-behaviors.js';
 
 import { hasFaction, FACTION_CONFIG, areOpposingFactions } from '../core/factions.js';
 import { abilityProfile } from '../units/unit-abilities.js';
+import { kitSpecies } from '../units/species-catalog.js';
 import { CREATE_UNIT_ATTACK_CYCLE } from '../units/attack-cycle.js';
 import { resolveUnitStats, applyDamageToTargets } from '../units/unit-stats.js';
 import { BarleyArmorShredModel } from '../features/abilities/barley-shred/model.js';
@@ -41,7 +42,7 @@ export const FARM_COMBAT = (base) =>
                     x: u.x,
                     y: u.y,
                     z: u.z,
-                    attackKind: cycle?.spec?.kind || abilityProfile(u.species).kind,
+                    attackKind: cycle?.spec?.kind || abilityProfile(kitSpecies(u)).kind,
                 });
                 cycle?.onLaunch?.(this, action);
             }
@@ -50,7 +51,7 @@ export const FARM_COMBAT = (base) =>
             return (u.ability || CREATE_UNIT_ATTACK_CYCLE(u)).criticalChanceBonus?.(this, hpBefore, maxHp) ?? 0;
         }
         applyGrainOnBasicHit(u, target, kind) {
-            if (!hasFaction(u, FACTION_CONFIG.PLAYER) || kind !== abilityProfile(u.species).kind) {
+            if (!hasFaction(u, FACTION_CONFIG.PLAYER) || kind !== abilityProfile(kitSpecies(u)).kind) {
                 return;
             }
             (u.ability || CREATE_UNIT_ATTACK_CYCLE(u)).onBasicHit?.(this, target);
@@ -104,7 +105,7 @@ export const FARM_COMBAT = (base) =>
             CONTEXT.hitTargets?.add(target);
             const DEFENSE = this.combatTargetDefense(target),
                 CRITICAL_BONUS =
-                    KIND === abilityProfile(SOURCE.species).kind
+                    KIND === abilityProfile(kitSpecies(SOURCE)).kind
                         ? this.riceCriticalChanceBonus(SOURCE, target.hp, DEFENSE.maxHp)
                         : 0,
                 SOURCE_STAT_OVERRIDES = {

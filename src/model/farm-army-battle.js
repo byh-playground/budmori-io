@@ -4,6 +4,7 @@ import { ARENA_GEOMETRY } from './arena-geometry.js';
 import { CONFIG } from './farm-config.js';
 import { scatterHeading } from './army-scatter.js';
 import { unitCapabilityComposition } from '../units/unit-abilities.js';
+import { kitSpecies } from '../units/species-catalog.js';
 
 export const FARM_ARMY_BATTLE = (base) =>
     class FarmArmyBattle extends base {
@@ -180,7 +181,7 @@ export const FARM_ARMY_BATTLE = (base) =>
                 TARGET_ID = enemy.id;
             // Hold the current firing bearing. Ranged troops retreat from a boss that closes in;
             // they never follow a rotating slot through its body to reach the opposite side.
-            const BEHAVIOR = unitCapabilityComposition(u.species),
+            const BEHAVIOR = unitCapabilityComposition(kitSpecies(u)),
                 STAND = B_LOCAL.radius + u.ability.attackRange(this),
                 MIN = STAND - 0.55,
                 MAX = STAND + BEHAVIOR.outerRangeSlack;
@@ -199,8 +200,8 @@ export const FARM_ARMY_BATTLE = (base) =>
             if (N > MAX || (BEHAVIOR.retreatWithinRange && N < MIN)) {
                 const SLOT = ARENA_GEOMETRY.clamp(
                     {
-                        x: B_LOCAL.x + (DX / N) * (STAND - (u.species === 4 ? 0.1 : 0)),
-                        y: B_LOCAL.y + (DY / N) * (STAND - (u.species === 4 ? 0.1 : 0)),
+                        x: B_LOCAL.x + (DX / N) * (STAND - (kitSpecies(u) === 4 ? 0.1 : 0)),
+                        y: B_LOCAL.y + (DY / N) * (STAND - (kitSpecies(u) === 4 ? 0.1 : 0)),
                     },
                     this,
                     u.radius,

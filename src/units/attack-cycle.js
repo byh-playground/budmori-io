@@ -6,6 +6,7 @@ import { chestnutRange } from '../features/species-growth/chestnut-attack.js';
 import { WheatCommandModel } from '../features/abilities/wheat-command/model.js';
 import { resolveUnitStats, scaleAttackRecovery } from './unit-stats.js';
 import { abilityProfile, unitCapabilityComposition } from './unit-abilities.js';
+import { kitSpecies } from './species-catalog.js';
 import { AttackAction } from '../features/species-growth/attack-action.js';
 import { composeUnitAttackCycles } from './unit-attack-capabilities.js';
 import { areOpposingFactions } from '../core/factions.js';
@@ -47,11 +48,11 @@ export class AttackCycle {
         this._attackSpeedMultiplier = 1;
     }
     get spec() {
-        const PROFILE = abilityProfile(this.owner.species);
+        const PROFILE = abilityProfile(kitSpecies(this.owner));
         return this.owner.patternRuntime ? bossBasicProfile(PROFILE) : PROFILE;
     }
     get composition() {
-        return unitCapabilityComposition(this.owner.species);
+        return unitCapabilityComposition(kitSpecies(this.owner));
     }
     attackSpeedMultiplier(sim) {
         return WheatCommandModel.attackSpeedMultiplier(this.owner, sim.simulationTick);
@@ -77,7 +78,7 @@ export class AttackCycle {
                 riceRange(sim, U) ??
                 barleyRange(sim, U) ??
                 wheatRange(sim, U) ??
-                this.spec.range) + (U.species === 3 ? 0 : (U.tier - 1) * 0.12);
+                this.spec.range) + (kitSpecies(U) === 3 ? 0 : (U.tier - 1) * 0.12);
         // Keep the authored surface standoff when a body profile enlarges the actor.
         return RANGE + U.attackRangeOffset;
     }

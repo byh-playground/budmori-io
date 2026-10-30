@@ -524,7 +524,7 @@ export function restoreFarmProgress(data) {
             UNIT.cooldownDuration = ROW.cooldown?.duration || 0;
             UNIT.temperament = ROW.temperament || 0;
             UNIT.genes = ROW.genes ? [...ROW.genes] : [0, 0];
-            UNIT.seedling = ROW.seedling ? { ...ROW.seedling } : null;
+            UNIT.setSeedling(ROW.seedling ? { ...ROW.seedling } : null);
             if (ROW.rest) {
                 UNIT.hp = 0;
                 UNIT.down = ROW.rest;

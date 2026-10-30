@@ -11,7 +11,7 @@ import {
 } from '../features/unit-attacks/presentation.js';
 import { unitAttackDisplayScale } from '../features/unit-attacks/presentation-geometry.js';
 import { unitBodyDefinition } from '../features/unit-body/definition.js';
-import { unitArtSpecies } from '../units/species-catalog.js';
+import { kitSpecies } from '../units/species-catalog.js';
 import { BarleyArmorShredPresentation } from '../features/abilities/barley-shred/presentation.js';
 import { ATTACK_TYPES, CONFIG, clamp } from '../model/farm-model.js';
 import { farmBreedingCooldown, unitRestPresentation } from '../ui/farm-indicators.js';
@@ -284,7 +284,7 @@ export class UnitPresentation {
         this.drawVectorUnit(u, sim, null, null, REST, true);
     }
     prepareUnitPlayer(u, sim, rest) {
-        const RECORD = this.renderer.vectorAssets.get(unitArtSpecies(u));
+        const RECORD = this.renderer.vectorAssets.get(kitSpecies(u));
         if (!RECORD) {
             throw new Error('Missing required troop vector asset for species ' + u.species);
         }
@@ -410,7 +410,7 @@ export class UnitPresentation {
         const PREPARED = this.prepareVisibleUnit(u, sim);
         const { record: RECORD, player: PLAYER, swing: SWING } = PREPARED;
         const [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox,
-            GROUND = unitBodyDefinition(unitArtSpecies(u)).ground,
+            GROUND = unitBodyDefinition(kitSpecies(u)).ground,
             SCALE = (2 * r) / Math.max(WIDTH, HEIGHT);
         const MATRIX = [SCALE, 0, 0, SCALE, p.x - GROUND.x * SCALE, p.y - GROUND.y * SCALE];
         if (!SWING && !PREPARED.rest) {
@@ -470,7 +470,7 @@ export class UnitPresentation {
                 u.y,
                 u.z + BOB,
             );
-        const BODY = unitBodyDefinition(unitArtSpecies(u)),
+        const BODY = unitBodyDefinition(kitSpecies(u)),
             R = unitAttackDisplayScale(this.renderer, u, sim.time) * Math.max(BODY.viewBox[2], BODY.viewBox[3]) * 0.5;
         this.drawVectorUnit(u, sim, P, R, rest);
         return {

@@ -7,6 +7,7 @@ import { updateWalnutPresentation } from '../features/unit-attacks/walnut/presen
 import { Garden, bindPresentationClock } from '../model/farm-model.js';
 import { elementOf } from '../model/lineage.js';
 import { unitMaxHpFor, resolveUnitStats } from '../units/unit-stats.js';
+import { kitSpecies } from '../units/species-catalog.js';
 import { PASSIVE_SETTINGS } from '../tower/tower-run.js';
 import { BarleyArmorShredModel } from '../features/abilities/barley-shred/model.js';
 import { seedlingGrowthScale } from '../features/unit-body/definition.js';
@@ -170,7 +171,7 @@ function updateUnitAttackRender(output, u, world) {
     updateBarleyPresentation(output.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
     // Enemy summons intentionally have no player progression. Keep their base
     // baton unless an active attack supplies a form; never borrow player upgrades.
-    const WHEAT_PROGRESSION = u.species === 7 ? world.abilityProgressionFor(u) : null,
+    const WHEAT_PROGRESSION = kitSpecies(u) === 7 ? world.abilityProgressionFor(u) : null,
         WHEAT_BUILD = WHEAT_PROGRESSION ? WHEAT_PROGRESSION.abilities['wheat-command-crit'] : null;
     output.ability.wheatLongBaton =
         (output.ability.wheatForm ||
