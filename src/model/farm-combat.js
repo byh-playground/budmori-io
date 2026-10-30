@@ -3,6 +3,10 @@ import { PROJECTILE_BEHAVIORS } from './projectile-behaviors.js';
 import { hasFaction, FACTION_CONFIG, areOpposingFactions } from '../core/factions.js';
 import { abilityProfile } from '../units/unit-abilities.js';
 import { kitSpecies } from '../units/species-catalog.js';
+import { BOSS_BASIC_KNOCK } from '../boss/boss-patterns.js';
+
+// What a basic hit between two units does to its target.
+const UNIT_BASIC_KNOCK = Object.freeze({ power: 5, lift: 2.4 });
 import { CREATE_UNIT_ATTACK_CYCLE } from '../units/attack-cycle.js';
 import { resolveUnitStats, applyDamageToTargets } from '../units/unit-stats.js';
 import { BarleyArmorShredModel } from '../features/abilities/barley-shred/model.js';
@@ -215,7 +219,8 @@ export const FARM_COMBAT = (base) =>
             const DX = target.x - u.x,
                 DY = target.y - u.y,
                 N = Math.hypot(DX, DY) || 1;
-            target.knock(DX / N, DY / N, 5, 2.4, u);
+            const KNOCK = this.isBoss(u) ? BOSS_BASIC_KNOCK : UNIT_BASIC_KNOCK;
+            target.knock(DX / N, DY / N, KNOCK.power, KNOCK.lift, u);
             if (target.hp === 0) {
                 target.down = target.isBattleOnlySummon ? 0 : CONFIG.unit.corpseRecoverySeconds;
                 this.handleUnitDeath(target);
