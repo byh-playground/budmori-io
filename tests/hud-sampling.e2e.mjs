@@ -208,17 +208,11 @@ try {
                 CHECK(JSON.stringify(SNAPSHOT(world)) === BEFORE, `${name}/${offset}ms sync mutated authority`);
                 CHECK(!document.getElementById('bossbar').hidden, `${name}/${offset}ms HP HUD is visible`);
                 const POPULATION = world.unitCollection.items.filter((unit) => !unit.isBattleOnlySummon).length,
-                    HAND = world.handCounts,
-                    RESERVES = [...HAND.values()].reduce((sum, count) => sum + count, 0),
-                    FRONTLINE = `전선 ${world.fieldFighterCount}/${world.frontlineLimit} · 예비대 ${RESERVES}`,
-                    EXPECTED_HAND = world.deployOrder.filter((id) => HAND.has(id)).map((id) => [id, HAND.get(id)]),
-                    ACTUAL_HAND = [...document.querySelectorAll('#handCards [data-deploy]')].map((card) => [
-                        Number(card.dataset.deploy),
-                        Number(card.querySelector('b').textContent.slice(1)),
-                    ]);
+                    RESERVE_COUNTS = world.reserveCounts,
+                    RESERVES = [...RESERVE_COUNTS.values()].reduce((sum, count) => sum + count, 0),
+                    FRONTLINE = `전선 ${world.fieldFighterCount}/${world.frontlineLimit} · 예비대 ${RESERVES}`;
                 CHECK(document.getElementById('count').textContent === String(POPULATION), `${name} population`);
                 CHECK(document.getElementById('frontlineStatus').textContent === FRONTLINE, `${name} frontline`);
-                CHECK(JSON.stringify(ACTUAL_HAND) === JSON.stringify(EXPECTED_HAND), `${name} hand cards`);
                 return {
                     offsetMs: offset,
                     health: HEALTH,

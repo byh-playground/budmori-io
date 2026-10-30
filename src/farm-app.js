@@ -57,7 +57,6 @@ let menuAutoPaused = false;
 let cameraGesture = null;
 const CAMERA_POINTERS = new Map();
 let suppressCanvasClick = false;
-let handKey = '';
 let farmPanelRevision = -1;
 let bossRewardRevealTimer = null;
 let bossRewardCalculationTimer = null;
@@ -1737,7 +1736,7 @@ function ownedCounts(garden) {
     }
     return COUNTS;
 }
-// In a fight: the species still waiting, front first.
+// In a fight: how many fight on the field and how many wait; the deploy itself is automatic.
 const BATTLE_COMMAND_NOTES = Object.freeze({
     engage: '사거리까지 접근해 공격해요',
     scatter: '간격을 넓히며 공격해요',
@@ -1754,25 +1753,6 @@ function syncBattleCommands(garden, visible, counts) {
         INPUT.checked = INPUT.value === garden.battleCommand;
     }
 }
-function syncHand(garden, visible, counts) {
-    const COUNTS = counts?.hand,
-        IDS = visible ? garden.deployOrder.filter((id) => COUNTS.has(id)) : [],
-        KEY = IDS.map((id) => `${id}x${COUNTS.get(id)}`).join(',');
-    syncFlag('hand', 'hidden', !visible || IDS.length < 2);
-    if (KEY !== handKey) {
-        handKey = KEY;
-        DOLLAR('handCards').innerHTML = IDS.map((id, slot) => deckCardHtml(id, COUNTS.get(id), slot + 1)).join('');
-    }
-}
-DOLLAR('handCards').addEventListener('click', (e) => {
-    const BUTTON = e.target.closest('[data-deploy]');
-    if (BUTTON) {
-        const FIRST = Number(BUTTON.dataset.deploy),
-            ORDER = [FIRST, ...personalGarden.deployOrder.filter((id) => id !== FIRST)];
-        saveDeployOrder(ORDER);
-        active.queue('deploy-order', { order: ORDER });
-    }
-});
 function canUseWorldInput() {
     return !home && !menuOpen && !active.paused;
 }
@@ -2094,7 +2074,6 @@ function sync(display, now, notices) {
         !FARM_EVENT_ACTIVE || home || FARM_EVENT.phase === 'marching' || W.tower.phase === 'summit',
     );
     syncBattleCommands(W, BATTLE_VISIBLE, BATTLE_COUNTS);
-    syncHand(W, BATTLE_VISIBLE, BATTLE_COUNTS);
     syncText('count', WORLD_COUNT);
     syncText('capacity', personalGarden?.capacity ?? CONFIG.farm.capacity.max);
     const PROGRESSION = (personalGarden || W).playerProgression,

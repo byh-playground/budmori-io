@@ -310,24 +310,12 @@ await check('challenge button starts a boss fight and retreat ends it', async ()
     });
     const FIGHTING = await WORLD(() => BUDMORI.sim.farmBossEvent.phase);
     expect(FIGHTING !== 'idle', `fight did not start (${FIGHTING})`);
-    const HAND = await WORLD(() => ({
-        cards: document.querySelectorAll('#hand [data-deploy]').length,
-        hidden: document.getElementById('hand').hidden,
-        waiting: BUDMORI.sim.handCounts.size,
+    const WAITING = await WORLD(() => ({
+        waiting: BUDMORI.sim.reserveCounts.size,
         field: BUDMORI.sim.fieldFighterCount,
+        status: document.getElementById('frontlineStatus').textContent,
     }));
-    expect(!HAND.hidden && HAND.cards > 0, `deploy order not shown (${JSON.stringify(HAND)})`);
-    // Change priority while reserves still exist. The 1.5 s automatic deployment
-    // can empty the hand before a later UI action, which is an expected state.
-    const FIRST = await WORLD(() => {
-        const BUTTONS = [...document.querySelectorAll('#hand [data-deploy]')],
-            LAST = BUTTONS[BUTTONS.length - 1];
-        LAST.click();
-        return Number(LAST.dataset.deploy);
-    });
-    await PAGE.waitForTimeout(400);
-    const ORDER = await WORLD(() => BUDMORI.sim.deployOrder[0]);
-    expect(ORDER === FIRST, `tapped card did not move to the front (${ORDER} vs ${FIRST})`);
+    expect(WAITING.status.includes('예비대'), `frontline status not shown (${JSON.stringify(WAITING)})`);
     // Nobody is placed by hand: the whole army walks in on its own from around the hall.
     await PAGE.waitForTimeout(2500);
     const AUTO = await WORLD(() => {
@@ -335,7 +323,7 @@ await check('challenge button starts a boss fight and retreat ends it', async ()
             FIELD = W.units.filter((u) => u.faction === 'player' && !u.isBattleOnlySummon);
         return {
             field: W.fieldFighterCount,
-            waiting: [...W.handCounts.values()].reduce((a, b) => a + b, 0),
+            waiting: [...W.reserveCounts.values()].reduce((a, b) => a + b, 0),
             sides: new Set(FIELD.map((u) => Math.sign(Math.round(u.x)) + ':' + Math.sign(Math.round(u.y)))).size,
         };
     });
@@ -406,7 +394,7 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
     const CLEAR_FLOOR = () =>
         WORLD(() => {
             const W = BUDMORI.sim;
-            W.deployUnit([...W.handCounts.keys()][0], 0, 0);
+            W.deployUnit([...W.reserveCounts.keys()][0], 0, 0);
             const FALLEN = W.units.find((u) => !u.isBattleOnlySummon && u.hp > 0);
             if (FALLEN) {
                 FALLEN.hp = 0;
