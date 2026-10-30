@@ -186,6 +186,12 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
         landingRadius: 4.8,
     }),
 });
+// The boss's basic attack throws its target as far as the arm sweep does, so a plain swing feels as heavy as a special.
+// It follows the sweep's numbers instead of keeping its own, so tuning the sweep tunes the swing too.
+export const BOSS_BASIC_KNOCK = Object.freeze({
+    power: BOSS_PATTERN_CONFIG['attack.fan-sweep'].knockback,
+    lift: BOSS_PATTERN_CONFIG['attack.fan-sweep'].lift,
+});
 const BOSS_PATTERN_WEIGHT_DEFAULTS = Object.freeze({
     base: 1,
     eligibleBonus: 0.5,
