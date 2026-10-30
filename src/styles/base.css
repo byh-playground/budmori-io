@@ -1088,11 +1088,11 @@ body:has(#floorChip:not([hidden])) #gameplayDock .utility {
     max-height: min(640px, 92dvh);
     overflow: hidden;
 }
-.codex-tabs {
+.pill-tabs {
     display: flex;
     gap: var(--ui-s2);
 }
-.codex-tabs button {
+.pill-tabs button {
     flex: 1 1 0;
     min-height: 44px;
     border: var(--ui-bw) solid var(--ui-line);
@@ -1100,7 +1100,7 @@ body:has(#floorChip:not([hidden])) #gameplayDock .utility {
     background: transparent;
     color: inherit;
 }
-.codex-tabs button[aria-selected='true'] {
+.pill-tabs button[aria-selected='true'] {
     background: var(--ui-primary);
     border-color: var(--ui-primary);
     color: var(--ui-primary-ink);

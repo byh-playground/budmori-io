@@ -733,7 +733,7 @@ await check('progress survives a reload', async () => {
 await check('help cards play the real game in an isolated frame and leave the save alone', async () => {
     const BEFORE = await WORLD(() => JSON.stringify(Object.entries(localStorage).sort()));
     await PAGE.locator('#helpMenu').click();
-    await PAGE.locator('#helpNext').click();
+    await PAGE.locator('#helpTabs button').nth(1).click();
     await PAGE.waitForFunction(
         () => document.getElementById('helpCaption').textContent.includes('한 등급 위가 됐어요'),
         null,
@@ -741,9 +741,9 @@ await check('help cards play the real game in an isolated frame and leave the sa
     );
     const FRAME = await WORLD(() => {
         const SNAP = document.querySelector('#helpDemo iframe').contentWindow.__budmoriHelp.snapshot();
-        return { step: SNAP.step, dots: document.querySelectorAll('#helpDots button').length };
+        return { step: SNAP.step, tabs: document.querySelectorAll('#helpTabs button').length };
     });
-    expect(FRAME.step === 'done' && FRAME.dots === 3, `help card state ${JSON.stringify(FRAME)}`);
+    expect(FRAME.step === 'done' && FRAME.tabs === 3, `help card state ${JSON.stringify(FRAME)}`);
     await PAGE.locator('#gameMenuClose').click();
     expect((await PAGE.locator('#helpDemo iframe').count()) === 0, 'the help frame stays mounted after the tab closes');
     const AFTER = await WORLD(() => JSON.stringify(Object.entries(localStorage).sort()));

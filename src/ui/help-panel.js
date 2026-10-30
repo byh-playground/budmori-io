@@ -1,10 +1,12 @@
 import { HELP_SCENES } from './help-scenes.js';
 
-// The help tab: one card per scene. A card is the real game in a frame (?help=<card>), so it is mounted only
+// The help tab: one pill tab per scene. A card is the real game in a frame (?help=<card>), so it is mounted only
 // while the tab is visible and thrown away when it is not. The caption follows the frame's authoritative state.
 const LOAD_TIMEOUT_MS = 15000;
-// The card never takes more than this share of the window height, so the caption and buttons stay on screen.
+// Beside the points the card never takes more than this share of the window height.
 const MAX_HEIGHT_SHARE = 0.5;
+// Never squeeze a stacked card below this height, even when the text under it needs the room.
+const MIN_STACKED_HEIGHT = 160;
 // A finished card rests this long on its last frame, then plays again by itself.
 const LOOP_PAUSE_MS = 1500;
 
@@ -18,12 +20,10 @@ function readSnapshot(frame) {
 
 export function createHelpPanel(dollar) {
     const DEMO = dollar('helpDemo'),
+        STAGE = DEMO.parentElement,
         CAPTION = dollar('helpCaption'),
-        TITLE = dollar('helpTitle'),
-        RULE = dollar('helpRule'),
-        DOTS = dollar('helpDots'),
-        PREV = dollar('helpPrev'),
-        NEXT = dollar('helpNext');
+        POINTS = dollar('helpPoints'),
+        TABS = dollar('helpTabs');
     let index = 0,
         frame = null,
         watch = 0,
@@ -69,11 +69,20 @@ export function createHelpPanel(dollar) {
     // The frame is the real game at the real window size, scaled down to fit the card: every proportion
     // (UI against the field, text against the boss) is what the player sees in play.
     function fit() {
-        const PANEL = dollar('helpPanel'),
-            WIDTH = window.innerWidth,
+        const WIDTH = window.innerWidth,
             HEIGHT = window.innerHeight,
-            AVAILABLE_WIDTH = Math.max(120, PANEL.clientWidth - 2 * parseFloat(getComputedStyle(PANEL).paddingLeft)),
-            SCALE = Math.min(1, AVAILABLE_WIDTH / WIDTH, (HEIGHT * MAX_HEIGHT_SHARE) / HEIGHT);
+            AVAILABLE_WIDTH = Math.max(120, STAGE.clientWidth),
+            PANEL = dollar('helpPanel'),
+            // Stacked (the points sit under the card): the card gets what the rest of the panel leaves free.
+            STACKED = POINTS.offsetLeft <= STAGE.offsetLeft,
+            CONTENT_BOTTOM =
+                POINTS.getBoundingClientRect().bottom -
+                PANEL.getBoundingClientRect().top +
+                PANEL.scrollTop +
+                parseFloat(getComputedStyle(PANEL).paddingBottom),
+            ROOM = PANEL.clientHeight - (CONTENT_BOTTOM - DEMO.offsetHeight),
+            AVAILABLE_HEIGHT = STACKED ? Math.max(MIN_STACKED_HEIGHT, ROOM) : HEIGHT * MAX_HEIGHT_SHARE,
+            SCALE = Math.min(1, AVAILABLE_WIDTH / WIDTH, AVAILABLE_HEIGHT / HEIGHT);
         DEMO.style.width = `${Math.round(WIDTH * SCALE)}px`;
         DEMO.style.height = `${Math.round(HEIGHT * SCALE)}px`;
         if (frame) {
@@ -88,7 +97,7 @@ export function createHelpPanel(dollar) {
             return;
         }
         const SCENE = HELP_SCENES[index];
-        CAPTION.textContent = '불러오는 중이에요';
+        CAPTION.textContent = '';
         endedAt = 0;
         startedAt = performance.now();
         frame = document.createElement('iframe');
@@ -103,12 +112,15 @@ export function createHelpPanel(dollar) {
     }
     function paintCard() {
         const SCENE = HELP_SCENES[index];
-        TITLE.textContent = `${index + 1}/${HELP_SCENES.length} · ${SCENE.title}`;
-        RULE.textContent = SCENE.rule;
-        PREV.disabled = index === 0;
-        NEXT.disabled = index === HELP_SCENES.length - 1;
-        for (const DOT of DOTS.children) {
-            DOT.setAttribute('aria-current', String(Number(DOT.dataset.card) === index));
+        POINTS.replaceChildren(
+            ...SCENE.points.map((text) => {
+                const POINT = document.createElement('li');
+                POINT.textContent = text;
+                return POINT;
+            }),
+        );
+        for (const TAB of TABS.children) {
+            TAB.setAttribute('aria-selected', String(Number(TAB.dataset.card) === index));
         }
     }
     function show(next) {
@@ -116,22 +128,21 @@ export function createHelpPanel(dollar) {
         paintCard();
         mount();
     }
-    DOTS.replaceChildren(
+    TABS.replaceChildren(
         ...HELP_SCENES.map((scene, cardIndex) => {
-            const DOT = document.createElement('button');
-            DOT.type = 'button';
-            DOT.dataset.card = String(cardIndex);
-            DOT.setAttribute('aria-label', scene.title);
-            DOT.onclick = () => show(cardIndex);
-            return DOT;
+            const TAB = document.createElement('button');
+            TAB.type = 'button';
+            TAB.role = 'tab';
+            TAB.dataset.card = String(cardIndex);
+            TAB.textContent = scene.title;
+            TAB.onclick = () => show(cardIndex);
+            return TAB;
         }),
     );
-    PREV.onclick = () => show(index - 1);
-    NEXT.onclick = () => show(index + 1);
     // The tab can open straight onto this card while its panel is still laid out at zero width, so the card
     // is fitted whenever the panel itself changes size, not only when the window does.
     window.addEventListener('resize', () => visible && fit());
-    new ResizeObserver(() => visible && fit()).observe(dollar('helpPanel'));
+    new ResizeObserver(() => visible && fit()).observe(STAGE);
     paintCard();
     return {
         setVisible(value) {
