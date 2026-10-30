@@ -113,9 +113,9 @@ try {
         await PAGE.screenshot({ path: path.join(OUTPUT, MOBILE ? 'farm-mobile.png' : 'farm-desktop.png') });
         await PAGE.locator('#codexOpen').click();
         await PAGE.locator('#codexTabs [data-tab="colors"]').click();
-        assert.equal(await PAGE.locator('#codexBody .codex-icon:not(.is-unknown)').count(), 50);
+        assert.equal(await PAGE.locator('#codexBody .codex-icon:not(.is-unknown)').count(), 45);
         assert.equal(await PAGE.locator('#codexBody .face-overlay').count(), 0, 'No duplicate face overlay');
-        assert.equal(await PAGE.locator('#codexBody .codex-icon[src^="data:image/svg+xml"]').count(), 50);
+        assert.equal(await PAGE.locator('#codexBody .codex-icon[src^="data:image/svg+xml"]').count(), 45);
         await PAGE.screenshot({ path: path.join(OUTPUT, MOBILE ? 'codex-mobile.png' : 'codex-desktop.png') });
         await PAGE.locator('#codexClose').click();
         const COST = await PAGE.evaluate(() => {

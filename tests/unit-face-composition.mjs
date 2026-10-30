@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 import { speciesById, SPECIES_COUNT } from '../src/units/species-catalog.js';
+
+// Every species and the sprout carry a face.
+const FACE_SPECIES = Array.from({ length: SPECIES_COUNT + 1 }, (_, id) => id);
 import { FACE_IDS, STATE_FACES, TEMPERAMENT_FACES, buildFace } from '../src/units/face-layer.js';
 import { elementCheekColor, unitLook } from '../src/units/species-face.js';
 import { speciesPortraitSource } from '../src/units/species-paint.js';
@@ -10,7 +13,7 @@ import { TEMPERAMENTS } from '../src/model/lineage.js';
 globalThis.DOMParser = DOMParser;
 globalThis.XMLSerializer = XMLSerializer;
 const SOURCES = Object.fromEntries(
-    Array.from({ length: SPECIES_COUNT }, (_, species) => [
+    FACE_SPECIES.map((species) => [
         species,
         fs.readFileSync(new URL('../assets/troops/' + speciesById(species).asset, import.meta.url), 'utf8'),
     ]),
@@ -18,8 +21,8 @@ const SOURCES = Object.fromEntries(
 globalThis.BudmoriVectorResources = { sources: SOURCES };
 
 // Bodies carry no face art: three anchor sockets are the only face resource of a species.
-for (let species = 0; species < SPECIES_COUNT; species++) {
-    const SOURCE = new DOMParser().parseFromString(SOURCES[species], 'image/svg+xml').documentElement,
+for (const SPECIES of FACE_SPECIES) {
+    const SOURCE = new DOMParser().parseFromString(SOURCES[SPECIES], 'image/svg+xml').documentElement,
         METADATA = JSON.parse(SOURCE.getElementsByTagName('metadata')[0].textContent),
         IDS = new Set([...SOURCE.getElementsByTagName('*')].map((node) => node.getAttribute('id'))),
         PARTS = new Set(METADATA.parts.map((part) => part.id)),
@@ -57,7 +60,7 @@ for (let species = 0; species < SPECIES_COUNT; species++) {
     assert.ok(SOCKETS[2][1] > SOCKETS[0][1], 'Mouth lies below the eyes');
     assert.equal(METADATA.sockets.mouth.part, 'body', 'Attack mouth socket follows the body');
 
-    // One rule builds every face for every species; all of them are finite, drawn on the body and distinct.
+    // One rule builds every face for every SPECIES; all of them are finite, drawn on the body and distinct.
     const ANCHOR = { eyeLeft: SOCKETS[0], eyeRight: SOCKETS[1], mouth: SOCKETS[2] },
         GAP = SOCKETS[1][0] - SOCKETS[0][0],
         SEEN = new Set();
@@ -79,7 +82,7 @@ for (let species = 0; species < SPECIES_COUNT; species++) {
         }
         SEEN.add(JSON.stringify(OPS));
     }
-    assert.equal(SEEN.size, FACE_IDS.length, 'All faces differ in every species');
+    assert.equal(SEEN.size, FACE_IDS.length, 'All faces differ in every SPECIES');
     assert.notDeepEqual(buildFace('neutral', ANCHOR, null), buildFace('neutral', ANCHOR, '#4a9de0'), 'Cheek colour');
 }
 
@@ -101,11 +104,11 @@ assert.deepEqual(
 );
 
 // Portraits are the body plus the same face; cheeks take the element colour; the cache is finite.
-for (let species = 0; species < SPECIES_COUNT; species++) {
-    const BODY = new DOMParser().parseFromString(SOURCES[species], 'image/svg+xml').documentElement,
+for (const SPECIES of FACE_SPECIES) {
+    const BODY = new DOMParser().parseFromString(SOURCES[SPECIES], 'image/svg+xml').documentElement,
         BODY_COUNT = BODY.getElementsByTagName('*').length;
     for (let temperament = 0; temperament < TEMPERAMENTS.length; temperament++) {
-        const URI = speciesPortraitSource(species, 1, temperament),
+        const URI = speciesPortraitSource(SPECIES, 1, temperament),
             PORTRAIT = new DOMParser().parseFromString(
                 decodeURIComponent(URI.split(',').slice(1).join(',')),
                 'image/svg+xml',
@@ -114,7 +117,7 @@ for (let species = 0; species < SPECIES_COUNT; species++) {
         assert.equal(LAYER.length, 1, 'One face layer over the body');
         assert.ok(PORTRAIT.getElementsByTagName('*').length > BODY_COUNT, 'Face is added to the body');
         assert.ok(URI.includes(encodeURIComponent(elementCheekColor(1))), 'Cheeks use the element colour');
-        assert.equal(speciesPortraitSource(species, 1, temperament), URI, 'Finite portrait cache');
+        assert.equal(speciesPortraitSource(SPECIES, 1, temperament), URI, 'Finite portrait cache');
     }
 }
 assert.equal(elementCheekColor(0), null);
@@ -127,8 +130,8 @@ for (const FILE of ['src/render/farm-render-units.js', 'src/ui/codex-dialog.js']
 }
 console.log(
     'Face layer passed: ' +
-        SPECIES_COUNT +
-        ' species x ' +
+        FACE_SPECIES.length +
+        ' species (nine plus the sprout) x ' +
         FACE_IDS.length +
         ' faces from three body sockets; state priority/portraits/cheek colour preserved',
 );

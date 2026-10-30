@@ -301,8 +301,9 @@ function validateActorAttackState(actor, raw, cornActions, chestnutActions, allo
             validBarleyArmorShredBuckets(U.barleyArmorShredBuckets, raw.simulationTick, allowLegacyBarleyShred),
     );
     ASSERT(
+        // A boss is the sprout, which sits just after the last species.
         (!U.seedling
-            ? INTEGER(U.species, 0, CONFIG.unit.speciesCount - 1)
+            ? INTEGER(U.species, 0, CONFIG.unit.speciesCount)
             : U.species === null && INTEGER(U.seedling?.heritage, 0, CONFIG.unit.speciesCount - 1)) &&
             INTEGER(U.tier, 1, CONFIG.unit.maxTier) &&
             ['idle', 'windup', 'active', 'recover'].includes(U.ability.phase) &&
@@ -1597,7 +1598,7 @@ function validateTowerCheckpoint(raw) {
                 (entry) =>
                     entry &&
                     Object.keys(entry).length === 4 &&
-                    INTEGER(entry.species, 0, CONFIG.unit.speciesCount - 1) &&
+                    INTEGER(entry.species, 0, CONFIG.unit.speciesCount) &&
                     Number.isFinite(entry.hpShare) &&
                     entry.hpShare > 0 &&
                     entry.hpShare <= 1 &&
@@ -1648,7 +1649,7 @@ function validateBoss(boss, raw) {
             INTEGER(boss.generation, 1, 1e12) &&
             boss.hp >= 0 &&
             boss.hp <= boss.maxHp &&
-            INTEGER(boss.species, 0, CONFIG.unit.speciesCount - 1) &&
+            INTEGER(boss.species, 0, CONFIG.unit.speciesCount) &&
             boss.maxHp > 0 &&
             INTEGER(boss.stage, 0, BOSS_REWARD_SETTINGS.maxStage) &&
             Number.isFinite(boss.attackPower) &&
