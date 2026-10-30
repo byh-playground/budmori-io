@@ -340,16 +340,6 @@
     place-content: center;
     min-height: 42px;
     padding: 8px 12px;
-    border: 2px solid var(--ui-line);
-    border-radius: var(--ui-r-m);
-    background: var(--ui-panel);
-    color: var(--ui-ink);
-    font-weight: var(--ui-fw-b);
-}
-.battle-commands input:checked + span {
-    border-color: var(--ui-primary);
-    background: var(--ui-primary);
-    color: var(--ui-primary-ink);
 }
 .battle-commands input:focus-visible + span {
     outline: 3px solid var(--ui-focus);
@@ -577,4 +567,36 @@ body:has(#towerSummit:not([hidden])) #battleOutcome {
     margin: 0;
     pointer-events: none;
     transform-origin: 50% 50%;
+}
+
+/* 좁은 세로 화면: 전투 하단은 상태 한 줄, 명령 한 줄, 작은 출전 칩 한 줄로 줄인다. 명령 설명은 버튼 이름으로 충분해 두지 않는다. */
+@media (max-width: 700px) and (min-height: 551px) {
+    #gameplayDock:has(#battleCommands:not([hidden])) {
+        gap: 6px;
+        padding-top: 4px;
+    }
+    #gameplayDock:has(#battleCommands:not([hidden])) #battleCommandNote {
+        display: none;
+    }
+    #gameplayDock:has(#battleCommands:not([hidden])) .hand__cards {
+        gap: 4px;
+    }
+    #gameplayDock:has(#battleCommands:not([hidden])) .hand .deck-card {
+        display: flex;
+        align-items: center;
+        min-height: 36px;
+        padding: 2px 6px;
+        gap: 3px;
+        font-size: 12px;
+    }
+    #gameplayDock:has(#battleCommands:not([hidden])) .hand .deck-card img {
+        width: 20px;
+        height: 20px;
+    }
+    #gameplayDock:has(#battleCommands:not([hidden])) .hand .deck-card i {
+        position: static;
+        min-width: 15px;
+        line-height: 15px;
+        font-size: 10px;
+    }
 }

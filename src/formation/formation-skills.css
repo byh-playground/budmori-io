@@ -415,7 +415,10 @@
     .formation-slot .formation-status {
         display: none;
     }
+    .bossbar .formation-slot .formation-acquired,
     .formation-slot .formation-acquired {
+        white-space: nowrap;
+        overflow-wrap: normal;
         position: absolute;
         top: calc(var(--ui-s2) * -1 - 2px);
         left: 0;

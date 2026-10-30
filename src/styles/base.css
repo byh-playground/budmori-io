@@ -308,7 +308,6 @@ body > header {
 .hand .deck-card {
     min-width: 44px;
     padding: 3px 6px;
-    background: var(--ui-panel);
 }
 .hand .deck-card img {
     width: 24px;
@@ -516,29 +515,43 @@ body > header {
     font-size: var(--ui-fs-3);
     white-space: nowrap;
 }
-/* 농장 행동 단추: 합성·조합·도감은 밝은 면, 탑 오르기만 진한 면으로 두어 가장 중요한 행동이 눈에 띄게 한다. */
-.controls button {
+/* 하단 행동 단추의 문법: 합성·조합·도감처럼 밝은 면과 한 단 깊이, 가장 중요한 행동(탑 오르기)이나 현재 선택(전투 명령)만 진한 면.
+   농장 단추, 전투 명령, 출전 칩이 한 규칙을 쓴다. */
+.controls button,
+.battle-commands label span,
+.hand .deck-card {
     font-weight: var(--ui-fw-b);
     border-radius: var(--ui-r-m);
     transition:
         transform 0.08s ease,
         box-shadow 0.08s ease;
 }
-.controls .btn--secondary {
+.controls .btn--secondary,
+.battle-commands label span,
+.hand .deck-card {
     background: rgb(248 250 239 / 0.95);
     border: var(--ui-bw) solid var(--ui-line);
     color: var(--ui-ink);
     box-shadow: 0 3px 0 var(--ui-line);
 }
-.controls .btn--primary {
+.controls .btn--primary,
+.battle-commands input:checked + span {
     box-shadow: 0 3px 0 #364a38;
 }
-.controls button:active:not(:disabled) {
+.battle-commands input:checked + span {
+    background: var(--ui-primary);
+    border-color: transparent;
+    color: var(--ui-primary-ink);
+}
+.controls button:active:not(:disabled),
+.battle-commands input:active + span,
+.hand .deck-card:active {
     transform: translateY(2px);
     box-shadow: 0 1px 0 var(--ui-line);
     filter: none;
 }
-.controls .btn--primary:active:not(:disabled) {
+.controls .btn--primary:active:not(:disabled),
+.battle-commands input:checked:active + span {
     box-shadow: 0 1px 0 #364a38;
 }
 .controls button:disabled {
