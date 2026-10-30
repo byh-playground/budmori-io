@@ -1227,10 +1227,27 @@ body:has(#floorChip:not([hidden])) #gameplayDock .utility {
     text-align: right;
 }
 
-/* 스크롤바: 얇은 막대 하나로 모든 스크롤 영역을 통일한다 */
-* {
-    scrollbar-width: thin;
-    scrollbar-color: var(--ui-scroll) transparent;
+/* 스크롤바: 화살표 없는 얇은 둥근 막대 하나로 모든 스크롤 영역을 통일한다 */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    border-radius: var(--ui-r-pill);
+    background: var(--ui-scroll);
+}
+::-webkit-scrollbar-button {
+    display: none;
+}
+@supports not selector(::-webkit-scrollbar) {
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--ui-scroll) transparent;
+    }
 }
 /* 닫기 버튼: 모든 대화상자와 설정 창이 같은 둥근 단추를 쓴다 */
 .dialog-close {
