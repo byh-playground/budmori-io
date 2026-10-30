@@ -47,14 +47,6 @@
     color: #71806b;
     font-size: 11px;
 }
-#bossRewardClose {
-    min-width: 40px;
-    min-height: 40px;
-    border-radius: 50%;
-    background: #e6ecdf;
-    color: #405847;
-    font-size: 24px;
-}
 #bossRewardSummary,
 #bossRewardTotals {
     margin: 0;

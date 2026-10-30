@@ -204,7 +204,6 @@
     max-height: calc(100dvh - var(--ui-nav-h) - var(--ui-safe-bottom) - var(--ui-s3) * 2);
     overflow-y: auto;
     overscroll-behavior: contain;
-    scrollbar-width: thin;
 }
 .doors[data-owner='boss'] .door {
     transition:
