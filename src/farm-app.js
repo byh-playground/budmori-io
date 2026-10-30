@@ -63,6 +63,12 @@ let bossRewardRevealTimer = null;
 let bossRewardCalculationTimer = null;
 let bossRewardDialogReceiptKey = null;
 let bossRewardAnimationSerial = 0;
+let bossRewardAutoCloseTimer = null;
+// Once every box is open the dialog holds the result for a moment and then closes by itself.
+const BOSS_REWARD_AUTO_CLOSE_MS = 1400;
+// The boss card draw is presented (eaten) only once the reward dialog is gone; this is the moment it began.
+let presentedDraw = null;
+let presentedDrawStart = 0;
 let bossRewardPortraitReceiptKey = '';
 const BOSS_REWARD_CYCLE_TIMERS = new Set();
 const AUTO_OPENED_BOSS_REWARDS = new Set();
@@ -253,6 +259,7 @@ function revealBossRewardBatch() {
         clearInterval(bossRewardRevealTimer);
         bossRewardRevealTimer = null;
         renderBossRewardBoxes(RECEIPT);
+        scheduleBossRewardAutoClose();
         return;
     }
     SCENE.classList.remove('is-compressing', 'is-lid-open', 'is-reward', 'is-empty');
@@ -303,11 +310,22 @@ function revealBossRewardBatch() {
                 clearInterval(bossRewardRevealTimer);
                 bossRewardRevealTimer = null;
                 renderBossRewardBoxes(RECEIPT);
+                scheduleBossRewardAutoClose();
             }
         },
         500,
         SERIAL,
     );
+}
+function scheduleBossRewardAutoClose() {
+    clearTimeout(bossRewardAutoCloseTimer);
+    const KEY = bossRewardDialogReceiptKey;
+    bossRewardAutoCloseTimer = setTimeout(() => {
+        bossRewardAutoCloseTimer = null;
+        if (bossRewardDialogReceiptKey === KEY) {
+            closeBossRewardDialog();
+        }
+    }, BOSS_REWARD_AUTO_CLOSE_MS);
 }
 function stopBossRewardCalculation() {
     clearInterval(bossRewardCalculationTimer);
@@ -318,6 +336,8 @@ function showBossRewardDialog(receipt, { auto = false } = {}) {
         return;
     }
     const DIALOG = DOLLAR('bossRewardDialog');
+    clearTimeout(bossRewardAutoCloseTimer);
+    bossRewardAutoCloseTimer = null;
     clearInterval(bossRewardRevealTimer);
     bossRewardRevealTimer = null;
     cancelBossRewardCycle();
@@ -338,6 +358,8 @@ function showBossRewardDialog(receipt, { auto = false } = {}) {
         receipt.revealedCount < receipt.boxCount
     ) {
         bossRewardRevealTimer = setInterval(revealBossRewardBatch, 500);
+    } else if (receipt.status === 'ready' && receipt.revealedCount >= receipt.boxCount) {
+        scheduleBossRewardAutoClose();
     }
 }
 function syncBossRewardDialog(world, { receiptKey = null } = {}) {
@@ -384,6 +406,8 @@ function closeBossRewardDialog() {
     }
     DOLLAR('bossRewardDialog').hidden = true;
     DOLLAR('bossRewardOpen').hidden = true;
+    clearTimeout(bossRewardAutoCloseTimer);
+    bossRewardAutoCloseTimer = null;
     clearInterval(bossRewardRevealTimer);
     bossRewardRevealTimer = null;
     cancelBossRewardCycle();
@@ -415,6 +439,7 @@ function attachBossRewardHandlers() {
         cancelBossRewardCycle();
         openAllBossRewardBoxes(WORLD, RECEIPT.receiptKey);
         renderBossRewardBoxes(RECEIPT);
+        scheduleBossRewardAutoClose();
     });
 }
 attachBossRewardHandlers();
@@ -1548,7 +1573,27 @@ function syncTower(garden, home, event) {
     if (NEXT_BANNER !== '' || !CLIMBING) {
         bannerKey = NEXT_BANNER;
     }
-    const DRAW = T.bossCardDraw,
+    // The reward dialog comes first: the card panel and the boss's eating wait until it has closed.
+    const PENDING_REWARD = latestBossReward(garden),
+        REWARD_OPEN =
+            !DOLLAR('bossRewardDialog').hidden ||
+            (!!PENDING_REWARD &&
+                (PENDING_REWARD.status === 'calculating' || PENDING_REWARD.revealedCount < PENDING_REWARD.boxCount)),
+        RAW_DRAW = T.bossCardDraw;
+    if (RAW_DRAW && RAW_DRAW !== presentedDraw && CLIMBING && !REWARD_OPEN) {
+        presentedDraw = RAW_DRAW;
+        presentedDrawStart = garden.time;
+    }
+    const DRAW =
+            RAW_DRAW && RAW_DRAW === presentedDraw
+                ? {
+                      ...RAW_DRAW,
+                      startedAt: presentedDrawStart,
+                      until: presentedDrawStart + (RAW_DRAW.until - RAW_DRAW.startedAt),
+                  }
+                : RAW_DRAW && !CLIMBING
+                  ? RAW_DRAW
+                  : null,
         DRAW_LOCKED = CLIMBING && garden.time < (DRAW?.until || 0),
         // The boss's card stays on screen, taken, while the player picks from the rest of the same three.
         SHARED =
@@ -1559,7 +1604,7 @@ function syncTower(garden, home, event) {
             T.doors.every((door) => door.type !== 'fight' && door.type !== 'event'),
         BOSS_CHOICE = DRAW_LOCKED && Array.isArray(DRAW.offers),
         PHASE = BOSS_CHOICE ? cardChoicePhase(DRAW, garden.time) : SHARED ? 'outcome' : '',
-        DOORS = CLIMBING && event?.phase === 'idle' && (T.doors.length > 0 || BOSS_CHOICE);
+        DOORS = CLIMBING && !REWARD_OPEN && event?.phase === 'idle' && (T.doors.length > 0 || BOSS_CHOICE);
     syncFlag('towerDoors', 'hidden', !DOORS);
     if (DOORS) {
         const KEY = `${JSON.stringify(T.doors)}|${T.floor}|${SLEEPERS}|${T.cards.length}|${T.relics.size}|${DRAW?.serial || 0}|${BOSS_CHOICE}|${SHARED}|${PHASE}`;
