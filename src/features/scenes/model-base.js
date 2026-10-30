@@ -45,6 +45,8 @@ export class SimulationScene {
             world.metrics.landings++;
             this.landUnit(world, unit);
         }
+        // A resting body stays inside the arena like a living one, so a fall pushed past the fence is held at it.
+        world.boundBody(unit, world.scene, unit.radius);
         world.updateUnitSpatial(unit);
     }
     separateBossUnits(world, units) {
