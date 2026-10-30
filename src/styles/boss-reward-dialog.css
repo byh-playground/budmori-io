@@ -214,11 +214,6 @@ path.cr-line {
     font-size: 14px;
     font-weight: 850;
 }
-#bossRewardClose {
-    min-width: 44px;
-    min-height: 44px;
-    margin-left: 0;
-}
 @keyframes boss-reward-compress {
     0% {
         transform: scale(1) rotate(0);

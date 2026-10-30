@@ -36,19 +36,6 @@
     margin: 0;
     font-size: var(--ui-fs-4);
 }
-#gameMenuClose {
-    width: var(--ui-tap);
-    height: var(--ui-tap);
-    min-height: var(--ui-tap);
-    padding: 0;
-    border-radius: 50%;
-    background: var(--ui-neutral);
-    border: var(--ui-bw) solid var(--ui-line);
-    color: var(--ui-ink);
-    font-size: var(--ui-fs-4);
-    line-height: 1;
-}
-#gameMenuClose:focus-visible,
 .game-menu__setting button:focus-visible,
 .game-menu__home:focus-visible {
     outline: 3px solid var(--ui-focus);

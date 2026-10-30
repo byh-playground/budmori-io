@@ -11,6 +11,7 @@
     --ui-card: #e9f0df;
     --ui-line: #d5dfd0;
     --ui-dim: #1b2b21b8;
+    --ui-scroll: #b8c6ad;
 
     /* 글자: 모두 --ui-panel 위에서 4.5:1 이상 */
     --ui-ink: #33483b;
@@ -67,6 +68,7 @@
 
     /* 터치 영역과 내비게이션 */
     --ui-tap: 48px;
+    --ui-close: 44px;
     --ui-nav-h: 64px;
     --ui-safe-top: env(safe-area-inset-top, 0px);
     --ui-safe-bottom: env(safe-area-inset-bottom, 0px);

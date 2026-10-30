@@ -1084,8 +1084,9 @@ body:has(#floorChip:not([hidden])) #gameplayDock .utility {
 
 /* 도감 */
 .codex-dialog .deck-dialog__card {
+    grid-template-rows: auto auto minmax(0, 1fr);
     max-height: min(640px, 92dvh);
-    overflow-y: auto;
+    overflow: hidden;
 }
 .codex-tabs {
     display: flex;
@@ -1106,7 +1107,13 @@ body:has(#floorChip:not([hidden])) #gameplayDock .utility {
 }
 .codex-body {
     display: grid;
+    align-content: start;
     gap: var(--ui-s2);
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    margin-right: calc(var(--ui-s2) * -1);
+    padding-right: var(--ui-s2);
 }
 .codex-body p {
     color: var(--ui-ink-2);
@@ -1218,4 +1225,70 @@ body:has(#floorChip:not([hidden])) #gameplayDock .utility {
 .codex-count {
     margin: 0;
     text-align: right;
+}
+
+/* 스크롤바: 얇은 막대 하나로 모든 스크롤 영역을 통일한다 */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--ui-scroll) transparent;
+}
+/* 닫기 버튼: 모든 대화상자와 설정 창이 같은 둥근 단추를 쓴다 */
+.dialog-close {
+    flex: 0 0 auto;
+    width: var(--ui-close);
+    height: var(--ui-close);
+    min-height: var(--ui-close);
+    padding: 0;
+    border-radius: 50%;
+    background: var(--ui-neutral);
+    border: var(--ui-bw) solid var(--ui-line);
+    color: var(--ui-ink);
+    font-size: var(--ui-fs-4);
+    line-height: 1;
+}
+.dialog-close:active {
+    background: var(--ui-line);
+}
+/* 마우스 화면: 역할 나누기를 제목 줄과 슬라이더 줄 두 줄로 줄인다 */
+@media (pointer: fine) {
+    .work-hud {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 0 var(--ui-s3);
+    }
+    .work-hud__row,
+    .work-hud__labels {
+        display: contents;
+    }
+    .work-hud__row > b {
+        grid-column: 1;
+        font-size: var(--ui-fs-2);
+    }
+    .work-hud__row > small {
+        grid-column: 2 / 4;
+        justify-self: end;
+    }
+    .work-hud__labels > span {
+        grid-row: 2;
+        font-size: var(--ui-fs-2);
+    }
+    #workHudBreed {
+        grid-column: 1;
+    }
+    #workHudFood {
+        grid-column: 3;
+    }
+    .work-hud .flat-range {
+        grid-column: 2;
+        grid-row: 2;
+        height: 28px;
+    }
+    .work-hud .flat-range::-webkit-slider-runnable-track {
+        height: 10px;
+    }
+    .work-hud .flat-range::-webkit-slider-thumb {
+        width: 22px;
+        height: 22px;
+        margin-top: -6px;
+    }
 }
