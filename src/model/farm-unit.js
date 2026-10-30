@@ -242,12 +242,16 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         this.ability = CREATE_UNIT_ATTACK_CYCLE(this);
         this.specialAbility = CREATE_UNIT_ATTACK_CYCLE.createSpecial(this);
     }
-    // The one writer of the growing stage. A seed fights as the plain sprout, so entering or leaving the stage
-    // swaps the attack, ability and stats it plays by; health keeps its share of the new maximum.
+    // The one writer of the growing stage. A seed is no species yet: while it grows `species` is null and the species
+    // it will become waits in `seedling.heritage`, which only the growth step and the save read. A seed fights as the
+    // plain sprout, so entering or leaving the stage swaps the attack, ability and stats it plays by; health keeps its
+    // share of the new maximum. The third meal hands the heritage over as the species.
     setSeedling(state) {
         const PREVIOUS_MAX_HP = this.maxHp,
-            HEALTH_SHARE = PREVIOUS_MAX_HP > 0 ? this.hp / PREVIOUS_MAX_HP : 1;
-        this.seedling = state;
+            HEALTH_SHARE = PREVIOUS_MAX_HP > 0 ? this.hp / PREVIOUS_MAX_HP : 1,
+            HERITAGE = this.seedling ? this.seedling.heritage : this.species;
+        this.seedling = state ? { fed: state.fed, cooldown: state.cooldown, heritage: HERITAGE } : null;
+        this.species = state ? null : HERITAGE;
         this.initializeActions();
         if (this.hp > 0) {
             this.hp = Math.min(1, HEALTH_SHARE) * this.maxHp;

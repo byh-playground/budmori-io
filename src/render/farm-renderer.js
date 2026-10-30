@@ -29,7 +29,7 @@ import {
 import { bindBossSocketAsset, bossHandRig, unbindBossSocketAsset } from './boss-vector-sockets.js';
 import { BossPresentation, bossAttackPresentation } from './farm-render-boss.js';
 import { CONFIG, clamp, bossAttackArea, ArenaGeometry } from '../model/farm-model.js';
-import { BOSS_SPECIES } from '../units/species-catalog.js';
+import { BOSS_SPECIES, kitSpecies } from '../units/species-catalog.js';
 import { bossDangerContour } from './attack-telegraph.js';
 import { drawFarmGrounds, drawTowerHall } from './farm-scenery.js';
 const { bosses: BOSS_VECTOR_ASSETS, troops: TROOP_VECTOR_ASSETS } = globalThis.BudmoriVectorResources;
@@ -650,7 +650,7 @@ const DIORAMA = class Diorama {
             return;
         }
         const UNIT = world.units[0],
-            BODY = unitBodyDefinition(UNIT.species),
+            BODY = unitBodyDefinition(kitSpecies(UNIT)),
             BASE = this.scenePresentation.cameraView(this.aspect),
             // 96px full art keeps the authored torso above32px even at maximum compression.
             SCALE = (96 * this.pixelRatio) / (UNIT.bodyScale * Math.max(BODY.viewBox[2], BODY.viewBox[3])),
@@ -693,7 +693,7 @@ const DIORAMA = class Diorama {
     }
     fitWalnutPreview(world) {
         const UNIT = world.units[0],
-            BODY = unitBodyDefinition(UNIT.species),
+            BODY = unitBodyDefinition(kitSpecies(UNIT)),
             BASE = this.scenePresentation.cameraView(this.aspect),
             ART = UNIT.bodyScale * Math.max(BODY.viewBox[2], BODY.viewBox[3]),
             SCALE = Math.min((124 * this.pixelRatio) / ART, (this.canvas.height - 40 * this.pixelRatio) / ART),
@@ -712,7 +712,7 @@ const DIORAMA = class Diorama {
     }
     fitPeanutPreview(world) {
         const UNIT = world.units[0],
-            BODY = unitBodyDefinition(UNIT.species),
+            BODY = unitBodyDefinition(kitSpecies(UNIT)),
             BASE = this.scenePresentation.cameraView(this.aspect),
             ART = UNIT.bodyScale * Math.max(BODY.viewBox[2], BODY.viewBox[3]),
             // Both source kernels, the opened shell and the grounded feet fit
@@ -734,7 +734,7 @@ const DIORAMA = class Diorama {
     }
     fitChestnutPreview(world) {
         const UNIT = world.units[0],
-            BODY = unitBodyDefinition(UNIT.species),
+            BODY = unitBodyDefinition(kitSpecies(UNIT)),
             ART = UNIT.bodyScale * Math.max(BODY.viewBox[2], BODY.viewBox[3]),
             BASE = this.scenePresentation.cameraView(this.aspect),
             BOUNDS = {
@@ -787,7 +787,7 @@ const DIORAMA = class Diorama {
     }
     fitJumpPreview(world) {
         const UNIT = world.units[0],
-            BODY = unitBodyDefinition(UNIT.species),
+            BODY = unitBodyDefinition(kitSpecies(UNIT)),
             BASE = this.scenePresentation.cameraView(this.aspect),
             ART_WORLD_HEIGHT = UNIT.bodyScale * Math.max(BODY.viewBox[2], BODY.viewBox[3]),
             // Reserve the complete rotating body plus real flight height and the landing ground.
@@ -1178,7 +1178,7 @@ const DIORAMA = class Diorama {
     captureCornAttachmentBody(target, id, player, matrix) {
         this.cornAttachmentBodies.set(id, {
             generation: target.generation,
-            definition: unitBodyDefinition(target.species),
+            definition: unitBodyDefinition(kitSpecies(target)),
             transform: player.getPartPose('body').transform,
             matrix,
             radius: target.radius,

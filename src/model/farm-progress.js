@@ -66,9 +66,13 @@ function pendingReward(reward) {
     }
     return RESULT;
 }
+// A seed has no species while it grows; the save keeps the one it will become.
+function savedSpecies(unit) {
+    return unit.seedling ? unit.seedling.heritage : unit.species;
+}
 function cohortValues(unit) {
     return [
-        unit.species,
+        savedSpecies(unit),
         unit.tier,
         unit.meals >= 1,
         Math.max(0, unit.growthDuration - unit.growthElapsed),
@@ -144,7 +148,7 @@ export function captureFarmProgress(world) {
             ROW.genes = [...UNIT.genes];
         }
         if (UNIT.seedling) {
-            ROW.seedling = { ...UNIT.seedling };
+            ROW.seedling = { fed: UNIT.seedling.fed, cooldown: UNIT.seedling.cooldown };
         }
         GROUPS.set(KEY, ROW);
     }

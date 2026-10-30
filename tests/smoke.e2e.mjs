@@ -564,7 +564,7 @@ await check(
                 bossSpecies: W.bosses[0].species,
                 species: RECEIPT?.species,
                 seeds: W.unitCollection.items.filter(
-                    (u) => !u.isBattleOnlySummon && u.species === RECEIPT?.species && u.seedling,
+                    (u) => !u.isBattleOnlySummon && u.seedling?.heritage === RECEIPT?.species,
                 ).length,
             };
         });
@@ -739,7 +739,7 @@ await check('help cards play the real game in an isolated frame and leave the sa
     expect(KEYS(BEFORE).join() === KEYS(AFTER).join(), 'a help frame changed the stored keys');
 });
 
-await check('a full farm keeps queued rewards and the panel names their species', async () => {
+await check('a full farm keeps queued rewards and the panel shows them as one sprout count, no species', async () => {
     await WORLD(() => document.getElementById('upgradeMenu').click());
     await WORLD(() => {
         const W = BUDMORI.sim;
@@ -753,7 +753,7 @@ await check('a full farm keeps queued rewards and the panel names their species'
         ];
         W.markProgressChanged();
     });
-    await PAGE.waitForFunction(() => document.querySelectorAll('#farmQueue .farm-queue__chip').length === 2, null, {
+    await PAGE.waitForFunction(() => document.querySelectorAll('#farmQueue .farm-queue__chip').length === 1, null, {
         timeout: 5000,
     });
     const GOT = await WORLD(() => {
@@ -769,7 +769,7 @@ await check('a full farm keeps queued rewards and the panel names their species'
     });
     await PAGE.locator('#gameMenuClose').click();
     expect(GOT.free === 0, `room ${JSON.stringify(GOT)}`);
-    expect(GOT.CHIPS.join() === '3,5', `queue chips ${JSON.stringify(GOT)}`);
+    expect(GOT.CHIPS.join() === '8', `queue chips ${JSON.stringify(GOT)}`);
 });
 
 await check('a boss attack hits everyone it reaches: 35% each and 65% shared among those hit', async () => {

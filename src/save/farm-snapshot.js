@@ -31,7 +31,8 @@ export const UNIT_SNAPSHOT_SHAPE = {
     peaRecoveryBoostMultiplier: 0,
     id: 1,
     generation: 1,
-    species: 0,
+    // A growing seed has no species; its validation is in validateActorAttackState.
+    species: null,
     tier: 1,
     statProfile: null,
     statModifiers: null,
@@ -349,7 +350,7 @@ const ACTOR_ATTACK_FIELDS = {
 const UNIT = shapeFields(UNIT_SNAPSHOT_SHAPE, {
     ...ACTOR_ATTACK_FIELDS,
     genes: [true],
-    seedling: FIELDS('fed cooldown'),
+    seedling: FIELDS('fed cooldown heritage'),
 });
 const BOSS_ACTION = FIELDS(
     'id phase phaseElapsed motionDelay targetId aim locked traveled volleyCount released nextRelease criticalRoll',
