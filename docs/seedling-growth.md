@@ -2,6 +2,16 @@
 
 먹이 0·1·2회에는 같은 새싹 아트를 0.32·0.56·0.80 배율로 표시한다. 세 번째 식사는 기존 모델 규칙대로 성체로 전환한다. 크기·접촉 반경·높이는 `unit-body/definition.js`의 같은 식사 기반 정의를 사용하며, 시간이 흐르거나 오프라인 시간이 생겼다는 이유로 커지지 않는다. 성장 중 모델의 `seedling`과 완성된 species 9 병사는 별개다.
 
+## 새싹은 병종이 없다
+
+성장 중 새싹은 어떤 병종도 아니다. `unit.species`는 `null`이고, 자라서 될 병종은 `seedling.heritage`에만 있다. `heritage`는 성장 전환(`feedSeedling`)과 저장(`savedSpecies`)만 읽는다. 세 번째 식사에서 `Unit.setSeedling(null)`이 `heritage`를 `species`로 넘겨주고, 이 순간 병종이 확정된다. 농장은 그때 `unitCollection.refreshIndexes()`로 그 병종의 집계·묶음에 유닛을 다시 올린다.
+
+- 번식 몫·출전 순서·병종 집계·종별 묶음은 `species`가 있는 유닛만 센다. 새싹은 `speciesCounts`·`ownedCounts`에서 빠져 어떤 병종 칩도 만들지 않는다.
+- 보상 대기(공간이 없어 못 놓은 씨앗)는 병종 그림 없이 새싹 하나의 숫자로 보인다. 보상 창의 "첫 격파!" 표시도 병종을 알려 주지 않는다.
+- 전투 투입은 출전 순서의 병종이 모두 끝난 뒤 새싹이 마지막에 들어간다(`deployOrder` 뒤의 `null`).
+- 저장 형식(`species`와 `seedling: { fed, cooldown }`)은 그대로다. 새싹 행의 `species`는 `heritage`를 담는다. 내부 체크포인트 스냅샷은 `species: null`과 `seedling.heritage`를 가진다.
+- 병종 소유 판정(`bossSpeciesOwned`, 보상의 "씨앗 한 쌍" 규칙)은 성체만 센다. 새싹만 있는 병종은 아직 없는 병종으로 본다.
+
 ## 성장 중에는 순수 새싹으로 싸운다
 
 성장 중 새싹은 그림만 새싹인 최종 병종이 아니라 능력 없는 순수 새싹(species 9)이다. `species-catalog.js`의 `kitSpecies(unit)`가 그림·몸·기본 공격·능력·스탯을 고르는 유일한 기준이고, 성장 중이면 9, 아니면 `unit.species`를 돌려준다. `unit.species`는 계통·도감·성체가 될 병종으로만 남는다. 전투 판정에서 `unit.species`를 직접 읽지 않고 `kitSpecies`를 쓴다.

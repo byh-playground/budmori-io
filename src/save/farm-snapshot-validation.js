@@ -301,7 +301,9 @@ function validateActorAttackState(actor, raw, cornActions, chestnutActions, allo
             validBarleyArmorShredBuckets(U.barleyArmorShredBuckets, raw.simulationTick, allowLegacyBarleyShred),
     );
     ASSERT(
-        INTEGER(U.species, 0, CONFIG.unit.speciesCount - 1) &&
+        (!U.seedling
+            ? INTEGER(U.species, 0, CONFIG.unit.speciesCount - 1)
+            : U.species === null && INTEGER(U.seedling?.heritage, 0, CONFIG.unit.speciesCount - 1)) &&
             INTEGER(U.tier, 1, CONFIG.unit.maxTier) &&
             ['idle', 'windup', 'active', 'recover'].includes(U.ability.phase) &&
             typeof U.ownerId === 'string' &&
@@ -1070,7 +1072,7 @@ function validateUnits(raw, context, allowLegacyBarleyShred) {
             ASSERT(
                 U.seedling &&
                     typeof U.seedling === 'object' &&
-                    Object.keys(U.seedling).length === 2 &&
+                    Object.keys(U.seedling).length === 3 &&
                     INTEGER(U.seedling.fed, 0, SEED_FEEDS - 1) &&
                     Number.isFinite(U.seedling.cooldown) &&
                     U.seedling.cooldown >= 0 &&

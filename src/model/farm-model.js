@@ -70,6 +70,10 @@ import { bossAttackArea } from '../boss/boss-behaviors.js';
 import { ARENA_GEOMETRY, BALLISTICS } from './arena-geometry.js';
 import { AttackCycle, CREATE_UNIT_ATTACK_CYCLE } from '../units/attack-cycle.js';
 import {} from '../boss/boss-controller.js';
+// Only a species has a group: a seed is no species yet and belongs to none.
+function hasSpeciesGroup(unit) {
+    return Number.isInteger(unit.species) && unit.species >= 0 && unit.species < CONFIG.unit.speciesCount;
+}
 const PRESENTATION_CLOCKS = new WeakMap();
 const PRESENTATION_EVENT_TIMES = new WeakMap();
 export function presentationEventTimeMs(event) {
@@ -320,7 +324,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
         for (const UNIT_LOCAL of this.units) {
             GRID.insert(UNIT_LOCAL);
             this._unitById.set(UNIT_LOCAL.id, UNIT_LOCAL);
-            if (UNIT_LOCAL.species >= 0 && UNIT_LOCAL.species < CONFIG.unit.speciesCount) {
+            if (hasSpeciesGroup(UNIT_LOCAL)) {
                 this._speciesGroups[UNIT_LOCAL.species].push(UNIT_LOCAL);
                 this._ownedSpeciesCounts[UNIT_LOCAL.species] += UNIT_LOCAL.isBattleOnlySummon ? 0 : 1;
                 const TIER = Math.max(0, Math.min(CONFIG.unit.maxTier, UNIT_LOCAL.tier | 0));
@@ -349,7 +353,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
         this.unitSpatial.insert(unit);
         this._unitById.set(unit.id, unit);
         this._unitStepOrder.set(unit, -1);
-        if (unit.species >= 0 && unit.species < CONFIG.unit.speciesCount) {
+        if (hasSpeciesGroup(unit)) {
             this._speciesGroups[unit.species].push(unit);
             this._ownedSpeciesCounts[unit.species] = this.unitCollection.residentCountsBySpecies.get(unit.species) || 0;
             const TIER = Math.max(0, Math.min(CONFIG.unit.maxTier, unit.tier | 0));
@@ -373,7 +377,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
             this._adjustFactionCount(unit.faction, -1);
         }
         this._unitAliveState.set(unit, false);
-        if (unit.species >= 0 && unit.species < CONFIG.unit.speciesCount) {
+        if (hasSpeciesGroup(unit)) {
             this._removeGroupItem(this._speciesGroups[unit.species], unit);
             const TIER = Math.max(0, Math.min(CONFIG.unit.maxTier, unit.tier | 0));
             this._removeGroupItem(this._speciesTierGroups[unit.species * (CONFIG.unit.maxTier + 1) + TIER], unit);
@@ -690,7 +694,9 @@ const GARDEN = class Garden extends GARDEN_BASE {
     highestSpeciesTiers() {
         const TIERS = Array(CONFIG.unit.speciesCount).fill(0);
         for (const UNIT_LOCAL of this.roster.residents()) {
-            TIERS[UNIT_LOCAL.species] = Math.max(TIERS[UNIT_LOCAL.species], UNIT_LOCAL.tier);
+            if (UNIT_LOCAL.species !== null) {
+                TIERS[UNIT_LOCAL.species] = Math.max(TIERS[UNIT_LOCAL.species], UNIT_LOCAL.tier);
+            }
         }
         return TIERS;
     }
@@ -820,7 +826,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
     }
     createFormationClone(original) {
         const ID = this.nextId++,
-            CLONE = new UNIT(ID, original.species, original.tier, original.x + 0.3, original.y + 0.1);
+            CLONE = new UNIT(ID, kitSpecies(original), original.tier, original.x + 0.3, original.y + 0.1);
         Object.assign(CLONE, {
             growthElapsed: original.growthElapsed,
             growthDuration: original.growthDuration,
@@ -985,10 +991,13 @@ const GARDEN = class Garden extends GARDEN_BASE {
         SEEDLING.fed += 1;
         SEEDLING.cooldown = SEED_FEED_COOLDOWN_SECONDS;
         if (SEEDLING.fed >= SEED_FEEDS) {
+            // The species is decided here: the heritage becomes the species and the farm re-files the unit under it.
+            unit.setSeedling(null);
+            this.unitCollection.refreshIndexes();
+            this._unitSpatialDirty = true;
             const FIRST_SPECIES = !this.codex.forms.some(
                 (form) => Math.floor(form / TEMPERAMENT_COUNT) === unit.species,
             );
-            unit.setSeedling(null);
             unit.growthElapsed = unit.growthDuration;
             unit.growth = CONFIG.farm.breeding.matureMeals;
             this.metrics.births++;

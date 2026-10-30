@@ -483,7 +483,8 @@ export const FARM_TOWER_RUN = (base) =>
                     X = Math.cos(ANGLE) * (ARENA.radiusX - 1),
                     Y = Math.sin(ANGLE) * (ARENA.radiusY - 1);
                 let deployed = false;
-                for (const SPECIES of this.deployOrder) {
+                // Seeds belong to no species, so they follow every species in the order.
+                for (const SPECIES of [...this.deployOrder, null]) {
                     if (this._deployReservedUnit(SPECIES, X, Y)) {
                         this._deployCount++;
                         deployed = true;

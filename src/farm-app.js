@@ -170,7 +170,7 @@ function renderBossRewardBoxes(receipt) {
         receipt.status === 'calculating'
             ? '상자 ' + COUNT + '개의 보상을 준비하고 있어요.'
             : FIRST_CLEAR
-              ? '처음 만난 종이에요 · 동료로 합류해요'
+              ? '처음 격파한 층이에요 · 새싹이 합류해요'
               : HAS_PRESENTATION
                 ? COUNT +
                   '회 추첨 · 상자당 ' +
@@ -1028,7 +1028,7 @@ const BREED_CONTROL = { selected: null, idsKey: '', world: null, sourceKey: '', 
 function speciesCounts(world) {
     const COUNTS = new Map();
     for (const UNIT of world.units) {
-        if (!UNIT.isBattleOnlySummon && !UNIT.isFormationClone) {
+        if (!UNIT.isBattleOnlySummon && !UNIT.isFormationClone && !UNIT.seedling) {
             COUNTS.set(UNIT.species, (COUNTS.get(UNIT.species) || 0) + 1);
         }
     }
@@ -1144,15 +1144,15 @@ DOLLAR('speciesBreedEqual').addEventListener('click', () => {
     BREED_CONTROL.basis = STATE.ids.map(() => 1);
     applyBreedShares(WORLD, STATE.ids, apportionBreedShares(BREED_CONTROL.basis));
 });
-// Which species wait for room, so a long queue reads as "who is next" rather than one number.
+// Seeds waiting for room are no species yet, so the queue is one number of sprouts.
 function drawRewardQueue(world) {
-    const QUEUE = bossRewardQueueBySpecies(world),
+    const WAITING = bossRewardQueueBySpecies(world).reduce((sum, [, count]) => sum + count, 0),
         BOX = DOLLAR('farmQueue'),
-        HTML = QUEUE.map(
-            ([species, count]) =>
-                `<span class="farm-queue__chip"><img src="${speciesPortraitSource(species)}" alt="${speciesById(species).name}" width="20" height="20"><b>${count}</b></span>`,
-        ).join('');
-    BOX.hidden = QUEUE.length === 0;
+        HTML =
+            WAITING > 0
+                ? `<span class="farm-queue__chip"><img src="${speciesPortraitSource(BOSS_SPECIES)}" alt="새싹" width="20" height="20"><b>${WAITING}</b></span>`
+                : '';
+    BOX.hidden = WAITING === 0;
     if (BOX.innerHTML !== HTML) {
         BOX.innerHTML = HTML;
     }
@@ -1730,7 +1730,7 @@ function deckCardHtml(id, count, slot) {
 function ownedCounts(garden) {
     const COUNTS = new Map();
     for (const UNIT of garden.units) {
-        if (UNIT.faction === 'player' && !UNIT.isBattleOnlySummon && UNIT.hp > 0) {
+        if (UNIT.faction === 'player' && !UNIT.isBattleOnlySummon && UNIT.hp > 0 && !UNIT.seedling) {
             COUNTS.set(UNIT.species, (COUNTS.get(UNIT.species) || 0) + 1);
         }
     }

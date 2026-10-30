@@ -46,6 +46,9 @@ export class UnitCollection {
         this.byId.set(unit.id, unit);
         if (this.isResident(unit)) {
             this.residentCount++;
+            if (unit.species === null) {
+                return;
+            }
             this.residentCountsBySpecies.set(unit.species, (this.residentCountsBySpecies.get(unit.species) || 0) + 1);
             let ids = this.residentIdsBySpecies.get(unit.species);
             if (!ids) {
@@ -60,6 +63,10 @@ export class UnitCollection {
         this.byId.delete(unit.id);
         if (this.isResident(unit)) {
             this.residentCount = Math.max(0, this.residentCount - 1);
+            if (unit.species === null) {
+                this.world._syncOwnedSpeciesCounts?.();
+                return;
+            }
             const COUNT = (this.residentCountsBySpecies.get(unit.species) || 0) - 1;
             if (COUNT > 0) {
                 this.residentCountsBySpecies.set(unit.species, COUNT);
