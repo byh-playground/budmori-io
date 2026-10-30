@@ -127,35 +127,14 @@
 /* 병종 특성 탭 */
 /* 도움말 탭 */
 #helpPanel {
+    display: grid;
+    align-content: start;
+    gap: var(--ui-s3);
     height: 100%;
     overflow: auto;
     padding: var(--ui-s4);
     font-size: var(--ui-fs-2);
     line-height: 1.6;
-}
-.help-card {
-    margin: 0 0 var(--ui-s3);
-    padding: var(--ui-s3) var(--ui-s4);
-    border: var(--ui-bw) solid var(--ui-line);
-    border-radius: var(--ui-r-m);
-    background: var(--ui-card);
-}
-#helpPanel h3 {
-    margin: 0 0 var(--ui-s2);
-    font-size: var(--ui-fs-3);
-}
-#helpPanel ul {
-    margin: 0;
-    padding-left: var(--ui-s4);
-}
-#helpPanel li {
-    margin: var(--ui-s1) 0;
-}
-#helpPanel small {
-    display: block;
-    margin-top: var(--ui-s3);
-    color: var(--ui-ink-2);
-    font-size: var(--ui-fs-1);
 }
 @media (max-width: 700px) {
     .game-menu-overlay {
@@ -396,50 +375,37 @@ html.help-scene.barley-attack-preview #bossbar {
         animation: none;
     }
 }
+.help-body {
+    display: grid;
+    gap: var(--ui-s3);
+}
 .help-caption {
     min-height: 1.6em;
-    margin: 0 0 var(--ui-s2);
+    margin: 0;
     font-weight: 700;
     text-align: center;
 }
-#helpPanel #helpRule {
-    margin: 0 0 var(--ui-s3);
-}
-.help-nav {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+.help-points {
+    display: grid;
     gap: var(--ui-s2);
-}
-.help-nav button {
-    min-width: 44px;
-    min-height: 44px;
-    padding: 0 var(--ui-s3);
-    border: var(--ui-bw) solid var(--ui-line);
-    border-radius: var(--ui-r-m);
-    background: var(--ui-card);
-    color: inherit;
-    font: inherit;
-}
-.help-nav button:disabled {
-    opacity: 0.4;
-}
-.help-dots {
-    display: flex;
-    flex: 1;
-    justify-content: center;
-    gap: var(--ui-s2);
-}
-.help-dots button {
-    min-width: 0;
-    width: 14px;
-    min-height: 0;
-    height: 14px;
+    align-content: start;
+    margin: 0;
     padding: 0;
-    border-radius: 50%;
+    list-style: none;
 }
-.help-dots button[aria-current='true'] {
-    background: var(--ui-ink-2);
+.help-points li {
+    margin: 0;
+    padding: var(--ui-s2) var(--ui-s3);
+    border-radius: var(--ui-r-s);
+    background: var(--ui-card);
+    line-height: 1.5;
+}
+/* 마우스 화면: 왼쪽에 데모와 캡션, 오른쪽에 핵심 줄 */
+@media (min-width: 800px) {
+    .help-body {
+        grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+        align-items: start;
+    }
 }
 
 .farm-queue {
