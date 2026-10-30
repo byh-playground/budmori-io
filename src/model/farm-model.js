@@ -57,7 +57,7 @@ import {
 import { freshTowerRun } from '../tower/tower-run.js';
 import { createPlayerProgressionState, farmCapacityForProgression } from './player-progression.js';
 import {} from '../tower/tower-theme.js';
-import {} from '../units/species-catalog.js';
+import { kitSpecies } from '../units/species-catalog.js';
 import { TOWER_ENCOUNTER_SETTINGS } from '../tower/tower-encounter.js';
 import { AUTO_FORM_PROGRESSION, NEUTRAL_FORM_PROGRESSION } from './auto-forms.js';
 import {} from '../vector-sockets.js';
@@ -701,7 +701,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
         const ID = ++this.projectileSerial,
             ATTACK_CONTEXT = this.createAttackContext(unit, {
                 attackMultiplier: shot.attackMultiplier ?? this.speciesAbilityDamageMultiplier(unit),
-                attackKind: abilityProfile(unit.species).kind,
+                attackKind: abilityProfile(kitSpecies(unit)).kind,
             });
         const PROJECTILE = {
             id: ID,
@@ -756,7 +756,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
         return PROJECTILE;
     }
     speciesAbilityDamageMultiplier(unit) {
-        return abilityProfile(unit.species).skillMultiplier;
+        return abilityProfile(kitSpecies(unit)).skillMultiplier;
     }
     spawnChestnutThorn(unit, action, config, shotIndex) {
         if (this.projectiles.length >= CONFIG.battle.capacity.projectiles) {
@@ -988,7 +988,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
             const FIRST_SPECIES = !this.codex.forms.some(
                 (form) => Math.floor(form / TEMPERAMENT_COUNT) === unit.species,
             );
-            unit.seedling = null;
+            unit.setSeedling(null);
             unit.growthElapsed = unit.growthDuration;
             unit.growth = CONFIG.farm.breeding.matureMeals;
             this.metrics.births++;
@@ -1033,7 +1033,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
         if (lineage) {
             U.temperament = lineage.temperament;
             U.genes = [...lineage.genes];
-            U.seedling = lineage.seedling ? { ...lineage.seedling } : null;
+            U.setSeedling(lineage.seedling ? { ...lineage.seedling } : null);
             if (U.seedling) {
                 U.growthDuration = this.breedGrowthDuration();
             }
@@ -1473,7 +1473,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
             }
             U.age += dt;
             if (
-                (U.statProfile?.regen ?? STATS(U.tier, U.species).regen) > 0 ||
+                (U.statProfile?.regen ?? STATS(U.tier, kitSpecies(U)).regen) > 0 ||
                 U.statModifiers.regen ||
                 TEMPERAMENT_TILTS[U.temperament]?.regenPct
             ) {
@@ -1826,7 +1826,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
         u,
         { attackMultiplier = null, attackKind = null, strikeIndex = null, area = false, criticalRoll = null } = {},
     ) {
-        const SPEC = abilityProfile(u.species),
+        const SPEC = abilityProfile(kitSpecies(u)),
             ATTACKER_STATS = resolveUnitStats(u);
         return {
             source: u,

@@ -1,3 +1,4 @@
+import { kitSpecies } from './species-catalog.js';
 import { createBarleyAttackMixin } from '../features/unit-attacks/barley/model.js';
 import { barleyGrowthBuild } from '../features/species-growth/barley-attack.js';
 import { createWheatAttackMixin } from '../features/unit-attacks/wheat/model.js';
@@ -220,10 +221,10 @@ export function composeUnitAttackCycles(cycle, { ArenaGeometry: arenaGeometry, B
     const KIDNEY_LEAP = (base) =>
         class extends base {
             get spec() {
-                return specialAbilityCompositionFor(this.owner.species).profile;
+                return specialAbilityCompositionFor(kitSpecies(this.owner)).profile;
             }
             get composition() {
-                return specialAbilityCompositionFor(this.owner.species).composition;
+                return specialAbilityCompositionFor(kitSpecies(this.owner)).composition;
             }
             canBegin(sim) {
                 return (
@@ -240,7 +241,7 @@ export function composeUnitAttackCycles(cycle, { ArenaGeometry: arenaGeometry, B
                 }
                 action.leapDepartureCommitted = true;
                 this.owner.kidneyLeapReadyTick =
-                    sim.simulationTick + specialAbilityCompositionFor(this.owner.species).cooldownTicks;
+                    sim.simulationTick + specialAbilityCompositionFor(kitSpecies(this.owner)).cooldownTicks;
                 this.owner.kidneyLeapLastUseTick = sim.simulationTick;
             }
             interrupt() {
@@ -311,7 +312,7 @@ export function composeUnitAttackCycles(cycle, { ArenaGeometry: arenaGeometry, B
     const CHESTNUT_THORNS = (base) =>
         class extends base {
             get spec() {
-                return specialAbilityCompositionFor(this.owner.species).profile;
+                return specialAbilityCompositionFor(kitSpecies(this.owner)).profile;
             }
             canBegin(sim) {
                 const U = this.owner,
@@ -472,10 +473,10 @@ export function composeUnitAttackCycles(cycle, { ArenaGeometry: arenaGeometry, B
             MIXIN(cycle, ATTACKS[DEFINITION.attack], ...DEFINITION.traits.map((name) => TRAITS[name])),
         );
     }
-    const CREATE = (owner) => new (CLASSES.get(unitCapabilityComposition(owner.species)))(owner),
+    const CREATE = (owner) => new (CLASSES.get(unitCapabilityComposition(kitSpecies(owner))))(owner),
         SPECIAL_CLASSES = new Map();
     CREATE.createSpecial = (owner) => {
-        const DEFINITION = specialAbilityCompositionFor(owner.species);
+        const DEFINITION = specialAbilityCompositionFor(kitSpecies(owner));
         if (!DEFINITION) {
             return null;
         }

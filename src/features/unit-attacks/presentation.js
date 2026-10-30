@@ -1,3 +1,4 @@
+import { kitSpecies } from '../../units/species-catalog.js';
 import { BarleyAttackPresentation } from './barley/presentation.js';
 import { WheatAttackPresentation, setWheatBatonLength } from './wheat/presentation.js';
 import { RiceAttackPresentation } from './rice/presentation.js';
@@ -22,9 +23,8 @@ const ATTACK_PRESENTATIONS = new Map(
     [new DualStrikePresentation(), new LobPresentation()].map((presentation) => [presentation.id, presentation]),
 );
 export function unitAttackPresentation(unit) {
-    // The growing stage wears sprout art while retaining its eventual species.
-    // Use that art's common phase clips and elapsed clock, never mature weapon
-    // stages, normalized phase clocks or species-specific pose offsets.
+    // The growing stage is the plain sprout: its common phase clips and elapsed clock, never mature
+    // weapon stages, normalized phase clocks or species-specific pose offsets.
     if (unit.isSeedling) {
         return DEFAULT_ATTACK;
     }
@@ -118,7 +118,7 @@ export function unitCombatExpression(unit) {
 }
 
 export function prepareUnitAttackPlayer(player, unit) {
-    if (unit.species === 7) {
+    if (kitSpecies(unit) === 7) {
         setWheatBatonLength(player, unit.ability.wheatLongBaton);
     }
 }

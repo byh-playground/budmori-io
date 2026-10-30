@@ -1,5 +1,5 @@
 import { MAX_UNIT_TIER, UNIT_GRADES } from './unit-grades.js';
-import { SPECIES_COUNT } from './species-catalog.js';
+import { SPECIES_COUNT, kitSpecies } from './species-catalog.js';
 import { TEMPERAMENT_TILTS } from '../model/lineage.js';
 const TIER_HP = 40;
 const TIER_HP_SCALE = 1.5;
@@ -133,7 +133,7 @@ export function resolveUnitStats(unit, overrides) {
     const BASE = withRunMods(
             unit?.statProfile
                 ? { ...COMMON_UNIT_STAT_DEFAULTS, ...unit.statProfile }
-                : baseUnitStatsFor(unit?.tier, unit?.species, unit?.faction !== 'enemy'),
+                : baseUnitStatsFor(unit?.tier, kitSpecies(unit), unit?.faction !== 'enemy'),
             unit?.statModifiers || {},
         ),
         MULTIPLIER = Number.isFinite(unit?.permanentStatMultiplier) ? Math.max(0, unit.permanentStatMultiplier) : 1;
@@ -177,7 +177,7 @@ function applyTemperamentTilt(stats, unit, overrides) {
 }
 function growthHealthMultiplierFor(unit) {
     // Split children inherit only their spawn multiplier, never the parent's permanent tree.
-    return unit?.species === 4 && unit.isBattleOnlySummon ? 1 : (unit?.growthMaxHpMultiplier ?? 1);
+    return kitSpecies(unit) === 4 && unit.isBattleOnlySummon ? 1 : (unit?.growthMaxHpMultiplier ?? 1);
 }
 // Legacy base-HP consumers retain their established semantics for all other species.
 export function unitMaxHpFor(unit) {
@@ -185,25 +185,25 @@ export function unitMaxHpFor(unit) {
         return resolveUnitStats(unit).maxHp;
     }
     const SPLIT_MULTIPLIER =
-        unit.species === 4 && unit.isBattleOnlySummon && Number.isFinite(unit.permanentStatMultiplier)
+        kitSpecies(unit) === 4 && unit.isBattleOnlySummon && Number.isFinite(unit.permanentStatMultiplier)
             ? Math.max(0, unit.permanentStatMultiplier)
             : 1;
     return unit.isFormationClone
         ? 1
-        : baseUnitStatsFor(unit.tier, unit.species, unit.faction !== 'enemy').maxHp *
+        : baseUnitStatsFor(unit.tier, kitSpecies(unit), unit.faction !== 'enemy').maxHp *
               growthHealthMultiplierFor(unit) *
               SPLIT_MULTIPLIER;
 }
 // Capture run growth on each body; independent worlds and later permanent XP cannot leak into it.
 export function applyRunGrowthHealth(unit, progression, { preserveRatio = false } = {}) {
     const HAS_GROWTH_HEALTH =
-        (unit.species === 2 ||
-            unit.species === 3 ||
-            unit.species === 4 ||
-            unit.species === 5 ||
-            unit.species === 6 ||
-            unit.species === 7 ||
-            unit.species === 8) &&
+        (kitSpecies(unit) === 2 ||
+            kitSpecies(unit) === 3 ||
+            kitSpecies(unit) === 4 ||
+            kitSpecies(unit) === 5 ||
+            kitSpecies(unit) === 6 ||
+            kitSpecies(unit) === 7 ||
+            kitSpecies(unit) === 8) &&
         unit.faction === 'player' &&
         !unit.isFormationClone &&
         !unit.isBattleOnlySummon;
@@ -212,17 +212,17 @@ export function applyRunGrowthHealth(unit, progression, { preserveRatio = false 
     }
     const PREVIOUS_MAX = unitMaxHpFor(unit),
         ABILITY_ID =
-            unit.species === 8
+            kitSpecies(unit) === 8
                 ? 'barley-armor-break'
-                : unit.species === 7
+                : kitSpecies(unit) === 7
                   ? 'wheat-command-crit'
-                  : unit.species === 6
+                  : kitSpecies(unit) === 6
                     ? 'rice-low-health-harvest'
-                    : unit.species === 5
+                    : kitSpecies(unit) === 5
                       ? 'walnut-raw-guard'
-                      : unit.species === 4
+                      : kitSpecies(unit) === 4
                         ? 'peanut-death-split'
-                        : unit.species === 3
+                        : kitSpecies(unit) === 3
                           ? 'chestnut-target-thorns'
                           : 'kidney-continuous-leap',
         BUILD = progression?.abilities?.[ABILITY_ID];
@@ -241,7 +241,7 @@ function combatStats(unit, overrides) {
         !unit?.isFormationClone &&
         (unit?.permanentStatMultiplier ?? 1) === 1 &&
         growthHealthMultiplierFor(unit) === 1
-        ? baseUnitStatsFor(unit?.tier, unit?.species, unit?.faction !== 'enemy')
+        ? baseUnitStatsFor(unit?.tier, kitSpecies(unit), unit?.faction !== 'enemy')
         : resolveUnitStats(unit, overrides);
 }
 function resolveDamage(
