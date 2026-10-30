@@ -1,3 +1,4 @@
+import { CASTER_SIZE_PROFILE } from '../model-base.js';
 export const DEFINITION = Object.freeze({
     id: 'hammer',
     name: '거대 망치',
@@ -11,4 +12,6 @@ export const DEFINITION = Object.freeze({
     upgradeUnit: ' 피해',
     stunSeconds: 1,
     durationSeconds: 1.2,
+    // A boss swings a hammer of its own size; a unit's hammer is as big as the body it comes down on.
+    boss: Object.freeze({ ...CASTER_SIZE_PROFILE }),
 });

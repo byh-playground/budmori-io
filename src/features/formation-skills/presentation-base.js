@@ -23,6 +23,8 @@ export function stroke(renderer, points, color, width) {
     C.lineJoin = 'round';
     C.stroke();
 }
+const BOLT_RING_GROWTH = 0.6,
+    BOLT_RING_SECONDS = 0.3;
 export function bolt(renderer, x, y, z, height, age, seed = 0, radius = 0.3) {
     const FADE = Math.max(0, 1 - age / 0.65);
     if (FADE <= 0) {
@@ -52,10 +54,11 @@ export function bolt(renderer, x, y, z, height, age, seed = 0, radius = 0.3) {
             stroke(renderer, SEGMENT, `rgba(216,247,255,${FRAGMENT})`, 0.035 * BODY_SCALE);
         }
     }
+    // The shockwave settles a little past the body it struck; it never grows into a mark over the whole arena.
     renderer.ring(
         x,
         y,
-        radius + age * radius * 10,
+        radius * (1 + BOLT_RING_GROWTH * Math.min(1, age / BOLT_RING_SECONDS)),
         `rgba(157,212,255,${FADE * 0.8})`,
         0.09 * BODY_SCALE,
         0,

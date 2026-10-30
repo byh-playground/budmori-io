@@ -2,8 +2,11 @@ import { burst, FormationPresentation, groundShadow, stroke } from '../presentat
 import { HAMMER_IMPACT_TIME } from './model.js';
 export class HammerPresentation extends FormationPresentation {
     draw(renderer, effect) {
-        const R = Math.max(0.2, (effect.bodyRadius || 0.3) * 0.55),
-            H = Math.max(R * 2, effect.bodyHeight || R * 2),
+        // The hammer is as big as its size reference (the struck body, or the boss that swings it) and lands on the
+        // top of the struck body.
+        const BODY_RADIUS = effect.bodyRadius || 0.3,
+            R = Math.max(0.2, (effect.sizeRadius || BODY_RADIUS) * 0.55),
+            H = Math.max(BODY_RADIUS * 2, effect.bodyHeight || BODY_RADIUS * 2),
             AGE = effect.age,
             RISE_END = 0.2,
             TOP = effect.z + H,

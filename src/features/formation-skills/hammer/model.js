@@ -18,6 +18,7 @@ export class HammerSkill extends FormationSkill {
             z: BODY.z,
             bodyHeight: BODY.bodyHeight,
             bodyRadius: BODY.bodyRadius,
+            ...this.sizeState(owner, TARGET),
             targetId: owner.targetId(TARGET),
             targetGeneration: owner.targetGeneration?.(TARGET),
             damage: this.power(slot.level, PROFILE.upgradeBase),
@@ -37,6 +38,7 @@ export class HammerSkill extends FormationSkill {
             effect.z = BODY.z;
             effect.bodyHeight = BODY.bodyHeight;
             effect.bodyRadius = BODY.bodyRadius;
+            Object.assign(effect, this.sizeState(owner, TARGET));
         }
         if (!effect.impacted && effect.age + 1e-9 >= HAMMER_IMPACT_TIME) {
             effect.impacted = true;
