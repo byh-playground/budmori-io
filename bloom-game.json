@@ -1,0 +1,15 @@
+{
+  "$schema": "https://byh-playground.github.io/bloom-world/playground/bloom-game.schema.json",
+  "schemaVersion": 1,
+  "title": "버드모리",
+  "en": "BUDMORI",
+  "genre": "strategy",
+  "tags": ["농장", "번식·합체", "보스 레이드"],
+  "desc": "농장에서 병력을 키우고 합체시켜 보스와 싸우는 전략 게임입니다.",
+  "points": [
+    "먹이와 번식으로 병력 육성",
+    "합체와 병종 성장의 조합",
+    "다양한 능력을 활용하는 보스 전투"
+  ],
+  "showcase": "https://byh-playground.github.io/budmori-io/#/showcase"
+}

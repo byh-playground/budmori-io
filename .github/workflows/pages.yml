@@ -1,0 +1,49 @@
+name: Deploy static Pages
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      # Pages used to serve the repository root directly; keep serving the same tracked files.
+      - name: Stage tracked files as the Pages site
+        run: |
+          mkdir -p _site
+          git ls-files -z | grep -zv '^\.github/' | xargs -0 cp --parents -t _site
+          touch _site/.nojekyll
+      - name: Publish bloom-game.json with the Nightly tag name
+        run: |
+          curl -fsS https://raw.githubusercontent.com/byh-playground/bloom-world/main/playground/bloom-game.schema.json -o "$RUNNER_TEMP/schema.json"
+          STAMP=$(date -u -d "@$(git show -s --format=%ct "$GITHUB_SHA")" +%Y%m%dT%H%M%SZ)
+          jq --arg t "nightly-$STAMP-${GITHUB_SHA:0:12}" '. + {nightly:$t}' bloom-game.json > _site/bloom-game.json
+          npx --yes ajv-cli@5 validate --spec=draft2020 -s "$RUNNER_TEMP/schema.json" -d _site/bloom-game.json
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
