@@ -304,7 +304,7 @@ try {
                 W.feedSeedling(U);
                 W.removeUnit(U);
             }
-            const ADULT = W.spawn(9, 1, 1, 0);
+            const ADULT = W.spawn(8, 1, 1, 0);
             ADULT.growthElapsed = ADULT.growthDuration;
             ADULT.dropLanded = true;
             ADULT.z = 0;
@@ -359,7 +359,7 @@ try {
         await PAGE.evaluate(() => BUDMORI.storage.save(BUDMORI.sim));
         await PAGE.reload();
         await PAGE.waitForFunction(
-            () => globalThis.BUDMORI && BUDMORI.sim.units.some((u) => u.species === 9 && !u.seedling),
+            () => globalThis.BUDMORI && BUDMORI.sim.units.some((u) => u.species === 8 && !u.seedling),
         );
         assert.equal(
             await PAGE.locator('#seedlingReveal').isVisible(),

@@ -558,7 +558,7 @@ export const FARM_TOWER_RUN = (base) =>
             });
         }
         createBoss(species = BOSS_SPECIES, id = 'boss') {
-            const BOSS = new UNIT(id, CLAMP(species, 0, CONFIG.unit.speciesCount - 1), 1, 0, 0, {
+            const BOSS = new UNIT(id, CLAMP(species, 0, CONFIG.unit.speciesCount), 1, 0, 0, {
                 statProfile: { maxHp: 2000, attackPower: 4, moveSpeed: CONFIG.boss.chaseSpeed },
                 bodyProfile: {
                     radius: bossBodyRadius,

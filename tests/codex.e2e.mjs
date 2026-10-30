@@ -131,7 +131,7 @@ try {
                 }
             }
             W.spawn(0, 1, 0, 0, { lineage: { temperament: 0, genes: [0, 0], seedling: { fed: 0, cooldown: 0 } } });
-            W.codex.forms = [0, 5, 30, 45];
+            W.codex.forms = [0, 5, 30, 40];
             W.codex.recipes = [0];
             W.markProgressChanged();
         });
@@ -140,7 +140,7 @@ try {
         assert.equal(await FIRST.locator('.codex-icon:not(.is-unknown)').count(), 3);
         assert.match(await FIRST.innerText(), /조합 발견/);
         assert.match(await PAGE.locator('[data-ingredient="1"]').innerText(), /재료로 쓰는 조합은 없어요/);
-        assert.match(await PAGE.locator('[data-ingredient="9"]').innerText(), /현재 보유 0마리/);
+        assert.match(await PAGE.locator('[data-ingredient="8"]').innerText(), /현재 보유 0마리/);
         await PAGE.evaluate(() => {
             BUDMORI.runtime.paused = false;
         });
@@ -167,7 +167,7 @@ try {
         await PAGE.reload();
         await PAGE.waitForFunction(() => globalThis.BUDMORI && BUDMORI.sim.combine.tier === 2);
         await PAGE.locator('#codexOpen').click();
-        assert.match(await PAGE.locator('[data-ingredient="9"]').innerText(), /현재 보유 0마리/);
+        assert.match(await PAGE.locator('[data-ingredient="8"]').innerText(), /현재 보유 0마리/);
         assert.equal(await PAGE.locator('[data-recipe="0"][aria-pressed="true"]').count(), 2);
         assert.deepEqual(ERRORS, []);
         console.log(`PASS ${NAME}: per-ingredient discovery, ownership, recipe/tier selection, reload, layout`);

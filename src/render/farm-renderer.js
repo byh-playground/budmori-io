@@ -119,7 +119,7 @@ const DIORAMA = class Diorama {
         };
         const ENTRIES = Object.entries(TROOP_VECTOR_ASSETS);
         if (
-            ENTRIES.length !== CONFIG.unit.speciesCount ||
+            ENTRIES.length !== CONFIG.unit.speciesCount + 1 ||
             ENTRIES.some(([species], index) => Number(species) !== index) ||
             typeof CREATE_VECTOR_ACTOR !== 'function' ||
             typeof HOLD_VECTOR_ASSET !== 'function'

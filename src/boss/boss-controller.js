@@ -18,7 +18,7 @@ export class BossController {
         UNIT.specialAbility?.interrupt();
         UNIT.ability?.resetCombatEffects?.();
         UNIT.generation = ++UNIT._world.entityGenerationSerial;
-        UNIT.species = CLAMP(species, 0, CONFIG.unit.speciesCount - 1);
+        UNIT.species = CLAMP(species, 0, CONFIG.unit.speciesCount);
         UNIT.initializeActions();
         UNIT.patternRuntime = createBossPatternRuntime();
         // Reconfiguring this actor cancels its own pending cast, never another actor's faction cast.

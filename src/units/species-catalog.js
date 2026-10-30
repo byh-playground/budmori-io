@@ -88,20 +88,19 @@ export const SPECIES_CATALOG = Object.freeze([
         limbFill: '#ddaa43',
         limbOutline: '#4b211b',
     }),
-    // A plain sprout: no ability of its own, so it plays by the shared rules alone. Every boss is this species.
-    Object.freeze({
-        id: 9,
-        name: '새싹',
-        description: '성장이 끝난 새싹 병사예요. 기본 공격으로 함께 싸워요.',
-        asset: 'sprout.svg',
-        limbFill: '#d9bd8a',
-        limbOutline: '#2c201c',
-    }),
 ]);
 export const SPECIES_COUNT = SPECIES_CATALOG.length;
-// The plain sprout is a unit of its own: no ability, the shared rules alone. Every boss is one; the species a win
-// pays is drawn separately.
-export const SPROUT_SPECIES = 9;
+// The plain sprout is not a species: it is never bred, collected or counted. It is the unit a seed fights as and every
+// boss is, with no ability of its own and the shared rules alone. Its id sits just after the last species, so the art,
+// body and stat tables that index by id still reach it.
+export const SPROUT_SPECIES = SPECIES_COUNT;
+export const SPROUT = Object.freeze({
+    id: SPROUT_SPECIES,
+    name: '새싹',
+    asset: 'sprout.svg',
+    limbFill: '#d9bd8a',
+    limbOutline: '#2c201c',
+});
 export const BOSS_SPECIES = SPROUT_SPECIES;
 // What a unit is in play: its art, body, attack and stats. A growing seed is the plain sprout in all of them; its
 // eventual species stays in `unit.species` for the lineage, the codex and what it grows into.
@@ -109,6 +108,9 @@ export function kitSpecies(unit) {
     return unit?.seedling || unit?.isSeedling ? SPROUT_SPECIES : unit?.species;
 }
 export function speciesById(id) {
+    if (id === SPROUT_SPECIES) {
+        return SPROUT;
+    }
     return SPECIES_CATALOG.find((species) => species.id === id) || SPECIES_CATALOG[SPECIES_CATALOG.length - 1];
 }
 export function giantSpeciesName(id) {
