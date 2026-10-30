@@ -450,34 +450,6 @@ body:has(#towerSummit:not([hidden])) #battleOutcome {
         padding: 4px 8px;
         font-size: 12px;
     }
-    #gameplayDock:has(#battleCommands:not([hidden])) .hand {
-        width: 100%;
-    }
-    #gameplayDock:has(#battleCommands:not([hidden])) .hand__cards {
-        justify-content: flex-start;
-        overflow-x: auto;
-        gap: 4px;
-        scrollbar-width: none;
-    }
-    #gameplayDock:has(#battleCommands:not([hidden])) .hand .deck-card {
-        display: flex;
-        align-items: center;
-        flex: 0 0 auto;
-        min-height: 40px;
-        padding: 3px 6px;
-        gap: 3px;
-        font-size: 12px;
-    }
-    #gameplayDock:has(#battleCommands:not([hidden])) .hand .deck-card img {
-        width: 20px;
-        height: 20px;
-    }
-    #gameplayDock:has(#battleCommands:not([hidden])) .hand .deck-card i {
-        position: static;
-        min-width: 15px;
-        line-height: 15px;
-        font-size: 10px;
-    }
     body:has(#battleCommands:not([hidden])) #bossbar {
         top: max(46px, calc(var(--ui-safe-top) + 38px));
     }
@@ -569,7 +541,7 @@ body:has(#towerSummit:not([hidden])) #battleOutcome {
     transform-origin: 50% 50%;
 }
 
-/* 좁은 세로 화면: 전투 하단은 상태 한 줄, 명령 한 줄, 작은 출전 칩 한 줄로 줄인다. 명령 설명은 버튼 이름으로 충분해 두지 않는다. */
+/* 좁은 세로 화면: 전투 하단은 상태 한 줄과 명령 한 줄로 줄인다. 명령 설명은 버튼 이름으로 충분해 두지 않는다. */
 @media (max-width: 700px) and (min-height: 551px) {
     #gameplayDock:has(#battleCommands:not([hidden])) {
         gap: 6px;
@@ -577,26 +549,5 @@ body:has(#towerSummit:not([hidden])) #battleOutcome {
     }
     #gameplayDock:has(#battleCommands:not([hidden])) #battleCommandNote {
         display: none;
-    }
-    #gameplayDock:has(#battleCommands:not([hidden])) .hand__cards {
-        gap: 4px;
-    }
-    #gameplayDock:has(#battleCommands:not([hidden])) .hand .deck-card {
-        display: flex;
-        align-items: center;
-        min-height: 36px;
-        padding: 2px 6px;
-        gap: 3px;
-        font-size: 12px;
-    }
-    #gameplayDock:has(#battleCommands:not([hidden])) .hand .deck-card img {
-        width: 20px;
-        height: 20px;
-    }
-    #gameplayDock:has(#battleCommands:not([hidden])) .hand .deck-card i {
-        position: static;
-        min-width: 15px;
-        line-height: 15px;
-        font-size: 10px;
     }
 }

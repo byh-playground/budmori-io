@@ -321,8 +321,7 @@ html.help-scene #towerLeave,
 html.help-scene #gameMenuOverlay,
 html.help-scene #deckDialog,
 html.help-scene #error,
-html.help-scene #fightRetreat,
-html.help-scene #hand {
+html.help-scene #fightRetreat {
     display: none !important;
 }
 

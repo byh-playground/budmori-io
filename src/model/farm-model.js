@@ -1298,11 +1298,11 @@ const GARDEN = class Garden extends GARDEN_BASE {
     // Whoever is still in the door when something else begins is set down on its spot at once.
     // The next floor: its kind is drawn (tower-run.js) and its doors are what that kind offers. A fight offers its bosses,
     // a strengthening floor offers cards, an event floor offers events.
-    // Between floors everybody waits in the hand; the fallen start sleeping for tier (max 3) floors.
+    // Between floors everybody waits in reserve; the fallen start sleeping for tier (max 3) floors.
     // The run's stat cards change every unit's stats; hit points never stay above the new top.
     // Stopping after a cleared floor keeps everything that was won.
-    // The units that are on the field: everything but the ones still waiting in the hand.
-    get handCounts() {
+    // The units that are on the field: everything but the ones still waiting in reserve.
+    get reserveCounts() {
         const COUNTS = new Map();
         for (const UNIT_LOCAL of this._benched) {
             if (UNIT_LOCAL.hp > 0) {

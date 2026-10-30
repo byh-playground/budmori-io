@@ -59,7 +59,10 @@ export function createFarmBossEventPhases(config) {
                 world.finishFarmBossEvent('victory');
                 return true;
             }
-            if (!world.handCounts.size && !world.units.some((u) => hasFaction(u, FACTION_CONFIG.PLAYER) && u.hp > 0)) {
+            if (
+                !world.reserveCounts.size &&
+                !world.units.some((u) => hasFaction(u, FACTION_CONFIG.PLAYER) && u.hp > 0)
+            ) {
                 world.finishFarmBossEvent('defeat');
                 return true;
             }

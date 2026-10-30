@@ -294,26 +294,7 @@ body > header {
     border: var(--ui-bw) solid var(--ui-line);
     pointer-events: auto;
 }
-.hand {
-    width: min(520px, 100%);
-    pointer-events: auto;
-}
-.hand[hidden] {
-    display: none;
-}
-.hand .hand__cards {
-    flex-wrap: nowrap;
-}
-/* In a fight the cards are small chips, so they leave the field in view. */
-.hand .deck-card {
-    min-width: 44px;
-    padding: 3px 6px;
-}
-.hand .deck-card img {
-    width: 24px;
-    height: 24px;
-}
-.hand__cards,
+
 .deck-cards {
     display: flex;
     flex-wrap: wrap;
@@ -518,8 +499,7 @@ body > header {
 /* 하단 행동 단추의 문법: 합성·조합·도감처럼 밝은 면과 한 단 깊이, 가장 중요한 행동(탑 오르기)이나 현재 선택(전투 명령)만 진한 면.
    농장 단추, 전투 명령, 출전 칩이 한 규칙을 쓴다. */
 .controls button,
-.battle-commands label span,
-.hand .deck-card {
+.battle-commands label span {
     font-weight: var(--ui-fw-b);
     border-radius: var(--ui-r-m);
     transition:
@@ -527,8 +507,7 @@ body > header {
         box-shadow 0.08s ease;
 }
 .controls .btn--secondary,
-.battle-commands label span,
-.hand .deck-card {
+.battle-commands label span {
     background: rgb(248 250 239 / 0.95);
     border: var(--ui-bw) solid var(--ui-line);
     color: var(--ui-ink);
@@ -544,8 +523,7 @@ body > header {
     color: var(--ui-primary-ink);
 }
 .controls button:active:not(:disabled),
-.battle-commands input:active + span,
-.hand .deck-card:active {
+.battle-commands input:active + span {
     transform: translateY(2px);
     box-shadow: 0 1px 0 var(--ui-line);
     filter: none;

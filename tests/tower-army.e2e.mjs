@@ -224,7 +224,7 @@ try {
         field: BUDMORI.sim.fieldFighterCount,
         cap: BUDMORI.sim.frontlineLimit,
         owned: Number(document.querySelector('#count').textContent),
-        reserves: [...BUDMORI.sim.handCounts.values()].reduce((sum, count) => sum + count, 0),
+        reserves: [...BUDMORI.sim.reserveCounts.values()].reduce((sum, count) => sum + count, 0),
         rendered: globalThis.__towerRenderedIds.size,
         elapsed: (globalThis.__towerDeploymentEnd - globalThis.__towerDeploymentStart) / 20,
         mode: BUDMORI.sim.battleCommand,
@@ -249,13 +249,11 @@ try {
         return {
             viewportHeight: innerHeight,
             commands: BOX('#battleCommands'),
-            hand: BOX('#hand'),
             boss: BOX('#bossbar'),
             combatDamage: BUDMORI.sim.boss.maxHp - BUDMORI.sim.boss.hp,
         };
     });
     assert.ok(REPORT.stages.landscapeLayout.commands.y >= 280, 'commands stay at the landscape bottom edge');
-    assert.ok(REPORT.stages.landscapeLayout.hand.height <= 44, 'reserve priority remains a slim tappable strip');
     assert.ok(REPORT.stages.landscapeLayout.boss.bottom < REPORT.stages.landscapeLayout.commands.y);
     assert.ok(REPORT.stages.landscapeLayout.combatDamage > 0, 'the frame follows actual combat convergence');
     await page.setViewportSize({ width: 1000, height: 700 });
@@ -320,7 +318,7 @@ try {
     );
     REPORT.stages.reinforcements = await page.evaluate(() => ({
         field: BUDMORI.sim.fieldFighterCount,
-        reserves: [...BUDMORI.sim.handCounts.values()].reduce((sum, count) => sum + count, 0),
+        reserves: [...BUDMORI.sim.reserveCounts.values()].reduce((sum, count) => sum + count, 0),
         liveBosses: BUDMORI.sim.bosses.filter((boss) => boss.hp > 0).length,
         renderedBosses: BUDMORI.runtime.presentationView.bosses.length,
         players: BUDMORI.renderer.bossPlayers.size,

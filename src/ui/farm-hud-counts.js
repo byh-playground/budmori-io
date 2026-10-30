@@ -9,7 +9,7 @@ export class FarmHudCounts {
         this.populationRevision = -1;
         this.population = 0;
         this.battleKey = null;
-        this.battle = { hand: new Map(), reserves: 0, fighters: 0 };
+        this.battle = { reserveCounts: new Map(), reserves: 0, fighters: 0 };
     }
     bind(world) {
         if (this.world === world) {
@@ -48,12 +48,12 @@ export class FarmHudCounts {
             PREVIOUS.progress !== world.progressRevision ||
             PREVIOUS.tick !== world.simulationTick
         ) {
-            // Both the hand cards and command HUD borrow this one query result.
+            // The frontline status and the encounter's reserve count borrow this one query result.
             // Progress catches immediate revival; the tick also covers simulation
             // changes that do not publish a health event. No timer delays the HUD.
-            this.battle.hand = world.handCounts;
+            this.battle.reserveCounts = world.reserveCounts;
             this.battle.reserves = 0;
-            for (const COUNT of this.battle.hand.values()) {
+            for (const COUNT of this.battle.reserveCounts.values()) {
                 this.battle.reserves += COUNT;
             }
             this.battle.fighters = world.fieldFighterCount;
@@ -75,7 +75,7 @@ export class FarmHudCounts {
         this.populationRevision = -1;
         this.population = 0;
         this.battleKey = null;
-        this.battle.hand.clear();
+        this.battle.reserveCounts.clear();
         this.battle.reserves = this.battle.fighters = 0;
     }
 }
