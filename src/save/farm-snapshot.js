@@ -382,7 +382,7 @@ const REWARD = FIELDS(
 // Its semantic validator rejects unknown keys; do not trim archives using a default build.
 const PROGRESSION = JSON_PAYLOAD;
 const PROJECTILE = FIELDS(
-    'isFormationClone id owner ownerGeneration targetId targetGeneration faction ownerId species tier elapsed x y z radius height hit attackMultiplier shotIndex projectileKind fanIndex cornActionId cornSlot cornForm chestnutActionId chestnutSlot chestnutForm chestnutStage chestnutBornTick',
+    'isFormationClone id owner ownerGeneration targetId targetGeneration faction ownerId species tier elapsed x y z radius height hit attackMultiplier shotIndex projectileKind fanIndex cornActionId cornSlot cornForm chestnutActionId chestnutSlot chestnutForm chestnutStage chestnutBornTick chestnutGiant cornGiant',
     {
         path: PATH,
         attackPayload: JSON_PAYLOAD,

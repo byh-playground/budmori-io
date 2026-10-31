@@ -6,7 +6,9 @@
 //   --size 1100x850   viewport             --out <dir>   output dir (default tests/output/scenes)
 //   --name <text>     file prefix          --eval '<js>' run in the page at every shot and print its result
 //   --hold            freeze the sim right after the shot time and shoot the frozen frame (default: shoot live)
-// Each shot prints {scene, timeMs, tick, step, commit}, so the same frame can be asked for again.
+// Each shot prints {scene, timeMs, tick, simTick, step, commit}; with --hold and --at the game stops on the same
+// simulation tick every run (simTick), so before/after captures of one --at are the same frame of the fight.
+// Each shot prints the fields above, so the same frame can be asked for again.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -125,6 +127,10 @@ try {
                     polling: 8,
                 });
             }
+        } else if (AT !== null && ARGS.flags.has('hold')) {
+            // The run itself stops on the first tick at or after AT, so every capture of AT is the same tick.
+            await PAGE.evaluate((ms) => globalThis.__budmoriHelp.holdAt(ms), AT);
+            await PAGE.waitForFunction(() => BUDMORI.runtime.paused === true, null, { timeout: 120000, polling: 16 });
         } else if (AT !== null) {
             await PAGE.waitForFunction((ms) => globalThis.__budmoriHelp.snapshot().timeMs >= ms, AT, {
                 timeout: 120000,
@@ -145,7 +151,10 @@ try {
             });
             await PAGE.waitForTimeout(150);
         }
-        const SNAP = await PAGE.evaluate(() => globalThis.__budmoriHelp.snapshot());
+        const SNAP = await PAGE.evaluate(() => ({
+            ...globalThis.__budmoriHelp.snapshot(),
+            simTick: BUDMORI.sim.simulationTick,
+        }));
         lastMs = SNAP.timeMs;
         const EVAL = ARGS.eval ? await PAGE.evaluate(ARGS.eval) : undefined;
         const FILE = path.join(OUTPUT, `${NAME}-${String(Math.round(SNAP.timeMs)).padStart(6, '0')}ms.png`);
@@ -160,6 +169,7 @@ try {
                 scene: QUERY,
                 timeMs: Math.round(SNAP.timeMs),
                 tick: SNAP.tick,
+                simTick: SNAP.simTick,
                 step: SNAP.step,
                 commit: COMMIT,
                 ...(EVAL === undefined ? {} : { eval: EVAL }),

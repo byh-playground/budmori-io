@@ -26,7 +26,9 @@ export function parseLabParams(text) {
     return JSON.parse(JSON_TEXT);
 }
 
+// Spawns the units and returns each with its spec; states are applied once the fight is set up (labStates).
 function labUnits(world, units) {
+    const SPAWNED = [];
     for (const SPEC of units) {
         const COUNT = Math.max(1, SPEC.n ?? 1),
             RING = SPEC.ring ?? (COUNT > 1 ? 2 + COUNT * 0.35 : 0);
@@ -45,15 +47,23 @@ function labUnits(world, units) {
             UNIT.growthElapsed = UNIT.growthDuration;
             UNIT.z = 0;
             UNIT.dropLanded = true;
-            if (SPEC.hp !== undefined) {
-                UNIT.setHealth(Math.max(1, UNIT.maxHp * SPEC.hp));
-            }
-            if (SPEC.stun) {
-                UNIT.stun = SPEC.stun;
-            }
-            if (SPEC.giant) {
-                UNIT.giantUntil = 1e9;
-            }
+            SPAWNED.push([UNIT, SPEC]);
+        }
+    }
+    return SPAWNED;
+}
+
+// Starting the climb and entering the floor reset health ratios and giant size, so these go on last.
+function labStates(spawned) {
+    for (const [UNIT, SPEC] of spawned) {
+        if (SPEC.hp !== undefined) {
+            UNIT.setHealth(Math.max(1, UNIT.maxHp * SPEC.hp));
+        }
+        if (SPEC.stun) {
+            UNIT.stun = SPEC.stun;
+        }
+        if (SPEC.giant) {
+            UNIT.giantUntil = 1e9;
         }
     }
 }
@@ -103,7 +113,7 @@ export function createLabScene(text) {
             world.resetUnits();
             world.setWorkBasisPoints(0);
             // A climb needs someone to climb, and may only start near the best floor reached: grant that first.
-            labUnits(world, P.units?.length ? P.units : [{ s: 0, t: 1, x: -20, y: 20 }]);
+            const SPAWNED = labUnits(world, P.units?.length ? P.units : [{ s: 0, t: 1, x: -20, y: 20 }]);
             world.playerProgression.towerBest = 100;
             if (!world.startTower(P.floor)) {
                 throw new Error('lab: the tower did not start');
@@ -120,6 +130,7 @@ export function createLabScene(text) {
             world._benched.clear();
             world._benchRevision++;
             labBoss(world, P.boss ?? { stun: 60 });
+            labStates(SPAWNED);
             world.farmBossEvent.phase = 'fighting';
             world.farmBossEvent.elapsed = 0;
             world._unitSpatialDirty = true;

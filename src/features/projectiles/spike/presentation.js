@@ -4,7 +4,9 @@ import { tierBodyScale } from '../../unit-body/definition.js';
 
 // Shard sizes are tuned for a tier-1 body and grow with the firing body. A bare path (camera bounds) has no body: 1.
 function shardSize(projectile) {
-    return Number.isInteger(projectile.species) ? tierBodyScale(projectile.species, projectile.tier) : 1;
+    return Number.isInteger(projectile.species)
+        ? tierBodyScale(projectile.species, projectile.tier) * (projectile.chestnutGiant ?? 1)
+        : 1;
 }
 
 // One authoritative projectile can display a bounded bundle. Shards never own

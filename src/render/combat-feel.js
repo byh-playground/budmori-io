@@ -4,6 +4,7 @@ import { DamageNumberPresentation } from './damage-numbers.js';
 import { BarleyArmorShredPresentation } from '../features/abilities/barley-shred/presentation.js';
 import { PASSIVE_PRESENTATION_EVENTS } from '../tower/tower-passive-presentations.js';
 import { drawElementHit, drawElementHitGround } from './element-hit-effects.js';
+import { bodyScale } from '../features/formation-skills/presentation-base.js';
 const { ObjectPool: OBJECT_POOL } = globalThis.BloomGamekitObjectPool;
 const EMPTY_NOTICES = Object.freeze([]);
 // One place for the budget of a fight's feedback: how long an effect lives, how many may be alive, and when the
@@ -39,17 +40,22 @@ function resetLandingEffect(e) {
 // The shared burst base is a genuine common drawing algorithm; event-specific
 // parameters and particle shapes belong to the concrete presentation class.
 class BurstPresentation {
+    // How big the whole burst is drawn: 1 unless the event carries the body that caused it.
+    body() {
+        return 1;
+    }
     // The ring lies on the floor, so it is drawn under every actor; on top of a tall body it read as a stray circle.
     drawGround(renderer, event, progress) {
         const T = Math.min(1, progress / this.durationFraction),
             ALPHA = 1 - T;
         if (ALPHA > 0) {
+            const BODY = this.body(event);
             renderer.ring(
                 event.x,
                 event.y,
-                0.15 + T * this.size(event),
+                (0.15 + T * this.size(event)) * BODY,
                 `rgba(${this.color},${ALPHA * 0.8})`,
-                this.ringWidth,
+                this.ringWidth * BODY,
             );
         }
     }
@@ -63,20 +69,21 @@ class BurstPresentation {
     }
     drawBurst(renderer, event, progress, alpha, feel) {
         const SIZE = this.size(event),
+            BODY = this.body(event),
             COLOR = this.color;
         const CENTER = renderer.project(event.x, event.y, event.z || 0.1),
             N = feel?.dense ? Math.min(this.particleCount, COMBAT_FEEL_CONFIG.denseParticles) : this.particleCount;
         for (let i = 0; i < N; i++) {
             const ANGLE = (i * Math.PI * 2) / N + (event.sequence % 11) * 0.19,
-                DISTANCE = (0.12 + progress * SIZE) * this.distanceMultiplier,
+                DISTANCE = (0.12 + progress * SIZE) * this.distanceMultiplier * BODY,
                 POINT = renderer.project(
                     event.x + Math.cos(ANGLE) * DISTANCE,
                     event.y + Math.sin(ANGLE) * DISTANCE,
-                    (event.z || 0.1) + this.elevation(progress),
+                    (event.z || 0.1) + this.elevation(progress) * BODY,
                 );
-            this.drawParticle(renderer, POINT, CENTER, ANGLE, alpha, COLOR, progress);
+            this.drawParticle(renderer, POINT, CENTER, ANGLE, alpha, COLOR, progress, BODY);
         }
-        this.drawFlash?.(renderer, CENTER, progress);
+        this.drawFlash?.(renderer, CENTER, progress, BODY);
     }
 }
 class HitPresentation extends BurstPresentation {
@@ -87,27 +94,27 @@ class HitPresentation extends BurstPresentation {
     draw(renderer, event, progress, feel) {
         super.draw(renderer, event, progress, feel);
         if (event.critical) {
-            this.drawCritical(renderer, event, progress);
+            this.drawCritical(renderer, event, progress, this.body(event));
         }
     }
     // A critical hit reads by shape, not only by colour: a wide orange ring and a star of thick rays, where a normal
     // hit has a thin cream ring and short sparks.
-    drawCritical(renderer, event, progress) {
+    drawCritical(renderer, event, progress, body) {
         const T = Math.min(1, progress / 0.58),
             ALPHA = 1 - T,
             CENTER = renderer.project(event.x, event.y, (event.z || 0) + 0.22);
         if (ALPHA <= 0) {
             return;
         }
-        renderer.ring(event.x, event.y, 0.3 + T * 0.62, `rgba(255,150,40,${ALPHA * 0.95})`, 0.11);
+        renderer.ring(event.x, event.y, (0.3 + T * 0.62) * body, `rgba(255,150,40,${ALPHA * 0.95})`, 0.11 * body);
         for (let index = 0; index < 6; index++) {
             const ANGLE = (index * Math.PI) / 3 + (event.sequence % 7) * 0.08,
-                REACH = renderer.scale * (0.16 + T * 0.3),
+                REACH = renderer.scale * (0.16 + T * 0.3) * body,
                 START = REACH * 0.45;
             renderer.line(
                 { x: CENTER.x + Math.cos(ANGLE) * START, y: CENTER.y + Math.sin(ANGLE) * START },
                 { x: CENTER.x + Math.cos(ANGLE) * REACH, y: CENTER.y + Math.sin(ANGLE) * REACH },
-                0.075,
+                0.075 * body,
                 `rgba(255,214,102,${ALPHA})`,
             );
         }
@@ -137,23 +144,27 @@ class HitPresentation extends BurstPresentation {
         const BASE = event.attackKind === 'sweep' ? 1.15 : 0.6;
         return BASE * (0.75 + 0.3 * Math.min(3, event.strength || 1));
     }
+    // Strength sets how hard a hit reads; the body that struck sets how big (T1 = 1, high tiers and giants larger).
+    body(event) {
+        return bodyScale(event.sourceRadius);
+    }
     elevation(progress) {
         return Math.sin(progress * Math.PI) * 0.5;
     }
-    drawParticle(renderer, point, center, _angle, alpha) {
+    drawParticle(renderer, point, center, _angle, alpha, _color, _progress, body) {
         const INNER = {
             x: center.x + (point.x - center.x) * 0.55,
             y: center.y + (point.y - center.y) * 0.55,
         };
-        renderer.line(INNER, point, 0.055, `rgba(255,242,190,${alpha})`);
+        renderer.line(INNER, point, 0.055 * body, `rgba(255,242,190,${alpha})`);
     }
-    drawFlash(renderer, center, progress) {
+    drawFlash(renderer, center, progress, body) {
         if (progress < 0.28) {
             renderer.ellipse(
                 center.x,
                 center.y,
-                renderer.scale * 0.18 * (1 - progress),
-                renderer.scale * 0.12 * (1 - progress),
+                renderer.scale * 0.18 * (1 - progress) * body,
+                renderer.scale * 0.12 * (1 - progress) * body,
                 '#fff4d6',
             );
         }
@@ -164,14 +175,14 @@ class BossHitPresentation extends HitPresentation {
     // A coloured unit's hit is drawn in its element; a plain unit keeps the generic sparks.
     drawGround(renderer, event, progress) {
         if (event.element) {
-            drawElementHitGround(renderer, event, Math.min(1, progress / this.durationFraction));
+            drawElementHitGround(renderer, event, Math.min(1, progress / this.durationFraction), this.body(event));
         } else {
             super.drawGround(renderer, event, progress);
         }
     }
     drawBurst(renderer, event, progress, alpha, feel) {
         if (event.element) {
-            drawElementHit(renderer, event, progress, Boolean(feel?.dense));
+            drawElementHit(renderer, event, progress, Boolean(feel?.dense), this.body(event));
         } else {
             super.drawBurst(renderer, event, progress, alpha, feel);
         }

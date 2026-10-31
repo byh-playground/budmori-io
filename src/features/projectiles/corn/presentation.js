@@ -1,21 +1,28 @@
 import { WORLD_HEIGHT_PROJECTION, WORLD_DEPTH_PROJECTION } from '../../../vector-sockets.js';
 import { seedDisplayMultiplier } from '../seed/presentation.js';
-import { seedProjectileDimensions } from '../seed/definition.js';
-import { unitBodyHeight } from '../../unit-body/definition.js';
+import { tierBodyScale, unitBodyHeight } from '../../unit-body/definition.js';
 
-const T1_CORN_SEED_HEIGHT = seedProjectileDimensions({
-    bodyHeight: unitBodyHeight({ species: 1, tier: 1, growthElapsed: 1, growthDuration: 1 }),
-}).height;
+const T1_CORN_BODY_HEIGHT = unitBodyHeight({ species: 1, tier: 1, growthElapsed: 1, growthDuration: 1 });
 
 // Visual cob dimensions are deliberately independent of the physical hit filter.
 // Changing the artwork never changes collision radius/height, damage, or arrival clocks.
 function cornVisualHeight(form) {
     return form >= 5 ? 3.8 : form === 4 ? 2.8 : 1.6;
 }
-// The cob is tuned for a tier-1 corn body and grows with the body that fired it (tier and giant size): the seed's
-// launch height already carries both.
+// The cob is tuned for a tier-1 corn body and grows with the body that fired it: its tier, times its giant size
+// captured at launch. (A cob's collision height is fixed per form, so it says nothing about the body.)
 function cornVisualScale(projectile) {
-    return projectile.height / T1_CORN_SEED_HEIGHT;
+    return tierBodyScale(1, projectile.tier) * (projectile.cornGiant ?? 1);
+}
+// The whole cob drawing spans this many cob lengths: the cob -0.49..+0.49, the husk tip to -0.65 and the flared side
+// husks a little past it (measured 1.19), plus the few percent the body art leaves empty above its visible top.
+const COB_DRAWN_EXTENT = 1.3;
+// A shot is never bigger than the corn that fired it: the whole drawn cob, husk included, fits in the shooter's body.
+function cornVisualLength(projectile) {
+    return (
+        Math.min(cornVisualHeight(projectile.cornForm), T1_CORN_BODY_HEIGHT / COB_DRAWN_EXTENT) *
+        cornVisualScale(projectile)
+    );
 }
 
 export function includeCornProjectileBounds(world, bounds) {
@@ -25,7 +32,7 @@ export function includeCornProjectileBounds(world, bounds) {
         }
         // Ballistics.sample lands at z=0; its target is an XY combat point, not a 3D endpoint.
         const PATH = PROJECTILE.path,
-            SIZE = cornVisualHeight(PROJECTILE.cornForm) * cornVisualScale(PROJECTILE),
+            SIZE = cornVisualLength(PROJECTILE),
             SIDE = SIZE * 0.9 + 0.5,
             SKY = Math.max(PATH.from.z, 0) + PATH.height + SIZE * 2.1;
         // Like storm-cloud bounds, reserve the complete path and trail for the floor,
@@ -69,8 +76,7 @@ export class CornProjectilePresentation {
 
     draw(renderer, projectile, point, tail) {
         const SCALE = seedDisplayMultiplier(renderer, projectile),
-            LENGTH =
-                cornVisualHeight(projectile.cornForm) * cornVisualScale(projectile) * WORLD_HEIGHT_PROJECTION * SCALE,
+            LENGTH = cornVisualLength(projectile) * WORLD_HEIGHT_PROJECTION * SCALE,
             WIDTH = LENGTH * 0.28,
             CENTER = { x: point.x, y: point.y - LENGTH * 0.5 },
             TAIL = renderer.project(tail.x, tail.y, tail.z),
