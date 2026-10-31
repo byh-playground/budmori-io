@@ -56,7 +56,7 @@ export class PeanutDeathSplitPresentation {
             matrix: MATRIX,
             alpha: ALPHA,
         });
-        drawUnitFace(renderer.ctx, RECORD, player, 'surprised', null, MATRIX, ALPHA);
+        drawUnitFace(renderer, RECORD, player, 'surprised', null, MATRIX, ALPHA);
         if (ELAPSED_MS >= CLIP.durationMs) {
             player.dispose();
             players.delete(effect.eventId);

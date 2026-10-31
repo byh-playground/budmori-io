@@ -389,7 +389,7 @@ export class BossPresentation {
         }
         this.renderer.ctx.drawVectorActor(PLAYER, { matrix: MATRIX });
         drawUnitFace(
-            this.renderer.ctx,
+            this.renderer,
             RECORD,
             PLAYER,
             LOOK.face,
@@ -401,7 +401,7 @@ export class BossPresentation {
             // A boss shows its floor band's element like every other enemy: cheeks in its colour and a mark above.
             const ELEMENT = towerElement(world.tower.floor);
             drawElementMark(
-                this.renderer.ctx,
+                this.renderer,
                 ELEMENT,
                 P.x + B.radius * this.renderer.scale * 0.55,
                 this.renderer.project(B.x, B.y, (B.z || 0) + B.height + 0.4).y,
