@@ -585,16 +585,8 @@ body > header {
     background: rgb(248 250 239 / 0.9);
     border: var(--ui-bw) solid var(--ui-line);
     color: var(--ui-ink);
+    font-size: 24px;
     line-height: 1;
-}
-.utility > button svg {
-    width: 24px;
-    height: 24px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 2;
-    stroke-linecap: round;
-    stroke-linejoin: round;
 }
 .utility > button[aria-expanded='true'],
 .utility > button[aria-pressed='true'] {
@@ -868,12 +860,20 @@ details summary {
     font-weight: var(--ui-fw-b);
     cursor: pointer;
 }
+/* The same 2px round stroke as .icon, drawn as a chevron that points down when closed and up when open. */
 details summary::after {
-    content: '▾';
+    content: '';
+    width: 8px;
+    height: 8px;
+    margin: 0 4px 4px;
+    border: solid currentColor;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
     transition: transform 0.15s ease;
 }
 details[open] summary::after {
-    transform: rotate(180deg);
+    margin-bottom: -4px;
+    transform: rotate(-135deg);
 }
 .plot-bar__label {
     display: grid;
@@ -1032,15 +1032,7 @@ body:has(#bossbar:not([hidden])) .bossbar {
     background: rgb(248 250 239 / 0.9);
     border: var(--ui-bw) solid var(--ui-line);
     color: var(--ui-ink);
-}
-.corner-settings svg {
-    width: 24px;
-    height: 24px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 2;
-    stroke-linecap: round;
-    stroke-linejoin: round;
+    font-size: 24px;
 }
 .corner-settings[aria-expanded='true'] {
     color: var(--ui-primary);
@@ -1241,6 +1233,18 @@ body:has(#floorChip:not([hidden])) #gameplayDock .utility {
         scrollbar-width: thin;
         scrollbar-color: var(--ui-scroll) transparent;
     }
+}
+/* 아이콘: src/ui/icons.js의 한 묶음. 글자 크기를 따라 커지고 글자 색으로 그린다 */
+.icon {
+    width: 1em;
+    height: 1em;
+    flex: none;
+    vertical-align: -0.15em;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
 /* 닫기 버튼: 모든 대화상자와 설정 창이 같은 둥근 단추를 쓴다 */
 .dialog-close {
