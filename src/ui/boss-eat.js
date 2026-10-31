@@ -1,6 +1,7 @@
 import { ELEMENTS } from '../model/lineage.js';
 import { bossLeafCount, bossAuraLevel, BOSS_LEAF_ANGLES } from '../tower/boss-growth.js';
 import { speciesFacePortraitSource, speciesMouthAnchor } from '../units/species-paint.js';
+import { iconSvg } from './icons.js';
 
 // The boss that is choosing a card in the doors panel. It eats the card it picked: it watches the card come, opens its
 // mouth, bites, chews twice and swallows. Leaves and an aura around its body show how far it has grown.
@@ -79,7 +80,7 @@ function drawChips(host, chips, hideId) {
         ...chips.map((chip) => {
             const ITEM = document.createElement('i');
             ITEM.title = `${chip.name} Lv.${chip.level}`;
-            ITEM.textContent = chip.level > 1 ? `${chip.name[0]}${chip.level}` : chip.name[0];
+            ITEM.innerHTML = iconSvg(chip.icon) + (chip.level > 1 ? chip.level : '');
             ITEM.dataset.new = String(chip.id === hideId);
             return ITEM;
         }),

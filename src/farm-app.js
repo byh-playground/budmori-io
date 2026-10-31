@@ -1476,6 +1476,7 @@ function bossCardChips(tower) {
     const CHIPS = [...tower.bossRelics].map(([id, level]) => ({
         id,
         level,
+        icon: id,
         name: FORMATION_SKILL_DEFINITIONS.find((item) => item.id === id)?.name || id,
     }));
     const COUNTS = new Map();
@@ -1483,7 +1484,8 @@ function bossCardChips(tower) {
         COUNTS.set(CARD.id, (COUNTS.get(CARD.id) || 0) + 1);
     }
     for (const [ID, LEVEL] of COUNTS) {
-        CHIPS.push({ id: ID, level: LEVEL, name: statCard(ID)?.name ?? passiveCard(ID)?.name ?? ID });
+        const STAT = statCard(ID);
+        CHIPS.push({ id: ID, level: LEVEL, icon: STAT?.icon ?? ID, name: STAT?.name ?? passiveCard(ID)?.name ?? ID });
     }
     return CHIPS.slice(-14);
 }

@@ -124,20 +124,56 @@ export const RARITY_NAMES = Object.freeze(['일반', '희귀', '영웅']);
 
 // A stat card adds `values[rarity]` to one stat for the whole climb: `flat` is added to the stat's base, `pct` is added to
 // a shared multiplier, so the result is (base + all flat) * (1 + all pct). Armor, crit and lifesteal have no meaningful
-// base to scale and so exist as one kind only. Regen `pct` is a share of max HP per second.
+// base to scale and so exist as one kind only. Regen `pct` is a share of max HP per second. `icon` names the stat's
+// picture in src/ui/icons.js, shared by both kinds of one stat.
 const STAT_CARDS = Object.freeze([
-    { id: 'attack-pct', stat: 'attackPower', mode: 'pct', name: '공격력', values: [0.1, 0.16, 0.25] },
-    { id: 'attack-flat', stat: 'attackPower', mode: 'flat', name: '공격력', values: [2, 3, 5] },
-    { id: 'hp-pct', stat: 'maxHp', mode: 'pct', name: '체력', values: [0.12, 0.19, 0.3] },
-    { id: 'hp-flat', stat: 'maxHp', mode: 'flat', name: '체력', values: [20, 32, 50] },
-    { id: 'regen-pct', stat: 'regen', mode: 'pct', name: '재생', values: [0.005, 0.008, 0.0125] },
-    { id: 'regen-flat', stat: 'regen', mode: 'flat', name: '재생', values: [1, 1.6, 2.5] },
-    { id: 'armor-flat', stat: 'armor', mode: 'flat', name: '방어력', values: [10, 16, 25] },
-    { id: 'attack-speed-pct', stat: 'attackSpeed', mode: 'pct', name: '공격 속도', values: [0.06, 0.1, 0.15] },
-    { id: 'move-speed-pct', stat: 'moveSpeed', mode: 'pct', name: '이동 속도', values: [0.06, 0.1, 0.15] },
-    { id: 'crit-chance-flat', stat: 'critChance', mode: 'flat', name: '치명타 확률', values: [0.05, 0.08, 0.12] },
-    { id: 'crit-multiplier-flat', stat: 'critMultiplier', mode: 'flat', name: '치명타 피해', values: [0.2, 0.32, 0.5] },
-    { id: 'lifesteal-flat', stat: 'lifesteal', mode: 'flat', name: '흡혈', values: [0.03, 0.05, 0.075] },
+    { id: 'attack-pct', stat: 'attackPower', mode: 'pct', name: '공격력', icon: 'attack', values: [0.1, 0.16, 0.25] },
+    { id: 'attack-flat', stat: 'attackPower', mode: 'flat', name: '공격력', icon: 'attack', values: [2, 3, 5] },
+    { id: 'hp-pct', stat: 'maxHp', mode: 'pct', name: '체력', icon: 'hp', values: [0.12, 0.19, 0.3] },
+    { id: 'hp-flat', stat: 'maxHp', mode: 'flat', name: '체력', icon: 'hp', values: [20, 32, 50] },
+    { id: 'regen-pct', stat: 'regen', mode: 'pct', name: '재생', icon: 'regen', values: [0.005, 0.008, 0.0125] },
+    { id: 'regen-flat', stat: 'regen', mode: 'flat', name: '재생', icon: 'regen', values: [1, 1.6, 2.5] },
+    { id: 'armor-flat', stat: 'armor', mode: 'flat', name: '방어력', icon: 'armor', values: [10, 16, 25] },
+    {
+        id: 'attack-speed-pct',
+        stat: 'attackSpeed',
+        mode: 'pct',
+        name: '공격 속도',
+        icon: 'attack-speed',
+        values: [0.06, 0.1, 0.15],
+    },
+    {
+        id: 'move-speed-pct',
+        stat: 'moveSpeed',
+        mode: 'pct',
+        name: '이동 속도',
+        icon: 'move-speed',
+        values: [0.06, 0.1, 0.15],
+    },
+    {
+        id: 'crit-chance-flat',
+        stat: 'critChance',
+        mode: 'flat',
+        name: '치명타 확률',
+        icon: 'crit-chance',
+        values: [0.05, 0.08, 0.12],
+    },
+    {
+        id: 'crit-multiplier-flat',
+        stat: 'critMultiplier',
+        mode: 'flat',
+        name: '치명타 피해',
+        icon: 'crit-damage',
+        values: [0.2, 0.32, 0.5],
+    },
+    {
+        id: 'lifesteal-flat',
+        stat: 'lifesteal',
+        mode: 'flat',
+        name: '흡혈',
+        icon: 'lifesteal',
+        values: [0.03, 0.05, 0.075],
+    },
 ]);
 
 // Previews and receipts use the same units, including the boss's explicit role profile.
