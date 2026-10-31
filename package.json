@@ -26,7 +26,8 @@
         "test:tower-army": "node tests/tower-army.e2e.mjs",
         "test:camera": "node tests/battle-camera.e2e.mjs",
         "test:scatter-command": "node tests/scatter-command.e2e.mjs",
-        "test:hud-sampling": "node tests/hud-sampling.e2e.mjs"
+        "test:hud-sampling": "node tests/hud-sampling.e2e.mjs",
+        "test:offline-breeding": "node tests/offline-breeding.mjs"
     },
     "devDependencies": {
         "@eslint/js": "10.0.1",

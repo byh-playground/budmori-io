@@ -49,11 +49,27 @@ export function applyOffline(world, config, rawSeconds) {
         }
     }
     for (let round = 0; round < ROUNDS && pool >= COST; round++) {
+        // When food or room cannot cover every pair, the births of the round are shared in proportion to each species'
+        // pairs (the slider's share), as in play where every pair competes for food alike, never by species id.
+        const PAIRS = ADULTS.map((count) => Math.floor(count / 2)),
+            TOTAL = PAIRS.reduce((sum, pairs) => sum + pairs, 0),
+            ROOM = CAPACITY - world.ownedPopulation - world.birthReservations,
+            BIRTHS = Math.min(TOTAL, ROOM, Math.floor(pool / COST));
+        if (BIRTHS <= 0) {
+            break;
+        }
+        const SHARES = PAIRS.map((pairs) => Math.floor((pairs * BIRTHS) / TOTAL));
+        // Leftover births go to the largest remainders; ties rotate with the round so no species id is always first.
+        const ORDER = PAIRS.map((_, index) => (round + index) % SPECIES_COUNT).sort(
+            (a, b) => ((PAIRS[b] * BIRTHS) % TOTAL) - ((PAIRS[a] * BIRTHS) % TOTAL),
+        );
+        for (let left = BIRTHS - SHARES.reduce((sum, share) => sum + share, 0), index = 0; left > 0; index++) {
+            SHARES[ORDER[index]]++;
+            left--;
+        }
         let progressed = false;
         for (let species = 0; species < SPECIES_COUNT; species++) {
-            const ROOM = CAPACITY - world.ownedPopulation - world.birthReservations;
-            let births = Math.min(Math.floor(ADULTS[species] / 2), ROOM, Math.floor(pool / COST));
-            while (births-- > 0) {
+            for (let births = SHARES[species]; births > 0; births--) {
                 const CHILD = world.spawn(species, 1, (world.random() - 0.5) * 10, (world.random() - 0.5) * 6);
                 if (!CHILD) {
                     break;

@@ -85,8 +85,8 @@ function labBoss(world, spec) {
         }
         BOSS.basicCount = BOSS_RHYTHM.basicsPerSpecial;
         BOSS.specialCount = CONFIG.element ? 0 : BOSS_RHYTHM.specialsPerArea - 1;
-        // Keep the boss healthy enough to stay alive, but low enough for patterns gated by remaining HP.
-        BOSS.hp = Math.min(BOSS.maxHp, Math.max(HP, BOSS.maxHp * Math.min(1, CONFIG.unlockHp)));
+        // Patterns gated by remaining HP need the boss at or below their unlock fraction.
+        BOSS.hp = Math.min(HP, BOSS.maxHp * Math.min(1, CONFIG.unlockHp));
     }
 }
 
