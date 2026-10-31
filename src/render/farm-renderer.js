@@ -1,3 +1,4 @@
+import { labRequested } from '../debug/lab.js';
 import { barleyPreviewEnvelope } from '../features/unit-attacks/barley/presentation.js';
 import { wheatPreviewEnvelope } from '../features/unit-attacks/wheat/presentation.js';
 import { ricePreviewEnvelope } from '../features/unit-attacks/rice/presentation.js';
@@ -82,7 +83,10 @@ const DIORAMA = class Diorama {
         if (!['vector', 'sprite'].includes(CONFIG.render.unitArt)) {
             throw new TypeError('CONFIG.render.unitArt must be vector or sprite');
         }
-        this.unitArtMode = ART_QUERY.has('help') ? 'previewVector' : CONFIG.render.unitArt;
+        this.unitArtMode =
+            ART_QUERY.has('help') || labRequested(globalThis.location?.search)
+                ? 'previewVector'
+                : CONFIG.render.unitArt;
         this.device = new WEB_GL_DEVICE(canvas, {
             alpha: false,
             depth: false,

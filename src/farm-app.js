@@ -33,6 +33,7 @@ import { apportionBreedShares, adjustBreedShare } from './model/breed-allocation
 import { speciesById, giantSpeciesName, BOSS_SPECIES } from './units/species-catalog.js';
 import { speciesPortraitSource } from './units/species-paint.js';
 import { HELP_MAX_FRAME_MS, HELP_PLAYBACK_RATE, helpSceneById } from './ui/help-scenes.js';
+import { labScene } from './debug/lab.js';
 import { createHelpPanel } from './ui/help-panel.js';
 import { codexHtml, CODEX_TABS } from './ui/codex-dialog.js';
 import { SeedlingReveal } from './ui/seedling-reveal.js';
@@ -2295,7 +2296,7 @@ if (location.hash && location.hash !== '#/') {
 
 // A help card is this same page, loaded as ?help=<card> inside a frame: a scripted garden that plays at half speed.
 const HELP = {
-    scene: helpSceneById(new URLSearchParams(location.search).get('help')),
+    scene: helpSceneById(new URLSearchParams(location.search).get('help')) ?? labScene(location.search),
     scenario: null,
     memo: {},
     complete: false,
