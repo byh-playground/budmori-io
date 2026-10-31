@@ -31,6 +31,7 @@ function prepareRuntime(root = PATH.resolve(__dirname, '..')) {
         'work-scheduler': 'BloomGamekitWorkScheduler',
         scenario: 'BloomGamekitScenario',
         save: 'BloomGamekitSave',
+        pwa: 'BloomGamekitPwa',
     };
     const SHA = (bytes) => CRYPTO.createHash('sha256').update(bytes).digest('hex');
     const MODULES = Object.entries(NAMESPACES).map(([name, globalName]) => {

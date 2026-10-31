@@ -131,6 +131,12 @@ npm run test:codex
 
 이관 후 현재 인원 상한보다 병력이 많아도 기존 병력은 보존합니다. 합체는 완성된 결과 유닛으로 재료를 한 번에 교체하므로 계속 진행할 수 있으며, 새 번식·획득에는 현재 상한을 적용합니다.
 
+### 설치·오프라인 (PWA)
+
+GameKit `pwa` 모듈을 씁니다. `assets/pwa/`의 SVG 세 개(아이콘·마스커블 아이콘·공유 이미지, 게임 캐릭터 SVG와 얼굴 레이어로 만든 것)가 원본이고, `npm run pwa`(`scripts/pwa.mjs`)가 고정 생성기 `vendor/upstream/pwa-build.mjs`로 `manifest.webmanifest`·`pwa/*.png`·`sw.js`와 `index.html`의 `bloom-pwa` 마커 사이 태그를 만듭니다. 생성 결과는 커밋하고, `npm run check`의 `scripts/pwa.mjs --check`가 원본과 어긋난 결과를 막습니다. `index.html`·`sw.js`는 생성기가 쓰므로 Prettier에서 뺐습니다. `src/**`나 `assets/troops/*`를 바꾸면 `npm run pwa`를 다시 돌려 커밋합니다(sw.js의 캐시 버전이 바뀌어야 새 배포가 설치됩니다).
+
+첫 방문 뒤에는 service worker의 precache(`index.html`, `src/**`, `assets/troops/*`, 고정 GameKit 모듈)로 오프라인에서도 시작합니다. 캐릭터 SVG는 precache와 같은 주소로 읽도록 query 없이 요청하고(`cache: 'no-cache'`), 무결성은 manifest의 SHA-256으로 확인합니다. 새 버전이 설치되면 시작 화면에 `새 버전으로 다시 열기`가 나오고, 농장을 저장한 뒤 다시 엽니다. 브라우저가 설치를 허락하면 시작 화면에 `앱으로 설치`가 나옵니다. 도움말·장면 연구실·소개 데모는 service worker를 등록하지 않습니다(`src/ui/app-shell.js`).
+
 기존 GitHub Pages `main /`를 그대로 사용합니다. 머지 후 `node scripts/verify-pages.mjs`가 공개 index·게임·bootstrap의 바이트 수와 SHA256을 비교합니다. 실제 검증·배포 기록은 해당 PR에 남깁니다.
 
 ## 소스와 기준

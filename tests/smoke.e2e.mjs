@@ -41,7 +41,9 @@ const BROWSER = await chromium.launch({
     executablePath: EXECUTABLE,
     args: ['--no-sandbox', '--use-gl=swiftshader', '--enable-unsafe-swiftshader'],
 });
-const PAGE = await (await BROWSER.newContext({ viewport: { width: 1000, height: 700 } })).newPage(),
+const PAGE = await (
+        await BROWSER.newContext({ viewport: { width: 1000, height: 700 }, serviceWorkers: 'block' })
+    ).newPage(),
     ERRORS = [];
 PAGE.on('pageerror', (error) => ERRORS.push(String(error)));
 PAGE.on('console', (message) => {

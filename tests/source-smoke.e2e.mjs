@@ -161,6 +161,11 @@ try {
     await PAGE.clock.install();
     await PAGE.goto(`${ORIGIN}/index.html`);
     await PAGE.waitForFunction(() => Boolean(globalThis.BUDMORI));
+    // Service workers are blocked so the routed files stay authoritative. The game reports that the way it reports
+    // any app-layer failure: a line on the start screen, not a page error.
+    await PAGE.waitForFunction(() =>
+        document.getElementById('appNotice').textContent.includes('service worker registration was blocked'),
+    );
     REPORT.renderEnvironment.renderer = await PAGE.evaluate(() => {
         const GL = BUDMORI.renderer.device.gl,
             DEBUG = GL.getExtension('WEBGL_debug_renderer_info');

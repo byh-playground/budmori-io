@@ -26,36 +26,44 @@ const MODULES = Object.freeze({
     'object-pool': 'BloomGamekitObjectPool',
     scenario: 'BloomGamekitScenario',
     save: 'BloomGamekitSave',
+    pwa: 'BloomGamekitPwa',
 });
-const DIST_MODULES = Object.freeze([
-    'interpolation',
-    'rendering',
-    'vector-assets',
-    'vector-assets-loader',
-    'input',
-    'deterministic',
-    'simloop',
-    'work-scheduler',
-    'transport',
-    'replay',
-    'rollback',
-    'camera',
-    'presentation-events',
-    'hud',
-    'debug-tools',
-    'audio',
-    'navigation',
-    'scenario',
-    'object-pool',
-    'pixel-physics',
-    'bm',
-    'bm-mock',
-    'bm-google-ads',
-    'bm-ima',
-    'store',
-    'store-mock',
-    'save',
-]);
+// Every generated file the pinned dist manifest lists, in its order. Browser bundles are `.js`; Node tools
+// such as the PWA generator are `.mjs` and are only run locally (scripts/pwa.mjs), never loaded by the page.
+const DIST_FILES = Object.freeze(
+    [
+        'interpolation',
+        'rendering',
+        'vector-assets',
+        'vector-assets-loader',
+        'input',
+        'deterministic',
+        'simloop',
+        'work-scheduler',
+        'transport',
+        'replay',
+        'rollback',
+        'camera',
+        'presentation-events',
+        'hud',
+        'debug-tools',
+        'audio',
+        'navigation',
+        'scenario',
+        'object-pool',
+        'pixel-physics',
+        'bm',
+        'bm-mock',
+        'bm-google-ads',
+        'bm-ima',
+        'store',
+        'store-mock',
+        'save',
+        'pwa',
+    ]
+        .map((name) => name + '.js')
+        .concat(['pwa-build.mjs']),
+);
 const DIST_ASSETS = Object.freeze([
     Object.freeze({
         file: 'assets/fonts/noto-sans-kr-700-v1.json',
@@ -222,10 +230,9 @@ function verify(root = ROOT) {
     const MANIFEST = JSON.parse(MANIFEST_BYTES);
     ASSERT.deepEqual(Object.keys(MANIFEST), ['schemaVersion', 'modules', 'assets']);
     ASSERT.equal(MANIFEST.schemaVersion, 2);
-    ASSERT.equal(MANIFEST.modules.length, DIST_MODULES.length);
     ASSERT.deepEqual(
         MANIFEST.modules.map((m) => m.file),
-        DIST_MODULES.map((n) => n + '.js'),
+        DIST_FILES,
     );
     for (const ENTRY of MANIFEST.modules) {
         ASSERT(exactKeys(ENTRY, ['file', 'sha256']), 'Bundle manifest schema');
@@ -365,11 +372,7 @@ function refresh(repository, root = ROOT) {
             'dist-tree.base64',
             GIT(['cat-file', 'tree', `${LOCK.distCommit}^{tree}`]).toString('base64') + '\n',
         );
-        for (const NAME of [
-            'manifest.json',
-            ...DIST_MODULES.map((n) => n + '.js'),
-            ...DIST_ASSETS.map((a) => a.file),
-        ]) {
+        for (const NAME of ['manifest.json', ...DIST_FILES, ...DIST_ASSETS.map((a) => a.file)]) {
             PUT(CACHE, NAME, GIT(['show', `${LOCK.distCommit}:${NAME}`]));
         }
         PUT(
@@ -460,6 +463,7 @@ module.exports = {
     inline,
     sha: SHA,
     MODULES,
+    DIST_FILES,
     DIST_ASSETS,
     SOURCE_FILES,
 };

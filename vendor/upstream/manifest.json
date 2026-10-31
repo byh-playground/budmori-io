@@ -35,7 +35,7 @@
     },
     {
       "file": "transport.js",
-      "sha256": "cb509226a9644e86857f12e137943bf0cc04c5f4bace4dbdf4137efa6240fc3a"
+      "sha256": "06361120228fe158e8751a1a703e7d38a4680a4e0f00d2473e4de8da2f4468af"
     },
     {
       "file": "replay.js",
@@ -43,7 +43,7 @@
     },
     {
       "file": "rollback.js",
-      "sha256": "111aa2f09d118c7543a4465d9e21f775de8a48a7f16a1a3b43c69636423e6a52"
+      "sha256": "1984d45654284e3c20a467a1b29318e91c2b79b9639f8b2e969b0ea67d251d2a"
     },
     {
       "file": "camera.js",
@@ -108,6 +108,14 @@
     {
       "file": "save.js",
       "sha256": "50164b43313c93dca7ebf076456a3b319b0825a0b5c6f5712af8d3286d604cfc"
+    },
+    {
+      "file": "pwa.js",
+      "sha256": "7ae82847f3bfb9707bc1e59eedcc3983363a38081b68525669467601989fe895"
+    },
+    {
+      "file": "pwa-build.mjs",
+      "sha256": "dc00f87aa0194ec9721b1949888c310c219238fb9c2562704300d3cbd0003858"
     }
   ],
   "assets": [

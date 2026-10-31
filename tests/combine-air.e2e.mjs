@@ -34,7 +34,7 @@ const DEADLINE = setTimeout(() => BROWSER.close(), 180000);
 DEADLINE.unref();
 try {
     async function open() {
-        const PAGE = await BROWSER.newPage({ viewport: { width: 844, height: 390 } });
+        const PAGE = await BROWSER.newPage({ viewport: { width: 844, height: 390 }, serviceWorkers: 'block' });
         PAGE.on('pageerror', (error) => ERRORS.push(String(error)));
         await PAGE.route(/cdn\.jsdelivr\.net\/gh\/byh-playground\/bloom-gamekit@[0-9a-f]+\/(.*)/, (route) =>
             route.fulfill({
