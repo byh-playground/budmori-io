@@ -47,10 +47,8 @@ export const FARM_TOWER_RUN = (base) =>
                     highestTowerStartFloor(this.playerProgression.towerBest),
                 ),
                 KIND = FLOOR % CONFIG.farm.tower.midBossEvery === 0 ? 'mid' : 'battle';
-            // Whoever is already down sleeps through the first floor.
-            const SLEEP = new Map(
-                this.units.filter((u) => !u.isBattleOnlySummon && u.hp <= 0).map((u) => [u.id, FLOOR]),
-            );
+            // Whoever is already down sits this climb out with those who fall during it.
+            const DOWNED = new Set(this.units.filter((u) => !u.isBattleOnlySummon && u.hp <= 0).map((u) => u.id));
             const REWARD_RUN = beginTowerRewardRun(this.playerProgression);
             this.playerProgression = REWARD_RUN.state;
             this.battleCommand = 'engage';
@@ -68,7 +66,7 @@ export const FARM_TOWER_RUN = (base) =>
                 floor: FLOOR,
                 kind: KIND,
                 ...freshTowerRun(),
-                sleepUntil: SLEEP,
+                downed: DOWNED,
                 record: false,
             };
             // Everyone on the farm walks to the door first; the floor begins when they are inside.
@@ -205,8 +203,8 @@ export const FARM_TOWER_RUN = (base) =>
                 return;
             }
             for (const U of this.unitCollection.items) {
-                if (!U.isBattleOnlySummon && U.hp <= 0 && !T.sleepUntil.has(U.id)) {
-                    T.sleepUntil.set(U.id, T.floor + Math.min(CONFIG.farm.tower.sleepMax, U.tier));
+                if (!U.isBattleOnlySummon && U.hp <= 0) {
+                    T.downed.add(U.id);
                 }
             }
             this._benched = new Set(this.unitCollection.items.filter((u) => !u.isBattleOnlySummon));
@@ -215,9 +213,14 @@ export const FARM_TOWER_RUN = (base) =>
             T.doors = this._rollDoors();
             this.markProgressChanged();
         }
-        _wakeUnit(unit) {
+        // A troop that falls stays down for the rest of the climb; floors never wake it. This is the one way back
+        // into the climb, for a revive effect such as a revive event floor (TOWER_EVENTS) to call.
+        reviveDowned(unit) {
+            if (!this.tower.downed.delete(unit.id)) {
+                return false;
+            }
             unit.revive(unitMaxHpFor(unit));
-            this.tower.sleepUntil.delete(unit.id);
+            return true;
         }
         chooseDoor(index) {
             const T = this.tower,
@@ -296,13 +299,7 @@ export const FARM_TOWER_RUN = (base) =>
                 if (UNIT_LOCAL.isBattleOnlySummon) {
                     continue;
                 }
-                if (
-                    UNIT_LOCAL.hp <= 0 &&
-                    T.sleepUntil.has(UNIT_LOCAL.id) &&
-                    T.sleepUntil.get(UNIT_LOCAL.id) < T.floor
-                ) {
-                    this._wakeUnit(UNIT_LOCAL);
-                } else if (UNIT_LOCAL.hp > 0) {
+                if (UNIT_LOCAL.hp > 0) {
                     UNIT_LOCAL.hp = unitMaxHpFor(UNIT_LOCAL);
                 }
             }

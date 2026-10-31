@@ -409,7 +409,7 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
             active: W.tower.active,
             floor: W.tower.floor,
             doors: W.tower.doors.length,
-            sleepers: W.tower.sleepUntil.size,
+            downed: W.tower.downed.size,
             best: W.playerProgression.towerBest,
             record: W.tower.record,
             onField: W.units.filter((u) => !u.isBattleOnlySummon).length,
@@ -421,7 +421,7 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
         ONE.active && ONE.floor === 1 && ONE.doors >= 1 && ONE.best === 1 && ONE.record,
         `floor 1 ${JSON.stringify(ONE)}`,
     );
-    expect(ONE.sleepers === 1 && ONE.onField === 0, `sleep/hand ${JSON.stringify(ONE)}`);
+    expect(ONE.downed === 1 && ONE.onField === 0, `downed/hand ${JSON.stringify(ONE)}`);
     expect(ONE.panel && /^1층/.test(ONE.rail), `tower UI ${JSON.stringify(ONE)}`);
     const CARD = await WORLD(() => {
         const W = BUDMORI.sim;

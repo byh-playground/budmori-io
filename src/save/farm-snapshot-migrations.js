@@ -42,7 +42,7 @@ export function normalizeSnapshot(raw, { clone = true } = {}) {
             relics: [],
             bossRelics: [],
             undyingUsed: [],
-            sleepUntil: [],
+            downed: [],
         };
         SNAPSHOT.deployOrder = Array.from({ length: 9 }, (_, index) => index);
         SNAPSHOT.benchedIds = [];

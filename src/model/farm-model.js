@@ -528,7 +528,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
             floor: 0,
             kind: 'battle',
             ...freshTowerRun(),
-            sleepUntil: new Map(),
+            downed: new Set(),
             record: false,
         };
         this._stepUnits.length = 0;

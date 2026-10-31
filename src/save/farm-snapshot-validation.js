@@ -1546,15 +1546,9 @@ function validateTowerCheckpoint(raw) {
             Array.isArray(TOWER.relics) &&
             Array.isArray(TOWER.bossRelics) &&
             Array.isArray(TOWER.undyingUsed) &&
-            Array.isArray(TOWER.sleepUntil) &&
-            TOWER.sleepUntil.every(
-                (entry) =>
-                    Array.isArray(entry) &&
-                    entry.length === 2 &&
-                    INTEGER(entry[0], 1) &&
-                    INTEGER(entry[1], 0, FARM_BOSS_EVENT_MAX_STAGE + CONFIG.farm.tower.sleepMax),
-            ) &&
-            new Set(TOWER.sleepUntil.map(([id]) => id)).size === TOWER.sleepUntil.length &&
+            Array.isArray(TOWER.downed) &&
+            TOWER.downed.every((id) => INTEGER(id, 1)) &&
+            new Set(TOWER.downed).size === TOWER.downed.length &&
             (!TOWER.active || (TOWER.floor >= 1 && raw.runProgressionSnapshot !== null)),
     );
     for (const ENTRIES of [TOWER.relics, TOWER.bossRelics]) {
