@@ -55,6 +55,8 @@ function pileRadius(pile) {
 }
 // How many of each species work. The slider fixes the farm-wide worker share. Without breeding weights every species
 // gives the same share; with them, the breeders are split between species by weight and everyone else works.
+// Breeding needs a pair, so the weights split pairs, not heads: a species is never left with a lone breeder that
+// cannot breed, and its share of the births follows its share of the pairs.
 // lengths: species -> adults. Returns species -> workers.
 export function workersBySpecies(lengths, ratio, weights) {
     const WORKERS = new Map();
@@ -68,32 +70,30 @@ export function workersBySpecies(lengths, ratio, weights) {
     for (const LENGTH of lengths.values()) {
         total += LENGTH;
     }
-    const ALLOC = new Map([...lengths.keys()].map((species) => [species, 0]));
-    let remaining = total - Math.floor(ratio * total + 1e-9),
-        active = [...lengths.keys()].filter((species) => (weights[species] || 0) > 0 && lengths.get(species) > 0),
+    const PAIRS = new Map([...lengths.keys()].map((species) => [species, 0])),
+        ROOM = (species) => Math.floor(lengths.get(species) / 2) - PAIRS.get(species);
+    const BREEDERS = total - Math.floor(ratio * total + 1e-9);
+    let remaining = Math.floor(BREEDERS / 2),
+        active = [...lengths.keys()].filter((species) => (weights[species] || 0) > 0 && ROOM(species) > 0),
         availableShare = false;
     while (remaining > 0) {
         // Preferences choose who breeds, but cannot turn unfilled breeding slots into extra workers.
-        // If preferred species are absent/full, distribute the remaining quota over available residents.
+        // If preferred species are absent/full, distribute the remaining pairs over available residents.
         if (!active.length) {
-            active = [...lengths.keys()].filter((species) => lengths.get(species) > ALLOC.get(species));
+            active = [...lengths.keys()].filter((species) => ROOM(species) > 0);
             availableShare = true;
         }
         if (!active.length) {
             break;
         }
-        const SHARE_WEIGHT = (species) =>
-                availableShare ? lengths.get(species) - ALLOC.get(species) : weights[species],
+        const SHARE_WEIGHT = (species) => (availableShare ? ROOM(species) : weights[species]),
             WEIGHT = active.reduce((sum, species) => sum + SHARE_WEIGHT(species), 0),
-            FULL = active.filter(
-                (species) =>
-                    (remaining * SHARE_WEIGHT(species)) / WEIGHT >= lengths.get(species) - ALLOC.get(species) - 1e-9,
-            );
+            FULL = active.filter((species) => (remaining * SHARE_WEIGHT(species)) / WEIGHT >= ROOM(species) - 1e-9);
         if (FULL.length) {
             for (const FULL_SPECIES of FULL) {
-                const ROOM = lengths.get(FULL_SPECIES) - ALLOC.get(FULL_SPECIES);
-                ALLOC.set(FULL_SPECIES, lengths.get(FULL_SPECIES));
-                remaining -= ROOM;
+                const ROOM_LEFT = ROOM(FULL_SPECIES);
+                PAIRS.set(FULL_SPECIES, PAIRS.get(FULL_SPECIES) + ROOM_LEFT);
+                remaining -= ROOM_LEFT;
             }
             active = active.filter((species) => !FULL.includes(species));
             continue;
@@ -102,18 +102,31 @@ export function workersBySpecies(lengths, ratio, weights) {
         let given = 0;
         for (const SHARE of SHARES) {
             const BASE = Math.floor(SHARE.exact + 1e-9);
-            ALLOC.set(SHARE.species, ALLOC.get(SHARE.species) + BASE);
+            PAIRS.set(SHARE.species, PAIRS.get(SHARE.species) + BASE);
             given += BASE;
             SHARE.rest = SHARE.exact - BASE;
         }
         SHARES.sort((a, b) => b.rest - a.rest || a.species - b.species);
         for (let i = 0; given < remaining && i < SHARES.length; i++, given++) {
-            ALLOC.set(SHARES[i].species, ALLOC.get(SHARES[i].species) + 1);
+            PAIRS.set(SHARES[i].species, PAIRS.get(SHARES[i].species) + 1);
         }
         remaining = 0;
     }
+    // The slider still fixes the farm-wide worker count: breeders that make no pair (an odd quota, or pairs a species
+    // has no room for) stay breeders, placed one by one on the heaviest species that still has adults left.
+    const BREEDING = new Map([...PAIRS].map(([species, pairs]) => [species, 2 * pairs]));
+    let lone = BREEDERS - 2 * [...PAIRS.values()].reduce((sum, pairs) => sum + pairs, 0);
+    const ORDER = [...lengths.keys()].sort((a, b) => (weights[b] || 0) - (weights[a] || 0) || a - b);
+    while (lone > 0) {
+        const SPECIES = ORDER.find((species) => lengths.get(species) > BREEDING.get(species));
+        if (SPECIES === undefined) {
+            break;
+        }
+        BREEDING.set(SPECIES, BREEDING.get(SPECIES) + 1);
+        lone--;
+    }
     for (const [SPECIES, LENGTH] of lengths) {
-        WORKERS.set(SPECIES, LENGTH - ALLOC.get(SPECIES));
+        WORKERS.set(SPECIES, LENGTH - BREEDING.get(SPECIES));
     }
     return WORKERS;
 }
