@@ -270,6 +270,16 @@ function bodyRadiusAtScale(body, scale) {
 function unitBodyRadius(unit) {
     return bodyRadiusAtScale(unitBodyDefinition(kitSpecies(unit)), unitVectorScale(unit));
 }
+// How much taller a tier's body is than the same species' tier-1 body: projectile art tuned for a tier-1 body grows by it.
+const TIER_BODY_SCALES = new Map();
+function tierBodyScale(species, tier) {
+    const KEY = species * 16 + tier;
+    if (!TIER_BODY_SCALES.has(KEY)) {
+        const AT = (atTier) => unitBodyHeight({ species, tier: atTier, growthElapsed: 1, growthDuration: 1 });
+        TIER_BODY_SCALES.set(KEY, AT(tier) / AT(1));
+    }
+    return TIER_BODY_SCALES.get(KEY);
+}
 function unitBodyHeight(unit) {
     const BODY = unitBodyDefinition(kitSpecies(unit));
     return ((BODY.ground.y - BODY.bounds.top) * unitVectorScale(unit)) / WORLD_HEIGHT_PROJECTION;
@@ -322,6 +332,7 @@ export {
     unitVectorScale,
     unitBodyRadius,
     unitBodyHeight,
+    tierBodyScale,
     bossBodyHeight,
     bossBodyRadius,
     bossTorsoHeight,

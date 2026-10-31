@@ -1,10 +1,17 @@
 import { Ballistics } from '../../../model/farm-model.js';
 import { FEATURE, CHESTNUT_THORN_COLORS } from './definition.js';
+import { tierBodyScale } from '../../unit-body/definition.js';
+
+// Shard sizes are tuned for a tier-1 body and grow with the firing body. A bare path (camera bounds) has no body: 1.
+function shardSize(projectile) {
+    return Number.isInteger(projectile.species) ? tierBodyScale(projectile.species, projectile.tier) : 1;
+}
 
 // One authoritative projectile can display a bounded bundle. Shards never own
 // collision or damage. Every point uses the same fixed launch/impact endpoints.
 export function sampleChestnutShards(projectile, progress) {
-    const Q = Math.max(0, Math.min(1, progress)),
+    const SIZE = shardSize(projectile),
+        Q = Math.max(0, Math.min(1, progress)),
         P = projectile.path,
         CENTER = Ballistics.sample(P, Q),
         DX = P.to.x - P.from.x,
@@ -22,8 +29,8 @@ export function sampleChestnutShards(projectile, progress) {
             y: CENTER.y + (DX / N) * SIDE,
             z: CENTER.z,
             angle: Math.atan2(DY + (DX / N) * SIDE_VELOCITY, DX - (DY / N) * SIDE_VELOCITY),
-            width: STAGE === 'central' ? 0.16 : 0.085,
-            length: STAGE === 'central' ? 0.36 : 0.22,
+            width: (STAGE === 'central' ? 0.16 : 0.085) * SIZE,
+            length: (STAGE === 'central' ? 0.36 : 0.22) * SIZE,
         };
     });
 }
@@ -32,7 +39,8 @@ export class SpikeProjectilePresentation {
         this.id = FEATURE.id;
     }
     drawShadow(renderer, projectile) {
-        renderer.groundEllipse(projectile.x, projectile.y, 0.14, 0.1, '#55452433');
+        const SIZE = shardSize(projectile);
+        renderer.groundEllipse(projectile.x, projectile.y, 0.14 * SIZE, 0.1 * SIZE, '#55452433');
     }
     draw(renderer, projectile, point, tail) {
         if (projectile.chestnutActionId) {
@@ -46,13 +54,18 @@ export class SpikeProjectilePresentation {
                     ),
                     P = renderer.project(head.x, head.y, head.z),
                     T = TAILS[index];
-                renderer.line(renderer.project(T.x, T.y, T.z), P, 0.045, CHESTNUT_THORN_COLORS.trail);
+                renderer.line(
+                    renderer.project(T.x, T.y, T.z),
+                    P,
+                    0.045 * shardSize(projectile),
+                    CHESTNUT_THORN_COLORS.trail,
+                );
                 renderer.line(P, TIP, head.width, CHESTNUT_THORN_COLORS.shaft);
                 renderer.ellipse(
                     TIP.x,
                     TIP.y,
-                    renderer.scale * 0.045,
-                    renderer.scale * 0.035,
+                    renderer.scale * 0.045 * shardSize(projectile),
+                    renderer.scale * 0.035 * shardSize(projectile),
                     CHESTNUT_THORN_COLORS.tip,
                     head.angle,
                 );
@@ -72,8 +85,8 @@ export class SpikeProjectilePresentation {
         renderer.ellipse(
             TIP.x,
             TIP.y,
-            renderer.scale * 0.045,
-            renderer.scale * 0.035,
+            renderer.scale * 0.045 * shardSize(projectile),
+            renderer.scale * 0.035 * shardSize(projectile),
             CHESTNUT_THORN_COLORS.tip,
             ANGLE,
         );
