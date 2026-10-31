@@ -52,6 +52,17 @@ class PlaySettings {
         this.error = saveFailureMessage(error);
         this.onError?.(this.error);
     }
+    // Discards the stored settings, readable or not, for the defaults. Only after the player confirmed.
+    // Throws with the reason; a refused reset leaves the record locked as it was.
+    async reset() {
+        try {
+            await this.record.reset();
+        } catch (error) {
+            this.fail(error, 'play-reset');
+            throw new Error(this.error, { cause: error });
+        }
+        this.error = '';
+    }
     get locked() {
         return this.record.locked;
     }

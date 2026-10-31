@@ -612,6 +612,8 @@ function refreshStart() {
     const LOCKED = saveLocked();
     DOLLAR('continueGame').disabled = LOCKED || (!hasMemoryRun() && !STORAGE.hasWorld);
     DOLLAR('newGame').disabled = LOCKED;
+    DOLLAR('resetSave').hidden = !LOCKED;
+    DOLLAR('resetConfirm').hidden ||= !LOCKED;
     DOLLAR('importSave').disabled = LOCKED;
     DOLLAR('exportSave').disabled = STORAGE.exportText() === null;
     DOLLAR('saveNotice').textContent = STORAGE.error || PLAY.error;
@@ -862,6 +864,40 @@ DOLLAR('newGame').onclick = () => {
 DOLLAR('confirmNew').onclick = () => void startNewFarm();
 DOLLAR('cancelNew').onclick = () => {
     DOLLAR('newConfirm').hidden = true;
+};
+// An unreadable record stays locked until the player chooses to discard it. Only the locked records are reset;
+// a readable farm or settings record is kept.
+function lockedRecordNames() {
+    return [STORAGE.locked && '농장', PLAY.locked && '플레이 설정'].filter(Boolean).join('·');
+}
+DOLLAR('resetSave').onclick = () => {
+    if (!saveLocked()) {
+        return;
+    }
+    DOLLAR('resetConfirmText').textContent =
+        `읽지 못한 ${lockedRecordNames()} 저장을 지우고 새로 시작할까요? 지운 기록은 되돌릴 수 없어요.`;
+    DOLLAR('resetConfirm').hidden = false;
+};
+DOLLAR('cancelReset').onclick = () => {
+    DOLLAR('resetConfirm').hidden = true;
+};
+DOLLAR('confirmReset').onclick = async () => {
+    DOLLAR('resetConfirm').hidden = true;
+    try {
+        if (STORAGE.locked) {
+            await STORAGE.reset();
+        }
+        if (PLAY.locked) {
+            await PLAY.reset();
+            FOOD_FEEL.setMuted(PLAY.value.foodMuted);
+            applyPlaySettings(active.world);
+        }
+    } catch (e) {
+        refreshStart();
+        DOLLAR('saveNotice').textContent = e.message;
+        return;
+    }
+    refreshStart();
 };
 DOLLAR('exportSave').onclick = () => {
     const RAW = STORAGE.exportText();

@@ -757,6 +757,7 @@ body > header {
     display: none;
 }
 #saveNotice,
+#resetConfirm,
 #newConfirm,
 #importConfirm,
 #staleRaidNotice {
@@ -764,6 +765,7 @@ body > header {
     border-radius: var(--ui-r-m);
     background: var(--ui-panel);
 }
+#resetConfirm button,
 #newConfirm button,
 #importConfirm button,
 #staleRaidNotice button {
