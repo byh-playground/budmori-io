@@ -498,7 +498,7 @@ export function snapshot(world) {
                   relics: [...world.tower.relics],
                   bossRelics: [...world.tower.bossRelics],
                   undyingUsed: [...world.tower.undyingUsed],
-                  sleepUntil: [...world.tower.sleepUntil],
+                  downed: [...world.tower.downed],
               }
             : null,
         benchedIds: [...world._benched].map((unit) => unit.id),

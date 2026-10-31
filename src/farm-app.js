@@ -1576,7 +1576,7 @@ function syncTower(garden, home, event) {
         tintFloor = T.floor;
         TINT.style.setProperty('--floor', String(T.floor));
     }
-    const SLEEPERS = T.sleepUntil.size;
+    const DOWNED = T.downed.size;
     syncFlag('floorChip', 'hidden', !CLIMBING);
     if (CLIMBING) {
         syncText('floorNow', `${T.floor}층 · ${towerTheme(T.floor).name}`);
@@ -1636,7 +1636,7 @@ function syncTower(garden, home, event) {
         DOORS = CLIMBING && !REWARD_OPEN && event?.phase === 'idle' && (T.doors.length > 0 || BOSS_CHOICE);
     syncFlag('towerDoors', 'hidden', !DOORS);
     if (DOORS) {
-        const KEY = `${JSON.stringify(T.doors)}|${T.floor}|${SLEEPERS}|${T.cards.length}|${T.relics.size}|${DRAW?.serial || 0}|${BOSS_CHOICE}|${SHARED}|${PHASE}`;
+        const KEY = `${JSON.stringify(T.doors)}|${T.floor}|${DOWNED}|${T.cards.length}|${T.relics.size}|${DRAW?.serial || 0}|${BOSS_CHOICE}|${SHARED}|${PHASE}`;
         syncData('towerDoors', 'owner', BOSS_CHOICE ? 'boss' : 'player');
         syncData('towerDoors', 'phase', PHASE);
         if (KEY !== doorKey) {
@@ -1669,7 +1669,7 @@ function syncTower(garden, home, event) {
                 'doorsNote',
                 DRAW?.floor === T.floor && DRAW.card
                     ? `보스가 ${bossCardName(DRAW.card)}을(를) 가져갔어요 · 남은 카드에서 고르세요`
-                    : `${T.floor}층 돌파 · 잠든 병력 ${SLEEPERS}마리 · 강화 카드 ${T.cards.length}장`,
+                    : `${T.floor}층 돌파 · 쓰러진 병력 ${DOWNED}마리 · 강화 카드 ${T.cards.length}장`,
             );
         }
     } else {

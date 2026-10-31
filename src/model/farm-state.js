@@ -58,7 +58,7 @@ export function restore(raw) {
             relics: new Map(TOWER.relics),
             bossRelics: new Map(TOWER.bossRelics),
             undyingUsed: new Set(TOWER.undyingUsed),
-            sleepUntil: new Map(TOWER.sleepUntil),
+            downed: new Set(TOWER.downed),
         };
     }
     setRunStatMods(runStatModifiers(G.tower.cards));

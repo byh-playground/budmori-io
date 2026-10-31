@@ -85,7 +85,6 @@ export const CONFIG = Object.freeze({
                 shape: 'rect',
             }),
             midBossEvery: 5,
-            sleepMax: 3,
             topFloor: FARM_BOSS_EVENT_MAX_STAGE,
             relicSlots: 3,
             relicMaxLevel: 5,
