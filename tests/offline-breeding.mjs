@@ -16,15 +16,15 @@ const CONFIG = {
 function world({ breeders, capacity, foodPerSecond }) {
     const UNITS = [];
     let serial = 0;
-    const add = (species, mature) => {
+    const ADD = (species, mature) => {
         const UNIT = { id: ++serial, species, mature, hp: 1, growthDuration: 1, growthElapsed: mature ? 1 : 0 };
         UNITS.push(UNIT);
         return UNIT;
     };
-    const WORKER = add(0, true);
+    const WORKER = ADD(0, true);
     breeders.forEach((count, species) => {
         for (let index = 0; index < count; index++) {
-            add(species, true);
+            ADD(species, true);
         }
     });
     const BORN = new Array(SPECIES_COUNT).fill(0);
@@ -50,7 +50,7 @@ function world({ breeders, capacity, foodPerSecond }) {
                 return null;
             }
             BORN[species]++;
-            return add(species, false);
+            return ADD(species, false);
         },
     };
 }
