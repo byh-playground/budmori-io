@@ -360,6 +360,7 @@ try {
     });
     REPORT.browser = browser.version();
     const CONTEXT = await browser.newContext({
+        serviceWorkers: 'block',
         viewport: SIZE,
         hasTouch: KIND !== 'desktop',
         isMobile: KIND !== 'desktop',

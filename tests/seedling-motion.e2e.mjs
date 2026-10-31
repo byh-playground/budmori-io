@@ -43,7 +43,7 @@ try {
             ? { ignoreDefaultArgs: ['--enable-unsafe-swiftshader'] }
             : { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] }),
     });
-    const PAGE = await browser.newPage({ viewport: { width: 1100, height: 850 } });
+    const PAGE = await browser.newPage({ viewport: { width: 1100, height: 850 }, serviceWorkers: 'block' });
     PAGE.on('pageerror', (error) => ERRORS.push(String(error)));
     PAGE.on('console', (message) => {
         if (message.type() === 'error') {

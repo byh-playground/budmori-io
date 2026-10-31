@@ -48,6 +48,7 @@ try {
     });
     async function context(options = {}) {
         const CONTEXT = await browser.newContext({
+            serviceWorkers: 'block',
             viewport: { width: 1100, height: 850 },
             deviceScaleFactor: 1,
             ...options,

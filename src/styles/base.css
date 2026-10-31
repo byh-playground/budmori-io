@@ -745,10 +745,12 @@ body > header {
     font-size: var(--ui-fs-2);
 }
 #saveNotice:empty,
+#appNotice:empty,
 #sessionNotice:empty {
     display: none;
 }
 #saveNotice,
+#appNotice,
 #resetConfirm,
 #newConfirm,
 #importConfirm,

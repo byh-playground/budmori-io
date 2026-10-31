@@ -356,6 +356,9 @@ let started = false;
 let vectorLoader = null;
 const VECTOR_SOURCE_TEXT = new Map();
 const VECTOR_RESPONSES = new Map();
+// The plain file address, so the service worker's precache (which matches the exact address) serves it offline.
+// Integrity is the manifest SHA-256 the loader checks; no-cache revalidates when no service worker answers.
+const VECTOR_SOURCE_URL = (spec) => new URL(spec.file, document.baseURI).href;
 const DIGEST = async (bytes) =>
     Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), (b) =>
         b.toString(16).padStart(2, '0'),
@@ -456,18 +459,12 @@ async function launch() {
         for (const { entry: ENTRY, record: RECORD } of MODULES) {
             globalThis[ENTRY.globalName] = RECORD.exports;
         }
-        const VECTOR_URLS = [
-            ...new Set(
-                config.vectorAssets.map(
-                    (spec) => new URL(spec.file + '?version=' + spec.sha256, document.baseURI).href,
-                ),
-            ),
-        ];
+        const VECTOR_URLS = [...new Set(config.vectorAssets.map((spec) => VECTOR_SOURCE_URL(spec)))];
         let downloaded = 0;
         STARTUP.report('vector-download', downloaded, VECTOR_URLS.length);
         await Promise.all(
             VECTOR_URLS.map(async (url) => {
-                const RESPONSE = await fetch(url, { cache: 'force-cache' });
+                const RESPONSE = await fetch(url, { cache: 'no-cache' });
                 if (!RESPONSE.ok) {
                     throw new Error('Vector request failed: ' + RESPONSE.status + ' (' + new URL(url).pathname + ')');
                 }
@@ -499,7 +496,7 @@ async function launch() {
         STARTUP.report('vectors', 0, config.vectorAssets.length);
         for (const SPEC of config.vectorAssets) {
             await STARTUP.yield();
-            const URL_LOCAL = new URL(SPEC.file + '?version=' + SPEC.sha256, document.baseURI).href;
+            const URL_LOCAL = VECTOR_SOURCE_URL(SPEC);
             const PRESET = globalThis.BloomGamekitVectorAssetLoader.VECTOR_ASSET_QUALITY_PRESETS[SPEC.qualityPreset];
             if (!PRESET) {
                 throw new Error('Unknown shared SVG quality preset: ' + SPEC.qualityPreset);
@@ -522,9 +519,7 @@ async function launch() {
         for (const { spec: SPEC, compiled: COMPILED } of RECORDS) {
             (SPEC.kind === 'troop' ? TROOPS : BOSSES)[SPEC.id] = COMPILED;
             if (SPEC.kind === 'troop') {
-                SOURCES[SPEC.id] = VECTOR_SOURCE_TEXT.get(
-                    new URL(SPEC.file + '?version=' + SPEC.sha256, document.baseURI).href,
-                );
+                SOURCES[SPEC.id] = VECTOR_SOURCE_TEXT.get(VECTOR_SOURCE_URL(SPEC));
             }
         }
         VECTOR_RESPONSES.clear();

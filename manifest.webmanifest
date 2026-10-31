@@ -1,0 +1,32 @@
+{
+  "id": "./",
+  "name": "budmori · 농장과 커다란 이웃",
+  "short_name": "budmori",
+  "description": "작은 농장을 키워 커다란 이웃에게 도전해요.",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#e3ead6",
+  "theme_color": "#e3ead6",
+  "icons": [
+    {
+      "src": "pwa/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "pwa/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "pwa/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
