@@ -1,6 +1,6 @@
 import { Ballistics } from '../../../model/farm-model.js';
 import { FEATURE, CHESTNUT_THORN_COLORS } from './definition.js';
-import { tierBodyScale } from '../../unit-body/definition.js';
+import { tierBodyScale, unitBodyRadius } from '../../unit-body/definition.js';
 
 // Shard sizes are tuned for a tier-1 body and grow with the firing body. A bare path (camera bounds) has no body: 1.
 function shardSize(projectile) {
@@ -80,4 +80,21 @@ export class SpikeProjectilePresentation {
         renderer.line(renderer.project(tail.x, tail.y, tail.z), point, 0.055, CHESTNUT_THORN_COLORS.trail);
         renderer.spike(point, TIP, 0.105, CHESTNUT_THORN_COLORS.shaft);
     }
+}
+
+// A thorn is gone the tick it lands, while the screen draws a tick behind, so its last flying frame stops short of the
+// body. For this long after the hit it is drawn stuck in the contact point instead: point in, base outward.
+export const CHESTNUT_IMPACT_MS = 65;
+const T1_CHESTNUT_RADIUS = unitBodyRadius({ species: 3, tier: 1, growthElapsed: 1, growthDuration: 1 });
+export function drawChestnutImpact(renderer, hit) {
+    const SIZE = Number.isFinite(hit.sourceRadius) ? Math.max(1, hit.sourceRadius / T1_CHESTNUT_RADIUS) : 1,
+        REACH = (0.22 + 0.045) * SIZE,
+        // A boss hit is raised 0.2 above the contact for its sparks (farm-combat finishBossHit); the thorn sits at the contact.
+        Z = Math.max(0, (hit.z ?? 0.3) - 0.2);
+    renderer.spike(
+        renderer.project(hit.x + (hit.nx || 0) * REACH, hit.y + (hit.ny || 0) * REACH, Z),
+        renderer.project(hit.x, hit.y, Z),
+        0.085 * SIZE,
+        CHESTNUT_THORN_COLORS.shaft,
+    );
 }
