@@ -1277,6 +1277,7 @@ function validateProjectiles(raw, context) {
                     P.attackMultiplier === 1 &&
                     P.radius === 0.12 * attackGeometryScale(R) &&
                     P.height === 0.5 * attackGeometryScale(R) &&
+                    (P.chestnutGiant === undefined || (Number.isFinite(P.chestnutGiant) && P.chestnutGiant > 1)) &&
                     P.path.height === 0 &&
                     P.path.duration === Math.max(0.1, 0.3 / R.speed) &&
                     sameCheckpointValue(P.path.from, R.origin) &&
@@ -1302,6 +1303,7 @@ function validateProjectiles(raw, context) {
                     P.species === 1 &&
                     P.tier === RECORD.tier &&
                     P.cornForm === RECORD.form &&
+                    (P.cornGiant === undefined || (Number.isFinite(P.cornGiant) && P.cornGiant > 1)) &&
                     INTEGER(P.cornSlot, 0, RECORD.shots.length - 1) &&
                     P.shotIndex === P.cornSlot &&
                     P.owner === RECORD.owner &&

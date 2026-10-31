@@ -212,6 +212,8 @@ export const FARM_COMBAT = (base) =>
                 nx: DX / D_LOCAL,
                 ny: DY / D_LOCAL,
                 strength,
+                // The spark is as big as the body that struck, at the shared skill size contract.
+                sourceRadius: u.radius,
             });
             this.combatEvent('damage', u, action);
         }
@@ -241,6 +243,7 @@ export const FARM_COMBAT = (base) =>
                 nx: DX / N,
                 ny: DY / N,
                 strength,
+                sourceRadius: u.radius,
             });
         }
         updateProjectiles(dt) {

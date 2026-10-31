@@ -200,6 +200,10 @@ export function launchCornAttack(world, unit, action) {
         PROJECTILE.z = PROJECTILE.path.from.z;
         PROJECTILE.height = HEIGHT;
         PROJECTILE.radius = RECORD.form >= 3 ? HEIGHT * 0.32 : PROJECTILE.radius;
+        // Drawing only: a giant's cob is drawn as big as its body. Absent at normal size, so old saves match.
+        if (unit.giantScale > 1) {
+            PROJECTILE.cornGiant = unit.giantScale;
+        }
         PROJECTILE.attackPayload = cornAttackContext(RECORD, SHOT.weight, null);
         delete PROJECTILE.attackPayload.source;
         PROJECTILE.abilityEffect = null;

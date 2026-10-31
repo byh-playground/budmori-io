@@ -217,6 +217,8 @@ function emitChestnutShots(world, r) {
             ...r.origin,
             radius: 0.12 * attackGeometryScale(r),
             height: 0.5 * attackGeometryScale(r),
+            // Drawing only: a giant's shards are drawn as big as its body. Absent at normal size, so old saves match.
+            ...(OWNER.giantScale > 1 ? { chestnutGiant: OWNER.giantScale } : {}),
             hit: false,
             attackMultiplier: 1,
             projectileKind: 'chestnut-spike',

@@ -501,6 +501,7 @@ export const FARM_BOSS_PATTERNS = (base) =>
                     nx: HIT.nx,
                     ny: HIT.ny,
                     strength: CONFIG_LOCAL.damageMultiplier * (RECEIVED.critical ? STATS.critMultiplier : 1),
+                    sourceRadius: B_LOCAL.radius,
                     critical: RECEIVED.critical,
                     element: CONFIG_LOCAL.element || 0,
                     elementMultiplier: ELEMENT_TAKEN,

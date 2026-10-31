@@ -2382,6 +2382,10 @@ if (HELP.scene) {
     HELP.scenario.play({ automatic: false });
     globalThis.__budmoriHelp = {
         snapshot: () => ({ ...HELP.scenario.snapshot(), step: SCENE.step(active.world) }),
+        // Stops the game on the first simulation tick whose world time reaches ms, the same tick on every run.
+        holdAt: (ms) => {
+            active.holdAtTime = ms / 1000;
+        },
     };
 }
 frameRequest = requestAnimationFrame(frame);

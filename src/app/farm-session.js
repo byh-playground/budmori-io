@@ -509,7 +509,9 @@ class ProjectileRender extends RENDER_OBJECT {
         chestnutSlot: R.STEP,
         chestnutStage: R.STATE_KEY,
         chestnutBornTick: R.STEP,
+        chestnutGiant: R.STEP,
         cornForm: R.STEP,
+        cornGiant: R.STEP,
         cornSlot: R.STEP,
         'path.from.x': R.STEP,
         'path.from.y': R.STEP,
@@ -547,7 +549,9 @@ class ProjectileRender extends RENDER_OBJECT {
         this.chestnutSlot = p.chestnutSlot || 0;
         this.chestnutStage = p.chestnutStage || '';
         this.chestnutBornTick = p.chestnutBornTick || 0;
+        this.chestnutGiant = p.chestnutGiant || 1;
         this.cornForm = p.cornForm || 0;
+        this.cornGiant = p.cornGiant || 1;
         this.cornSlot = p.cornSlot || 0;
         this.path.from.x = p.path.from.x;
         this.path.from.y = p.path.from.y;
@@ -691,6 +695,8 @@ class FarmSession {
         this.pace = 1;
         this.closed = false;
         this._paused = false;
+        // A capture tool may stop the run on the first tick whose world time reaches this (seconds).
+        this.holdAtTime = null;
         this.pauseStartedAt = null;
         this.pausedDurationMs = 0;
         this.clockSuspendedAtMs = null;
@@ -832,6 +838,10 @@ class FarmSession {
         const COMMAND_START = this.profiler?.start();
         this.applyPendingCommands(32);
         this.profiler?.end('commandQueue', COMMAND_START);
+        if (this.holdAtTime !== null && this.world.time >= this.holdAtTime - 1e-9) {
+            this.holdAtTime = null;
+            this.paused = true;
+        }
         if (this.paused) {
             this.tick++;
             return ADVANCED;
