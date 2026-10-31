@@ -261,13 +261,13 @@ export function validateFarmProgress(data, { allowLegacy = false } = {}) {
         if (Object.hasOwn(ROW, 'genes')) {
             ASSERT(isValidGenes(ROW.genes) && ROW.genes.some((gene) => gene !== 0));
         }
+        // A seed climbs the tower with the troops, so it can be knocked down and rest like any of them.
         if (Object.hasOwn(ROW, 'seedling')) {
             keys(ROW.seedling, ['fed', 'cooldown']);
             ASSERT(
                 INTEGER(ROW.seedling.fed, 0, SEED_FEEDS - 1) &&
                     NUMBER(ROW.seedling.cooldown, 0, SEED_FEED_COOLDOWN_SECONDS) &&
-                    ROW.growth &&
-                    !ROW.rest,
+                    ROW.growth,
             );
         }
         const SIGNATURE = [
