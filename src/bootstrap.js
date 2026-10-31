@@ -1,3 +1,4 @@
+import { labRequested } from './debug/lab.js';
 import { createStartupLoading } from './startup-loading.js';
 
 // The intro is a public route, not a normal farm state.
@@ -10,6 +11,7 @@ if (new URLSearchParams(location.search).get('showcaseDemo') !== '1' && location
 // A help card runs this same page inside a frame: it must never read or write the player's save.
 if (
     new URLSearchParams(location.search).has('help') ||
+    labRequested(location.search) ||
     new URLSearchParams(location.search).get('showcaseDemo') === '1'
 ) {
     const MEMORY = new Map([['budmori.food.muted', 'true']]);
@@ -22,7 +24,7 @@ if (
             clear: () => MEMORY.clear(),
         },
     });
-    if (new URLSearchParams(location.search).has('help')) {
+    if (new URLSearchParams(location.search).has('help') || labRequested(location.search)) {
         document.documentElement.classList.add('help-scene');
     }
     if (new URLSearchParams(location.search).get('showcaseDemo') === '1') {
