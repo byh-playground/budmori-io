@@ -182,48 +182,13 @@ try {
         const TIER = CASE.tier,
             LABEL = CASE.id;
         activePreview = { frame: PAGE.mainFrame(), page: PAGE, tier: TIER };
-        const BOOT = await PAGE.goto(`${ORIGIN}/`);
-        assert.equal(BOOT.status(), 200, 'root slash serves the authored HTML without a build');
+        // The species screen that hosted this preview is gone (0.53); the preview scene itself is still the
+        // isolated help-frame runtime, opened by its address.
+        const BOOT = await PAGE.goto(`${ORIGIN}/?help=chestnut-t${TIER}&chestnut-case=${LABEL}`);
+        assert.equal(BOOT.status(), 200, 'the preview address serves the authored HTML without a build');
         assert.match(BOOT.headers()['content-type'], /text\/html/);
-        await PAGE.waitForFunction(() => globalThis.BUDMORI);
-        await activate(PAGE.locator('#newGame'));
-        if (await PAGE.locator('#newConfirm').isVisible()) {
-            await activate(PAGE.locator('#confirmNew'));
-        }
-        await PAGE.waitForFunction(() => document.body.dataset.home === 'false');
-        await activate(PAGE.locator('#upgradeMenu'));
-        await activate(PAGE.locator('[data-ability-species="3"]'));
-        const BEFORE = await PAGE.evaluate(() => JSON.stringify(BUDMORI.sim.playerProgression));
-        await activate(PAGE.locator(`[data-chestnut-preview-tier="${TIER}"]`));
-        const HOST = PAGE.locator('.growth-evolution-preview iframe');
-        await HOST.scrollIntoViewIfNeeded();
-        const HANDLE = await HOST.elementHandle(),
-            FRAME = await HANDLE.contentFrame(),
-            VISIBLE = await HOST.evaluate((element) => {
-                const BOX = element.getBoundingClientRect(),
-                    PANE = document
-                        .getElementById(
-                            getComputedStyle(document.getElementById('abilityPanel')).overflowY === 'auto'
-                                ? 'abilityPanel'
-                                : 'abilityNodes',
-                        )
-                        .getBoundingClientRect();
-                return {
-                    height: BOX.height,
-                    visibleHeight: Math.min(innerHeight, PANE.bottom, BOX.bottom) - Math.max(0, PANE.top, BOX.top),
-                };
-            });
-        activePreview.frame = FRAME;
-        assert.ok(
-            VISIBLE.height >= 160 && VISIBLE.visibleHeight >= VISIBLE.height - 3,
-            'whole actual modal iframe is visible through its scroll pane',
-        );
-        REPORT.push({ kind: 'modal-preview-viewport', case: LABEL, ...VISIBLE });
-        await previewWait(FRAME, PAGE, TIER, 'initial-scene', () => globalThis.BUDMORI?.sim?.units[0]?.species === 3);
-        const URL = new globalThis.URL(FRAME.url());
-        URL.searchParams.set('chestnut-case', LABEL);
-        await FRAME.goto(URL.href);
-        await previewWait(FRAME, PAGE, TIER, 'reloaded-scene', () => globalThis.BUDMORI?.sim?.units[0]?.species === 3);
+        const FRAME = PAGE.mainFrame();
+        await previewWait(FRAME, PAGE, TIER, 'scene', () => globalThis.BUDMORI?.sim?.units[0]?.species === 3);
         assert.equal(
             await FRAME.locator('#bossbar').evaluate((element) => getComputedStyle(element).display),
             'none',
@@ -364,11 +329,6 @@ try {
                 `slot${HIT.strikeIndex} native spike-body centerline reaches actual swept contact within12px (not a tip-only claim): ${JSON.stringify(CONTACT)}`,
             );
         }
-        assert.equal(
-            await PAGE.evaluate(() => JSON.stringify(BUDMORI.sim.playerProgression)),
-            BEFORE,
-            'isolated preview never changes the farm build',
-        );
         await FRAME.evaluate(resumeChestnutMotionObservation, true);
         await previewWait(
             FRAME,
