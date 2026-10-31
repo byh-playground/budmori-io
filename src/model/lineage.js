@@ -36,7 +36,7 @@ export const ELEMENTS = Object.freeze([
 export const ELEMENT_COUNT = ELEMENTS.length - 1;
 
 // Seeds only drop the first-tier species; the rest are made by recipes.
-export const SEED_SPECIES = Object.freeze([0, 6, 7, 2, 8, 9]);
+export const SEED_SPECIES = Object.freeze([0, 6, 7, 2, 8]);
 
 const SEED_GENE_RATES = Object.freeze({ carrier: 0.15, recessive: 0.02 });
 export const SEED_FEEDS = 3;
