@@ -397,8 +397,8 @@ export async function unitSpriteContinuityScenario(app) {
                 }
                 const ATLAS_ENTRY = ENTRY.selection.entry,
                     LOCAL_TIME = ENTRY.player.currentTimeMs - ENTRY.startedAtMs;
-                ATLAS_ENTRY.player.seek(Math.max(0, LOCAL_TIME), 0);
-                const FRAME_INDEX = ATLAS_ENTRY.player.sample(0).frameIndex,
+                ATLAS_ENTRY.actor.seek(Math.max(0, LOCAL_TIME), 0);
+                const FRAME_INDEX = ATLAS_ENTRY.actor.sample(0).frameIndex,
                     SAMPLE_TIME = ATLAS_ENTRY.atlas.stats.sampleTimesMs[FRAME_INDEX],
                     CONTROL = globalThis.BloomGamekitVectorAssets.createVectorActor(R.ctx, ENTRY.record.compiled, {
                         clip: ENTRY.player.currentClip,

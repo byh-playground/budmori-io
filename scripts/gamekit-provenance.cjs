@@ -25,6 +25,7 @@ const MODULES = Object.freeze({
     'debug-tools': 'BloomGamekitDebugTools',
     'object-pool': 'BloomGamekitObjectPool',
     scenario: 'BloomGamekitScenario',
+    save: 'BloomGamekitSave',
 });
 const DIST_MODULES = Object.freeze([
     'interpolation',
@@ -47,6 +48,13 @@ const DIST_MODULES = Object.freeze([
     'scenario',
     'object-pool',
     'pixel-physics',
+    'bm',
+    'bm-mock',
+    'bm-google-ads',
+    'bm-ima',
+    'store',
+    'store-mock',
+    'save',
 ]);
 const DIST_ASSETS = Object.freeze([
     Object.freeze({

@@ -1,5 +1,6 @@
 import { highestTowerStartFloor, beginTowerRewardRun } from './player-progression.js';
 import { CONFIG, CLAMP } from './farm-config.js';
+import { isDeployOrder } from './play-choices.js';
 import { AUTO_FORM_PROGRESSION } from './auto-forms.js';
 import { applyRunGrowthHealth, unitMaxHpFor, setRunStatMods } from '../units/unit-stats.js';
 import {
@@ -453,13 +454,7 @@ export const FARM_TOWER_RUN = (base) =>
             return true;
         }
         setDeployOrder(order) {
-            const COUNT = CONFIG.unit.speciesCount;
-            if (
-                !Array.isArray(order) ||
-                order.length !== COUNT ||
-                new Set(order).size !== COUNT ||
-                !order.every((species) => Number.isSafeInteger(species) && species >= 0 && species < COUNT)
-            ) {
+            if (!isDeployOrder(order)) {
                 return false;
             }
             this.deployOrder = [...order];

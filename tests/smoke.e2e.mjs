@@ -1237,7 +1237,7 @@ await check('page exit saves and cancels drawing before releasing the renderer; 
     const EXIT = await WORLD(() => ({
         ...globalThis.__exitObservation,
         sessionClosed: BUDMORI.runtime.closed,
-        saved: !!BUDMORI.storage.raw,
+        saved: BUDMORI.storage.exportText() !== null,
     }));
     expect(
         EXIT.sessionClosed && EXIT.saved && EXIT.disposed === 1 && EXIT.drawsAfterDispose === 0,

@@ -1,26 +1,29 @@
-tree 113e0bd78f8025855f11cc7c6dca72b9fa81006c
-parent d287ca4e2268486b00a8155585b0bf6855f71f0d
-parent 22ebdd113c7816c7d7cc76216180a82704819dee
-author byh020907 <byh020907@naver.com> 1793277900 +0900
-committer GitHub <noreply@github.com> 1793277900 +0900
+tree d5ff8388dce73c2c855952bda9fee3f6bc99379a
+parent 273549cf903d8b846fa094510a4e61fddc257382
+author byh020907 <byh020907@naver.com> 1793416965 +0900
+committer GitHub <noreply@github.com> 1793416965 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq4z/MCRC1aQ7uu5UhlAAAYlAQAB+AE6uF8Y0x6eh8jECAUxIh
- +xgAJPr3Swi0OUxCDmz2fRtGWFLnu/w2HGp+ujz3LSWkDeBcf7HWSmiDcIq7lFZx
- kG+sCvnE9EOiDbOqU3dXJHddKVXhQN2Y6W4fJUf+sotmYzNUknIuDsJRo8hAyup6
- I9MFr3bd0o8Qt4VavwhSLjUuagQyRA3bx2iQ/7AN9piFa5C3dGQjAr6hDLXzsmSc
- 5HSK7En1jOIqb6dmgk2phEq+25uh/s8KuhvzP4OqANQobIa5eWBJxkEu8f0npsq+
- PlDisVOamVp0cmnDwl5gfXV5VzD5xztNQ4e2jVAVv5eEik8Uu+dixWhykTFtFqDZ
- vacac+51+5MJM075sewnbwlgvHzY2O49B6OFxDCHvaFopWjXOCfy29apfpEFg4p7
- fhYXzE1LHeKDOny0yHrAHoTFGMiScRlN9F7QVGRvGQlDAdS//OFQf95DUS0lcypZ
- 90b9O8gZ4T8/3iw2abZaLmxrGP4czg+wep4qJo8AaKAYGXxNXIcx6wB65pi2qDxq
- KpH3Uhr/To6a16O/j7+a1sJn8eafyr/Xa5U5Kt7m/hqjn9/PlkWkcPZ60VowH2MC
- wtWIoFz4lcMZV9Jt2ck6y/It3d7rSYzaxlEhEdBn6SG8rY2sYgU0/MqqxbfW3K6n
- HlLVqzDKMYk3ZKddZNTL
- =7XXX
+ wsFcBAABCAAQBQJq5V8FCRC1aQ7uu5UhlAAAJrQQAEMDeqC8TMuvH9ug1SbK68Sf
+ iu1lyA5mF5CzukOcVdhWwwVsQ3KOp6VRPb8WI1FXO82Edg0CjQj/enmTVsjJlSUH
+ dcf9pwjloh2/+5crf/kA2uSI7+eT/qoqxYDkARxhdOObq6IhFOzfUjOqw/rXhYcb
+ uKrB7Io3ofW++rxj7+QMg8PC/GeIeBUw+bXal3DDJftR+7Ce9kdTkRc0zrYlt+oO
+ aEWKHCq5mIgf4jPo+RkTDEzBgpLL4itOH9yTXQdMVYZ3Sj870GPFgh40Z6Cpejkd
+ KufhXzom8yKpPtYj8TS7mGuFcQWlFyoLuebWK7ndzIVWF2se4gNIP/R53n5VjS+7
+ M11yu24AtXCd07v2b9PCPNrvAX6Z9EnVCN0G7HUqDKAmV2nkmvWVe/ueEst7IAFv
+ 7eAlnPIMSW7+VeiggnV5jv78VdBY73NUX+vcS1Rb1+jKhpLNmbk+ach2eNzuVBNh
+ dZI+BvZwk15xNMU4FXDH6ocir3/CKOCVbSrCAu74y8Rrf7dBuXQ/+NTy7kbEEwLx
+ yhnL2RojpAahNQVF4pwxZJLeU03QgP7qunTxKTLW8dsQMIqWcyubMqxRyPVlr6fD
+ iJwXWiY9TpnM+3HL0xhiffRk/EI91Oe/2ySl88evxCct+h5fP0he6qW8bqbpoOlO
+ 1CZKr00TpukTNzrYz6Hm
+ =PVXQ
  -----END PGP SIGNATURE-----
  
 
-Merge pull request #150 from byh-playground/claude/gpu-pose-per-part
+[기능] save: 게임 저장 레코드 모듈과 저장소 어댑터 (v0.37.6) (#173)
 
-[rendering] GPU 포즈 flush 비용 수정 (v0.26.6)
+createSave({adapter,key,version,create,validate,migrate})가 레코드 하나의 읽기·이관·검증·
+revision 충돌 감지·탭 간 알림을 맡는다. 어댑터는 IndexedDB·localStorage·메모리.
+읽지 못한 저장은 기본값으로 바꾸지 않고 unreadable로 알리며 잠근다.
+
+Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
