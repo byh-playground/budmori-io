@@ -5,6 +5,7 @@ import { BarleyArmorShredPresentation } from '../features/abilities/barley-shred
 import { PASSIVE_PRESENTATION_EVENTS } from '../tower/tower-passive-presentations.js';
 import { drawElementHit, drawElementHitGround } from './element-hit-effects.js';
 import { bodyScale } from '../features/formation-skills/presentation-base.js';
+import { CHESTNUT_IMPACT_MS, drawChestnutImpact } from '../features/projectiles/spike/presentation.js';
 const { ObjectPool: OBJECT_POOL } = globalThis.BloomGamekitObjectPool;
 const EMPTY_NOTICES = Object.freeze([]);
 // One place for the budget of a fight's feedback: how long an effect lives, how many may be alive, and when the
@@ -172,6 +173,17 @@ class HitPresentation extends BurstPresentation {
 }
 class BossHitPresentation extends HitPresentation {
     color = '245,199,102';
+    draw(renderer, event, progress, feel) {
+        super.draw(renderer, event, progress, feel);
+        // A landed thorn shows at least one frame even when the display jumps past its short window.
+        if (
+            event.attackKind === 'chestnut-spike' &&
+            (!event.chestnutStuckShown || progress * COMBAT_FEEL_CONFIG.lifeMs < CHESTNUT_IMPACT_MS)
+        ) {
+            event.chestnutStuckShown = true;
+            drawChestnutImpact(renderer, event);
+        }
+    }
     // A coloured unit's hit is drawn in its element; a plain unit keeps the generic sparks.
     drawGround(renderer, event, progress) {
         if (event.element) {

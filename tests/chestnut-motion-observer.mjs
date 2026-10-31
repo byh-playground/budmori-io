@@ -39,7 +39,9 @@ export function installChestnutMotionObserver({ body, thornColors }) {
             bodyFrame = null,
             renderedShots = [],
             pending = [],
-            frameSerial = 0;
+            frameSerial = 0,
+            inShot = false,
+            recoverFrame = null;
         const SEEN = new Set();
         globalThis.__chestnutMotion = STATE;
         SESSION.__chestnutObservationClock = CLOCK;
@@ -50,25 +52,17 @@ export function installChestnutMotionObserver({ body, thornColors }) {
         SESSION.loop.resetTiming();
         if (CASE === 'small-boss' || CASE === 'large-boss') {
             STATE.fixture.bossRoster = Array.from({ length: APP.CONFIG.unit.speciesCount }, (_value, species) => {
-                WORLD.configureBossStage(1, species);
+                WORLD.boss.controller.configureStage(1, species);
                 return { species, radius: WORLD.boss.radius, height: WORLD.boss.height };
             });
             const SORTED = [...STATE.fixture.bossRoster].sort((a, b) => a.radius - b.radius),
                 CHOSEN = CASE === 'small-boss' ? SORTED[0] : SORTED.at(-1);
-            WORLD.configureBossStage(1, CHOSEN.species);
+            WORLD.boss.controller.configureStage(1, CHOSEN.species);
             Object.assign(WORLD.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
             UNIT.x = -(WORLD.boss.radius + UNIT.ability.attackRange(WORLD));
             UNIT.y = 0;
             WORLD._unitSpatialDirty = true;
             STATE.fixture.selectedBoss = CHOSEN;
-        }
-        if (CASE === 'density') {
-            // Invest before the run snapshot, using the normal progression owner.
-            // HELP setup already captured its research; update the fixture's equally
-            // explicit run snapshot, not a live attack or its output.
-            WORLD.playerProgression.abilities['chestnut-target-thorns'].nodeRanks['specialty-1'] = 5;
-            WORLD.runProgressionSnapshot.abilities['chestnut-target-thorns'].nodeRanks['specialty-1'] = 5;
-            STATE.fixture.density = 5;
         }
         if (CASE === 'giant-card') {
             WORLD.farmBossEvent.phase = 'idle';
@@ -86,6 +80,13 @@ export function installChestnutMotionObserver({ body, thornColors }) {
                 return;
             }
             SEEN.add(label);
+            // Contact and recovery are recorded without pausing: a pause re-captures the presentation, which drops the
+            // landed thorn's stuck frame before the eye (and this observer) could see it.
+            if (label.startsWith('contact-') || label === 'recover') {
+                (STATE.passed ||= []).push({ label, ...details, frame: frameSerial });
+                recoverFrame ??= label === 'recover' ? frameSerial : null;
+                return;
+            }
             pending.push({ label, ...details });
         }
         function bounds(points) {
@@ -194,9 +195,11 @@ export function installChestnutMotionObserver({ body, thornColors }) {
                 return ELLIPSE.call(this, x, y, rx, ry, color, angle);
             };
             let result;
+            inShot = true;
             try {
                 result = DRAW.call(this, shot, ...args);
             } finally {
+                inShot = false;
                 RENDERER.line = LINE;
                 RENDERER.spike = SPIKE;
                 RENDERER.ellipse = ELLIPSE;
@@ -292,7 +295,33 @@ export function installChestnutMotionObserver({ body, thornColors }) {
             frameSerial++;
             renderedShots = [];
             wrapPlayer();
-            const RESULT = RENDER.apply(this, args),
+            // Thorn spikes drawn outside a flying shot are the landed thorn, stuck in the contact point after a hit.
+            const STUCK = [],
+                SPIKE = RENDERER.spike;
+            RENDERER.spike = function (a, b, width, color) {
+                if (!inShot && color === thornColors.shaft) {
+                    STUCK.push({ a: { ...a }, b: { ...b }, width: width * this.scale, color, role: 'spike-body' });
+                }
+                return SPIKE.call(this, a, b, width, color);
+            };
+            let rendered;
+            try {
+                rendered = RENDER.apply(this, args);
+            } finally {
+                RENDERER.spike = SPIKE;
+            }
+            if (STUCK.length) {
+                for (const HIT of STATE.hits) {
+                    // The contact point is projected with this frame's camera, the one the stuck thorn was drawn with.
+                    HIT.impactNative ||= HIT.impact && {
+                        frame: frameSerial,
+                        tick: WORLD.simulationTick,
+                        lines: STUCK,
+                        point: RENDERER.project(HIT.impact.x, HIT.impact.y, HIT.impact.z),
+                    };
+                }
+            }
+            const RESULT = rendered,
                 LIVE = UNIT.ability.action?.chestnutAttack,
                 DISPLAY = SESSION.presentationView?.units.find((unit) => unit.id === UNIT.id);
             if (STATE.interruption) {
@@ -355,6 +384,14 @@ export function installChestnutMotionObserver({ body, thornColors }) {
             ) {
                 marker('recover');
             }
+            // Recovery can start the frame a thorn lands; the observation ends once every landed thorn has been drawn
+            // stuck in its contact (or a dozen frames later, so a missing one fails the contact gate instead of waiting).
+            if (
+                recoverFrame !== null &&
+                (STATE.hits.every((hit) => hit.impactNative) || frameSerial - recoverFrame > 12)
+            ) {
+                marker('settled');
+            }
             if (pending.length) {
                 const SAMPLE = {
                     tick: WORLD.simulationTick,
@@ -368,7 +405,7 @@ export function installChestnutMotionObserver({ body, thornColors }) {
                 STATE.trace.push(SAMPLE);
                 STATE.captures = pending;
                 STATE.ready = true;
-                if (pending.some((entry) => entry.label === 'recover')) {
+                if (pending.some((entry) => entry.label === 'settled')) {
                     STATE.complete = true;
                 }
                 pending = [];
@@ -436,9 +473,11 @@ export function resumeChestnutMotionObservation(interrupt = false) {
 // Use the exact renderer camera retained at the damage call, not a later frame's
 // camera. Stroke width is deliberately not subtracted: this is a conservative
 // centerline measurement against the unchanged 12px gate.
+// The thorn stuck in the contact point after the hit is what the eye sees land; without one, the last flying frame.
 export function measureChestnutNativeContact(hit) {
-    const TARGET = hit.nativeImpact.point,
-        SPIKES = hit.lastNative.lines.filter((line) => line.role === 'spike-body'),
+    const DRAWN = hit.impactNative ?? hit.lastNative,
+        TARGET = hit.impactNative?.point ?? hit.nativeImpact.point,
+        SPIKES = DRAWN.lines.filter((line) => line.role === 'spike-body'),
         DISTANCES = SPIKES.map(({ a, b }) => {
             const DX = b.x - a.x,
                 DY = b.y - a.y,
@@ -458,7 +497,7 @@ export function measureChestnutNativeContact(hit) {
             hit.nativeImpact.pixelRatio,
         endpointDistancePixels:
             Math.min(
-                ...hit.lastNative.lines.flatMap(({ a, b }) => [
+                ...DRAWN.lines.flatMap(({ a, b }) => [
                     Math.hypot(a.x - TARGET.x, a.y - TARGET.y),
                     Math.hypot(b.x - TARGET.x, b.y - TARGET.y),
                 ]),
@@ -467,5 +506,7 @@ export function measureChestnutNativeContact(hit) {
         renderFrame: hit.nativeImpact.renderFrame,
         nativeFrame: hit.lastNative.frame,
         progress: hit.lastNative.progress,
+        stuck: Boolean(hit.impactNative),
+        stuckFrame: hit.impactNative?.frame ?? null,
     };
 }

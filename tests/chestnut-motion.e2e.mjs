@@ -45,8 +45,8 @@ const CASES = [
     ...(SELECTION === 'boundaries'
         ? []
         : [
+              // Forms follow the merge tier alone since 0.53: there is no invested density case any more.
               ...Array.from({ length: 6 }, (_value, index) => ({ id: `t${index + 1}`, tier: index + 1 })),
-              { id: 'density', tier: 6 },
           ]),
     ...(SELECTION === 'forms'
         ? []
@@ -228,7 +228,7 @@ try {
             'one basic action owns every chestnut hit, with no independent periodic stream',
         );
         assert.equal(RECORD.form, TIER);
-        assert.equal(RECORD.ranks.density, LABEL === 'density' ? 5 : 0);
+        assert.equal(RECORD.ranks.density, 0);
         assert.equal(Object.hasOwn(RECORD, 'periodic'), false, 'no independent periodic action');
         assert.equal(Object.hasOwn(RECORD.ranks, 'periodic'), false);
         assert.equal(RECORD.shots.length, COUNT);
