@@ -532,6 +532,11 @@ try {
             knockVx: 0,
             knockVy: 0,
         });
+        // A basic attack left over from the mixed fight would keep the boss busy, so the heal would start before the
+        // sweep. Clear it so the sweep is the first decision and the charged heal must yield to it.
+        WORLD.boss.ability.interrupt();
+        WORLD.boss.ability.ready();
+        WORLD.boss.landingRecovery = 0;
         WORLD.boss.patternRuntime.active = null;
         for (const ID of Object.keys(WORLD.boss.patternRuntime.cooldowns)) {
             WORLD.boss.patternRuntime.cooldowns[ID] = ID === 'attack.sweep-360' ? 0 : 1000;
@@ -545,6 +550,8 @@ try {
             const ANGLE = (index < 2 ? 0 : Math.PI) + (index % 2) * 0.12,
                 UNIT = WORLD.spawn(0, 1, 0, 0),
                 DISTANCE = WORLD.boss.radius + UNIT.radius + 0.4;
+            // The heal flow can run first and its basic attacks would push the ring out of sweep reach.
+            UNIT.setBaseStats({ maxHp: 1e6, knockbackResistance: 1 });
             Object.assign(UNIT, {
                 x: Math.cos(ANGLE) * DISTANCE,
                 y: Math.sin(ANGLE) * DISTANCE,
@@ -1418,6 +1425,7 @@ try {
                     floor: TOWER.floor,
                     serial: TOWER.bossCardDraw?.serial || 0,
                     playerCards: TOWER.cards,
+                    playerRelics: [...TOWER.relics],
                     playerModifiers: MODIFIERS(TOWER.cards),
                     cards: TOWER.bossCards,
                     relics: [...TOWER.bossRelics],
@@ -1514,38 +1522,98 @@ try {
             });
             REPORT.renderCaptures.push({ file, captureMs: Date.now() - START, source: 'actual card transition' });
         };
-    for (const [TYPE, ID, SEED, SELECTED] of [
-        ['stat', 'attack-pct', 6, 0],
-        ['passive', 'opening', 314, 1],
-        ['skill', 'lightning', 426, 2],
+    // Since 0.60 the boss takes first from the same three cards the moment the player's pick opens the next card
+    // floor; the player then chooses from the two left. Each round picks the first door offered (the first round
+    // is one regeneration card), and the seed is found by replaying the native roll inputs, not by mocking the draw.
+    const FIND_SEED = (type, id) =>
+        PAGE.evaluate(
+            async ([cardType, cardId]) => {
+                const RUN = await import('./src/tower/tower-run.js'),
+                    { CONFIG } = await import('./src/model/farm-config.js'),
+                    { FORMATION_SKILL_DEFINITIONS } = await import('./src/formation/formation-skill-state.js'),
+                    WORLD = BUDMORI.sim,
+                    T = WORLD.tower,
+                    TOWER_CONFIG = CONFIG.farm.tower,
+                    DOOR = T.doors[0],
+                    SAVED = WORLD.rng.state;
+                try {
+                    for (let seed = 1; seed < 50000; seed++) {
+                        const PLAYER = { cards: T.cards.map((card) => ({ ...card })), relics: new Map(T.relics) };
+                        RUN.applyTowerCard(PLAYER, DOOR);
+                        WORLD.rng.state = seed;
+                        const RANDOM = () => WORLD.random(),
+                            FLOOR = T.floor + 2,
+                            KIND = RUN.rollFloorKind({
+                                floor: FLOOR,
+                                since: RUN.advanceSince(T.since, T.nextKind),
+                                random: RANDOM,
+                                midBossEvery: TOWER_CONFIG.midBossEvery,
+                                topFloor: TOWER_CONFIG.topFloor,
+                            });
+                        if (KIND !== 'power') {
+                            continue;
+                        }
+                        const OFFERS = RUN.rollCardOffers({
+                                floor: FLOOR,
+                                cards: PLAYER.cards,
+                                relics: PLAYER.relics,
+                                skillIds: FORMATION_SKILL_DEFINITIONS.map((skill) => skill.id),
+                                passiveIds: RUN.PASSIVE_CARDS.map((card) => card.id),
+                                relicSlots: TOWER_CONFIG.relicSlots,
+                                relicMaxLevel: TOWER_CONFIG.relicMaxLevel,
+                                random: RANDOM,
+                            }),
+                            PICK = RUN.pickBossCardIndex(
+                                T,
+                                OFFERS,
+                                TOWER_CONFIG.relicSlots,
+                                TOWER_CONFIG.relicMaxLevel,
+                            );
+                        if (OFFERS[PICK]?.type === cardType && OFFERS[PICK].id === cardId) {
+                            return { seed, selectedIndex: PICK, door: DOOR };
+                        }
+                    }
+                    return null;
+                } finally {
+                    WORLD.rng.state = SAVED;
+                }
+            },
+            [type, id],
+        );
+    for (const [TYPE, ID] of [
+        ['stat', 'attack-pct'],
+        ['passive', 'opening'],
+        ['skill', 'lightning'],
     ]) {
         if (TYPE === 'skill') {
             await PAGE.emulateMedia({ reducedMotion: 'reduce' });
         }
-        await PAGE.evaluate(() => {
-            BUDMORI.sim.tower.nextKind = 'power';
-            BUDMORI.sim.tower.doors = [{ type: 'stat', id: 'regen-flat', rarity: 0 }];
-        });
+        if (!REPORT.bossCards.draws.length) {
+            await PAGE.evaluate(() => {
+                // Every fifth floor is a mid-boss fight; from floor 5 the three rounds roll floors 7, 8 and 9.
+                BUDMORI.sim.tower.floor = 5;
+                BUDMORI.sim.tower.nextKind = 'power';
+                BUDMORI.sim.tower.doors = [{ type: 'stat', id: 'regen-flat', rarity: 0 }];
+            });
+        }
         await PAGE.clock.runFor(32);
         const BEFORE = await CARD_STATE(),
             DOOR = PAGE.locator('#doorCards [data-door="0"]:enabled');
         await DOOR.waitFor({ state: 'visible' });
+        const FOUND = await FIND_SEED(TYPE, ID);
+        assert.ok(FOUND, `a seed exists whose next card floor offers the boss ${TYPE} ${ID}`);
         // A deterministic input seed, not a mocked card draw. No tick occurs before this native pointer click.
-        await PAGE.evaluate((seed) => (BUDMORI.sim.rng.state = seed), SEED);
+        await PAGE.evaluate((seed) => (BUDMORI.sim.rng.state = seed), FOUND.seed);
         await DOOR.click({ force: true });
         await PAGE.clock.runFor(64);
-        await PAGE.locator('#towerDoors[data-owner="boss"][data-phase="receipt"]').waitFor({ state: 'visible' });
+        await PAGE.locator('#towerDoors[data-owner="boss"][data-phase="offers"]').waitFor({ state: 'visible' });
         const PHASES = [await FEEDBACK_FRAME()],
             APPLIED = await CARD_STATE();
-        assert.match(PHASES[0].title, /내 카드/);
-        assert.match(PHASES[0].text, /재생/);
-        assert.equal(await PAGE.locator('#doorCards [data-door]').count(), 0, 'confirmation adds no second choice');
-        await PAGE.clock.runFor(250);
-        await PAGE.locator('#towerDoors[data-owner="boss"][data-phase="offers"]').waitFor({ state: 'visible' });
-        PHASES.push(await FEEDBACK_FRAME());
+        assert.match(PHASES[0].title, /보스가 먼저 고르는 중/);
         assert.equal(await PAGE.locator('#doorCards [data-boss-offer]').count(), 3);
         assert.equal(await PAGE.locator('#doorCards [data-selected="true"]').count(), 0);
-        const OFFER = PAGE.locator('#doorCards [data-boss-offer="0"]');
+        assert.equal(await PAGE.locator('#doorCards [data-door]').count(), 0, 'the boss lock offers no player choice');
+        const OFFER = PAGE.locator(`#doorCards [data-boss-offer="${FOUND.selectedIndex}"]`);
         await OFFER.click({ force: true });
         await OFFER.focus();
         await PAGE.keyboard.down('Enter');
@@ -1561,20 +1629,22 @@ try {
                 rejectedDuplicate: REJECTED,
                 afterSerial: WORLD.tower.bossCardDraw.serial,
                 presentation: BUDMORI.runtime.presentationView.tower.bossCardDraw,
+                playerPick: WORLD.tower.playerPick,
                 cards: WORLD.tower.bossCards,
                 relics: [...WORLD.tower.bossRelics],
             };
         });
-        assert.equal(DRAW.rejectedDuplicate, true, 'the receipt locks a repeated choice');
-        assert.equal(DRAW.afterSerial, DRAW.serial, 'a repeated choice cannot apply another boss card');
+        assert.equal(DRAW.rejectedDuplicate, true, 'the player cannot choose while the boss is choosing');
+        assert.equal(DRAW.afterSerial, DRAW.serial, 'a rejected choice cannot start another boss draw');
         assert.equal(DRAW.offers.length, 3, 'the real draw offers three distinct common-pool candidates');
         assert.equal(new Set(DRAW.offers.map((card) => card.id)).size, 3);
-        assert.equal(DRAW.selectedIndex, SELECTED);
-        assert.deepEqual(DRAW.card, DRAW.offers[SELECTED]);
+        assert.equal(DRAW.selectedIndex, FOUND.selectedIndex, 'the native roll matches the replayed inputs');
+        assert.deepEqual(DRAW.card, DRAW.offers[DRAW.selectedIndex]);
         assert.equal(DRAW.card.type, TYPE);
         assert.equal(DRAW.id, ID);
         assert.equal(DRAW.status, 'acquired');
         assert.equal(DRAW.level, 1);
+        assert.equal(DRAW.floor, APPLIED.floor, 'the boss draws for the floor the player has just reached');
         assert.ok(Math.abs(DRAW.until - DRAW.startedAt - 1.8) < 1e-9, 'feedback retains the 1.8-second lock');
         assert.deepEqual(DRAW.offerState, { cards: BEFORE.cards, relics: BEFORE.relics });
         assert.deepEqual(
@@ -1589,7 +1659,6 @@ try {
                 id: DRAW.id,
                 level: DRAW.level,
                 status: DRAW.status,
-                player: DRAW.player,
                 receipt: DRAW.receipt,
                 startedAt: DRAW.startedAt,
                 until: DRAW.until,
@@ -1601,12 +1670,13 @@ try {
             REPORT.bossCards.draws.length + 1,
             'only the selected candidate is acquired',
         );
-        assert.equal(APPLIED.playerCards.length, BEFORE.playerCards.length + 1, 'the player card applies once');
-        assert.equal(DRAW.player.role, 'player');
-        assert.equal(DRAW.player.card.id, 'regen-flat');
-        assert.equal(DRAW.player.before.value, BEFORE.playerModifiers.regen?.flat || 0);
-        assert.equal(DRAW.player.after.value, APPLIED.playerModifiers.regen.flat);
-        assert.equal(DRAW.player.after.value - DRAW.player.before.value, 1);
+        assert.equal(
+            APPLIED.playerCards.length + APPLIED.playerRelics.length,
+            BEFORE.playerCards.length + BEFORE.playerRelics.length + 1,
+            'the player card applies once',
+        );
+        assert.equal(DRAW.playerPick.receipt.role, 'player');
+        assert.deepEqual(DRAW.playerPick.receipt.card, FOUND.door, 'the player receives the clicked card');
         assert.equal(DRAW.receipt.role, 'boss');
         assert.deepEqual(DRAW.receipt.card, DRAW.card);
         const VALUE = (state) =>
@@ -1621,15 +1691,15 @@ try {
         if (TYPE === 'stat') {
             assert.ok(APPLIED.attackPower > BEFORE.attackPower, 'the stat receipt matches the live boss stat');
         }
-        await PAGE.clock.runFor(300);
+        await PAGE.clock.runFor(450);
         await PAGE.locator('#towerDoors[data-owner="boss"][data-phase="selected"]').waitFor({ state: 'visible' });
         PHASES.push(await FEEDBACK_FRAME());
         assert.equal(await PAGE.locator('#doorCards [data-selected="true"]').count(), 1);
         assert.equal(
             await PAGE.locator('#doorCards [data-selected="true"]').getAttribute('data-boss-offer'),
-            String(SELECTED),
+            String(FOUND.selectedIndex),
         );
-        await PAGE.clock.runFor(250);
+        await PAGE.clock.runFor(850);
         await PAGE.locator('#towerDoors[data-owner="boss"][data-phase="outcome"]').waitFor({ state: 'visible' });
         PHASES.push(await FEEDBACK_FRAME());
         assert.equal(await PAGE.locator('#doorCards [data-selected="true"]').count(), 1);
@@ -1649,7 +1719,7 @@ try {
         }
         assert.deepEqual(
             PHASES.map((phase) => phase.phase),
-            ['receipt', 'offers', 'selected', 'outcome'],
+            ['offers', 'selected', 'outcome'],
         );
         assert.deepEqual(await CARD_STATE(), APPLIED, 'presentation phases never reapply either acquired card');
         DRAW.phases = PHASES;
@@ -1763,26 +1833,30 @@ try {
             );
         }
         await PAGE.clock.runFor(1000);
-        await PAGE.locator('#towerDoors[data-owner="player"]').waitFor({ state: 'visible' });
+        await PAGE.locator('#towerDoors[data-owner="player"][data-phase="outcome"]').waitFor({ state: 'visible' });
         assert.equal(
             await PAGE.evaluate(() => BUDMORI.sim.time >= BUDMORI.sim.tower.bossCardDraw.until),
             true,
-            'the receipt unlocks through actual simulation ticks',
+            'the boss lock opens through actual simulation ticks',
         );
         assert.deepEqual(await CARD_STATE(), APPLIED, 'automatic unlock never applies the card again');
+        DRAW.unlockedTitle = await PAGE.locator('#doorsTitle').innerText();
+        assert.match(DRAW.unlockedTitle, /^보스가 .+ 선택$/);
+        assert.equal(await PAGE.locator('#doorCards [data-door]:enabled').count(), 2, 'the player picks from the rest');
+        assert.equal(
+            await PAGE.locator(`#doorCards [data-boss-offer="${FOUND.selectedIndex}"][data-selected="true"]`).count(),
+            1,
+            'the boss card stays on screen, taken',
+        );
         await PAGE.locator('#doorReceipts').waitFor({ state: 'visible' });
         DRAW.summary = await PAGE.locator('#doorReceipts').innerText();
-        assert.equal(await PAGE.locator('#doorReceipts [data-role="player"]').count(), 1);
         assert.equal(await PAGE.locator('#doorReceipts [data-role="boss"]').count(), 1);
         assert.ok(
             DRAW.summary.includes(DRAW.outcome),
-            'the next doors retain the exact boss result without truncating its values',
+            'the remaining doors retain the exact boss result without truncating its values',
         );
-        assert.equal(
-            (await PAGE.locator('#doorCards [data-door]:enabled').count()) > 0,
-            true,
-            'next doors need no confirmation',
-        );
+        DRAW.announcement = await PAGE.locator('#doorAnnouncement').textContent();
+        assert.match(DRAW.announcement, /내 카드 획득.*보스 획득/, 'both acquisitions are announced');
         if (TYPE === 'skill') {
             const SUMMARY = await PAGE.locator('#towerDoors').boundingBox();
             assert.ok(
@@ -1791,17 +1865,15 @@ try {
                     SUMMARY.y >= 0 &&
                     SUMMARY.x + SUMMARY.width <= 667 &&
                     SUMMARY.y + SUMMARY.height <= 375,
-                'persistent next-door summaries also fit after landscape rotation',
+                'persistent remaining-door summaries also fit after landscape rotation',
             );
             await PAGE.setViewportSize({ width: 1000, height: 700 });
             await PAGE.emulateMedia({ reducedMotion: 'no-preference' });
             await PAGE.clock.runFor(32);
         }
         DRAW.desktopSummary = await PAGE.locator('#doorReceipts').innerText();
-        assert.match(DRAW.desktopSummary, /내 카드/);
-        assert.match(DRAW.desktopSummary, /보스/);
-        assert.match(DRAW.desktopSummary, /재생/);
-        assert.match(DRAW.desktopSummary, /→/);
+        assert.match(DRAW.desktopSummary, /보스 획득/);
+        assert.match(DRAW.desktopSummary, /→|새 기술/);
     }
     await PAGE.clock.resume();
     REPORT.clock.combatResumed = true;
@@ -1885,7 +1957,8 @@ try {
             return RESULT;
         };
         const OFF = WORLD.onCombatResolved.on((event) => {
-            if (event.sourceActor === 'boss' && event.role === 'boss' && event.damageDealt > 0) {
+            // A basic boss hit reports only its faction; pattern hits also name the boss. The boss is the only enemy here.
+            if (event.role === 'boss' && event.sourceFaction === 'enemy' && event.damageDealt > 0) {
                 OBS.damage += event.damageDealt;
                 BUDMORI.runtime.paused = true;
             }
@@ -2079,6 +2152,16 @@ try {
                         (slot) => slot.id === notice.skillId && (slot.role || 'player') === (notice.role || 'player'),
                     ).cooldown;
                 }
+                // After the release the boss keeps its basic attack, which charges the slot like any other hit.
+                if (
+                    notice.kind === 'unit-hit' &&
+                    notice.sourceUnit === 'boss' &&
+                    notice.attackKind !== 'skill' &&
+                    OBS.casts.length
+                ) {
+                    OBS.basicAfterRelease.hits++;
+                    OBS.basicAfterRelease.critHits += notice.critical ? 1 : 0;
+                }
                 if (notice.attackKind === 'skill' && ['unit-hit', 'boss-hit'].includes(notice.kind)) {
                     OBS.hits.push({ unit: notice.unit, kind: notice.kind });
                 }
@@ -2259,6 +2342,8 @@ try {
                         WORLD.boss.patternRuntime.cooldowns[KEY] = 1000;
                     }
                     for (const [INDEX, UNIT] of WORLD.units.entries()) {
+                        // The boss keeps its basic attack; its knockback must not move the arranged targets.
+                        UNIT.setBaseStats({ knockbackResistance: 1 });
                         Object.assign(UNIT, {
                             x:
                                 role === 'boss'
@@ -2282,6 +2367,7 @@ try {
                         LIMIT = role === 'boss' ? PROFILE.required : DEFINITION.required,
                         OBS = globalThis.__sharedSkills;
                     OBS.casts = [];
+                    OBS.basicAfterRelease = { hits: 0, critHits: 0 };
                     OBS.releaseCooldown = null;
                     OBS.hits = [];
                     OBS.recoveries = {};
@@ -2326,6 +2412,7 @@ try {
                         condition: KEY,
                         bossRequired: PROFILE.required,
                         playerRadius: DEFINITION.aoeRadius ?? null,
+                        playerSizeScale: DEFINITION.sizeScale ?? 1,
                         playerBeamWidth: DEFINITION.beamWidth ?? null,
                     };
                 },
@@ -2616,6 +2703,7 @@ try {
                         },
                         otherCharge: OTHER.charge,
                         ownCharge: WORLD.formationRuntime.slots.find((slot) => slot !== OTHER).charge,
+                        basicAfterRelease: globalThis.__sharedSkills.basicAfterRelease,
                         targetBody:
                             role === 'player'
                                 ? { radius: WORLD.boss.radius, height: WORLD.boss.height }
@@ -2710,21 +2798,20 @@ try {
                 );
             } else {
                 if (START.playerRadius !== null) {
-                    assert.equal(
-                        RESULT.effect.radius,
-                        START.playerRadius,
-                        'player impact radii retain their original skill definition',
+                    // Since 0.65.4 a player's impact grows with the target body, with the definition as its floor.
+                    assert.ok(
+                        RESULT.effect.radius >= START.playerRadius - 1e-9,
+                        'player impact radii never shrink below their skill definition',
                     );
                 }
-                assert.equal(
-                    RESULT.effect.sizeRadius,
-                    RESULT.targetBody.radius,
-                    'player visual size still follows its actual target',
+                // The player's skill is drawn at the definition's share of the body it is aimed at.
+                assert.ok(
+                    Math.abs(RESULT.effect.sizeRadius - RESULT.targetBody.radius * START.playerSizeScale) < 1e-9,
+                    'player visual size follows its actual target at the definition scale',
                 );
-                assert.equal(
-                    RESULT.effect.sizeHeight,
-                    RESULT.targetBody.height,
-                    'player visual height remains unchanged',
+                assert.ok(
+                    Math.abs(RESULT.effect.sizeHeight - RESULT.targetBody.height * START.playerSizeScale) < 1e-9,
+                    'player visual height follows its actual target at the definition scale',
                 );
                 if (ID === 'ufo') {
                     assert.equal(
@@ -2737,7 +2824,14 @@ try {
             }
             assert.deepEqual(RESULT.casts, [{ id: ID, role: ROLE }], 'one release per cast');
             assert.equal(RESULT.otherCharge, 0, 'skill effects never recharge the opposite owner');
-            assert.equal(RESULT.ownCharge, 0, 'released skills do not recharge themselves');
+            const BASIC_CHARGE = START.condition === 'damageDealt' ? null : RESULT.basicAfterRelease[START.condition];
+            if (BASIC_CHARGE !== null || RESULT.basicAfterRelease.hits === 0) {
+                assert.equal(
+                    RESULT.ownCharge,
+                    BASIC_CHARGE ?? 0,
+                    'released skills do not recharge themselves; only later basic hits charge the slot',
+                );
+            }
             assert.equal(RESULT.releaseCooldown, 5, 'both roles start the common five-second cooldown on release');
             if (['lightning', 'ufo', 'storm-cloud'].includes(ID)) {
                 assert.equal(
