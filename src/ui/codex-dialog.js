@@ -1,6 +1,7 @@
 import { RECIPES, TEMPERAMENTS, ELEMENTS, ELEMENT_COUNT, TEMPERAMENT_COUNT } from '../model/lineage.js';
 import { speciesById, SPECIES_COUNT } from '../units/species-catalog.js';
 import { elementIconSvg } from '../units/species-face.js';
+import { iconSvg } from './icons.js';
 import { speciesPortraitSource } from '../units/species-paint.js';
 
 const TABS = Object.freeze([
@@ -55,7 +56,7 @@ function recipesHtml(world) {
                 SELECTED && TIERS.length > 1
                     ? `<span class="codex-tiers">${TIERS.map((tier) => `<button type="button" class="codex-tier" data-tier="${tier}" aria-pressed="${tier === world.combine.tier}">T${tier}</button>`).join('')}</span>`
                     : '';
-        return `<li><button type="button" class="codex-recipe" data-recipe="${index}" aria-pressed="${SELECTED}">${PORTRAIT(species)}<b>+</b>${PORTRAIT(PARTNER)}<b>→</b>${PORTRAIT(recipe.result)}<small>${SELECTED ? '선택됨' : world.codex.recipes.includes(index) ? '조합 발견' : '조합 미확인'}</small></button>${CHIPS}</li>`;
+        return `<li><button type="button" class="codex-recipe" data-recipe="${index}" aria-pressed="${SELECTED}">${PORTRAIT(species)}<b>${iconSvg('plus')}</b>${PORTRAIT(PARTNER)}<b>${iconSvg('arrow-right')}</b>${PORTRAIT(recipe.result)}<small>${SELECTED ? '선택됨' : world.codex.recipes.includes(index) ? '조합 발견' : '조합 미확인'}</small></button>${CHIPS}</li>`;
     };
     const GROUPS = [...KNOWN_SPECIES]
         .sort((a, b) => a - b)

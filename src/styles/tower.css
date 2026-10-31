@@ -506,8 +506,10 @@ body:has(#towerSummit:not([hidden])) #battleOutcome {
     min-height: 22px;
 }
 .doors__boss-cards i {
-    display: inline-grid;
-    place-items: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
     min-width: 22px;
     height: 22px;
     padding: 0 4px;
@@ -516,6 +518,9 @@ body:has(#towerSummit:not([hidden])) #battleOutcome {
     font-size: 11px;
     font-style: normal;
     font-weight: var(--ui-fw-b);
+}
+.doors__boss-cards .icon {
+    font-size: 14px;
 }
 .doors__boss-cards i[data-new='true'] {
     border-color: var(--boss-elem, var(--ui-focus));
