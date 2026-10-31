@@ -1,6 +1,6 @@
 import { PerformanceDiagnostics } from './core/performance-diagnostics.js';
 import { FarmHudCounts } from './ui/farm-hud-counts.js';
-import { RelicDock, RELIC_ICONS, relicEffectText, relicAcquisitionText } from './ui/relic-dock.js';
+import { RelicDock, relicEffectText, relicAcquisitionText } from './ui/relic-dock.js';
 import { FORMATION_SKILL_DEFINITIONS } from './formation/formation-skill-state.js';
 import {
     RARITY_NAMES,
@@ -39,6 +39,7 @@ import { HELP_MAX_FRAME_MS, HELP_PLAYBACK_RATE, helpSceneById } from './ui/help-
 import { labScene } from './debug/lab.js';
 import { createHelpPanel } from './ui/help-panel.js';
 import { codexHtml, CODEX_TABS } from './ui/codex-dialog.js';
+import { iconSvg, mountIcons } from './ui/icons.js';
 import { SeedlingReveal } from './ui/seedling-reveal.js';
 const DOLLAR = (id) => document.getElementById(id),
     ISOLATED_PAGE = isolatedPage(location.search),
@@ -47,6 +48,7 @@ const DOLLAR = (id) => document.getElementById(id),
     STORAGE = await FarmStorage.open(OPEN_SAVE),
     PLAY = await PlaySettings.open(OPEN_SAVE);
 const HELP_PANEL = createHelpPanel(DOLLAR);
+mountIcons();
 const SEEDLING_REVEAL = new SeedlingReveal(DOLLAR('seedlingReveal'));
 let imported = null;
 let active = null;
@@ -1389,7 +1391,7 @@ function skillDoorCard(tower, door, index, role = 'player', receipt = null) {
     const DEFINITION = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === door.id),
         LEVEL = receipt?.before.level ?? (tower.relics.get(door.id) || 0),
         GAIN = LEVEL ? `Lv.${LEVEL} → ${LEVEL + 1}` : '새 기술';
-    return `<button type="button" class="door door--skill" data-door="${index}"><b>${RELIC_ICONS[door.id]} ${DEFINITION.name}</b><small>${GAIN} · ${relicEffectText(DEFINITION, LEVEL + 1, role)}</small></button>`;
+    return `<button type="button" class="door door--skill" data-door="${index}"><b>${iconSvg(door.id)} ${DEFINITION.name}</b><small>${GAIN} · ${relicEffectText(DEFINITION, LEVEL + 1, role)}</small></button>`;
 }
 function eventDoorCard(door, index) {
     const EVENT = TOWER_EVENTS.find((item) => item.id === door.id);
