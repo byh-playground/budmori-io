@@ -4163,14 +4163,14 @@ function materialRecord(style, bounds, contourLength) {
   const YARN = style.kind === "yarn";
   const STITCH_PATTERN = style.pattern !== false;
   const EFFECT0 = YARN ? [style.seed, style.stitchWidth, style.stitchHeight, (STITCH_PATTERN ? 1 : -1) * style.thickness] : [style.seed, style.periodMs, style.frequency, 0];
-  const EFFECT1 = YARN ? [style.irregularity, style.contrast, style.edgeSpacing, style.edgeWidth] : [style.amplitude, style.echoX, style.echoWidth, style.echoOpacity];
+  const EFFECT1 = YARN ? [style.irregularity, style.contrast, style.edgeSpacing, style.edgeWidth] : [style.amplitude, 0, style.echoWidth, style.echoOpacity];
   const EFFECT2 = YARN ? [style.fiberSpacing ?? 4, style.fiberLength, style.fiberWidth, style.fiberOpacity] : [style.hatchWidth, style.hatchOpacity, style.hatchAngle, style.hatchSpacing];
   const EFFECT3 = YARN ? [
     style.fiber === false ? 0 : style.fiberMax,
     contourLength,
     style.curved === false ? 0 : 1,
     style.edgeRelief * (style.detail ? 0.3 : 1)
-  ] : [0, style.echoY, 0, 0];
+  ] : [0, 0, 0, 0];
   return Float32Array.from([...bounds, ...EFFECT0, ...EFFECT1, ...EFFECT2, ...EFFECT3]);
 }
 
@@ -4359,8 +4359,7 @@ vec3 shadeSketchFill(vec3 base) {
 void shadeSketchEdge(inout vec3 rgb, float alpha) {
   float phase=mod(v_time,max(u_effect0.y,16.0))/max(u_effect0.y,16.0)*6.2831853;
   float wobble=sin(v_material.z*u_effect0.z*6.2831853+phase+u_effect0.x)*u_effect1.x;
-  float offset=(u_effect1.y+wobble);
-  float echo=lineMask(abs(v_material.w-offset),u_effect1.z)*u_effect1.w;
+  float echo=lineMask(abs(v_material.w-wobble),u_effect1.z)*u_effect1.w;
   if(echo<0.012)discard;
   rgb=mix(rgb,tintTo(rgb,-0.52),echo);
   float outAlpha=alpha*echo;
@@ -8498,7 +8497,7 @@ function createSpriteAnimation(context, region, definition) {
   if (!CLIPS.size) {
     throw new TypeError("At least one sprite clip is required");
   }
-  const PLAYERS = /* @__PURE__ */ new Set();
+  const ACTORS = /* @__PURE__ */ new Set();
   let disposed = false;
   const READY = () => {
     if (disposed) {
@@ -8518,7 +8517,7 @@ function createSpriteAnimation(context, region, definition) {
     }
   };
   return Object.freeze({
-    createPlayer({ clip = CLIPS.keys().next().value, startedAtMs = 0, rate = 1 } = {}) {
+    createActor({ clip = CLIPS.keys().next().value, startedAtMs = 0, rate = 1 } = {}) {
       READY();
       CLOCK(startedAtMs);
       if (!Number.isFinite(rate) || rate <= 0 || rate > 1e3) {
@@ -8529,15 +8528,15 @@ function createSpriteAnimation(context, region, definition) {
       let offsetMs = 0;
       let playbackRate = rate;
       let paused = false;
-      let playerDisposed = false;
-      const PLAYER_READY = () => {
+      let actorDisposed = false;
+      const ACTOR_READY = () => {
         READY();
-        if (playerDisposed) {
-          throw new Error("Sprite player disposed");
+        if (actorDisposed) {
+          throw new Error("Sprite actor disposed");
         }
       };
       const ELAPSED = (timeMs) => {
-        PLAYER_READY();
+        ACTOR_READY();
         CLOCK(timeMs);
         const VALUE = Math.max(0, offsetMs + (paused ? 0 : (timeMs - anchorMs) * playbackRate));
         if (!Number.isFinite(VALUE)) {
@@ -8545,7 +8544,7 @@ function createSpriteAnimation(context, region, definition) {
         }
         return VALUE;
       };
-      const PLAYER = Object.freeze({
+      const ACTOR = Object.freeze({
         sample(timeMs) {
           const ELAPSED_MS = ELAPSED(timeMs);
           const TIME = selectedClip.loop === "loop" ? ELAPSED_MS % selectedClip.durationMs : Math.min(ELAPSED_MS, selectedClip.durationMs);
@@ -8565,7 +8564,7 @@ function createSpriteAnimation(context, region, definition) {
         /** options: matrix (composed with the context transform), color, alpha, whiteFlash, forceColor. */
         draw({ timeMs, ...options } = {}) {
           const SAMPLE = this.sample(timeMs);
-          PLAYER_READY();
+          ACTOR_READY();
           context.drawQuads({
             ...options,
             uvRects: FRAME_RECTS[SAMPLE.frameIndex].uvRect,
@@ -8576,7 +8575,7 @@ function createSpriteAnimation(context, region, definition) {
           return SAMPLE;
         },
         seek(elapsedMs, timeMs) {
-          PLAYER_READY();
+          ACTOR_READY();
           CLOCK(elapsedMs);
           CLOCK(timeMs);
           if (elapsedMs < 0) {
@@ -8587,7 +8586,7 @@ function createSpriteAnimation(context, region, definition) {
           return this;
         },
         setPaused(value, timeMs) {
-          PLAYER_READY();
+          ACTOR_READY();
           if (typeof value !== "boolean") {
             throw new TypeError("Sprite paused state must be boolean");
           }
@@ -8598,7 +8597,7 @@ function createSpriteAnimation(context, region, definition) {
           return this;
         },
         setRate(value, timeMs) {
-          PLAYER_READY();
+          ACTOR_READY();
           if (!Number.isFinite(value) || value <= 0 || value > 1e3) {
             throw new RangeError("Sprite playback rate must be in (0,1000]");
           }
@@ -8609,7 +8608,7 @@ function createSpriteAnimation(context, region, definition) {
           return this;
         },
         setClip(name, timeMs) {
-          PLAYER_READY();
+          ACTOR_READY();
           CLOCK(timeMs);
           selectedClip = GET_CLIP(name);
           offsetMs = 0;
@@ -8617,22 +8616,22 @@ function createSpriteAnimation(context, region, definition) {
           return this;
         },
         dispose() {
-          if (playerDisposed) {
+          if (actorDisposed) {
             return false;
           }
-          playerDisposed = true;
-          PLAYERS.delete(PLAYER);
+          actorDisposed = true;
+          ACTORS.delete(ACTOR);
           return true;
         }
       });
-      PLAYERS.add(PLAYER);
-      return PLAYER;
+      ACTORS.add(ACTOR);
+      return ACTOR;
     },
     stats() {
       return Object.freeze({
         frameCount: FRAMES.length,
         clipCount: CLIPS.size,
-        playerCount: PLAYERS.size,
+        actorCount: ACTORS.size,
         retainedBytes: 0,
         textureOwned: false
       });
@@ -8642,7 +8641,7 @@ function createSpriteAnimation(context, region, definition) {
         return false;
       }
       disposed = true;
-      PLAYERS.clear();
+      ACTORS.clear();
       return true;
     }
   });
@@ -8823,7 +8822,7 @@ function surfaceGeometry(fillVertices, outline, edgeColors, style) {
     }
     return Float32Array.from(POINTS.flatMap(() => COLOR));
   })();
-  const EDGE_WIDTH = style.kind === "yarn" ? style.edgeWidth : Math.max(style.echoWidth, Math.hypot(style.echoX, style.echoY) + style.amplitude + style.echoWidth);
+  const EDGE_WIDTH = style.kind === "yarn" ? style.edgeWidth : style.amplitude + style.echoWidth;
   const FIBER_LENGTH = style.kind === "yarn" && style.fiber !== false ? style.fiberLength : EDGE_WIDTH;
   const FILL_RECORDS = new Float32Array(fillVertices.length / 6 * STRIDE_FLOATS);
   let write = 0;
@@ -8854,11 +8853,12 @@ function surfaceGeometry(fillVertices, outline, edgeColors, style) {
     RING.push([mx * SCALE, my * SCALE]);
   }
   const EDGE_RECORDS = [];
+  const ECHO_X = style.kind === "sketch" ? style.echoX : 0, ECHO_Y = style.kind === "sketch" ? style.echoY : 0;
   const COLOR_AT = (index) => RGBA.subarray(index * 4, index * 4 + 4);
   for (let i = 0; i < POINTS.length; i++) {
     const J = (i + 1) % POINTS.length;
     const EMIT = (pointIndex, distance) => {
-      const POINT = POINTS[pointIndex], NORMAL = RING[pointIndex], X = POINT[0] + NORMAL[0] * distance, Y = POINT[1] + NORMAL[1] * distance;
+      const POINT = POINTS[pointIndex], NORMAL = RING[pointIndex], X = POINT[0] + ECHO_X + NORMAL[0] * distance, Y = POINT[1] + ECHO_Y + NORMAL[1] * distance;
       EDGE_RECORDS.push(X, Y, ...COLOR_AT(pointIndex), 1, CUMULATIVE[pointIndex] / total, distance);
     };
     EMIT(i, -EDGE_WIDTH);

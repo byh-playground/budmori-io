@@ -62,6 +62,7 @@ import { TOWER_ENCOUNTER_SETTINGS } from '../tower/tower-encounter.js';
 import { AUTO_FORM_PROGRESSION, NEUTRAL_FORM_PROGRESSION } from './auto-forms.js';
 import {} from '../vector-sockets.js';
 import { BOSS_PHASE_THRESHOLDS } from '../boss/boss-patterns.js';
+import { isWorkBasisPoints, isBreedWeights } from './play-choices.js';
 import { FACTION_CONFIG, hasFaction, areOpposingFactions } from '../core/factions.js';
 import { FixedSpatialGrid } from '../core/spatial-grid.js';
 import {} from './army-scatter.js';
@@ -1145,7 +1146,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
     }
     // The share of the farm that makes food instead of breeding, in basis points.
     setWorkBasisPoints(basisPoints) {
-        if (!Number.isSafeInteger(basisPoints) || basisPoints < 0 || basisPoints > 10000) {
+        if (!isWorkBasisPoints(basisPoints)) {
             return false;
         }
         this.workBasisPoints = basisPoints;
@@ -1155,15 +1156,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
     }
     // Who gets the breeding: one weight per species (null: even by headcount).
     setBreedWeights(weights) {
-        if (
-            weights !== null &&
-            !(
-                Array.isArray(weights) &&
-                weights.length <= CONFIG.unit.speciesCount &&
-                weights.every((weight) => Number.isSafeInteger(weight) && weight >= 0) &&
-                weights.some((weight) => weight > 0)
-            )
-        ) {
+        if (!isBreedWeights(weights)) {
             return false;
         }
         this.breedWeights = weights;

@@ -1,31 +1,23 @@
 const DOLLAR = (id) => document.getElementById(id);
 class FoodFeel {
-    constructor() {
+    // `muted` is the stored choice; `onMutedChange(muted)` keeps a new one (the play settings save).
+    constructor({ muted, onMutedChange }) {
         this.voices = new Set();
         this.lastSound = {};
         this.frameId = 0;
         this.soundFrame = {};
-        this.muted = false;
+        this.muted = muted;
         this.peakVoices = 0;
         this.counts = {
             land: 0,
             eat: 0,
         };
-        try {
-            this.muted = localStorage.getItem('budmori.food.muted') === 'true';
-        } catch {
-            // Keep the session mute default when browser preferences cannot be read.
-        }
         this.updateSoundButton();
         DOLLAR('sound').onclick = () => {
             this.muted = !this.muted;
             this.unlock();
             this.silence();
-            try {
-                localStorage.setItem('budmori.food.muted', String(this.muted));
-            } catch {
-                // Keep the current session preference when browser storage cannot persist it.
-            }
+            onMutedChange(this.muted);
             this.updateSoundButton();
         };
         window.addEventListener('blur', () => {

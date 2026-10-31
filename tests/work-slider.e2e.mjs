@@ -67,9 +67,8 @@ try {
             }
             W.setBreedWeights([0, 100]);
             W.setWorkBasisPoints(5000);
-            localStorage.setItem('budmori.breed.weights', JSON.stringify(W.breedWeights));
-            localStorage.setItem('budmori.work.basisPoints', '5000');
             BUDMORI.renderer.takeCameraControl();
+            return BUDMORI.play.set({ breedWeights: W.breedWeights, workBasisPoints: 5000 });
         });
         async function expectSplit(cut, workers) {
             await PAGE.waitForFunction(

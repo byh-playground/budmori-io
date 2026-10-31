@@ -7,7 +7,7 @@
     },
     {
       "file": "rendering.js",
-      "sha256": "dac868f1efd9eb8e12b5ae9874813e9944fe3e106eb2d6044856cc09f83c8835"
+      "sha256": "cf39f38e1644e2fdca168ee17ce556f09bddb05bfa4e8e89c310ce116d62d97e"
     },
     {
       "file": "vector-assets.js",
@@ -15,7 +15,7 @@
     },
     {
       "file": "vector-assets-loader.js",
-      "sha256": "a9d9eaa61d891fb1dd9d7d8ac9d9781fe2545cc2a7f8ede6202556c2a7a2f48f"
+      "sha256": "277a44071e6c7294a14081cfcf2f8cf0e8f9fc72c7c67b40be20bbfb14966e03"
     },
     {
       "file": "input.js",
@@ -43,7 +43,7 @@
     },
     {
       "file": "rollback.js",
-      "sha256": "6d94dda8f9e8b975029de972562531d8329ef3c93034c64e832e0f89ea740c52"
+      "sha256": "3c809a24e62cbf58d0ac30c680f222f720d50c3d8620c5746bcf9bee6d8f9076"
     },
     {
       "file": "camera.js",
@@ -59,11 +59,11 @@
     },
     {
       "file": "debug-tools.js",
-      "sha256": "b2abc40a6e5ca59b0b24b6c7fefa7492ea13b17686da86f61a8fff16be146ac5"
+      "sha256": "bd077de55035f4e258d341318108b32613de5153d09aa5f6edca6ad31eedb4a4"
     },
     {
       "file": "audio.js",
-      "sha256": "f792c0b56b4829d20dfecb03f087bc435e377d9e772a7c5caa3611afef281d20"
+      "sha256": "d6c5146dcafa188d5a0825441bee160ea291a8d12b25121114fe77a0de454a3a"
     },
     {
       "file": "navigation.js",
@@ -80,6 +80,34 @@
     {
       "file": "pixel-physics.js",
       "sha256": "ba864a187f95fe7a6df4edbac7ce9d4b8b9a553e35973479672de874cc194834"
+    },
+    {
+      "file": "bm.js",
+      "sha256": "00b3ff79285fc1e3568ed2cd32a4b9065bbcf5947586763087e756f722c5440b"
+    },
+    {
+      "file": "bm-mock.js",
+      "sha256": "246c8a2227a4ca736dcc5ba6730898ba3c501d852a29269063e377da36339152"
+    },
+    {
+      "file": "bm-google-ads.js",
+      "sha256": "b9d9a4dfae777f16ccb878ad47980d89ff0bd10ad1e1db34d4b96bb4497201ab"
+    },
+    {
+      "file": "bm-ima.js",
+      "sha256": "6602a5589533b138e69c7812518c46417826c0a303ca4c47ba0b24201ba8eb97"
+    },
+    {
+      "file": "store.js",
+      "sha256": "1616e5482865e35f824f2bd854d3560dafe9b1488d08f17f58bfa1d648244a56"
+    },
+    {
+      "file": "store-mock.js",
+      "sha256": "ddd873e3b75b29dabcc31a677f39ab5d937bdde1bbde6cc1761c59ead275a4c6"
+    },
+    {
+      "file": "save.js",
+      "sha256": "cda1b1231df67104b9a3d8a1b07fa3303cb9881f19522f7c0de48c11dce6a75f"
     }
   ],
   "assets": [
