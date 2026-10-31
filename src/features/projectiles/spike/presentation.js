@@ -49,9 +49,11 @@ export class SpikeProjectilePresentation {
             const HEADS = sampleChestnutShards(projectile, projectile.elapsed / projectile.path.duration),
                 TAILS = sampleChestnutShards(projectile, (projectile.elapsed - 0.06) / projectile.path.duration);
             HEADS.forEach((head, index) => {
-                const TIP = renderer.project(
-                        head.x + Math.cos(head.angle) * head.length,
-                        head.y + Math.sin(head.angle) * head.length,
+                // One long triangle, reaching as far as the old shaft plus its round tip did.
+                const REACH = head.length + 0.045 * shardSize(projectile),
+                    TIP = renderer.project(
+                        head.x + Math.cos(head.angle) * REACH,
+                        head.y + Math.sin(head.angle) * REACH,
                         head.z,
                     ),
                     P = renderer.project(head.x, head.y, head.z),
@@ -62,15 +64,7 @@ export class SpikeProjectilePresentation {
                     0.045 * shardSize(projectile),
                     CHESTNUT_THORN_COLORS.trail,
                 );
-                renderer.line(P, TIP, head.width, CHESTNUT_THORN_COLORS.shaft);
-                renderer.ellipse(
-                    TIP.x,
-                    TIP.y,
-                    renderer.scale * 0.045 * shardSize(projectile),
-                    renderer.scale * 0.035 * shardSize(projectile),
-                    CHESTNUT_THORN_COLORS.tip,
-                    head.angle,
-                );
+                renderer.spike(P, TIP, head.width, CHESTNUT_THORN_COLORS.shaft);
             });
             return;
         }
@@ -78,19 +72,12 @@ export class SpikeProjectilePresentation {
                 projectile.path.to.y - projectile.path.from.y,
                 projectile.path.to.x - projectile.path.from.x,
             ),
+            REACH = renderer.scale * (0.22 + 0.045 * shardSize(projectile)),
             TIP = {
-                x: point.x + Math.cos(ANGLE) * renderer.scale * 0.22,
-                y: point.y - 0.62 * Math.sin(ANGLE) * renderer.scale * 0.22,
+                x: point.x + Math.cos(ANGLE) * REACH,
+                y: point.y - 0.62 * Math.sin(ANGLE) * REACH,
             };
         renderer.line(renderer.project(tail.x, tail.y, tail.z), point, 0.055, CHESTNUT_THORN_COLORS.trail);
-        renderer.line(point, TIP, 0.105, CHESTNUT_THORN_COLORS.shaft);
-        renderer.ellipse(
-            TIP.x,
-            TIP.y,
-            renderer.scale * 0.045 * shardSize(projectile),
-            renderer.scale * 0.035 * shardSize(projectile),
-            CHESTNUT_THORN_COLORS.tip,
-            ANGLE,
-        );
+        renderer.spike(point, TIP, 0.105, CHESTNUT_THORN_COLORS.shaft);
     }
 }

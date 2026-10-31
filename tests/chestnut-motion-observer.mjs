@@ -166,6 +166,7 @@ export function installChestnutMotionObserver({ body, thornColors }) {
             const LINES = [],
                 ELLIPSES = [],
                 LINE = RENDERER.line,
+                SPIKE = RENDERER.spike,
                 ELLIPSE = RENDERER.ellipse;
             RENDERER.line = function (a, b, width, color) {
                 LINES.push({
@@ -177,6 +178,17 @@ export function installChestnutMotionObserver({ body, thornColors }) {
                 });
                 return LINE.call(this, a, b, width, color);
             };
+            // A spike is a long triangle; its centerline from base to point is the spike body.
+            RENDERER.spike = function (a, b, width, color) {
+                LINES.push({
+                    a: { ...a },
+                    b: { ...b },
+                    width: width * this.scale,
+                    color,
+                    role: color === thornColors.shaft ? 'spike-body' : 'trail',
+                });
+                return SPIKE.call(this, a, b, width, color);
+            };
             RENDERER.ellipse = function (x, y, rx, ry, color, angle = 0) {
                 ELLIPSES.push({ x, y, rx, ry, angle });
                 return ELLIPSE.call(this, x, y, rx, ry, color, angle);
@@ -186,6 +198,7 @@ export function installChestnutMotionObserver({ body, thornColors }) {
                 result = DRAW.call(this, shot, ...args);
             } finally {
                 RENDERER.line = LINE;
+                RENDERER.spike = SPIKE;
                 RENDERER.ellipse = ELLIPSE;
             }
             const POINTS = [];

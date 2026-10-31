@@ -540,6 +540,22 @@ const DIORAMA = class Diorama {
         C.lineTo(b.x, b.y);
         C.stroke();
     }
+    // One long triangle from a base `width` wide at `a` to a sharp point at `b` (screen points, width in world units).
+    spike(a, b, width, color2) {
+        const C = this.ctx,
+            DX = b.x - a.x,
+            DY = b.y - a.y,
+            HALF = (width * this.scale) / 2 / (Math.hypot(DX, DY) || 1),
+            NX = -DY * HALF,
+            NY = DX * HALF;
+        C.fillStyle = color2;
+        C.beginPath();
+        C.moveTo(a.x + NX, a.y + NY);
+        C.lineTo(b.x, b.y);
+        C.lineTo(a.x - NX, a.y - NY);
+        C.closePath();
+        C.fill();
+    }
     pixelLine(a, b, width, color2) {
         const C = this.ctx;
         C.strokeStyle = color2;
