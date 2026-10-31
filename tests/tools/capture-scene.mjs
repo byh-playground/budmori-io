@@ -1,6 +1,8 @@
 // Captures reproducible frames of a scene from the real game: node tests/tools/capture-scene.mjs [options]
 //   --lab '<json>'    a lab scene (see src/debug/scene-lab.js) | --help <id>   a help or species preview scene
 //   --at 1000,2500    scene times (ms of scene clock) to shoot; default one shot at the end
+//   --when <step>     instead of --at: shoot whenever the scene's step equals this (e.g. flight); --count N shots, --gap ms apart, --delay ms after the match
+//   --clip x,y,w,h    crop the shot to this rectangle (viewport pixels); --scale 3 renders at 3x pixel density
 //   --size 1100x850   viewport             --out <dir>   output dir (default tests/output/scenes)
 //   --name <text>     file prefix          --eval '<js>' run in the page at every shot and print its result
 //   --hold            freeze the sim right after the shot time and shoot the frozen frame (default: shoot live)
@@ -32,6 +34,10 @@ if (!ARGS.lab && !ARGS.help) {
 const [WIDTH, HEIGHT] = (ARGS.size ?? '1100x850').split('x').map(Number);
 const OUTPUT = path.resolve(ROOT, ARGS.out ?? 'tests/output/scenes');
 const NAME = ARGS.name ?? (ARGS.help ? ARGS.help : 'lab');
+const WHEN = ARGS.when ?? null,
+    COUNT = Number(ARGS.count ?? 1),
+    GAP = Number(ARGS.gap ?? 400),
+    DELAY = Number(ARGS.delay ?? 0);
 const TIMES = (ARGS.at ?? '').split(',').filter(Boolean).map(Number);
 const TYPES = {
     '.html': 'text/html',
@@ -74,7 +80,10 @@ try {
             ? { ignoreDefaultArgs: ['--enable-unsafe-swiftshader'] }
             : { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] }),
     });
-    const PAGE = await browser.newPage({ viewport: { width: WIDTH, height: HEIGHT } });
+    const PAGE = await browser.newPage({
+        viewport: { width: WIDTH, height: HEIGHT },
+        deviceScaleFactor: Number(ARGS.scale ?? 1),
+    });
     PAGE.on('pageerror', (error) => ERRORS.push(String(error)));
     PAGE.on('console', (message) => {
         if (message.type() === 'error') {
@@ -97,9 +106,26 @@ try {
         console.error(ERRORS.join('\n') || 'no page errors');
         throw error;
     });
-    const SHOTS = TIMES.length ? TIMES : [null];
+    const SHOTS = WHEN ? Array.from({ length: COUNT }, () => 'when') : TIMES.length ? TIMES : [null];
+    let lastMs = 0;
     for (const AT of SHOTS) {
-        if (AT !== null) {
+        if (AT === 'when') {
+            await PAGE.waitForFunction(
+                ([step, from]) => {
+                    const SNAP = globalThis.__budmoriHelp.snapshot();
+                    return SNAP.step === step && SNAP.timeMs >= from;
+                },
+                [WHEN, lastMs + GAP],
+                { timeout: 120000, polling: 8 },
+            );
+            if (DELAY > 0) {
+                const MATCHED = await PAGE.evaluate(() => globalThis.__budmoriHelp.snapshot().timeMs);
+                await PAGE.waitForFunction((ms) => globalThis.__budmoriHelp.snapshot().timeMs >= ms, MATCHED + DELAY, {
+                    timeout: 120000,
+                    polling: 8,
+                });
+            }
+        } else if (AT !== null) {
             await PAGE.waitForFunction((ms) => globalThis.__budmoriHelp.snapshot().timeMs >= ms, AT, {
                 timeout: 120000,
                 polling: 16,
@@ -120,9 +146,14 @@ try {
             await PAGE.waitForTimeout(150);
         }
         const SNAP = await PAGE.evaluate(() => globalThis.__budmoriHelp.snapshot());
+        lastMs = SNAP.timeMs;
         const EVAL = ARGS.eval ? await PAGE.evaluate(ARGS.eval) : undefined;
         const FILE = path.join(OUTPUT, `${NAME}-${String(Math.round(SNAP.timeMs)).padStart(6, '0')}ms.png`);
-        await PAGE.screenshot({ path: FILE });
+        const [CX, CY, CW, CH] = (ARGS.clip ?? '').split(',').map(Number);
+        await PAGE.screenshot({
+            path: FILE,
+            ...(ARGS.clip ? { clip: { x: CX, y: CY, width: CW, height: CH } } : {}),
+        });
         console.log(
             JSON.stringify({
                 file: path.relative(ROOT, FILE),

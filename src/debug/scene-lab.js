@@ -108,6 +108,8 @@ export function createLabScene(text) {
             if (!world.startTower(P.floor)) {
                 throw new Error('lab: the tower did not start');
             }
+            // A real climb cannot start above floor 80; the lab may stand on any floor.
+            Object.assign(world.tower, { floor: P.floor, startFloor: P.floor });
             for (const [ID, LEVEL] of Object.entries(P.relics ?? {})) {
                 world.tower.relics.set(ID, LEVEL);
             }
@@ -134,7 +136,10 @@ export function createLabScene(text) {
         },
         step(world) {
             const ACTIVE = world.boss?.patternRuntime?.active;
-            return ACTIVE ? `${ACTIVE.id}:${ACTIVE.phase}` : 'idle';
+            if (ACTIVE) {
+                return `${ACTIVE.id}:${ACTIVE.phase}`;
+            }
+            return world.projectiles.length > 0 ? 'flight' : 'idle';
         },
         steps: {},
     };
