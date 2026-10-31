@@ -47,10 +47,10 @@ async function openFarm(page) {
     await page.locator('#upgradeMenu').click();
 }
 async function weights(page) {
-    return page.evaluate(() => localStorage.getItem('budmori.breed.weights'));
+    return page.evaluate(() => JSON.stringify(BUDMORI.play.value.breedWeights));
 }
 async function seed(page, saved) {
-    await page.evaluate((savedWeights) => {
+    await page.evaluate(async (savedWeights) => {
         const W = BUDMORI.sim;
         for (const UNIT of [...W.units]) {
             W.removeUnit(UNIT);
@@ -61,9 +61,9 @@ async function seed(page, saved) {
             }
         }
         W.setBreedWeights(savedWeights);
-        localStorage.setItem('budmori.breed.weights', JSON.stringify(savedWeights));
+        await BUDMORI.play.set({ breedWeights: savedWeights });
         W.markProgressChanged();
-        BUDMORI.storage.save(W);
+        await BUDMORI.storage.save(W);
     }, saved);
 }
 try {

@@ -50,23 +50,19 @@ class FarmAutosave {
             this.schedule(Math.max(0, this.deadline - NOW));
         }
     }
-    flush() {
+    // save() captures at once and resolves whether it was kept; a refused save stays dirty for the next change.
+    async flush() {
         this.cancelTimer();
         if (!this.dirty) {
             return true;
         }
-        let saved;
-        try {
-            saved = this.save() !== false;
-        } catch {
-            saved = false;
-        }
-        if (saved) {
-            this.reset();
-        } else {
+        this.reset();
+        const SAVED = await this.save();
+        if (!SAVED && !this.dirty) {
+            this.dirty = true;
             this.dirtySince = this.now();
         }
-        return saved;
+        return SAVED;
     }
     schedule(delay) {
         this.timerDeadline = this.now() + delay;

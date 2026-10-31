@@ -168,9 +168,7 @@ try {
             };
         });
         assert.deepEqual(TEMPERED, { hpOrder: true, lastStand: true, vengeance: true });
-        await PAGE.evaluate(() => {
-            BUDMORI.storage.save(BUDMORI.sim);
-        });
+        await PAGE.evaluate(() => BUDMORI.storage.save(BUDMORI.sim));
         await PAGE.reload();
         await PAGE.waitForFunction(() => globalThis.BUDMORI && BUDMORI.sim.codex.recipes.length === 1);
         const RESTORED = await PAGE.evaluate(() => ({

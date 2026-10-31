@@ -73,7 +73,7 @@ export class UnitSpriteAtlas {
                     const ENTRY = {
                         atlas: ATLAS,
                         animation: null,
-                        player: null,
+                        actor: null,
                         region: null,
                         pixelsPerUnit: PPU,
                         ready: false,
@@ -124,7 +124,7 @@ export class UnitSpriteAtlas {
                 ENTRY.animation?.dispose();
                 ENTRY.region = ENTRY.atlas.region;
                 ENTRY.animation = CREATE_ANIMATION(R.ctx, ENTRY.atlas.region, ENTRY.atlas.definition);
-                ENTRY.player = ENTRY.animation.createPlayer({ clip: KEY.split(':')[1] });
+                ENTRY.actor = ENTRY.animation.createActor({ clip: KEY.split(':')[1] });
             }
             yield { stage: 'atlas', completed: ++completed, total: TOTAL };
         }
@@ -223,8 +223,8 @@ export class UnitSpriteAtlas {
             const PERIOD = CLIP.durationMs * (CLIP.loop === 'alternate' ? 2 : 1);
             elapsed = ((elapsed % PERIOD) + PERIOD) % PERIOD;
         }
-        ENTRY.player.seek(Math.max(0, elapsed), 0);
-        ENTRY.player.draw({
+        ENTRY.actor.seek(Math.max(0, elapsed), 0);
+        ENTRY.actor.draw({
             ...options,
             timeMs: 0,
             matrix: [M[0] / PPU, M[1] / PPU, M[2] / PPU, M[3] / PPU, M[4], M[5]],

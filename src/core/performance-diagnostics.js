@@ -24,8 +24,6 @@ const STAGES = Object.freeze([
     'ui',
     'save',
     'saveCapture',
-    'saveEncode',
-    'saveIO',
     'instrumentation',
 ]);
 const COUNTERS = Object.freeze([
@@ -151,7 +149,7 @@ export class PerformanceDiagnostics {
             gpuMs: null,
             units: 'milliseconds and counts; no GPU completion timing',
             timingHierarchy:
-                'callback CPU contains simulation/presentation/render/ui; simulation contains stepLoop and pulseCapture; stepLoop contains FarmSession.advance, onAdvance callbacks and any presentation captures requested there; Garden.step contains logic/physics/worldPostStep/mutationDispatch; logic contains AI/spatial/workScheduler/mergeTask; presentationCapture contains snapshot preparation and runtimeCapture (SDK schema plans are cached by render type); save contains capture/encode/IO. Stage durations sum repeated calls within one RAF. Do not sum parents and children. Outside-callback events belong to the preceding RAF interval, not callback CPU.',
+                'callback CPU contains simulation/presentation/render/ui; simulation contains stepLoop and pulseCapture; stepLoop contains FarmSession.advance, onAdvance callbacks and any presentation captures requested there; Garden.step contains logic/physics/worldPostStep/mutationDispatch; logic contains AI/spatial/workScheduler/mergeTask; presentationCapture contains snapshot preparation and runtimeCapture (SDK schema plans are cached by render type); save contains capture and comparison; the save module encodes and writes asynchronously, outside these stages. Stage durations sum repeated calls within one RAF. Do not sum parents and children. Outside-callback events belong to the preceding RAF interval, not callback CPU.',
         };
     }
     frameRate() {
@@ -194,7 +192,7 @@ export class PerformanceDiagnostics {
             `프레임 평균: 프레젠테이션 캡처 ${PER_FRAME('presentationCaptures')}회 / 엔티티 ${PER_FRAME('presentationEntities')} · solver 반복 ${PER_FRAME('physicsSolverIterations')}`,
             `CPU AI ${TIME('ai')} · 인덱스 재구축/갱신 ${TIME('spatial')} · 충돌 ${TIME('collision')}`,
             `CPU 보간 ${TIME('presentation')} · WebGL 제출 ${TIME('render')} · UI ${TIME('ui')}`,
-            `저장 ${COUNT('saveCalls')}회 · CPU 전체 ${TIME('save')} / 캡처 ${TIME('saveCapture')} / 인코딩 ${TIME('saveEncode')} / IO ${TIME('saveIO')}`,
+            `저장 ${COUNT('saveCalls')}회 · CPU 전체 ${TIME('save')} / 캡처 ${TIME('saveCapture')}`,
             `프레임 평균: draw ${PER_FRAME('drawCalls')} · vector flush ${PER_FRAME('vectorFlushCalls')} · submit ${PER_FRAME('vectorSubmissions')} · fill 재테셀 ${PER_FRAME('pathTessellations')} · stroke 생성 ${PER_FRAME('pathStrokeBuilds')}`,
             `프레임 평균: retained mesh 생성 ${PER_FRAME('meshCreates')} · upload ${PER_FRAME('bufferUploads')}회/${NUMBER(COUNT('bufferBytes') / FRAME_COUNT / 1024)}KiB · 계측 기록 비용 ${TIME('instrumentation')}`,
             'GPU 시간 미측정 · CPU=콜백 작업, RAF=다음 콜백까지 간격. 외부 이벤트·대기 시간은 CPU에 합산하지 않음.',

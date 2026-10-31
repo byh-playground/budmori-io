@@ -1,78 +1,35 @@
-import { PRODUCT_VERSION, COMPATIBILITY } from '../version.js';
-import {
-    captureFarmProgress,
-    restoreFarmProgress,
-    validateFarmProgress,
-    migrateFarmProgress,
-    sameFarmProgress,
-} from '../model/farm-progress.js';
-const MAX_BYTES = 2 * 1024 * 1024;
-const COMPATIBILITY_LOCAL = (version) => (typeof version === 'string' ? version.split('.').slice(0, 2).join('.') : '');
-const IS_READABLE_COMPATIBILITY = (version) =>
-    [
-        COMPATIBILITY,
-        '0.41',
-        '0.40',
-        '0.39',
-        '0.38',
-        '0.37',
-        '0.36',
-        '0.35',
-        '0.34',
-        '0.33',
-        '0.32',
-        '0.31',
-        '0.30',
-    ].includes(COMPATIBILITY_LOCAL(version));
-function readFarmSave(text) {
-    if (typeof text !== 'string' || text.length > MAX_BYTES) {
-        throw Error('Save data is too large. The original data was left unchanged.');
+import { validateFarmProgress } from '../model/farm-progress.js';
+
+// The farm save record: `farm` is the captured farm progress, or null before the player starts a farm.
+// The save module adds `schema` and `revision` around it; an export file is this data as JSON.
+export const FARM_SAVE = Object.freeze({
+    key: 'budmori-farm',
+    version: 1,
+    create: () => ({ farm: null }),
+    validate: validateFarmRecord,
+});
+export function validateFarmRecord(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data) || Object.keys(data).join() !== 'farm') {
+        throw new TypeError('농장 저장 형식이 아니에요.');
     }
-    const PARSED = JSON.parse(text);
-    if (
-        PARSED?.schema !== 'budmori-farm' ||
-        !IS_READABLE_COMPATIBILITY(PARSED.productVersion) ||
-        !PARSED.progress ||
-        typeof PARSED.progress !== 'object' ||
-        Array.isArray(PARSED.progress) ||
-        Object.keys(PARSED).some((key) => !['schema', 'productVersion', 'progress'].includes(key))
-    ) {
-        throw Error(
-            'This save does not match the current Farm schema. Export the original save before importing a compatible save.',
-        );
+    if (data.farm !== null) {
+        validateFarmProgress(data.farm);
     }
-    return PARSED;
 }
-export function decodeFarmSaveRecord(text) {
-    const PARSED = readFarmSave(text);
-    if (COMPATIBILITY_LOCAL(PARSED.productVersion) === '0.30' && PARSED.progress.player?.schemaVersion !== 3) {
-        throw new TypeError('Invalid legacy farm schema. The original save was left unchanged.');
+export function farmExportText(data) {
+    return JSON.stringify(data);
+}
+// An export file to import: it must hold a farm, not the empty record before the first farm.
+export function readFarmExport(text) {
+    let data;
+    try {
+        data = JSON.parse(text);
+    } catch {
+        throw new TypeError('저장 파일이 JSON 형식이 아니에요.');
     }
-    const PROGRESS = migrateFarmProgress(PARSED.progress);
-    return { progress: PROGRESS, migrated: !sameFarmProgress(PARSED.progress, PROGRESS) };
-}
-export function decodeFarmSave(text) {
-    return decodeFarmSaveRecord(text).progress;
-}
-export function validateSave(text) {
-    decodeFarmSave(text);
-    return true;
-}
-export function parseSave(text) {
-    return restoreFarmProgress(decodeFarmSave(text));
-}
-export function encodeFarmSave(world, data = captureFarmProgress(world)) {
-    validateFarmProgress(data);
-    const TEXT = JSON.stringify({
-        schema: 'budmori-farm',
-        productVersion: PRODUCT_VERSION,
-        progress: data,
-    });
-    if (TEXT.length > MAX_BYTES) {
-        throw Error('Save data is too large. The original data was left unchanged.');
+    validateFarmRecord(data);
+    if (data.farm === null) {
+        throw new TypeError('저장 파일에 농장이 없어요.');
     }
-    return {
-        data,
-        text: TEXT,
-    };
+    return data;
 }

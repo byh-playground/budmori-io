@@ -19,6 +19,9 @@ import { Garden, CONFIG, ArenaGeometry, ATTACK_TYPES, Ballistics, clamp } from '
 import { Diorama } from './render/farm-renderer.js';
 import { FarmSession, LOCAL_PROFILE } from './app/farm-session.js';
 import { FarmStorage } from './save/farm-storage.js';
+import { readFarmExport } from './save/farm-save-codec.js';
+import { PlaySettings } from './save/play-settings.js';
+import { isolatedPage, saveOpener } from './save/save-adapter.js';
 import { FarmAutosave } from './save/farm-autosave.js';
 import { snapshot, restore } from './model/farm-state.js';
 import { PRODUCT_VERSION } from './version.js';
@@ -38,8 +41,11 @@ import { createHelpPanel } from './ui/help-panel.js';
 import { codexHtml, CODEX_TABS } from './ui/codex-dialog.js';
 import { SeedlingReveal } from './ui/seedling-reveal.js';
 const DOLLAR = (id) => document.getElementById(id),
-    STORAGE = new FarmStorage();
-STORAGE.initializeIncompatible(new Garden());
+    ISOLATED_PAGE = isolatedPage(location.search),
+    OPEN_SAVE = saveOpener(location.search),
+    // The game starts after both saves are read. An unreadable one keeps the start screen closed (saveLocked).
+    STORAGE = await FarmStorage.open(OPEN_SAVE),
+    PLAY = await PlaySettings.open(OPEN_SAVE);
 const HELP_PANEL = createHelpPanel(DOLLAR);
 const SEEDLING_REVEAL = new SeedlingReveal(DOLLAR('seedlingReveal'));
 let imported = null;
@@ -471,13 +477,25 @@ const FAIL = (error) => {
         active.paused = true;
     }
 };
-function writeCheckpoint(world = personalGarden) {
+async function writeCheckpoint(world = personalGarden) {
     if (!world) {
         return false;
     }
-    const OK = STORAGE.save(world);
-    DOLLAR('saveNotice').textContent = OK ? '' : STORAGE.error;
+    const OK = await STORAGE.save(world);
+    DOLLAR('saveNotice').textContent = OK ? PLAY.error : STORAGE.error;
     return OK;
+}
+// A refused save is shown where the player is: the start screen line, and the farm notice during play.
+function showSaveError(message) {
+    DOLLAR('saveNotice').textContent = message;
+    if (!home) {
+        say(message);
+    }
+}
+STORAGE.onError = showSaveError;
+PLAY.onError = showSaveError;
+function saveLocked() {
+    return STORAGE.locked || PLAY.locked;
 }
 const AUTOSAVE = new FarmAutosave(() => writeCheckpoint());
 function replacePersonalGarden(world) {
@@ -502,40 +520,31 @@ function persist() {
     }
     return AUTOSAVE.flush();
 }
-const FOOD_FEEL = new FoodFeel();
+// Isolated scenes play silently. While the play settings cannot be read nothing plays (the start screen stays).
+const FOOD_FEEL = new FoodFeel({
+    muted: ISOLATED_PAGE || (PLAY.value?.foodMuted ?? true),
+    onMutedChange: (muted) => void PLAY.set({ foodMuted: muted }),
+});
 const COMBAT_FEEL = new CombatFeel(FOOD_FEEL);
-const WORK_STORAGE_KEY = 'budmori.work.basisPoints';
-// The worker ratio is a play setting, not part of the farm save.
-function loadWorkSetting(fallback) {
-    try {
-        const RAW = localStorage.getItem(WORK_STORAGE_KEY),
-            VALUE = Number(RAW);
-        return RAW !== null && Number.isSafeInteger(VALUE) && VALUE >= 0 && VALUE <= 10000 ? VALUE : fallback;
-    } catch {
-        return fallback;
+// The worker ratio, breeding weights and deploy order are play settings, not part of the farm save.
+function applyPlaySettings(world) {
+    const SETTINGS = PLAY.value;
+    if (!SETTINGS) {
+        return;
     }
-}
-const BREED_WEIGHTS_KEY = 'budmori.breed.weights';
-function loadBreedWeights(world) {
-    try {
-        world.setBreedWeights(JSON.parse(localStorage.getItem(BREED_WEIGHTS_KEY) || 'null'));
-    } catch {
-        /* Even split stands. */
+    if (SETTINGS.workBasisPoints !== null) {
+        world.setWorkBasisPoints(SETTINGS.workBasisPoints);
+    }
+    world.setBreedWeights(SETTINGS.breedWeights);
+    if (SETTINGS.deployOrder !== null) {
+        world.setDeployOrder(SETTINGS.deployOrder);
     }
 }
 function saveBreedWeights(world) {
-    try {
-        localStorage.setItem(BREED_WEIGHTS_KEY, JSON.stringify(world.breedWeights));
-    } catch {
-        /* Applies for this run. */
-    }
+    void PLAY.set({ breedWeights: world.breedWeights });
 }
 function saveWorkSetting(value) {
-    try {
-        localStorage.setItem(WORK_STORAGE_KEY, String(value));
-    } catch {
-        /* The ratio still applies for this run. */
-    }
+    void PLAY.set({ workBasisPoints: value });
 }
 // The farm bar is [breed | food] with one cut: the share of the farm that breeds.
 // The split the slider asks for, counted over everyone (asleep or still growing too), so the numbers follow the
@@ -572,9 +581,7 @@ function install(world) {
     if (graphicsRecovery) {
         active.suspendClock();
     }
-    world.setWorkBasisPoints(loadWorkSetting(world.workBasisPoints));
-    loadBreedWeights(world);
-    loadDeployOrder(world);
+    applyPlaySettings(world);
     return active;
 }
 install(new Garden());
@@ -602,9 +609,12 @@ function say(text) {
     }, 4000);
 }
 function refreshStart() {
-    DOLLAR('continueGame').disabled = !hasMemoryRun() && !STORAGE.hasWorld;
-    DOLLAR('exportSave').disabled = !STORAGE.raw;
-    DOLLAR('saveNotice').textContent = STORAGE.error || STORAGE.notice;
+    const LOCKED = saveLocked();
+    DOLLAR('continueGame').disabled = LOCKED || (!hasMemoryRun() && !STORAGE.hasWorld);
+    DOLLAR('newGame').disabled = LOCKED;
+    DOLLAR('importSave').disabled = LOCKED;
+    DOLLAR('exportSave').disabled = STORAGE.exportText() === null;
+    DOLLAR('saveNotice').textContent = STORAGE.error || PLAY.error;
 }
 function setHome(value, push = true) {
     stopWorldInput();
@@ -626,21 +636,8 @@ function setHome(value, push = true) {
         DOLLAR('continueGame').focus();
     }
 }
-const SEEN_KEY = 'budmori.lastSeen';
 function markSeen() {
-    try {
-        localStorage.setItem(SEEN_KEY, String(Date.now()));
-    } catch {
-        /* Without a stored time there is simply no idle progress. */
-    }
-}
-function readSeen() {
-    try {
-        const VALUE = Number(localStorage.getItem(SEEN_KEY));
-        return Number.isFinite(VALUE) && VALUE > 0 ? VALUE : 0;
-    } catch {
-        return 0;
-    }
+    void PLAY.set({ lastSeenMs: Date.now() });
 }
 function offlineText(summary) {
     const MINUTES = Math.floor(summary.seconds / 60),
@@ -656,7 +653,7 @@ function offlineText(summary) {
 }
 // The time spent away is settled by a formula when the farm comes back (see farm-offline.js).
 function settleOffline() {
-    const SEEN = readSeen();
+    const SEEN = PLAY.value.lastSeenMs;
     markSeen();
     const WORLD = personalGarden;
     if (!SEEN || !WORLD || WORLD.scene !== 'farm') {
@@ -840,40 +837,35 @@ DOLLAR('doorCards').addEventListener('click', (event) => {
 DOLLAR('towerLeave').onclick = () => {
     personalGarden?.leaveTower();
 };
-DOLLAR('newGame').onclick = () => {
-    // Overwriting an existing save is a separate, explicit user action.
-    if (STORAGE.raw && !DOLLAR('newConfirm').hidden) {
-        return;
-    }
-    if (STORAGE.raw) {
-        DOLLAR('newConfirmText').textContent = '현재 농장을 새 농장으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요.';
-        DOLLAR('newConfirm').hidden = false;
-        return;
-    }
+async function startNewFarm() {
     const WORLD = new Garden();
-    if (STORAGE.replace(WORLD)) {
-        AUTOSAVE.reset();
-        start(WORLD);
-    } else {
-        refreshStart();
-    }
-};
-DOLLAR('confirmNew').onclick = () => {
-    const WORLD = new Garden();
-    if (STORAGE.replace(WORLD)) {
+    if (await STORAGE.save(WORLD)) {
         AUTOSAVE.reset();
         DOLLAR('newConfirm').hidden = true;
         start(WORLD);
     } else {
         refreshStart();
     }
+}
+DOLLAR('newGame').onclick = () => {
+    // Overwriting an existing save is a separate, explicit user action.
+    if (saveLocked() || (STORAGE.hasWorld && !DOLLAR('newConfirm').hidden)) {
+        return;
+    }
+    if (STORAGE.hasWorld) {
+        DOLLAR('newConfirmText').textContent = '현재 농장을 새 농장으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요.';
+        DOLLAR('newConfirm').hidden = false;
+        return;
+    }
+    void startNewFarm();
 };
+DOLLAR('confirmNew').onclick = () => void startNewFarm();
 DOLLAR('cancelNew').onclick = () => {
     DOLLAR('newConfirm').hidden = true;
 };
 DOLLAR('exportSave').onclick = () => {
-    const RAW = STORAGE.raw;
-    if (!RAW) {
+    const RAW = STORAGE.exportText();
+    if (RAW === null) {
         return;
     }
     const URL_LOCAL = URL.createObjectURL(
@@ -898,8 +890,7 @@ DOLLAR('saveFile').onchange = async () => {
             throw Error('저장 파일이 너무 커요.');
         }
         const TEXT = await FILE.text();
-        const { validateSave: VALIDATE_SAVE } = await import('./save/farm-storage.js');
-        VALIDATE_SAVE(TEXT);
+        readFarmExport(TEXT);
         imported = TEXT;
         DOLLAR('importConfirmText').textContent = '선택한 파일로 현재 저장을 바꿀까요?';
         DOLLAR('confirmImport').textContent = '이 저장 불러오기';
@@ -914,14 +905,14 @@ DOLLAR('cancelImport').onclick = () => {
     imported = null;
     DOLLAR('importConfirm').hidden = true;
 };
-DOLLAR('confirmImport').onclick = () => {
+DOLLAR('confirmImport').onclick = async () => {
     if (active?.world?.tower.active) {
         DOLLAR('saveNotice').textContent = '탑 도전을 끝내고 농장으로 돌아온 뒤 저장을 불러올 수 있어요.';
         return;
     }
     try {
         if (imported) {
-            const WORLD = STORAGE.import(imported);
+            const WORLD = await STORAGE.import(imported);
             AUTOSAVE.reset();
             replacePersonalGarden(WORLD);
             install(WORLD);
@@ -1709,20 +1700,8 @@ function fightActive() {
 }
 // The deploy order. Before the climb the deck dialog sets it (tap two cards to swap them); a fight sends everyone
 // in by itself in this order, and tapping a card during the fight puts that species in front.
-const DEPLOY_ORDER_KEY = 'budmori.deploy.order';
-function loadDeployOrder(world) {
-    try {
-        world.setDeployOrder(JSON.parse(localStorage.getItem(DEPLOY_ORDER_KEY) || 'null'));
-    } catch {
-        /* The default order stands. */
-    }
-}
 function saveDeployOrder(order) {
-    try {
-        localStorage.setItem(DEPLOY_ORDER_KEY, JSON.stringify(order));
-    } catch {
-        /* Applies for this run. */
-    }
+    void PLAY.set({ deployOrder: order });
 }
 function deckCardHtml(id, count, slot) {
     const SPECIES = speciesById(id);
@@ -1999,7 +1978,7 @@ function route() {
         return;
     }
     if (home && !resumeMemoryRun(false)) {
-        if (STORAGE.error && !STORAGE.hasWorld) {
+        if (saveLocked() || (STORAGE.error && !STORAGE.hasWorld)) {
             setHome(true, false);
             history.replaceState(null, '', '#/');
             return;
@@ -2411,6 +2390,7 @@ globalThis.BUDMORI = {
     },
     renderer: RENDERER,
     storage: STORAGE,
+    play: PLAY,
     foodFeel: FOOD_FEEL,
     combatFeel: COMBAT_FEEL,
     CONFIG,
