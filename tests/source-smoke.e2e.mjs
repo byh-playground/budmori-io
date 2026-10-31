@@ -536,6 +536,10 @@ try {
         for (const ID of Object.keys(WORLD.boss.patternRuntime.cooldowns)) {
             WORLD.boss.patternRuntime.cooldowns[ID] = ID === 'attack.sweep-360' ? 0 : 1000;
         }
+        // The sweep is an area pattern: it is chosen only after the basic attacks and on the area slot of the rhythm.
+        // BOSS_RHYTHM: 4 basics per special, every third special is an area pattern.
+        WORLD.boss.basicCount = 4;
+        WORLD.boss.specialCount = 2;
         const TARGETS = [];
         for (let index = 0; index < 4; index++) {
             const ANGLE = (index < 2 ? 0 : Math.PI) + (index % 2) * 0.12,
@@ -726,6 +730,10 @@ try {
                             !this.formationRuntime.effects.some((effect) => effect.kind === 'healing-rain');
                     }
                 }
+            }
+            if (OBS.healing.nextDecision && !OBS.sweepFrame && this.bossHpRatio > 0.4) {
+                // The heal fixture refilled the boss's side; the sweep still unlocks only at 40% HP or below.
+                this.boss.setHealth(this.boss.maxHp * 0.3);
             }
             return RESULT;
         };
@@ -1225,7 +1233,12 @@ try {
             if (BOSS.species === 5) {
                 CASE.effects.guard ||= BOSS.walnutGuardUntilTick > this.simulationTick;
             }
-            if (READY(CASE) && !OBS.capturePending) {
+            // The rhythm allows a special only after several basics, so the last case keeps fighting until one launches.
+            if (
+                READY(CASE) &&
+                !OBS.capturePending &&
+                (OBS.cases.length < OBS.order.length || OBS.specialLaunches > 0)
+            ) {
                 CASE.elapsedTicks = this.simulationTick - CASE.startTick;
                 if (OBS.cases.length === OBS.order.length) {
                     OBS.complete = true;
