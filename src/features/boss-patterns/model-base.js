@@ -18,10 +18,13 @@ export class BossPattern {
     attackExtentFor(boss, extent) {
         // Render projections carry the resolved scalar, while live Units own
         // their base profile/modifiers. Both use the same geometry calculation.
-        return scaleAttackArea(
-            extent,
-            boss,
-            Number.isFinite(boss.attackArea) ? { attackArea: boss.attackArea } : undefined,
+        // A giant boss reaches as far past its larger body as it did past its normal one.
+        return (
+            scaleAttackArea(
+                extent,
+                boss,
+                Number.isFinite(boss.attackArea) ? { attackArea: boss.attackArea } : undefined,
+            ) * (boss.giantScale ?? 1)
         );
     }
     reachFor(boss) {
