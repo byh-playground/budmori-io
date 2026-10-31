@@ -1366,31 +1366,8 @@ try {
     );
     assert.deepEqual(ERRORS, [], 'automatic nine-boss combat stays free of runtime errors');
     CHECKPOINT('nineBossBasicAssertions');
-    await PAGE.setViewportSize({ width: 1000, height: 700 });
-    await PAGE.locator('#upgradeMenu').click();
-    REPORT.wording = [];
-    for (const [SPECIES, TITLE] of [
-        [0, '연속 박치기'],
-        [8, '도리깨 공격과 방어 깨기'],
-        [5, '방어와 망치 반격'],
-    ]) {
-        await PAGE.locator(`[data-ability-species="${SPECIES}"]`).click();
-        const CARD = PAGE.locator('[data-growth-tree]');
-        await CARD.waitFor();
-        assert.equal(await CARD.locator('h3').textContent(), TITLE);
-        const TEXT = await CARD.innerText();
-        assert.doesNotMatch(TEXT, /RAW|예산|슬롯|스윕|공속|후딜|런/);
-        if (SPECIES === 5) {
-            assert.match(TEXT, /기본 공격 총피해의 3배/);
-        }
-        REPORT.wording.push({ species: SPECIES, title: TITLE });
-    }
-    await PAGE.setViewportSize({ width: 390, height: 844 });
-    await PAGE.locator('[data-growth-node="specialty-2"]').scrollIntoViewIfNeeded();
-    assert.deepEqual(ERRORS, [], 'the representative growth menus remain free of runtime errors');
-    CHECKPOINT('wordingAssertions');
+    // The species growth-tree cards this checked the wording of were removed with the species screen (0.53).
     // Three real choices exercise each common card category, without replacing the roll or application code.
-    await PAGE.locator('#gameMenuClose').click();
     await PAGE.setViewportSize({ width: 1000, height: 700 });
     await PAGE.evaluate(() => {
         const WORLD = BUDMORI.sim;

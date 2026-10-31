@@ -56,9 +56,6 @@ const SERVER = http.createServer((request, response) => {
     response.end(fs.readFileSync(FILE));
 });
 await new Promise((resolve) => SERVER.listen(0, '127.0.0.1', resolve));
-async function activate(locator) {
-    await (VIEWPORT === 'landscape' ? locator.tap() : locator.click());
-}
 // Preserve the failing iframe state before browser teardown, including waits
 // before observer installation. Diagnostics never mutate simulation or pose.
 async function previewWait(frame, page, tier, label, predicate, timeout = 30000) {
@@ -177,12 +174,12 @@ try {
                 // Use the actual factory to find current roster extrema; no fake
                 // radius, hitbox or pose is assigned to the selected boss.
                 FIXTURE.bossRoster = Array.from({ length: BUDMORI.CONFIG.unit.speciesCount }, (_value, species) => {
-                    WORLD.configureBossStage(1, species);
+                    WORLD.boss.controller.configureStage(1, species);
                     return { species, radius: WORLD.boss.radius, height: WORLD.boss.height };
                 });
                 const SORTED = [...FIXTURE.bossRoster].sort((a, b) => a.radius - b.radius),
                     CHOSEN = CASE === 'small-boss' ? SORTED[0] : SORTED.at(-1);
-                WORLD.configureBossStage(1, CHOSEN.species);
+                WORLD.boss.controller.configureStage(1, CHOSEN.species);
                 Object.assign(WORLD.boss, { z: 0, hp: 1e7, maxHp: 1e7, stun: 60 });
                 UNIT.x = -(WORLD.boss.radius + 1.35);
                 UNIT.y = 0;
@@ -462,46 +459,11 @@ try {
         const TIER = CASE.tier,
             LABEL = CASE.id;
         activePreview = { frame: PAGE.mainFrame(), page: PAGE, tier: TIER };
-        await PAGE.goto(`${ORIGIN}/index.html`);
-        await PAGE.waitForFunction(() => globalThis.BUDMORI);
-        await activate(PAGE.locator('#newGame'));
-        if (await PAGE.locator('#newConfirm').isVisible()) {
-            await activate(PAGE.locator('#confirmNew'));
-        }
-        await PAGE.waitForFunction(() => document.body.dataset.home === 'false');
-        await activate(PAGE.locator('#upgradeMenu'));
-        await activate(PAGE.locator('[data-ability-species="6"]'));
-        await activate(PAGE.locator(`[data-rice-preview-tier="${TIER}"]`));
-        const HOST = PAGE.locator('.growth-evolution-preview iframe');
-        await HOST.scrollIntoViewIfNeeded();
-        const HANDLE = await HOST.elementHandle(),
-            FRAME = await HANDLE.contentFrame(),
-            VISIBLE = await HOST.evaluate((element) => {
-                const BOX = element.getBoundingClientRect(),
-                    PANE = document
-                        .getElementById(
-                            getComputedStyle(document.getElementById('abilityPanel')).overflowY === 'auto'
-                                ? 'abilityPanel'
-                                : 'abilityNodes',
-                        )
-                        .getBoundingClientRect();
-                return {
-                    height: BOX.height,
-                    visibleHeight: Math.min(innerHeight, PANE.bottom, BOX.bottom) - Math.max(0, PANE.top, BOX.top),
-                };
-            });
-        activePreview.frame = FRAME;
-        assert.ok(
-            VISIBLE.height >= 160 && VISIBLE.visibleHeight >= VISIBLE.height - 3,
-            'actual modal iframe is fully visible through its scroll pane',
-        );
-        REPORT.push({ kind: 'modal-preview-viewport', tier: TIER, ...VISIBLE });
-        await previewWait(FRAME, PAGE, TIER, 'initial-scene', () => globalThis.BUDMORI?.sim?.units[0]?.species === 6);
-        const PREVIEW_URL = new URL(FRAME.url());
-        PREVIEW_URL.searchParams.set('rice-case', LABEL);
-        await FRAME.goto(PREVIEW_URL.href);
-        // Install observation before asynchronous SVG players finish loading.
-        await previewWait(FRAME, PAGE, TIER, 'reloaded-scene', () => globalThis.BUDMORI?.sim?.units[0]?.species === 6);
+        // The species screen that hosted this preview is gone (0.53); the preview scene itself is still the
+        // isolated help-frame runtime, opened by its address. Observation installs before SVG players load.
+        await PAGE.goto(`${ORIGIN}/index.html?help=rice-t${TIER}&rice-case=${LABEL}`);
+        const FRAME = PAGE.mainFrame();
+        await previewWait(FRAME, PAGE, TIER, 'scene', () => globalThis.BUDMORI?.sim?.units[0]?.species === 6);
         assert.equal(await FRAME.locator('#bossbar').evaluate((element) => getComputedStyle(element).display), 'none');
 
         let state;
