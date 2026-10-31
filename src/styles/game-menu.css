@@ -335,6 +335,17 @@ html.help-scene.barley-attack-preview #bossbar {
     display: none !important;
 }
 
+/* A lone unit's attack preview has no army to command; the command bar would cover the unit at the bottom. */
+html.help-scene.growth-preview-scene #battleCommands,
+html.help-scene.chestnut-attack-preview #battleCommands,
+html.help-scene.peanut-attack-preview #battleCommands,
+html.help-scene.walnut-attack-preview #battleCommands,
+html.help-scene.rice-attack-preview #battleCommands,
+html.help-scene.wheat-attack-preview #battleCommands,
+html.help-scene.barley-attack-preview #battleCommands {
+    display: none !important;
+}
+
 /* 도움말 카드: 실제 게임 데모 + 한 줄 캡션 + 규칙 한두 줄 */
 /* 크기는 스크립트가 정해요: 실제 화면 비율 그대로 줄여서 보여줘요. */
 .help-demo {
