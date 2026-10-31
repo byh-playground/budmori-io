@@ -35,6 +35,12 @@ class FoodFeel {
             });
         });
     }
+    // A stored choice that arrived after start (the play settings were reset), not the player's press.
+    setMuted(muted) {
+        this.muted = muted;
+        this.silence();
+        this.updateSoundButton();
+    }
     updateSoundButton() {
         const B = DOLLAR('sound');
         DOLLAR('soundState').textContent = this.muted ? '꺼짐' : '켜짐';

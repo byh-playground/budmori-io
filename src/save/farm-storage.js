@@ -59,6 +59,18 @@ class FarmStorage {
         this.error = saveFailureMessage(error);
         this.onError?.(this.error);
     }
+    // Discards the stored farm, readable or not, for an empty record. Only after the player confirmed.
+    // Throws with the reason; a refused reset leaves the record locked as it was.
+    async reset() {
+        try {
+            this.savedProgress = (await this.record.reset()).farm;
+        } catch (error) {
+            this.fail(error, 'reset');
+            throw new Error(this.error, { cause: error });
+        }
+        this._world = null;
+        this.error = '';
+    }
     // An unreadable save stays untouched: no new farm, import or autosave may replace it.
     get locked() {
         return this.record.locked;

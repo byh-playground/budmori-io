@@ -1,29 +1,28 @@
-tree d5ff8388dce73c2c855952bda9fee3f6bc99379a
-parent 273549cf903d8b846fa094510a4e61fddc257382
-author byh020907 <byh020907@naver.com> 1793416965 +0900
-committer GitHub <noreply@github.com> 1793416965 +0900
+tree 5ede1bb9e3ebefd18fb18431dfd3a4c0a120fd4c
+parent 9bdcb85540a86947aa57840f3fbfd4e1843b3bfc
+author byh020907 <byh020907@naver.com> 1793438181 +0900
+committer GitHub <noreply@github.com> 1793438181 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq5V8FCRC1aQ7uu5UhlAAAJrQQAEMDeqC8TMuvH9ug1SbK68Sf
- iu1lyA5mF5CzukOcVdhWwwVsQ3KOp6VRPb8WI1FXO82Edg0CjQj/enmTVsjJlSUH
- dcf9pwjloh2/+5crf/kA2uSI7+eT/qoqxYDkARxhdOObq6IhFOzfUjOqw/rXhYcb
- uKrB7Io3ofW++rxj7+QMg8PC/GeIeBUw+bXal3DDJftR+7Ce9kdTkRc0zrYlt+oO
- aEWKHCq5mIgf4jPo+RkTDEzBgpLL4itOH9yTXQdMVYZ3Sj870GPFgh40Z6Cpejkd
- KufhXzom8yKpPtYj8TS7mGuFcQWlFyoLuebWK7ndzIVWF2se4gNIP/R53n5VjS+7
- M11yu24AtXCd07v2b9PCPNrvAX6Z9EnVCN0G7HUqDKAmV2nkmvWVe/ueEst7IAFv
- 7eAlnPIMSW7+VeiggnV5jv78VdBY73NUX+vcS1Rb1+jKhpLNmbk+ach2eNzuVBNh
- dZI+BvZwk15xNMU4FXDH6ocir3/CKOCVbSrCAu74y8Rrf7dBuXQ/+NTy7kbEEwLx
- yhnL2RojpAahNQVF4pwxZJLeU03QgP7qunTxKTLW8dsQMIqWcyubMqxRyPVlr6fD
- iJwXWiY9TpnM+3HL0xhiffRk/EI91Oe/2ySl88evxCct+h5fP0he6qW8bqbpoOlO
- 1CZKr00TpukTNzrYz6Hm
- =PVXQ
+ wsFcBAABCAAQBQJq5bHlCRC1aQ7uu5UhlAAAkT0QAJ96M/etpK954tsUc8lOi2y5
+ fsEsNuj3M4ERVy6PmQClX8g5t8bQwJgz1a2VpwGRtuQ2icGp0gbLqQGJDs46YeDF
+ BlsncBD2gN0qiqtaq2SF8ib+B+auACNeYonxt+Bkyla/RyfYwLVPKVmdMWrDUWw2
+ zhMaPJMH14de0tDQp7BKGHB5YwwgsXHKY/CrD9YlUNe0Rym79JM93UDP6oqyYSoc
+ c8wHrcOeAwPCG20M3rUHQmnXlDG8YETnn8QI7JUX0ZtgIlXQki2Hv+wEEBb7fkWq
+ dNRz4yB7V52nKS5u/HcgrRRDw15+Btbpyp+LvLN09OvR1v0W/kOV2skkk9Dz4Nuq
+ u4OFktmiNQF5DSmf6Gfmn+4F+yEbDWfs/0fzQZJ0kQIdpZ4gnffXE0K3QBfXjcW1
+ /eKV+jSaWjnQAVluaGuA21J+jBVuWOBkHwCmtQL55dnu//QWWZnvvjFy9TAe7RO8
+ 4QqxQBo9Kb0aUpsHzqHt5j+V7phTqHIVnBZZzPdVi3xdMnSy6nsS0I1pE0a9zmjU
+ q7r2/Bux9DfSWDtAmQp6nABtCz5HKeUblQZAg79KPUEs6iGe/zRlsr+gFoxQSIak
+ Z2IB3CmvzLbZpf1l/BE+X8LI0Fk5eR8pE3edaodrlV9IUuOGs1lCgoMoRT4WUPZp
+ SJxTim39qhNP1UkX//kE
+ =bluw
  -----END PGP SIGNATURE-----
  
 
-[기능] save: 게임 저장 레코드 모듈과 저장소 어댑터 (v0.37.6) (#173)
+[기능] save: 읽지 못한 저장을 확인 후 지우고 새로 시작하는 reset() (v0.38.1) (#175)
 
-createSave({adapter,key,version,create,validate,migrate})가 레코드 하나의 읽기·이관·검증·
-revision 충돌 감지·탭 간 알림을 맡는다. 어댑터는 IndexedDB·localStorage·메모리.
-읽지 못한 저장은 기본값으로 바꾸지 않고 unreadable로 알리며 잠근다.
+- reset()은 저장된 레코드를 버리고 create()로 새로 저장하며 잠금을 푼다. 게임이 사용자 확인 뒤에만 부른다.
+- 어댑터는 해석하지 못한 값을 던지지 않고 SaveError('unreadable')로 body에 넘긴다. load·update는 이전처럼 실패한다.
 
 Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
