@@ -18,44 +18,35 @@ const MAX_DISPLAY_TO_IMAGE_SCALE = 0.5;
 
 // Face parts, the cheek and the element marks as images on the device atlas, uploaded once and overlaid on any body
 // in every art mode. Every species shares one eye and mouth part per expression; one white cheek takes the element
-// colour when drawn. A restored graphics context uploads them again on first use.
+// colour when drawn. Pictures are rasterised once per page; prepare() uploads them outside game frames (renderer
+// start and a restored graphics context), and a frame before that draws the same parts as paths.
 export class UnitOverlayImages {
     constructor(renderer) {
         this.renderer = renderer;
+        this.pictures = null;
         this.images = new Map();
         this.generation = -1;
         this.disposed = false;
     }
-    _ready() {
+    prepare() {
         const DEVICE = this.renderer.device,
             GENERATION = DEVICE.stats.restores ?? 0;
-        if (this.disposed || DEVICE.state !== 'ready') {
-            return false;
+        if (this.disposed || DEVICE.state !== 'ready' || GENERATION === this.generation) {
+            return;
         }
-        if (GENERATION !== this.generation) {
-            this._upload(DEVICE.textureAtlas);
-            this.generation = GENERATION;
-        }
-        return true;
-    }
-    _upload(atlas) {
+        this.pictures ??= overlayPictures();
+        const ATLAS = DEVICE.textureAtlas;
         this.images.clear();
-        for (const FACE of FACE_IDS) {
-            const PARTS = faceParts(FACE);
-            for (const [INDEX, OPS] of [...PARTS.eyes, PARTS.mouth].entries()) {
-                this.images.set(`${FACE}:${INDEX}`, bakeImage(atlas, OPS, FACE_PART_PIXELS));
-            }
+        for (const [KEY, PICTURE] of this.pictures) {
+            const REGION = ATLAS.allocate(PICTURE.canvas.width, PICTURE.canvas.height);
+            ATLAS.upload(REGION, PICTURE.canvas);
+            this.images.set(KEY, { ...PICTURE, region: REGION });
         }
-        // A unit circle squashed to each cheek when drawn; white so the element colour can replace it.
-        this.images.set(
-            'cheek',
-            bakeImage(atlas, [{ fill: '#ffffff', opacity: 1, path: ellipsePath(0, 0, 1, 1) }], CHEEK_PIXELS / 2),
-        );
-        for (const [ELEMENT, ICON] of ELEMENT_ICONS.entries()) {
-            if (ICON) {
-                this.images.set(`element:${ELEMENT}`, bakeImage(atlas, elementMarkOps(ELEMENT), MARK_PIXELS / 24));
-            }
-        }
+        this.generation = GENERATION;
+    }
+    _ready() {
+        const DEVICE = this.renderer.device;
+        return !this.disposed && DEVICE.state === 'ready' && (DEVICE.stats.restores ?? 0) === this.generation;
     }
     // Draws a face on the current transform, which maps the body's own canvas (the posed face). `pixelsPerUnit` is
     // how many screen pixels one body-canvas unit covers. False when it would be magnified: the caller draws paths.
@@ -110,9 +101,30 @@ export class UnitOverlayImages {
     }
 }
 
-// Rasterises draw operations ({ fill | stroke, path, width?, opacity? } in local units) into one atlas region.
-// Returns the region and the local rectangle it covers.
-function bakeImage(atlas, operations, pixelsPerUnit) {
+// Every overlay picture, keyed as drawn: `${face}:${part}`, 'cheek' and `element:${element}`.
+function overlayPictures() {
+    const PICTURES = new Map();
+    for (const FACE of FACE_IDS) {
+        const PARTS = faceParts(FACE);
+        for (const [INDEX, OPS] of [...PARTS.eyes, PARTS.mouth].entries()) {
+            PICTURES.set(`${FACE}:${INDEX}`, rasterise(OPS, FACE_PART_PIXELS));
+        }
+    }
+    // A unit circle squashed to each cheek when drawn; white so the element colour can replace it.
+    PICTURES.set(
+        'cheek',
+        rasterise([{ fill: '#ffffff', opacity: 1, path: ellipsePath(0, 0, 1, 1) }], CHEEK_PIXELS / 2),
+    );
+    for (const [ELEMENT, ICON] of ELEMENT_ICONS.entries()) {
+        if (ICON) {
+            PICTURES.set(`element:${ELEMENT}`, rasterise(elementMarkOps(ELEMENT), MARK_PIXELS / 24));
+        }
+    }
+    return PICTURES;
+}
+// Rasterises draw operations ({ fill | stroke, path, width?, opacity? } in local units) into a canvas.
+// Returns it with the local rectangle it covers.
+function rasterise(operations, pixelsPerUnit) {
     const BOX = [Infinity, Infinity, -Infinity, -Infinity];
     for (const OPERATION of operations) {
         const PAD = (OPERATION.width || 0) / 2;
@@ -162,9 +174,7 @@ function bakeImage(atlas, operations, pixelsPerUnit) {
             C.stroke(PATH);
         }
     }
-    const REGION = atlas.allocate(WIDTH, HEIGHT);
-    atlas.upload(REGION, CANVAS);
-    return { region: REGION, x: X, y: Y, width: WIDTH / pixelsPerUnit, height: HEIGHT / pixelsPerUnit };
+    return { canvas: CANVAS, x: X, y: Y, width: WIDTH / pixelsPerUnit, height: HEIGHT / pixelsPerUnit };
 }
 // Places an image whose local origin goes to (x, y) and whose local unit is (scaleX, scaleY) on the current transform.
 function drawImage(ctx, image, x, y, scaleX, scaleY) {

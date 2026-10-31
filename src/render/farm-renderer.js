@@ -194,6 +194,7 @@ const DIORAMA = class Diorama {
             height: this.canvas.height,
             clearColor: [0.9, 0.92, 0.87, 1],
         });
+        this.unitOverlays.prepare();
         if (!deferSpritePreparation) {
             this.unitSprites.prepare();
         }
@@ -206,6 +207,7 @@ const DIORAMA = class Diorama {
         // SDK resources restore first; the app resumes its suspended clock
         // after this listener, so image preparation cannot advance game time.
         this.onSpritesRestored = () => {
+            this.unitOverlays.prepare();
             if (
                 !this.assetsReady ||
                 this.unitSprites.disposed ||
