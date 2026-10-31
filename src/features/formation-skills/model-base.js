@@ -2,6 +2,8 @@ import { unitBodyRadius } from '../unit-body/definition.js';
 export const T1_DIAMETER = unitBodyRadius({ species: 0, tier: 1, growthElapsed: 1, growthDuration: 1 }) * 2;
 // A size reference changes parameters, never the shared skill's targeting or damage algorithm.
 export const CASTER_SIZE_PROFILE = Object.freeze({ sizeReference: 'caster', sizeScale: 0.8 });
+// A unit's skill is as big as the body it is aimed at, at the same scale a boss's skill is of its caster.
+export const TARGET_SIZE_PROFILE = Object.freeze({ sizeReference: 'target', sizeScale: 0.8 });
 
 // Ratios are shares of the resolved diameter. Radius and full-width parameters remain distinct.
 export function sizeValue(profile, size, name) {
@@ -59,6 +61,11 @@ export class FormationSkill {
     }
 }
 export class MeteorSkill extends FormationSkill {
+    // The blast follows the size reference but never shrinks below the tier-1 radius, so a small target
+    // (a summoned minion) still gets the area a unit's meteor always had.
+    areaValue(profile, size, name) {
+        return Math.max(profile[name] ?? 0, sizeValue(profile, size, name));
+    }
     launch(owner, slot, index = 0) {
         const TARGET = owner.enemy();
         if (!TARGET) {
@@ -69,7 +76,7 @@ export class MeteorSkill extends FormationSkill {
             ANGLE = owner.world.random() * Math.PI * 2,
             DISTANCE =
                 Math.sqrt(owner.world.random()) *
-                (targetBodyDimensions(TARGET).bodyRadius + sizeValue(PROFILE, SIZE, 'scatterRadius'));
+                (targetBodyDimensions(TARGET).bodyRadius + this.areaValue(PROFILE, SIZE, 'scatterRadius'));
         owner.addEffect(this.definition.id, {
             x: TARGET.x + Math.cos(ANGLE) * DISTANCE,
             y: TARGET.y + Math.sin(ANGLE) * DISTANCE,
@@ -78,7 +85,7 @@ export class MeteorSkill extends FormationSkill {
             fallSeconds: PROFILE.fallSeconds,
             duration: index * PROFILE.shotInterval + PROFILE.fallSeconds + 0.5,
             ...SIZE,
-            radius: sizeValue(PROFILE, SIZE, 'aoeRadius'),
+            radius: this.areaValue(PROFILE, SIZE, 'aoeRadius'),
             damage: PROFILE.shotDamage ?? this.power(slot.level, PROFILE.upgradeBase),
             impacted: false,
         });
