@@ -97,7 +97,7 @@ const MODEL_ADAPTER_SELECTOR = MODEL_ADAPTER_IMPORT.replaceAll('/', '\\u002F');
 export default [
     {
         name: 'budmori/generated-and-vendor',
-        ignores: ['**/node_modules/**', 'vendor/**', 'tests/output/**', '**/*.generated.*', 'dist/**'],
+        ignores: ['**/node_modules/**', 'vendor/**', 'tests/output/**', '**/*.generated.*', 'dist/**', 'sw.js'],
     },
     {
         name: 'budmori/owned-javascript',

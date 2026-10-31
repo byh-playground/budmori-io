@@ -94,7 +94,7 @@ const BROWSER = await chromium.launch({
 const DEADLINE = setTimeout(() => BROWSER.close(), 180000);
 DEADLINE.unref();
 try {
-    const PAGE = await BROWSER.newPage({ viewport: { width: 1100, height: 850 } }),
+    const PAGE = await BROWSER.newPage({ viewport: { width: 1100, height: 850 }, serviceWorkers: 'block' }),
         ERRORS = [];
     PAGE.on('pageerror', (error) => ERRORS.push(String(error)));
     await PAGE.route(/cdn\.jsdelivr\.net\/gh\/byh-playground\/bloom-gamekit@[0-9a-f]+\/(.*)/, (route) =>
@@ -115,6 +115,11 @@ try {
     );
     await PAGE.goto(`http://127.0.0.1:${SERVER.address().port}/index.html`);
     await PAGE.waitForFunction(() => globalThis.BUDMORI);
+    // Blocked service workers are reported on the start screen. Waiting for that line keeps it off the farm notice,
+    // which would otherwise appear mid-scene and change the timing of the discovery card.
+    await PAGE.waitForFunction(() =>
+        document.getElementById('appNotice').textContent.includes('service worker registration was blocked'),
+    );
     await PAGE.locator('#newGame').click();
     for (const BACKEND of ['sprite', 'vector']) {
         await PAGE.evaluate((backend) => {

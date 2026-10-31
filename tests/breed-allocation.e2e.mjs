@@ -69,6 +69,7 @@ async function seed(page, saved) {
 try {
     for (const MOBILE of [false, true]) {
         const CONTEXT = await BROWSER.newContext({
+                serviceWorkers: 'block',
                 viewport: MOBILE ? { width: 390, height: 844 } : { width: 1100, height: 850 },
                 isMobile: MOBILE,
                 hasTouch: MOBILE,

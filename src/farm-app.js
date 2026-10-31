@@ -41,6 +41,7 @@ import { createHelpPanel } from './ui/help-panel.js';
 import { codexHtml, CODEX_TABS } from './ui/codex-dialog.js';
 import { iconSvg, mountIcons } from './ui/icons.js';
 import { SeedlingReveal } from './ui/seedling-reveal.js';
+import { startAppShell } from './ui/app-shell.js';
 const DOLLAR = (id) => document.getElementById(id),
     ISOLATED_PAGE = isolatedPage(location.search),
     OPEN_SAVE = saveOpener(location.search),
@@ -496,6 +497,18 @@ function showSaveError(message) {
 }
 STORAGE.onError = showSaveError;
 PLAY.onError = showSaveError;
+// Isolated scenes run this same page and must not install, cache or update the app.
+if (!ISOLATED_PAGE) {
+    startAppShell({
+        dollar: DOLLAR,
+        notify: (text) => {
+            if (!home) {
+                say(text);
+            }
+        },
+        beforeUpdate: () => persist(),
+    });
+}
 function saveLocked() {
     return STORAGE.locked || PLAY.locked;
 }
