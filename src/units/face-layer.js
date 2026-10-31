@@ -21,16 +21,16 @@ export const TEMPERAMENT_FACES = Object.freeze([
 ]);
 export const FACE_IDS = Object.freeze([...STATE_FACES, ...TEMPERAMENT_FACES]);
 
+export const DEFAULT_CHEEK_COLOR = '#ec8070';
 const EYE_COLOR = '#4a2420',
     INK_COLOR = '#2c1c18',
     GLINT_COLOR = '#fff5d8',
     TONGUE_COLOR = '#e9776b',
-    DEFAULT_CHEEK_COLOR = '#ec8070',
     EYE_SIZE = 0.165,
     MOUTH_HALF_WIDTH = 0.19,
     ELLIPSE_KAPPA = 0.5522847498;
 
-function ellipsePath(cx, cy, rx, ry) {
+export function ellipsePath(cx, cy, rx, ry) {
     const KX = rx * ELLIPSE_KAPPA,
         KY = ry * ELLIPSE_KAPPA;
     return [
@@ -41,21 +41,6 @@ function ellipsePath(cx, cy, rx, ry) {
         ['C', cx + KX, cy - ry, cx + rx, cy - KY, cx + rx, cy],
         ['Z'],
     ];
-}
-
-function layoutOf({ eyeLeft, eyeRight, mouth }) {
-    const GAP = eyeRight[0] - eyeLeft[0],
-        U = GAP * EYE_SIZE;
-    return {
-        gap: GAP,
-        u: U,
-        ex: [eyeLeft[0], eyeRight[0]],
-        ey: [eyeLeft[1], eyeRight[1]],
-        mx: mouth[0],
-        my: mouth[1],
-        w: GAP * MOUTH_HALF_WIDTH,
-        stroke: Math.max(2.6, GAP * 0.055),
-    };
 }
 
 function boxOf(operation) {
@@ -107,25 +92,58 @@ function mergeByStyle(operations) {
     return MERGED.map((entry) => entry.operation);
 }
 
-// anchor: { eyeLeft: [x, y], eyeRight: [x, y], mouth: [x, y] } in the body's SVG canvas.
-// cheekColor: the element colour of the unit, or null for the shared cheek colour.
-// Returns draw operations: { fill | stroke: colour, path: [[command, ...NUMBERS]], width?, opacity? }.
-export function buildFace(faceId, anchor, cheekColor = null) {
-    const L = layoutOf(anchor),
-        { u: U, ex: EX, ey: EY, mx: MX, my: MY, w: W } = L,
-        OPS = [];
-    const FILL = (path, color, opacity = 1) => OPS.push({ fill: color, path, opacity });
-    const STROKE = (path, scale = 1, color = INK_COLOR) => OPS.push({ stroke: color, path, width: L.stroke * scale });
-    const LINE = (x1, y1, x2, y2, scale) =>
+// A face is three parts placed on the body's anchors: the left eye and the right eye around their eye points and the
+// mouth around the mouth point, plus a pair of cheeks. Part geometry is in eye-gap units (the distance between the
+// eyes is 1) with the part's own point at the origin, so every species shares the same parts; a species only moves
+// and scales them. Returns { eyes: [ops, ops], mouth: ops, cheeks: { scale, opacity } }, ops as in buildFace.
+const PARTS_CACHE = new Map();
+export function faceParts(faceId) {
+    let parts = PARTS_CACHE.get(faceId);
+    if (!parts) {
+        parts = Object.freeze(buildFaceParts(faceId));
+        PARTS_CACHE.set(faceId, parts);
+    }
+    return parts;
+}
+// Where a part's origin sits and how big one eye-gap unit is, for one species' anchors.
+export function facePartPlacement(anchor) {
+    const GAP = anchor.eyeRight[0] - anchor.eyeLeft[0];
+    return { gap: GAP, origins: [anchor.eyeLeft, anchor.eyeRight, anchor.mouth] };
+}
+// The two cheek ellipses in the body's canvas: [cx, cy, rx, ry] each.
+export function cheekEllipses(anchor, cheeks) {
+    const GAP = anchor.eyeRight[0] - anchor.eyeLeft[0],
+        RX = GAP * 0.2 * cheeks.scale,
+        Y = anchor.mouth[1] + GAP * 0.05;
+    return [
+        [anchor.eyeLeft[0] - GAP * 0.2, Y, RX, RX * CHEEK_ASPECT],
+        [anchor.eyeRight[0] + GAP * 0.2, Y, RX, RX * CHEEK_ASPECT],
+    ];
+}
+const CHEEK_ASPECT = 0.62;
+
+function buildFaceParts(faceId) {
+    const U = EYE_SIZE,
+        W = MOUTH_HALF_WIDTH,
+        STROKE_WIDTH = 0.055,
+        EYES = [[], []],
+        MOUTH = [],
+        PARTS = { eyes: EYES, mouth: MOUTH, cheeks: { scale: 1, opacity: 1 } };
+    const FILL = (part, path, color, opacity = 1) => part.push({ fill: color, path, opacity });
+    const STROKE = (part, path, scale = 1, color = INK_COLOR) =>
+        part.push({ stroke: color, path, width: STROKE_WIDTH * scale });
+    const LINE = (part, x1, y1, x2, y2, scale) =>
         STROKE(
+            part,
             [
                 ['M', x1, y1],
                 ['L', x2, y2],
             ],
             scale,
         );
-    const CURVE = (x1, y1, cx, cy, x2, y2, scale) =>
+    const CURVE = (part, x1, y1, cx, cy, x2, y2, scale) =>
         STROKE(
+            part,
             [
                 ['M', x1, y1],
                 ['Q', cx, cy, x2, y2],
@@ -133,60 +151,46 @@ export function buildFace(faceId, anchor, cheekColor = null) {
             scale,
         );
     const CHEEKS = (scale = 1, opacity = 1) => {
-        const RX = L.gap * 0.2 * scale,
-            Y = MY + L.gap * 0.05;
-        for (const SIDE of [-1, 1]) {
-            FILL(
-                ellipsePath(EX[SIDE < 0 ? 0 : 1] + SIDE * L.gap * 0.2, Y, RX, RX * 0.62),
-                cheekColor ?? DEFAULT_CHEEK_COLOR,
-                opacity,
-            );
-        }
+        PARTS.cheeks = { scale, opacity };
     };
-    const EYES = (rx = 1, ry = 1, dy = 0) => {
-        for (const I of [0, 1]) {
-            FILL(ellipsePath(EX[I], EY[I] + dy * U, U * rx, U * ry * 1.05), EYE_COLOR);
+    const ROUND_EYES = (rx = 1, ry = 1, dy = 0) => {
+        for (const EYE of EYES) {
+            FILL(EYE, ellipsePath(0, dy * U, U * rx, U * ry * 1.05), EYE_COLOR);
         }
     };
     const GLINTS = (rx = 1, big = 0.3, small = 0.14, dy = 0) => {
-        for (const I of [0, 1]) {
-            FILL(ellipsePath(EX[I] - 0.3 * U * rx, EY[I] + dy * U - 0.35 * U, U * big, U * big), GLINT_COLOR);
+        for (const EYE of EYES) {
+            FILL(EYE, ellipsePath(-0.3 * U * rx, dy * U - 0.35 * U, U * big, U * big), GLINT_COLOR);
             if (small) {
-                FILL(
-                    ellipsePath(EX[I] + 0.35 * U * rx, EY[I] + dy * U + 0.3 * U, U * small, U * small),
-                    GLINT_COLOR,
-                    0.8,
-                );
+                FILL(EYE, ellipsePath(0.35 * U * rx, dy * U + 0.3 * U, U * small, U * small), GLINT_COLOR, 0.8);
             }
         }
     };
-    const SMILE = (half, depth, scale) => CURVE(MX - half, MY, MX, MY + depth, MX + half, MY, scale);
+    const SMILE = (half, depth, scale) => CURVE(MOUTH, -half, 0, 0, depth, half, 0, scale);
     // A closed mouth outline that holds the open-mouth fill; optional tongue.
     const OPEN_MOUTH = (half, depth, tongue) => {
         FILL(
+            MOUTH,
             [
-                ['M', MX - half, MY - U * 0.1],
-                ['Q', MX, MY - U * 0.1, MX + half, MY - U * 0.1],
-                ['Q', MX + half * 0.8, MY + depth, MX, MY + depth + U * 0.05],
-                ['Q', MX - half * 0.8, MY + depth, MX - half, MY - U * 0.1],
+                ['M', -half, -U * 0.1],
+                ['Q', 0, -U * 0.1, half, -U * 0.1],
+                ['Q', half * 0.8, depth, 0, depth + U * 0.05],
+                ['Q', -half * 0.8, depth, -half, -U * 0.1],
                 ['Z'],
             ],
             INK_COLOR,
         );
         if (tongue) {
-            FILL(ellipsePath(MX, MY + depth * 0.78, half * 0.5, U * 0.38), TONGUE_COLOR);
+            FILL(MOUTH, ellipsePath(0, depth * 0.78, half * 0.5, U * 0.38), TONGUE_COLOR);
         }
     };
-    const BROW = (side, x1, y1, x2, y2, scale = 1) => {
-        const I = side < 0 ? 0 : 1;
-        LINE(EX[I] + x1 * U, EY[I] + y1 * U, EX[I] + x2 * U, EY[I] + y2 * U, scale);
-    };
-    const ARC_UP = (i, scale = 1.25) =>
-        CURVE(EX[i] - U, EY[i] + U * 0.35, EX[i], EY[i] - U, EX[i] + U, EY[i] + U * 0.35, scale);
+    const BROW = (side, x1, y1, x2, y2, scale = 1) =>
+        LINE(EYES[side < 0 ? 0 : 1], x1 * U, y1 * U, x2 * U, y2 * U, scale);
+    const ARC_UP = (i, scale = 1.25) => CURVE(EYES[i], -U, U * 0.35, 0, -U, U, U * 0.35, scale);
     switch (faceId) {
         case 'neutral':
             CHEEKS();
-            EYES();
+            ROUND_EYES();
             GLINTS(1, 0.3, 0);
             SMILE(W, W * 0.525, 1.15);
             break;
@@ -198,12 +202,13 @@ export function buildFace(faceId, anchor, cheekColor = null) {
             break;
         case 'focused':
             CHEEKS(1, 0.55);
-            for (const I of [0, 1]) {
+            for (const EYE of EYES) {
                 FILL(
+                    EYE,
                     [
-                        ['M', EX[I] - U * 1.05, EY[I] - U * 0.1],
-                        ['Q', EX[I] - U * 1.05, EY[I] + U * 0.85, EX[I], EY[I] + U * 0.85],
-                        ['Q', EX[I] + U * 1.05, EY[I] + U * 0.85, EX[I] + U * 1.05, EY[I] - U * 0.1],
+                        ['M', -U * 1.05, -U * 0.1],
+                        ['Q', -U * 1.05, U * 0.85, 0, U * 0.85],
+                        ['Q', U * 1.05, U * 0.85, U * 1.05, -U * 0.1],
                         ['Z'],
                     ],
                     EYE_COLOR,
@@ -211,22 +216,23 @@ export function buildFace(faceId, anchor, cheekColor = null) {
             }
             BROW(-1, -1.15, -1.15, 0.95, -0.8, 1.2);
             BROW(1, 1.15, -1.15, -0.95, -0.8, 1.2);
-            LINE(MX - W * 0.45, MY + U * 0.1, MX + W * 0.45, MY + U * 0.1, 1.2);
+            LINE(MOUTH, -W * 0.45, U * 0.1, W * 0.45, U * 0.1, 1.2);
             break;
         case 'attack':
             CHEEKS(1, 0.8);
-            for (const I of [0, 1]) {
-                FILL(ellipsePath(EX[I], EY[I] + U * 0.1, U * 0.95, U * 0.84), EYE_COLOR);
+            for (const EYE of EYES) {
+                FILL(EYE, ellipsePath(0, U * 0.1, U * 0.95, U * 0.84), EYE_COLOR);
             }
             BROW(-1, -1.3, -1.55, 1.1, -0.7, 1.5);
             BROW(1, 1.3, -1.55, -1.1, -0.7, 1.5);
             OPEN_MOUTH(W * 0.85, U * 1.5, false);
             FILL(
+                MOUTH,
                 [
-                    ['M', MX - W * 0.62, MY - U * 0.05],
-                    ['L', MX + W * 0.62, MY - U * 0.05],
-                    ['L', MX + W * 0.62, MY + U * 0.4],
-                    ['L', MX - W * 0.62, MY + U * 0.4],
+                    ['M', -W * 0.62, -U * 0.05],
+                    ['L', W * 0.62, -U * 0.05],
+                    ['L', W * 0.62, U * 0.4],
+                    ['L', -W * 0.62, U * 0.4],
                     ['Z'],
                 ],
                 '#ffffff',
@@ -234,99 +240,103 @@ export function buildFace(faceId, anchor, cheekColor = null) {
             break;
         case 'surprised':
             CHEEKS(1, 0.9);
-            for (const I of [0, 1]) {
-                FILL(ellipsePath(EX[I], EY[I], U * 1.12, U * 1.28), EYE_COLOR);
-                FILL(ellipsePath(EX[I] - 0.35 * U, EY[I] - 0.5 * U, U * 0.38, U * 0.38), GLINT_COLOR);
-                FILL(ellipsePath(EX[I] + 0.4 * U, EY[I] + 0.4 * U, U * 0.17, U * 0.17), GLINT_COLOR, 0.85);
-                CURVE(EX[I] - U, EY[I] - U * 1.85, EX[I], EY[I] - U * 2.4, EX[I] + U, EY[I] - U * 1.85, 0.8);
+            for (const EYE of EYES) {
+                FILL(EYE, ellipsePath(0, 0, U * 1.12, U * 1.28), EYE_COLOR);
+                FILL(EYE, ellipsePath(-0.35 * U, -0.5 * U, U * 0.38, U * 0.38), GLINT_COLOR);
+                FILL(EYE, ellipsePath(0.4 * U, 0.4 * U, U * 0.17, U * 0.17), GLINT_COLOR, 0.85);
+                CURVE(EYE, -U, -U * 1.85, 0, -U * 2.4, U, -U * 1.85, 0.8);
             }
-            FILL(ellipsePath(MX, MY + U * 0.55, U * 0.5, U * 0.72), INK_COLOR);
+            FILL(MOUTH, ellipsePath(0, U * 0.55, U * 0.5, U * 0.72), INK_COLOR);
             break;
         case 'hurt':
             CHEEKS(1, 0.8);
             STROKE(
+                EYES[0],
                 [
-                    ['M', EX[0] - U * 0.9, EY[0] - U * 0.8],
-                    ['L', EX[0] + U * 0.8, EY[0]],
-                    ['L', EX[0] - U * 0.9, EY[0] + U * 0.8],
+                    ['M', -U * 0.9, -U * 0.8],
+                    ['L', U * 0.8, 0],
+                    ['L', -U * 0.9, U * 0.8],
                 ],
                 1.3,
             );
             STROKE(
+                EYES[1],
                 [
-                    ['M', EX[1] + U * 0.9, EY[1] - U * 0.8],
-                    ['L', EX[1] - U * 0.8, EY[1]],
-                    ['L', EX[1] + U * 0.9, EY[1] + U * 0.8],
+                    ['M', U * 0.9, -U * 0.8],
+                    ['L', -U * 0.8, 0],
+                    ['L', U * 0.9, U * 0.8],
                 ],
                 1.3,
             );
             STROKE(
+                MOUTH,
                 [
-                    ['M', MX - W * 0.8, MY + U * 0.3],
-                    ['Q', MX - W * 0.4, MY - U * 0.35, MX, MY + U * 0.3],
-                    ['Q', MX + W * 0.4, MY + U * 0.95, MX + W * 0.8, MY + U * 0.3],
+                    ['M', -W * 0.8, U * 0.3],
+                    ['Q', -W * 0.4, -U * 0.35, 0, U * 0.3],
+                    ['Q', W * 0.4, U * 0.95, W * 0.8, U * 0.3],
                 ],
                 1.1,
             );
             break;
         case 'hungry':
             CHEEKS(1, 0.6);
-            for (const I of [0, 1]) {
-                FILL(ellipsePath(EX[I], EY[I] + U * 0.15, U * 0.95, U * 0.84), EYE_COLOR);
-                FILL(ellipsePath(EX[I] - 0.25 * U, EY[I] - 0.05 * U, U * 0.3, U * 0.3), GLINT_COLOR);
+            for (const EYE of EYES) {
+                FILL(EYE, ellipsePath(0, U * 0.15, U * 0.95, U * 0.84), EYE_COLOR);
+                FILL(EYE, ellipsePath(-0.25 * U, -0.05 * U, U * 0.3, U * 0.3), GLINT_COLOR);
             }
             BROW(-1, -1.1, -1.0, 1.0, -1.5, 0.9);
             BROW(1, 1.1, -1.0, -1.0, -1.5, 0.9);
-            CURVE(MX - W * 0.5, MY + U * 0.5, MX, MY - U * 0.2, MX + W * 0.5, MY + U * 0.5, 1.1);
+            CURVE(MOUTH, -W * 0.5, U * 0.5, 0, -U * 0.2, W * 0.5, U * 0.5, 1.1);
             break;
         case 'dead':
             CHEEKS(1, 0.5);
-            for (const I of [0, 1]) {
-                LINE(EX[I] - U * 0.8, EY[I] - U * 0.8, EX[I] + U * 0.8, EY[I] + U * 0.8, 1.2);
-                LINE(EX[I] + U * 0.8, EY[I] - U * 0.8, EX[I] - U * 0.8, EY[I] + U * 0.8, 1.2);
+            for (const EYE of EYES) {
+                LINE(EYE, -U * 0.8, -U * 0.8, U * 0.8, U * 0.8, 1.2);
+                LINE(EYE, U * 0.8, -U * 0.8, -U * 0.8, U * 0.8, 1.2);
             }
-            LINE(MX - W * 0.45, MY + U * 0.2, MX + W * 0.45, MY + U * 0.2, 1.1);
+            LINE(MOUTH, -W * 0.45, U * 0.2, W * 0.45, U * 0.2, 1.1);
             break;
         case 'temperament-0': // 느긋: small round eyes gazing up, relaxed shallow smile
             CHEEKS(1.1, 0.9);
-            for (const I of [0, 1]) {
-                FILL(ellipsePath(EX[I], EY[I], U * 0.72, U * 0.84), EYE_COLOR);
-                FILL(ellipsePath(EX[I] + U * 0.1, EY[I] - U * 0.3, U * 0.3, U * 0.3), GLINT_COLOR);
+            for (const EYE of EYES) {
+                FILL(EYE, ellipsePath(0, 0, U * 0.72, U * 0.84), EYE_COLOR);
+                FILL(EYE, ellipsePath(U * 0.1, -U * 0.3, U * 0.3, U * 0.3), GLINT_COLOR);
             }
-            CURVE(MX - W * 0.55, MY + U * 0.1, MX, MY + W * 0.55 + U * 0.1, MX + W * 0.55, MY + U * 0.1, 1.1);
+            CURVE(MOUTH, -W * 0.55, U * 0.1, 0, W * 0.55 + U * 0.1, W * 0.55, U * 0.1, 1.1);
             break;
         case 'temperament-1': // 소심: wet eyes, worried brows, trembling mouth
             CHEEKS(1, 0.9);
-            for (const I of [0, 1]) {
-                FILL(ellipsePath(EX[I], EY[I] + U * 0.05, U, U * 1.15), EYE_COLOR);
-                FILL(ellipsePath(EX[I] - U * 0.3, EY[I] - U * 0.35, U * 0.4, U * 0.4), GLINT_COLOR);
-                FILL(ellipsePath(EX[I] + U * 0.35, EY[I] + U * 0.4, U * 0.2, U * 0.2), GLINT_COLOR, 0.9);
+            for (const EYE of EYES) {
+                FILL(EYE, ellipsePath(0, U * 0.05, U, U * 1.15), EYE_COLOR);
+                FILL(EYE, ellipsePath(-U * 0.3, -U * 0.35, U * 0.4, U * 0.4), GLINT_COLOR);
+                FILL(EYE, ellipsePath(U * 0.35, U * 0.4, U * 0.2, U * 0.2), GLINT_COLOR, 0.9);
             }
             BROW(-1, -1.1, -1.0, 0.9, -1.7, 0.95);
             BROW(1, 1.1, -1.0, -0.9, -1.7, 0.95);
             STROKE(
+                MOUTH,
                 [
-                    ['M', MX - W * 0.55, MY + U * 0.3],
-                    ['Q', MX - W * 0.28, MY - U * 0.15, MX, MY + U * 0.3],
-                    ['Q', MX + W * 0.28, MY + U * 0.75, MX + W * 0.55, MY + U * 0.3],
+                    ['M', -W * 0.55, U * 0.3],
+                    ['Q', -W * 0.28, -U * 0.15, 0, U * 0.3],
+                    ['Q', W * 0.28, U * 0.75, W * 0.55, U * 0.3],
                 ],
                 1.0,
             );
             break;
         case 'temperament-2': // 발끈: slanted brows, round dark eyes, pout
             CHEEKS(1.15);
-            for (const I of [0, 1]) {
-                FILL(ellipsePath(EX[I], EY[I] + U * 0.1, U * 0.9, U * 0.9), EYE_COLOR);
+            for (const EYE of EYES) {
+                FILL(EYE, ellipsePath(0, U * 0.1, U * 0.9, U * 0.9), EYE_COLOR);
             }
             BROW(-1, -1.3, -1.5, 1.0, -0.8, 1.2);
             BROW(1, 1.3, -1.5, -1.0, -0.8, 1.2);
-            CURVE(MX - W * 0.5, MY + U * 0.45, MX, MY - U * 0.25, MX + W * 0.5, MY + U * 0.45, 1.1);
+            CURVE(MOUTH, -W * 0.5, U * 0.45, 0, -U * 0.25, W * 0.5, U * 0.45, 1.1);
             break;
         case 'temperament-3': // 까불: one big eye, one wink, open grin with tongue
             CHEEKS(1.15);
-            FILL(ellipsePath(EX[0], EY[0], U * 1.1, U * 1.26), EYE_COLOR);
-            FILL(ellipsePath(EX[0] - U * 0.3, EY[0] - U * 0.4, U * 0.4, U * 0.4), GLINT_COLOR);
-            FILL(ellipsePath(EX[0] + U * 0.35, EY[0] + U * 0.4, U * 0.17, U * 0.17), GLINT_COLOR, 0.85);
+            FILL(EYES[0], ellipsePath(0, 0, U * 1.1, U * 1.26), EYE_COLOR);
+            FILL(EYES[0], ellipsePath(-U * 0.3, -U * 0.4, U * 0.4, U * 0.4), GLINT_COLOR);
+            FILL(EYES[0], ellipsePath(U * 0.35, U * 0.4, U * 0.17, U * 0.17), GLINT_COLOR, 0.85);
             ARC_UP(1, 1.2);
             OPEN_MOUTH(W * 0.75, U * 1.4, true);
             break;
@@ -338,6 +348,37 @@ export function buildFace(faceId, anchor, cheekColor = null) {
             break;
         default:
             throw new RangeError('Unknown face: ' + faceId);
+    }
+    return {
+        eyes: EYES.map((ops) => Object.freeze(mergeByStyle(ops))),
+        mouth: Object.freeze(mergeByStyle(MOUTH)),
+        cheeks: Object.freeze(PARTS.cheeks),
+    };
+}
+
+// anchor: { eyeLeft: [x, y], eyeRight: [x, y], mouth: [x, y] } in the body's SVG canvas.
+// cheekColor: the element colour of the unit, or null for the shared cheek colour.
+// Returns draw operations in the body's canvas: { fill | stroke: colour, path: [[command, ...NUMBERS]], width?, opacity? }.
+export function buildFace(faceId, anchor, cheekColor = null) {
+    const PARTS = faceParts(faceId),
+        { gap: GAP, origins: ORIGINS } = facePartPlacement(anchor),
+        OPS = cheekEllipses(anchor, PARTS.cheeks).map(([cx, cy, rx, ry]) => ({
+            fill: cheekColor ?? DEFAULT_CHEEK_COLOR,
+            path: ellipsePath(cx, cy, rx, ry),
+            opacity: PARTS.cheeks.opacity,
+        }));
+    for (const [INDEX, PART] of [...PARTS.eyes, PARTS.mouth].entries()) {
+        const [OX, OY] = ORIGINS[INDEX];
+        for (const OP of PART) {
+            OPS.push({
+                ...OP,
+                path: OP.path.map(([command, ...numbers]) => [
+                    command,
+                    ...numbers.map((value, index) => (index % 2 ? OY : OX) + value * GAP),
+                ]),
+                ...(OP.width ? { width: OP.width * GAP } : {}),
+            });
+        }
     }
     return mergeByStyle(OPS);
 }

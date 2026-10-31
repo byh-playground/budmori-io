@@ -64,7 +64,7 @@
     }
   });
 })({
-    "version": "8a1cc4a72ede2545",
+    "version": "ca80731d300166b4",
     "activateMessage": "bloom-pwa:activate",
     "gamekit": "^https:\\/\\/cdn\\.jsdelivr\\.net\\/gh\\/byh-playground\\/bloom-gamekit@[0-9a-f]{40}\\/[A-Za-z0-9._/-]+$",
     "precache": [
@@ -310,6 +310,7 @@
         "src/render/food-feel.js",
         "src/render/unit-face-draw.js",
         "src/render/unit-face-overlay.js",
+        "src/render/unit-overlay-images.js",
         "src/render/unit-sprite-atlas.js",
         "src/save/farm-autosave.js",
         "src/save/farm-offline.js",

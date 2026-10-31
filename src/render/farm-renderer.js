@@ -10,6 +10,7 @@ import { scenePresentation } from './farm-render-scenes.js';
 import { FoodPresentation, ProjectilePresentation } from './farm-render-items.js';
 import { UnitPresentation } from './farm-render-units.js';
 import { UnitSpriteAtlas, UNIT_SPRITE_ATLAS } from './unit-sprite-atlas.js';
+import { UnitOverlayImages } from './unit-overlay-images.js';
 import { unitCullingEnabled, unitMayBeVisible } from './farm-render-visibility.js';
 import { UNIT_GRADES } from '../units/unit-grades.js';
 import { CornAttachmentPresentation } from '../features/abilities/corn-attachment/presentation.js';
@@ -140,6 +141,7 @@ const DIORAMA = class Diorama {
             });
         }
         this.unitSprites = new UnitSpriteAtlas(this, this.unitArtMode === 'sprite');
+        this.unitOverlays = new UnitOverlayImages(this);
         this.bossAssets = new Map(
             Object.entries(BOSS_VECTOR_ASSETS).map(([id, compiled]) => [
                 id,
@@ -192,6 +194,7 @@ const DIORAMA = class Diorama {
             height: this.canvas.height,
             clearColor: [0.9, 0.92, 0.87, 1],
         });
+        this.unitOverlays.prepare();
         if (!deferSpritePreparation) {
             this.unitSprites.prepare();
         }
@@ -204,6 +207,7 @@ const DIORAMA = class Diorama {
         // SDK resources restore first; the app resumes its suspended clock
         // after this listener, so image preparation cannot advance game time.
         this.onSpritesRestored = () => {
+            this.unitOverlays.prepare();
             if (
                 !this.assetsReady ||
                 this.unitSprites.disposed ||
@@ -1219,6 +1223,7 @@ const DIORAMA = class Diorama {
         this.canvas.removeEventListener('webglcontextrestored', this.onSpritesRestored);
         disposeEffectPresentations(this);
         this.unitSprites.dispose();
+        this.unitOverlays.dispose();
         for (const SPECIES of this.vectorAssets.keys()) {
             unbindBossSocketAsset(SPECIES, this.bossSpeciesAssets.get(SPECIES));
         }

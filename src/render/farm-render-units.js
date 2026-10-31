@@ -428,7 +428,7 @@ export class UnitPresentation {
             this.renderer.ctx.drawVectorActor(PLAYER, DRAW_OPTIONS);
         }
         drawUnitFace(
-            this.renderer.ctx,
+            this.renderer,
             PREPARED.record,
             PLAYER,
             PREPARED.face,
@@ -453,7 +453,7 @@ export class UnitPresentation {
         if (ELEMENT > 0) {
             const TOP = this.renderer.project(u.x, u.y, u.z + u.height + 0.35);
             drawElementMark(
-                this.renderer.ctx,
+                this.renderer,
                 ELEMENT,
                 TOP.x + u.radius * this.renderer.scale * 0.5,
                 TOP.y,

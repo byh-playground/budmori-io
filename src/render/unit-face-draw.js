@@ -1,10 +1,20 @@
 import { buildFace } from '../units/face-layer.js';
+import { drawOperations } from './unit-face-overlay.js';
 
 const FACE_SOCKETS = ['face-eye-left', 'face-eye-right', 'face-mouth'];
 const OPS_CACHE = new Map();
 
 // The three face sockets of a compiled body at its rest pose, in the body's SVG canvas.
+const ANCHORS = new WeakMap();
 export function faceAnchor(compiled) {
+    let anchor = ANCHORS.get(compiled);
+    if (!anchor) {
+        anchor = Object.freeze(restAnchor(compiled));
+        ANCHORS.set(compiled, anchor);
+    }
+    return anchor;
+}
+function restAnchor(compiled) {
     const SOCKETS = compiled.metadata.sockets,
         POINT = (id) => {
             const SOCKET = SOCKETS[id];
@@ -52,42 +62,20 @@ export function posedFace(player, rest, out) {
 export const POSED = [0, 0, 0, 0, 0, 0];
 
 // matrix: the screen transform the body was drawn with; alpha: the body's alpha. Call after the body's own submission.
-export function drawUnitFace(ctx, record, player, faceId, cheekColor, matrix, alpha = 1) {
+// The face is overlaid from parts uploaded once (UnitOverlayImages); paths only where those would be magnified.
+export function drawUnitFace(renderer, record, player, faceId, cheekColor, matrix, alpha = 1) {
     if (!faceId) {
         return;
     }
-    const OPS = faceOps(record.compiled, faceId, cheekColor),
-        P = posedFace(player, faceAnchor(record.compiled), POSED);
-    ctx.save();
-    ctx.transform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]);
-    ctx.transform(P[0], P[1], P[2], P[3], P[4], P[5]);
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    for (const OP of OPS) {
-        ctx.beginPath();
-        for (const [COMMAND, ...N] of OP.path) {
-            if (COMMAND === 'M') {
-                ctx.moveTo(N[0], N[1]);
-            } else if (COMMAND === 'L') {
-                ctx.lineTo(N[0], N[1]);
-            } else if (COMMAND === 'Q') {
-                ctx.quadraticCurveTo(N[0], N[1], N[2], N[3]);
-            } else if (COMMAND === 'C') {
-                ctx.bezierCurveTo(N[0], N[1], N[2], N[3], N[4], N[5]);
-            } else {
-                ctx.closePath();
-            }
-        }
-        if (OP.fill) {
-            ctx.globalAlpha = OP.opacity * alpha;
-            ctx.fillStyle = OP.fill;
-            ctx.fill();
-        } else {
-            ctx.globalAlpha = alpha;
-            ctx.strokeStyle = OP.stroke;
-            ctx.lineWidth = OP.width;
-            ctx.stroke();
-        }
+    const C = renderer.ctx,
+        ANCHOR = faceAnchor(record.compiled),
+        P = posedFace(player, ANCHOR, POSED);
+    C.save();
+    C.transform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]);
+    C.transform(P[0], P[1], P[2], P[3], P[4], P[5]);
+    const PIXELS_PER_UNIT = Math.hypot(matrix[0], matrix[1]) * Math.hypot(P[0], P[1]);
+    if (!renderer.unitOverlays.drawFace(ANCHOR, faceId, cheekColor, alpha, PIXELS_PER_UNIT)) {
+        drawOperations(C, faceOps(record.compiled, faceId, cheekColor), alpha);
     }
-    ctx.restore();
+    C.restore();
 }
