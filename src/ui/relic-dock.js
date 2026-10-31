@@ -3,6 +3,7 @@ import {
     FORMATION_COOLDOWN_SECONDS,
     formationUpgradeValue,
 } from '../formation/formation-skill-state.js';
+import { iconSvg } from './icons.js';
 
 const CONDITION_LABELS = Object.freeze({
     damageDealt: '준 피해',
@@ -11,17 +12,6 @@ const CONDITION_LABELS = Object.freeze({
     critHits: '치명타',
     allyDeaths: '아군 쓰러짐',
     time: '전투 시간',
-});
-export const RELIC_ICONS = Object.freeze({
-    giant: '🌱',
-    lightning: 'ϟ',
-    meteor: '☄',
-    'meteor-shower': '✦',
-    copy: '◈',
-    'healing-rain': '☂',
-    hammer: '⚒',
-    ufo: '🛸',
-    'storm-cloud': '☁',
 });
 const ESCAPE = (value) =>
     String(value).replace(
@@ -120,7 +110,7 @@ export class RelicDock {
         this.dialog.id = `relicDetail-${role}`;
         this.dialog.className = 'relic-detail';
         this.dialog.setAttribute('aria-labelledby', `relicDetailTitle-${role}`);
-        this.dialog.innerHTML = `<div class="relic-detail__heading"><h2 id="relicDetailTitle-${role}"></h2><button type="button" class="relic-detail__close" aria-label="기술 상세 닫기">×</button></div><p class="relic-detail__effect"></p><dl><dt>발동 조건</dt><dd class="relic-detail__condition"></dd><dt>현재 상태</dt><dd class="relic-detail__state"></dd><dt>재사용 대기</dt><dd>${FORMATION_COOLDOWN_SECONDS}초 · 조건과 재사용 대기를 모두 채우면 자동 발동</dd></dl>`;
+        this.dialog.innerHTML = `<div class="relic-detail__heading"><h2 id="relicDetailTitle-${role}"></h2><button type="button" class="relic-detail__close" aria-label="기술 상세 닫기">${iconSvg('close')}</button></div><p class="relic-detail__effect"></p><dl><dt>발동 조건</dt><dd class="relic-detail__condition"></dd><dt>현재 상태</dt><dd class="relic-detail__state"></dd><dt>재사용 대기</dt><dd>${FORMATION_COOLDOWN_SECONDS}초 · 조건과 재사용 대기를 모두 채우면 자동 발동</dd></dl>`;
         document.body.append(this.dialog);
         this.slotHost.addEventListener('click', (event) => {
             const BUTTON = event.target.closest('[data-relic-detail]');
@@ -246,7 +236,7 @@ export class RelicDock {
             this.closeDetail();
             this.slotHost.innerHTML = RELICS.map(([id, level]) => {
                 const DEFINITION = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === id);
-                return `<div class="formation-slot" data-formation-slot="${ESCAPE(id)}" data-empty="false"><button type="button" class="formation-icon" data-relic-detail="${ESCAPE(id)}" aria-label="${ESCAPE(DEFINITION.name)} Lv.${level} 상세" aria-haspopup="dialog" aria-controls="${this.dialog.id}" aria-expanded="false"><span aria-hidden="true">${RELIC_ICONS[id]}</span><i class="formation-clock" aria-hidden="true"></i><em class="formation-lv">${level}</em></button><div class="formation-charge" aria-hidden="true"><i></i></div><small class="formation-status"></small><small class="formation-acquired" hidden></small></div>`;
+                return `<div class="formation-slot" data-formation-slot="${ESCAPE(id)}" data-empty="false"><button type="button" class="formation-icon" data-relic-detail="${ESCAPE(id)}" aria-label="${ESCAPE(DEFINITION.name)} Lv.${level} 상세" aria-haspopup="dialog" aria-controls="${this.dialog.id}" aria-expanded="false">${iconSvg(id)}<i class="formation-clock" aria-hidden="true"></i><em class="formation-lv">${level}</em></button><div class="formation-charge" aria-hidden="true"><i></i></div><small class="formation-status"></small><small class="formation-acquired" hidden></small></div>`;
             }).join('');
         }
         const SLOTS =

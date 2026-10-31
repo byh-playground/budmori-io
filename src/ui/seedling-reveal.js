@@ -1,6 +1,7 @@
 import { speciesById } from '../units/species-catalog.js';
 import { speciesPortraitSource } from '../units/species-paint.js';
 import { SEEDLING_TRANSFORM } from '../features/seedling-growth/definition.js';
+import { iconSvg } from './icons.js';
 
 // Committed growth notices feed a presentation-only queue. Loading a farm never scans its collection for reveals.
 export class SeedlingReveal {
@@ -13,7 +14,9 @@ export class SeedlingReveal {
         this.lastNow = null;
         this.animation = null;
         root.innerHTML =
-            '<img width="64" height="64" alt=""><div><small>새싹이 병사로 자랐어요</small><h2></h2><p></p></div><button type="button" aria-label="획득 카드 닫기">×</button>';
+            '<img width="64" height="64" alt=""><div><small>새싹이 병사로 자랐어요</small><h2></h2><p></p></div><button type="button" aria-label="획득 카드 닫기">' +
+            iconSvg('close') +
+            '</button>';
         root.querySelector('button').onclick = () => {
             this.remainingMs = 0;
         };
