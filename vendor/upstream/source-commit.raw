@@ -1,25 +1,25 @@
-tree 21ee4cee2fae937574e03cfc0007998f6ca6c3f3
-parent 479b4d91b885d7dacdbd9f3a85ae1f21f580fed1
-author byh020907 <byh020907@naver.com> 1793523417 +0900
-committer GitHub <noreply@github.com> 1793523417 +0900
+tree 5accf76be7cf39aaf3391c2c47caac3c249f55b4
+parent 74cd4842ea9d28f2627deb6fb25a60f9c08839b9
+author byh020907 <byh020907@naver.com> 1793529380 +0900
+committer GitHub <noreply@github.com> 1793529380 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq5v7ZCRC1aQ7uu5UhlAAAYP8QABibHuflIJuK+UHTG9dhBGFo
- iXhE52BqIJqBGBaG0ougjNV8x2iZJG/hTsZ+E7PkUjqS5a2MGZNWtRZD07uxaz1m
- NG/5uG1cjpXPkJWboCiHKOp88fjUPNvWRokAaeJdJSCTnulJqEGhg2X82+lM7bw2
- Y6/uMiKTM/70xNEWyj3EiCMS7OJg9+P8xHt3N1t3eRR5A5XiA4ubbrlncpgl3gzq
- g+NQtWKmerF6jDSETrMsu4ogkP7dUs9dKz9gsEinjHkWDrg3Oq9Z1g2F57yZt6hQ
- xEnv1OAcUOprHkYz5jRWZSzGeuFk2FqKVG2vhQsNRt79YEmGFjWQqnhSM7iatLL6
- p/Sf8f/O11LlLX/OPY5V7kKq2FxiSgHs6xlaj536B9laB/C/u99U9sUzXWeeFlxj
- JJ2xFX2NymWjIpTb2jWH5XmNrWtCN15TTbZZnWtXhx9G/4CloE5aeOKTRqD/Jxrn
- XSMnPKnTKCL4iwfZLA1ooW8YI7kviWTNkXt04j1VbWcvkNQTOVapna+6g/6VjsOe
- L1Nj/gc0NF+ycCMumkmmprGTLffZNeUqeLb72qC3ADDaFyNHojlZigXGX+/RmGxF
- 8yHBU5zEmlpAcCrbsdvSxur6E64pLiz7BvSzS2Elorobs4UAtkhBuElqF1Lwm2bR
- J5fgRkn2INX0b/KLCBpv
- =iK1/
+ wsFcBAABCAAQBQJq5xYkCRC1aQ7uu5UhlAAA6pgQAF3zsG9iQ4FP8rRR5uLAXAPb
+ wcRDGP223cqEh/tch1NcaOQQZQoWd3sAA5SnAb0l1b7QYZT0TDovIZABNbXYYDhv
+ PIVL5GEHU1UXT4EaOUPsvYkkJ2p4jwDOTUqu7EiONNiLmya14C+VSaYYbNxVAudu
+ jdLtuBLXhytmO6KF4Ihk3z2JBrkDSelEyUB1zI5M9FtT/UvhslMSgHfNn/aNBk1B
+ M0GvhN2GvTQfBuBRqY0QA1msSVhjxeC9XJ1SUipl5WM9rK405Ow1uMuHQ+CUrHqd
+ vsKzMVAbMeSHdlw/OrnYxvZ6gyx+l4bzL5UZFy/7mcy4cc4286XfsPQQAplCQeZu
+ zaMyj9Zk0fD3KtRjh2V9emqMzUl8KCJpUE2Hwwvz5KD8eJNihl3rTszttJ/mGDh5
+ a72OQ5QmUIqBY6f3jCQj2nPrgIg6znABTP3dLmntWi2eBBiEyM4d7i08oLtW39Iv
+ R1XqnCOHg/k7onVx9XsjG511lRerxWBf+1ILV8e5X6uafEBLBEb0DjvEIVOd6/R7
+ dp3fhemvwfN4YAEjcLWqPhA5OHpIRckzUYw+a9uyL1eH9TpN1If3uzpM3qe3egi7
+ ahGR9nj/xxCKd6D6LtNrnBHzVNq4P95m6mD6QojAcQBQys4qslTRTQacuRn7Bql8
+ 7jTvIw2rzq8gCtr1Al9y
+ =xY0y
  -----END PGP SIGNATURE-----
  
 
-[bug-fix] 이미지 업로드 뒤 GPU 숫자 텍스처 변형 방지 (0.39.3)
+[performance] 이미지 사각형 제출의 반복 할당 제거 (0.39.5) (#181)
 
 Co-authored-by: yong-ho bae <dragonlake.bae@gmail.com>

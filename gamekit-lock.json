@@ -1,8 +1,8 @@
 {
     "schemaVersion": 3,
     "repository": "byh-playground/bloom-gamekit",
-    "sourceCommit": "cd27a43f4c71e863fce26e4479ab462710cd6864",
-    "distCommit": "91fd0004646db5d3f73a19474a1a966cd6e45ee1",
+    "sourceCommit": "fd2bcffd351a52adab011ba1e1e9a069734da282",
+    "distCommit": "2eaf9b239ced0a51f35e09f133437607b65726cd",
     "status": "verified immutable distribution",
     "esbuild": "0.28.2",
     "modules": [
@@ -36,7 +36,7 @@
         },
         {
             "name": "rendering",
-            "bundleSHA256": "5209f4ca6de9cfcdb0196bc3a3777a6182bb21e77d7322421ddf8faccc692f1f"
+            "bundleSHA256": "620be73dd95d90f4d64d951e690b077c18f4d95f0efe68fcbe084c7f22db5349"
         },
         {
             "name": "vector-assets",
@@ -71,7 +71,7 @@
             "bundleSHA256": "7ae82847f3bfb9707bc1e59eedcc3983363a38081b68525669467601989fe895"
         }
     ],
-    "manifestSHA256": "4dd7b4c5e681a67437734e8f61afe39a1cc6197ca4c79c60648347e9b1ddf1f7",
+    "manifestSHA256": "a4164104c080379d2822144e779e2f0caaf6df4cd8309e843ce218add4240476",
     "assets": [
         {
             "file": "assets/fonts/noto-sans-kr-700-v1.json",
@@ -82,7 +82,7 @@
     ],
     "showcase": {
         "repository": "byh-playground/bloom-gamekit",
-        "distCommit": "91fd0004646db5d3f73a19474a1a966cd6e45ee1",
+        "distCommit": "2eaf9b239ced0a51f35e09f133437607b65726cd",
         "module": "scenario.js",
         "bundleSHA256": "b21a2be85b497588589c796f8e95f932c464474cc4ea3f703a8718e96a9946ce"
     }

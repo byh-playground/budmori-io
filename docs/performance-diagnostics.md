@@ -75,3 +75,36 @@ The GPU texture stores numeric transform channels and evaluated matrices; SVG ar
 Context loss suspends the session clock and RAF work while SDK resources recover. `FarmSession.suspendClock()`/`resumeClock()` exclude the lost interval from the adjusted clock and reset loop timing without changing the user's pause choice or menu state. Even direct pulses cannot advance a suspended session. Successful restoration resumes the same session after all resource listeners finish; failed restoration holds the clock and displays an error. Page disposal clears recovery and prevents late events from reviving resources or rendering. Disposal releases the shared mesh and pose resources.
 
 `gpuMs` in the ordinary support recorder remains unmeasured. Dedicated benchmark GPU queries wrap the entire renderer, including the pose pass, and are reported separately from CPU render/animation/submission time. Physical mobile hardware has not been verified.
+
+## 깊이 기반 병력 배치 (0.67.3)
+
+기준은 0.67.2 `3a93c77` / gamekit 0.39.3이며, 변경은 gamekit 0.39.5의 정점별 깊이·불투명 커버리지 판정·이미지 사각형 직접 제출을 사용합니다. 실제 배포 source `fd2bcffd351a52adab011ba1e1e9a069734da282`, dist `2eaf9b239ced0a51f35e09f133437607b65726cd`의 rendering SHA-256 `620be73dd95d90f4d64d951e690b077c18f4d95f0efe68fcbe084c7f22db5349`가 측정한 후보 파일과 byte 단위로 같은 것을 확인했습니다.
+
+동일한 시드 731·10병종 200마리·50ms 진행·1100×850/DPR1·고정 카메라로 A→B→B→A 교차 측정했습니다. 단계마다 독립 컨텍스트 2개에서 24프레임 준비 뒤 60프레임을 측정해 전후 각각 240표본입니다. Chromium 153 / SwiftShader이며 mock·CPU pose·sprite 대체 없이 기존 native GPU body와 공유 얼굴 이미지를 사용합니다. 모든 회차의 최종 모델 SHA-256은 `6ed03e0b43ff0aa5ba84289ebc777dc42657cf2592348bfec6dd86e5aed0aa54`로 같습니다.
+
+| 프레임당 지표                                 |      이전 |      이후 |
+| --------------------------------------------- | --------: | --------: |
+| 실제 GPU draw call 중앙값                     |       401 |       129 |
+| 메시 draw 중앙값 (병력 수는 200)              |       200 |        67 |
+| 렌더 CPU 중앙값                               |   32.30ms |   30.65ms |
+| 렌더 CPU p95                                  |   55.70ms |   51.60ms |
+| simulation + presentation + render CPU 중앙값 |   57.05ms |   53.35ms |
+| 같은 CPU 합계 p95                             |   80.90ms |   84.50ms |
+| 실제 device draw 호출 CPU 중앙값              |    2.60ms |    1.20ms |
+| 메시 제출 CPU 중앙값                          |    3.70ms |    2.15ms |
+| 버퍼 업로드 byte 중앙값                       | 2,910,800 | 3,055,700 |
+| 표본 중 이미지 업로드 / 굽기 draw 합계        |     0 / 0 |     0 / 0 |
+
+호출은 약 68%, 렌더 CPU 중앙값은 약 5%, simulation+presentation+render CPU 중앙값은 약 6.5% 줄었습니다. 합계 p95는 좋아지지 않았으므로 끊김 개선을 입증한 것으로 해석하지 않습니다. CPU 구간은 DOM/HUD/입력을 제외한 계측된 FarmSession·표시·렌더이며 전체 앱 FPS가 아닙니다. 계측 자체와 소프트웨어 GPU의 대기·GC 편차가 포함되므로 실기기 성능으로 환산하지 않습니다. 실제 GPU·모바일은 미측정입니다. 깊이 attachment가 추가되며, 정점별 깊이 때문에 전송 byte는 약 5% 늘었습니다.
+
+불투명 커버리지를 증명한 7종의 몸통은 병종/몸 변형별로 모아서 제출합니다. 땅콩·밀·보리의 반투명 외곽, 분신·opacity 모션은 실제 합성 순서를 유지합니다. 병종 ID로 예외를 지정하지 않고 원본 geometry/pose capability로 구분합니다. 그 때문에 혼합 200마리가 한 draw가 되지는 않습니다. 커버리지 판정은 시작 시 1회이며 실제 Chromium에서 10종+호두 guard 11 variant 합계 약31ms였고 일반 프레임에서 실행하지 않습니다.
+
+`npm run test:unit-sprites`의 깊이 장면 9개는 같은 DTO/시각의 원래 actor 순서와 전체 RGBA 픽셀 차이 0을 검사합니다. 정상 겹침·역순/동일 깊이·분신·숨긴/페이드 껍질·외곽 반투명·전부 반투명인 장면·거대화 벡터 얼굴·시설/먹이/전후 링을 포함합니다. sprite 전용 화면은 깊이 버퍼·정책 경계를 추가하지 않습니다. 원본 모델은 렌더로 바뀌지 않습니다.
+
+재실행 명령(관찰 JSON/이미지는 임시 경로에 기록):
+
+```sh
+node tests/unit-sprites.e2e.mjs --benchmark --count=200 --backend=vector --output=/tmp/budmori-benchmark
+```
+
+동일 CLI를 기준 checkout과 변경 checkout에서 A→B→B→A 순서로 실행하고 JSON의 원본 SHA·시드·카메라·모델 해시·라이브러리 hash를 함께 비교합니다. 브라우저 벤치마크는 기능 E2E와 별도 명령이며 테스트 통과를 성능 근거로 쓰지 않습니다(AI-012·AI-017·PM-010).
