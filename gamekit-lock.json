@@ -82,7 +82,7 @@
     ],
     "showcase": {
         "repository": "byh-playground/bloom-gamekit",
-        "distCommit": "c21ef9b43336d430526ab7777473ab141eb4e88c",
+        "distCommit": "d3d6577f15a3a64036d732a3dcda9eee187a32da",
         "module": "scenario.js",
         "bundleSHA256": "b21a2be85b497588589c796f8e95f932c464474cc4ea3f703a8718e96a9946ce"
     }

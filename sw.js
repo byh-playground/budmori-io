@@ -64,7 +64,7 @@
     }
   });
 })({
-    "version": "f6020ff7d9ef05dd",
+    "version": "93e17fff78f78d34",
     "activateMessage": "bloom-pwa:activate",
     "gamekit": "^https:\\/\\/cdn\\.jsdelivr\\.net\\/gh\\/byh-playground\\/bloom-gamekit@[0-9a-f]{40}\\/[A-Za-z0-9._/-]+$",
     "precache": [
@@ -363,7 +363,6 @@
         "src/vector-sockets.cjs",
         "src/vector-sockets.js",
         "src/version.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@c21ef9b43336d430526ab7777473ab141eb4e88c/scenario.js",
         "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@d3d6577f15a3a64036d732a3dcda9eee187a32da/camera.js",
         "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@d3d6577f15a3a64036d732a3dcda9eee187a32da/debug-tools.js",
         "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@d3d6577f15a3a64036d732a3dcda9eee187a32da/deterministic.js",
