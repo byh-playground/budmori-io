@@ -70,6 +70,7 @@ let menuAutoPaused = false;
 let cameraGesture = null;
 const CAMERA_POINTERS = new Map();
 let suppressCanvasClick = false;
+let mergeHold = null;
 let farmPanelRevision = -1;
 // The boss card draw is presented (eaten) only once the reward dialog is gone; this is the moment it began.
 let presentedDraw = null;
@@ -675,48 +676,144 @@ DOLLAR('confirmImport').onclick = async () => {
         DOLLAR('saveNotice').textContent = e.message;
     }
 };
-// Holding a merge button merges once right away, then one more every 0.1 s while it stays down.
-let mergeHold = null;
+// The pulse index belongs to this press, never to the materials or simulation/save state.
+const MERGE_HOLD = Object.freeze({ intervalMs: 100, pulsesPerStep: 10, combineDelayMs: 350 });
 function stopMergeHold() {
-    if (mergeHold) {
-        clearTimeout(mergeHold.delay);
-        clearInterval(mergeHold.repeat);
-        mergeHold = null;
+    if (!mergeHold) {
+        return;
     }
+    clearTimeout(mergeHold.delay);
+    clearInterval(mergeHold.repeat);
+    if (mergeHold.accelerate) {
+        mergeHold.button.textContent = '합성';
+    }
+    mergeHold = null;
 }
-function bindMergeButton(id, command, onBlocked = null) {
+function bindMergeButton(id, command, onBlocked = null, { accelerate = false } = {}) {
     const BUTTON = DOLLAR(id);
-    BUTTON.addEventListener('pointerdown', (e) => {
-        if (e.button !== 0 || BUTTON.disabled) {
-            return;
-        }
+    const START = (input) => {
         stopMergeHold();
-        if (onBlocked?.()) {
+        if (BUTTON.disabled || !active || active.closed || home || menuOpen || onBlocked?.()) {
             return;
         }
-        active?.queue(command);
-        const HOLD = (mergeHold = { delay: 0, repeat: 0 });
-        HOLD.delay = setTimeout(() => {
-            HOLD.repeat = setInterval(() => active?.queue(command), 100);
-        }, 350);
-    });
-    for (const EVENT of ['pointerup', 'pointercancel', 'pointerleave']) {
-        BUTTON.addEventListener(EVENT, stopMergeHold);
-    }
-    // A pointer press already merged above; this is for the keyboard.
-    BUTTON.onclick = (e) => {
-        if (e.detail === 0 && !onBlocked?.()) {
-            active?.queue(command);
+        const HOLD = (mergeHold = {
+            ...input,
+            button: BUTTON,
+            session: active,
+            accelerate,
+            pulses: 0,
+            delay: 0,
+            repeat: 0,
+        });
+        const EXECUTE = () => {
+            if (
+                mergeHold !== HOLD ||
+                active !== HOLD.session ||
+                HOLD.session.closed ||
+                BUTTON.disabled ||
+                home ||
+                menuOpen
+            ) {
+                stopMergeHold();
+                return;
+            }
+            const PULSE = HOLD.pulses + 1,
+                COUNT = accelerate ? 1 + Math.floor((PULSE - 1) / MERGE_HOLD.pulsesPerStep) : 1;
+            if (!HOLD.session.queue(command, accelerate ? { count: COUNT } : {})) {
+                stopMergeHold();
+                return;
+            }
+            HOLD.pulses = PULSE;
+            if (accelerate) {
+                BUTTON.textContent = `합성 ×${COUNT}`;
+            }
+        };
+        EXECUTE();
+        if (mergeHold !== HOLD) {
+            return;
+        }
+        if (accelerate) {
+            HOLD.repeat = setInterval(EXECUTE, MERGE_HOLD.intervalMs);
+        } else {
+            // Recipe combination keeps its existing initial grace and single operation cadence.
+            HOLD.delay = setTimeout(() => {
+                if (mergeHold === HOLD) {
+                    HOLD.repeat = setInterval(EXECUTE, MERGE_HOLD.intervalMs);
+                }
+            }, MERGE_HOLD.combineDelayMs);
         }
     };
-    BUTTON.addEventListener('keydown', (e) => {
-        if (e.repeat && ['Enter', ' '].includes(e.key)) {
-            e.preventDefault();
+    const END_POINTER = (event) => {
+        if (mergeHold?.button === BUTTON && mergeHold.pointerId === event.pointerId) {
+            stopMergeHold();
+        }
+    };
+    BUTTON.addEventListener('pointerdown', (event) => {
+        if (event.button === 0 && event.isPrimary) {
+            START({ pointerId: event.pointerId });
         }
     });
+    BUTTON.addEventListener('pointermove', (event) => {
+        if (mergeHold?.button !== BUTTON || mergeHold.pointerId !== event.pointerId) {
+            return;
+        }
+        // Touch implicitly captures the pointer, so leaving its bounds does not
+        // emit pointerleave until capture ends. Keep capture, but end this hold.
+        const BOUNDS = BUTTON.getBoundingClientRect();
+        if (
+            event.clientX < BOUNDS.left ||
+            event.clientX > BOUNDS.right ||
+            event.clientY < BOUNDS.top ||
+            event.clientY > BOUNDS.bottom
+        ) {
+            stopMergeHold();
+        }
+    });
+    for (const EVENT of ['pointerup', 'pointercancel', 'pointerleave', 'lostpointercapture']) {
+        BUTTON.addEventListener(EVENT, END_POINTER);
+    }
+    BUTTON.addEventListener('blur', () => {
+        if (mergeHold?.button === BUTTON) {
+            stopMergeHold();
+        }
+    });
+    // Prevent the native keyboard click when a key itself starts the repeating hold.
+    BUTTON.addEventListener('keydown', (event) => {
+        if (!['Enter', ' '].includes(event.key)) {
+            return;
+        }
+        if (event.repeat || accelerate) {
+            event.preventDefault();
+        }
+        if (accelerate && !event.repeat) {
+            START({ key: event.key });
+        }
+    });
+    BUTTON.addEventListener('keyup', (event) => {
+        if (accelerate && mergeHold?.button === BUTTON && mergeHold.key === event.key) {
+            event.preventDefault();
+            stopMergeHold();
+        }
+    });
+    // Assistive activation has no pointer/key-down counterpart and remains a single execution.
+    BUTTON.onclick = (event) => {
+        if (event.detail === 0 && !BUTTON.disabled && !home && !menuOpen && !onBlocked?.()) {
+            active?.queue(command, accelerate ? { count: 1 } : {});
+        }
+    };
 }
 window.addEventListener('blur', stopMergeHold);
-bindMergeButton('merge', 'merge');
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        stopMergeHold();
+    }
+});
+window.addEventListener('pointerup', (event) => {
+    if (mergeHold?.pointerId === event.pointerId) {
+        stopMergeHold();
+    }
+});
+bindMergeButton('merge', 'merge', null, { accelerate: true });
 // Without a chosen recipe the combine button opens the codex to pick one.
 bindMergeButton('combine', 'combine', () => {
     if (personalGarden.combine.recipe >= 0) {
@@ -1531,6 +1628,7 @@ function rebaseCameraGesture() {
         : null;
 }
 function stopWorldInput() {
+    stopMergeHold();
     const IDS = [...CAMERA_POINTERS.keys()];
     CAMERA_POINTERS.clear();
     cameraGesture = null;
@@ -1784,7 +1882,11 @@ function sync(display, now, notices) {
     syncFlag('merge', 'disabled', home || FARM_EVENT_ACTIVE || !MERGE_STATUS.available);
     syncData('merge', 'availability', MERGE_STATUS.code || 'unavailable');
     syncFlag('mergeNotice', 'hidden', home || FARM_EVENT_ACTIVE);
-    syncAttribute('merge', 'aria-label', `합성${MERGE_STATUS.available ? '' : ' 불가'} · ${MERGE_STATUS.reason}`);
+    syncAttribute(
+        'merge',
+        'aria-label',
+        `${DOLLAR('merge').textContent.trim()}${MERGE_STATUS.available ? '' : ' 불가'} · ${MERGE_STATUS.reason}`,
+    );
     syncText('mergeNotice', MERGE_STATUS.reason);
     syncFlag('combine', 'disabled', home || FARM_EVENT_ACTIVE || (W.combine.recipe >= 0 && !COMBINE_STATUS.available));
     syncData('combine', 'availability', COMBINE_STATUS.code || 'unavailable');

@@ -908,7 +908,7 @@ class FarmSession {
             case 'tower-leave':
                 return W.scene === 'farm' && W.leaveTower();
             case 'merge':
-                return W.scene === 'farm' && W.startManualMerge();
+                return W.scene === 'farm' && W.startManualMerge(false, c.count ?? 1);
             case 'combine':
                 return W.scene === 'farm' && W.startManualMerge(true);
             case 'combine-select':

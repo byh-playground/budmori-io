@@ -52,6 +52,7 @@ try {
                 headers: { 'access-control-allow-origin': '*' },
             }),
         );
+        await PAGE.clock.install();
         await PAGE.goto(`http://127.0.0.1:${SERVER.address().port}/index.html`);
         await PAGE.waitForFunction(() => globalThis.BUDMORI);
         await PAGE.locator('#newGame').click();
@@ -299,6 +300,275 @@ try {
     assert.equal(UI_TASK.materialIds.length, 2);
     await render();
     console.log('PASS actual mobile combine button starts one pair');
+
+    // Hold the real button while the native clock, commands and merge animations continue.
+    await PAGE.clock.pauseAt(await PAGE.evaluate(() => Date.now() + 1000));
+    const HOLD_OBSERVER = await PAGE.evaluate(() => {
+        const SESSION = BUDMORI.runtime,
+            COMMAND = SESSION.command;
+        globalThis.__mergeHoldObservations = [];
+        SESSION.command = function (command) {
+            if (command.type !== 'merge') {
+                return COMMAND.call(this, command);
+            }
+            const BEFORE = new Set(this.world.mergeTasks),
+                RESULT = COMMAND.call(this, command);
+            globalThis.__mergeHoldObservations.push({
+                count: command.count ?? 1,
+                started: this.world.mergeTasks
+                    .filter((task) => !BEFORE.has(task))
+                    .map((task) => ({ ids: [...task.materialIds], tier: task.sourceTier })),
+            });
+            return RESULT;
+        };
+        globalThis.__restoreMergeHoldObserver = () => {
+            SESSION.command = COMMAND;
+            delete globalThis.__mergeHoldObservations;
+            delete globalThis.__restoreMergeHoldObserver;
+        };
+        return SESSION.world.time;
+    });
+    async function holdRoster(count, tier = 1) {
+        await PAGE.evaluate(
+            ({ count, tier }) => {
+                const W = BUDMORI.sim;
+                BUDMORI.runtime.paused = false;
+                W.cancelMergeTasks();
+                W.resetUnits();
+                W.setWorkBasisPoints(0);
+                W.food.length = 0;
+                W.effects.length = 0;
+                for (let index = 0; index < count; index++) {
+                    const UNIT = W.spawn(0, tier, (index % 15) * 0.55 - 4, Math.floor(index / 15) * 0.55 - 2);
+                    UNIT.growthElapsed = UNIT.growthDuration;
+                    UNIT.dropLanded = true;
+                    UNIT.z = UNIT.vz = 0;
+                }
+                globalThis.__mergeHoldObservations.length = 0;
+            },
+            { count, tier },
+        );
+        await PAGE.clock.runFor(50);
+        assert.equal(
+            await PAGE.locator('#merge').isEnabled(),
+            true,
+            JSON.stringify(
+                await PAGE.evaluate(() => ({
+                    decision: BUDMORI.sim.mergeAvailability(),
+                    time: BUDMORI.sim.time,
+                    units: BUDMORI.sim.units.length,
+                    disabled: document.getElementById('merge').disabled,
+                })),
+            ),
+        );
+    }
+    try {
+        await holdRoster(90);
+        const BUTTON = PAGE.locator('#merge'),
+            BOX = await BUTTON.boundingBox();
+        await PAGE.mouse.move(BOX.x + BOX.width / 2, BOX.y + BOX.height / 2);
+        await PAGE.mouse.down();
+        await PAGE.clock.runFor(50);
+        const PULSES = [],
+            EXPECTED_COUNTS = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3];
+        for (let pulse = 1; pulse <= 21; pulse++) {
+            if (pulse > 1) {
+                await PAGE.clock.runFor(100);
+            }
+            const OBS = await PAGE.evaluate(() => ({
+                commands: structuredClone(globalThis.__mergeHoldObservations),
+                label: document.getElementById('merge').textContent,
+                time: BUDMORI.sim.time,
+            }));
+            assert.equal(OBS.commands.length, pulse, `one intent per pulse ${pulse}`);
+            const EXPECTED = EXPECTED_COUNTS[pulse - 1],
+                LAST = OBS.commands.at(-1);
+            assert.equal(LAST.count, EXPECTED, `pulse ${pulse} requested operations`);
+            assert.equal(LAST.started.length, EXPECTED, `pulse ${pulse} native reserved tasks`);
+            assert.match(OBS.label, new RegExp(`×${EXPECTED}$`));
+            if ([1, 10, 11, 20, 21].includes(pulse)) {
+                PULSES.push({ pulse, ...LAST });
+            }
+        }
+        const ALL_IDS = await PAGE.evaluate(() =>
+            globalThis.__mergeHoldObservations.flatMap((pulse) => pulse.started.flatMap((task) => task.ids)),
+        );
+        assert.equal(ALL_IDS.length, 66);
+        assert.equal(new Set(ALL_IDS).size, ALL_IDS.length, 'no material is reserved by two tasks');
+        await PAGE.screenshot({ path: path.join(OUT, 'merge-hold-pulse21.png') });
+        await PAGE.mouse.up();
+        assert.equal((await BUTTON.textContent()).trim(), '합성');
+        await PAGE.clock.runFor(250);
+        assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.length), 21);
+        const REPRESS_BOX = await BUTTON.boundingBox();
+        await PAGE.mouse.move(REPRESS_BOX.x + REPRESS_BOX.width / 2, REPRESS_BOX.y + REPRESS_BOX.height / 2);
+        assert.equal(await BUTTON.isEnabled(), true);
+        await PAGE.mouse.down();
+        assert.equal((await BUTTON.textContent()).trim(), '합성 ×1');
+        await PAGE.mouse.up();
+        await PAGE.clock.runFor(100);
+        assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.at(-1).count), 1);
+        assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.length), 22);
+        assert((await PAGE.evaluate(() => BUDMORI.sim.time)) > HOLD_OBSERVER + 2);
+        console.log('PASS native merge hold pulse boundaries', JSON.stringify(PULSES));
+
+        await holdRoster(9, 3);
+        await PAGE.evaluate(() => BUDMORI.runtime.queue('merge', { count: 4 }));
+        await PAGE.clock.runFor(50);
+        const GRADE_BATCH = await PAGE.evaluate(() => globalThis.__mergeHoldObservations.at(-1));
+        assert.equal(GRADE_BATCH.started.length, 3, 'partial batch stops when materials run out');
+        assert(GRADE_BATCH.started.every((task) => task.ids.length === 3 && task.tier === 3));
+        assert.equal(new Set(GRADE_BATCH.started.flatMap((task) => task.ids)).size, 9);
+
+        await holdRoster(3);
+        await BUTTON.focus();
+        await PAGE.keyboard.down(' ');
+        await PAGE.clock.runFor(500);
+        assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.length), 1);
+        assert.equal((await BUTTON.textContent()).trim(), '합성', 'exhausted hold resets');
+        await PAGE.keyboard.up(' ');
+        await PAGE.clock.runFor(50);
+        assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.length), 1, 'no key-up click');
+
+        await holdRoster(12);
+        await BUTTON.focus();
+        await PAGE.keyboard.down('Enter');
+        await PAGE.clock.runFor(150);
+        await PAGE.keyboard.up('Enter');
+        assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.length), 2);
+        await PAGE.clock.runFor(250);
+        assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.length), 2);
+        await BUTTON.dispatchEvent('pointerdown', {
+            button: 0,
+            pointerId: 41,
+            pointerType: 'touch',
+            isPrimary: true,
+        });
+        await PAGE.clock.runFor(50);
+        await BUTTON.dispatchEvent('pointercancel', { pointerId: 41, pointerType: 'touch', isPrimary: true });
+        await PAGE.clock.runFor(250);
+        assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.length), 3);
+        assert.equal((await BUTTON.textContent()).trim(), '합성');
+        console.log('PASS grade costs, material exhaustion, keyboard reset and touch interruption');
+
+        // Browser-dispatched touch input exercises implicit capture; a synthetic
+        // PointerEvent alone would not reproduce a finger dragging off the button.
+        const TOUCH = await PAGE.context().newCDPSession(PAGE);
+        let touchActive = false;
+        await TOUCH.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+        try {
+            await holdRoster(40);
+            await PAGE.evaluate(() => {
+                const BUTTON = document.getElementById('merge'),
+                    LISTENERS = new AbortController();
+                globalThis.__touchMergeHold = { pointerId: null, outsideCaptured: false, leaves: 0 };
+                globalThis.__stopTouchMergeObservation = () => {
+                    LISTENERS.abort();
+                    delete globalThis.__touchMergeHold;
+                    delete globalThis.__stopTouchMergeObservation;
+                };
+                BUTTON.addEventListener(
+                    'pointerdown',
+                    (event) => {
+                        if (event.pointerType === 'touch') {
+                            globalThis.__touchMergeHold.pointerId = event.pointerId;
+                        }
+                    },
+                    { signal: LISTENERS.signal },
+                );
+                BUTTON.addEventListener(
+                    'pointermove',
+                    (event) => {
+                        const OBS = globalThis.__touchMergeHold,
+                            BOUNDS = BUTTON.getBoundingClientRect();
+                        if (
+                            event.pointerId === OBS.pointerId &&
+                            (event.clientX < BOUNDS.left ||
+                                event.clientX > BOUNDS.right ||
+                                event.clientY < BOUNDS.top ||
+                                event.clientY > BOUNDS.bottom)
+                        ) {
+                            OBS.outsideCaptured = BUTTON.hasPointerCapture(event.pointerId);
+                        }
+                    },
+                    { signal: LISTENERS.signal },
+                );
+                BUTTON.addEventListener(
+                    'pointerleave',
+                    (event) => {
+                        if (event.pointerId === globalThis.__touchMergeHold.pointerId) {
+                            globalThis.__touchMergeHold.leaves++;
+                        }
+                    },
+                    { signal: LISTENERS.signal },
+                );
+            });
+            const START_BOX = await BUTTON.boundingBox(),
+                // Cross the edge within touch slop so native panning does not cancel the pointer first.
+                POINT = { x: START_BOX.x + 2, y: START_BOX.y + START_BOX.height / 2, id: 1 };
+            await TOUCH.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [POINT] });
+            touchActive = true;
+            await PAGE.clock.runFor(1050);
+            assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.length), 11);
+            assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.at(-1).count), 2);
+            assert.equal(
+                await PAGE.evaluate(() => {
+                    const BUTTON = document.getElementById('merge');
+                    return BUTTON.hasPointerCapture(globalThis.__touchMergeHold.pointerId);
+                }),
+                true,
+                'native touch has implicit pointer capture',
+            );
+            const LIVE_BOX = await BUTTON.boundingBox();
+            await TOUCH.send('Input.dispatchTouchEvent', {
+                type: 'touchMove',
+                touchPoints: [{ ...POINT, x: LIVE_BOX.x - 2 }],
+            });
+            const DRAG = await PAGE.evaluate(() => ({
+                ...globalThis.__touchMergeHold,
+                captureRetained: document
+                    .getElementById('merge')
+                    .hasPointerCapture(globalThis.__touchMergeHold.pointerId),
+                label: document.getElementById('merge').textContent.trim(),
+            }));
+            assert.equal(DRAG.outsideCaptured, true, 'outside move arrives at captured button');
+            assert.equal(DRAG.captureRetained, true, 'ending hold does not release browser capture');
+            assert.equal(DRAG.leaves, 0, 'captured touch emits no pointerleave');
+            assert.equal(DRAG.label, '합성', 'drag outside resets rate immediately');
+            await PAGE.clock.runFor(400);
+            assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.length), 11);
+            await TOUCH.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+            touchActive = false;
+            const AGAIN_BOX = await BUTTON.boundingBox();
+            await TOUCH.send('Input.dispatchTouchEvent', {
+                type: 'touchStart',
+                touchPoints: [{ x: AGAIN_BOX.x + AGAIN_BOX.width / 2, y: AGAIN_BOX.y + AGAIN_BOX.height / 2, id: 2 }],
+            });
+            touchActive = true;
+            await PAGE.clock.runFor(50);
+            assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.length), 12);
+            assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.at(-1).count), 1);
+            await TOUCH.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+            touchActive = false;
+            console.log('PASS native touch drag outside under implicit capture resets hold', JSON.stringify(DRAG));
+        } finally {
+            if (touchActive) {
+                await TOUCH.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+            }
+            await TOUCH.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+            await TOUCH.detach();
+            await PAGE.evaluate(() => globalThis.__stopTouchMergeObservation?.());
+        }
+    } finally {
+        await PAGE.mouse.up();
+        await PAGE.keyboard.up(' ');
+        await PAGE.keyboard.up('Enter');
+        await PAGE.evaluate(() => {
+            window.dispatchEvent(new Event('blur'));
+            globalThis.__restoreMergeHoldObserver();
+        });
+        await PAGE.clock.resume();
+    }
     await setup();
     const FOOD_RELEASE = await PAGE.evaluate(() => {
         const W = BUDMORI.sim,

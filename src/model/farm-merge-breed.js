@@ -648,8 +648,21 @@ export const FARM_MERGE_BREED = (base) =>
             const DECISION = this.combineDecision();
             return { available: DECISION.available, code: DECISION.code, reason: DECISION.reason };
         }
-        startManualMerge(combine = false) {
-            return this.mutateUnits(this._startManualMerge, combine);
+        startManualMerge(combine = false, count = 1) {
+            if (!Number.isSafeInteger(count) || count < 1 || (combine && count !== 1)) {
+                throw new RangeError('합성 횟수는 양의 안전한 정수여야 하며 조합은 한 번씩 실행해요.');
+            }
+            return this.mutateUnits(this._startManualMergeBatch, combine, count);
+        }
+        _startManualMergeBatch(combine, count) {
+            // Each task reserves at least two real materials. Bound even a huge
+            // request by the current roster, then stop at the first unavailable group.
+            const LIMIT = Math.min(count, Math.floor(this.units.length / 2));
+            let started = 0;
+            while (started < LIMIT && this._startManualMerge(combine)) {
+                started += 1;
+            }
+            return started > 0;
         }
         _startManualMerge(combine) {
             const DECISION = combine ? this.combineDecision() : this.mergeDecision();
