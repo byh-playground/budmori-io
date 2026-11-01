@@ -753,6 +753,22 @@ function bindMergeButton(id, command, onBlocked = null, { accelerate = false } =
             START({ pointerId: event.pointerId });
         }
     });
+    BUTTON.addEventListener('pointermove', (event) => {
+        if (mergeHold?.button !== BUTTON || mergeHold.pointerId !== event.pointerId) {
+            return;
+        }
+        // Touch implicitly captures the pointer, so leaving its bounds does not
+        // emit pointerleave until capture ends. Keep capture, but end this hold.
+        const BOUNDS = BUTTON.getBoundingClientRect();
+        if (
+            event.clientX < BOUNDS.left ||
+            event.clientX > BOUNDS.right ||
+            event.clientY < BOUNDS.top ||
+            event.clientY > BOUNDS.bottom
+        ) {
+            stopMergeHold();
+        }
+    });
     for (const EVENT of ['pointerup', 'pointercancel', 'pointerleave', 'lostpointercapture']) {
         BUTTON.addEventListener(EVENT, END_POINTER);
     }

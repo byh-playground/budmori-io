@@ -22,6 +22,6 @@ count = 1 + Math.floor((pulse - 1) / 10);
 - 등급별 재료 비용의 원본은 [unit-grades.js](../src/units/unit-grades.js)다. 합성별 접근·상승·합체 애니메이션과 번식용 병력 보존 규칙을 각각 적용한다. 요청한 횟수보다 재료가 적으면 가능한 묶음까지만 시작한다.
 - 서로 다른 병종의 **조합**은 기존처럼 즉시 한 번 실행하고, 350ms 유예 뒤 100ms 간격으로 한 번씩 실행한다. 가속을 적용하지 않는다.
 
-브라우저 타이머는 실제 콜백이 늦어질 수 있으므로 벽시계의 지연분을 여러 실행으로 몰아 처리하지 않는다. 입력·타이머의 일반 규약은 [MDN Pointer events](https://developer.mozilla.org/en-US/docs/Web/API/Pointer_events)의 `pointerup`·`pointercancel`·`pointerleave`와 [setInterval](https://developer.mozilla.org/en-US/docs/Web/API/Window/setInterval)의 지연 제한을 확인했다. 기존 구현은 첫 반복 전 350ms를 기다렸고 모든 실행이 1회였다. 이번 합성의 즉시 100ms 주기와 10회 단위 가속은 사용자 지정 동작이다.
+브라우저 타이머는 실제 콜백이 늦어질 수 있으므로 벽시계의 지연분을 여러 실행으로 몰아 처리하지 않는다. 입력·타이머의 일반 규약은 [MDN Pointer events](https://developer.mozilla.org/en-US/docs/Web/API/Pointer_events)의 `pointerup`·`pointercancel`·`pointerleave` 및 암묵적 포인터 캡처와 [setInterval](https://developer.mozilla.org/en-US/docs/Web/API/Window/setInterval)의 지연 제한을 확인했다. 터치의 암묵적 캡처 중에는 `pointerleave`가 발생하지 않으므로, 해당 손가락의 실제 좌표가 버튼 경계를 벗어났는지도 확인한다. 캡처 자체는 브라우저가 손을 떼거나 취소할 때까지 유지한다. 기존 구현은 첫 반복 전 350ms를 기다렸고 모든 실행이 1회였다. 이번 합성의 즉시 100ms 주기와 10회 단위 가속은 사용자 지정 동작이다.
 
-검증은 `npm run test:combine-air`의 실제 버튼 흐름에서 기본 조합 1회, 합성 실행 1·10·11·20·21의 실제 재료 예약, 누름 종료·재시작, 등급별 비용, 재료 부족, 키보드·터치 취소를 관찰한다. 브라우저 시계를 앱 시작 전 설치하고 같은 앱 RAF·20Hz 논리 틱·입력 큐·타이머를 진행하며, 합성 모델이나 결과 유닛을 대체하지 않는다.
+검증은 `npm run test:combine-air`의 실제 버튼 흐름에서 기본 조합 1회, 합성 실행 1·10·11·20·21의 실제 재료 예약, 누름 종료·재시작, 등급별 비용, 재료 부족, 키보드·터치 취소와 암묵적 캡처 중 버튼 밖으로 손가락을 움직이는 흐름을 관찰한다. 터치는 Chromium CDP의 브라우저 터치 입력 에뮬레이션이며 실제 기기 검증은 아니다. 브라우저 시계를 앱 시작 전 설치하고 같은 앱 RAF·20Hz 논리 틱·입력 큐·타이머를 진행하며, 합성 모델이나 결과 유닛을 대체하지 않는다.

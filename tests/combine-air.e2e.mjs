@@ -369,7 +369,8 @@ try {
         await PAGE.mouse.move(BOX.x + BOX.width / 2, BOX.y + BOX.height / 2);
         await PAGE.mouse.down();
         await PAGE.clock.runFor(50);
-        const PULSES = [];
+        const PULSES = [],
+            EXPECTED_COUNTS = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3];
         for (let pulse = 1; pulse <= 21; pulse++) {
             if (pulse > 1) {
                 await PAGE.clock.runFor(100);
@@ -380,7 +381,7 @@ try {
                 time: BUDMORI.sim.time,
             }));
             assert.equal(OBS.commands.length, pulse, `one intent per pulse ${pulse}`);
-            const EXPECTED = 1 + Math.floor((pulse - 1) / 10),
+            const EXPECTED = EXPECTED_COUNTS[pulse - 1],
                 LAST = OBS.commands.at(-1);
             assert.equal(LAST.count, EXPECTED, `pulse ${pulse} requested operations`);
             assert.equal(LAST.started.length, EXPECTED, `pulse ${pulse} native reserved tasks`);
@@ -399,11 +400,14 @@ try {
         assert.equal((await BUTTON.textContent()).trim(), '합성');
         await PAGE.clock.runFor(250);
         assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.length), 21);
+        const REPRESS_BOX = await BUTTON.boundingBox();
+        await PAGE.mouse.move(REPRESS_BOX.x + REPRESS_BOX.width / 2, REPRESS_BOX.y + REPRESS_BOX.height / 2);
+        assert.equal(await BUTTON.isEnabled(), true);
         await PAGE.mouse.down();
-        await PAGE.clock.runFor(50);
-        assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.at(-1).count), 1);
+        assert.equal((await BUTTON.textContent()).trim(), '합성 ×1');
         await PAGE.mouse.up();
         await PAGE.clock.runFor(100);
+        assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.at(-1).count), 1);
         assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.length), 22);
         assert((await PAGE.evaluate(() => BUDMORI.sim.time)) > HOLD_OBSERVER + 2);
         console.log('PASS native merge hold pulse boundaries', JSON.stringify(PULSES));
@@ -446,6 +450,115 @@ try {
         assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.length), 3);
         assert.equal((await BUTTON.textContent()).trim(), '합성');
         console.log('PASS grade costs, material exhaustion, keyboard reset and touch interruption');
+
+        // Browser-dispatched touch input exercises implicit capture; a synthetic
+        // PointerEvent alone would not reproduce a finger dragging off the button.
+        const TOUCH = await PAGE.context().newCDPSession(PAGE);
+        let touchActive = false;
+        await TOUCH.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+        try {
+            await holdRoster(40);
+            await PAGE.evaluate(() => {
+                const BUTTON = document.getElementById('merge'),
+                    LISTENERS = new AbortController();
+                globalThis.__touchMergeHold = { pointerId: null, outsideCaptured: false, leaves: 0 };
+                globalThis.__stopTouchMergeObservation = () => {
+                    LISTENERS.abort();
+                    delete globalThis.__touchMergeHold;
+                    delete globalThis.__stopTouchMergeObservation;
+                };
+                BUTTON.addEventListener(
+                    'pointerdown',
+                    (event) => {
+                        if (event.pointerType === 'touch') {
+                            globalThis.__touchMergeHold.pointerId = event.pointerId;
+                        }
+                    },
+                    { signal: LISTENERS.signal },
+                );
+                BUTTON.addEventListener(
+                    'pointermove',
+                    (event) => {
+                        const OBS = globalThis.__touchMergeHold,
+                            BOUNDS = BUTTON.getBoundingClientRect();
+                        if (
+                            event.pointerId === OBS.pointerId &&
+                            (event.clientX < BOUNDS.left ||
+                                event.clientX > BOUNDS.right ||
+                                event.clientY < BOUNDS.top ||
+                                event.clientY > BOUNDS.bottom)
+                        ) {
+                            OBS.outsideCaptured = BUTTON.hasPointerCapture(event.pointerId);
+                        }
+                    },
+                    { signal: LISTENERS.signal },
+                );
+                BUTTON.addEventListener(
+                    'pointerleave',
+                    (event) => {
+                        if (event.pointerId === globalThis.__touchMergeHold.pointerId) {
+                            globalThis.__touchMergeHold.leaves++;
+                        }
+                    },
+                    { signal: LISTENERS.signal },
+                );
+            });
+            const START_BOX = await BUTTON.boundingBox(),
+                // Cross the edge within touch slop so native panning does not cancel the pointer first.
+                POINT = { x: START_BOX.x + 2, y: START_BOX.y + START_BOX.height / 2, id: 1 };
+            await TOUCH.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [POINT] });
+            touchActive = true;
+            await PAGE.clock.runFor(1050);
+            assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.length), 11);
+            assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.at(-1).count), 2);
+            assert.equal(
+                await PAGE.evaluate(() => {
+                    const BUTTON = document.getElementById('merge');
+                    return BUTTON.hasPointerCapture(globalThis.__touchMergeHold.pointerId);
+                }),
+                true,
+                'native touch has implicit pointer capture',
+            );
+            const LIVE_BOX = await BUTTON.boundingBox();
+            await TOUCH.send('Input.dispatchTouchEvent', {
+                type: 'touchMove',
+                touchPoints: [{ ...POINT, x: LIVE_BOX.x - 2 }],
+            });
+            const DRAG = await PAGE.evaluate(() => ({
+                ...globalThis.__touchMergeHold,
+                captureRetained: document
+                    .getElementById('merge')
+                    .hasPointerCapture(globalThis.__touchMergeHold.pointerId),
+                label: document.getElementById('merge').textContent.trim(),
+            }));
+            assert.equal(DRAG.outsideCaptured, true, 'outside move arrives at captured button');
+            assert.equal(DRAG.captureRetained, true, 'ending hold does not release browser capture');
+            assert.equal(DRAG.leaves, 0, 'captured touch emits no pointerleave');
+            assert.equal(DRAG.label, '합성', 'drag outside resets rate immediately');
+            await PAGE.clock.runFor(400);
+            assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.length), 11);
+            await TOUCH.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+            touchActive = false;
+            const AGAIN_BOX = await BUTTON.boundingBox();
+            await TOUCH.send('Input.dispatchTouchEvent', {
+                type: 'touchStart',
+                touchPoints: [{ x: AGAIN_BOX.x + AGAIN_BOX.width / 2, y: AGAIN_BOX.y + AGAIN_BOX.height / 2, id: 2 }],
+            });
+            touchActive = true;
+            await PAGE.clock.runFor(50);
+            assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.length), 12);
+            assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.at(-1).count), 1);
+            await TOUCH.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+            touchActive = false;
+            console.log('PASS native touch drag outside under implicit capture resets hold', JSON.stringify(DRAG));
+        } finally {
+            if (touchActive) {
+                await TOUCH.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+            }
+            await TOUCH.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+            await TOUCH.detach();
+            await PAGE.evaluate(() => globalThis.__stopTouchMergeObservation?.());
+        }
     } finally {
         await PAGE.mouse.up();
         await PAGE.keyboard.up(' ');
