@@ -50,11 +50,7 @@ import {
     scaleAttackArea,
 } from '../units/unit-stats.js';
 import { UNIT_ABILITY_PROFILES as ATTACK_TYPES, abilityProfile } from '../units/unit-abilities.js';
-import {
-    grantPendingBossAcquisitions,
-    advanceBossRewardCalculations,
-    createBossRewardStreams,
-} from '../boss/boss-rewards.js';
+import { grantPendingBossAcquisitions, createBossRewardRngState } from '../boss/boss-rewards.js';
 import { freshTowerRun } from '../tower/tower-run.js';
 import { createPlayerProgressionState, farmCapacityForProgression } from './player-progression.js';
 import {} from '../tower/tower-theme.js';
@@ -547,7 +543,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
         this.entityGenerationSerial = 0;
         this.nextBossEncounterId = 1;
         this.bossRewardReceipts = [];
-        this.bossRewardStreams = createBossRewardStreams(this.seed >>> 0);
+        this.bossRewardRngState = createBossRewardRngState(this.seed >>> 0);
         this.bossRewardInventory = [];
         this.bossRewardWatermarks = {
             farm: 0,
@@ -588,9 +584,6 @@ const GARDEN = class Garden extends GARDEN_BASE {
             outcome: 'idle',
             encounterId: 0,
             rewardStatus: 'none',
-            rewardChance: 0,
-            rewardRoll: 0,
-            rewardUnitId: 0,
         };
         this.replaceBosses([this.createBoss()]);
         this.bossEncounter = null;
@@ -1380,7 +1373,6 @@ const GARDEN = class Garden extends GARDEN_BASE {
                     this.updateUnitSpatial(UNIT_LOCAL);
                 }
             }
-            advanceBossRewardCalculations(this);
             grantPendingBossAcquisitions(this);
             if (this.tower.summitElapsed >= TOWER_ENCOUNTER_SETTINGS.summitSeconds) {
                 this.finishTowerSummit();
@@ -1393,7 +1385,6 @@ const GARDEN = class Garden extends GARDEN_BASE {
         this._spatialQueryDepth = 0;
         this.time += dt;
         let progressTimersAdvanced = false;
-        advanceBossRewardCalculations(this);
         grantPendingBossAcquisitions(this);
         // Keep the original step membership/order; spawns join indexes now but
         // are first advanced by the next logical tick.

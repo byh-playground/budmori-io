@@ -3232,6 +3232,9 @@ try {
                 damage: null,
                 startedTime: WORLD.time,
             });
+        const REWARD_RNG = new globalThis.BloomGamekitDeterministic.SeededPRNG(WORLD.bossRewardRngState);
+        REWARD_RNG.nextUint32();
+        OBS.expectedRewardRngState = REWARD_RNG.state;
         globalThis.__restoreUnitCoreEndObservation = WORLD.onNotice.on((notice) => {
             if (notice.kind === 'peanut-split' && notice.unit === 'boss') {
                 OBS.peanutSplits++;
@@ -3269,6 +3272,22 @@ try {
                 WORLD.formationRuntime.effects.length === 0 &&
                 WORLD.formationRuntime.slots.length === 0,
             elapsedSimulationSeconds: WORLD.time - globalThis.__unitCoreEnd.startedTime,
+            rewardRngState: WORLD.bossRewardRngState,
+            reward: (() => {
+                const RECEIPT = WORLD.bossRewardReceipts.at(-1);
+                return (
+                    RECEIPT && {
+                        status: RECEIPT.status,
+                        baseAmount: RECEIPT.baseAmount,
+                        bandIndex: RECEIPT.bandIndex,
+                        acquired: RECEIPT.acquiredCount,
+                        placed: RECEIPT.placedCount,
+                        queued: RECEIPT.queuedCount,
+                        hasCalculation: Object.hasOwn(RECEIPT, 'calculation'),
+                        hasBoxes: Object.hasOwn(RECEIPT, 'boxes'),
+                    }
+                );
+            })(),
         };
     });
     assert.ok(REPORT.unitCoreEnd.damage > 0);
@@ -3276,6 +3295,19 @@ try {
     assert.equal(REPORT.unitCoreEnd.victories, 1, 'real boss death settles victory once');
     assert.equal(REPORT.unitCoreEnd.rewards, 1, 'real boss death issues one reward settlement');
     assert.equal(REPORT.unitCoreEnd.repeated, false, 'a repeated finish cannot settle another victory');
+    assert.equal(
+        REPORT.unitCoreEnd.rewardRngState,
+        REPORT.unitCoreEnd.expectedRewardRngState,
+        'the real victory chooses its whole chest with exactly one RNG draw',
+    );
+    assert.equal(REPORT.unitCoreEnd.reward.status, 'ready', 'the whole reward settles during the victory tick');
+    assert.equal(REPORT.unitCoreEnd.reward.hasCalculation, false, 'no multi-tick lottery job remains');
+    assert.equal(REPORT.unitCoreEnd.reward.hasBoxes, false, 'no repeated chest payout list remains');
+    assert.equal(
+        REPORT.unitCoreEnd.reward.placed + REPORT.unitCoreEnd.reward.queued,
+        REPORT.unitCoreEnd.reward.acquired,
+        'placed and waiting seeds conserve that entitlement',
+    );
     assert.equal(REPORT.unitCoreEnd.replacementUnit, true, 'encounter cleanup creates another ordinary Unit body');
     assert.notEqual(REPORT.unitCoreEnd.replacementGeneration, REPORT.unitCoreEnd.generation);
     assert.equal(REPORT.unitCoreEnd.clean, true, 'encounter cleanup removes active boss skills and effects');

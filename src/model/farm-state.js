@@ -92,11 +92,6 @@ export function restore(raw) {
     );
     // Hydration does not allocate a new logical generation.
     G.entityGenerationSerial = raw.entityGenerationSerial;
-    G.bossRewardReceipts = G.bossRewardReceipts.map((reward) => ({
-        ...reward,
-        boxes: [],
-        revealedCount: reward.status === 'ready' ? reward.boxCount : 0,
-    }));
     G.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(raw.rng.state);
     G.resetUnits(
         UNIT_DATA.map((data) => {

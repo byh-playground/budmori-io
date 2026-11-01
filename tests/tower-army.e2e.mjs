@@ -110,8 +110,7 @@ async function openAndCloseReward() {
         return {
             key: RECEIPT.receiptKey,
             status: RECEIPT.status,
-            revealed: RECEIPT.revealedCount,
-            boxes: RECEIPT.boxCount,
+            revealed: RECEIPT.revealed,
             acquired: RECEIPT.acquiredCount,
         };
     });
@@ -383,7 +382,7 @@ try {
     assert.equal(REPORT.stages.floorReward.afterRetry, REPORT.stages.floorReward.xp);
     assert.equal(REPORT.stages.floorReward.retryAccepted, false);
     await openAndCloseReward();
-    REPORT.stages.floorReward.boxesClosedThroughUi = true;
+    REPORT.stages.floorReward.chestClosedThroughUi = true;
     await page.evaluate(() => {
         // Arrange the last door of an otherwise completed climb. The actual door,
         // finite roster, final guardian, reward, skip and reload remain product paths.
@@ -449,7 +448,7 @@ try {
     assert.equal(await page.evaluate(() => BUDMORI.sim.playerProgression.overallXp), REPORT.stages.summit.xp);
     REPORT.stages.finalReward = await openAndCloseReward();
     assert.equal(REPORT.stages.finalReward.status, 'ready');
-    assert.equal(REPORT.stages.finalReward.revealed, REPORT.stages.finalReward.boxes);
+    assert.equal(REPORT.stages.finalReward.revealed, true);
     await page.waitForFunction((receipt) => {
         const SAVED = BUDMORI.storage.savedProgress?.ledger.boss.pendingRewards.find(
             (entry) => entry.receiptKey === receipt.key,
@@ -471,8 +470,7 @@ try {
         rewards: BUDMORI.sim.bossRewardReceipts.map((receipt) => ({
             key: receipt.receiptKey,
             status: receipt.status,
-            revealed: receipt.revealedCount,
-            boxes: receipt.boxCount,
+            revealed: receipt.revealed,
             acquired: receipt.acquiredCount,
         })),
     }));

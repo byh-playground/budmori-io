@@ -31,7 +31,8 @@ import { towerTheme, towerElement } from './tower/tower-theme.js';
 import { syncBossChoiceMascot } from './ui/boss-eat.js';
 import { FoodFeel } from './render/food-feel.js';
 import { CombatFeel } from './render/combat-feel.js';
-import { advanceBossRewardReveal, openAllBossRewardBoxes, bossRewardQueueBySpecies } from './boss/boss-rewards.js';
+import { bossRewardQueueBySpecies } from './boss/boss-rewards.js';
+import { BossRewardDialog } from './ui/boss-reward-dialog.js';
 import { workersBySpecies } from './model/farm-work.js';
 import { apportionBreedShares, adjustBreedShare } from './model/breed-allocation.js';
 import { speciesById, giantSpeciesName, BOSS_SPECIES } from './units/species-catalog.js';
@@ -52,6 +53,7 @@ const DOLLAR = (id) => document.getElementById(id),
 const HELP_PANEL = createHelpPanel(DOLLAR);
 mountIcons();
 const SEEDLING_REVEAL = new SeedlingReveal(DOLLAR('seedlingReveal'));
+const BOSS_REWARD_DIALOG = new BossRewardDialog(DOLLAR('bossRewardDialog'), { onOpen: stopWorldInput });
 let imported = null;
 let active = null;
 let frameRequest = null;
@@ -69,19 +71,9 @@ let cameraGesture = null;
 const CAMERA_POINTERS = new Map();
 let suppressCanvasClick = false;
 let farmPanelRevision = -1;
-let bossRewardRevealTimer = null;
-let bossRewardCalculationTimer = null;
-let bossRewardDialogReceiptKey = null;
-let bossRewardAnimationSerial = 0;
-let bossRewardAutoCloseTimer = null;
-// Once every box is open the dialog holds the result for a moment and then closes by itself.
-const BOSS_REWARD_AUTO_CLOSE_MS = 1400;
 // The boss card draw is presented (eaten) only once the reward dialog is gone; this is the moment it began.
 let presentedDraw = null;
 let presentedDrawStart = 0;
-let bossRewardPortraitReceiptKey = '';
-const BOSS_REWARD_CYCLE_TIMERS = new Set();
-const AUTO_OPENED_BOSS_REWARDS = new Set();
 let mergeStatusCache = {
     world: null,
     revision: -1,
@@ -122,337 +114,43 @@ function rewardReceiptSummary(reward) {
     if (!reward) {
         return '보상 없음';
     }
-    if (reward.status === 'calculating') {
-        const DONE = reward.calculation?.jobState?.processedTrials ?? 0;
-        return '보상 준비 중 (' + DONE + '/' + reward.boxCount + ')';
+    if (reward.acquiredCount === 0) {
+        return '이번에는 획득한 새싹이 없어요';
     }
-    const ACQUIRED = reward.acquiredCount ?? reward.successCount ?? 0,
-        PLACED = reward.placedCount ?? reward.grantedCount ?? 0,
-        QUEUED = reward.queuedCount ?? Math.max(0, ACQUIRED - PLACED);
-    if (ACQUIRED === 0) {
-        return '이번에는 획득한 모리가 없어요';
-    }
-    return ACQUIRED + '마리 획득 · ' + PLACED + '마리 배치' + (QUEUED ? ' · ' + QUEUED + '마리 자리 대기' : '');
+    return (
+        reward.acquiredCount +
+        '마리 획득 · ' +
+        reward.placedCount +
+        '마리 배치' +
+        (reward.queuedCount ? ' · ' + reward.queuedCount + '마리 자리 대기' : '')
+    );
 }
 function latestBossReward(world) {
-    return [...(world?.bossRewardReceipts || [])]
-        .reverse()
-        .find((reward) => ['calculating', 'ready'].includes(reward.status));
+    const RECEIPTS = world?.bossRewardReceipts || [];
+    return RECEIPTS.find((reward) => !reward.revealed) || RECEIPTS.at(-1);
 }
-function bossRewardSummary(reward) {
-    if (!reward) {
-        return '보상 내역 없음';
-    }
-    if (reward.status === 'calculating') {
-        const DONE = reward.calculation?.jobState?.processedTrials ?? 0;
-        return '보상 준비 중 (' + DONE + '/' + reward.boxCount + ')';
-    }
-    const ACQUIRED = reward.acquiredCount ?? reward.successCount ?? 0,
-        PLACED = reward.placedCount ?? reward.grantedCount ?? 0,
-        QUEUED = reward.queuedCount ?? Math.max(0, ACQUIRED - PLACED);
-    return ACQUIRED + '개 획득 · ' + PLACED + '개 배치' + (QUEUED ? ' · 공간 대기 ' + QUEUED + '개' : '');
-}
-const BOSS_REWARD_CHEST_TIERS = ['wood', 'iron', 'gold', 'magic', 'jade'];
-
-function bossRewardChestTier(receipt) {
-    if (!receipt.stage) {
-        return 'wood';
-    }
-    return BOSS_REWARD_CHEST_TIERS[(receipt.stage - 1) % BOSS_REWARD_CHEST_TIERS.length];
-}
-
-function renderBossRewardBoxes(receipt) {
-    DOLLAR('bossRewardChest').dataset.tier = bossRewardChestTier(receipt);
-    const COUNT = receipt.boxCount || 0,
-        REVEALED = receipt.revealedCount || 0,
-        BOXES = receipt.boxes || [],
-        HAS_PRESENTATION = BOXES.length === COUNT,
-        PAYOUTS = receipt.calculation?.payouts || BOXES.map((box) => box.payout),
-        MIN = PAYOUTS.length ? Math.min(...PAYOUTS) : 0,
-        MAX = PAYOUTS.length ? Math.max(...PAYOUTS) : 0,
-        FIRST_CLEAR = receipt.firstClear === true,
-        NOMINAL_CHANCE = receipt.baselineChance ?? 0.1,
-        CUMULATIVE = BOXES.slice(0, REVEALED).reduce((sum, box) => sum + (box.hit ? box.payout : 0), 0),
-        PROCESSED = receipt.calculation?.jobState?.processedTrials ?? 0;
-    DOLLAR('bossRewardStage').textContent = receipt.stage ? `보스 격파 · ${receipt.stage}층` : '보스 격파';
-    DOLLAR('bossRewardRibbon').hidden = !FIRST_CLEAR;
-    DOLLAR('bossRewardTitle').textContent = receipt.status === 'calculating' ? '보상 준비 중' : '승리 보상';
-    DOLLAR('bossRewardSummary').textContent =
-        receipt.status === 'calculating'
-            ? '상자 ' + COUNT + '개의 보상을 준비하고 있어요.'
-            : FIRST_CLEAR
-              ? '처음 격파한 층이에요 · 새싹이 합류해요'
-              : HAS_PRESENTATION
-                ? COUNT +
-                  '회 추첨 · 상자당 ' +
-                  MIN +
-                  (MIN === MAX ? '' : '–' + MAX) +
-                  '마리 · ' +
-                  '재도전 ' +
-                  Math.round(NOMINAL_CHANCE * 100) +
-                  '% (편성 반영 ' +
-                  Math.round(receipt.chance * 100) +
-                  '%)'
-                : '획득한 보상 합계';
-    DOLLAR('bossRewardTotals').textContent =
-        receipt.status === 'calculating'
-            ? '보상 준비 ' + PROCESSED + '/' + COUNT
-            : '현재 합계 ' + CUMULATIVE + '마리 · ' + bossRewardSummary(receipt);
-    DOLLAR('bossRewardRevealCount').textContent =
-        receipt.status === 'calculating' ? '추첨 ' + PROCESSED + '/' + COUNT : REVEALED + '/' + COUNT + ' 상자 공개';
-    const SCENE = DOLLAR('bossRewardChestScene');
-    if (
-        receipt.status === 'ready' &&
-        receipt.acquiredCount > 0 &&
-        bossRewardPortraitReceiptKey !== receipt.receiptKey
-    ) {
-        bossRewardPortraitReceiptKey = receipt.receiptKey;
-        const PORTRAIT = DOLLAR('bossRewardPortrait');
-        PORTRAIT.src = speciesPortraitSource(BOSS_SPECIES);
-        PORTRAIT.alt = '새싹';
-        PORTRAIT.hidden = false;
-    }
-    DOLLAR('bossRewardOpenAll').disabled = receipt.status !== 'ready' || !HAS_PRESENTATION || REVEALED >= COUNT;
-    DOLLAR('bossRewardOpenAll').hidden = receipt.status !== 'ready' || REVEALED >= COUNT;
-    DOLLAR('bossRewardClose').hidden = receipt.status !== 'ready' || REVEALED < COUNT;
-    if (!HAS_PRESENTATION && receipt.status === 'ready') {
-        SCENE.classList.add('is-settled');
-    } else {
-        SCENE.classList.remove('is-settled');
-    }
-}
-function scheduleBossRewardCycle(callback, delay, serial) {
-    const TIMER = setTimeout(() => {
-        BOSS_REWARD_CYCLE_TIMERS.delete(TIMER);
-        if (serial === bossRewardAnimationSerial) {
-            callback();
-        }
-    }, delay);
-    BOSS_REWARD_CYCLE_TIMERS.add(TIMER);
-}
-function cancelBossRewardCycle() {
-    bossRewardAnimationSerial += 1;
-    for (const TIMER of BOSS_REWARD_CYCLE_TIMERS) {
-        clearTimeout(TIMER);
-    }
-    BOSS_REWARD_CYCLE_TIMERS.clear();
-    const SCENE = DOLLAR('bossRewardChestScene');
-    SCENE?.classList.remove('is-compressing', 'is-lid-open', 'is-reward', 'is-empty');
-    if (SCENE) {
-        SCENE.dataset.cycle = '';
-    }
-    const PRIZE = DOLLAR('bossRewardPrize'),
-        EMPTY = DOLLAR('bossRewardEmpty');
-    if (PRIZE) {
-        PRIZE.hidden = true;
-    }
-    if (EMPTY) {
-        EMPTY.hidden = true;
-    }
-}
-function revealBossRewardBatch() {
-    const WORLD = personalGarden || active?.world,
-        RECEIPT = WORLD?.bossRewardReceipts.find((reward) => reward.receiptKey === bossRewardDialogReceiptKey);
-    if (!WORLD || !RECEIPT || RECEIPT.status !== 'ready') {
-        clearInterval(bossRewardRevealTimer);
-        bossRewardRevealTimer = null;
-        cancelBossRewardCycle();
-        return;
-    }
-    const FROM = RECEIPT.revealedCount || 0,
-        TO = Math.min(RECEIPT.boxCount, FROM + 10),
-        BATCH = RECEIPT.boxes.slice(FROM, TO),
-        AMOUNT = BATCH.reduce((sum, box) => sum + (box.hit ? box.payout : 0), 0),
-        SERIAL = ++bossRewardAnimationSerial,
-        SCENE = DOLLAR('bossRewardChestScene');
-    if (FROM >= RECEIPT.boxCount || !BATCH.length) {
-        clearInterval(bossRewardRevealTimer);
-        bossRewardRevealTimer = null;
-        renderBossRewardBoxes(RECEIPT);
-        scheduleBossRewardAutoClose();
-        return;
-    }
-    SCENE.classList.remove('is-compressing', 'is-lid-open', 'is-reward', 'is-empty');
-    void SCENE.offsetWidth;
-    SCENE.dataset.cycle = AMOUNT > 0 ? 'hit' : 'miss';
-    SCENE.classList.add('is-compressing');
-    DOLLAR('bossRewardOutcome').textContent = '';
-    DOLLAR('bossRewardPopAmount').textContent = AMOUNT > 0 ? '+' + AMOUNT : '';
-    DOLLAR('bossRewardEmpty').hidden = true;
-    DOLLAR('bossRewardPrize').hidden = true;
-    DOLLAR('bossRewardRevealCount').textContent = '상자 ' + TO + '/' + RECEIPT.boxCount + ' · 보상 공개 중';
-    scheduleBossRewardCycle(
-        () => {
-            SCENE.classList.remove('is-compressing');
-            SCENE.classList.add('is-lid-open');
-            if (AMOUNT > 0) {
-                SCENE.classList.add('is-reward');
-            }
-        },
-        100,
-        SERIAL,
-    );
-    scheduleBossRewardCycle(
-        () => {
-            if (AMOUNT > 0) {
-                DOLLAR('bossRewardPrize').hidden = false;
-            } else {
-                SCENE.classList.add('is-empty');
-                DOLLAR('bossRewardEmpty').hidden = false;
-                DOLLAR('bossRewardOutcome').textContent = '빈 상자';
-            }
-        },
-        220,
-        SERIAL,
-    );
-    scheduleBossRewardCycle(
-        () => {
-            advanceBossRewardReveal(WORLD, RECEIPT.receiptKey, BATCH.length);
-            renderBossRewardBoxes(RECEIPT);
-        },
-        420,
-        SERIAL,
-    );
-    scheduleBossRewardCycle(
-        () => {
-            SCENE.classList.remove('is-compressing', 'is-lid-open', 'is-reward', 'is-empty');
-            if (RECEIPT.revealedCount >= RECEIPT.boxCount) {
-                clearInterval(bossRewardRevealTimer);
-                bossRewardRevealTimer = null;
-                renderBossRewardBoxes(RECEIPT);
-                scheduleBossRewardAutoClose();
-            }
-        },
-        500,
-        SERIAL,
-    );
-}
-function scheduleBossRewardAutoClose() {
-    clearTimeout(bossRewardAutoCloseTimer);
-    const KEY = bossRewardDialogReceiptKey;
-    bossRewardAutoCloseTimer = setTimeout(() => {
-        bossRewardAutoCloseTimer = null;
-        if (bossRewardDialogReceiptKey === KEY) {
-            closeBossRewardDialog();
-        }
-    }, BOSS_REWARD_AUTO_CLOSE_MS);
-}
-function stopBossRewardCalculation() {
-    clearInterval(bossRewardCalculationTimer);
-    bossRewardCalculationTimer = null;
-}
-function showBossRewardDialog(receipt, { auto = false } = {}) {
-    if (!receipt || !['calculating', 'ready'].includes(receipt.status)) {
-        return;
-    }
-    const DIALOG = DOLLAR('bossRewardDialog');
-    clearTimeout(bossRewardAutoCloseTimer);
-    bossRewardAutoCloseTimer = null;
-    clearInterval(bossRewardRevealTimer);
-    bossRewardRevealTimer = null;
-    cancelBossRewardCycle();
-    if (bossRewardDialogReceiptKey !== receipt.receiptKey) {
-        bossRewardPortraitReceiptKey = '';
-    }
-    bossRewardDialogReceiptKey = receipt.receiptKey;
-    stopWorldInput();
-    DIALOG.hidden = false;
-    DOLLAR('bossRewardOpen').hidden = true;
-    renderBossRewardBoxes(receipt);
-    if (auto && receipt.status === 'ready' && !AUTO_OPENED_BOSS_REWARDS.has(receipt.receiptKey)) {
-        AUTO_OPENED_BOSS_REWARDS.add(receipt.receiptKey);
-    }
-    if (
-        receipt.status === 'ready' &&
-        receipt.boxes?.length === receipt.boxCount &&
-        receipt.revealedCount < receipt.boxCount
-    ) {
-        bossRewardRevealTimer = setInterval(revealBossRewardBatch, 500);
-    } else if (receipt.status === 'ready' && receipt.revealedCount >= receipt.boxCount) {
-        scheduleBossRewardAutoClose();
-    }
-}
-function syncBossRewardDialog(world, { receiptKey = null } = {}) {
-    const RECEIPT = receiptKey
-            ? world?.bossRewardReceipts.find((reward) => reward.receiptKey === receiptKey)
-            : latestBossReward(world),
-        BUTTON = DOLLAR('bossRewardOpen'),
-        DIALOG = DOLLAR('bossRewardDialog');
+function syncBossRewardDialog(world) {
+    const RECEIPT = latestBossReward(world),
+        BUTTON = DOLLAR('bossRewardOpen');
     if (home || world?.tower.phase === 'summit') {
-        DIALOG.hidden = true;
+        BOSS_REWARD_DIALOG.hide();
         BUTTON.hidden = true;
-        clearInterval(bossRewardRevealTimer);
-        bossRewardRevealTimer = null;
-        cancelBossRewardCycle();
-        stopBossRewardCalculation();
         return;
     }
-    BUTTON.hidden =
-        !RECEIPT || (RECEIPT.status === 'ready' && RECEIPT.revealedCount >= RECEIPT.boxCount) || !DIALOG.hidden;
-    BUTTON.disabled = RECEIPT?.status === 'calculating';
-    if (!RECEIPT) {
-        stopBossRewardCalculation();
-        return;
+    if (!DOLLAR('bossRewardDialog').hidden) {
+        BOSS_REWARD_DIALOG.update(world);
+    } else if (RECEIPT && !RECEIPT.revealed) {
+        BOSS_REWARD_DIALOG.show(world, RECEIPT);
     }
-    BUTTON.textContent = RECEIPT.status === 'calculating' ? '보상 준비 중…' : '보상 상자 열기';
-    // A reward that was already fully opened (every box revealed, e.g. after a reload) is not shown again.
-    if (
-        RECEIPT.status === 'ready' &&
-        RECEIPT.revealedCount < RECEIPT.boxCount &&
-        !AUTO_OPENED_BOSS_REWARDS.has(RECEIPT.receiptKey)
-    ) {
-        showBossRewardDialog(RECEIPT, { auto: true });
-    } else if (!DIALOG.hidden && bossRewardDialogReceiptKey === RECEIPT.receiptKey) {
-        renderBossRewardBoxes(RECEIPT);
-    }
-    stopBossRewardCalculation();
+    BUTTON.hidden = !RECEIPT || RECEIPT.revealed || !DOLLAR('bossRewardDialog').hidden;
 }
-
-function closeBossRewardDialog() {
+DOLLAR('bossRewardOpen').addEventListener('click', () => {
     const WORLD = personalGarden || active?.world,
-        RECEIPT = WORLD?.bossRewardReceipts.find((reward) => reward.receiptKey === bossRewardDialogReceiptKey);
-    if (RECEIPT?.status !== 'ready' || RECEIPT.revealedCount < RECEIPT.boxCount) {
-        return;
+        RECEIPT = latestBossReward(WORLD);
+    if (RECEIPT) {
+        BOSS_REWARD_DIALOG.show(WORLD, RECEIPT);
     }
-    DOLLAR('bossRewardDialog').hidden = true;
-    DOLLAR('bossRewardOpen').hidden = true;
-    clearTimeout(bossRewardAutoCloseTimer);
-    bossRewardAutoCloseTimer = null;
-    clearInterval(bossRewardRevealTimer);
-    bossRewardRevealTimer = null;
-    cancelBossRewardCycle();
-}
-
-function attachBossRewardHandlers() {
-    DOLLAR('bossRewardOpen').addEventListener('click', () => {
-        showBossRewardDialog(latestBossReward(personalGarden || active?.world));
-    });
-    DOLLAR('bossRewardClose').addEventListener('click', closeBossRewardDialog);
-    DOLLAR('bossRewardDialog').addEventListener('click', (event) => {
-        if (event.target === event.currentTarget) {
-            closeBossRewardDialog();
-        }
-    });
-    DOLLAR('bossRewardDialog').addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') {
-            closeBossRewardDialog();
-        }
-    });
-    DOLLAR('bossRewardOpenAll').addEventListener('click', () => {
-        const WORLD = personalGarden || active?.world,
-            RECEIPT = WORLD?.bossRewardReceipts.find((reward) => reward.receiptKey === bossRewardDialogReceiptKey);
-        if (!WORLD || !RECEIPT) {
-            return;
-        }
-        clearInterval(bossRewardRevealTimer);
-        bossRewardRevealTimer = null;
-        cancelBossRewardCycle();
-        openAllBossRewardBoxes(WORLD, RECEIPT.receiptKey);
-        renderBossRewardBoxes(RECEIPT);
-        scheduleBossRewardAutoClose();
-    });
-}
-attachBossRewardHandlers();
+});
 globalThis.BudmoriPerformanceDiagnostics = {
     summary: () => (active ? PERFORMANCE_DIAGNOSTICS.summary(active.world, active.paused) : []),
     snapshot: () => PERFORMANCE_DIAGNOSTICS.snapshot(30),
@@ -1631,10 +1329,7 @@ function syncTower(garden, home, event) {
     }
     // The reward dialog comes first: the card panel and the boss's eating wait until it has closed.
     const PENDING_REWARD = latestBossReward(garden),
-        REWARD_OPEN =
-            !DOLLAR('bossRewardDialog').hidden ||
-            (!!PENDING_REWARD &&
-                (PENDING_REWARD.status === 'calculating' || PENDING_REWARD.revealedCount < PENDING_REWARD.boxCount)),
+        REWARD_OPEN = !DOLLAR('bossRewardDialog').hidden || (!!PENDING_REWARD && !PENDING_REWARD.revealed),
         RAW_DRAW = T.bossCardDraw;
     if (RAW_DRAW && RAW_DRAW !== presentedDraw && CLIMBING && !REWARD_OPEN) {
         presentedDraw = RAW_DRAW;
@@ -1961,6 +1656,7 @@ window.addEventListener('resize', () => {
     RENDERER.resize();
 });
 window.addEventListener('pagehide', () => {
+    BOSS_REWARD_DIALOG.dispose();
     if (frameRequest === null) {
         return;
     }
@@ -2077,9 +1773,7 @@ function sync(display, now, notices) {
         BATTLE_OUTCOME = FARM_EVENT?.outcome,
         HAS_READY_TROOPS = personalGarden ? personalGarden.units.some((unit) => unit.hp > 0 && unit.down <= 0) : false,
         REWARD_WORLD = personalGarden || W,
-        PENDING_REWARD = REWARD_WORLD.bossRewardReceipts.find(
-            (reward) => ['calculating', 'ready'].includes(reward.status) || reward.queuedCount > 0,
-        ),
+        PENDING_REWARD = REWARD_WORLD.bossRewardReceipts.find((reward) => !reward.revealed || reward.queuedCount > 0),
         MERGE_CACHE = mergeAvailability(W, now),
         MERGE_STATUS = MERGE_CACHE.value,
         COMBINE_STATUS = MERGE_CACHE.combine;

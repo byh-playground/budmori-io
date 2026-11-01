@@ -1,46 +1,53 @@
-.boss-reward-dialog {
-    background: var(--ui-dim);
-}
 .boss-reward-dialog__card {
     display: grid;
-    grid-template-rows: auto auto auto minmax(220px, 1fr) auto auto;
-    gap: 8px;
-    width: min(560px, 100%);
-    max-height: min(720px, 92dvh);
-    overflow: hidden;
-    border-color: var(--ui-line);
-    background: var(--ui-panel);
-}
-.boss-reward-dialog__card header {
-    justify-content: flex-start;
-    min-height: 44px;
+    grid-template-rows: auto auto minmax(140px, 1fr) auto auto auto;
+    gap: 10px;
+    width: min(440px, 100%);
+    max-height: 94dvh;
+    padding: 22px;
+    overflow: auto;
 }
 .boss-reward-dialog__card header > div {
     min-width: 0;
     margin-right: auto;
 }
-.boss-reward-ribbon {
-    padding: 7px 10px;
-    border-radius: 999px;
-    background: var(--ui-primary);
-    border: var(--ui-bw) solid transparent;
-    color: var(--ui-primary-ink);
-    font-size: var(--ui-fs-1);
-    white-space: nowrap;
+.boss-reward-dialog__card header h2 {
+    margin-top: 4px;
+    font-size: 23px;
+}
+#bossRewardSummary {
+    min-height: 22px;
+    color: var(--ui-ink-2);
+    line-height: 1.7;
 }
 .boss-reward-chest-scene {
+    --reward-scale: 1;
     position: relative;
-    display: grid;
-    min-height: 220px;
-    place-items: end center;
-    padding-bottom: 12px;
+    width: 100%;
+    height: clamp(140px, 40dvh, 340px);
+    min-height: 0;
     overflow: hidden;
+    isolation: isolate;
+}
+.boss-reward-ground {
+    position: absolute;
+    inset: auto 6% calc(6px * var(--reward-scale));
+    height: calc(60px * var(--reward-scale));
+    border-radius: 50%;
+    background: var(--ui-card);
+}
+.boss-reward-chest-wrap {
+    position: absolute;
+    left: 50%;
+    bottom: calc(41px * var(--reward-scale));
+    width: calc(260px * var(--reward-scale));
+    height: calc(210px * var(--reward-scale));
+    transform: translateX(-50%);
 }
 .boss-reward-chest {
     display: block;
-    width: auto;
-    max-width: 92%;
-    height: clamp(140px, 28dvh, 230px);
+    width: 100%;
+    height: 100%;
     overflow: visible;
 }
 .boss-reward-chest {
@@ -113,171 +120,144 @@ path.cr-line {
     fill: none;
 }
 .boss-reward-chest__body,
-.boss-reward-chest__lid-pivot {
+.boss-reward-chest__lid-pivot,
+.boss-reward-chest__lock {
     transform-box: view-box;
 }
 .boss-reward-chest__lid-pivot {
     transform-origin: 84px 150px;
-    transition: transform 120ms cubic-bezier(0.2, 0.8, 0.25, 1);
 }
-.boss-reward-chest__lock {
-    transform-box: view-box;
-    transform-origin: 250px 180px;
-    transition:
-        opacity 80ms ease-out,
-        transform 80ms ease-out;
+.boss-reward-glow,
+.boss-reward-mouth {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    opacity: 0;
 }
-.boss-reward-chest-scene.is-compressing .boss-reward-chest__body {
-    animation: boss-reward-compress 100ms ease-out both;
+.boss-reward-glow {
+    top: calc(132px * var(--reward-scale));
+    width: calc(158px * var(--reward-scale));
+    height: calc(110px * var(--reward-scale));
+    background: #fff1ac;
 }
-.boss-reward-chest-scene.is-lid-open .boss-reward-chest__lid-pivot {
-    transform: translateY(-22px) rotate(-7deg);
+.boss-reward-mouth {
+    z-index: 1;
+    top: calc(193px * var(--reward-scale));
+    width: calc(198px * var(--reward-scale));
+    height: calc(21px * var(--reward-scale));
+    background: #4a3d29;
 }
-.boss-reward-chest-scene.is-lid-open .boss-reward-chest__lock {
-    opacity: 0.15;
-    transform: translateY(5px) scale(0.92);
-}
-.boss-reward-chest-scene.is-reward .boss-reward-chest-scene.is-empty .boss-reward-chest__body {
-    animation: boss-reward-empty 160ms ease-out both;
-}
-.boss-reward-prize {
+.boss-reward-sprouts {
     position: absolute;
     z-index: 2;
-    top: 4px;
-    left: 50%;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    transform: translate(-50%, 8px) scale(0.72);
-    opacity: 0;
+    inset: 0;
     pointer-events: none;
 }
-.boss-reward-prize:not([hidden]) {
-    animation: boss-reward-prize 180ms cubic-bezier(0.18, 0.85, 0.22, 1) both;
+.boss-reward-sprout,
+.boss-reward-speck {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
 }
-.boss-reward-portrait {
-    display: block;
-    width: 54px;
-    height: 54px;
-    border-radius: 16px;
-    background: #dce9c8;
+.boss-reward-sprout {
+    width: calc(52px * var(--reward-scale));
+    height: calc(58px * var(--reward-scale));
     object-fit: contain;
+    transform-origin: 50% 85%;
+}
+.boss-reward-speck {
+    z-index: 2;
+    width: 6px;
+    height: 6px;
+    border-radius: 2px;
+    background: #c2d38a;
+}
+.boss-reward-prize {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 9px;
+    min-height: 48px;
+    text-align: center;
+    color: #3d613b;
 }
 .boss-reward-prize strong {
-    padding: 6px 9px;
-    border-radius: 999px;
-    background: #fff8d7;
-    color: #4c743f;
-    font-size: clamp(18px, 5vw, 27px);
-    font-weight: 950;
+    font-size: clamp(22px, 6vw, 31px);
+    font-weight: 900;
+    letter-spacing: -1px;
+    font-variant-numeric: tabular-nums;
 }
-.boss-reward-empty,
-.boss-reward-outcome {
-    position: absolute;
-    z-index: 3;
-    bottom: 4px;
-    left: 50%;
-    margin: 0;
-    padding: 4px 10px;
-    border-radius: 999px;
-    background: #f4f1e4e8;
-    color: #73816d;
-    font-size: 11px;
-    font-weight: 750;
-    transform: translateX(-50%);
+.boss-reward-prize[data-phase='opening'] strong {
+    color: var(--ui-ink-3);
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 0;
 }
-.boss-reward-outcome:empty {
-    display: none;
-}
-.boss-reward-boxes {
-    display: none !important;
+.boss-reward-band {
+    padding: 5px 9px;
+    border: 1px solid #bdcead;
+    border-radius: var(--ui-r-pill);
+    background: #eaf2dd;
+    color: #3d613b;
+    font-size: 12px;
 }
 #bossRewardTotals {
-    white-space: pre-line;
-    color: #526e50;
-    font-size: 14px;
-    font-weight: 850;
+    min-height: 20px;
+    margin: 0;
+    color: var(--ui-ink-3);
+    font-size: 12px;
+    line-height: 1.7;
+    text-align: center;
     font-variant-numeric: tabular-nums;
+}
+.boss-reward-dialog__card footer {
+    margin-top: 7px;
+    padding-top: 15px;
+    border-top: 1px solid var(--ui-line);
 }
 #bossRewardRevealCount {
-    color: #71806b;
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
+    color: var(--ui-ink-3);
+    font-size: 11px;
 }
 #bossRewardOpenAll {
-    min-width: 132px;
-    min-height: 46px;
-    padding-inline: 18px;
-    border-radius: 999px;
-    background: #526e50;
-    color: #fffbee;
-    font-size: 14px;
-    font-weight: 850;
-}
-@keyframes boss-reward-compress {
-    0% {
-        transform: scale(1) rotate(0);
-    }
-    58% {
-        transform: scale(1.035, 0.94) rotate(-1deg);
-    }
-    100% {
-        transform: scale(1) rotate(0);
-    }
-}
-@keyframes boss-reward-empty {
-    0%,
-    100% {
-        transform: translateX(0);
-    }
-    30% {
-        transform: translateX(-5px) rotate(-1deg);
-    }
-    70% {
-        transform: translateX(4px) rotate(1deg);
-    }
-}
-@keyframes boss-reward-prize {
-    0% {
-        opacity: 0;
-        transform: translate(-50%, 12px) scale(0.66);
-    }
-    72% {
-        opacity: 1;
-        transform: translate(-50%, -5px) scale(1.08);
-    }
-    100% {
-        opacity: 1;
-        transform: translate(-50%, 0) scale(1);
-    }
+    min-width: 100px;
+    min-height: 44px;
+    padding: 0 20px;
+    border: 0;
+    border-radius: var(--ui-r-pill);
+    background: var(--ui-primary);
+    color: var(--ui-primary-ink);
+    font-size: 13px;
+    font-weight: 800;
 }
 @media (max-width: 500px) {
     .boss-reward-dialog__card {
-        padding: 12px;
+        padding: 18px;
     }
 }
 @media (max-height: 500px) {
     .boss-reward-dialog__card {
-        grid-template-rows: auto auto auto minmax(140px, 1fr) auto auto;
-        gap: 5px;
-        max-height: 94dvh;
-        padding-block: 8px;
+        grid-template-rows: auto auto minmax(100px, 1fr) auto auto auto;
+        gap: 4px;
+        padding: 10px 18px;
     }
     .boss-reward-chest-scene {
-        min-height: 140px;
+        height: 120px;
     }
-    .boss-reward-chest {
-        height: 112px;
+    .boss-reward-dialog__card header h2 {
+        font-size: 20px;
     }
-    .boss-reward-portrait {
-        width: 44px;
-        height: 44px;
+    .boss-reward-prize {
+        min-height: 32px;
     }
-}
-@media (prefers-reduced-motion: reduce) {
-    .boss-reward-chest-scene *,
-    .boss-reward-prize:not([hidden]) {
-        animation-duration: 1ms !important;
-        transition-duration: 1ms !important;
+    .boss-reward-prize strong {
+        font-size: 22px;
+    }
+    .boss-reward-dialog__card footer {
+        margin-top: 0;
+        padding-top: 6px;
     }
 }

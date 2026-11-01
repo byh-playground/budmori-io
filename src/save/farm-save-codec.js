@@ -1,13 +1,20 @@
-import { validateFarmProgress } from '../model/farm-progress.js';
+import { validateFarmProgress, migrateFarmProgress } from '../model/farm-progress.js';
 
 // The farm save record: `farm` is the captured farm progress, or null before the player starts a farm.
 // The save module adds `schema` and `revision` around it; an export file is this data as JSON.
 export const FARM_SAVE = Object.freeze({
     key: 'budmori-farm',
-    version: 1,
+    version: 2,
     create: () => ({ farm: null }),
     validate: validateFarmRecord,
+    migrate: { 1: migrateFarmRecord },
 });
+function migrateFarmRecord(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data) || Object.keys(data).join() !== 'farm') {
+        throw new TypeError('농장 저장 형식이 아니에요.');
+    }
+    return { farm: data.farm === null ? null : migrateFarmProgress(data.farm) };
+}
 export function validateFarmRecord(data) {
     if (!data || typeof data !== 'object' || Array.isArray(data) || Object.keys(data).join() !== 'farm') {
         throw new TypeError('농장 저장 형식이 아니에요.');
@@ -26,6 +33,9 @@ export function readFarmExport(text) {
         data = JSON.parse(text);
     } catch {
         throw new TypeError('저장 파일이 JSON 형식이 아니에요.');
+    }
+    if (data?.farm?.ledger?.boss && Object.hasOwn(data.farm.ledger.boss, 'rewardStreams')) {
+        data = migrateFarmRecord(data);
     }
     validateFarmRecord(data);
     if (data.farm === null) {

@@ -1,5 +1,5 @@
 import { SEED_SPECIES } from './lineage.js';
-import { BOSS_REWARD_SETTINGS, bossStageStats, settleBossKill, bossSpeciesOwned } from '../boss/boss-rewards.js';
+import { settleBossKill } from '../boss/boss-rewards.js';
 import { awardTowerFloorXp } from './player-progression.js';
 import { CONFIG } from './farm-config.js';
 import { lineageRandom } from './lineage.js';
@@ -44,9 +44,6 @@ export const FARM_BOSS_EVENT = (base) =>
                 outcome,
                 encounterId: ENCOUNTER_ID,
                 rewardStatus: 'none',
-                rewardChance: 0,
-                rewardRoll: 0,
-                rewardUnitId: 0,
             };
             for (const U of this.units) {
                 U.specialAbility?.interrupt();
@@ -58,29 +55,23 @@ export const FARM_BOSS_EVENT = (base) =>
             if (outcome === 'victory') {
                 const REWARD_BOSS = this.bosses[0];
                 const EVENT_STAGE = REWARD_BOSS.stage,
-                    STAGE_STATS = bossStageStats(EVENT_STAGE),
                     BEST = this.playerProgression.towerBest,
                     KIND = CONFIG.farm.tower[this.tower.floor ? this.tower.kind : 'battle'];
                 this.tower.record = EVENT_STAGE > BEST;
                 if (this.tower.record) {
                     this.playerProgression.towerBest = EVENT_STAGE;
                 }
-                // Every win pays by its floor and kind; a floor higher than ever before pays double.
-                const REWARD_SCALE = KIND.reward * (this.tower.record ? BOSS_REWARD_SETTINGS.recordMultiplier : 1),
-                    // Every boss is the plain sprout, so the seed it drops is drawn from the first-tier species.
-                    DROP_SPECIES =
+                // Every boss is the plain sprout; its seed comes from the first-tier species.
+                const DROP_SPECIES =
                         SEED_SPECIES[Math.floor(lineageRandom(this.seed, ENCOUNTER_ID, 3)() * SEED_SPECIES.length)],
-                    FIRST_CLEAR = !bossSpeciesOwned(this, DROP_SPECIES),
                     SETTLEMENT = settleBossKill(this, {
                         encounterId: ENCOUNTER_ID,
                         source: 'farm',
                         stage: EVENT_STAGE,
                         species: DROP_SPECIES,
                         tier: 1,
-                        x: REWARD_BOSS.x,
-                        y: REWARD_BOSS.y,
-                        firstClear: FIRST_CLEAR,
-                        rollBudget: STAGE_STATS.rollBudget * REWARD_SCALE,
+                        kindReward: KIND.reward,
+                        record: this.tower.record,
                     });
                 const REWARD = SETTLEMENT.receipt;
                 if (this.tower.rewardRunId) {
@@ -98,14 +89,13 @@ export const FARM_BOSS_EVENT = (base) =>
                     });
                 }
                 this.combat('farm-boss-reward', {
-                    acquired: REWARD.grantedCount > 0,
-                    pending: REWARD.status === 'pending',
-                    successCount: REWARD.successCount,
-                    grantedCount: REWARD.grantedCount,
+                    acquiredCount: REWARD.acquiredCount,
+                    placedCount: REWARD.placedCount,
+                    queuedCount: REWARD.queuedCount,
+                    baseAmount: REWARD.baseAmount,
+                    bandIndex: REWARD.bandIndex,
                     species: REWARD.species,
                     tier: REWARD.tier,
-                    chance: REWARD.chance,
-                    roll: REWARD.roll,
                     encounterId: ENCOUNTER_ID,
                 });
             }

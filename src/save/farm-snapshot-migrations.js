@@ -4,6 +4,53 @@ import { validateSnapshot } from './farm-snapshot-validation.js';
 import { freshTowerRun } from '../tower/tower-run.js';
 import { migratePlayerProgressionState } from '../model/player-progression.js';
 import { migrateLegacyBarleyArmorShredBuckets } from '../features/abilities/barley-shred/model.js';
+import { migrateBossRewardLedger } from './boss-reward-ledger.js';
+
+function migrateSnapshotRewards(snapshot) {
+    if (!Object.hasOwn(snapshot, 'bossRewardStreams')) {
+        return;
+    }
+    const EVENT = snapshot.farmBossEvent;
+    if (
+        !EVENT ||
+        !['none', 'unresolved', 'calculating', 'ready'].includes(EVENT.rewardStatus) ||
+        !Number.isFinite(EVENT.rewardChance) ||
+        EVENT.rewardChance < 0 ||
+        EVENT.rewardChance > 1 ||
+        EVENT.rewardRoll !== 0 ||
+        EVENT.rewardUnitId !== 0
+    ) {
+        throw new TypeError('올바른 이전 보상 체크포인트가 아니에요.');
+    }
+    if (EVENT.outcome === 'victory' && EVENT.phase !== 'idle') {
+        const RECEIPT = snapshot.bossRewardReceipts.find(
+            (reward) => reward.encounterId === EVENT.encounterId && reward.source === 'farm',
+        );
+        if (!RECEIPT || RECEIPT.status !== EVENT.rewardStatus || RECEIPT.chance !== EVENT.rewardChance) {
+            throw new TypeError('이전 보상과 전투 결과가 일치하지 않아요.');
+        }
+    } else {
+        const EXPECTED_STATUS = ['marching', 'dropping', 'fighting'].includes(EVENT.phase) ? 'unresolved' : 'none';
+        if (EVENT.rewardChance !== 0 || EVENT.rewardStatus !== EXPECTED_STATUS) {
+            throw new TypeError('올바른 이전 보상 체크포인트가 아니에요.');
+        }
+    }
+    const LEDGER = migrateBossRewardLedger({
+        nextEncounterId: snapshot.nextBossEncounterId,
+        settledThrough: snapshot.bossRewardWatermarks,
+        rewardStreams: snapshot.bossRewardStreams,
+        pendingRewards: snapshot.bossRewardReceipts,
+        queuedRewards: snapshot.bossRewardInventory,
+    });
+    snapshot.bossRewardRngState = LEDGER.rewardRngState;
+    snapshot.bossRewardReceipts = LEDGER.pendingRewards;
+    snapshot.bossRewardInventory = LEDGER.queuedRewards;
+    delete snapshot.bossRewardStreams;
+    EVENT.rewardStatus = EVENT.outcome === 'victory' && EVENT.phase !== 'idle' ? 'ready' : 'none';
+    delete EVENT.rewardChance;
+    delete EVENT.rewardRoll;
+    delete EVENT.rewardUnitId;
+}
 
 // These fields were already required before bosses shared the unit attack
 // contract. Do not repair malformed legacy identity, health, or motion data.
@@ -18,6 +65,7 @@ const LEGACY_BOSS_FIELDS = new Set(
 export function normalizeSnapshot(raw, { clone = true } = {}) {
     const SNAPSHOT = clone ? structuredClone(raw) : raw,
         LEGACY_ENCOUNTER = Object.hasOwn(SNAPSHOT, 'boss') && !Object.hasOwn(SNAPSHOT, 'bosses');
+    migrateSnapshotRewards(SNAPSHOT);
     SNAPSHOT.playerProgression = migratePlayerProgressionState(SNAPSHOT.playerProgression);
     if (!Object.hasOwn(SNAPSHOT, 'foodRuntime')) {
         SNAPSHOT.foodRuntime = null;
