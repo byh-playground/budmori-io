@@ -207,11 +207,15 @@ async function verifyFaceProbe(page, output) {
 }
 async function capture(page, filename) {
     // GPU readback can outlast a discovery toast on software rendering. Freeze only the observation;
-    // resume the real UI clock before the same close/navigation actions and assertions.
-    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 50));
+    // freeze wall time first so the pause target cannot expire between protocol calls.
+    // The monotonic clock and timer schedule are untouched until the explicit pause.
+    const CAPTURE_AT = await page.evaluate(() => Date.now());
+    await page.clock.setFixedTime(CAPTURE_AT);
     try {
+        await page.clock.pauseAt(CAPTURE_AT);
         await page.screenshot({ path: path.join(OUTPUT, filename) });
     } finally {
+        await page.clock.setSystemTime(CAPTURE_AT);
         await page.clock.resume();
     }
 }

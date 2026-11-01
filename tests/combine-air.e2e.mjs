@@ -414,8 +414,14 @@ try {
 
         await holdRoster(9, 3);
         await PAGE.evaluate(() => BUDMORI.runtime.queue('merge', { count: 4 }));
-        await PAGE.clock.runFor(50);
+        // The next 20 Hz tick must first be visited by a native RAF. A single
+        // 50 ms window can end between that tick's deadline and its RAF; two
+        // logical ticks cover the handoff without flushing the command directly.
+        // There is no held input here, so advancing does not enqueue another pulse.
+        await PAGE.clock.runFor(100);
+        assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.length), 1);
         const GRADE_BATCH = await PAGE.evaluate(() => globalThis.__mergeHoldObservations.at(-1));
+        assert.equal(GRADE_BATCH.count, 4, 'the one queued execution requests four merges');
         assert.equal(GRADE_BATCH.started.length, 3, 'partial batch stops when materials run out');
         assert(GRADE_BATCH.started.every((task) => task.ids.length === 3 && task.tier === 3));
         assert.equal(new Set(GRADE_BATCH.started.flatMap((task) => task.ids)).size, 9);
