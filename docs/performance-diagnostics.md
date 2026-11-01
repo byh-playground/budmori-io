@@ -108,3 +108,54 @@ node tests/unit-sprites.e2e.mjs --benchmark --count=200 --backend=vector --outpu
 ```
 
 동일 CLI를 기준 checkout과 변경 checkout에서 A→B→B→A 순서로 실행하고 JSON의 원본 SHA·시드·카메라·모델 해시·라이브러리 hash를 함께 비교합니다. 브라우저 벤치마크는 기능 E2E와 별도 명령이며 테스트 통과를 성능 근거로 쓰지 않습니다(AI-012·AI-017·PM-010).
+
+## 대규모 농장 ordered 배치 (0.67.7)
+
+사용자가 제공한 0.67.6 / 활동 병력 882마리의 진단에서 RAF CPU 평균568.6ms 중 WebGL 제출526.3ms(약92.6%), 보간19.1ms, 논리·물리 등14.2ms였습니다. 논리18틱/37.75초로 이미 렌더 때문에 진행이 막힌 상태이므로 이14.2ms를 정상20Hz 시뮬레이션 비용으로 해석하지 않습니다. 유닛을 100마리씩만 갱신하도록 논리 시간을 바꾸는 대신 렌더 병목을 먼저 줄였습니다.
+
+GameKit 0.40.2의 `mesh.orderedMeshQuads`를 농장 렌더러에서 켭니다. 불투명 몸통은 기존 병종별 깊이 배치를 유지하고, 반투명 몸통·공유 얼굴·호환되는 번식/합성 표식을 원래 삼각형 순서대로 하나의 indexed stream에 담습니다. 반복되는 키프레임 평가는 지원되는 GPU float target에서 부위당 한 번 준비합니다. float target 미지원 또는 복구 후 미지원이면 직접 GPU program으로 평가하며 CPU 포즈로 바꾸지 않습니다. 원본 아트·45개 공유 얼굴 이미지·깊이·물리20Hz·합성·저장 규칙은 유지합니다.
+
+### 측정 방법과 한계
+
+기준 게임 main `1469f5d`(0.67.6), 기준 GameKit source `f983d7a` / dist `c21ef9b`(0.40.1). 같은 게임 소스와 `orderedMeshQuads` 옵션을 둔 상태에서 rendering 번들만 교체했습니다. 구버전은 그 옵션을 사용하지 않습니다. 기준 번들은 SHA-256 `620be73dd95d90f4d64d951e690b077c18f4d95f0efe68fcbe084c7f22db5349`입니다.
+
+Chromium153.0.8010.12 / Playwright1.63 / Node24.19 / Linux SwiftShader(소프트웨어GPU),1100×850/DPR1,seed731,50ms 고정 진행입니다. 장면마다 독립 컨텍스트에서 A→B→B→A 순서,각 회차 준비12+측정24프레임으로 전후 각각48표본입니다. 실제 FarmSession·Garden·native GPU 벡터와 공유 얼굴을 사용하며 mock·몸통 raster atlas·CPU pose 대체는 없습니다. draw와 GPU query는 포즈 계산 패스를 포함합니다. 각 프레임에서 CPU 측정 밖의1×1 GPU readback과20ms yield로 query 완료를 확인했으므로 고립된 프레임의 제출 비용이며 실제 앱 FPS가 아닙니다. DOM/HUD/입력/자동 저장은 별도 실제 앱 검증 범위입니다.
+
+### 전후 결과
+
+| 장면               | 전/후 | 렌더 CPU 평균 / p95 |  GPU 평균 | draw 평균 | buffer+texture 전송 | GPU buffer / texture |
+| ------------------ | ----- | ------------------: | --------: | --------: | ------------------: | -------------------: |
+| 밀882              | 이전  |    95.98 / 130.80ms |  962.44ms |    1765.0 |             4.95MiB |        7.0 / 17.1MiB |
+| 밀882              | 이후  |     54.07 / 69.80ms |  822.79ms |      17.0 |             4.26MiB |       22.0 / 20.8MiB |
+| 혼합1,000          | 이전  |     76.31 / 93.70ms |  985.49ms |     608.0 |             5.30MiB |        7.0 / 17.1MiB |
+| 혼합1,000          | 이후  |     52.72 / 67.40ms |  728.91ms |      18.0 |            11.29MiB |       16.0 / 21.0MiB |
+| 번식표식 혼합1,000 | 이전  |   114.18 / 137.30ms | 1056.97ms |     609.6 |            16.84MiB |        7.0 / 17.1MiB |
+| 번식표식 혼합1,000 | 이후  |     75.84 / 88.90ms |  837.07ms |      22.0 |            15.37MiB |       18.1 / 24.4MiB |
+
+프레임당 렌더 CPU 평균은 밀882에서43.7%,혼합1,000에서30.9%,번식표식 혼합1,000에서33.6% 줄었습니다. 이 소프트웨어 GPU 환경에서 전체 장면을60FPS로 만든 결과는 아닙니다. 혼합 장면의 전송량은5.30→11.29MiB로 늘고 모든 장면에서 캐시 메모리가 늘어납니다. 버퍼 byte만 비교하면 숫자 texture로 옮겨진 전송을 누락하므로 지원 진단에도 texture upload를 함께 표시합니다. draw 감소만으로 개선을 판단하지 않습니다.
+
+장면별 A/B/B/A 최종 모델 SHA-256은 각각 같습니다.
+
+- 밀882: `ad1f7535a83edeb33f96e9312612f74411743389991d40b8b7c70d50c4229ed1`
+- 혼합1,000: `e1bf982d86c499caad618d61f040e0c6436d887f134757972c2d50c56826bd3a`
+- 번식표식 혼합1,000: `1fd82ecbdaadc1d0e053d642e4eae04906ec3be561ad66dbab97434b6d2a712e`
+
+후보 rendering SHA-256은 `08a110906c3a249c892685940ff79b3ebe7bc34afe36f4c5d6b7b056572ccf8b`입니다. SDK #184 병합 source `e2ad338c216c85c30339505dd314db9d3a8def09` / 공개 dist `d3d6577f15a3a64036d732a3dcda9eee187a32da`의 실제 rendering bytes와 일치함을 확인했습니다.
+
+재현은 동일 게임 소스에서 기준/후보 rendering 번들을 각각 고정하고 아래 CLI를 A→B→B→A로 실행합니다. 관찰물은 임시 경로에만 둡니다. 일회용 override 스크립트는 저장소에 포함하지 않습니다.
+
+```sh
+node tests/unit-sprites.e2e.mjs --benchmark --count=882 --backend=vector --species=7 --gpu-readback --warmup=12 --samples=24 --rounds=1 --output=/tmp/budmori-wheat
+node tests/unit-sprites.e2e.mjs --benchmark --count=1000 --backend=vector --gpu-readback --warmup=12 --samples=24 --rounds=1 --output=/tmp/budmori-mixed
+node tests/unit-sprites.e2e.mjs --benchmark --count=1000 --backend=vector --gpu-readback --breeding-rings --warmup=12 --samples=24 --rounds=1 --output=/tmp/budmori-rings
+```
+
+### 기능 검증
+
+기존 깊이 시나리오9개의 전체 RGBA 픽셀 차이0과 모델 비변경을 확인합니다. 이 검사의 원래 reference는 ordered 배치를 끈 native painter로 고정합니다. 새 SDK의 단순 painter 경로도 별도 캡처해 픽셀 차이0과 draw를 기록합니다. 소수 장면에서는 단순 painter의 draw가 깊이 grouping보다 적을 수 있으므로 원래 기준 대비 감소 조건을 보존하고, 성능 판정은 위의 대규모 CPU/GPU 벤치와 구분합니다. 겹침·같은 깊이의ID순서·분신·숨긴/페이드 껍질·반투명 장식·전부 반투명·확대 벡터 얼굴·먹이/시설/전후 링을 포함합니다. SDK interop은 일반 paint/SDF/gradient,작은 용량,65,532정점,중첩 stencil,atlas 변경,복구/정리를 검증합니다. GPU program과 행렬 캐시는9시점×4구성의 픽셀 차이0입니다. capability mask로 float 미지원과 복구 후 손실도 확인했으며 실제 기기 지원성 검증으로 부르지 않습니다.
+
+SDK 전체 core의 기존 GPU-vs-CPU uniform 비교는 auto frame1에서490픽셀(0.1020833%)로 기존0.1% 기준을 넘어 실패합니다. 고정0.40.1 바이너리에서도 같은 위치·오차58을 재현했습니다. 기대값/허용치를 바꾸지 않았고 새 GPU cache는 기존 GPU program을 참조로 별도 비교했습니다. 이 기존 실패를 전체 통과로 보고하지 않습니다(AI-013·PM-010).
+
+실제 앱 RAF·HUD·자동 저장을 유지하고 마우스로 합성 버튼을6초 누른 뒤 합성 완료를 확인했습니다. 수동 pulse나 RAF 대체 없이1,000마리→990마리, T2 10마리, 진행 중 합성18건, 페이지 오류0이었습니다. 소프트웨어 GPU의 실제 앱은약1.18FPS였으며 고립 프레임 개선을 실제 앱FPS 해결로 보고하지 않습니다.
+
+기능 E2E와 성능 측정은 분리하며, 기기 GPU·사용자 PC·모바일은 미측정입니다(AI-012·AI-017·PM-010).

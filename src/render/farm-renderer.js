@@ -96,7 +96,7 @@ const DIORAMA = class Diorama {
             // Sampled body art lives in the device's shared atlas, whose layers are allocated up front.
             ...(this.unitArtMode === 'sprite' ? { textureAtlas: UNIT_SPRITE_ATLAS } : {}),
         });
-        this.ctx = new VECTOR_CONTEXT(this.device);
+        this.ctx = new VECTOR_CONTEXT(this.device, { mesh: { orderedMeshQuads: true } });
         this.vectorAssets = new Map();
         this.vectorPlayers = new Map();
         this.vectorPlayerAssets = new WeakMap();

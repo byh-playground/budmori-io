@@ -8,6 +8,8 @@ export async function unitDepthBatchingScenario(app) {
         BASE_VIEW = app.runtime.presentationView,
         BASE = BASE_VIEW.units[0],
         DRAW_ACTORS = R.drawActors,
+        MESHES = C.acquireMeshRenderer(),
+        ORDERED = MESHES.ordered,
         { snapshot: SNAPSHOT } = await import('/src/save/farm-snapshot.js'),
         MODEL_BEFORE = JSON.stringify(SNAPSHOT(WORLD)),
         CASES = [],
@@ -159,8 +161,11 @@ export async function unitDepthBatchingScenario(app) {
             }
         }
     }
-    function capture(view, optimized) {
+    function capture(view, optimized, ordered = optimized) {
         R.drawActors = optimized ? DRAW_ACTORS : painterActors;
+        // Freeze the original non-ordered reference; the new SDK can batch painterActors itself.
+        // This is fixture-only state, restored even when drawing fails; no product debug mode is added.
+        MESHES.ordered = ordered ? ORDERED : null;
         const DRAW_FACE = R.unitOverlays.drawFace;
         let vectorFaces = 0;
         R.unitOverlays.drawFace = function (...args) {
@@ -172,6 +177,7 @@ export async function unitDepthBatchingScenario(app) {
             R.render(view, null, 2000000);
         } finally {
             R.unitOverlays.drawFace = DRAW_FACE;
+            MESHES.ordered = ORDERED;
         }
         const PIXELS = new Uint8Array(R.canvas.width * R.canvas.height * 4);
         GL.readPixels(0, 0, R.canvas.width, R.canvas.height, GL.RGBA, GL.UNSIGNED_BYTE, PIXELS);
@@ -208,12 +214,15 @@ export async function unitDepthBatchingScenario(app) {
             // Warm the same native poses and presentation caches before comparing identical display time/DTOs.
             capture(VIEW, false);
             const REFERENCE = capture(VIEW, false),
+                ORDERED_PAINTER = capture(VIEW, false, true),
                 CANDIDATE = capture(VIEW, true);
             let changed = 0,
+                painterChanged = 0,
                 maxChannel = 0;
             for (let offset = 0; offset < REFERENCE.pixels.length; offset++) {
                 const DELTA = Math.abs(REFERENCE.pixels[offset] - CANDIDATE.pixels[offset]);
                 changed += Number(DELTA > 0);
+                painterChanged += Number(REFERENCE.pixels[offset] !== ORDERED_PAINTER.pixels[offset]);
                 maxChannel = Math.max(maxChannel, DELTA);
             }
             const OBSERVATION = {
@@ -222,6 +231,8 @@ export async function unitDepthBatchingScenario(app) {
                 changedChannels: changed,
                 maxChannel,
                 referenceDrawCalls: REFERENCE.drawCalls,
+                orderedPainterDrawCalls: ORDERED_PAINTER.drawCalls,
+                orderedPainterChangedChannels: painterChanged,
                 groupedDrawCalls: CANDIDATE.drawCalls,
                 groupedMeshDraws: CANDIDATE.meshDraws,
                 vectorFaces: CANDIDATE.vectorFaces,
@@ -232,7 +243,11 @@ export async function unitDepthBatchingScenario(app) {
                 globalThis.__unitDepthBatchingFailure = { ...OBSERVATION, images: IMAGES.slice(-1) };
             }
             CHECK(changed === 0, `Depth batching changed painter-order pixels: ${JSON.stringify(OBSERVATION)}`);
-            CHECK(CANDIDATE.drawCalls <= REFERENCE.drawCalls, 'Depth batching added submission boundaries');
+            CHECK(painterChanged === 0, `Ordered painter changed pixels: ${JSON.stringify(OBSERVATION)}`);
+            CHECK(
+                CANDIDATE.drawCalls <= REFERENCE.drawCalls,
+                `Depth batching added submission boundaries: ${JSON.stringify(OBSERVATION)}`,
+            );
             if (SCENE.expectReduction) {
                 CHECK(CANDIDATE.drawCalls < REFERENCE.drawCalls, 'Grouped native body scene did not reduce calls');
             }

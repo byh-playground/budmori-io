@@ -66,6 +66,8 @@ const COUNTERS = Object.freeze([
     'meshCreates',
     'bufferUploads',
     'bufferBytes',
+    'textureUploads',
+    'textureBytes',
     'gpuPoseInstances',
     'cpuPoseInstances',
     'uniformPoseInstances',
@@ -194,7 +196,7 @@ export class PerformanceDiagnostics {
             `CPU 보간 ${TIME('presentation')} · WebGL 제출 ${TIME('render')} · UI ${TIME('ui')}`,
             `저장 ${COUNT('saveCalls')}회 · CPU 전체 ${TIME('save')} / 캡처 ${TIME('saveCapture')}`,
             `프레임 평균: draw ${PER_FRAME('drawCalls')} · vector flush ${PER_FRAME('vectorFlushCalls')} · submit ${PER_FRAME('vectorSubmissions')} · fill 재테셀 ${PER_FRAME('pathTessellations')} · stroke 생성 ${PER_FRAME('pathStrokeBuilds')}`,
-            `프레임 평균: retained mesh 생성 ${PER_FRAME('meshCreates')} · upload ${PER_FRAME('bufferUploads')}회/${NUMBER(COUNT('bufferBytes') / FRAME_COUNT / 1024)}KiB · 계측 기록 비용 ${TIME('instrumentation')}`,
+            `프레임 평균: retained mesh 생성 ${PER_FRAME('meshCreates')} · buffer upload ${PER_FRAME('bufferUploads')}회/${NUMBER(COUNT('bufferBytes') / FRAME_COUNT / 1024)}KiB · texture upload ${PER_FRAME('textureUploads')}회/${NUMBER(COUNT('textureBytes') / FRAME_COUNT / 1024)}KiB · 계측 기록 비용 ${TIME('instrumentation')}`,
             'GPU 시간 미측정 · CPU=콜백 작업, RAF=다음 콜백까지 간격. 외부 이벤트·대기 시간은 CPU에 합산하지 않음.',
         ];
         for (const FRAME of SAMPLE.slowFrames.slice(0, 1)) {
