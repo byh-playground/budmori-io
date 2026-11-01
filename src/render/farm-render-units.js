@@ -509,7 +509,7 @@ export class UnitPresentation {
         }
         PREPARED.submittedArt = null;
         if (C.depthTest) {
-            C.depth -= this.renderer.actorDepthStep / 4;
+            C.depth -= this.renderer.actorLayerOffset;
         }
         drawUnitFace(
             this.renderer,
@@ -569,7 +569,7 @@ export class UnitPresentation {
     draw(u, sim) {
         const C = this.renderer.ctx,
             DEPTH = C.depth,
-            OFFSET = C.depthTest ? this.renderer.actorDepthStep / 4 : 0,
+            OFFSET = C.depthTest ? this.renderer.actorLayerOffset : 0,
             EFFECTS = this.unitRingEffects(u, sim);
         C.depth = DEPTH + OFFSET;
         this.drawUnitRingLayer(u, EFFECTS, 'rear');

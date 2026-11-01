@@ -64,7 +64,7 @@
     }
   });
 })({
-    "version": "22de7d41b8ad11b2",
+    "version": "02ed81fe28bd291f",
     "activateMessage": "bloom-pwa:activate",
     "gamekit": "^https:\\/\\/cdn\\.jsdelivr\\.net\\/gh\\/byh-playground\\/bloom-gamekit@[0-9a-f]{40}\\/[A-Za-z0-9._/-]+$",
     "precache": [

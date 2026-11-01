@@ -104,7 +104,7 @@ const DIORAMA = class Diorama {
         this.actors = [];
         this.visibleUnits = [];
         this.actorPool = [];
-        this.actorDepthStep = 0;
+        this.actorLayerOffset = 0;
         this.liveUnitIds = new Set();
         this.joyEffects = [];
         this.unitPresentation = new UnitPresentation(this);
@@ -1009,10 +1009,11 @@ const DIORAMA = class Diorama {
     drawActors(sim) {
         const C = this.ctx,
             ACTORS = this.actors,
-            STEP = 1.8 / (ACTORS.length + 1);
-        this.actorDepthStep = STEP;
+            DEPTH_LIMIT = 0.9,
+            STEP = (DEPTH_LIMIT * 2) / (ACTORS.length + 1);
+        this.actorLayerOffset = STEP / 4;
         for (let index = 0; index < ACTORS.length; index++) {
-            ACTORS[index].drawDepth = 0.9 - (index + 1) * STEP;
+            ACTORS[index].drawDepth = DEPTH_LIMIT - (index + 1) * STEP;
         }
         C.depthFunc = 'lequal';
         const DEPTH_BATCHED = this.unitPresentation.drawBodies(ACTORS, sim);
