@@ -1606,6 +1606,13 @@ try {
         const BEFORE = await CARD_STATE(),
             DOOR = PAGE.locator('#doorCards [data-door="0"]:enabled');
         await DOOR.waitFor({ state: 'visible' });
+        if (!REPORT.bossCards.draws.length) {
+            assert.match(
+                await DOOR.innerText(),
+                /재생 \+1\/초/,
+                'the offered fixed regeneration card states its exact amount',
+            );
+        }
         const FOUND = await FIND_SEED(TYPE, ID);
         assert.ok(FOUND, `a seed exists whose next card floor offers the boss ${TYPE} ${ID}`);
         // A deterministic input seed, not a mocked card draw. No tick occurs before this native pointer click.
@@ -1682,9 +1689,23 @@ try {
             'the player card applies once',
         );
         assert.equal(DRAW.playerPick.receipt.role, 'player');
-        assert.deepEqual(DRAW.playerPick.receipt.card, FOUND.door, 'the player receives the clicked card');
+        assert.deepEqual(
+            DRAW.playerPick.receipt.card,
+            { ...FOUND.door, ...(FOUND.door.type === 'stat' ? { effect: APPLIED.playerCards.at(-1).effect } : {}) },
+            'the clicked offer and its captured numerical effect reach the player receipt',
+        );
+        if (!REPORT.bossCards.draws.length) {
+            assert.equal(
+                DRAW.playerPick.receipt.after.value - DRAW.playerPick.receipt.before.value,
+                1,
+                'the common fixed regeneration card grants exactly 1 HP per second',
+            );
+        }
         assert.equal(DRAW.receipt.role, 'boss');
-        assert.deepEqual(DRAW.receipt.card, DRAW.card);
+        assert.deepEqual(DRAW.receipt.card, {
+            ...DRAW.card,
+            ...(TYPE === 'stat' ? { effect: DRAW.cards.at(-1).effect } : {}),
+        });
         const VALUE = (state) =>
             TYPE === 'stat'
                 ? state.modifiers.attackPower?.pct || 0
@@ -1710,6 +1731,15 @@ try {
         PHASES.push(await FEEDBACK_FRAME());
         assert.equal(await PAGE.locator('#doorCards [data-selected="true"]').count(), 1);
         DRAW.outcome = await PAGE.locator('#doorReceipts [data-role="boss"]').innerText();
+        if (!REPORT.bossCards.draws.length) {
+            const PLAYER_OUTCOME = await PAGE.locator('#doorAnnouncement').textContent();
+            const FROM = DRAW.playerPick.receipt.before.value,
+                TO = FROM + 1;
+            assert.ok(
+                PLAYER_OUTCOME.includes(`재생 누적 강화 +${FROM}/초 → +${TO}/초`),
+                'the acquired fixed regeneration card adds 1 in absolute HP-per-second units',
+            );
+        }
         if (TYPE === 'skill') {
             const EXPECTED_BASE = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 }).format(
                 50 * (1 + 0.05 * (APPLIED.floor - 1)) * 0.25,

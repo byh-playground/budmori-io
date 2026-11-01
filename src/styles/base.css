@@ -694,6 +694,17 @@ body > header {
     line-height: 1.6;
 }
 /* 시작 화면 */
+.app-update-progress {
+    max-width: min(440px, calc(100% - 2 * var(--ui-s4)));
+    padding: var(--ui-s4);
+    border: var(--ui-bw) solid var(--ui-line);
+    border-radius: var(--ui-r-m);
+    background: var(--ui-panel);
+    color: var(--ui-ink);
+}
+.app-update-progress::backdrop {
+    background: var(--ui-dim);
+}
 .product-sheet {
     position: fixed;
     inset: 0;
@@ -1035,6 +1046,17 @@ body:has(#bossbar:not([hidden])) .bossbar {
     border: var(--ui-bw) solid var(--ui-line);
     color: var(--ui-ink);
     font-size: 24px;
+}
+.corner-settings[data-update-ready='true']::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 12px;
+    height: 12px;
+    border: var(--ui-bw) solid var(--ui-panel);
+    border-radius: 50%;
+    background: var(--ui-danger);
 }
 .corner-settings[aria-expanded='true'] {
     color: var(--ui-primary);

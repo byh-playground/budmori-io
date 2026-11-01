@@ -76,7 +76,7 @@ export function createPeaAttack(world, unit, action, recoverySeconds) {
         budgetInputs: {
             tierOneAttack: INPUTS.one,
             tierAttack: INPUTS.current,
-            ...(INPUTS.profile ? { profile: INPUTS.profile } : {}),
+            power: INPUTS.power,
             baseRecovery: recoverySeconds,
         },
         directMultiplier:

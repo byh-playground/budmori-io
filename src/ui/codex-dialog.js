@@ -7,7 +7,7 @@ import { speciesPortraitSource } from '../units/species-paint.js';
 const TABS = Object.freeze([
     Object.freeze({ id: 'recipes', label: '조합식' }),
     Object.freeze({ id: 'forms', label: '성향' }),
-    Object.freeze({ id: 'colors', label: '색' }),
+    Object.freeze({ id: 'colors', label: '속성' }),
 ]);
 
 // The authored face selection and cheek fills match the native player's data.
@@ -94,7 +94,7 @@ export function codexHtml(world, tab) {
         return gridHtml(
             world.codex.colors,
             ELEMENTS.slice(1, ELEMENT_COUNT + 1).map((entry) => entry.name),
-            '색 도감',
+            '속성 도감',
             (column) => ({ temperament: 0, element: column + 1 }),
         );
     }

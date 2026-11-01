@@ -64,7 +64,7 @@
     }
   });
 })({
-    "version": "876ea80ec2009a8d",
+    "version": "a6dbafa3331717b1",
     "activateMessage": "bloom-pwa:activate",
     "gamekit": "^https:\\/\\/cdn\\.jsdelivr\\.net\\/gh\\/byh-playground\\/bloom-gamekit@[0-9a-f]{40}\\/[A-Za-z0-9._/-]+$",
     "precache": [
@@ -323,6 +323,7 @@
         "src/save/farm-storage.js",
         "src/save/play-settings.js",
         "src/save/save-adapter.js",
+        "src/save/tower-card-migrations.js",
         "src/showcase.js",
         "src/startup-loading.js",
         "src/styles/base.css",
@@ -362,21 +363,21 @@
         "src/vector-sockets.cjs",
         "src/vector-sockets.js",
         "src/version.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@6fc81fe071e1adfc6ef3c94840775070f3de1b33/camera.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@6fc81fe071e1adfc6ef3c94840775070f3de1b33/debug-tools.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@6fc81fe071e1adfc6ef3c94840775070f3de1b33/deterministic.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@6fc81fe071e1adfc6ef3c94840775070f3de1b33/hud.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@6fc81fe071e1adfc6ef3c94840775070f3de1b33/input.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@6fc81fe071e1adfc6ef3c94840775070f3de1b33/interpolation.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@6fc81fe071e1adfc6ef3c94840775070f3de1b33/object-pool.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@6fc81fe071e1adfc6ef3c94840775070f3de1b33/presentation-events.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@6fc81fe071e1adfc6ef3c94840775070f3de1b33/pwa.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@6fc81fe071e1adfc6ef3c94840775070f3de1b33/rendering.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@6fc81fe071e1adfc6ef3c94840775070f3de1b33/save.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@6fc81fe071e1adfc6ef3c94840775070f3de1b33/scenario.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@6fc81fe071e1adfc6ef3c94840775070f3de1b33/simloop.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@6fc81fe071e1adfc6ef3c94840775070f3de1b33/vector-assets-loader.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@6fc81fe071e1adfc6ef3c94840775070f3de1b33/vector-assets.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@6fc81fe071e1adfc6ef3c94840775070f3de1b33/work-scheduler.js"
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@c21ef9b43336d430526ab7777473ab141eb4e88c/camera.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@c21ef9b43336d430526ab7777473ab141eb4e88c/debug-tools.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@c21ef9b43336d430526ab7777473ab141eb4e88c/deterministic.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@c21ef9b43336d430526ab7777473ab141eb4e88c/hud.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@c21ef9b43336d430526ab7777473ab141eb4e88c/input.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@c21ef9b43336d430526ab7777473ab141eb4e88c/interpolation.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@c21ef9b43336d430526ab7777473ab141eb4e88c/object-pool.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@c21ef9b43336d430526ab7777473ab141eb4e88c/presentation-events.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@c21ef9b43336d430526ab7777473ab141eb4e88c/pwa.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@c21ef9b43336d430526ab7777473ab141eb4e88c/rendering.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@c21ef9b43336d430526ab7777473ab141eb4e88c/save.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@c21ef9b43336d430526ab7777473ab141eb4e88c/scenario.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@c21ef9b43336d430526ab7777473ab141eb4e88c/simloop.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@c21ef9b43336d430526ab7777473ab141eb4e88c/vector-assets-loader.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@c21ef9b43336d430526ab7777473ab141eb4e88c/vector-assets.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@c21ef9b43336d430526ab7777473ab141eb4e88c/work-scheduler.js"
     ]
 });

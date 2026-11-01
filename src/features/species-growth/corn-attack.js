@@ -1,5 +1,6 @@
 import {
     attackBudgetInputs,
+    attackSourcePowerMatches,
     attackBudgetShape,
     attackRecordShape,
     attackGeometryScale,
@@ -100,7 +101,7 @@ export function createCornAttack(world, unit, action, commandSpeed = 1) {
         budgetInputs: {
             tierOneAttack: INPUTS.one,
             tierAttack: INPUTS.current,
-            ...(INPUTS.profile ? { profile: INPUTS.profile } : {}),
+            power: INPUTS.power,
             gradeMultiplier: GRADE,
             permanentMultiplier: Number.isFinite(unit.permanentStatMultiplier)
                 ? Math.max(0, unit.permanentStatMultiplier)
@@ -335,8 +336,7 @@ export function isCornAttackRecord(record, { pending = false } = {}) {
         record.directMultiplier !== 1.6 * INPUTS.gradeMultiplier * (1 + 0.03 * INPUTS.directRank) ||
         record.attachmentMultiplier !==
             0.5 * INPUTS.gradeMultiplier * (1 + 0.03 * INPUTS.directRank) * (1 + 0.03 * INPUTS.attachmentRank) ||
-        (!INPUTS.profile &&
-            record.source.attackerStats.attackPower !== INPUTS.tierAttack * INPUTS.permanentMultiplier) ||
+        !attackSourcePowerMatches(record, INPUTS.tierAttack, INPUTS.permanentMultiplier) ||
         record.speed !==
             Math.min(
                 1.63 / 0.35,
