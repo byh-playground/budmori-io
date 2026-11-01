@@ -200,11 +200,7 @@ export const FARM_SNAPSHOT_SHAPE = {
     nextId: 3,
     nextBossEncounterId: 1,
     bossRewardReceipts: [],
-    bossRewardStreams: {
-        normal: { rngState: 0, distributionState: null, payoutRngState: 0 },
-        event: { rngState: 0, distributionState: null, payoutRngState: 0 },
-        firstClear: { rngState: 0, distributionState: null, payoutRngState: 0 },
-    },
+    bossRewardRngState: 0,
     bossRewardInventory: [],
     bossRewardWatermarks: {
         farm: 0,
@@ -237,9 +233,6 @@ export const FARM_SNAPSHOT_SHAPE = {
         outcome: 'idle',
         encounterId: 0,
         rewardStatus: 'none',
-        rewardChance: 0,
-        rewardRoll: 0,
-        rewardUnitId: 0,
     },
     bosses: [],
     bossEncounter: null,
@@ -370,10 +363,7 @@ const BOSS = shapeFields(BOSS_SNAPSHOT_SHAPE, {
     }),
 });
 const REWARD = FIELDS(
-    'encounterId source receiptKey acquisitionMultiplier stage species tier x y firstClear chance baselineChance roll unitId rollBudget bonusRollChance rollCount boxCount successCount acquiredCount grantedCount placedCount queuedCount status',
-    {
-        calculation: JSON_PAYLOAD,
-    },
+    'encounterId source receiptKey stage species tier baseAmount bandIndex kindReward record acquiredCount placedCount queuedCount revealed status',
 );
 // Events, notices, effects and log entries are value payloads, not entities.
 // Their APIs and settlement summaries accept extensible JSON records. Keep
@@ -416,7 +406,6 @@ const SNAPSHOT_FIELDS = shapeFields(FARM_SNAPSHOT_SHAPE, {
     chestnutAttacks: [JSON_PAYLOAD],
     cornAttachments: FIELDS('nextGroupId nextAttachmentId', { groups: [CORN_GROUP], actions: [CORN_ACTION] }),
     bossRewardReceipts: [REWARD],
-    bossRewardStreams: JSON_PAYLOAD,
     bossRewardInventory: [FIELDS('species tier count')],
     events: [JSON_PAYLOAD],
     effects: [JSON_PAYLOAD],

@@ -185,20 +185,24 @@ try {
         await PRESS('#codexClose');
         await PAGE.evaluate(async () => {
             const { settleBossKill: SETTLE_BOSS_KILL } = await import('./src/boss/boss-rewards.js');
+            BUDMORI.sim.nextBossEncounterId = Math.max(BUDMORI.sim.nextBossEncounterId, 1000);
+            BUDMORI.sim.bossRewardRngState = 1;
             SETTLE_BOSS_KILL(BUDMORI.sim, {
                 encounterId: 999,
                 source: 'farm',
-                stage: 1,
+                stage: 40,
                 species: 7,
-                tier: 1,
-                x: 0,
-                y: 0,
-                firstClear: true,
-                rollBudget: 1,
+                kindReward: 3,
+                record: false,
             });
         });
-        await PAGE.waitForSelector('#bossRewardPortrait:not([hidden])');
-        assert.equal(await PAGE.locator('#bossRewardPortrait').getAttribute('src'), './assets/troops/sprout.svg');
+        await PAGE.waitForSelector('#bossRewardSprouts .boss-reward-sprout');
+        const PORTRAIT = await PAGE.locator('#bossRewardSprouts .boss-reward-sprout').first().getAttribute('src');
+        assert.ok(
+            decodeURIComponent(PORTRAIT).includes('budmori-sprout'),
+            'reward reuses the actual seedling body and face',
+        );
+        assert.equal(await PAGE.locator('#bossRewardSprouts .boss-reward-sprout').count(), 12);
         await PAGE.screenshot({ path: path.join(OUTPUT, MOBILE ? 'reward-mobile.png' : 'reward-desktop.png') });
         assert.deepEqual(ERRORS, []);
         console.log(

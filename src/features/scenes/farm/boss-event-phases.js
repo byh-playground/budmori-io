@@ -93,9 +93,6 @@ export function createFarmBossEventPhases(config) {
                     outcome: 'idle',
                     encounterId: 0,
                     rewardStatus: 'none',
-                    rewardChance: 0,
-                    rewardRoll: 0,
-                    rewardUnitId: 0,
                 };
                 world.replaceBosses([world.createBoss()]);
                 world.bossEncounter = null;

@@ -6,7 +6,7 @@ import {
     migratePlayerProgressionState,
     OVERALL_PROGRESSION_SETTINGS,
 } from './player-progression.js';
-import { BOSS_REWARD_SETTINGS } from '../boss/boss-rewards.js';
+import { validateBossRewardLedger, migrateBossRewardLedger } from '../save/boss-reward-ledger.js';
 import {
     TEMPERAMENT_COUNT,
     SEED_FEEDS,
@@ -24,8 +24,6 @@ const ASSERT = (value) => {
     }
 };
 const INTEGER = (value, min = 0, max = 1e12) => Number.isSafeInteger(value) && value >= min && value <= max;
-const SAFE_INTEGER = (value, min = 0, max = Number.MAX_SAFE_INTEGER) =>
-    Number.isSafeInteger(value) && value >= min && value <= max;
 const NUMBER = (value, min = 0, max = 1e12) => Number.isFinite(value) && value >= min && value <= max;
 const STRING = (value) => typeof value === 'string' && value.trim().length > 0 && value.length < 256;
 function keys(value, required, optional = []) {
@@ -35,36 +33,6 @@ function keys(value, required, optional = []) {
 }
 function copyPlayer(player) {
     return structuredClone(player);
-}
-const REWARD_EXTRAS = [
-    'x',
-    'y',
-    'acquisitionMultiplier',
-    'baselineChance',
-    'stage',
-    'firstClear',
-    'rollBudget',
-    'bonusRollChance',
-    'rollCount',
-    'boxCount',
-    'successCount',
-    'acquiredCount',
-    'grantedCount',
-    'placedCount',
-    'queuedCount',
-    'status',
-    'calculation',
-    'unitId',
-];
-function pendingReward(reward) {
-    const RESULT = {};
-    for (const [KEY, VALUE] of Object.entries(reward)) {
-        if (KEY === 'boxes' || KEY === 'revealedCount') {
-            continue;
-        }
-        RESULT[KEY] = structuredClone(VALUE);
-    }
-    return RESULT;
 }
 // A seed has no species while it grows; the save keeps the one it will become.
 function savedSpecies(unit) {
@@ -91,9 +59,7 @@ function cohortValues(unit) {
 export function captureFarmProgress(world) {
     ASSERT(world.scene === 'farm');
     const GROUPS = new Map(),
-        RECENTLY_SETTLED = new Set(
-            (world.bossRewardReceipts || []).filter((reward) => reward.status === 'ready').slice(-8),
-        );
+        RECENTLY_SETTLED = new Set((world.bossRewardReceipts || []).slice(-8));
     for (const UNIT of world.roster.residents()) {
         if (UNIT.isBattleOnlySummon || UNIT.countsTowardPermanentRoster === false || UNIT.faction !== 'player') {
             continue;
@@ -178,12 +144,12 @@ export function captureFarmProgress(world) {
                 pendingRewards: world.bossRewardReceipts
                     .filter(
                         (reward) =>
-                            reward.status === 'calculating' ||
+                            !reward.revealed ||
                             (Number.isSafeInteger(reward.queuedCount) && reward.queuedCount > 0) ||
                             RECENTLY_SETTLED.has(reward),
                     )
-                    .map(pendingReward),
-                rewardStreams: structuredClone(world.bossRewardStreams),
+                    .map((reward) => structuredClone(reward)),
+                rewardRngState: world.bossRewardRngState,
                 queuedRewards: world.bossRewardInventory
                     .filter((entry) => entry.count > 0)
                     .map(({ species, tier, count }) => ({ species, tier, count })),
@@ -295,180 +261,7 @@ export function validateFarmProgress(data, { allowLegacy = false } = {}) {
     const LEDGER = data.ledger;
     keys(LEDGER, ['boss']);
     const BOSS = LEDGER.boss;
-    keys(BOSS, ['nextEncounterId', 'settledThrough', 'pendingRewards', 'rewardStreams', 'queuedRewards']);
-    keys(BOSS.settledThrough, ['farm']);
-    ASSERT(INTEGER(BOSS.settledThrough.farm) && INTEGER(BOSS.nextEncounterId, BOSS.settledThrough.farm + 1));
-    const STREAMS = BOSS.rewardStreams;
-    keys(STREAMS, ['normal', 'event', 'firstClear']);
-    for (const STREAM of Object.values(STREAMS)) {
-        keys(STREAM, ['rngState', 'distributionState', 'payoutRngState']);
-        ASSERT(
-            INTEGER(STREAM.rngState, 0, 0xffffffff) &&
-                INTEGER(STREAM.payoutRngState, 0, 0xffffffff) &&
-                (STREAM.distributionState === null ||
-                    (() => {
-                        keys(STREAM.distributionState, [
-                            'version',
-                            'probability',
-                            'consecutiveFailures',
-                            'pendingTrials',
-                        ]);
-                        return (
-                            STREAM.distributionState.version === 1 &&
-                            NUMBER(STREAM.distributionState.probability, 0, 1) &&
-                            SAFE_INTEGER(STREAM.distributionState.consecutiveFailures) &&
-                            SAFE_INTEGER(STREAM.distributionState.pendingTrials)
-                        );
-                    })()),
-        );
-    }
-    ASSERT(
-        Array.isArray(BOSS.queuedRewards) &&
-            BOSS.queuedRewards.length <= CONFIG.unit.speciesCount &&
-            Array.isArray(BOSS.pendingRewards) &&
-            BOSS.pendingRewards.length <= 100000,
-    );
-    const INVENTORY = new Map();
-    for (const GROUP of BOSS.queuedRewards) {
-        keys(GROUP, ['species', 'tier', 'count']);
-        const GROUP_KEY = `${GROUP.species}:${GROUP.tier}`;
-        ASSERT(
-            INTEGER(GROUP.species, 0, CONFIG.unit.speciesCount - 1) &&
-                GROUP.tier === 1 &&
-                SAFE_INTEGER(GROUP.count, 1) &&
-                !INVENTORY.has(GROUP_KEY),
-        );
-        INVENTORY.set(GROUP_KEY, GROUP.count);
-    }
-    const RECEIPTS = new Set(),
-        ENCOUNTERS = new Set(),
-        QUEUED_BY_GROUP = new Map(),
-        DISTRIBUTION_KEYS = ['version', 'probability', 'consecutiveFailures', 'pendingTrials'],
-        VALID_DISTRIBUTION = (state) => {
-            keys(state, DISTRIBUTION_KEYS);
-            return (
-                state.version === 1 &&
-                NUMBER(state.probability, 0, 1) &&
-                SAFE_INTEGER(state.consecutiveFailures) &&
-                SAFE_INTEGER(state.pendingTrials)
-            );
-        },
-        VALID_JOB = (state, boxCount) => {
-            keys(state, [
-                'version',
-                'totalTrials',
-                'processedTrials',
-                'remainingTrials',
-                'successes',
-                'distributionState',
-                'rngState',
-            ]);
-            return (
-                state.version === 1 &&
-                state.totalTrials === boxCount &&
-                INTEGER(state.processedTrials, 0, boxCount) &&
-                INTEGER(state.remainingTrials, 0, boxCount) &&
-                state.processedTrials + state.remainingTrials === boxCount &&
-                INTEGER(state.successes, 0, state.processedTrials) &&
-                INTEGER(state.rngState, 0, 0xffffffff) &&
-                VALID_DISTRIBUTION(state.distributionState)
-            );
-        };
-    for (const REWARD of BOSS.pendingRewards) {
-        const BASE_KEYS = ['encounterId', 'source', 'receiptKey', 'species', 'tier', 'chance', 'firstClear'];
-        keys(REWARD, BASE_KEYS, [...REWARD_EXTRAS, 'rolls']);
-        ASSERT(
-            REWARD.source === 'farm' &&
-                INTEGER(REWARD.encounterId, 1, BOSS.settledThrough[REWARD.source]) &&
-                STRING(REWARD.receiptKey) &&
-                !RECEIPTS.has(REWARD.receiptKey) &&
-                INTEGER(REWARD.species, 0, CONFIG.unit.speciesCount - 1) &&
-                INTEGER(REWARD.tier, 1, CONFIG.unit.maxTier) &&
-                NUMBER(REWARD.chance, 0, 1) &&
-                typeof REWARD.firstClear === 'boolean',
-        );
-        RECEIPTS.add(REWARD.receiptKey);
-        const ENCOUNTER = `${REWARD.source}:${REWARD.encounterId}`;
-        ASSERT(!ENCOUNTERS.has(ENCOUNTER));
-        ENCOUNTERS.add(ENCOUNTER);
-        if (['calculating', 'ready'].includes(REWARD.status)) {
-            ASSERT(
-                REWARD.tier === 1 &&
-                    SAFE_INTEGER(REWARD.acquiredCount) &&
-                    SAFE_INTEGER(REWARD.placedCount) &&
-                    SAFE_INTEGER(REWARD.queuedCount) &&
-                    REWARD.placedCount + REWARD.queuedCount === REWARD.acquiredCount &&
-                    REWARD.grantedCount === REWARD.placedCount,
-            );
-            if (REWARD.queuedCount > 0) {
-                const GROUP_KEY = `${REWARD.species}:${REWARD.tier}`,
-                    QUEUED = (QUEUED_BY_GROUP.get(GROUP_KEY) || 0) + REWARD.queuedCount;
-                ASSERT(Number.isSafeInteger(QUEUED));
-                QUEUED_BY_GROUP.set(GROUP_KEY, QUEUED);
-            }
-            ASSERT(
-                REWARD.baselineChance ===
-                    (REWARD.firstClear
-                        ? BOSS_REWARD_SETTINGS.firstClearAcquisitionChance
-                        : BOSS_REWARD_SETTINGS.acquisitionChance) &&
-                    REWARD.chance === Math.min(1, REWARD.baselineChance * (REWARD.acquisitionMultiplier ?? 1)) &&
-                    SAFE_INTEGER(REWARD.rollBudget, 1, BOSS_REWARD_SETTINGS.maxRollCount) &&
-                    INTEGER(REWARD.boxCount, 1, BOSS_REWARD_SETTINGS.maxBoxCount) &&
-                    REWARD.boxCount === Math.min(REWARD.rollBudget, BOSS_REWARD_SETTINGS.maxBoxCount) &&
-                    REWARD.rollCount === REWARD.boxCount &&
-                    INTEGER(REWARD.successCount, 0, REWARD.boxCount),
-            );
-            if (REWARD.status === 'calculating') {
-                const CALC = REWARD.calculation;
-                keys(CALC, ['version', 'payouts', 'hits', 'payoutRngStateAfter', 'jobState']);
-                ASSERT(
-                    CALC.version === 1 &&
-                        Array.isArray(CALC.payouts) &&
-                        CALC.payouts.length === REWARD.boxCount &&
-                        Array.isArray(CALC.hits) &&
-                        CALC.hits.length <= REWARD.boxCount &&
-                        CALC.hits.every(
-                            (index, i) =>
-                                INTEGER(index, 0, REWARD.boxCount - 1) && (i === 0 || CALC.hits[i - 1] < index),
-                        ) &&
-                        INTEGER(CALC.payoutRngStateAfter, 0, 0xffffffff) &&
-                        (CALC.jobState === null || VALID_JOB(CALC.jobState, REWARD.boxCount)) &&
-                        REWARD.successCount === 0 &&
-                        REWARD.acquiredCount === 0 &&
-                        REWARD.queuedCount === 0,
-                );
-                const BASE = Math.floor(REWARD.rollBudget / REWARD.boxCount),
-                    EXTRA = REWARD.rollBudget % REWARD.boxCount;
-                ASSERT(
-                    CALC.payouts.every((payout) => INTEGER(payout, BASE, BASE + (EXTRA > 0 ? 1 : 0))) &&
-                        CALC.payouts.reduce((sum, payout) => sum + payout, 0) === REWARD.rollBudget &&
-                        CALC.payouts.filter((payout) => payout === BASE + 1).length === EXTRA,
-                );
-                if (CALC.jobState) {
-                    ASSERT(
-                        CALC.hits.every((index) => index < CALC.jobState.processedTrials) &&
-                            CALC.jobState.successes === CALC.hits.length,
-                    );
-                }
-            } else {
-                ASSERT(
-                    REWARD.calculation === null &&
-                        SAFE_INTEGER(REWARD.acquiredCount, 0, REWARD.rollBudget) &&
-                        REWARD.successCount <= REWARD.acquiredCount &&
-                        (REWARD.successCount === 0) === (REWARD.acquiredCount === 0),
-                );
-            }
-        } else {
-            FAIL();
-        }
-        if (REWARD.acquisitionMultiplier !== undefined) {
-            ASSERT(NUMBER(REWARD.acquisitionMultiplier, 0, 2));
-        }
-    }
-    ASSERT(
-        INVENTORY.size === QUEUED_BY_GROUP.size &&
-            [...INVENTORY].every(([key, quantity]) => QUEUED_BY_GROUP.get(key) === quantity),
-    );
+    validateBossRewardLedger(BOSS);
     return true;
 }
 // Deep value comparison occurs only at an actual save boundary. No JSON
@@ -501,6 +294,9 @@ export function migrateFarmProgress(data) {
     const PLAYER = migratePlayerProgressionState(data?.player),
         NEXT = structuredClone(data);
     NEXT.player = PLAYER;
+    if (Object.hasOwn(NEXT.ledger.boss, 'rewardStreams')) {
+        NEXT.ledger.boss = migrateBossRewardLedger(NEXT.ledger.boss);
+    }
     validateFarmProgress(NEXT);
     return NEXT;
 }
@@ -559,16 +355,10 @@ export function restoreFarmProgress(data) {
         bossRewardWatermarks: {
             ...BOSS.settledThrough,
         },
-        bossRewardStreams: structuredClone(BOSS.rewardStreams),
+        bossRewardRngState: BOSS.rewardRngState,
         bossRewardInventory: BOSS.queuedRewards.map(({ species, tier, count }) => ({ species, tier, count })),
     });
-    WORLD.bossRewardReceipts = BOSS.pendingRewards.map((reward) => ({
-        ...reward,
-        x: Number.isFinite(reward.x) ? reward.x : 0,
-        y: Number.isFinite(reward.y) ? reward.y : 0,
-        boxes: [],
-        revealedCount: reward.status === 'ready' ? reward.boxCount : 0,
-    }));
+    WORLD.bossRewardReceipts = structuredClone(BOSS.pendingRewards);
     WORLD.rng = new globalThis.BloomGamekitDeterministic.SeededPRNG(data.rngState);
     if (data.combine) {
         WORLD.combine = { ...data.combine };

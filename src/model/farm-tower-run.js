@@ -20,7 +20,7 @@ import { ARENA_GEOMETRY } from './arena-geometry.js';
 import { FORMATION_SKILL_DEFINITIONS } from '../formation/formation-skill-state.js';
 import { FACTION_CONFIG, hasFaction } from '../core/factions.js';
 import { createTowerEncounter, encounterBudget, TOWER_ENCOUNTER_SETTINGS } from '../tower/tower-encounter.js';
-import { bossStageStats, bossAcquisitionChance } from '../boss/boss-rewards.js';
+import { bossStageStats } from '../boss/boss-rewards.js';
 import { BOSS_SPECIES } from '../units/species-catalog.js';
 import { Unit as UNIT } from './farm-unit.js';
 import { bossBodyRadius, bossBodyHeight, bossTorsoHeight } from '../features/unit-body/definition.js';
@@ -321,10 +321,7 @@ export const FARM_TOWER_RUN = (base) =>
                 elapsed: 0,
                 outcome: 'fighting',
                 encounterId: this.nextBossEncounterId++,
-                rewardStatus: 'unresolved',
-                rewardChance: 0,
-                rewardRoll: 0,
-                rewardUnitId: 0,
+                rewardStatus: 'none',
             };
             this.joinNextBoss(true);
             // Nobody walks in by themselves: every living unit waits in the hand until the player deploys it.
@@ -408,9 +405,6 @@ export const FARM_TOWER_RUN = (base) =>
                 outcome: 'idle',
                 encounterId: 0,
                 rewardStatus: 'none',
-                rewardChance: 0,
-                rewardRoll: 0,
-                rewardUnitId: 0,
             };
             this.replaceBosses([this.createBoss()]);
             this.bossEncounter = null;
@@ -543,11 +537,6 @@ export const FARM_TOWER_RUN = (base) =>
                 this.farmBossEvent.elapsed = 0;
             }
             return this.finishFarmBossEvent('defeat');
-        }
-        getBossAcquisitionChance({ farmEvent = false } = {}) {
-            return bossAcquisitionChance({
-                farmEvent,
-            });
         }
         createBoss(species = BOSS_SPECIES, id = 'boss') {
             const BOSS = new UNIT(id, CLAMP(species, 0, CONFIG.unit.speciesCount), 1, 0, 0, {

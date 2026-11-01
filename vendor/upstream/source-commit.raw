@@ -1,25 +1,25 @@
-tree 5accf76be7cf39aaf3391c2c47caac3c249f55b4
-parent 74cd4842ea9d28f2627deb6fb25a60f9c08839b9
-author byh020907 <byh020907@naver.com> 1793529380 +0900
-committer GitHub <noreply@github.com> 1793529380 +0900
+tree 0e1b1066ce59b8b37bb99e03e5b65ff4fa5571e8
+parent fd2bcffd351a52adab011ba1e1e9a069734da282
+author byh020907 <byh020907@naver.com> 1793537275 +0900
+committer GitHub <noreply@github.com> 1793537275 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq5xYkCRC1aQ7uu5UhlAAA6pgQAF3zsG9iQ4FP8rRR5uLAXAPb
- wcRDGP223cqEh/tch1NcaOQQZQoWd3sAA5SnAb0l1b7QYZT0TDovIZABNbXYYDhv
- PIVL5GEHU1UXT4EaOUPsvYkkJ2p4jwDOTUqu7EiONNiLmya14C+VSaYYbNxVAudu
- jdLtuBLXhytmO6KF4Ihk3z2JBrkDSelEyUB1zI5M9FtT/UvhslMSgHfNn/aNBk1B
- M0GvhN2GvTQfBuBRqY0QA1msSVhjxeC9XJ1SUipl5WM9rK405Ow1uMuHQ+CUrHqd
- vsKzMVAbMeSHdlw/OrnYxvZ6gyx+l4bzL5UZFy/7mcy4cc4286XfsPQQAplCQeZu
- zaMyj9Zk0fD3KtRjh2V9emqMzUl8KCJpUE2Hwwvz5KD8eJNihl3rTszttJ/mGDh5
- a72OQ5QmUIqBY6f3jCQj2nPrgIg6znABTP3dLmntWi2eBBiEyM4d7i08oLtW39Iv
- R1XqnCOHg/k7onVx9XsjG511lRerxWBf+1ILV8e5X6uafEBLBEb0DjvEIVOd6/R7
- dp3fhemvwfN4YAEjcLWqPhA5OHpIRckzUYw+a9uyL1eH9TpN1If3uzpM3qe3egi7
- ahGR9nj/xxCKd6D6LtNrnBHzVNq4P95m6mD6QojAcQBQys4qslTRTQacuRn7Bql8
- 7jTvIw2rzq8gCtr1Al9y
- =xY0y
+ wsFcBAABCAAQBQJq5zT7CRC1aQ7uu5UhlAAABc8QAD6xoJDQO4wO6QaXbQ/j9LWk
+ na1FrJ00kN42CttT1sWX8qRAVqNT6d3naJNC1tzpqaUp4zvZl0S74FoVQIhnAH2S
+ 6R4UbX75OCZn+And1gaTUgYa/kdx2+46+m69iPlsq4iypH6NekcdDjO1VxF4kLDg
+ PIfzZCK7v7z+Uc6C/q9lUN/ewD5k84K4sxjdZo6OUksEhofkFpEwLaH8XuGsfOnQ
+ YIFsB2+OR7cGTn2mVG3CFHaLvNqMDVTo/txoO+WJjRx6eXTSiF1Jbdil4ET3I9/v
+ YvY6NXh08Oq7ea893UJayXElinpeZetVTihupCMLfzE5MiYgmPEX0KLS6ncBkc3L
+ kWgjBfR/mPwkKnf5G1M0p2mb7KhE7tjI6nw5JawCd/aFfai/aAYRQfvq1ERuYwcR
+ EwyXG9c5LPGKp7powMOxApm/Xl1icvLfY10DZWvlxFKeAc8KM7FA9EZVsF3CZk9Q
+ KNje6AWiAzpDq68eGIKvQoktdzrHXWPcL8j0IKtiDX+1aK8+G4I9vILtL0HkIDC3
+ rSjmQuMqLcVyss7Fw1FvjAY8/ia59wr1r+pWXn/LHgUVrS/TCrXM9do/koGDyGK0
+ Ha704qL+ysoaCkB0GiLE9U/qBPpU7Sx67ZsZs150lzvrKNq9jqaChMgNUEdC2OnC
+ rIbv0Nehb0ztf/bTMiAG
+ =4lmK
  -----END PGP SIGNATURE-----
  
 
-[performance] 이미지 사각형 제출의 반복 할당 제거 (0.39.5) (#181)
+[bug-fix] 저장 이관 실패 시 원본 보존과 쓰기 잠금 적용 (#182)
 
 Co-authored-by: yong-ho bae <dragonlake.bae@gmail.com>

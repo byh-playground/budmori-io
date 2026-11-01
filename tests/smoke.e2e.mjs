@@ -428,14 +428,30 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
             const W = BUDMORI.sim;
             return W.tower.active && W.farmBossEvent.phase === 'idle' && W.tower.doors.length > 0;
         });
-        // The product reveals earned boxes before offering the next floor. Observe that real flow;
-        // a fixed post-kill delay can see valid doors while their reward dialog still owns the screen.
+        // A single chest presents the already-settled quantity. Skipping that animation must not award again.
         await PAGE.waitForFunction(() => {
-            const RECEIPT = [...BUDMORI.sim.bossRewardReceipts]
-                .reverse()
-                .find((reward) => ['calculating', 'ready'].includes(reward.status));
-            return !RECEIPT || (RECEIPT.status === 'ready' && RECEIPT.revealedCount >= RECEIPT.boxCount);
+            const RECEIPT = BUDMORI.sim.bossRewardReceipts.at(-1);
+            return !RECEIPT || RECEIPT.revealed || !document.getElementById('bossRewardDialog').hidden;
         });
+        const SETTLED = await WORLD(() => {
+            const W = BUDMORI.sim,
+                R = W.bossRewardReceipts.at(-1);
+            return R && { key: R.receiptKey, acquired: R.acquiredCount, rng: W.bossRewardRngState };
+        });
+        if (await PAGE.locator('#bossRewardDialog').isVisible()) {
+            expect((await PAGE.locator('#bossRewardChest').count()) === 1, 'one chest presents the whole reward');
+            await PAGE.locator('#bossRewardOpenAll').click();
+        }
+        await PAGE.waitForFunction(() => BUDMORI.sim.bossRewardReceipts.at(-1)?.revealed === true);
+        const REVEALED = await WORLD(() => {
+            const W = BUDMORI.sim,
+                R = W.bossRewardReceipts.at(-1);
+            return { key: R.receiptKey, acquired: R.acquiredCount, rng: W.bossRewardRngState };
+        });
+        expect(
+            JSON.stringify(SETTLED) === JSON.stringify(REVEALED),
+            'opening or skipping cannot reroll or award again',
+        );
         if (await PAGE.locator('#bossRewardDialog').isVisible()) {
             try {
                 await PAGE.locator('#bossRewardClose').click({ timeout: 2000 });
@@ -582,53 +598,203 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
 });
 
 await check(
-    'a seed species the farm lacks joins as a pair of seeds on its first win, even below the best floor',
+    'one chest awards the exact drawn seed quantity, including empty and jackpot, without a hidden partner',
     async () => {
         const R = await WORLD(async () => {
-            const { Garden: GARDEN } = await import('./src/model/farm-model.js');
-            const W = new GARDEN(731);
-            W._flushEjected();
-            for (const U of [...W.units]) {
-                W.removeUnit(U);
+            const { Garden: GARDEN } = await import('./src/model/farm-model.js'),
+                { settleBossKill: SETTLE, revealBossReward: REVEAL } = await import('./src/boss/boss-rewards.js'),
+                { SeededPRNG: RNG } = globalThis.BloomGamekitDeterministic,
+                OUTCOMES = [];
+            // Native RNG scene states: normal (.627...), empty (.011...), jackpot (.956...). No outcome is mocked.
+            for (const [STATE, AMOUNT, BAND] of [
+                [1, 12, 3],
+                [7, 0, 0],
+                [36, 24, 6],
+            ]) {
+                const W = new GARDEN(731);
+                W._flushEjected();
+                for (const U of [...W.units]) {
+                    W.removeUnit(U);
+                }
+                for (let i = 0; i < 6; i++) {
+                    // A late-floor army survives the brief native drop before the scripted boss defeat.
+                    W.spawn(0, 6, i * 0.4, 0);
+                }
+                W.playerProgression.towerBest = 50;
+                W.startTower(40);
+                const TICK = () => {
+                    W.step(1 / 30);
+                    W.advanceWork(1 / 30);
+                };
+                for (let i = 0; i < 40; i++) {
+                    TICK();
+                }
+                W.finishMarch();
+                for (let i = 0; i < 400 && W.farmBossEvent.phase !== 'fighting'; i++) {
+                    TICK();
+                }
+                if (W.farmBossEvent.phase !== 'fighting') {
+                    throw new Error('the 40-floor scene did not finish its native boss drop');
+                }
+                W.bossRewardRngState = STATE;
+                const EXPECTED_RNG = new RNG(STATE);
+                EXPECTED_RNG.nextUint32();
+                // Mid-boss floors join several bosses; defeat each native arrival before the one settlement.
+                for (let i = 0; i < 400; i++) {
+                    if (W.farmBossEvent.phase === 'fighting') {
+                        for (const BOSS of W.bosses) {
+                            BOSS.hp = 0;
+                        }
+                    }
+                    TICK();
+                }
+                const RECEIPT = W.bossRewardReceipts.at(-1),
+                    BEFORE = {
+                        count: W.unitCollection.items.filter((u) => !u.isBattleOnlySummon).length,
+                        acquired: RECEIPT.acquiredCount,
+                        rng: W.bossRewardRngState,
+                    },
+                    REPEATED = SETTLE(W, {
+                        encounterId: RECEIPT.encounterId,
+                        source: RECEIPT.source,
+                        stage: RECEIPT.stage,
+                        species: RECEIPT.species,
+                        kindReward: RECEIPT.kindReward,
+                        record: RECEIPT.record,
+                    }).receipt;
+                REVEAL(W, RECEIPT.receiptKey);
+                REVEAL(W, RECEIPT.receiptKey);
+                OUTCOMES.push({
+                    expected: AMOUNT,
+                    expectedBand: BAND,
+                    record: W.tower.record,
+                    stage: RECEIPT.stage,
+                    kindReward: RECEIPT.kindReward,
+                    base: RECEIPT.baseAmount,
+                    band: RECEIPT.bandIndex,
+                    acquired: RECEIPT.acquiredCount,
+                    placed: RECEIPT.placedCount,
+                    queued: RECEIPT.queuedCount,
+                    count: W.unitCollection.items.filter((u) => !u.isBattleOnlySummon).length,
+                    revealed: RECEIPT.revealed,
+                    sameReceipt: REPEATED === RECEIPT,
+                    unchanged:
+                        BEFORE.count === W.unitCollection.items.filter((u) => !u.isBattleOnlySummon).length &&
+                        BEFORE.acquired === RECEIPT.acquiredCount &&
+                        BEFORE.rng === W.bossRewardRngState,
+                    oneDraw: W.bossRewardRngState === EXPECTED_RNG.state,
+                    noFirstClear: !Object.hasOwn(RECEIPT, 'firstClear'),
+                });
             }
-            for (let i = 0; i < 6; i++) {
-                W.spawn(0, 1, i * 0.4, 0);
-            }
-            W.playerProgression.towerBest = 50;
-            W.startTower(1);
-            const TICK = () => {
-                W.step(1 / 30);
-                W.advanceWork(1 / 30);
-            };
-            for (let i = 0; i < 40; i++) {
-                TICK();
-            }
-            W.finishMarch();
-            for (let i = 0; i < 10; i++) {
-                TICK();
-            }
-            W.boss.hp = 0;
-            for (let i = 0; i < 400; i++) {
-                TICK();
-            }
-            const RECEIPT = W.bossRewardReceipts.at(-1);
-            return {
-                record: W.tower.record,
-                first: RECEIPT?.firstClear,
-                status: RECEIPT?.status,
-                bossSpecies: W.bosses[0].species,
-                species: RECEIPT?.species,
-                seeds: W.unitCollection.items.filter(
-                    (u) => !u.isBattleOnlySummon && u.seedling?.heritage === RECEIPT?.species,
-                ).length,
-            };
+            return OUTCOMES;
         });
-        expect(
-            R.bossSpecies === 9 && R.record === false && R.first === true && R.seeds === 2,
-            `first win ${JSON.stringify(R)}`,
-        );
+        for (const OUTCOME of R) {
+            expect(
+                OUTCOME.stage === 40 && OUTCOME.kindReward === 3 && OUTCOME.record === false && OUTCOME.base === 12,
+                `40-floor mid-boss basis ${JSON.stringify(OUTCOME)}`,
+            );
+            expect(
+                OUTCOME.band === OUTCOME.expectedBand &&
+                    OUTCOME.acquired === OUTCOME.expected &&
+                    OUTCOME.placed === OUTCOME.expected &&
+                    OUTCOME.queued === 0 &&
+                    OUTCOME.count === 6 + OUTCOME.expected,
+                `exact seeds without a hidden partner ${JSON.stringify(OUTCOME)}`,
+            );
+            expect(
+                OUTCOME.revealed && OUTCOME.sameReceipt && OUTCOME.unchanged && OUTCOME.oneDraw && OUTCOME.noFirstClear,
+                `one settlement survives repeated opening ${JSON.stringify(OUTCOME)}`,
+            );
+        }
     },
 );
+await check('a full farm saves every earned seed and grants only the room freed after reload', async () => {
+    const R = await WORLD(async () => {
+        const { Garden: GARDEN } = await import('./src/model/farm-model.js'),
+            {
+                settleBossKill: SETTLE,
+                grantPendingBossAcquisitions: GRANT,
+                revealBossReward: REVEAL,
+            } = await import('./src/boss/boss-rewards.js'),
+            { captureFarmProgress: CAPTURE, restoreFarmProgress: RESTORE } =
+                await import('./src/model/farm-progress.js'),
+            W = new GARDEN(731);
+        W._flushEjected();
+        while (W.freeRoom() > 0) {
+            W.spawn(0, 1, 0, 0);
+        }
+        W.bossRewardRngState = 36;
+        const RECEIPT = SETTLE(W, {
+            encounterId: W.nextBossEncounterId++,
+            source: 'farm',
+            stage: 40,
+            species: 2,
+            kindReward: 3,
+            record: false,
+        }).receipt;
+        GRANT(W);
+        REVEAL(W, RECEIPT.receiptKey);
+        const SAVED = CAPTURE(W),
+            LOADED = RESTORE(SAVED),
+            PENDING = LOADED.bossRewardReceipts.find((r) => r.receiptKey === RECEIPT.receiptKey),
+            BEFORE = {
+                acquired: PENDING.acquiredCount,
+                placed: PENDING.placedCount,
+                queued: PENDING.queuedCount,
+                pendingPopulation: LOADED.pendingRewardPopulation,
+                inventory: LOADED.bossRewardInventory[0]?.count,
+            };
+        for (const UNIT of LOADED.unitCollection.items.slice(0, 3)) {
+            LOADED.removeUnit(UNIT);
+        }
+        const GRANTED = GRANT(LOADED),
+            SECOND = RESTORE(CAPTURE(LOADED)),
+            FINAL = SECOND.bossRewardReceipts.find((r) => r.receiptKey === RECEIPT.receiptKey),
+            RNG_BEFORE = SECOND.bossRewardRngState;
+        const REPEATED = SETTLE(SECOND, {
+            encounterId: FINAL.encounterId,
+            source: 'farm',
+            stage: 40,
+            species: 2,
+            kindReward: 3,
+            record: false,
+        }).receipt;
+        return {
+            BEFORE,
+            granted: GRANTED.length,
+            acquired: FINAL.acquiredCount,
+            placed: FINAL.placedCount,
+            queued: FINAL.queuedCount,
+            pendingPopulation: SECOND.pendingRewardPopulation,
+            inventory: SECOND.bossRewardInventory[0]?.count,
+            free: SECOND.freeRoom(),
+            revealed: FINAL.revealed,
+            sameReceipt: REPEATED === FINAL,
+            sameRng: RNG_BEFORE === SECOND.bossRewardRngState,
+        };
+    });
+    expect(
+        R.BEFORE.acquired === 24 &&
+            R.BEFORE.placed === 0 &&
+            R.BEFORE.queued === 24 &&
+            R.BEFORE.pendingPopulation === 24 &&
+            R.BEFORE.inventory === 24,
+        `full farm keeps all 24 seeds ${JSON.stringify(R)}`,
+    );
+    expect(
+        R.granted === 3 &&
+            R.acquired === 24 &&
+            R.placed === 3 &&
+            R.queued === 21 &&
+            R.pendingPopulation === 21 &&
+            R.inventory === 21 &&
+            R.free === 0 &&
+            R.revealed &&
+            R.sameReceipt &&
+            R.sameRng,
+        `reload and three free places conserve the entitlement ${JSON.stringify(R)}`,
+    );
+});
 await check('stat cards scale the base at every tier, and clearing them restores the base', async () => {
     const ATTACK = () => baseUnitStatsFor(1, 0).attackPower,
         HP = () => baseUnitStatsFor(1, 0).maxHp,
@@ -872,18 +1038,35 @@ await check('help cards play the real game in an isolated frame and leave the sa
 
 await check('a full farm keeps queued rewards and the panel shows them as one sprout count, no species', async () => {
     await WORLD(() => document.getElementById('upgradeMenu').click());
-    await WORLD(() => {
-        const W = BUDMORI.sim;
-        window.__queueInventoryBefore = structuredClone(W.bossRewardInventory);
+    await WORLD(async () => {
+        const W = BUDMORI.sim,
+            { settleBossKill: SETTLE, revealBossReward: REVEAL } = await import('./src/boss/boss-rewards.js');
+        window.__queueStateBefore = structuredClone({
+            inventory: W.bossRewardInventory,
+            receipts: W.bossRewardReceipts,
+            watermarks: W.bossRewardWatermarks,
+            rng: W.bossRewardRngState,
+            nextEncounterId: W.nextBossEncounterId,
+        });
         window.__fillers = [];
         while (W.freeRoom() > 0) {
             window.__fillers.push(W.spawn(0, 1, 0, 0));
         }
-        W.bossRewardInventory = [
-            { species: 0, tier: 1, count: 3 },
-            { species: 2, tier: 1, count: 5 },
-        ];
-        W.markProgressChanged();
+        for (const [SPECIES, STAGE] of [
+            [0, 21],
+            [2, 41],
+        ]) {
+            W.bossRewardRngState = 1;
+            const RECEIPT = SETTLE(W, {
+                encounterId: W.nextBossEncounterId++,
+                source: 'farm',
+                stage: STAGE,
+                species: SPECIES,
+                kindReward: 1,
+                record: false,
+            }).receipt;
+            REVEAL(W, RECEIPT.receiptKey);
+        }
     });
     let got;
     try {
@@ -897,14 +1080,19 @@ await check('a full farm keeps queued rewards and the panel shows them as one sp
         });
     } finally {
         if (!PAGE.isClosed()) {
-            // Synthetic queued counts must never leak into a later native reward settlement if this UI check fails.
+            // Restore the scene's entire reward ledger, so this UI observation cannot leak earned test rewards.
             await WORLD(() => {
-                const W = BUDMORI.sim;
-                W.bossRewardInventory = window.__queueInventoryBefore;
+                const W = BUDMORI.sim,
+                    BEFORE = window.__queueStateBefore;
+                W.bossRewardInventory = BEFORE.inventory;
+                W.bossRewardReceipts = BEFORE.receipts;
+                W.bossRewardWatermarks = BEFORE.watermarks;
+                W.bossRewardRngState = BEFORE.rng;
+                W.nextBossEncounterId = BEFORE.nextEncounterId;
                 for (const UNIT of window.__fillers) {
                     W.removeUnit(UNIT);
                 }
-                delete window.__queueInventoryBefore;
+                delete window.__queueStateBefore;
                 delete window.__fillers;
                 W.markProgressChanged();
             });
@@ -1222,11 +1410,11 @@ await check('a boss hit volume is its drawn body: it differs per species and is 
     expect(new Set(GOT.map((boss) => boss.height)).size > 4, `heights ${JSON.stringify(GOT)}`);
 });
 
-await check('boss stage stats and rewards climb linearly, with a capped compounding on hp and attack', async () => {
+await check('boss stage stats retain their capped compounding on hp and attack', async () => {
     const [S1, S2, S10, S30, S61] = [1, 2, 10, 30, 61].map(bossStageStats);
-    expect(S1.hp === 200 && S1.attackPower === 4 && S1.xp === 20 && S1.rollBudget === 1, JSON.stringify(S1));
-    expect(S2.hp > S1.hp && S2.rollBudget === 2 && S2.xp === 30, JSON.stringify(S2));
-    expect(S10.rollBudget === 10 && S61.rollBudget === 61 && S61.xp === 620, JSON.stringify([S10, S61]));
+    expect(S1.hp === 200 && S1.attackPower === 4 && S1.xp === 20, JSON.stringify(S1));
+    expect(S2.hp > S1.hp && S2.xp === 30, JSON.stringify(S2));
+    expect(S10.xp === 110 && S61.xp === 620, JSON.stringify([S10, S61]));
     // Past the cap the growth stops, so hp is linear again and the last 31 floors only double it.
     expect(S61.hp / S30.hp < 2.2 && S61.hp < 20000, JSON.stringify([S30.hp, S61.hp]));
 });
