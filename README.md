@@ -51,7 +51,7 @@ npm run test:codex
 
 정적 서버로 저장소 루트를 열면 `index.html` → `src/bootstrap.js` → `src/farm-app.js`와 그 원본 ES 모듈을 직접 실행합니다. 별도 번들·concat·생성 산출물 배포 단계는 없습니다. GameKit은 `gamekit-lock.json`의 불변 CDN ESM을 검증 후 로드합니다.
 
-200마리 렌더 벤치마크는 `node tests/unit-sprites.e2e.mjs --benchmark --count=200 --backend=vector --output=/tmp/budmori-benchmark`로 실행합니다. 각 회차는 고정 시드·카메라·50ms 진행, 24프레임 준비 뒤 60프레임 표본이며 두 번 반복합니다. 결과의 CPU 시간·GPU 제출 횟수와 [측정 범위](docs/performance-diagnostics.md)를 구분해 읽습니다. `--backend`를 생략하면 기존 vector/sprite 비교를 실행합니다.
+200마리 렌더 벤치마크는 `node tests/unit-sprites.e2e.mjs --benchmark --count=200 --backend=vector --output=/tmp/budmori-benchmark`로 실행합니다. 각 회차는 고정 시드·카메라·50ms 진행, 24프레임 준비 뒤 60프레임 표본이며 두 번 반복합니다. 결과의 CPU 시간·GPU 제출 횟수와 [측정 범위](docs/performance-diagnostics.md)를 구분해 읽습니다. `--backend`를 생략하면 기존 vector/sprite 비교를 실행합니다. `--species=7`은 같은 밀만 배치하며, `--gpu-readback`은 렌더 CPU 측정 밖에서 프레임마다 GPU 읽기를 기다리는 별도 측정입니다. `--breeding-rings`는 번식 대기 표식을 갖춘 병력을 배치합니다. `--warmup=12 --samples=24 --rounds=1`처럼 준비·표본·반복 수를 지정할 수 있습니다. 전후에 같은 옵션을 사용하고 이 모드의 RAF 간격을 실제 게임 FPS로 해석하지 않습니다.
 
 `node scripts/gamekit-provenance.cjs`는 고정 SDK의 Git 객체·manifest·SHA-256과 원본 import graph·SVG를 읽기 전용으로 검증합니다. `npm test`의 종료·복귀 흐름은 저장 뒤 렌더 프레임 취소, 자원 해제, 뒤로 가기 캐시의 `pageshow` 재로딩과 이어하기를 함께 확인합니다.
 

@@ -1,25 +1,31 @@
-tree 0f1235fd0245f67083a986d8dea3f3d7196dd1cc
-parent 324fcdf6817557be1d590b41874889651725ae32
-author byh020907 <byh020907@naver.com> 1793544933 +0900
-committer GitHub <noreply@github.com> 1793544933 +0900
+tree 6b54d85e77a4389e09256557a6147f092961abfe
+parent f983d7a053563bb7a054dd068e22dffdbda66002
+author byh020907 <byh020907@naver.com> 1793558442 +0900
+committer GitHub <noreply@github.com> 1793558442 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq51LlCRC1aQ7uu5UhlAAAa4gQAHRUUrlQfBdArmozIl8LlZOw
- X2Zeq+1Tn8CGmKKWiqaaL1UcB3hnttGEmoF3KNBKE+RYRi5DqIb2BCfrwZgFDMn1
- mPsqdja9cTCm0FT3fUH0/E6MZZdZQc8NeCD8snuzQ3zU15lZgdZtIGBr3lcKwcBB
- oCYAk8ubZDjx3cXSzkRwCe130c1HN7FKLyrIr5Y7A+N7IVWYXeZDwEgWsmBhZoYH
- EYugtflUpL9nt2NUIYYm9bJtacigWDk8Le2OaNCH6RDs/Kt9A9KltBuyD/cD2ihB
- PN6cfCnwsYy+a1h4mS1CQGuzVs7PwCjHgWYfrMUEGQzFnmBQR8goS/6nmova5hCJ
- lYCnZSHH3/bZR+e0d0UGAzTVYhpmPfCFDoZfb7dWmuxWQbYAnlVPEueD8L+kPL1A
- W1gaSrbsiRq16hpOrz0EjLHbH9rM9J06cqYbfRf+Mg1Xbg6C6qxGbS0kBX/G526x
- jcPeFhi09iOVYhjP86u4C/TKyFwkTXJxpJJJcWLT2wpwE015s2Cpgt+YOQyp5xEy
- CEQiA6fiQERSD98VM4emGE+rH8Y6yC71RJUI3rEH8MbEqB29HZDmFRlpeRTWhP/2
- 2mowAb3bYsDgiNXGZnucCfHFcA4+aqBjn9V/f2pCpuKLQmFKPvG7toQ+e24nYsLM
- YrZF0lNCC7Ag/swNZtX0
- =X1pI
+ wsFcBAABCAAQBQJq54eqCRC1aQ7uu5UhlAAAZEsQAAthXy1uiH9vLaqfeww+7rPF
+ tK0lRB7E7Fj4w20ei41v4Cst+rKByjzetrgLJZrs7sUtefWhfkfgwQsWV271JlHC
+ tcFCj8msoNuntjL9z2a4MBtrs9i52XiR9DORyxsE8xD1v8aVqabs7zALyP/styOi
+ A1hV9y8EowkZX70mFvNerrrTbNVeoj7H2nou98+ovi3VLjWvTxqocL6Ajy66drk6
+ G6gZmBOYT829dhYRJaihDHhFNEGNFlY0aZX6ICiJEzxZ/kC6s6e6ZWhl7+/gRQTD
+ brtsGjGIvlZEm9KJBoL3QYtyC3TJfl6bQsuXz+cQL4cXHSSr5efZOyu8RkhvKwvS
+ MaKMCSByKT458s250YAlLsHed3z3aXW3/Gt+UKaH784GK5lsAsLY30ifMTgbP38L
+ NW8t/aN+7ZBiiho3zY0z/JmTOKtyrAzcbWCYQmGNDWFFYrd98cZwHBrMrSTrIzXd
+ bqH3Ba5YPMqKox/o14aGhaUwfgVqCCCIefCCLMl66yMGH3YurGSmEdTpwwTXaDUY
+ 92/CfMJ20OCsabVFvDwmqPrOzVe+R7yppteW9/9GqGf+mbkHAAMMg5AqGapv/tmn
+ BejjifyW2Y8uNVXSrkygMt3ndQ6eJVXZp3ftyQxvmF8XhQnMNPbX+vWq64FxX7ig
+ LonWRrLRoSxZ067eBYum
+ =7r1X
  -----END PGP SIGNATURE-----
  
 
-[feature] PWA 업데이트 재확인과 설치 완료 대기 추가 (#183)
+[performance] 메시·얼굴·벡터 표식 순서 유지 배치 및 GPU 포즈 공유 (#184)
+
+* [performance] 반투명 메시·얼굴 배치와 GPU 포즈 공유
+
+* [performance] 일반 paint 배치와 chunk GPU 자원 재사용
+
+---------
 
 Co-authored-by: yong-ho bae <dragonlake.bae@gmail.com>

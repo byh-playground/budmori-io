@@ -18,6 +18,16 @@ const COUNT_OPTION = process.argv.find((value) => value.startsWith('--count='));
 const BACKEND_OPTION = process.argv.find((value) => value.startsWith('--backend='));
 const COUNT = COUNT_OPTION ? Number(COUNT_OPTION.slice('--count='.length)) : null;
 const BACKEND = BACKEND_OPTION?.slice('--backend='.length);
+const SPECIES_OPTION = process.argv.find((value) => value.startsWith('--species='));
+const SPECIES = SPECIES_OPTION ? Number(SPECIES_OPTION.slice('--species='.length)) : null;
+const GPU_READBACK = process.argv.includes('--gpu-readback');
+const BREEDING_RINGS = process.argv.includes('--breeding-rings');
+assert(!BREEDING_RINGS || BENCHMARK, '--breeding-rings is a benchmark fixture');
+assert(
+    !SPECIES_OPTION || (BENCHMARK && Number.isSafeInteger(SPECIES) && SPECIES >= 0 && SPECIES < 10),
+    'Benchmark --species must be 0..9',
+);
+assert(!GPU_READBACK || BENCHMARK, '--gpu-readback is a separate benchmark mode');
 assert(
     !COUNT_OPTION || (BENCHMARK && Number.isSafeInteger(COUNT) && COUNT > 0 && COUNT <= 1000),
     'Benchmark --count must be 1..1000',
@@ -28,8 +38,18 @@ assert(
 );
 const COUNTS = COUNT ? [COUNT] : BENCHMARK ? (BATTLE ? [100, 500] : [100, 500, 1000]) : [20];
 const REPORT_NAME = BENCHMARK ? (BATTLE ? 'battle-benchmark.json' : 'benchmark.json') : 'report.json';
-const SAMPLES = BENCHMARK ? 60 : 12;
-const WARMUP = BENCHMARK ? 24 : 4;
+const BENCHMARK_INTEGER = (name, fallback, max) => {
+    const OPTION = process.argv.find((value) => value.startsWith(`--${name}=`));
+    if (!OPTION) {
+        return fallback;
+    }
+    const VALUE = Number(OPTION.slice(name.length + 3));
+    assert(BENCHMARK && Number.isSafeInteger(VALUE) && VALUE > 0 && VALUE <= max, `Invalid --${name}`);
+    return VALUE;
+};
+const SAMPLES = BENCHMARK_INTEGER('samples', BENCHMARK ? 60 : 12, 1000);
+const WARMUP = BENCHMARK_INTEGER('warmup', BENCHMARK ? 24 : 4, 1000);
+const ROUNDS = BENCHMARK_INTEGER('rounds', BENCHMARK ? 2 : 1, 10);
 const MANIFEST = JSON.parse(
     fs
         .readFileSync(path.join(ROOT, 'index.html'), 'utf8')
@@ -84,8 +104,12 @@ const REPORT = {
                 .digest('hex'),
         ]),
     ),
+    species: SPECIES,
+    gpuReadback: GPU_READBACK,
+    breedingRings: BREEDING_RINGS,
     warmup: WARMUP,
     samples: SAMPLES,
+    rounds: ROUNDS,
     scene: BATTLE ? 'tower battle' : 'farm',
     measurementBoundary:
         'FarmSession pulse + presentation + renderer; excludes app DOM/HUD/input. Instrumented RAF intervals are not an uninstrumented whole-app FPS claim.',
@@ -102,7 +126,7 @@ try {
             : { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] }),
     });
     REPORT.browser = browser.version();
-    for (let round = 0; round < (BENCHMARK ? 2 : 1); round++) {
+    for (let round = 0; round < ROUNDS; round++) {
         for (const COUNT of COUNTS) {
             for (const BACKEND of BACKEND_OPTION
                 ? [BACKEND_OPTION.slice('--backend='.length)]
@@ -219,7 +243,17 @@ try {
                 await PAGE.locator('#newGame').click();
                 await PAGE.waitForFunction(() => BUDMORI.runtime.presentationView?.units.length);
                 const RESULT = await PAGE.evaluate(
-                    async ({ count, warmup, samples, battle, expectedBackend, auditClocks }) => {
+                    async ({
+                        count,
+                        warmup,
+                        samples,
+                        battle,
+                        expectedBackend,
+                        auditClocks,
+                        species,
+                        gpuReadback,
+                        breedingRings,
+                    }) => {
                         const APP = BUDMORI,
                             WORLD = APP.sim,
                             SESSION = APP.runtime,
@@ -258,7 +292,7 @@ try {
                             ROWS = Math.ceil(count / COLS);
                         for (let i = 0; i < count; i++) {
                             const UNIT = WORLD.spawn(
-                                i % 10,
+                                species ?? i % 10,
                                 1,
                                 ((i % COLS) - (COLS - 1) / 2) * 0.65,
                                 (Math.floor(i / COLS) - (ROWS - 1) / 2) * 0.65,
@@ -267,6 +301,12 @@ try {
                             UNIT.z = 0;
                             UNIT.vz = 0;
                             UNIT.dropLanded = true;
+                            if (breedingRings) {
+                                UNIT.meals = 0;
+                                UNIT.cooldownDuration = BUDMORI.CONFIG.farm.breeding.cooldownSeconds;
+                                UNIT.cooldown = UNIT.cooldownDuration / 2;
+                                UNIT.growthElapsed = UNIT.growthDuration;
+                            }
                         }
                         SESSION.paused = false;
                         SESSION.pausedDurationMs = 0;
@@ -404,6 +444,12 @@ try {
                             if (QUERY) {
                                 GL.endQuery(TIMER.TIME_ELAPSED_EXT);
                             }
+                            if (gpuReadback) {
+                                // Synchronisation is outside render CPU. This mode measures isolated frames,
+                                // not the application's pipelined FPS; use the same flag on both checkouts.
+                                GL.readPixels(0, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array(4));
+                                await new Promise((resolve) => setTimeout(resolve, 20));
+                            }
                             const PLAYER_AFTER = PLAYER_METRICS();
                             CHECK(GL.getError() === GL.NO_ERROR, 'frame GL error');
                             if (i >= warmup) {
@@ -451,6 +497,12 @@ try {
                                 }
                             }
                             lastRaf = RAF_TIME;
+                        }
+                        if (PENDING.length) {
+                            // A cached frame can queue without a CPU upload stall. Drain once so pending GPU
+                            // queries are not silently reported as missing after a fast submission benchmark.
+                            GL.readPixels(0, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array(4));
+                            await new Promise((resolve) => setTimeout(resolve, 20));
                         }
                         for (let poll = 0; PENDING.length && poll < 120; poll++) {
                             await NEXT();
@@ -501,6 +553,9 @@ try {
                         battle: BATTLE,
                         expectedBackend: BACKEND,
                         auditClocks: !BENCHMARK,
+                        species: SPECIES,
+                        gpuReadback: GPU_READBACK,
+                        breedingRings: BREEDING_RINGS,
                     },
                 );
                 assert.equal(RESULT.errorVisible, false);
