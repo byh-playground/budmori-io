@@ -90,7 +90,7 @@ const DIORAMA = class Diorama {
                 : CONFIG.render.unitArt;
         this.device = new WEB_GL_DEVICE(canvas, {
             alpha: false,
-            depth: false,
+            depth: this.unitArtMode !== 'sprite',
             stencil: false,
             antialias: true,
             // Sampled body art lives in the device's shared atlas, whose layers are allocated up front.
@@ -104,6 +104,7 @@ const DIORAMA = class Diorama {
         this.actors = [];
         this.visibleUnits = [];
         this.actorPool = [];
+        this.actorLayerOffset = 0;
         this.liveUnitIds = new Set();
         this.joyEffects = [];
         this.unitPresentation = new UnitPresentation(this);
@@ -142,6 +143,7 @@ const DIORAMA = class Diorama {
         }
         this.unitSprites = new UnitSpriteAtlas(this, this.unitArtMode === 'sprite');
         this.unitOverlays = new UnitOverlayImages(this);
+        this.unitPresentation.prepareBodyGroups();
         this.bossAssets = new Map(
             Object.entries(BOSS_VECTOR_ASSETS).map(([id, compiled]) => [
                 id,
@@ -1002,6 +1004,30 @@ const DIORAMA = class Diorama {
         ACTOR.culled = culled;
         this.actors.push(ACTOR);
     }
+    // A source-order rank supplies stable, disjoint body/rear/front slots even when two actors have equal world
+    // depth. Native body meshes may be grouped freely; every translucent overlay stays in painter order.
+    drawActors(sim) {
+        const C = this.ctx,
+            ACTORS = this.actors,
+            DEPTH_LIMIT = 0.9,
+            STEP = (DEPTH_LIMIT * 2) / (ACTORS.length + 1);
+        this.actorLayerOffset = STEP / 4;
+        for (let index = 0; index < ACTORS.length; index++) {
+            ACTORS[index].drawDepth = DEPTH_LIMIT - (index + 1) * STEP;
+        }
+        C.depthFunc = 'lequal';
+        const DEPTH_BATCHED = this.unitPresentation.drawBodies(ACTORS, sim);
+        for (const ACTOR of ACTORS) {
+            if (!ACTOR.culled) {
+                if (DEPTH_BATCHED) {
+                    C.depth = ACTOR.drawDepth;
+                }
+                ACTOR.presentation.draw(ACTOR.source, sim);
+            }
+        }
+        C.depthTest = false;
+        C.depth = 0;
+    }
     render(sim2, feel = null, now = performance.now()) {
         this.feel = feel;
         this.displayTimeMs = now;
@@ -1146,10 +1172,8 @@ const DIORAMA = class Diorama {
             }
         }
         C.preparePoses();
+        this.drawActors(sim2);
         for (const ACTOR of ACTORS) {
-            if (!ACTOR.culled) {
-                ACTOR.presentation.draw(ACTOR.source, sim2);
-            }
             ACTOR.source = null;
         }
         const LIVE_UNIT_IDS = this.liveUnitIds;
@@ -1255,6 +1279,8 @@ const DIORAMA = class Diorama {
         this.unitPresentation.barleyDisplayUnits.clear();
         this.unitPresentation.preparedVisibleUnits.clear();
         this.unitPresentation.playerIdentities.clear();
+        this.unitPresentation.bodyGroups.clear();
+        this.unitPresentation.activeBodyGroups.length = 0;
         this.unitPresentation.riceDisplayWorld = null;
         this.unitPresentation.riceDisplayTime = 0;
         this.joyEffects.length = 0;

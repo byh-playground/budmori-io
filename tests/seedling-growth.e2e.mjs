@@ -31,7 +31,72 @@ async function installFaceProbe(page) {
         globalThis.growthFaceProbeInstalled = true;
         const R = BUDMORI.renderer,
             P = R.unitPresentation,
-            DRAW = P.drawVectorUnit;
+            DRAW = P.drawVectorUnit,
+            RENDER = R.render,
+            BODY_DRAW = R.unitSprites.draw,
+            ACTOR_DRAW = R.ctx.drawVectorActor,
+            BODIES = new Map(),
+            VALUES = (m) => [m.a, m.b, m.c, m.d, m.e, m.f],
+            COMPOSE = (a, b) => [
+                a[0] * b[0] + a[2] * b[1],
+                a[1] * b[0] + a[3] * b[1],
+                a[0] * b[2] + a[2] * b[3],
+                a[1] * b[2] + a[3] * b[3],
+                a[0] * b[4] + a[2] * b[5] + a[4],
+                a[1] * b[4] + a[3] * b[5] + a[5],
+            ],
+            KEY = (unit) => `${unit.id}:${unit.generation}:${R.displayTimeMs}`;
+        let frame = 0,
+            nativeBody = null;
+        R.render = function (...args) {
+            frame++;
+            BODIES.clear();
+            nativeBody = null;
+            return RENDER.apply(this, args);
+        };
+        // Bodies can be submitted in the opaque prepass, before drawVectorUnit observes the face. Record the
+        // actual sprite/native submission at its own boundary, scoped to this render frame and generation.
+        R.unitSprites.draw = function (prepared, options) {
+            if (prepared.unit.id !== globalThis.growthSubject) {
+                return BODY_DRAW.call(this, prepared, options);
+            }
+            const UNIT = prepared.unit,
+                MODEL = BUDMORI.sim.units.find((entry) => entry.id === UNIT.id),
+                BEFORE = [MODEL.height, MODEL.z],
+                BODY = {
+                    frame,
+                    id: UNIT.id,
+                    generation: UNIT.generation,
+                    displayTimeMs: R.displayTimeMs,
+                    matrix: COMPOSE(VALUES(R.ctx.getTransform()), options.matrix),
+                },
+                RESULT = BODY_DRAW.call(this, prepared, options);
+            BODY.modelUnchanged = BEFORE[0] === MODEL.height && BEFORE[1] === MODEL.z;
+            if (RESULT) {
+                BODY.backend = 'sprite';
+                BODIES.set(KEY(UNIT), BODY);
+            } else {
+                nativeBody = { prepared, observation: BODY };
+            }
+            return RESULT;
+        };
+        R.ctx.drawVectorActor = function (actor, options) {
+            const PENDING = nativeBody;
+            if (!PENDING || actor !== PENDING.prepared.player) {
+                return ACTOR_DRAW.call(this, actor, options);
+            }
+            nativeBody = null;
+            const UNIT = PENDING.prepared.unit,
+                MODEL = BUDMORI.sim.units.find((entry) => entry.id === UNIT.id),
+                BEFORE = [MODEL.height, MODEL.z],
+                BODY = PENDING.observation;
+            BODY.matrix = COMPOSE(VALUES(R.ctx.getTransform()), options.matrix);
+            const RESULT = ACTOR_DRAW.call(this, actor, options);
+            BODY.modelUnchanged &&= BEFORE[0] === MODEL.height && BEFORE[1] === MODEL.z;
+            BODY.backend = 'vector';
+            BODIES.set(KEY(UNIT), BODY);
+            return RESULT;
+        };
         P.drawVectorUnit = function (unit, world, point, radius, rest, hidden = false) {
             if (hidden || unit.id !== globalThis.growthSubject) {
                 return DRAW.call(this, unit, world, point, radius, rest, hidden);
@@ -39,31 +104,14 @@ async function installFaceProbe(page) {
             const MODEL = BUDMORI.sim.units.find((entry) => entry.id === unit.id),
                 BEFORE = [MODEL.height, MODEL.z];
             const MATRICES = [],
-                BODY_DRAW = R.unitSprites.draw,
                 FACE_DRAW = R.unitOverlays.drawFace,
-                DRAW_REGION = R.ctx.drawRegion,
-                VALUES = (m) => [m.a, m.b, m.c, m.d, m.e, m.f],
-                COMPOSE = (a, b) => [
-                    a[0] * b[0] + a[2] * b[1],
-                    a[1] * b[0] + a[3] * b[1],
-                    a[0] * b[2] + a[2] * b[3],
-                    a[1] * b[2] + a[3] * b[3],
-                    a[0] * b[4] + a[2] * b[5] + a[4],
-                    a[1] * b[4] + a[3] * b[5] + a[5],
-                ];
-            let bodyMatrix,
-                faceMatrix,
+                DRAW_REGION = R.ctx.drawRegion;
+            let faceMatrix,
                 faceAnchor,
                 submittedFace,
                 faceBackend,
                 faceQuads = 0,
                 drawingAtlasFace = false;
-            R.unitSprites.draw = function (prepared, options) {
-                if (prepared.unit.id === unit.id) {
-                    bodyMatrix = COMPOSE(VALUES(R.ctx.getTransform()), options.matrix);
-                }
-                return BODY_DRAW.call(this, prepared, options);
-            };
             // Observe the composed transform at the official face boundary. Body/atlas internals may
             // submit other transforms before this call, so their ordinal position is not a contract.
             R.unitOverlays.drawFace = function (anchor, face, ...args) {
@@ -89,20 +137,26 @@ async function installFaceProbe(page) {
             try {
                 result = DRAW.call(this, unit, world, point, radius, rest, hidden);
             } finally {
-                R.unitSprites.draw = BODY_DRAW;
                 R.unitOverlays.drawFace = FACE_DRAW;
                 R.ctx.drawRegion = DRAW_REGION;
             }
-            const ENTRY = P.preparedVisibleUnits.get(unit.id);
+            const ENTRY = P.preparedVisibleUnits.get(unit.id),
+                BODY = BODIES.get(KEY(unit));
+            BODIES.delete(KEY(unit));
             if (
-                !bodyMatrix ||
+                !BODY ||
+                BODY.frame !== frame ||
+                BODY.id !== unit.id ||
+                BODY.generation !== unit.generation ||
+                BODY.displayTimeMs !== R.displayTimeMs ||
                 !faceMatrix ||
                 submittedFace !== ENTRY.face ||
                 (faceBackend === 'atlas' && faceQuads < 3)
             ) {
                 throw new Error('Body/face submission observation missing');
             }
-            MATRICES.push(bodyMatrix, faceMatrix);
+            const BODY_MATRIX = BODY.matrix;
+            MATRICES.push(BODY_MATRIX, faceMatrix);
             const SCREEN = (matrix, x, y) => [
                     matrix[0] * x + matrix[2] * y + matrix[4],
                     matrix[1] * x + matrix[3] * y + matrix[5],
@@ -115,7 +169,11 @@ async function installFaceProbe(page) {
                     if (ANCHOR.some((value, axis) => value !== REST[axis])) {
                         throw new Error('Submitted face anchor differs from the body socket');
                     }
-                    return { name, face: SCREEN(faceMatrix, ...ANCHOR), body: SCREEN(bodyMatrix, ACTUAL.x, ACTUAL.y) };
+                    return {
+                        name,
+                        face: SCREEN(faceMatrix, ...ANCHOR),
+                        body: SCREEN(BODY_MATRIX, ACTUAL.x, ACTUAL.y),
+                    };
                 });
             globalThis.growthFaceProbe = {
                 body: ENTRY.player.currentExpression,
@@ -123,8 +181,12 @@ async function installFaceProbe(page) {
                 matrices: MATRICES,
                 faceBackend,
                 faceQuads,
+                bodyBackend: BODY.backend,
+                bodyFrame: BODY.frame,
+                bodyGeneration: BODY.generation,
+                bodyDisplayTimeMs: BODY.displayTimeMs,
                 sockets: SOCKETS,
-                modelUnchanged: BEFORE[0] === MODEL.height && BEFORE[1] === MODEL.z,
+                modelUnchanged: BODY.modelUnchanged && BEFORE[0] === MODEL.height && BEFORE[1] === MODEL.z,
             };
             return result;
         };

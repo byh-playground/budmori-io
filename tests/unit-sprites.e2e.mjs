@@ -8,10 +8,25 @@ import { execFileSync } from 'node:child_process';
 import { chromium } from 'playwright';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
-const OUTPUT = path.join(ROOT, 'tests/output/unit-sprites');
+const OUTPUT_OPTION = process.argv.find((value) => value.startsWith('--output='));
+const OUTPUT = OUTPUT_OPTION
+    ? path.resolve(OUTPUT_OPTION.slice('--output='.length))
+    : path.join(ROOT, 'tests/output/unit-sprites');
 const BENCHMARK = process.argv.includes('--benchmark');
 const BATTLE = process.argv.includes('--battle');
-const COUNTS = BENCHMARK ? (BATTLE ? [100, 500] : [100, 500, 1000]) : [20];
+const COUNT_OPTION = process.argv.find((value) => value.startsWith('--count='));
+const BACKEND_OPTION = process.argv.find((value) => value.startsWith('--backend='));
+const COUNT = COUNT_OPTION ? Number(COUNT_OPTION.slice('--count='.length)) : null;
+const BACKEND = BACKEND_OPTION?.slice('--backend='.length);
+assert(
+    !COUNT_OPTION || (BENCHMARK && Number.isSafeInteger(COUNT) && COUNT > 0 && COUNT <= 1000),
+    'Benchmark --count must be 1..1000',
+);
+assert(
+    !BACKEND_OPTION || (BENCHMARK && ['vector', 'sprite'].includes(BACKEND)),
+    'Benchmark --backend must be vector or sprite',
+);
+const COUNTS = COUNT ? [COUNT] : BENCHMARK ? (BATTLE ? [100, 500] : [100, 500, 1000]) : [20];
 const REPORT_NAME = BENCHMARK ? (BATTLE ? 'battle-benchmark.json' : 'benchmark.json') : 'report.json';
 const SAMPLES = BENCHMARK ? 60 : 12;
 const WARMUP = BENCHMARK ? 24 : 4;
@@ -89,7 +104,11 @@ try {
     REPORT.browser = browser.version();
     for (let round = 0; round < (BENCHMARK ? 2 : 1); round++) {
         for (const COUNT of COUNTS) {
-            for (const BACKEND of round % 2 ? ['sprite', 'vector'] : ['vector', 'sprite']) {
+            for (const BACKEND of BACKEND_OPTION
+                ? [BACKEND_OPTION.slice('--backend='.length)]
+                : round % 2
+                  ? ['sprite', 'vector']
+                  : ['vector', 'sprite']) {
                 const CONTEXT = await browser.newContext({
                     serviceWorkers: 'block',
                     viewport: { width: 1100, height: 850 },
@@ -485,6 +504,38 @@ try {
                     },
                 );
                 assert.equal(RESULT.errorVisible, false);
+                if (!BENCHMARK && BACKEND === 'vector') {
+                    const DEPTH = await PAGE.evaluate(async () => {
+                        const { unitDepthBatchingScenario: SCENARIO } =
+                            await import('/tests/unit-depth-batching-scenario.js');
+                        return SCENARIO(BUDMORI);
+                    }).catch(async (error) => {
+                        const FAILURE = await PAGE.evaluate(() => globalThis.__unitDepthBatchingFailure);
+                        if (FAILURE) {
+                            for (const IMAGE of FAILURE.images) {
+                                for (const PHASE of ['before', 'after']) {
+                                    fs.writeFileSync(
+                                        path.join(OUTPUT, `depth-${IMAGE.name}-${PHASE}.png`),
+                                        Buffer.from(IMAGE[PHASE], 'base64'),
+                                    );
+                                }
+                            }
+                            delete FAILURE.images;
+                            fs.writeFileSync(path.join(OUTPUT, 'depth-failure.json'), JSON.stringify(FAILURE, null, 2));
+                        }
+                        throw error;
+                    });
+                    for (const IMAGE of DEPTH.images) {
+                        for (const PHASE of ['before', 'after']) {
+                            fs.writeFileSync(
+                                path.join(OUTPUT, `depth-${IMAGE.name}-${PHASE}.png`),
+                                Buffer.from(IMAGE[PHASE], 'base64'),
+                            );
+                        }
+                    }
+                    delete DEPTH.images;
+                    RESULT.depthBatching = DEPTH;
+                }
                 if (!BENCHMARK && BACKEND === 'sprite') {
                     const CONTINUITY = await PAGE.evaluate(async () => {
                         const { unitSpriteContinuityScenario: SCENARIO } =
@@ -564,14 +615,16 @@ try {
                 await CONTEXT.close();
             }
             const PAIR = REPORT.runs.filter((run) => run.round === round && run.count === COUNT);
-            assert.equal(PAIR[0].stateSha256, PAIR[1].stateSha256, 'Backend changed authority');
-            assert.deepEqual(PAIR[0].camera, PAIR[1].camera, 'Backend changed camera');
-            if (BATTLE) {
-                assert.deepEqual(
-                    PAIR[0].frames.map((frame) => frame.authoritySha256),
-                    PAIR[1].frames.map((frame) => frame.authoritySha256),
-                    'Backend changed per-frame battle authority',
-                );
+            if (PAIR.length === 2) {
+                assert.equal(PAIR[0].stateSha256, PAIR[1].stateSha256, 'Backend changed authority');
+                assert.deepEqual(PAIR[0].camera, PAIR[1].camera, 'Backend changed camera');
+                if (BATTLE) {
+                    assert.deepEqual(
+                        PAIR[0].frames.map((frame) => frame.authoritySha256),
+                        PAIR[1].frames.map((frame) => frame.authoritySha256),
+                        'Backend changed per-frame battle authority',
+                    );
+                }
             }
         }
     }

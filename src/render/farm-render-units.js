@@ -25,7 +25,7 @@ import { PassiveMarksPresentation } from '../tower/tower-passive-presentations.j
 
 const BARLEY_SHRED_PRESENTATION = new BarleyArmorShredPresentation();
 const PASSIVE_MARKS = new PassiveMarksPresentation();
-
+const { hasOpaqueCoverage: HAS_OPAQUE_COVERAGE } = globalThis.BloomGamekitRendering;
 // Labor has its own clock, independent of an overlapping combat action. Use
 // the shared native work clips, never a form-specific combat stage from that action.
 function workSwing(u, sim) {
@@ -93,6 +93,26 @@ export class UnitPresentation {
         this.playerIdentities = new Map();
         this.growthDisplayUnits = new Map();
         this.combinePresentation = new CombinePresentation();
+        this.bodyGroups = new Map();
+        this.activeBodyGroups = [];
+    }
+    prepareBodyGroups() {
+        if (this.renderer.unitSprites.enabled) {
+            return;
+        }
+        for (const RECORD of this.renderer.vectorAssets.values()) {
+            const GEOMETRY = RECORD.compiled.geometry,
+                EXPRESSIONS = new Map();
+            for (const EXPRESSION of Object.keys(RECORD.compiled.metadata.expressions)) {
+                EXPRESSIONS.set(EXPRESSION, {
+                    actors: [],
+                    opaqueCoverage: HAS_OPAQUE_COVERAGE(GEOMETRY, {
+                        indexVariant: GEOMETRY.expressionIndices?.[EXPRESSION] ? EXPRESSION : null,
+                    }),
+                });
+            }
+            this.bodyGroups.set(RECORD, EXPRESSIONS);
+        }
     }
     prepareUnits(units, time, world) {
         this.preparedVisibleUnits.clear();
@@ -399,14 +419,7 @@ export class UnitPresentation {
         this.preparedVisibleUnits.set(u.id, ENTRY);
         return ENTRY;
     }
-    drawVectorUnit(u, sim, p, r, rest, hidden = false) {
-        if (hidden) {
-            const { player: PLAYER } = this.prepareUnitPlayer(u, sim, rest);
-            // Observe clip transitions without evaluating native poses or art.
-            // Active melee trails are kept visible; this clears inactive history.
-            drawUnitAttackContact(this.renderer, u, PLAYER, null);
-            return true;
-        }
+    prepareUnitArt(u, sim, p, r) {
         const PREPARED = this.prepareVisibleUnit(u, sim);
         const { record: RECORD, player: PLAYER, swing: SWING } = PREPARED;
         const [, , WIDTH, HEIGHT] = RECORD.compiled.viewBox,
@@ -416,27 +429,98 @@ export class UnitPresentation {
         if (!SWING && !PREPARED.rest) {
             applyUnitAttackPose(MATRIX, u, GROUND);
         }
-        if (this.renderer.cornAttachmentBodies.has(u.id)) {
-            this.renderer.captureCornAttachmentBody(u, u.id, PLAYER, MATRIX);
-        }
         const DRAW_OPTIONS = {
             matrix: MATRIX,
             alpha: u.isFormationClone ? 0.52 : 1,
             color: u.isFormationClone ? [0.55, 0.82, 1, 1] : [1, 1, 1, 1],
         };
-        if (!this.renderer.unitSprites.draw(PREPARED, DRAW_OPTIONS)) {
-            this.renderer.ctx.drawVectorActor(PLAYER, DRAW_OPTIONS);
+        return { prepared: PREPARED, player: PLAYER, matrix: MATRIX, options: DRAW_OPTIONS };
+    }
+    drawUnitBody(u, art) {
+        if (this.renderer.cornAttachmentBodies.has(u.id)) {
+            this.renderer.captureCornAttachmentBody(u, u.id, art.player, art.matrix);
+        }
+        if (!this.renderer.unitSprites.draw(art.prepared, art.options)) {
+            this.renderer.ctx.drawVectorActor(art.player, art.options);
+        }
+    }
+    // Submit opaque-composite bodies by retained mesh/expression. Faces and scene objects keep their original
+    // painter order in the following overlay pass. Only the body pass writes the per-actor depth slots.
+    drawBodies(actors, sim) {
+        const GROUPS = this.activeBodyGroups,
+            C = this.renderer.ctx;
+        GROUPS.length = 0;
+        for (const ACTOR of actors) {
+            if (ACTOR.culled || ACTOR.presentation !== this) {
+                continue;
+            }
+            const U = ACTOR.source,
+                PREPARED = this.prepareVisibleUnit(U, sim);
+            if (
+                this.renderer.unitSprites.enabled ||
+                U.isFormationClone ||
+                PREPARED.player.hasNonUnitBaseOpacity ||
+                PREPARED.player.hasOpacityChannel
+            ) {
+                continue;
+            }
+            const GROUP = this.bodyGroups.get(PREPARED.record).get(PREPARED.player.currentExpression);
+            if (!GROUP.opaqueCoverage) {
+                continue;
+            }
+            if (!GROUP.actors.length) {
+                GROUPS.push(GROUP);
+            }
+            GROUP.actors.push(ACTOR);
+        }
+        if (!GROUPS.length) {
+            return false;
+        }
+        C.depthTest = true;
+        C.depthWrite = true;
+        for (const GROUP of GROUPS) {
+            for (const ACTOR of GROUP.actors) {
+                const U = ACTOR.source,
+                    POSE = this.unitPose(U, sim),
+                    ART = this.prepareUnitArt(U, sim, POSE.p, POSE.r);
+                C.depth = ACTOR.drawDepth;
+                this.drawUnitBody(U, ART);
+                ART.pose = POSE;
+                ART.prepared.submittedArt = ART;
+            }
+            GROUP.actors.length = 0;
+        }
+        C.depthWrite = false;
+        return true;
+    }
+    drawVectorUnit(u, sim, p, r, rest, hidden = false) {
+        if (hidden) {
+            const { player: PLAYER } = this.prepareUnitPlayer(u, sim, rest);
+            // Observe clip transitions without evaluating native poses or art.
+            // Active melee trails are kept visible; this clears inactive history.
+            drawUnitAttackContact(this.renderer, u, PLAYER, null);
+            return true;
+        }
+        const PREPARED = this.prepareVisibleUnit(u, sim),
+            ART = PREPARED.submittedArt ?? this.prepareUnitArt(u, sim, p, r),
+            C = this.renderer.ctx;
+        if (!PREPARED.submittedArt) {
+            this.drawUnitBody(u, ART);
+        }
+        PREPARED.submittedArt = null;
+        if (C.depthTest) {
+            C.depth -= this.renderer.actorLayerOffset;
         }
         drawUnitFace(
             this.renderer,
             PREPARED.record,
-            PLAYER,
+            ART.player,
             PREPARED.face,
             PREPARED.cheekColor,
-            MATRIX,
-            DRAW_OPTIONS.alpha,
+            ART.matrix,
+            ART.options.alpha,
         );
-        drawUnitAttackContact(this.renderer, u, PLAYER, MATRIX);
+        drawUnitAttackContact(this.renderer, u, ART.player, ART.matrix);
         this.drawElementIndicator(u, sim);
         return true;
     }
@@ -461,7 +545,7 @@ export class UnitPresentation {
             );
         }
     }
-    drawUnit(u, sim, rest) {
+    unitPose(u, sim) {
         const DEAD = u.hp <= 0,
             WALK = DEAD ? 0 : Math.min(1, Math.hypot(u.vx, u.vy)),
             BOB = u.z === 0 ? Math.abs(Math.sin(sim.time * 9 + u.seed)) * 0.1 * WALK : 0,
@@ -472,23 +556,34 @@ export class UnitPresentation {
             );
         const BODY = unitBodyDefinition(kitSpecies(u)),
             R = unitAttackDisplayScale(this.renderer, u, sim.time) * Math.max(BODY.viewBox[2], BODY.viewBox[3]) * 0.5;
-        this.drawVectorUnit(u, sim, P, R, rest);
         return {
             p: P,
             r: R,
         };
     }
+    drawUnit(u, sim, rest) {
+        const POSE = this.prepareVisibleUnit(u, sim).submittedArt?.pose ?? this.unitPose(u, sim);
+        this.drawVectorUnit(u, sim, POSE.p, POSE.r, rest);
+        return POSE;
+    }
     draw(u, sim) {
-        const EFFECTS = this.unitRingEffects(u, sim);
+        const C = this.renderer.ctx,
+            DEPTH = C.depth,
+            OFFSET = C.depthTest ? this.renderer.actorLayerOffset : 0,
+            EFFECTS = this.unitRingEffects(u, sim);
+        C.depth = DEPTH + OFFSET;
         this.drawUnitRingLayer(u, EFFECTS, 'rear');
         const REST = this.prepareVisibleUnit(u, sim).rest;
         if (!REST) {
             drawUnitAttackGround(this.renderer, u);
         }
+        C.depth = DEPTH;
         const POSE = this.drawUnit(u, sim, REST);
+        C.depth = DEPTH - OFFSET;
         this.drawUnitRingLayer(u, EFFECTS, 'front');
         this.drawSleepIndicator(REST, POSE);
         PASSIVE_MARKS.drawUnit(this.renderer, u, sim.time);
         BARLEY_SHRED_PRESENTATION.drawStatus(this.renderer, u);
+        C.depth = DEPTH;
     }
 }

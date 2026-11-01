@@ -32,8 +32,8 @@
 통합 검증 중 발견한 GPU 몸체 누락은 공통 rendering의 숫자 텍스처 업로드 상태 문제였다.
 DOM 이미지 뒤에 남은 premultiply 설정을 숫자 데이터 갱신 전에 초기화하는
 [gamekit 0.39.3 수정](https://github.com/byh-playground/bloom-gamekit/pull/179)을 반영했다(AI-009).
-소스 `cd27a43f4c71e863fce26e4479ab462710cd6864`, 불변 dist `91fd0004646db5d3f73a19474a1a966cd6e45ee1`을
-고정하고 Git 객체·manifest·캐시 무결성을 확인한다. 원본 GPU pose와 얼굴 오버레이를 함께 사용한다.
+이 수정은 현재 고정한 gamekit 0.39.5에도 포함된다. 실제 source/dist와 SHA의 원본은
+`gamekit-lock.json`이며, Git 객체·manifest·캐시 무결성을 확인한다. 원본 GPU pose와 얼굴 오버레이를 함께 사용한다.
 
 ## 표현 계약과 검증 시나리오
 
