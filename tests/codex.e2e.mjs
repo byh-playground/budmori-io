@@ -170,6 +170,11 @@ try {
         await PAGE.locator('#codexOpen').click();
         assert.match(await PAGE.locator('[data-ingredient="8"]').innerText(), /현재 보유 0마리/);
         assert.equal(await PAGE.locator('[data-recipe="0"][aria-pressed="true"]').count(), 2);
+        await PAGE.getByRole('tab', { name: '속성', exact: true }).click();
+        const ELEMENTS = PAGE.getByRole('table', { name: '속성 도감', exact: true });
+        assert.equal(await ELEMENTS.isVisible(), true);
+        assert.deepEqual(await ELEMENTS.locator('thead th').allTextContents(), ['불', '얼음', '풀', '전기', '물']);
+        await PAGE.screenshot({ path: path.join(OUTPUT, `${NAME}-elements.png`) });
         assert.deepEqual(ERRORS, []);
         console.log(`PASS ${NAME}: per-ingredient discovery, ownership, recipe/tier selection, reload, layout`);
         await CONTEXT.close();

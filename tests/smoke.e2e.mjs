@@ -795,7 +795,7 @@ await check('a full farm saves every earned seed and grants only the room freed 
         `reload and three free places conserve the entitlement ${JSON.stringify(R)}`,
     );
 });
-await check('stat cards scale the base at every tier, and clearing them restores the base', async () => {
+await check('fixed stat cards add their stated amount and clearing the climb restores the base', async () => {
     const ATTACK = () => baseUnitStatsFor(1, 0).attackPower,
         HP = () => baseUnitStatsFor(1, 0).maxHp,
         BEFORE = [ATTACK(), HP(), baseUnitStatsFor(1, 0).armor];
@@ -811,9 +811,9 @@ await check('stat cards scale the base at every tier, and clearing them restores
     const DURING = baseUnitStatsFor(1, 0);
     setRunStatMods({});
     expect(
-        Math.abs(DURING.attackPower - BEFORE[0] * 1.1 * (1 + 0.1 + 0.16)) < 1e-9 &&
+        Math.abs(DURING.attackPower - (BEFORE[0] + 2) * (1 + 0.1 + 0.16)) < 1e-9 &&
             DURING.armor === BEFORE[2] + 25 &&
-            Math.abs(DURING.regen - BEFORE[1] * 0.005) < 1e-9 &&
+            Math.abs(DURING.regen - BEFORE[1] * 0.0025) < 1e-9 &&
             DURING.maxHp === BEFORE[1],
         JSON.stringify(DURING),
     );

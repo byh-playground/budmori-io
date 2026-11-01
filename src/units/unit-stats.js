@@ -56,6 +56,33 @@ const RUN_MODS = {};
 export function applyStatModifier(base, { basePct = 0, flat = 0, pct = 0 }) {
     return (base * (1 + basePct) + flat) * (1 + pct);
 }
+function attackModifier(modifier) {
+    return { flat: modifier?.flat ?? 0, pct: modifier?.pct ?? 0, basePct: modifier?.basePct ?? 0 };
+}
+// Captured attack power is derived independently from the card-free material
+// normalization. Keep the same order as resolveUnitStats: run, actor, growth, trait.
+export function captureAttackPowerInputs(unit) {
+    const PROFILE = unit.statProfile,
+        TEMPERAMENT = temperamentTiltOf(unit);
+    return {
+        species: unit.species,
+        kind: PROFILE ? 'profile' : 'species',
+        base: PROFILE ? PROFILE.attackPower : baseUnitStatsFor(unit.tier, unit.species, false).attackPower,
+        run: attackModifier(PROFILE || unit.faction === 'enemy' ? null : RUN_MODS.attackPower),
+        local: attackModifier(unit.statModifiers?.attackPower),
+        permanentMultiplier: Number.isFinite(unit.permanentStatMultiplier)
+            ? Math.max(0, unit.permanentStatMultiplier)
+            : 1,
+        temperament: TEMPERAMENT ? unit.temperament : -1,
+    };
+}
+export function attackPowerFromInputs(inputs) {
+    return (
+        applyStatModifier(applyStatModifier(inputs.base, inputs.run), inputs.local) *
+        inputs.permanentMultiplier *
+        (TEMPERAMENT_TILTS[inputs.temperament]?.attackPower ?? 1)
+    );
+}
 function withRunMods(stats, modifiers = RUN_MODS) {
     const OUT = { ...stats };
     for (const [STAT, MOD] of Object.entries(modifiers)) {

@@ -1,5 +1,6 @@
 import {
     attackBudgetInputs,
+    attackSourcePowerMatches,
     attackBudgetShape,
     attackRecordShape,
     attackGeometryScale,
@@ -178,8 +179,7 @@ export function isRiceAttackRecord(r) {
         r.source.attackerStats.maxHp <= 0 ||
         !Number.isFinite(r.source.statMultiplier) ||
         r.source.statMultiplier < 0 ||
-        (!r.budgetInputs.profile &&
-            r.source.attackerStats.attackPower !== r.budgetInputs.current * r.source.statMultiplier) ||
+        !attackSourcePowerMatches(r, r.budgetInputs.current, r.source.statMultiplier) ||
         r.source.attackPowerMultiplier !== 1 ||
         !Number.isFinite(r.source.sourceDamageScale) ||
         r.source.sourceDamageScale < 0 ||

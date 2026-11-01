@@ -37,6 +37,7 @@ import { isBossActorId } from '../core/combat-identity.js';
 import { attackTargetKey } from '../features/species-growth/attack-action.js';
 import { isCornAttackRecord, cornKernelMultiplier } from '../features/species-growth/corn-attack.js';
 import { CORN_ATTACHMENT_FEATURE } from '../features/abilities/corn-attachment/definition.js';
+import { statCard, visitTowerCards, isValidStatCardEffect } from '../tower/tower-run.js';
 import {
     BARLEY_ARMOR_SHRED_BUCKETS,
     BARLEY_ARMOR_SHRED_LEGACY_DURATION_TICKS,
@@ -1384,6 +1385,11 @@ function validateTowerCheckpoint(raw) {
             new Set(TOWER.downed).size === TOWER.downed.length &&
             (!TOWER.active || (TOWER.floor >= 1 && raw.runProgressionSnapshot !== null)),
     );
+    visitTowerCards(TOWER, (card) => {
+        if (statCard(card?.id) || Object.hasOwn(card || {}, 'effect') || card?.type === 'stat') {
+            ASSERT(isValidStatCardEffect(card));
+        }
+    });
     for (const ENTRIES of [TOWER.relics, TOWER.bossRelics]) {
         ASSERT(
             ENTRIES.length <= CONFIG.farm.tower.relicSlots &&

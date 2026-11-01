@@ -1,7 +1,14 @@
 import { giantBonusDamage } from '../formation-skills/giant/definition.js';
 import { isBossActorId, isCombatActorId } from '../../core/combat-identity.js';
 import { mergeMaterialCostForTier } from '../../units/unit-grades.js';
-import { baseUnitStatsFor, applyStatModifier } from '../../units/unit-stats.js';
+import {
+    baseUnitStatsFor,
+    applyStatModifier,
+    captureAttackPowerInputs,
+    attackPowerFromInputs,
+} from '../../units/unit-stats.js';
+import { SPECIES_COUNT } from '../../units/species-catalog.js';
+import { TEMPERAMENT_TILTS } from '../../model/lineage.js';
 
 // True when `value` is a plain object whose own keys are exactly the space-separated `keys`.
 export function exactKeys(value, keys) {
@@ -17,24 +24,11 @@ export function exactKeys(value, keys) {
 // A fixed profile changes source stats, never the existing material-cost curve.
 // Capture its derivation so checkpoints can still verify actual damage.
 export function attackBudgetInputs(unit) {
-    const INPUTS = {
-        one: baseUnitStatsFor(1, unit.species, unit.faction !== 'enemy').attackPower,
-        current: baseUnitStatsFor(unit.tier, unit.species, unit.faction !== 'enemy').attackPower,
+    return {
+        one: baseUnitStatsFor(1, unit.species, false).attackPower,
+        current: baseUnitStatsFor(unit.tier, unit.species, false).attackPower,
+        power: captureAttackPowerInputs(unit),
     };
-    if (unit.statProfile) {
-        INPUTS.profile = {
-            attackPower: unit.statProfile.attackPower,
-            flat: unit.statModifiers?.attackPower?.flat ?? 0,
-            pct: unit.statModifiers?.attackPower?.pct ?? 0,
-            ...((unit.statModifiers?.attackPower?.basePct ?? 0) !== 0
-                ? { basePct: unit.statModifiers.attackPower.basePct }
-                : {}),
-            permanentMultiplier: Number.isFinite(unit.permanentStatMultiplier)
-                ? Math.max(0, unit.permanentStatMultiplier)
-                : 1,
-        };
-    }
-    return INPUTS;
 }
 
 // The normalized basic-attack budget of a merged tier: the species' tier-one-to-tier-N attack ratio times the merge
@@ -72,12 +66,18 @@ export function contactAttackTiming(speed) {
 }
 
 export function attackBudgetShape(inputs, keys) {
-    return exactKeys(inputs, `${keys}${Object.hasOwn(inputs || {}, 'profile') ? ' profile' : ''}`);
+    return (
+        !(Object.hasOwn(inputs || {}, 'profile') && Object.hasOwn(inputs || {}, 'power')) &&
+        exactKeys(
+            inputs,
+            `${keys}${Object.hasOwn(inputs || {}, 'profile') ? ' profile' : ''}${Object.hasOwn(inputs || {}, 'power') ? ' power' : ''}`,
+        )
+    );
 }
 
 export function attackBudgetValues(inputs) {
     return Object.entries(inputs)
-        .filter(([key]) => key !== 'profile')
+        .filter(([key]) => key !== 'profile' && key !== 'power')
         .map(([, value]) => value);
 }
 
@@ -91,6 +91,58 @@ export function captureAttackGeometry(unit) {
 
 export function attackGeometryScale(record) {
     return Object.hasOwn(record, 'geometryScale') ? record.geometryScale : 1;
+}
+
+function validAttackPower(record) {
+    const INPUTS = record.budgetInputs,
+        POWER = INPUTS?.power,
+        VALID_MODIFIER = (value) => exactKeys(value, 'flat pct basePct') && Object.values(value).every(Number.isFinite);
+    if (
+        !exactKeys(POWER, 'species kind base run local permanentMultiplier temperament') ||
+        !Number.isInteger(POWER.species) ||
+        POWER.species < 0 ||
+        POWER.species > SPECIES_COUNT ||
+        !['species', 'profile'].includes(POWER.kind) ||
+        !Number.isFinite(POWER.base) ||
+        POWER.base < 0 ||
+        !VALID_MODIFIER(POWER.run) ||
+        !VALID_MODIFIER(POWER.local) ||
+        !Number.isFinite(POWER.permanentMultiplier) ||
+        POWER.permanentMultiplier < 0 ||
+        !Number.isInteger(POWER.temperament) ||
+        POWER.temperament < -1 ||
+        POWER.temperament >= TEMPERAMENT_TILTS.length
+    ) {
+        return false;
+    }
+    const BARE_ONE = baseUnitStatsFor(1, POWER.species, false).attackPower,
+        BARE_CURRENT = baseUnitStatsFor(record.tier, POWER.species, false).attackPower,
+        ATTACK = attackPowerFromInputs(POWER);
+    return (
+        (INPUTS.one ?? INPUTS.tierOneAttack) === BARE_ONE &&
+        (INPUTS.current ?? INPUTS.tierAttack) === BARE_CURRENT &&
+        (POWER.kind !== 'species' || POWER.base === BARE_CURRENT) &&
+        (POWER.kind !== 'profile' || Object.values(POWER.run).every((value) => value === 0)) &&
+        (record.source?.species === undefined || record.source.species === POWER.species) &&
+        (!isBossActorId(record.owner) || (POWER.kind === 'profile' && POWER.temperament === -1)) &&
+        (record.source?.faction !== 'enemy' ||
+            (POWER.temperament === -1 && Object.values(POWER.run).every((value) => value === 0))) &&
+        Number.isFinite(ATTACK) &&
+        ATTACK >= 0 &&
+        record.source?.attackerStats?.attackPower === ATTACK &&
+        (record.source.statMultiplier === undefined || record.source.statMultiplier === POWER.permanentMultiplier) &&
+        (INPUTS.permanentMultiplier === undefined || INPUTS.permanentMultiplier === POWER.permanentMultiplier)
+    );
+}
+
+// These five families historically verified the actual source against their
+// tier input. New records have a separate derivation; old armed records keep
+// their captured proof and damage until that action ends.
+export function attackSourcePowerMatches(record, tierAttack, multiplier) {
+    if (Object.hasOwn(record.budgetInputs || {}, 'power')) {
+        return validAttackPower(record);
+    }
+    return !!record.budgetInputs?.profile || record.source?.attackerStats?.attackPower === tierAttack * multiplier;
 }
 
 export function attackRecordShape(record, keys) {
@@ -111,6 +163,9 @@ export function attackRecordShape(record, keys) {
     }
     const INPUTS = record.budgetInputs,
         PROFILE = INPUTS?.profile;
+    if (Object.hasOwn(INPUTS || {}, 'power')) {
+        return !Object.hasOwn(INPUTS, 'profile') && validAttackPower(record);
+    }
     if (!Object.hasOwn(INPUTS || {}, 'profile')) {
         return !isBossActorId(record.owner);
     }

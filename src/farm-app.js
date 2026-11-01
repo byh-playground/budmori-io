@@ -1197,7 +1197,7 @@ const NEXT_FLOOR_TEXT = {
 function statDoorCard(door, cards, index, role = 'player', receipt = null) {
     const CARD = statCard(door.id),
         LEVEL = receipt?.before.level ?? cardStacks(cards, door.id);
-    return `<button type="button" class="door door--stat door--rarity-${door.rarity}" data-door="${index}"><b>${CARD.name} ${statCardText(CARD, door.rarity, role)}</b><small>${RARITY_NAMES[door.rarity]} · ${role === 'boss' ? '보스 진영' : '모든 아군'} · ${LEVEL}/${TOWER_RUN_SETTINGS.cardCap}장</small></button>`;
+    return `<button type="button" class="door door--stat door--rarity-${door.rarity}" data-door="${index}"><b>${CARD.name} ${statCardText(CARD, door.rarity, role, door.effect)}</b><small>${RARITY_NAMES[door.rarity]} · ${role === 'boss' ? '보스 진영' : '모든 아군'} · ${LEVEL}/${TOWER_RUN_SETTINGS.cardCap}장</small></button>`;
 }
 function passiveDoorCard(door, cards, index, role = 'player', receipt = null) {
     const CARD = passiveCard(door.id),

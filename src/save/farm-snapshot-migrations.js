@@ -5,6 +5,7 @@ import { freshTowerRun } from '../tower/tower-run.js';
 import { migratePlayerProgressionState } from '../model/player-progression.js';
 import { migrateLegacyBarleyArmorShredBuckets } from '../features/abilities/barley-shred/model.js';
 import { migrateBossRewardLedger } from './boss-reward-ledger.js';
+import { migrateTowerCardEffects } from './tower-card-migrations.js';
 
 function migrateSnapshotRewards(snapshot) {
     if (!Object.hasOwn(snapshot, 'bossRewardStreams')) {
@@ -66,6 +67,7 @@ export function normalizeSnapshot(raw, { clone = true } = {}) {
     const SNAPSHOT = clone ? structuredClone(raw) : raw,
         LEGACY_ENCOUNTER = Object.hasOwn(SNAPSHOT, 'boss') && !Object.hasOwn(SNAPSHOT, 'bosses');
     migrateSnapshotRewards(SNAPSHOT);
+    migrateTowerCardEffects(SNAPSHOT);
     SNAPSHOT.playerProgression = migratePlayerProgressionState(SNAPSHOT.playerProgression);
     if (!Object.hasOwn(SNAPSHOT, 'foodRuntime')) {
         SNAPSHOT.foodRuntime = null;

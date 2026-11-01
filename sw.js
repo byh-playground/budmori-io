@@ -64,7 +64,7 @@
     }
   });
 })({
-    "version": "876ea80ec2009a8d",
+    "version": "927b9c09f2b6885d",
     "activateMessage": "bloom-pwa:activate",
     "gamekit": "^https:\\/\\/cdn\\.jsdelivr\\.net\\/gh\\/byh-playground\\/bloom-gamekit@[0-9a-f]{40}\\/[A-Za-z0-9._/-]+$",
     "precache": [
@@ -323,6 +323,7 @@
         "src/save/farm-storage.js",
         "src/save/play-settings.js",
         "src/save/save-adapter.js",
+        "src/save/tower-card-migrations.js",
         "src/showcase.js",
         "src/startup-loading.js",
         "src/styles/base.css",

@@ -2,6 +2,7 @@ import { BOSS_PATTERN_IDS } from '../boss/boss-patterns.js';
 import { createFormationRuntime } from '../formation/formation-skill-state.js';
 import { createPlayerProgressionState } from '../model/player-progression.js';
 import { createBarleyArmorShredBuckets } from '../features/abilities/barley-shred/model.js';
+import { captureTowerCardEffects } from '../tower/tower-run.js';
 // Internal current-schema checkpoint shapes. Disk writes use farm-progress.js;
 // runtime values are not exported as user saves.
 export const UNIT_SNAPSHOT_SHAPE = {
@@ -294,7 +295,7 @@ const CORN_ACTION = FIELDS(
         ranks: FIELDS('heating finish extra'),
         budgetInputs: FIELDS(
             'tierOneAttack tierAttack gradeMultiplier permanentMultiplier directRank attachmentRank speedRank commandSpeed',
-            { profile: FIELDS('attackPower flat pct permanentMultiplier basePct') },
+            { profile: FIELDS('attackPower flat pct permanentMultiplier basePct'), power: JSON_PAYLOAD },
         ),
         source: CORN_SOURCE,
         attack: JSON_PAYLOAD,
@@ -484,7 +485,7 @@ export function snapshot(world) {
         units: world?.unitCollection ? world.unitCollection.items : world.units,
         tower: world.tower
             ? {
-                  ...world.tower,
+                  ...captureTowerCardEffects(world.tower),
                   relics: [...world.tower.relics],
                   bossRelics: [...world.tower.bossRelics],
                   undyingUsed: [...world.tower.undyingUsed],
