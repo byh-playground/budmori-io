@@ -59,7 +59,9 @@ npm run test:codex
 
 병력의 충돌 반경·높이와 표시 배율은 원본의 이름 있는 몸통 외곽선·지면 소켓을 공유합니다. 옥수수 낟알은 발사 순간 몸통 높이의 20%이며, 최소 표시 픽셀은 충돌 크기에 영향을 주지 않습니다. 측정 기준과 저장 호환성은 [몸 크기와 투사체 크기](docs/unit-body-dimensions.md)에 정리했습니다.
 
-기본 PR CI는 검증 도구 준비 후 `npm run check`와 실제 9종 혼합 전투 source smoke만 실행합니다. 같은 흐름 안에서 9종 보스의 자연 기본 공격·고유 효과와 공통 FarmSession/native 렌더도 확인합니다. 보스는 동일 병종 SVG 원본을 standard 품질로 사용하고, 병종 기본 공격·특수 패턴·카드 시전은 한 번에 하나만 준비합니다. 병종별 사용자 흐름과 카메라·산개·탑 검사는 필요할 때 workflow_dispatch로만 실행하며, 자동으로 매 변경마다 전체 행렬을 실행하지 않습니다. 병종 선택의 `all`은 기존 옥수수·완두콩·팥·밤톨·땅콩 5종이며, 기능 통합은 `functional`, 성능은 기본 꺼짐인 `performance` 입력으로 별도 선택합니다. skipped 작업은 통과로 세지 않습니다. 브라우저 스모크 테스트(`tests/smoke.e2e.mjs`)는 필요할 때 `npm test`로 실행하며, 게임 라이브러리를 `vendor/upstream`에서 받아 오프라인으로 돌고 약 70초 걸립니다. 필요한 변경에서는 번식 몫 UI 시나리오와 기존 전체 스모크도 검사하며, `npm run test:breed-allocation`으로 따로 실행할 수 있습니다. 각 브라우저 검증 명령은180초 이내로 실행합니다. 콩의 동일 사용자 흐름은 `npm run test:pea-growth:case -- ui desktop` (또는 `previews`/`battle`, `mobile`/`landscape`)로 실행하며 `tests/output/pea-growth/`에 기록합니다. 팥은 `npm run test:redbean-growth:case -- ui desktop`으로 실행하며 `previews-low`/`previews-high`/`battle`/`battle-extra`/`continuity`/`migration` 사용자 흐름을 각각180초 이내로 검사합니다. 병종별 브라우저 작업은 병종·뷰포트별로 분리되어 기존 검증을 생략하지 않습니다. 밤톨은 `node tests/chestnut-growth.e2e.mjs desktop` (또는 `landscape`)으로 투자·농장 저장·런 흐름을, `node tests/chestnut-motion.e2e.mjs desktop`으로 여섯 가시 평타·보스 경계·실제 발사·취소·연속성을 검증합니다. 땅콩은 `npm run test:peanut-growth:case -- ui desktop` 및 같은7개 사용자 흐름으로 한 본체의 실제 두 알 동작·사망 분열·저장 복원을 검사합니다. 별도 `PEANUT_PERFORMANCE_BASE_ROOT=/path/to/0.34.0 npm run test:peanut-performance`는 정확한0.34.0 기준본과 최대200 영구 유닛·실제 분열체2마리 장면을 세 번 교대 비교합니다. 모바일은 Chromium 터치 에뮬레이션이며 실제 기기 검증과 구분합니다.
+기본 PR CI는 코드 검사와 전투·카드·PWA·시작·그래픽 복구·병력 표현·농장·도감·합성 등 15개 필수 검사를 실행합니다. 실행 명령과 순서는 [Browser checks](.github/workflows/browser-checks.yml)가 원본입니다. `npm run test:source-smoke`는 실제 9종 혼합 전투와 보스의 자연 기본 공격·고유 효과를, `npm run test:stat-cards`는 카드 선택과 한 동작 전체 피해를, `npm run test:pwa-update`는 실제 서비스워커의 설치·적용과 저장 보존을 검사합니다. `npm test`로 전체 게임 흐름을 별도 실행할 수 있습니다. 브라우저의 SDK 요청은 고정된 `vendor/upstream` 원본으로 응답하며, 서비스워커·전투·저장 판정은 실제 경로를 사용합니다.
+
+카메라·산개·탑 병력 등 확장 시나리오는 필요할 때 `workflow_dispatch`의 `extended`로 실행합니다. skipped 작업은 통과로 세지 않습니다. 모바일은 Chromium 터치 에뮬레이션이며 실제 기기와 구분하고, 성능은 기능 E2E와 별도로 측정합니다.
 
 ## 농장
 
@@ -141,7 +143,16 @@ npm run test:codex
 
 GameKit `pwa` 모듈을 씁니다. `assets/pwa/`의 SVG 세 개(아이콘·마스커블 아이콘·공유 이미지, 게임 캐릭터 SVG와 얼굴 레이어로 만든 것)가 원본이고, `npm run pwa`(`scripts/pwa.mjs`)가 고정 생성기 `vendor/upstream/pwa-build.mjs`로 `manifest.webmanifest`·`pwa/*.png`·`sw.js`와 `index.html`의 `bloom-pwa` 마커 사이 태그를 만듭니다. 생성 결과는 커밋하고, `npm run check`의 `scripts/pwa.mjs --check`가 원본과 어긋난 결과를 막습니다. `index.html`·`sw.js`는 생성기가 쓰므로 Prettier에서 뺐습니다. `src/**`나 `assets/troops/*`를 바꾸면 `npm run pwa`를 다시 돌려 커밋합니다(sw.js의 캐시 버전이 바뀌어야 새 배포가 설치됩니다).
 
-첫 방문 뒤에는 service worker의 precache(`index.html`, `src/**`, `assets/troops/*`, 고정 GameKit 모듈)로 오프라인에서도 시작합니다. 캐릭터 SVG는 precache와 같은 주소로 읽도록 query 없이 요청하고(`cache: 'no-cache'`), 무결성은 manifest의 SHA-256으로 확인합니다. 새 버전이 설치되면 시작 화면에 `새 버전으로 다시 열기`가 나오고, 농장을 저장한 뒤 다시 엽니다. 브라우저가 설치를 허락하면 시작 화면에 `앱으로 설치`가 나옵니다. 도움말·장면 연구실·소개 데모는 service worker를 등록하지 않습니다(`src/ui/app-shell.js`).
+첫 방문 뒤에는 service worker의 precache(`index.html`, `src/**`, `assets/troops/*`, 고정 GameKit 모듈)로 오프라인에서도 시작합니다. 캐릭터 SVG는 precache와 같은 주소로 읽도록 query 없이 요청하고(`cache: 'no-cache'`), 무결성은 manifest의 SHA-256으로 확인합니다. 브라우저가 설치를 허락하면 시작 화면에 `앱으로 설치`가 나옵니다. 도움말·장면 연구실·소개 데모는 service worker를 등록하지 않습니다(`src/ui/app-shell.js`).
+
+새로고침·재접속은 PWA의 `checkForUpdate()`로 새 서비스워커 설치 완료까지 기다린 뒤 게임 경로를 엽니다. 아직 메모리에서 농장을 시작하지 않았다면 준비된 새 버전을 자동 적용합니다. 저장을 읽을 수 없는 상태에서도 최초 화면의 코드 업데이트는 저장 원본을 쓰거나 삭제하지 않습니다. 오프라인·확인 실패 때는 이유를 표시하고 기존 캐시로 시작합니다. 확인 요청이 끝났다는 사실만으로 ‘최신 버전’이라고 표시하지 않습니다.
+
+플레이 중 새 버전은 바로 적용하지 않습니다. 설정 버튼의 빨간 배지와 설정 안의 `최신 버전 업데이트`가 준비 상태를 나타냅니다. 설정의 `새 버전 확인`으로 다시 확인할 수 있고, 공통 PWA 모듈도 온라인·화면 복귀 때 재확인합니다. 사용자가 적용하면 입력과 시뮬레이션을 잠시 멈추고 농장 저장이 성공한 뒤에만 worker를 활성화하고 다시 읽습니다. 이미 진행 중인 자동 저장과 그 사이 바뀐 진행도 함께 기다리며, 실패하면 기존 버전·저장 원본을 유지하고 이전 일시정지 상태로 복귀합니다. 캐시·사이트 데이터 삭제는 업데이트 절차에 포함하지 않습니다.
+
+0.67.3 등 이미 구 서비스워커가 제어하는 페이지는 구 코드에서 새 정책을 실행할 수 없습니다. 최초 한 번 구버전 첫 화면의 `새 버전으로 다시 열기`를 사용하거나 해당 게임의 모든 탭을 닫아 대기 worker가 활성화되게 해야 합니다. 전환 뒤부터 새로고침 자동 적용 정책이 동작합니다. PWA 캐시 정리는 게임 범위의 코드 캐시만 다루며 `budmori-farm` 저장 키와 IndexedDB 데이터는 삭제하지 않습니다.
+
+`npm run test:pwa-update`는 실제 게임과 생성된 worker를 같은 origin의 세 배포로 교체해, 재접속 자동 전환·플레이 중 대기/설정 배지·저장 거부·진행 중 저장 대기·오프라인/온라인 복귀를 검사합니다. worker·캐시·저장 검증은 브라우저의 실제 경로이며, CDN은 고정 SDK 원본 파일로 응답합니다. 저장 대기 사례만 원래 저장 함수를 호출하기 전 완료 시점을 지연하는 fixture를 사용하고, 저장 실패는 실제 localStorage 할당량 초과로 관찰합니다.
+실제 탭 숨김·복귀까지 검사하므로 화면이 있는 Chromium을 사용합니다. Linux CI/가상 환경에서는 `xvfb-run -a npm run test:pwa-update`로 실행합니다. Playwright의 `install-deps chromium`이 Xvfb를 준비하며, 실제 기기/GPU 검증과 구분합니다.
 
 기존 GitHub Pages `main /`를 그대로 사용합니다. 머지 후 `node scripts/verify-pages.mjs`가 공개 index·게임·bootstrap의 바이트 수와 SHA256을 비교합니다. 실제 검증·배포 기록은 해당 PR에 남깁니다.
 

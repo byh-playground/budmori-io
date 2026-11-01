@@ -16,7 +16,7 @@ if (new URLSearchParams(location.search).get('showcaseDemo') !== '1') {
         }
         if (!pending) {
             pending =
-                import('https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@6fc81fe071e1adfc6ef3c94840775070f3de1b33/scenario.js')
+                import('https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@c21ef9b43336d430526ab7777473ab141eb4e88c/scenario.js')
                     .then(({ installShowcase }) => {
                         hostInstance = installShowcase({
                             title: '버드모리',

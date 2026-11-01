@@ -61,6 +61,7 @@ let graphicsRecovery = null;
 let sessionClockNow = () => performance.now();
 let home = true;
 let personalGarden = null;
+let appPhase = ISOLATED_PAGE ? 'ready' : 'checking';
 let unsubscribeProgress = null;
 let menuOpen = false;
 let menuTab = 'play';
@@ -198,15 +199,34 @@ function showSaveError(message) {
 STORAGE.onError = showSaveError;
 PLAY.onError = showSaveError;
 // Isolated scenes run this same page and must not install, cache or update the app.
+let appStartup = null;
 if (!ISOLATED_PAGE) {
-    startAppShell({
+    let updatePause = null;
+    appStartup = startAppShell({
         dollar: DOLLAR,
-        notify: (text) => {
-            if (!home) {
-                say(text);
+        // A fresh page has no changed farm in memory. Even a locked save stays
+        // byte-for-byte intact while only the application code is updated.
+        beforeUpdate: () => (personalGarden === null ? true : saveLocked() ? false : persist()),
+        canAutoUpdate: () => home && personalGarden === null,
+        onUpdating: (updating) => {
+            if (updating) {
+                stopWorldInput();
+                updatePause = { phase: appPhase, session: active, paused: active?.paused };
+                appPhase = 'updating';
+                if (active) {
+                    active.paused = true;
+                }
+            } else {
+                appPhase = updatePause.phase;
+                if (updatePause?.session === active && active) {
+                    active.paused = updatePause.paused;
+                }
+                updatePause = null;
+                if (appPhase === 'ready') {
+                    route();
+                }
             }
         },
-        beforeUpdate: () => persist(),
     });
 }
 function saveLocked() {
@@ -1734,12 +1754,12 @@ document.addEventListener('visibilitychange', () => {
         if (!home) {
             markSeen();
         }
-    } else if (!home) {
+    } else if (!home && appPhase === 'ready') {
         settleOffline();
     }
 });
 window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && menuOpen) {
+    if (e.key === 'Escape' && menuOpen && appPhase === 'ready') {
         e.preventDefault();
         closeMenu();
     }
@@ -1827,6 +1847,9 @@ CANVAS.addEventListener('webglcontextrestored', () => {
     }, 0);
 });
 function route() {
+    if (appPhase !== 'ready') {
+        return;
+    }
     stopWorldInput();
     const R = location.hash;
     if (R === '#/' || !R) {
@@ -2130,7 +2153,11 @@ DOLLAR('productVersion').textContent = PRODUCT_VERSION;
 DOLLAR('startVersion').textContent = PRODUCT_VERSION;
 DOLLAR('settingsVersion').textContent = `v${PRODUCT_VERSION}`;
 setHome(true, false);
-if (location.hash && location.hash !== '#/') {
+const CAN_START = appStartup ? await appStartup : true;
+if (CAN_START) {
+    appPhase = 'ready';
+}
+if (CAN_START && location.hash && location.hash !== '#/') {
     route();
 }
 

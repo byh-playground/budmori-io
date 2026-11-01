@@ -21,6 +21,7 @@ class FarmAutosave {
         this.setTimer = setTimer;
         this.clearTimer = clearTimer;
         this.timer = null;
+        this.pending = null;
         this.dirty = false;
         this.dirtySince = 0;
         this.deadline = 0;
@@ -53,16 +54,26 @@ class FarmAutosave {
     // save() captures at once and resolves whether it was kept; a refused save stays dirty for the next change.
     async flush() {
         this.cancelTimer();
+        if (this.pending) {
+            const SAVED = await this.pending;
+            return SAVED ? this.flush() : false;
+        }
         if (!this.dirty) {
             return true;
         }
         this.reset();
-        const SAVED = await this.save();
-        if (!SAVED && !this.dirty) {
-            this.dirty = true;
-            this.dirtySince = this.now();
+        const SAVING = Promise.resolve(this.save());
+        this.pending = SAVING;
+        try {
+            const SAVED = await SAVING;
+            if (!SAVED && !this.dirty) {
+                this.dirty = true;
+                this.dirtySince = this.now();
+            }
+            return SAVED;
+        } finally {
+            this.pending = null;
         }
-        return SAVED;
     }
     schedule(delay) {
         this.timerDeadline = this.now() + delay;
