@@ -1732,7 +1732,7 @@ try {
         assert.equal(await PAGE.locator('#doorCards [data-selected="true"]').count(), 1);
         DRAW.outcome = await PAGE.locator('#doorReceipts [data-role="boss"]').innerText();
         if (!REPORT.bossCards.draws.length) {
-            const PLAYER_OUTCOME = await PAGE.locator('#doorReceipts [data-role="player"]').innerText();
+            const PLAYER_OUTCOME = await PAGE.locator('#doorAnnouncement').textContent();
             const FROM = DRAW.playerPick.receipt.before.value,
                 TO = FROM + 1;
             assert.ok(
