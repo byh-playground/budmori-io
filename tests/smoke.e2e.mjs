@@ -772,22 +772,23 @@ await check('progress survives a reload', async () => {
 
 await check('help cards play the real game in an isolated frame and leave the save alone', async () => {
     const BEFORE = await WORLD(() => JSON.stringify(Object.entries(localStorage).sort()));
-    await PAGE.locator('#helpMenu').click();
+    const REQUEST_FAILURES = [],
+        ON_REQUEST_FAILED = (request) =>
+            REQUEST_FAILURES.push({ url: request.url(), error: request.failure()?.errorText });
+    PAGE.on('requestfailed', ON_REQUEST_FAILED);
     let frameObservation;
     try {
+        await PAGE.locator('#helpMenu').click();
         await PAGE.locator('#helpTabs button').nth(1).click();
-        // Boot the real iframe in real time first: accelerating its loading timeout would race network/asset work.
-        await PAGE.waitForFunction(
-            () => document.querySelector('#helpDemo iframe')?.contentWindow.__budmoriHelp,
-            null,
-            {
-                timeout: 15000,
-            },
-        );
         const HELP_OBSERVATION = () => {
-            const SNAP = document.querySelector('#helpDemo iframe')?.contentWindow.__budmoriHelp?.snapshot(),
+            const FRAME = document.querySelector('#helpDemo iframe'),
+                SNAP = FRAME?.contentWindow.__budmoriHelp?.snapshot(),
                 CAPTION = document.getElementById('helpCaption').textContent;
             return {
+                url: FRAME?.src,
+                documentUrl: FRAME?.contentDocument?.URL,
+                documentState: FRAME?.contentDocument?.readyState,
+                loading: document.getElementById('helpDemo').dataset.loading,
                 step: SNAP?.step,
                 state: SNAP?.state,
                 caption: CAPTION,
@@ -799,11 +800,34 @@ await check('help cards play the real game in an isolated frame and leave the sa
         try {
             // Each 50ms chunk runs every scheduled native app RAF/timer. Never call world.step or skip the merge path.
             // Read caption and model snapshot in one observation, before the product's automatic replay can remount it.
+            const BOOT_STARTED = Date.now();
+            let bootElapsed = 0,
+                playbackElapsed = 0;
             frameObservation = await WORLD(HELP_OBSERVATION);
-            for (let elapsed = 0; !frameObservation.complete && elapsed < 6000; elapsed += 50) {
+            console.log('OBS help loading', JSON.stringify(frameObservation));
+            // Loading and playback share the native clock, so software-rendering startup cost cannot
+            // consume the parent panel's loading watchdog before the child can expose its real API.
+            for (; !frameObservation.step && bootElapsed < 12000; bootElapsed += 50) {
                 await PAGE.clock.runFor(50);
                 frameObservation = await WORLD(HELP_OBSERVATION);
             }
+            console.log(
+                'OBS help ready',
+                JSON.stringify({
+                    nativeBootMs: bootElapsed,
+                    wallBootMs: Date.now() - BOOT_STARTED,
+                    ...frameObservation,
+                }),
+            );
+            expect(frameObservation.step, `help iframe did not expose its API ${JSON.stringify(frameObservation)}`);
+            for (; !frameObservation.complete && playbackElapsed < 6000; playbackElapsed += 50) {
+                await PAGE.clock.runFor(50);
+                frameObservation = await WORLD(HELP_OBSERVATION);
+            }
+            console.log(
+                'OBS help complete',
+                JSON.stringify({ nativePlaybackMs: playbackElapsed, ...frameObservation }),
+            );
         } finally {
             await PAGE.clock.resume();
         }
@@ -815,7 +839,24 @@ await check('help cards play the real game in an isolated frame and leave the sa
             frameObservation.step === 'done' && frameObservation.tabs === 3,
             `help card state ${JSON.stringify(frameObservation)}`,
         );
+    } catch (error) {
+        const DIAGNOSTICS = await WORLD(() => {
+            const FRAME = document.querySelector('#helpDemo iframe');
+            return {
+                caption: document.getElementById('helpCaption').textContent,
+                frameUrl: FRAME?.src,
+                documentUrl: FRAME?.contentDocument?.URL,
+                documentState: FRAME?.contentDocument?.readyState,
+                startup: FRAME?.contentDocument?.getElementById('bloom-module-loading')?.textContent,
+                diagnostics: FRAME?.contentWindow.BloomDiagnostics?.summary?.(),
+            };
+        }).catch((readError) => ({ error: String(readError) }));
+        throw new Error(
+            `${error.message}\n${JSON.stringify({ frameObservation, requestFailures: REQUEST_FAILURES, ...DIAGNOSTICS })}`,
+            { cause: error },
+        );
     } finally {
+        PAGE.off('requestfailed', ON_REQUEST_FAILED);
         if (!PAGE.isClosed()) {
             await PAGE.clock.resume();
             if (await PAGE.locator('#gameMenuClose').isVisible()) {
