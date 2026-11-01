@@ -2,6 +2,7 @@
 // base.css), so an icon takes its size from the font size and its colour from the text of the button it sits in.
 // Skill and passive card icons use the card id as their name; stat cards name theirs in the card list.
 const ICON_SHAPES = Object.freeze({
+    info: '<circle cx="12" cy="12" r="9.5"/><path d="M12 10.5v7M12 6.5h.01"/>',
     settings:
         '<path d="M19.42 10.37L21.92 10.75L21.92 13.25L19.42 13.63A7.6 7.6 0 0 1 18.4 16.1L19.9 18.13L18.13 19.9L16.1 18.4A7.6 7.6 0 0 1 13.63 19.42L13.25 21.92L10.75 21.92L10.37 19.42A7.6 7.6 0 0 1 7.9 18.4L5.87 19.9L4.1 18.13L5.6 16.1A7.6 7.6 0 0 1 4.58 13.63L2.08 13.25L2.08 10.75L4.58 10.37A7.6 7.6 0 0 1 5.6 7.9L4.1 5.87L5.87 4.1L7.9 5.6A7.6 7.6 0 0 1 10.37 4.58L10.75 2.08L13.25 2.08L13.63 4.58A7.6 7.6 0 0 1 16.1 5.6L18.13 4.1L19.9 5.87L18.4 7.9A7.6 7.6 0 0 1 19.42 10.37Z"/><circle cx="12" cy="12" r="3"/>',
     help: '<circle cx="12" cy="12" r="9.5"/><path d="M9.3 9.2a2.8 2.8 0 0 1 5.4.6c0 2.1-2.7 2.3-2.7 4.2"/><path d="M12 17.2h.01"/>',

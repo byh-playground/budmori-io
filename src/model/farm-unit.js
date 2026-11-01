@@ -222,6 +222,7 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
             barleyArmorBreakReduction: 0,
             barleyArmorShredBuckets: createBarleyArmorShredBuckets(),
             giantUntil: 0,
+            giantBonusDamage: 0,
             giantSizeMultiplier: 3,
             giantEndedAt: -10,
             isFormationClone: false,
@@ -383,7 +384,7 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         return this.bodyProfile ? Math.max(0, this.radius - unitBodyRadius(this)) : 0;
     }
     get attackGeometryScale() {
-        return this.bodyProfile ? this.radius / unitBodyRadius(this) : 1;
+        return this.bodyProfile ? this.radius / unitBodyRadius(this) : this.giantScale;
     }
     get height() {
         return (

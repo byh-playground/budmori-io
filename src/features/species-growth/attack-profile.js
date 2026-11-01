@@ -1,6 +1,7 @@
+import { giantBonusDamage } from '../formation-skills/giant/definition.js';
 import { isBossActorId, isCombatActorId } from '../../core/combat-identity.js';
 import { mergeMaterialCostForTier } from '../../units/unit-grades.js';
-import { baseUnitStatsFor } from '../../units/unit-stats.js';
+import { baseUnitStatsFor, applyStatModifier } from '../../units/unit-stats.js';
 
 // True when `value` is a plain object whose own keys are exactly the space-separated `keys`.
 export function exactKeys(value, keys) {
@@ -25,6 +26,9 @@ export function attackBudgetInputs(unit) {
             attackPower: unit.statProfile.attackPower,
             flat: unit.statModifiers?.attackPower?.flat ?? 0,
             pct: unit.statModifiers?.attackPower?.pct ?? 0,
+            ...((unit.statModifiers?.attackPower?.basePct ?? 0) !== 0
+                ? { basePct: unit.statModifiers.attackPower.basePct }
+                : {}),
             permanentMultiplier: Number.isFinite(unit.permanentStatMultiplier)
                 ? Math.max(0, unit.permanentStatMultiplier)
                 : 1,
@@ -81,7 +85,8 @@ export function attackBudgetValues(inputs) {
 // body profile supplies this one scale; the attack never infers a boss branch.
 export function captureAttackGeometry(unit) {
     const SCALE = unit.attackGeometryScale ?? 1;
-    return SCALE === 1 ? {} : { geometryScale: SCALE };
+    const BONUS = giantBonusDamage(unit, unit._world?.time ?? 0);
+    return { ...(SCALE === 1 ? {} : { geometryScale: SCALE }), ...(BONUS > 0 ? { giantBonusDamage: BONUS } : {}) };
 }
 
 export function attackGeometryScale(record) {
@@ -90,7 +95,12 @@ export function attackGeometryScale(record) {
 
 export function attackRecordShape(record, keys) {
     if (
-        !exactKeys(record, `${keys}${Object.hasOwn(record || {}, 'geometryScale') ? ' geometryScale' : ''}`) ||
+        !exactKeys(
+            record,
+            `${keys}${Object.hasOwn(record || {}, 'geometryScale') ? ' geometryScale' : ''}${Object.hasOwn(record || {}, 'giantBonusDamage') ? ' giantBonusDamage' : ''}`,
+        ) ||
+        (record.giantBonusDamage !== undefined &&
+            (!Number.isFinite(record.giantBonusDamage) || record.giantBonusDamage < 0)) ||
         !isCombatActorId(record.owner) ||
         !Number.isFinite(attackGeometryScale(record)) ||
         attackGeometryScale(record) <= 0 ||
@@ -105,14 +115,17 @@ export function attackRecordShape(record, keys) {
         return !isBossActorId(record.owner);
     }
     if (
-        !exactKeys(PROFILE, 'attackPower flat pct permanentMultiplier') ||
+        !exactKeys(
+            PROFILE,
+            `attackPower flat pct permanentMultiplier${Object.hasOwn(PROFILE || {}, 'basePct') ? ' basePct' : ''}`,
+        ) ||
         !Object.values(PROFILE).every(Number.isFinite) ||
         PROFILE.permanentMultiplier < 0 ||
         (isBossActorId(record.owner) && record.source?.faction !== undefined && record.source.faction !== 'enemy')
     ) {
         return false;
     }
-    const ATTACK = (PROFILE.attackPower + PROFILE.flat) * (1 + PROFILE.pct);
+    const ATTACK = applyStatModifier(PROFILE.attackPower, PROFILE);
     return (
         Number.isFinite(ATTACK) &&
         ATTACK >= 0 &&

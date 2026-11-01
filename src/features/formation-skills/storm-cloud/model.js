@@ -54,13 +54,13 @@ export class StormCloudSkill extends FlyingSkill {
     strike(owner, effect, target) {
         const PROFILE = this.profile(owner);
         if (PROFILE.targetCount === 1) {
-            owner.damage(target, PROFILE.pulseDamage);
+            owner.damage(target, effect.damage, effect);
             return;
         }
         for (const REFERENCE of effect.targets) {
             const TARGET = owner.target(REFERENCE.id, REFERENCE.generation);
             if (TARGET && effect.age >= REFERENCE.readyAt) {
-                owner.damage(TARGET, PROFILE.pulseDamage);
+                owner.damage(TARGET, effect.damage, effect);
             }
         }
     }

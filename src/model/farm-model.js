@@ -1,3 +1,4 @@
+import { giantBonusDamage } from '../features/formation-skills/giant/definition.js';
 import { advanceChestnutAttacks } from '../features/species-growth/chestnut-attack.js';
 import { SEEDLING_TRANSFORM } from '../features/seedling-growth/definition.js';
 import { applyOffline } from '../save/farm-offline.js';
@@ -736,6 +737,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
                 attackerStats: structuredClone(ATTACK_CONTEXT.attackerStats),
                 damageMultiplier: ATTACK_CONTEXT.damageMultiplier,
                 attackPowerMultiplier: ATTACK_CONTEXT.attackPowerMultiplier,
+                giantBonusDamage: projectileEffect ? 0 : ATTACK_CONTEXT.giantBonusDamage,
                 kind: ATTACK_CONTEXT.kind,
                 buffed: ATTACK_CONTEXT.buffed,
                 sourceStatOverrides: { ...ATTACK_CONTEXT.sourceStatOverrides },
@@ -1837,7 +1839,8 @@ const GARDEN = class Garden extends GARDEN_BASE {
             damageMultiplier: Number.isFinite(attackMultiplier) ? attackMultiplier : SPEC.skillMultiplier,
             kind: attackKind || SPEC.kind,
             buffed: false,
-            attackPowerMultiplier: u.giantUntil > this.time ? 3 : 1,
+            attackPowerMultiplier: 1,
+            giantBonusDamage: giantBonusDamage(u, this.time),
             strikeIndex,
             area,
             criticalRoll,

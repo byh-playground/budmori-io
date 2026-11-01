@@ -211,7 +211,7 @@ export function isPeanutAttackRecord(r) {
         ) ||
         !Object.values(r.source.attackerStats).every((v) => Number.isFinite(v) && v >= 0) ||
         r.source.attackerStats.maxHp <= 0 ||
-        ![1, 3].includes(r.source.attackPowerMultiplier) ||
+        r.source.attackPowerMultiplier !== 1 ||
         !Number.isFinite(r.source.sourceDamageScale) ||
         r.source.sourceDamageScale < 0 ||
         !['direct', 'enemy'].includes(r.source.sourceKind) ||

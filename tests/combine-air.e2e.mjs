@@ -131,30 +131,83 @@ try {
                 if (hidden) {
                     return DRAW_BODY.call(this, unit, world, point, radius, rest, hidden);
                 }
-                const MATRICES = [],
-                    TRANSFORM = R.ctx.transform;
-                R.ctx.transform = function (...values) {
-                    MATRICES.push(values);
-                    return TRANSFORM.apply(this, values);
+                const BODY_DRAW = R.unitSprites.draw,
+                    FACE_DRAW = R.unitOverlays.drawFace,
+                    DRAW_REGION = R.ctx.drawRegion,
+                    VALUES = (m) => [m.a, m.b, m.c, m.d, m.e, m.f],
+                    COMPOSE = (a, b) => [
+                        a[0] * b[0] + a[2] * b[1],
+                        a[1] * b[0] + a[3] * b[1],
+                        a[0] * b[2] + a[2] * b[3],
+                        a[1] * b[2] + a[3] * b[3],
+                        a[0] * b[4] + a[2] * b[5] + a[4],
+                        a[1] * b[4] + a[3] * b[5] + a[5],
+                    ];
+                let bodyMatrix,
+                    faceMatrix,
+                    faceAnchor,
+                    submittedFace,
+                    faceBackend,
+                    faceQuads = 0,
+                    drawingAtlasFace = false;
+                R.unitSprites.draw = function (prepared, options) {
+                    if (prepared.unit.id === unit.id) {
+                        bodyMatrix = COMPOSE(VALUES(R.ctx.getTransform()), options.matrix);
+                    }
+                    return BODY_DRAW.call(this, prepared, options);
+                };
+                // Observe the composed transform at the official face boundary. Body/atlas internals may
+                // submit other transforms before this call, so their ordinal position is not a contract.
+                R.unitOverlays.drawFace = function (anchor, face, ...args) {
+                    faceMatrix = VALUES(R.ctx.getTransform());
+                    faceAnchor = anchor;
+                    submittedFace = face;
+                    drawingAtlasFace = true;
+                    try {
+                        const USED_ATLAS = FACE_DRAW.call(this, anchor, face, ...args);
+                        faceBackend = USED_ATLAS ? 'atlas' : 'paths';
+                        return USED_ATLAS;
+                    } finally {
+                        drawingAtlasFace = false;
+                    }
+                };
+                R.ctx.drawRegion = function (...args) {
+                    if (drawingAtlasFace) {
+                        faceQuads++;
+                    }
+                    return DRAW_REGION.apply(this, args);
                 };
                 let result;
                 try {
                     result = DRAW_BODY.call(this, unit, world, point, radius, rest, hidden);
                 } finally {
-                    R.ctx.transform = TRANSFORM;
+                    R.unitSprites.draw = BODY_DRAW;
+                    R.unitOverlays.drawFace = FACE_DRAW;
+                    R.ctx.drawRegion = DRAW_REGION;
                 }
-                const ENTRY = this.preparedVisibleUnits.get(unit.id),
-                    M = MATRICES[0],
-                    POSE = MATRICES[1],
-                    SCREEN = (matrix, x, y) => [
+                const ENTRY = this.preparedVisibleUnits.get(unit.id);
+                if (
+                    !bodyMatrix ||
+                    !faceMatrix ||
+                    submittedFace !== ENTRY.face ||
+                    (faceBackend === 'atlas' && faceQuads < 3)
+                ) {
+                    throw new Error('Body/face submission observation missing');
+                }
+                const SCREEN = (matrix, x, y) => [
                         matrix[0] * x + matrix[2] * y + matrix[4],
                         matrix[1] * x + matrix[3] * y + matrix[5],
                     ],
-                    ERRORS = ['face-eye-left', 'face-eye-right', 'face-mouth'].map((name) => {
+                    ANCHORS = [faceAnchor.eyeLeft, faceAnchor.eyeRight, faceAnchor.mouth],
+                    ERRORS = ['face-eye-left', 'face-eye-right', 'face-mouth'].map((name, index) => {
                         const REST = ENTRY.record.compiled.metadata.sockets[name].point,
-                            SOCKET = ENTRY.player.getSocket(name),
-                            FACE = SCREEN(M, ...SCREEN(POSE, ...REST)),
-                            BODY = SCREEN(M, SOCKET.x, SOCKET.y);
+                            ANCHOR = ANCHORS[index],
+                            SOCKET = ENTRY.player.getSocket(name);
+                        if (ANCHOR.some((value, axis) => value !== REST[axis])) {
+                            throw new Error('Submitted face anchor differs from the body socket');
+                        }
+                        const FACE = SCREEN(faceMatrix, ...ANCHOR),
+                            BODY = SCREEN(bodyMatrix, SOCKET.x, SOCKET.y);
                         return Math.hypot(FACE[0] - BODY[0], FACE[1] - BODY[1]);
                     });
                 if (
@@ -168,6 +221,8 @@ try {
                     id: unit.id,
                     face: ENTRY.face,
                     socketError: Math.max(...ERRORS),
+                    faceBackend,
+                    faceQuads,
                     x: unit.x,
                     y: unit.y,
                     z: unit.z,

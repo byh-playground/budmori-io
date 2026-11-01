@@ -1,3 +1,4 @@
+import { DEFINITION as GIANT_SKILL } from '../features/formation-skills/giant/definition.js';
 import { PROJECTILE_BEHAVIORS } from './projectile-behaviors.js';
 
 import { hasFaction, FACTION_CONFIG, areOpposingFactions } from '../core/factions.js';
@@ -8,7 +9,7 @@ import { BOSS_BASIC_KNOCK } from '../boss/boss-patterns.js';
 // What a basic hit between two units does to its target.
 const UNIT_BASIC_KNOCK = Object.freeze({ power: 5, lift: 2.4 });
 import { CREATE_UNIT_ATTACK_CYCLE } from '../units/attack-cycle.js';
-import { resolveUnitStats, applyDamageToTargets } from '../units/unit-stats.js';
+import { resolveUnitStats, applyDamageToTargets, resolveCritical } from '../units/unit-stats.js';
 import { BarleyArmorShredModel } from '../features/abilities/barley-shred/model.js';
 import { CLAMP, CONFIG } from './farm-config.js';
 import { elementOf, elementHitScale, elementMultiplier } from './lineage.js';
@@ -78,7 +79,7 @@ export const FARM_COMBAT = (base) =>
                 armor: BarleyArmorShredModel.effectiveArmor(
                     target,
                     STATS.armor,
-                    (target.giantUntil > this.time ? 100 : 0) + ABILITY_ARMOR + ROLE_ARMOR,
+                    (target.giantUntil > this.time ? GIANT_SKILL.armorBonus : 0) + ABILITY_ARMOR + ROLE_ARMOR,
                     this.simulationTick,
                 ),
             };
@@ -122,14 +123,28 @@ export const FARM_COMBAT = (base) =>
                 ELEMENT_SCALE = elementHitScale(HIT_ELEMENT, towerElement(this.tower.floor)),
                 RAW_BASE_DAMAGE =
                     ATTACKER_STATS.attackPower *
-                    (CONTEXT.attackPowerMultiplier ?? (SOURCE.giantUntil > this.time ? 3 : 1)) *
+                    (CONTEXT.attackPowerMultiplier ?? 1) *
                     DAMAGE_MULTIPLIER *
                     ELEMENT_SCALE,
-                RAW_DAMAGE = Number.isFinite(CONTEXT.sourceDamageScale)
+                ORIGINAL_RAW_DAMAGE = Number.isFinite(CONTEXT.sourceDamageScale)
                     ? (RAW_BASE_DAMAGE * CONTEXT.sourceDamageScale + (CONTEXT.rawDamageBonus || 0)) *
                       this.passiveReceivedScale(target, DEFENSE.maxHp)
                     : (RAW_BASE_DAMAGE + (SOURCE.ability?.rawDamageBonus?.(this, action, KIND) || 0)) *
                       this.passiveDamageScale(SOURCE, ATTACKER_STATS.maxHp, target, DEFENSE.maxHp);
+            // A giant adds one unscaled cycle budget, distributed by the authored strike weights.
+            // Crit/element/grade/source bonuses strengthen the original hit only; defense still affects both parts.
+            const GIANT_BONUS =
+                    Math.max(0, CONTEXT.giantBonusDamage || 0) * this.passiveReceivedScale(target, DEFENSE.maxHp),
+                CRIT_SCALE =
+                    GIANT_BONUS > 0 &&
+                    SOURCE_STAT_OVERRIDES.critChance > 0 &&
+                    resolveCritical(
+                        SOURCE_STAT_OVERRIDES,
+                        CONTEXT.criticalRoll ?? (CONTEXT.criticalRoll = this.random()),
+                    )
+                        ? Math.max(1, SOURCE_STAT_OVERRIDES.critMultiplier ?? ATTACKER_STATS.critMultiplier ?? 1)
+                        : 1,
+                RAW_DAMAGE = ORIGINAL_RAW_DAMAGE + GIANT_BONUS / CRIT_SCALE;
             // The context belongs to one attack, so a mixed boss/unit area hit shares
             // one lazy roll while each target retains its own armor and actual HP loss.
             const DAMAGE = applyDamageToTargets(SOURCE, [target], {
@@ -157,16 +172,13 @@ export const FARM_COMBAT = (base) =>
                 this.onCombatResolved.emit({
                     role: ROLE,
                     sourceFaction: SOURCE.faction,
+                    sourceActor: SOURCE.id,
+                    targetActor: target.id,
                     targetFaction: target.faction,
-                    excluded: SOURCE.isFormationClone,
+                    excluded: SOURCE.isFormationClone || (ROLE === 'boss' && target.isFormationClone),
                     damageDealt:
-                        SOURCE.faction === FACTION
-                            ? DAMAGE.totalActualLoss /
-                              (Number.isFinite(CONTEXT.sourceDamageScale)
-                                  ? CONTEXT.attackPowerMultiplier
-                                  : SOURCE.giantUntil > this.time
-                                    ? 3
-                                    : 1)
+                        SOURCE.faction === FACTION && RAW_DAMAGE > 0
+                            ? (DAMAGE.totalActualLoss * ORIGINAL_RAW_DAMAGE) / RAW_DAMAGE
                             : 0,
                     damageTaken: target.faction === FACTION && !target.isFormationClone ? DAMAGE.totalActualLoss : 0,
                     hits: SOURCE.faction === FACTION ? 1 : 0,

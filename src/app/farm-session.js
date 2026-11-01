@@ -597,6 +597,7 @@ class EffectRender extends RENDER_OBJECT {
 }
 class FormationEffectRender extends RENDER_OBJECT {
     static renderSchema = Object.freeze({
+        recipients: R.STEP,
         role: R.STEP,
         targetCount: R.STEP,
         beamWidth: R.STEP,
@@ -635,7 +636,7 @@ class FormationEffectRender extends RENDER_OBJECT {
                 effect[KEY] ??
                 (KEY === 'kind' || KEY === 'role'
                     ? ''
-                    : KEY === 'targets'
+                    : KEY === 'targets' || KEY === 'recipients'
                       ? []
                       : KEY === 'targetCount'
                         ? 1

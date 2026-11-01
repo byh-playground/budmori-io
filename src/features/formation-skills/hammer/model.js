@@ -21,7 +21,7 @@ export class HammerSkill extends FormationSkill {
             ...this.sizeState(owner, TARGET),
             targetId: owner.targetId(TARGET),
             targetGeneration: owner.targetGeneration?.(TARGET),
-            damage: this.power(slot.level, PROFILE.upgradeBase),
+            ...this.damageBudget(owner, slot),
             stunSeconds: PROFILE.stunSeconds,
             impacted: false,
             duration: PROFILE.durationSeconds,
@@ -43,7 +43,7 @@ export class HammerSkill extends FormationSkill {
         if (!effect.impacted && effect.age + 1e-9 >= HAMMER_IMPACT_TIME) {
             effect.impacted = true;
             if (TARGET) {
-                owner.damage(TARGET, effect.damage);
+                owner.damage(TARGET, effect.damage, effect);
                 TARGET.stun = Math.max(TARGET.stun || 0, effect.stunSeconds ?? this.definition.stunSeconds);
             }
         }

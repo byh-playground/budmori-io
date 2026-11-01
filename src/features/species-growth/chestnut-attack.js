@@ -344,6 +344,7 @@ export function resolveChestnutImpact(world, p, geometry, old) {
                 sourceKind: SNAPSHOT.sourceKind,
                 attackerStats: SNAPSHOT.attackerStats,
                 attackPowerMultiplier: SNAPSHOT.attackPowerMultiplier,
+                giantBonusDamage: (R.giantBonusDamage || 0) * S.weight * (MAIN ? 1 : 0.5),
                 sourceDamageScale: SNAPSHOT.sourceDamageScale,
                 damageMultiplier: R.multiplier * WEIGHT,
                 kind: KIND,

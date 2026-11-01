@@ -1,26 +1,28 @@
 import { CASTER_SIZE_PROFILE } from '../model-base.js';
 const DURATION = 5,
-    PULSE_INTERVAL = 0.2,
-    PULSE_DAMAGE = 4;
+    PULSE_INTERVAL = 0.2;
 export const DEFINITION = Object.freeze({
     id: 'ufo',
     name: '우주선',
     condition: 'critHits',
     required: 10,
-    description: `${DURATION}초 동안 ${PULSE_INTERVAL}초마다 아래로 레이저를 쏴 피해 ${PULSE_DAMAGE}를 줘요 (총 피해 ${(DURATION / PULSE_INTERVAL) * PULSE_DAMAGE}).`,
+    description: `${DURATION}초 동안 ${PULSE_INTERVAL}초마다 아래로 레이저를 쏴 층·유물 레벨에 따른 기본 피해와 대상 체력에 비례한 피해를 줘요.`,
     targetCount: 1,
     beamWidth: 0,
     retargetDelaySeconds: 0,
     boss: Object.freeze({
         ...CASTER_SIZE_PROFILE,
+        condition: 'hitCharge',
+        required: 30,
+        criticalChargeBonus: 2,
         visualWidthRatio: 1,
         beamWidthRatio: 1,
         targetCount: 3,
         retargetDelaySeconds: 0.5,
     }),
-    upgradeAxis: '지속시간 +1초',
+    damage: Object.freeze({ base: 100, maxHpRatio: 0.005, missingHpRatio: 0, total: true }),
+    upgradeAxis: '기본 피해 ×2 · 체력 비례 계수 유지',
     pulseInterval: PULSE_INTERVAL,
-    pulseDamage: PULSE_DAMAGE,
     upgradeBase: DURATION,
     upgradeFactor: 1,
     upgradeStep: 1,

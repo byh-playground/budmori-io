@@ -445,7 +445,6 @@ export const FARM_BOSS_PATTERNS = (base) =>
                         : 1;
                 const RAW_DAMAGE =
                     B_LOCAL.attackPower *
-                    (B_LOCAL.giantUntil > this.time ? 3 : 1) *
                     CONFIG_LOCAL.damageMultiplier *
                     SHARE *
                     (this.bossEnraged ? BOSS_ENRAGE.damageMultiplier : 1) *
@@ -477,7 +476,7 @@ export const FARM_BOSS_PATTERNS = (base) =>
                     this.onCombatResolved.emit({
                         role: 'boss',
                         sourceFaction: 'enemy',
-                        sourceActor: 'boss',
+                        sourceActor: B_LOCAL.id,
                         targetFaction: UNIT_LOCAL.faction,
                         hits: 1,
                         critHits: RECEIVED.critical ? 1 : 0,

@@ -84,7 +84,7 @@ class BurstPresentation {
                 );
             this.drawParticle(renderer, POINT, CENTER, ANGLE, alpha, COLOR, progress, BODY);
         }
-        this.drawFlash?.(renderer, CENTER, progress, BODY);
+        this.drawFlash?.(renderer, CENTER, progress, BODY, feel);
     }
 }
 class HitPresentation extends BurstPresentation {
@@ -95,12 +95,12 @@ class HitPresentation extends BurstPresentation {
     draw(renderer, event, progress, feel) {
         super.draw(renderer, event, progress, feel);
         if (event.critical) {
-            this.drawCritical(renderer, event, progress, this.body(event));
+            this.drawCritical(renderer, event, progress, this.body(event), feel);
         }
     }
     // A critical hit reads by shape, not only by colour: a wide orange ring and a star of thick rays, where a normal
     // hit has a thin cream ring and short sparks.
-    drawCritical(renderer, event, progress, body) {
+    drawCritical(renderer, event, progress, body, feel) {
         const T = Math.min(1, progress / 0.58),
             ALPHA = 1 - T,
             CENTER = renderer.project(event.x, event.y, (event.z || 0) + 0.22);
@@ -108,15 +108,22 @@ class HitPresentation extends BurstPresentation {
             return;
         }
         renderer.ring(event.x, event.y, (0.3 + T * 0.62) * body, `rgba(255,150,40,${ALPHA * 0.95})`, 0.11 * body);
-        for (let index = 0; index < 6; index++) {
-            const ANGLE = (index * Math.PI) / 3 + (event.sequence % 7) * 0.08,
-                REACH = renderer.scale * (0.16 + T * 0.3) * body,
-                START = REACH * 0.45;
+        const RAYS = feel?.dense ? 4 : 6;
+        for (let index = 0; index < RAYS; index++) {
+            const ANGLE = (index * Math.PI * 2) / RAYS + (event.sequence % 7) * 0.08,
+                REACH = renderer.scale * (0.24 + Math.sin(T * Math.PI * 0.5) * 0.48) * body,
+                START = REACH * 0.25;
             renderer.line(
                 { x: CENTER.x + Math.cos(ANGLE) * START, y: CENTER.y + Math.sin(ANGLE) * START },
                 { x: CENTER.x + Math.cos(ANGLE) * REACH, y: CENTER.y + Math.sin(ANGLE) * REACH },
-                0.075 * body,
-                `rgba(255,214,102,${ALPHA})`,
+                0.1 * body,
+                `rgba(238,127,42,${ALPHA * 0.85})`,
+            );
+            renderer.line(
+                { x: CENTER.x + Math.cos(ANGLE) * START, y: CENTER.y + Math.sin(ANGLE) * START },
+                { x: CENTER.x + Math.cos(ANGLE) * REACH * 0.88, y: CENTER.y + Math.sin(ANGLE) * REACH * 0.88 },
+                0.028 * body,
+                `rgba(255,251,205,${ALPHA})`,
             );
         }
     }
@@ -150,25 +157,44 @@ class HitPresentation extends BurstPresentation {
         return bodyScale(event.sourceRadius);
     }
     elevation(progress) {
-        return Math.sin(progress * Math.PI) * 0.5;
+        return Math.sin(progress * Math.PI) * 0.5 - progress * progress * 0.18;
     }
     drawParticle(renderer, point, center, _angle, alpha, _color, _progress, body) {
         const INNER = {
             x: center.x + (point.x - center.x) * 0.55,
             y: center.y + (point.y - center.y) * 0.55,
         };
-        renderer.line(INNER, point, 0.055 * body, `rgba(255,242,190,${alpha})`);
+        renderer.line(INNER, point, 0.095 * body, `rgba(181,100,53,${alpha * 0.75})`);
+        renderer.line(INNER, point, 0.028 * body, `rgba(255,248,216,${alpha})`);
     }
-    drawFlash(renderer, center, progress, body) {
-        if (progress < 0.28) {
-            renderer.ellipse(
-                center.x,
-                center.y,
-                renderer.scale * 0.18 * (1 - progress) * body,
-                renderer.scale * 0.12 * (1 - progress) * body,
-                '#fff4d6',
-            );
+    drawFlash(renderer, center, progress, body, feel) {
+        if (progress >= 0.24) {
+            return;
         }
+        const K = 1 - progress / 0.24,
+            REACH = renderer.scale * 0.3 * K * body;
+        if (!feel?.dense) {
+            renderer.ellipse(center.x, center.y, REACH * 0.62, REACH * 0.42, `rgba(250,182,78,${K * 0.3})`);
+        }
+        renderer.line(
+            { x: center.x - REACH, y: center.y },
+            { x: center.x + REACH, y: center.y },
+            0.035 * body * K,
+            '#fff5d1',
+        );
+        renderer.line(
+            { x: center.x, y: center.y - REACH * 0.7 },
+            { x: center.x, y: center.y + REACH * 0.7 },
+            0.025 * body * K,
+            '#fffcdf',
+        );
+        renderer.ellipse(
+            center.x,
+            center.y,
+            renderer.scale * 0.06 * K * body,
+            renderer.scale * 0.06 * K * body,
+            '#fffef0',
+        );
     }
 }
 class BossHitPresentation extends HitPresentation {

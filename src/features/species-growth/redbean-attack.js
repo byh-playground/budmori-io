@@ -243,6 +243,7 @@ export function resolveRedbeanSlots(world, unit, action, geometry) {
                         (STRIKE.weight + (FINAL ? 0.08 * R.ranks.finish : 0)) *
                         (IS_PRIMARY ? 1 : 0.5),
                     attackPowerMultiplier: SOURCE.attackPowerMultiplier,
+                    giantBonusDamage: (R.giantBonusDamage || 0) * STRIKE.weight * (IS_PRIMARY ? 1 : 0.5),
                     sourceDamageScale: SOURCE.sourceDamageScale,
                     kind: 'leap',
                     strikeIndex: STRIKE.slot,
@@ -308,7 +309,7 @@ export function isRedbeanAttackRecord(r) {
         ) ||
         !Object.values(r.source.attackerStats).every((v) => Number.isFinite(v) && v >= 0) ||
         r.source.attackerStats.maxHp <= 0 ||
-        ![1, 3].includes(r.source.attackPowerMultiplier) ||
+        r.source.attackPowerMultiplier !== 1 ||
         !Number.isFinite(r.source.sourceDamageScale) ||
         r.source.sourceDamageScale < 0 ||
         !['direct', 'enemy'].includes(r.source.sourceKind) ||

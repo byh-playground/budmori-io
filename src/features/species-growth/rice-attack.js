@@ -180,7 +180,7 @@ export function isRiceAttackRecord(r) {
         r.source.statMultiplier < 0 ||
         (!r.budgetInputs.profile &&
             r.source.attackerStats.attackPower !== r.budgetInputs.current * r.source.statMultiplier) ||
-        ![1, 3].includes(r.source.attackPowerMultiplier) ||
+        r.source.attackPowerMultiplier !== 1 ||
         !Number.isFinite(r.source.sourceDamageScale) ||
         r.source.sourceDamageScale < 0 ||
         !['direct', 'enemy'].includes(r.source.sourceKind) ||

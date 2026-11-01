@@ -46,7 +46,7 @@ try {
               }
             : { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] }),
     });
-    async function context(options = {}) {
+    async function context(options = {}, backend = 'vector') {
         const CONTEXT = await browser.newContext({
             serviceWorkers: 'block',
             viewport: { width: 1100, height: 850 },
@@ -64,13 +64,34 @@ try {
             }
             return URL_LOCAL.startsWith(ORIGIN) ? route.continue() : route.abort();
         });
+        if (backend === 'sprite') {
+            // Exercise the optional production backend explicitly; the default stays vector.
+            await CONTEXT.route('**/src/model/farm-config.js', (route) => {
+                const SOURCE = fs.readFileSync(path.join(ROOT, 'src/model/farm-config.js'), 'utf8');
+                assert.match(SOURCE, /unitArt: 'vector'/);
+                return route.fulfill({
+                    contentType: 'text/javascript',
+                    body: SOURCE.replace("unitArt: 'vector'", "unitArt: 'sprite'"),
+                });
+            });
+        }
         return CONTEXT;
     }
-    for (const [NAME, OPTIONS] of [
-        ['desktop', {}],
-        ['mobile-landscape', { viewport: { width: 740, height: 360 }, isMobile: true, hasTouch: true }],
+    for (const [NAME, BACKEND, OPTIONS] of [
+        ['vector-desktop', 'vector', {}],
+        [
+            'vector-mobile-landscape',
+            'vector',
+            { viewport: { width: 740, height: 360 }, isMobile: true, hasTouch: true },
+        ],
+        ['sprite-desktop', 'sprite', {}],
+        [
+            'sprite-mobile-landscape',
+            'sprite',
+            { viewport: { width: 740, height: 360 }, isMobile: true, hasTouch: true },
+        ],
     ]) {
-        const CONTEXT = await context(OPTIONS),
+        const CONTEXT = await context(OPTIONS, BACKEND),
             PAGE = await CONTEXT.newPage(),
             ERRORS = [];
         PAGE.on('pageerror', (error) => ERRORS.push(String(error)));
@@ -107,14 +128,16 @@ try {
         assert.notEqual(await PAGE.evaluate(() => document.activeElement?.id), 'newGame');
         await PAGE.screenshot({ path: path.join(OUTPUT, `${NAME}-initial.png`) });
         release();
-        if (NAME === 'desktop') {
-            await PAGE.waitForFunction(() => {
+        if (NAME.endsWith('desktop')) {
+            await PAGE.waitForFunction((backend) => {
                 const PROGRESS = document.getElementById('bloom-loading-progress');
                 return (
-                    document.getElementById('bloom-loading-label')?.textContent.includes('이미지') &&
+                    document
+                        .getElementById('bloom-loading-label')
+                        ?.textContent.includes(backend === 'sprite' ? '이미지' : '원본') &&
                     Number(PROGRESS?.getAttribute('value')) > 0
                 );
-            });
+            }, BACKEND);
             await PAGE.setViewportSize({ width: 1000, height: 700 });
         }
         await PAGE.waitForFunction(
@@ -128,6 +151,10 @@ try {
             return {
                 startup: globalThis.BudmoriStartup.snapshot(),
                 art: BUDMORI.unitArtDiagnostics,
+                backend: BUDMORI.renderer.unitArtMode,
+                compiledSources: [...BUDMORI.renderer.vectorAssets.values()].map(
+                    (record) => record.compiled.sourcePath,
+                ),
                 gpu: GL.getParameter(EXT?.UNMASKED_RENDERER_WEBGL ?? GL.RENDERER),
                 frames: globalThis.__startupFrames,
                 busy: document.body.hasAttribute('data-startup'),
@@ -147,15 +174,35 @@ try {
             DATA.expectedSize,
             'resize during preparation reaches the first visible frame',
         );
+        assert.equal(DATA.backend, BACKEND, 'the intended production backend is active');
+        const VECTOR_STAGE = DATA.startup.stages.find((stage) => stage.stage === 'vectors');
+        assert.equal(VECTOR_STAGE.completed, MANIFEST.vectorAssets.length, 'every authored vector source was compiled');
+        assert.equal(VECTOR_STAGE.total, MANIFEST.vectorAssets.length);
+        assert.deepEqual(
+            DATA.compiledSources.sort(),
+            MANIFEST.vectorAssets
+                .filter((entry) => entry.kind === 'troop')
+                .map((entry) => entry.file)
+                .sort(),
+            'the renderer uses the complete authored troop source catalog',
+        );
         const PARTIAL = DATA.frames.filter(
-            (frame) => frame.label.includes('이미지') && Number(frame.value) > 0 && Number(frame.value) < frame.max,
+            (frame) =>
+                frame.label.includes(BACKEND === 'sprite' ? '이미지' : '원본') &&
+                Number(frame.value) > 0 &&
+                Number(frame.value) < frame.max,
         );
         assert.ok(
             new Set(PARTIAL.map((frame) => frame.value)).size >= 2,
-            'atlas progress painted on multiple real RAF frames',
+            `${BACKEND === 'sprite' ? 'atlas' : 'vector compilation'} progress painted on multiple real RAF frames`,
         );
         assert.ok(DATA.preparationWallMs >= DATA.cpuMs, 'CPU excludes cooperative waiting');
-        assert.ok(DATA.art.bakeCount > 0);
+        if (BACKEND === 'sprite') {
+            assert.ok(DATA.art.bakeCount > 0, 'the explicit sprite fixture really baked its atlas');
+        } else {
+            assert.equal(DATA.art.bakeCount, 0, 'the default vector backend does not prepare an unused atlas');
+            assert.ok(DATA.startup.stages.every((stage) => !stage.stage.startsWith('atlas')));
+        }
         if (OPTIONS.hasTouch) {
             await PAGE.tap('#newGame');
         } else {
@@ -251,7 +298,7 @@ try {
     REPORT.scenarios.moduleFailureRetry =
         'PASS: failed Promise.all with pending input, keyboard HTML retry reloads, old realm discarded, exact module count';
     await CONTEXT.close();
-    const FAILED_ATLAS = await context(),
+    const FAILED_ATLAS = await context({}, 'sprite'),
         ATLAS_PAGE = await FAILED_ATLAS.newPage();
     await ATLAS_PAGE.route('**/src/farm-app.js', (route) =>
         route.fulfill({
@@ -272,7 +319,7 @@ try {
     REPORT.scenarios.atlasPreparationFailure =
         'PASS: rejected preparation remains an error, input blocked, reload offered';
     await FAILED_ATLAS.close();
-    const LOST_CONTEXT = await context(),
+    const LOST_CONTEXT = await context({}, 'sprite'),
         LOST_PAGE = await LOST_CONTEXT.newPage();
     await LOST_PAGE.route('**/src/farm-app.js', (route) =>
         route.fulfill({

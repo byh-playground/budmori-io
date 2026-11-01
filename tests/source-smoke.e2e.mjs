@@ -622,7 +622,8 @@ try {
         WORLD.tower.bossRelics = new Map([['healing-rain', 1]]);
         WORLD.formationSkills.synchronize();
         const HEAL = WORLD.formationRuntime.slots.find((slot) => slot.role === 'boss' && slot.id === 'healing-rain');
-        HEAL.charge = 200;
+        OBS.healing.required = HEAL.required;
+        HEAL.charge = OBS.healing.required;
         const STEP = WORLD.step,
             PRESENTATION = BUDMORI.renderer.bossPresentation,
             DRAW = PRESENTATION.draw,
@@ -737,7 +738,7 @@ try {
                         OBS.healing.pendingUnspent &&=
                             DECISION.retry === 'healing-rain' &&
                             !CAST &&
-                            HEAL.charge === 200 &&
+                            HEAL.charge === OBS.healing.required &&
                             HEAL.cooldown === 0 &&
                             !this.formationRuntime.effects.some((effect) => effect.kind === 'healing-rain');
                     }
@@ -857,7 +858,7 @@ try {
     assert.equal(FLOW.healing.injuredAfterFill, 0, 'all actual healing beneficiaries lose eligibility during prepare');
     assert.deepEqual(
         { ...FLOW.healing.failed, tick: 0 },
-        { tick: 0, cast: null, charge: 200, cooldown: 0, effects: 0 },
+        { tick: 0, cast: null, charge: FLOW.healing.required, cooldown: 0, effects: 0 },
         'eligibility loss releases the failed heal without spending or recovery',
     );
     assert.equal(FLOW.healing.released, 0);
@@ -880,7 +881,7 @@ try {
     );
     assert.equal(FLOW.healing.nextDecision.cast, null);
     assert.equal(FLOW.healing.nextDecision.retry, null);
-    assert.equal(FLOW.healing.nextDecision.charge, 200);
+    assert.equal(FLOW.healing.nextDecision.charge, FLOW.healing.required);
     assert.equal(FLOW.healing.nextDecision.cooldown, 0);
     assert.ok(
         FLOW.healing.nextDecision.pattern ||
@@ -1710,7 +1711,12 @@ try {
         assert.equal(await PAGE.locator('#doorCards [data-selected="true"]').count(), 1);
         DRAW.outcome = await PAGE.locator('#doorReceipts [data-role="boss"]').innerText();
         if (TYPE === 'skill') {
-            assert.match(DRAW.outcome, /새 기술.*범위 피해 75/);
+            const EXPECTED_BASE = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 }).format(
+                50 * (1 + 0.05 * (APPLIED.floor - 1)) * 0.25,
+            );
+            assert.match(DRAW.outcome, /새 기술/);
+            assert.ok(DRAW.outcome.includes(`${APPLIED.floor}층 · 기본 ${EXPECTED_BASE} + 대상 최대 체력 1%`));
+            assert.doesNotMatch(DRAW.outcome, /NaN|undefined/, 'the compact receipt keeps the full numerical budget');
         } else {
             const FROM = Math.round(DRAW.receipt.before.value * 1000) / 10,
                 TO = Math.round(DRAW.receipt.after.value * 1000) / 10;
@@ -2224,6 +2230,7 @@ try {
                         saucerWidth: 0,
                     },
                     GROUND = renderer.groundEllipse,
+                    RING = renderer.ring,
                     ELLIPSE = renderer.ellipse;
                 renderer.groundEllipse = function (x, y, radius, ...rest) {
                     GEOMETRY.groundRadii.push(radius);
@@ -2235,11 +2242,27 @@ try {
                     }
                     return ELLIPSE.call(this, x, y, width, height, color, ...rest);
                 };
+                renderer.ring = function (x, y, radius, ...rest) {
+                    if (
+                        effect.kind === 'healing-rain' &&
+                        effect.recipients.some(
+                            (recipient) =>
+                                recipient.id === DISPLAY.boss.id && recipient.generation === DISPLAY.boss.generation,
+                        ) &&
+                        x === DISPLAY.boss.x &&
+                        y === DISPLAY.boss.y &&
+                        radius > 0
+                    ) {
+                        GEOMETRY.healedBossDrawn = true;
+                    }
+                    return RING.call(this, x, y, radius, ...rest);
+                };
                 let result;
                 try {
                     result = DRAW.call(this, renderer, effect, ...args);
                 } finally {
                     renderer.groundEllipse = GROUND;
+                    renderer.ring = RING;
                     renderer.ellipse = ELLIPSE;
                     OBS.geometry[effect.id] = GEOMETRY;
                 }
@@ -2252,7 +2275,7 @@ try {
                         EXTRA.dtoGiantScale = DISPLAY.boss.giantScale;
                         EXTRA.dtoRadius = DISPLAY.boss.radius;
                     } else if (effect.kind === 'healing-rain') {
-                        EXTRA.dtoInjuredBoss = DISPLAY.formationInjuredAllies.get('boss').includes(DISPLAY.boss);
+                        EXTRA.dtoHealedBoss = GEOMETRY.healedBossDrawn === true;
                     } else if (effect.kind === 'hammer' && effect.impacted) {
                         EXTRA.dtoHammerImpact = true;
                     }
@@ -2276,17 +2299,45 @@ try {
                     left: Infinity,
                     right: -Infinity,
                 },
+                ARC_PATHS = new Set(),
+                TARGETS = (
+                    effect.targetCount > 1
+                        ? effect.targets || []
+                        : [{ x: effect.targetX, y: effect.targetY, z: effect.targetZ }]
+                ).map((target) => renderer.project(target.x, target.y, target.z)),
                 ELLIPSE = renderer.ellipse,
+                BEGIN = renderer.ctx.beginPath,
+                MOVE = renderer.ctx.moveTo,
+                LINE = renderer.ctx.lineTo,
                 STROKE = renderer.ctx.stroke;
+            let points = [];
             renderer.ellipse = function (x, y, width, ...rest) {
                 OBS.widths.push(width);
                 OBS.left = Math.min(OBS.left, x - width);
                 OBS.right = Math.max(OBS.right, x + width);
                 return ELLIPSE.call(this, x, y, width, ...rest);
             };
+            renderer.ctx.beginPath = function () {
+                points = [];
+                return BEGIN.call(this);
+            };
+            renderer.ctx.moveTo = function (x, y) {
+                points = [[x, y]];
+                return MOVE.call(this, x, y);
+            };
+            renderer.ctx.lineTo = function (x, y) {
+                points.push([x, y]);
+                return LINE.call(this, x, y);
+            };
             renderer.ctx.stroke = function (...strokeArgs) {
-                if (this.strokeStyle === '#f3fdff') {
-                    OBS.arcStrokes++;
+                // Count distinct cloud-to-target paths, independent of palette and repeated glow/core layers.
+                const END = points.at(-1);
+                if (
+                    points.length > 3 &&
+                    points[0][1] < END[1] &&
+                    TARGETS.some((target) => Math.hypot(target.x - END[0], target.y - END[1]) < 1e-6)
+                ) {
+                    ARC_PATHS.add(JSON.stringify(points));
                 }
                 return STROKE.apply(this, strokeArgs);
             };
@@ -2294,7 +2345,11 @@ try {
                 return DRAW.call(this, renderer, effect, ...args);
             } finally {
                 renderer.ellipse = ELLIPSE;
+                renderer.ctx.beginPath = BEGIN;
+                renderer.ctx.moveTo = MOVE;
+                renderer.ctx.lineTo = LINE;
                 renderer.ctx.stroke = STROKE;
+                OBS.arcStrokes = ARC_PATHS.size;
                 OBS.visibleWidth = (OBS.right - OBS.left) / renderer.scale;
                 globalThis.__sharedSkills.cloudDraw = OBS;
             }
@@ -2303,11 +2358,11 @@ try {
     REPORT.sharedSkills = [];
     for (const ROLE of ['player', 'boss']) {
         for (const [ID, REQUIRED, CONDITION] of [
-            ['lightning', 50, 'hits'],
+            ['lightning', 15, 'hits'],
             ['meteor', 500, 'damageDealt'],
-            ['meteor-shower', 100, 'hits'],
-            ['ufo', 10, 'critHits'],
-            ['storm-cloud', 75, 'hits'],
+            ['meteor-shower', 30, 'hits'],
+            ['ufo', 30, 'hitCharge'],
+            ['storm-cloud', 25, 'hits'],
         ]) {
             const DESKTOP =
                 ROLE === 'boss' &&
@@ -2326,7 +2381,10 @@ try {
                         SKILLS = WORLD.formationSkills,
                         { DEFINITION } = await import(`./src/features/formation-skills/${id}/definition.js`),
                         PROFILE = { ...DEFINITION, ...DEFINITION.boss };
-                    if (PROFILE.required !== required || PROFILE.condition !== condition) {
+                    if (
+                        (PROFILE.damageCharge?.base ?? PROFILE.required) !== required ||
+                        PROFILE.condition !== condition
+                    ) {
                         throw new Error(`Unexpected boss condition: ${id}`);
                     }
                     SKILLS.end();
@@ -2369,7 +2427,7 @@ try {
                     const SLOT = SKILLS.slots.find((slot) => (slot.role || 'player') === role),
                         OTHER = SKILLS.slots.find((slot) => slot !== SLOT),
                         KEY = role === 'boss' ? PROFILE.condition : DEFINITION.condition,
-                        LIMIT = role === 'boss' ? PROFILE.required : DEFINITION.required,
+                        LIMIT = SKILLS.requiredFor(SLOT),
                         OBS = globalThis.__sharedSkills;
                     OBS.casts = [];
                     OBS.basicAfterRelease = { hits: 0, critHits: 0 };
@@ -2401,11 +2459,19 @@ try {
                                   : 0.25,
                         reached: false,
                     };
-                    WORLD.onCombatResolved.emit({ role, [KEY]: LIMIT - 1 });
+                    WORLD.onCombatResolved.emit({
+                        role,
+                        sourceActor: WORLD.boss.id,
+                        [KEY === 'hitCharge' ? 'hits' : KEY]: LIMIT - 1,
+                    });
                     if (SLOT.charge !== LIMIT - 1 || OTHER.charge !== 0) {
                         throw new Error('Combat contribution crossed roles or the exact threshold');
                     }
-                    WORLD.onCombatResolved.emit({ role, [KEY]: 1 });
+                    WORLD.onCombatResolved.emit({
+                        role,
+                        sourceActor: WORLD.boss.id,
+                        [KEY === 'hitCharge' ? 'hits' : KEY]: 1,
+                    });
                     if (SLOT.charge !== LIMIT || OTHER.charge !== 0) {
                         throw new Error('Threshold was not reached exactly');
                     }
@@ -2415,7 +2481,8 @@ try {
                     return {
                         required: LIMIT,
                         condition: KEY,
-                        bossRequired: PROFILE.required,
+                        criticalChargeBonus: PROFILE.criticalChargeBonus || 0,
+                        bossRequired: SKILLS.requiredFor(SKILLS.slots.find((slot) => slot.role === 'boss')),
                         playerRadius: DEFINITION.aoeRadius ?? null,
                         playerSizeScale: DEFINITION.sizeScale ?? 1,
                         playerBeamWidth: DEFINITION.beamWidth ?? null,
@@ -2633,7 +2700,10 @@ try {
                 assert.ok(MOBILE.dock.top >= MOBILE.tracks[1].bottom, 'landscape boss skills remain below boss health');
                 await SLOT.locator('[data-relic-detail]').tap();
                 await DETAIL.waitFor({ state: 'visible' });
-                assert.match(await DETAIL.locator('.relic-detail__condition').textContent(), /치명타 0 \/ 10/);
+                assert.match(
+                    await DETAIL.locator('.relic-detail__condition').textContent(),
+                    /적중당 \+1 · 치명타 추가 \+2 0 \/ 30/,
+                );
                 assert.match(await DETAIL.innerText(), /5초.*자동 발동/);
                 const DETAIL_BOX = await DETAIL.boundingBox();
                 assert.ok(
@@ -2829,7 +2899,12 @@ try {
             }
             assert.deepEqual(RESULT.casts, [{ id: ID, role: ROLE }], 'one release per cast');
             assert.equal(RESULT.otherCharge, 0, 'skill effects never recharge the opposite owner');
-            const BASIC_CHARGE = START.condition === 'damageDealt' ? null : RESULT.basicAfterRelease[START.condition];
+            const BASIC_CHARGE =
+                START.condition === 'damageDealt'
+                    ? null
+                    : START.condition === 'hitCharge'
+                      ? RESULT.basicAfterRelease.hits + RESULT.basicAfterRelease.critHits * START.criticalChargeBonus
+                      : RESULT.basicAfterRelease[START.condition];
             if (BASIC_CHARGE !== null || RESULT.basicAfterRelease.hits === 0) {
                 assert.equal(
                     RESULT.ownCharge,
@@ -2956,7 +3031,7 @@ try {
             ['storm-cloud', 1],
         ]);
         WORLD.formationRuntime.slots = [
-            { id: 'ufo', ownerId: 'boss', role: 'boss', level: 1, charge: 10, cooldown: 0 },
+            { id: 'ufo', ownerId: 'boss', role: 'boss', level: 1, charge: 30, cooldown: 0 },
             { id: 'lightning', ownerId: 'boss', role: 'boss', level: 1, charge: 0, cooldown: 0 },
         ];
         BUDMORI.runtime.paused = false;
@@ -2970,7 +3045,7 @@ try {
     assert.equal(RECOVERY.stationary, true, 'recovery stops voluntary motion');
     assert.equal(RECOVERY.patternsStopped, true, 'recovery stops physical patterns');
     await PAGE.evaluate(() => {
-        BUDMORI.sim.formationRuntime.slots.find((slot) => slot.id === 'lightning').charge = 50;
+        BUDMORI.sim.formationRuntime.slots.find((slot) => slot.id === 'lightning').charge = 15;
         globalThis.__sharedSkills.preparations.lightning = undefined;
         globalThis.__sharedSkills.checkpoint = {
             kind: 'phase',
@@ -3083,9 +3158,20 @@ try {
             healed: 0,
             complete: false,
         };
-        WORLD.onCombatResolved.emit({ role: 'boss', damageDealt: 200 });
-        WORLD.onCombatResolved.emit({ role: 'boss', damageTaken: 200 });
-        WORLD.onCombatResolved.emit({ role: 'boss', sourceFaction: 'enemy', allyDeaths: 3 });
+        WORLD.onCombatResolved.emit({
+            role: 'boss',
+            sourceActor: WORLD.boss.id,
+            damageDealt: SKILLS.requiredFor(SKILLS.slots.find((slot) => slot.id === 'giant')),
+        });
+        WORLD.onCombatResolved.emit({
+            role: 'boss',
+            targetActor: WORLD.boss.id,
+            damageTaken: Math.max(
+                ...SKILLS.slots
+                    .filter((slot) => ['healing-rain', 'hammer'].includes(slot.id))
+                    .map((slot) => SKILLS.requiredFor(slot)),
+            ),
+        });
         BUDMORI.runtime.capturePresentation('reset');
         BUDMORI.runtime.loop.resetTiming();
         BUDMORI.runtime.paused = false;
@@ -3109,7 +3195,7 @@ try {
     assert.equal(NEW_SKILLS.dtoGiantScale, 1.25);
     assert.ok(Math.abs(NEW_SKILLS.modelRadius / NEW_SKILLS.baseRadius - 1.25) < 1e-9);
     assert.ok(Math.abs(NEW_SKILLS.dtoRadius / NEW_SKILLS.baseRadius - 1.25) < 1e-9);
-    assert.ok(NEW_SKILLS.healed > 0 && NEW_SKILLS.dtoInjuredBoss, 'native rain draws over and heals the actual boss');
+    assert.ok(NEW_SKILLS.healed > 0 && NEW_SKILLS.dtoHealedBoss, 'native rain draws over and heals the actual boss');
     assert.ok(NEW_SKILLS.initialStun.every((stun) => stun === 0));
     assert.ok(NEW_SKILLS.hammer.damage > 0 && NEW_SKILLS.hammer.stun > 0 && NEW_SKILLS.dtoHammerImpact);
     assert.ok(

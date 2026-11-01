@@ -234,6 +234,7 @@ export function cornAttackContext(record, weight, criticalRoll, multiplier = rec
         attackerStats: structuredClone(SOURCE.attackerStats),
         damageMultiplier: multiplier * weight,
         attackPowerMultiplier: SOURCE.attackPowerMultiplier,
+        giantBonusDamage: multiplier === record.directMultiplier ? (record.giantBonusDamage || 0) * weight : 0,
         sourceDamageScale: SOURCE.sourceDamageScale,
         kind: 'lob',
         strikeIndex: null,
@@ -307,7 +308,7 @@ export function isCornAttackRecord(record, { pending = false } = {}) {
         typeof record.source.buffed !== 'boolean' ||
         !validCornStats(record.source.attackerStats) ||
         !Number.isFinite(record.source.attackPowerMultiplier) ||
-        ![1, 3].includes(record.source.attackPowerMultiplier) ||
+        record.source.attackPowerMultiplier !== 1 ||
         !Number.isFinite(record.source.sourceDamageScale) ||
         record.source.sourceDamageScale < 0 ||
         !record.criticalRolls ||

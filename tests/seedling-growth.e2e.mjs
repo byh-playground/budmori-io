@@ -37,36 +37,92 @@ async function installFaceProbe(page) {
                 return DRAW.call(this, unit, world, point, radius, rest, hidden);
             }
             const MODEL = BUDMORI.sim.units.find((entry) => entry.id === unit.id),
-                BEFORE = [MODEL.height, MODEL.z],
-                MATRICES = [],
-                TRANSFORM = R.ctx.transform;
-            R.ctx.transform = function (...values) {
-                MATRICES.push(values);
-                return TRANSFORM.apply(this, values);
+                BEFORE = [MODEL.height, MODEL.z];
+            const MATRICES = [],
+                BODY_DRAW = R.unitSprites.draw,
+                FACE_DRAW = R.unitOverlays.drawFace,
+                DRAW_REGION = R.ctx.drawRegion,
+                VALUES = (m) => [m.a, m.b, m.c, m.d, m.e, m.f],
+                COMPOSE = (a, b) => [
+                    a[0] * b[0] + a[2] * b[1],
+                    a[1] * b[0] + a[3] * b[1],
+                    a[0] * b[2] + a[2] * b[3],
+                    a[1] * b[2] + a[3] * b[3],
+                    a[0] * b[4] + a[2] * b[5] + a[4],
+                    a[1] * b[4] + a[3] * b[5] + a[5],
+                ];
+            let bodyMatrix,
+                faceMatrix,
+                faceAnchor,
+                submittedFace,
+                faceBackend,
+                faceQuads = 0,
+                drawingAtlasFace = false;
+            R.unitSprites.draw = function (prepared, options) {
+                if (prepared.unit.id === unit.id) {
+                    bodyMatrix = COMPOSE(VALUES(R.ctx.getTransform()), options.matrix);
+                }
+                return BODY_DRAW.call(this, prepared, options);
+            };
+            // Observe the composed transform at the official face boundary. Body/atlas internals may
+            // submit other transforms before this call, so their ordinal position is not a contract.
+            R.unitOverlays.drawFace = function (anchor, face, ...args) {
+                faceMatrix = VALUES(R.ctx.getTransform());
+                faceAnchor = anchor;
+                submittedFace = face;
+                drawingAtlasFace = true;
+                try {
+                    const USED_ATLAS = FACE_DRAW.call(this, anchor, face, ...args);
+                    faceBackend = USED_ATLAS ? 'atlas' : 'paths';
+                    return USED_ATLAS;
+                } finally {
+                    drawingAtlasFace = false;
+                }
+            };
+            R.ctx.drawRegion = function (...args) {
+                if (drawingAtlasFace) {
+                    faceQuads++;
+                }
+                return DRAW_REGION.apply(this, args);
             };
             let result;
             try {
                 result = DRAW.call(this, unit, world, point, radius, rest, hidden);
             } finally {
-                R.ctx.transform = TRANSFORM;
+                R.unitSprites.draw = BODY_DRAW;
+                R.unitOverlays.drawFace = FACE_DRAW;
+                R.ctx.drawRegion = DRAW_REGION;
             }
-            const ENTRY = P.preparedVisibleUnits.get(unit.id),
-                M = MATRICES[0],
-                POSE = MATRICES[1],
-                SCREEN = (matrix, x, y) => [
+            const ENTRY = P.preparedVisibleUnits.get(unit.id);
+            if (
+                !bodyMatrix ||
+                !faceMatrix ||
+                submittedFace !== ENTRY.face ||
+                (faceBackend === 'atlas' && faceQuads < 3)
+            ) {
+                throw new Error('Body/face submission observation missing');
+            }
+            MATRICES.push(bodyMatrix, faceMatrix);
+            const SCREEN = (matrix, x, y) => [
                     matrix[0] * x + matrix[2] * y + matrix[4],
                     matrix[1] * x + matrix[3] * y + matrix[5],
                 ],
-                SOCKETS = ['face-eye-left', 'face-eye-right', 'face-mouth'].map((name) => {
-                    const ANCHOR = ENTRY.record.compiled.metadata.sockets[name].point,
-                        ACTUAL = ENTRY.player.getSocket(name),
-                        POSED = SCREEN(POSE, ...ANCHOR);
-                    return { name, face: SCREEN(M, ...POSED), body: SCREEN(M, ACTUAL.x, ACTUAL.y) };
+                ANCHORS = [faceAnchor.eyeLeft, faceAnchor.eyeRight, faceAnchor.mouth],
+                SOCKETS = ['face-eye-left', 'face-eye-right', 'face-mouth'].map((name, index) => {
+                    const REST = ENTRY.record.compiled.metadata.sockets[name].point,
+                        ANCHOR = ANCHORS[index],
+                        ACTUAL = ENTRY.player.getSocket(name);
+                    if (ANCHOR.some((value, axis) => value !== REST[axis])) {
+                        throw new Error('Submitted face anchor differs from the body socket');
+                    }
+                    return { name, face: SCREEN(faceMatrix, ...ANCHOR), body: SCREEN(bodyMatrix, ACTUAL.x, ACTUAL.y) };
                 });
             globalThis.growthFaceProbe = {
                 body: ENTRY.player.currentExpression,
                 face: ENTRY.face,
-                matrices: MATRICES.slice(0, 2),
+                matrices: MATRICES,
+                faceBackend,
+                faceQuads,
                 sockets: SOCKETS,
                 modelUnchanged: BEFORE[0] === MODEL.height && BEFORE[1] === MODEL.z,
             };
@@ -86,6 +142,16 @@ async function verifyFaceProbe(page, output) {
         assert.ok(Math.hypot(SOCKET.face[0] - SOCKET.body[0], SOCKET.face[1] - SOCKET.body[1]) < 1e-6);
     }
     fs.writeFileSync(path.join(OUTPUT, output), JSON.stringify(PROBE, null, 2));
+}
+async function capture(page, filename) {
+    // GPU readback can outlast a discovery toast on software rendering. Freeze only the observation;
+    // resume the real UI clock before the same close/navigation actions and assertions.
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 50));
+    try {
+        await page.screenshot({ path: path.join(OUTPUT, filename) });
+    } finally {
+        await page.clock.resume();
+    }
 }
 const BROWSER = await chromium.launch({
     executablePath: process.env.CHROME_PATH,
@@ -113,6 +179,7 @@ try {
             headers: { 'access-control-allow-origin': '*' },
         }),
     );
+    await PAGE.clock.install();
     await PAGE.goto(`http://127.0.0.1:${SERVER.address().port}/index.html`);
     await PAGE.waitForFunction(() => globalThis.BUDMORI);
     // Blocked service workers are reported on the start screen. Waiting for that line keeps it off the farm notice,
@@ -239,12 +306,12 @@ try {
                         assert.equal(await PAGE.locator('#seedlingReveal').isVisible(), false);
                     }
                     MOTION.push(EXPECTED.lift);
-                    await PAGE.screenshot({ path: path.join(OUTPUT, `${BACKEND}-transform-${AGE}.png`) });
+                    await capture(PAGE, `${BACKEND}-transform-${AGE}.png`);
                     await verifyFaceProbe(PAGE, `${BACKEND}-face-transform-${AGE}.json`);
                 }
                 assert.ok(MOTION[1] > MOTION[0] && MOTION[1] > MOTION[2] && MOTION[2] > MOTION[3]);
                 await PAGE.waitForSelector('#seedlingReveal:not([hidden])');
-                await PAGE.screenshot({ path: path.join(OUTPUT, `${BACKEND}-discovery.png`) });
+                await capture(PAGE, `${BACKEND}-discovery.png`);
                 assert.match(await PAGE.locator('#seedlingReveal').innerText(), /콩 병종 발견/);
                 await PAGE.locator('#seedlingReveal button').click();
                 await PAGE.locator('#seedlingReveal').waitFor({ state: 'hidden' });
@@ -257,13 +324,13 @@ try {
                 assert.ok(STAGE.radius > STAGES[meal - 1].radius);
             }
             await PAGE.waitForTimeout(80);
-            await PAGE.waitForFunction(
-                (seedling) =>
-                    BUDMORI.runtime.presentationView.units.some(
-                        (u) => u.id === globalThis.growthSubject && u.isSeedling === seedling,
-                    ),
-                meal < 3,
-            );
+            await PAGE.waitForFunction((seedling) => {
+                const DISPLAY = BUDMORI.runtime.presentationView;
+                return (
+                    Math.abs(DISPLAY.time - BUDMORI.sim.time) < 1e-6 &&
+                    DISPLAY.units.some((u) => u.id === globalThis.growthSubject && u.isSeedling === seedling)
+                );
+            }, meal < 3);
             assert.equal(
                 await PAGE.evaluate(
                     () => BUDMORI.runtime.presentationView.units.find((u) => u.id === globalThis.growthSubject).fed,
@@ -271,7 +338,7 @@ try {
                 meal > 0 && meal < 3,
                 'Growing portrait reads its own meal count',
             );
-            await PAGE.screenshot({ path: path.join(OUTPUT, `${BACKEND}-meal-${meal}.png`) });
+            await capture(PAGE, `${BACKEND}-meal-${meal}.png`);
             await verifyFaceProbe(PAGE, `${BACKEND}-face-meal-${meal}.json`);
             const SUBMISSION = await PAGE.evaluate(() => BUDMORI.renderer.unitSprites.stats());
             submittedBodies += SUBMISSION[BACKEND];
@@ -346,7 +413,7 @@ try {
         });
         await PAGE.waitForSelector('#seedlingReveal[data-species="7"]:not([hidden])');
         await PAGE.setViewportSize({ width: 390, height: 844 });
-        await PAGE.screenshot({ path: path.join(OUTPUT, `${BACKEND}-mobile-card.png`) });
+        await capture(PAGE, `${BACKEND}-mobile-card.png`);
         assert.ok(
             await PAGE.locator('#seedlingReveal').evaluate(
                 (root) => root.getBoundingClientRect().right <= innerWidth && root.scrollWidth <= root.clientWidth,

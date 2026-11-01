@@ -1,4 +1,4 @@
-import { TAU, clamp01, drawSparkle, easeOut, pop, rgba } from '../vfx-kit.js';
+import { TAU, clamp01, drawLitSparkle, drawContactLight, easeOut, pop, rgba } from '../vfx-kit.js';
 
 const HEART = '#e5809f',
     HEART_LIGHT = '#fbd3df',
@@ -25,6 +25,10 @@ export class BirthEffect {
             X = effect.x,
             Y = effect.y,
             Z = effect.z || 0.7;
+        if (P >= 1) {
+            return;
+        }
+        drawContactLight(renderer, X, Y, Z * 0.45, 0.32, P, HEART_LIGHT);
         renderer.ring(X, Y, 0.25 + easeOut(P) * 1.3, rgba(HEART, 0.75 * (1 - P)), 0.05 * (1 - P) + 0.012);
         if (P > 0.16) {
             const Q = clamp01((P - 0.16) / 0.84);
@@ -39,11 +43,12 @@ export class BirthEffect {
                         Y + Math.sin(ANGLE) * easeOut(T) * 0.7,
                         Z * 0.5 + easeOut(T) * 0.35,
                     );
-                drawSparkle(
+                drawLitSparkle(
                     renderer,
                     POINT,
                     renderer.scale * 0.085 * (1 - T),
-                    rgba(index % 2 ? HEART_LIGHT : HEART, 1 - T),
+                    index % 2 ? HEART_LIGHT : HEART,
+                    1 - T,
                     T * 2,
                 );
             }

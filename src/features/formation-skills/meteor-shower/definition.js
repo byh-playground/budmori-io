@@ -4,7 +4,8 @@ export const DEFINITION = Object.freeze({
     name: '유성우',
     condition: 'hits',
     required: 100,
-    description: '유성 5개를 0.25초 간격으로 떨어뜨려요. 유성마다 주변에 피해 25를 주며, 빗나갈 수 있어요.',
+    description:
+        '유성 5개를 0.25초 간격으로 떨어뜨려요. 유성마다 층·유물 레벨에 따른 기본 피해와 대상 체력에 비례한 범위 피해를 주며, 빗나갈 수 있어요.',
     ...TARGET_SIZE_PROFILE,
     // The tier-1 radius is the floor; against a body each meteor's blast is half its drawn width.
     aoeRadius: T1_DIAMETER,
@@ -13,15 +14,15 @@ export const DEFINITION = Object.freeze({
     scatterRadiusRatio: 0.5,
     fallSeconds: 0.75,
     shotInterval: 0.25,
-    shotDamage: 25,
     boss: Object.freeze({
         ...CASTER_SIZE_PROFILE,
         condition: 'hits',
-        required: 100,
+        required: 30,
         aoeRadiusRatio: 0.5,
         scatterRadiusRatio: 0.5,
     }),
-    upgradeAxis: '유성 +1개',
+    damage: Object.freeze({ base: 125, maxHpRatio: 0.005, missingHpRatio: 0, total: true }),
+    upgradeAxis: '기본 피해 ×2 · 체력 비례 계수 유지',
     upgradeBase: 5,
     upgradeFactor: 1,
     upgradeStep: 1,

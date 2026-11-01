@@ -122,17 +122,23 @@ export function passiveTotals(cards, role = 'player') {
 
 export const RARITY_NAMES = Object.freeze(['일반', '희귀', '영웅']);
 
-// A stat card adds `values[rarity]` to one stat for the whole climb: `flat` is added to the stat's base, `pct` is added to
-// a shared multiplier, so the result is (base + all flat) * (1 + all pct). Armor, crit and lifesteal have no meaningful
-// base to scale and so exist as one kind only. Regen `pct` is a share of max HP per second. `icon` names the stat's
-// picture in src/ui/icons.js, shared by both kinds of one stat.
+// Stat cards share one resolver: (base * (1 + basePct) + flat) * (1 + pct).
+// The historical attack-flat/hp-flat ids now grant basePct, so their value survives merging.
+// Regen pct is a share of effective max HP per second; armor/crit/lifesteal remain additive.
 const STAT_CARDS = Object.freeze([
     { id: 'attack-pct', stat: 'attackPower', mode: 'pct', name: '공격력', icon: 'attack', values: [0.1, 0.16, 0.25] },
-    { id: 'attack-flat', stat: 'attackPower', mode: 'flat', name: '공격력', icon: 'attack', values: [2, 3, 5] },
+    {
+        id: 'attack-flat',
+        stat: 'attackPower',
+        mode: 'basePct',
+        name: '기초 공격력',
+        icon: 'attack',
+        values: [0.1, 0.15, 0.25],
+    },
     { id: 'hp-pct', stat: 'maxHp', mode: 'pct', name: '체력', icon: 'hp', values: [0.12, 0.19, 0.3] },
-    { id: 'hp-flat', stat: 'maxHp', mode: 'flat', name: '체력', icon: 'hp', values: [20, 32, 50] },
+    { id: 'hp-flat', stat: 'maxHp', mode: 'basePct', name: '기초 체력', icon: 'hp', values: [0.1, 0.15, 0.25] },
     { id: 'regen-pct', stat: 'regen', mode: 'pct', name: '재생', icon: 'regen', values: [0.005, 0.008, 0.0125] },
-    { id: 'regen-flat', stat: 'regen', mode: 'flat', name: '재생', icon: 'regen', values: [1, 1.6, 2.5] },
+    { id: 'regen-flat', stat: 'regen', mode: 'pct', name: '체력 재생', icon: 'regen', values: [0.005, 0.0075, 0.0125] },
     { id: 'armor-flat', stat: 'armor', mode: 'flat', name: '방어력', icon: 'armor', values: [10, 16, 25] },
     {
         id: 'attack-speed-pct',
@@ -156,7 +162,7 @@ const STAT_CARDS = Object.freeze([
         mode: 'flat',
         name: '치명타 확률',
         icon: 'crit-chance',
-        values: [0.05, 0.08, 0.12],
+        values: [0.1, 0.15, 0.25],
     },
     {
         id: 'crit-multiplier-flat',
@@ -164,7 +170,7 @@ const STAT_CARDS = Object.freeze([
         mode: 'flat',
         name: '치명타 피해',
         icon: 'crit-damage',
-        values: [0.2, 0.32, 0.5],
+        values: [0.5, 0.75, 1],
     },
     {
         id: 'lifesteal-flat',
@@ -186,6 +192,12 @@ function statModifierText(card, value) {
     }
     if (card.stat === 'regen') {
         return `+${NUMBER(value)}/초`;
+    }
+    if (card.stat === 'critMultiplier') {
+        return `치명타 피해 +${NUMBER(value * 100)}%p`;
+    }
+    if (card.mode === 'basePct') {
+        return `기초 수치 +${PERCENT(value)}`;
     }
     return card.mode === 'pct' ? `+${NUMBER(value * 100)}%` : `+${NUMBER(value)}`;
 }
@@ -230,7 +242,7 @@ export function runStatModifiers(cards, role = 'player') {
     for (const TAKEN of cards) {
         const CARD = statCard(TAKEN.id);
         if (CARD) {
-            MODS[CARD.stat] ??= { flat: 0, pct: 0 };
+            MODS[CARD.stat] ??= { flat: 0, pct: 0, basePct: 0 };
             MODS[CARD.stat][CARD.mode] += cardValue(CARD, TAKEN.rarity, role);
         }
     }

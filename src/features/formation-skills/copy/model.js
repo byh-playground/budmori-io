@@ -5,7 +5,7 @@ export class CopySkill extends FormationSkill {
         super(DEFINITION);
     }
     cast(owner, slot) {
-        const ORIGINALS = owner.allies().filter((unit) => !unit.isBattleOnlySummon),
+        const ORIGINALS = owner.allies().filter((unit) => !unit.isFormationClone),
             RADIUS = this.power(slot.level, T1_DIAMETER * this.definition.upgradeBase);
         let center = null;
         let targets = [];
@@ -15,7 +15,7 @@ export class CopySkill extends FormationSkill {
                 .filter(
                     (candidate) =>
                         candidate.faction === 'player' &&
-                        !candidate.isBattleOnlySummon &&
+                        !candidate.isFormationClone &&
                         candidate.hp > 0 &&
                         Math.hypot(candidate.x - UNIT.x, candidate.y - UNIT.y) <= RADIUS,
                 );

@@ -1,9 +1,14 @@
-import { FormationPresentation, bodyScale, cloud, stroke } from '../presentation-base.js';
+import { FormationPresentation, bodyScale, cloud, glint, radialStreaks, stroke } from '../presentation-base.js';
 import { WORLD_HEIGHT_PROJECTION, WORLD_DEPTH_PROJECTION } from '../../../vector-sockets.js';
 const POINT_BUFFERS = new WeakMap();
 const CLOUD_SPREAD_DEPTH = 0.35,
-    // Five lobes: centers span 1.0 size, plus a 0.34-size ellipse radius at each end.
-    CLOUD_WIDTH_FACTOR = 1.68;
+    CLOUD_SIDE_SCALE = 0.82,
+    CLOUD_LAYER_OFFSET = 0.14,
+    // One five-lobe cloud reaches 0.5 + 0.34 from its centre. Include all three layered silhouettes.
+    CLOUD_LOBE_EXTENT = 0.84,
+    CLOUD_LEFT_EXTENT = CLOUD_LOBE_EXTENT + CLOUD_LAYER_OFFSET / 2,
+    CLOUD_RIGHT_EXTENT = CLOUD_LOBE_EXTENT * CLOUD_SIDE_SCALE + CLOUD_LAYER_OFFSET,
+    CLOUD_WIDTH_FACTOR = CLOUD_LEFT_EXTENT + CLOUD_RIGHT_EXTENT;
 
 function pointBuffersFor(effect) {
     let buffers = POINT_BUFFERS.get(effect);
@@ -42,14 +47,15 @@ export class StormCloudPresentation extends FormationPresentation {
     includeBounds(effect, bounds) {
         const { radius: RADIUS, size: SIZE, z: Z } = cloudGeometry(effect),
             SPREAD = RADIUS * 2.6,
-            HALF_WIDTH = SIZE * (CLOUD_WIDTH_FACTOR / 2) + SPREAD;
+            LEFT_WIDTH = SIZE * CLOUD_LEFT_EXTENT + SPREAD,
+            RIGHT_WIDTH = SIZE * CLOUD_RIGHT_EXTENT + SPREAD;
         // Reserve the complete entrance/exit spread, not the current pulse, to avoid camera pumping.
-        bounds.left = Math.min(bounds.left, effect.x - HALF_WIDTH - 1);
-        bounds.right = Math.max(bounds.right, effect.x + HALF_WIDTH + 1);
+        bounds.left = Math.min(bounds.left, effect.x - LEFT_WIDTH - 1);
+        bounds.right = Math.max(bounds.right, effect.x + RIGHT_WIDTH + 1);
         bounds.top = Math.max(
             bounds.top,
             (effect.y + SPREAD * CLOUD_SPREAD_DEPTH) * WORLD_DEPTH_PROJECTION +
-                (Z + 0.1 + SIZE * 0.24) * WORLD_HEIGHT_PROJECTION +
+                (Z + 0.1 + SIZE * 0.35) * WORLD_HEIGHT_PROJECTION +
                 SIZE * 0.26 +
                 1,
         );
@@ -62,33 +68,35 @@ export class StormCloudPresentation extends FormationPresentation {
             // this is presentation-only, so flying-skill targeting, range and pulse timing stay unchanged.
             Z = CLOUD_Z + Math.sin(effect.age * 3) * Math.min(0.1, BODY_RADIUS * 0.12),
             ARC_Z = Z - CLOUD_SIZE * 0.25,
-            SPREAD = (1 - ENTER + EXIT) * BODY_RADIUS * 2.6;
+            SPREAD = (1 - ENTER + EXIT) * BODY_RADIUS * 2.6,
+            PULSE_AGE = Math.max(0, effect.age - effect.lastPulse),
+            CHARGE = Math.max(0, 1 - PULSE_AGE / 0.24);
         for (let index = 0; index < 3; index++) {
             const ANGLE = (index * Math.PI * 2) / 3;
             cloud(
                 renderer,
-                effect.x + Math.cos(ANGLE) * SPREAD,
-                effect.y + Math.sin(ANGLE) * SPREAD * CLOUD_SPREAD_DEPTH,
-                Z,
-                CLOUD_SIZE,
+                effect.x + Math.cos(ANGLE) * (SPREAD + CLOUD_SIZE * CLOUD_LAYER_OFFSET),
+                effect.y + Math.sin(ANGLE) * (SPREAD + CLOUD_SIZE * CLOUD_LAYER_OFFSET) * CLOUD_SPREAD_DEPTH,
+                Z + (index === 2 ? CLOUD_SIZE * 0.11 : 0),
+                CLOUD_SIZE * (index === 2 ? 1 : CLOUD_SIDE_SCALE),
                 Math.max(0, 1 - EXIT) * Math.min(1, effect.age * 8),
             );
         }
-        if (ENTER < 1 && effect.age > 0.15) {
+        if ((ENTER < 1 || CHARGE > 0) && effect.age > 0.15 && EXIT === 0) {
             const INTRO_POINTS = pointBuffersFor(effect).intro;
-            INTRO_POINTS[0][0] = effect.x - 0.3;
+            INTRO_POINTS[0][0] = effect.x - CLOUD_SIZE * 0.48;
             INTRO_POINTS[0][1] = effect.y;
-            INTRO_POINTS[0][2] = Z;
-            INTRO_POINTS[1][0] = effect.x + 0.1;
+            INTRO_POINTS[0][2] = ARC_Z;
+            INTRO_POINTS[1][0] = effect.x - CLOUD_SIZE * 0.15;
             INTRO_POINTS[1][1] = effect.y;
-            INTRO_POINTS[1][2] = Z + 0.1;
-            INTRO_POINTS[2][0] = effect.x - 0.05;
+            INTRO_POINTS[1][2] = ARC_Z + CLOUD_SIZE * 0.06;
+            INTRO_POINTS[2][0] = effect.x + CLOUD_SIZE * 0.12;
             INTRO_POINTS[2][1] = effect.y;
-            INTRO_POINTS[2][2] = Z - 0.1;
-            INTRO_POINTS[3][0] = effect.x + 0.3;
+            INTRO_POINTS[2][2] = ARC_Z - CLOUD_SIZE * 0.04;
+            INTRO_POINTS[3][0] = effect.x + CLOUD_SIZE * 0.48;
             INTRO_POINTS[3][1] = effect.y;
-            INTRO_POINTS[3][2] = Z;
-            stroke(renderer, INTRO_POINTS, '#b7e8f0aa', 0.035);
+            INTRO_POINTS[3][2] = ARC_Z;
+            stroke(renderer, INTRO_POINTS, `rgba(173,219,255,${0.25 + CHARGE * 0.65})`, 0.045);
         }
         for (const TARGET of effect.targets ?? []) {
             if (effect.age < TARGET.readyAt) {
@@ -136,12 +144,22 @@ export class StormCloudPresentation extends FormationPresentation {
                     BRANCH[2][0] = ROOT[0] + DX;
                     BRANCH[2][1] = ROOT[1] + DY;
                     BRANCH[2][2] = ROOT[2] + ARC_RADIUS * 0.2;
-                    stroke(renderer, POINTS, '#408bff99', 0.3 * BODY_SCALE);
-                    stroke(renderer, POINTS, '#8bd4ff', 0.13 * BODY_SCALE);
-                    stroke(renderer, POINTS, '#f3fdff', 0.045 * BODY_SCALE);
-                    stroke(renderer, BRANCH, '#408bff88', 0.18 * BODY_SCALE);
-                    stroke(renderer, BRANCH, '#d9f5ff', 0.045 * BODY_SCALE);
+                    stroke(renderer, POINTS, `rgba(64,139,255,${0.12 + CHARGE * 0.22})`, 0.26 * BODY_SCALE);
+                    stroke(renderer, POINTS, `rgba(139,212,255,${0.4 + CHARGE * 0.6})`, 0.1 * BODY_SCALE);
+                    stroke(renderer, POINTS, `rgba(243,253,255,${0.35 + CHARGE * 0.65})`, 0.035 * BODY_SCALE);
+                    stroke(renderer, BRANCH, `rgba(129,195,255,${0.2 + CHARGE * 0.65})`, 0.035 * BODY_SCALE);
                 }
+                glint(renderer, TARGET.x, TARGET.y, TARGET.z, ARC_RADIUS * 0.18, CHARGE, '210,244,255');
+                radialStreaks(
+                    renderer,
+                    TARGET.x,
+                    TARGET.y,
+                    TARGET.z,
+                    ARC_RADIUS,
+                    PULSE_AGE / 0.3,
+                    effect.id,
+                    '145,210,255',
+                );
             }
         }
     }

@@ -1,27 +1,25 @@
-tree 58f00b2dcfac8d72f9049d43032a7336d0727b79
-parent 47d9ec102622c84fb6fb66121eab74e8e91fd862
-author byh020907 <byh020907@naver.com> 1793458103 +0900
-committer GitHub <noreply@github.com> 1793458103 +0900
+tree 21ee4cee2fae937574e03cfc0007998f6ca6c3f3
+parent 479b4d91b885d7dacdbd9f3a85ae1f21f580fed1
+author byh020907 <byh020907@naver.com> 1793523417 +0900
+committer GitHub <noreply@github.com> 1793523417 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq5f+3CRC1aQ7uu5UhlAAAhUMQADlB4MzqPJSEE+fJQRgxqO/+
- Ovs6+qBGicrExSB8g20sGhfDtiGmvIXgma/qRHKRLTJF1SY4fY9t/MfH6IOkZYPl
- ucBL9uNYFogj1KhC9ytpWtEbXzNi2Or7MhuV+jPYiSNVN0xmN5/BHKzoH4e6SX3X
- 3VpQHRXZOEqK1QwSf/RmAvXzuzK6EsdVOX+biKBIp7g2lQUo2W3v4JkHcA8qMY52
- 0hixVqC0ZZAh5/upn0y+eWTUxXBA9i/HXopH7NdT7NndWfpwpPXNa/fTxExIWqB0
- L15OeFeduboyT+T2qNebKplNXLi/9ZiplZ/n4ILbFaMLS0Jx7a7MlBpzUx+rNKSb
- sR7Fl2J6UGTF+OTIsf4c6tOHiG+LUKLRjNpGeoRqn6LXeGZ3BsCS9R82m/Om4Il1
- 034hzQcRUFQ36l5LGF14kLCT5OGxBz2T4UnGwhloKxOpfKy4UMey/blMxCCgJA02
- SezvLBvnl2yXpTW8Lh3F0NBG9lFz+Y2X/fhBtp+vLLRD6F9pJsOR+XOXx3McGF68
- tYJEXr5Mhb+cBThonuwwy4MCk27uJ7ujhSPYztJmTfoKqFeEPt4g9CCBKPIBZtvX
- 9RV17Mj94LcvukVjV86of4PRze6s/vAm6dP3VOXM6MUyd0ifWzRQC5hEuPvBox3i
- yjS2zFS2f3lj+ZCXx2xd
- =vVDS
+ wsFcBAABCAAQBQJq5v7ZCRC1aQ7uu5UhlAAAYP8QABibHuflIJuK+UHTG9dhBGFo
+ iXhE52BqIJqBGBaG0ougjNV8x2iZJG/hTsZ+E7PkUjqS5a2MGZNWtRZD07uxaz1m
+ NG/5uG1cjpXPkJWboCiHKOp88fjUPNvWRokAaeJdJSCTnulJqEGhg2X82+lM7bw2
+ Y6/uMiKTM/70xNEWyj3EiCMS7OJg9+P8xHt3N1t3eRR5A5XiA4ubbrlncpgl3gzq
+ g+NQtWKmerF6jDSETrMsu4ogkP7dUs9dKz9gsEinjHkWDrg3Oq9Z1g2F57yZt6hQ
+ xEnv1OAcUOprHkYz5jRWZSzGeuFk2FqKVG2vhQsNRt79YEmGFjWQqnhSM7iatLL6
+ p/Sf8f/O11LlLX/OPY5V7kKq2FxiSgHs6xlaj536B9laB/C/u99U9sUzXWeeFlxj
+ JJ2xFX2NymWjIpTb2jWH5XmNrWtCN15TTbZZnWtXhx9G/4CloE5aeOKTRqD/Jxrn
+ XSMnPKnTKCL4iwfZLA1ooW8YI7kviWTNkXt04j1VbWcvkNQTOVapna+6g/6VjsOe
+ L1Nj/gc0NF+ycCMumkmmprGTLffZNeUqeLb72qC3ADDaFyNHojlZigXGX+/RmGxF
+ 8yHBU5zEmlpAcCrbsdvSxur6E64pLiz7BvSzS2Elorobs4UAtkhBuElqF1Lwm2bR
+ J5fgRkn2INX0b/KLCBpv
+ =iK1/
  -----END PGP SIGNATURE-----
  
 
-[수정] pwa: service worker 등록 결과가 비면 던지지 않고 onError로 알린다 (v0.39.2) (#178)
+[bug-fix] 이미지 업로드 뒤 GPU 숫자 텍스처 변형 방지 (0.39.3)
 
-자동화 브라우저가 service worker를 막으면 register()가 오류 없이 빈 값으로 끝나 addEventListener에서 페이지 오류가 났다. 고정 시나리오에 막힌 컨텍스트 단계를 더했다.
-
-Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+Co-authored-by: yong-ho bae <dragonlake.bae@gmail.com>
