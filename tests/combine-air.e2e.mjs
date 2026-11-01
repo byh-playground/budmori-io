@@ -121,8 +121,49 @@ try {
                 BEFORE = JSON.stringify(SNAPSHOT(BUDMORI.sim));
             const ACTORS = [],
                 FACES = [],
+                BODY_SUBMISSIONS = new Map(),
+                PENDING_BODIES = new Map(),
                 DRAW = R.unitPresentation.draw,
-                DRAW_BODY = R.unitPresentation.drawVectorUnit;
+                DRAW_BODY = R.unitPresentation.drawVectorUnit,
+                BODY_DRAW = R.unitSprites.draw,
+                DRAW_ACTOR = R.ctx.drawVectorActor,
+                VALUES = (m) => [m.a, m.b, m.c, m.d, m.e, m.f],
+                COMPOSE = (a, b) => [
+                    a[0] * b[0] + a[2] * b[1],
+                    a[1] * b[0] + a[3] * b[1],
+                    a[0] * b[2] + a[2] * b[3],
+                    a[1] * b[2] + a[3] * b[3],
+                    a[0] * b[4] + a[2] * b[5] + a[4],
+                    a[1] * b[4] + a[3] * b[5] + a[5],
+                ];
+            // Body submission may precede the actor's face. Observe the actual draw options for this render,
+            // independently of which pass submits them, rather than assuming both share one call stack.
+            R.unitSprites.draw = function (prepared, options) {
+                const MATRIX = COMPOSE(VALUES(R.ctx.getTransform()), options.matrix),
+                    RESULT = BODY_DRAW.call(this, prepared, options);
+                const SUBMISSION = {
+                    id: prepared.unit.id,
+                    matrix: MATRIX,
+                    generation: prepared.unit.generation,
+                    frame: R.displayTimeMs,
+                };
+                if (RESULT) {
+                    BODY_SUBMISSIONS.set(prepared.unit.id, SUBMISSION);
+                } else {
+                    PENDING_BODIES.set(prepared.player, SUBMISSION);
+                }
+                return RESULT;
+            };
+            R.ctx.drawVectorActor = function (actor, options) {
+                const PENDING = PENDING_BODIES.get(actor),
+                    MATRIX = PENDING ? COMPOSE(VALUES(R.ctx.getTransform()), options.matrix) : null,
+                    RESULT = DRAW_ACTOR.call(this, actor, options);
+                if (PENDING) {
+                    BODY_SUBMISSIONS.set(PENDING.id, { ...PENDING, matrix: MATRIX });
+                    PENDING_BODIES.delete(actor);
+                }
+                return RESULT;
+            };
             R.unitPresentation.draw = function (unit, world) {
                 ACTORS.push(unit.id);
                 return DRAW.call(this, unit, world);
@@ -131,31 +172,14 @@ try {
                 if (hidden) {
                     return DRAW_BODY.call(this, unit, world, point, radius, rest, hidden);
                 }
-                const BODY_DRAW = R.unitSprites.draw,
-                    FACE_DRAW = R.unitOverlays.drawFace,
-                    DRAW_REGION = R.ctx.drawRegion,
-                    VALUES = (m) => [m.a, m.b, m.c, m.d, m.e, m.f],
-                    COMPOSE = (a, b) => [
-                        a[0] * b[0] + a[2] * b[1],
-                        a[1] * b[0] + a[3] * b[1],
-                        a[0] * b[2] + a[2] * b[3],
-                        a[1] * b[2] + a[3] * b[3],
-                        a[0] * b[4] + a[2] * b[5] + a[4],
-                        a[1] * b[4] + a[3] * b[5] + a[5],
-                    ];
-                let bodyMatrix,
-                    faceMatrix,
+                const FACE_DRAW = R.unitOverlays.drawFace,
+                    DRAW_REGION = R.ctx.drawRegion;
+                let faceMatrix,
                     faceAnchor,
                     submittedFace,
                     faceBackend,
                     faceQuads = 0,
                     drawingAtlasFace = false;
-                R.unitSprites.draw = function (prepared, options) {
-                    if (prepared.unit.id === unit.id) {
-                        bodyMatrix = COMPOSE(VALUES(R.ctx.getTransform()), options.matrix);
-                    }
-                    return BODY_DRAW.call(this, prepared, options);
-                };
                 // Observe the composed transform at the official face boundary. Body/atlas internals may
                 // submit other transforms before this call, so their ordinal position is not a contract.
                 R.unitOverlays.drawFace = function (anchor, face, ...args) {
@@ -181,13 +205,15 @@ try {
                 try {
                     result = DRAW_BODY.call(this, unit, world, point, radius, rest, hidden);
                 } finally {
-                    R.unitSprites.draw = BODY_DRAW;
                     R.unitOverlays.drawFace = FACE_DRAW;
                     R.ctx.drawRegion = DRAW_REGION;
                 }
-                const ENTRY = this.preparedVisibleUnits.get(unit.id);
+                const ENTRY = this.preparedVisibleUnits.get(unit.id),
+                    BODY = BODY_SUBMISSIONS.get(unit.id),
+                    BODY_CURRENT = BODY?.frame === R.displayTimeMs && BODY.generation === unit.generation,
+                    BODY_MATRIX = BODY_CURRENT ? BODY.matrix : null;
                 if (
-                    !bodyMatrix ||
+                    !BODY_MATRIX ||
                     !faceMatrix ||
                     submittedFace !== ENTRY.face ||
                     (faceBackend === 'atlas' && faceQuads < 3)
@@ -207,7 +233,7 @@ try {
                             throw new Error('Submitted face anchor differs from the body socket');
                         }
                         const FACE = SCREEN(faceMatrix, ...ANCHOR),
-                            BODY = SCREEN(bodyMatrix, SOCKET.x, SOCKET.y);
+                            BODY = SCREEN(BODY_MATRIX, SOCKET.x, SOCKET.y);
                         return Math.hypot(FACE[0] - BODY[0], FACE[1] - BODY[1]);
                     });
                 if (
@@ -234,6 +260,8 @@ try {
             } finally {
                 R.unitPresentation.draw = DRAW;
                 R.unitPresentation.drawVectorUnit = DRAW_BODY;
+                R.unitSprites.draw = BODY_DRAW;
+                R.ctx.drawVectorActor = DRAW_ACTOR;
             }
             if (new Set(ACTORS).size !== ACTORS.length) {
                 throw new Error('Duplicate unit submission');
