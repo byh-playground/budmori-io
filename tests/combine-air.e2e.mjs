@@ -551,11 +551,44 @@ try {
                 touchPoints: [{ x: AGAIN_BOX.x + AGAIN_BOX.width / 2, y: AGAIN_BOX.y + AGAIN_BOX.height / 2, id: 2 }],
             });
             touchActive = true;
-            await PAGE.clock.runFor(50);
-            assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.length), 12);
-            assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.at(-1).count), 1);
+            const OBSERVE_TOUCH = () =>
+                PAGE.evaluate(() => ({
+                    count: globalThis.__mergeHoldObservations.length,
+                    last: structuredClone(globalThis.__mergeHoldObservations.at(-1)),
+                    pending: BUDMORI.runtime.pending
+                        .filter((command) => command.type === 'merge')
+                        .map((command) => command.count ?? 1),
+                    label: document.getElementById('merge').textContent.trim(),
+                    tick: BUDMORI.runtime.tick,
+                    tickRate: BUDMORI.runtime.profile.tickRate,
+                    clockMs: performance.now(),
+                    lastRafMs: BUDMORI.runtime.pulseTimestamp,
+                    simulationTimeMs: BUDMORI.runtime.loop.simulationTimeMs,
+                }));
+            const QUEUED_TOUCH = await OBSERVE_TOUCH();
+            assert.equal(QUEUED_TOUCH.label, '합성 ×1', 'fresh touch resets before simulation advances');
+            assert.equal(QUEUED_TOUCH.count, 11, 'input uses the native command queue');
+            assert.deepEqual(QUEUED_TOUCH.pending, [1], 'fresh touch queues exactly one one-merge execution');
+            // Release before visiting the next tick: the intentional first pulse
+            // remains valid, while no 100 ms repeat can enter the command queue.
             await TOUCH.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
             touchActive = false;
+            let committedTouch = await OBSERVE_TOUCH();
+            const TICK_MS = 1000 / QUEUED_TOUCH.tickRate;
+            // A queued command commits when a native RAF visits its logical
+            // deadline. Observe that handoff for at most two actual tick periods.
+            for (let step = 0; step < 2 && committedTouch.count < 12; step++) {
+                await PAGE.clock.runFor(TICK_MS);
+                committedTouch = await OBSERVE_TOUCH();
+            }
+            assert.equal(committedTouch.count, 12, JSON.stringify(committedTouch));
+            assert.equal(committedTouch.last.count, 1);
+            assert.equal(committedTouch.last.started.length, 1);
+            assert.deepEqual(committedTouch.pending, []);
+            console.log(
+                'OBS fresh touch native commit',
+                JSON.stringify({ queued: QUEUED_TOUCH, committed: committedTouch }),
+            );
             console.log('PASS native touch drag outside under implicit capture resets hold', JSON.stringify(DRAG));
         } finally {
             if (touchActive) {
