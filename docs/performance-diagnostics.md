@@ -152,7 +152,7 @@ node tests/unit-sprites.e2e.mjs --benchmark --count=1000 --backend=vector --gpu-
 
 ### 기능 검증
 
-기존 깊이 시나리오9개의 전체 RGBA 픽셀 차이0과 모델 비변경을 확인합니다. 겹침·같은 깊이의ID순서·분신·숨긴/페이드 껍질·반투명 장식·전부 반투명·확대 벡터 얼굴·먹이/시설/전후 링을 포함합니다. SDK interop은 일반 paint/SDF/gradient,작은 용량,65,532정점,중첩 stencil,atlas 변경,복구/정리를 검증합니다. GPU program과 행렬 캐시는9시점×4구성의 픽셀 차이0입니다. capability mask로 float 미지원과 복구 후 손실도 확인했으며 실제 기기 지원성 검증으로 부르지 않습니다.
+기존 깊이 시나리오9개의 전체 RGBA 픽셀 차이0과 모델 비변경을 확인합니다. 이 검사의 원래 reference는 ordered 배치를 끈 native painter로 고정합니다. 새 SDK의 단순 painter 경로도 별도 캡처해 픽셀 차이0과 draw를 기록합니다. 소수 장면에서는 단순 painter의 draw가 깊이 grouping보다 적을 수 있으므로 원래 기준 대비 감소 조건을 보존하고, 성능 판정은 위의 대규모 CPU/GPU 벤치와 구분합니다. 겹침·같은 깊이의ID순서·분신·숨긴/페이드 껍질·반투명 장식·전부 반투명·확대 벡터 얼굴·먹이/시설/전후 링을 포함합니다. SDK interop은 일반 paint/SDF/gradient,작은 용량,65,532정점,중첩 stencil,atlas 변경,복구/정리를 검증합니다. GPU program과 행렬 캐시는9시점×4구성의 픽셀 차이0입니다. capability mask로 float 미지원과 복구 후 손실도 확인했으며 실제 기기 지원성 검증으로 부르지 않습니다.
 
 SDK 전체 core의 기존 GPU-vs-CPU uniform 비교는 auto frame1에서490픽셀(0.1020833%)로 기존0.1% 기준을 넘어 실패합니다. 고정0.40.1 바이너리에서도 같은 위치·오차58을 재현했습니다. 기대값/허용치를 바꾸지 않았고 새 GPU cache는 기존 GPU program을 참조로 별도 비교했습니다. 이 기존 실패를 전체 통과로 보고하지 않습니다(AI-013·PM-010).
 

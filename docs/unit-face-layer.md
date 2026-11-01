@@ -19,7 +19,7 @@
 
 그 뒤 얼굴·속성·전후 링·시설·투사체·보스 등을 원래 actor 순서로 제출하며 깊이 검사만 합니다. 각 actor의 뒤/몸통/앞 순위를 서로 겹치지 않는 깊이 슬롯에 둡니다. 반투명 외곽이 있거나 불투명을 증명하지 못한 몸통, 분신, 페이드 모션은 이 순서 안에서 몸통과 얼굴을 함께 합성합니다. 원본 아트나 45개 공유 얼굴 부품을 조합 수만큼 다시 굽지 않습니다. GameKit의 `orderedMeshQuads`가 이 반투명 몸통과 뒤따르는 얼굴 이미지를 같은 indexed stream에 원래 순서대로 담습니다. 호환되는 번식·합성 표식과 일반 벡터 도형도 같은 순서 안에서 합칩니다. 같은 스타일의 도형은 좌표·UV와 공유 스타일 명령을 나눠 보내고, 캐시는 사용 길이가 바뀌어도 할당된 용량을 재사용합니다. 몸통 정점은 한 번 보관하고, 같은 chunk의 정점 참조·index는 순서가 바뀌지 않으면 다시 올리지 않습니다. 불투명 몸통은 기존 instancing을 유지하고, 깊이·clip·stencil·표현 기능이 달라지면 해당 경계에서 제출합니다.
 
-`tests/unit-depth-batching-scenario.js`는 같은 DTO·표시 시각에서 원래 actor 순서와 묶은 제출의 실제 WebGL 픽셀을 비교합니다. `npm run test:unit-sprites`의 native 벡터 흐름에서 실행합니다. 비용 측정과 환경 한계는 [성능 진단](./performance-diagnostics.md)에 기록합니다.
+`tests/unit-depth-batching-scenario.js`는 같은 DTO·표시 시각에서 ordered 배치를 끈 원래 actor 순서와 현재 SDK의 단순 painter 경로·묶은 제출의 실제 WebGL 픽셀을 비교합니다. 원래 기준 대비 제출 감소 조건은 유지하고, 새 단순 painter 경로의 draw도 별도로 기록합니다. `npm run test:unit-sprites`의 native 벡터 흐름에서 실행합니다. 비용 측정과 환경 한계는 [성능 진단](./performance-diagnostics.md)에 기록합니다.
 
 ## 선택 규칙
 
