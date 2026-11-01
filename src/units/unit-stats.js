@@ -48,14 +48,19 @@ const COMMON_UNIT_STAT_PROFILES = Object.freeze(
         }),
     ),
 );
-// One tower run's stat cards change every unit alike: {stat: {flat, pct}}. A stat is (base + flat) * (1 + pct); regen's
-// pct is a share of max HP per second. The run sets them and the end of the run clears them.
+// One tower run's stat cards change every unit alike: {stat: {flat, pct, basePct}}.
+// A stat is (base * (1 + basePct) + flat) * (1 + pct); regen pct is a share of max HP per second.
+// The run sets these modifiers and the end of the run clears them.
 const RUN_MODS = {};
+// One scalar modifier contract for live stats and captured attack-profile validation.
+export function applyStatModifier(base, { basePct = 0, flat = 0, pct = 0 }) {
+    return (base * (1 + basePct) + flat) * (1 + pct);
+}
 function withRunMods(stats, modifiers = RUN_MODS) {
     const OUT = { ...stats };
     for (const [STAT, MOD] of Object.entries(modifiers)) {
         if (STAT !== 'regen') {
-            OUT[STAT] = (OUT[STAT] + MOD.flat) * (1 + MOD.pct);
+            OUT[STAT] = applyStatModifier(OUT[STAT], MOD);
         }
     }
     OUT.maxHp = Math.round(OUT.maxHp);

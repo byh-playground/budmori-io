@@ -1,4 +1,4 @@
-import { bolt, burst, FormationPresentation } from '../presentation-base.js';
+import { bolt, burst, FormationPresentation, segmentedRing } from '../presentation-base.js';
 export class LightningPresentation extends FormationPresentation {
     draw(renderer, effect) {
         const DELAY = effect.telegraphSeconds ?? 0;
@@ -11,7 +11,16 @@ export class LightningPresentation extends FormationPresentation {
                 effect.radius,
                 `rgba(120,180,255,${0.12 + PROGRESS * 0.18})`,
             );
-            renderer.ring(effect.x, effect.y, effect.radius, '#b4dfff', effect.radius * 0.05);
+            segmentedRing(
+                renderer,
+                effect.x,
+                effect.y,
+                0.02,
+                effect.radius,
+                0.45 + PROGRESS * 0.5,
+                -PROGRESS * 0.45,
+                '135,195,255',
+            );
             return;
         }
         const AGE = effect.age - DELAY;
@@ -21,7 +30,7 @@ export class LightningPresentation extends FormationPresentation {
                 effect.y,
                 effect.radius,
                 effect.radius,
-                `rgba(190,225,255,${Math.max(0, 0.5 - AGE)})`,
+                `rgba(190,225,255,${Math.max(0, 0.18 - AGE)})`,
             );
         }
         const BODY_HEIGHT = Math.max(0.5, effect.sizeHeight || effect.bodyHeight || 0.7),
@@ -39,15 +48,15 @@ export class LightningPresentation extends FormationPresentation {
             renderer.ellipse(
                 TOP.x,
                 TOP.y,
-                renderer.scale * BODY_RADIUS * 2.6,
-                renderer.scale * BODY_RADIUS * 2,
-                `rgba(220,240,255,${0.55 * (1 - AGE / 0.12)})`,
+                renderer.scale * BODY_RADIUS * 0.65,
+                renderer.scale * BODY_RADIUS * 0.32,
+                `rgba(220,240,255,${0.4 * (1 - AGE / 0.12)})`,
             );
             renderer.ellipse(
                 SKY.x,
                 SKY.y,
-                renderer.scale * BODY_RADIUS * 1.4,
-                renderer.scale * BODY_RADIUS * 0.8,
+                renderer.scale * BODY_RADIUS * 0.4,
+                renderer.scale * BODY_RADIUS * 0.18,
                 `rgba(200,225,255,${0.5 * (1 - AGE / 0.12)})`,
             );
         }

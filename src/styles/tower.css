@@ -295,6 +295,15 @@
         padding-top: var(--ui-s1);
     }
 }
+/* During a card choice, reserve the short viewport for the current run rather than the next start floor. */
+@media (max-height: 400px) and (min-aspect-ratio: 4/3) {
+    #gameplayDock > .bottom:has(#towerDoors:not([hidden])) > #startFloorBox {
+        display: none;
+    }
+    .doors {
+        max-height: calc(100dvh - var(--ui-safe-top) - var(--ui-safe-bottom) - 16px);
+    }
+}
 @media (prefers-reduced-motion: reduce) {
     .doors[data-owner='boss'] .door,
     .door[data-player-receipt='true'],

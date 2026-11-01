@@ -1,6 +1,18 @@
 import { clamp } from '../../../model/farm-model.js';
 import { COMBINE_AIR } from '../combine/definition.js';
-import { TAU, clamp01, easeOut, drawRay, drawSparkle, gradeColor, pop, rgba, strokeArc } from '../vfx-kit.js';
+import {
+    TAU,
+    clamp01,
+    easeOut,
+    drawRay,
+    drawLitSparkle,
+    drawLitMote,
+    drawContactLight,
+    gradeColor,
+    pop,
+    rgba,
+    strokeArc,
+} from '../vfx-kit.js';
 
 const HOLE_PURPLE = '#7b58bd',
     HOLE_LIGHT = '#d9c4ff',
@@ -170,13 +182,11 @@ export class MergeEffect {
             COLOR = gradeColor(effect.tier),
             X = effect.x,
             Y = effect.y,
-            Z = effect.z || 1,
-            CENTER = renderer.project(X, Y, Z);
-        if (P < 0.32) {
-            const T = P / 0.32,
-                R = renderer.scale * (0.18 + easeOut(T) * 1.05);
-            renderer.ellipse(CENTER.x, CENTER.y, R, R * 0.8, rgba(CREAM, 0.9 * (1 - T) ** 2));
+            Z = effect.z || 1;
+        if (P >= 1) {
+            return;
         }
+        drawContactLight(renderer, X, Y, Z, 0.65, P, COLOR);
         const RING_A = easeOut(P);
         renderer.ring(X, Y, 0.3 + RING_A * 1.9, rgba(COLOR, 0.95 * (1 - P)), 0.12 * (1 - P) + 0.02);
         if (P > 0.12) {
@@ -225,7 +235,7 @@ export class MergeEffect {
                     Z - 0.3 + RISE,
                 ),
                 SIZE = renderer.scale * (0.07 + JITTER * 0.07) * pop(P * 2.2) * (1 - P * 0.6);
-            drawSparkle(renderer, POINT, SIZE, rgba(index % 2 ? CREAM : COLOR, clamp01(1.4 - P * 1.3)), P * 3 + index);
+            drawLitSparkle(renderer, POINT, SIZE, index % 2 ? CREAM : COLOR, clamp01(1.4 - P * 1.3), P * 3 + index);
         }
     }
 }
@@ -267,7 +277,7 @@ export class MergeMaterialEffect {
         }
         const HEAD = AT(T),
             SIZE = renderer.scale * 0.13 * (1 - 0.45 * T);
-        renderer.ellipse(HEAD.x, HEAD.y, SIZE, SIZE * 0.78, rgba('#58b9bb', 0.95));
-        renderer.ellipse(HEAD.x, HEAD.y, SIZE * 0.5, SIZE * 0.4, rgba(CREAM, 0.95));
+        drawLitMote(renderer, HEAD, SIZE, '#58b9bb', 0.95);
+        drawLitSparkle(renderer, HEAD, SIZE * 0.75, HOLE_LIGHT, 0.75 * Math.sin(T * Math.PI), T * 3);
     }
 }

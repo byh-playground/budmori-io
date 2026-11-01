@@ -57,6 +57,7 @@ export function normalizeSnapshot(raw, { clone = true } = {}) {
         TARGET.statProfile ??= null;
         TARGET.statModifiers ??= {};
         TARGET.giantSizeMultiplier ??= 3;
+        TARGET.giantBonusDamage ??= 0;
     }
     // Add only absent combat fields of older boss checkpoints. Never allocate
     // identity or replace an existing action, generation, or attack budget.

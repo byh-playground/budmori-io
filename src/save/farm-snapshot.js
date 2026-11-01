@@ -88,6 +88,7 @@ export const UNIT_SNAPSHOT_SHAPE = {
     barleyArmorBreakReduction: 0,
     barleyArmorShredBuckets: createBarleyArmorShredBuckets(),
     giantUntil: 0,
+    giantBonusDamage: 0,
     giantSizeMultiplier: 3,
     giantEndedAt: -10,
     isFormationClone: false,
@@ -104,7 +105,7 @@ export const ACTOR_ATTACK_SNAPSHOT_SHAPE = Object.fromEntries(
         'isBattleOnlySummon peanutInheritedPowerRank peanutInheritedSpeedRank canSplit splitUsedThisBattle deathSplitHandled',
         'chestnutNextThornTick landingRecovery walnutNextGuardTick walnutGuardUntilTick walnutStoredRawDamage',
         'wheatCommandUntil wheatCommandCritBonus wheatCommandBuffs barleyArmorBreakUntil barleyArmorBreakReduction',
-        'barleyArmorShredBuckets giantUntil giantSizeMultiplier giantEndedAt isFormationClone cloneBornAt',
+        'barleyArmorShredBuckets giantUntil giantBonusDamage giantSizeMultiplier giantEndedAt isFormationClone cloneBornAt',
     ]
         .join(' ')
         .split(' ')
@@ -294,13 +295,13 @@ const CORN_SOURCE = FIELDS(
     { attackerStats: JSON_PAYLOAD },
 );
 const CORN_ACTION = FIELDS(
-    'version id owner ownerGeneration tier form geometryScale launchTick firstAttachTick speed windupSeconds recoverySeconds baseKernelCount extraKernel terminalIndex directMultiplier attachmentMultiplier',
+    'version id owner ownerGeneration tier form geometryScale giantBonusDamage launchTick firstAttachTick speed windupSeconds recoverySeconds baseKernelCount extraKernel terminalIndex directMultiplier attachmentMultiplier',
     {
         shots: [FIELDS('slot weight duration kernelStart kernelCount')],
         ranks: FIELDS('heating finish extra'),
         budgetInputs: FIELDS(
             'tierOneAttack tierAttack gradeMultiplier permanentMultiplier directRank attachmentRank speedRank commandSpeed',
-            { profile: FIELDS('attackPower flat pct permanentMultiplier') },
+            { profile: FIELDS('attackPower flat pct permanentMultiplier basePct') },
         ),
         source: CORN_SOURCE,
         attack: JSON_PAYLOAD,

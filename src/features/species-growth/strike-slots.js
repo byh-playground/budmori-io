@@ -61,6 +61,7 @@ export function resolveStrikeSlots(world, unit, action, elapsed, geometry, speci
                             (MAIN ? 1 : 0.5),
                         ...species.contextFor(R, S, KEY, MAIN),
                         attackPowerMultiplier: SOURCE.attackPowerMultiplier,
+                        giantBonusDamage: (R.giantBonusDamage || 0) * S.weight * (MAIN ? 1 : 0.5),
                         sourceDamageScale: SOURCE.sourceDamageScale,
                         kind: species.attackKind,
                         strikeIndex: S.slot,

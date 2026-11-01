@@ -15,7 +15,7 @@ export class UfoSkill extends FlyingSkill {
     onPulse(owner, effect) {
         const TARGETS = this.beamTargets(owner, effect);
         for (const TARGET of TARGETS) {
-            owner.damage(TARGET, this.profile(owner).pulseDamage);
+            owner.damage(TARGET, effect.damage, effect);
         }
         effect.beamTargetZ = TARGETS.length
             ? Math.min(...TARGETS.map((target) => targetBodyDimensions(target).topZ))

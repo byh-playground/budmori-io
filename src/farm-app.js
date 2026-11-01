@@ -1,3 +1,4 @@
+import { SpeciesInfoDialog } from './ui/species-info.js';
 import { PerformanceDiagnostics } from './core/performance-diagnostics.js';
 import { FarmHudCounts } from './ui/farm-hud-counts.js';
 import { RelicDock, relicEffectText, relicAcquisitionText } from './ui/relic-dock.js';
@@ -1067,6 +1068,7 @@ DOLLAR('codexBody').addEventListener('click', (e) => {
     setTimeout(paintCodex, 120);
 });
 // Selection and the proportional editing basis are presentation-only, never part of a farm save.
+const SPECIES_INFO = new SpeciesInfoDialog(DOLLAR('speciesInfoDialog'));
 const BREED_CONTROL = { selected: null, idsKey: '', world: null, sourceKey: '', basis: [] };
 function speciesCounts(world) {
     const COUNTS = new Map();
@@ -1101,7 +1103,7 @@ function drawSpeciesRoles(world) {
         HOST.innerHTML = STATE.ids
             .map((id) => {
                 const SPECIES = speciesById(id);
-                return `<button type="button" class="breed-chip" data-breed-species="${id}" aria-pressed="false"><img src="${speciesPortraitSource(id)}" alt="" width="36" height="36"><span>${SPECIES.name}</span><b data-breed-percent></b></button>`;
+                return `<div class="breed-chip-wrap"><button type="button" class="breed-chip" data-breed-species="${id}" aria-pressed="false"><img src="${speciesPortraitSource(id)}" alt="" width="36" height="36"><span>${SPECIES.name}</span><b data-breed-percent></b></button><button type="button" class="species-info-open" data-species-info="${id}" aria-label="${SPECIES.name} 병종 정보" aria-haspopup="dialog">${iconSvg('info')}</button></div>`;
             })
             .join('');
     }
@@ -1158,6 +1160,14 @@ function changeBreedShare(value) {
     applyBreedShares(WORLD, STATE.ids, adjustBreedShare(BREED_CONTROL.basis, INDEX, Number(value)));
 }
 DOLLAR('speciesRoles').addEventListener('click', (event) => {
+    const INFO = event.target.closest('[data-species-info]');
+    if (INFO) {
+        const WORLD = personalGarden || active?.world;
+        if (WORLD) {
+            SPECIES_INFO.open(WORLD, Number(INFO.dataset.speciesInfo));
+        }
+        return;
+    }
     const CHIP = event.target.closest('[data-breed-species]'),
         WORLD = personalGarden || active?.world;
     if (!CHIP || !WORLD || Number(CHIP.dataset.breedSpecies) === BREED_CONTROL.selected) {
@@ -1404,7 +1414,7 @@ function skillDoorCard(tower, door, index, role = 'player', receipt = null) {
     const DEFINITION = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === door.id),
         LEVEL = receipt?.before.level ?? (tower.relics.get(door.id) || 0),
         GAIN = LEVEL ? `Lv.${LEVEL} → ${LEVEL + 1}` : '새 기술';
-    return `<button type="button" class="door door--skill" data-door="${index}"><b>${iconSvg(door.id)} ${DEFINITION.name}</b><small>${GAIN} · ${relicEffectText(DEFINITION, LEVEL + 1, role)}</small></button>`;
+    return `<button type="button" class="door door--skill" data-door="${index}"><b>${iconSvg(door.id)} ${DEFINITION.name}</b><small>${GAIN} · ${relicEffectText(DEFINITION, LEVEL + 1, role, 0, tower.floor)}</small></button>`;
 }
 function eventDoorCard(door, index) {
     const EVENT = TOWER_EVENTS.find((item) => item.id === door.id);
@@ -1438,7 +1448,9 @@ function bossCardName(card) {
             : '';
 }
 function acquisitionText(receipt) {
-    return receipt.card.type === 'skill' ? relicAcquisitionText(receipt) : cardAcquisitionText(receipt);
+    return receipt.card.type === 'skill'
+        ? relicAcquisitionText(receipt, active?.world?.tower.floor || 1)
+        : cardAcquisitionText(receipt);
 }
 function readonlyDoor(button, label, selected) {
     button.removeAttribute('data-door');

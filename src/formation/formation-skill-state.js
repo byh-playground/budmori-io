@@ -1,4 +1,5 @@
-import { isBossActorId } from '../core/combat-identity.js';
+import { formationDamageBudget } from './formation-damage.js';
+import { isBossActorId, isCombatActorId } from '../core/combat-identity.js';
 import { DEFINITION as SKILL_0 } from '../features/formation-skills/giant/definition.js';
 import { DEFINITION as SKILL_1 } from '../features/formation-skills/lightning/definition.js';
 import { DEFINITION as SKILL_2 } from '../features/formation-skills/meteor/definition.js';
@@ -26,6 +27,9 @@ const FORMATION_MAX_LEVEL = 10;
 export const FORMATION_COOLDOWN_SECONDS = 5;
 export function formationUpgradeValue(definition, level) {
     const LEVEL = Math.max(1, level);
+    if (definition.damage && definition.upgradeBase === undefined) {
+        return formationDamageBudget(definition, 1, LEVEL).damage;
+    }
     if (Array.isArray(definition.upgradeValues) && definition.upgradeValues.length) {
         return definition.upgradeValues[Math.min(LEVEL - 1, definition.upgradeValues.length - 1)];
     }
@@ -51,7 +55,8 @@ export function isValidFormationRuntime(runtime) {
     }
     for (const SLOT of runtime.slots) {
         const BASE = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === SLOT.id),
-            DEFINITION = SLOT.role === 'boss' && BASE ? { ...BASE, ...BASE.boss } : BASE;
+            DEFINITION = SLOT.role === 'boss' && BASE ? { ...BASE, ...BASE.boss } : BASE,
+            DYNAMIC_THRESHOLD = DEFINITION?.healing || DEFINITION?.damageCharge;
         if (
             !DEFINITION ||
             (SLOT.role !== undefined && !['player', 'boss'].includes(SLOT.role)) ||
@@ -62,7 +67,13 @@ export function isValidFormationRuntime(runtime) {
             SLOTS.has(`${SLOT.role || 'player'}:${SLOT.id}`) ||
             !Number.isFinite(SLOT.charge) ||
             SLOT.charge < 0 ||
-            SLOT.charge > DEFINITION.required ||
+            SLOT.charge > (DYNAMIC_THRESHOLD ? SLOT.required : DEFINITION.required) ||
+            (DYNAMIC_THRESHOLD && (!Number.isFinite(SLOT.required) || SLOT.required <= 0)) ||
+            (DEFINITION.healing &&
+                (!Number.isFinite(SLOT.healingTotal) ||
+                    SLOT.healingTotal <= 0 ||
+                    !Number.isFinite(SLOT.required) ||
+                    SLOT.required !== SLOT.healingTotal * DEFINITION.chargeRatio)) ||
             !Number.isFinite(SLOT.cooldown) ||
             SLOT.cooldown < 0 ||
             SLOT.cooldown > FORMATION_COOLDOWN_SECONDS ||
@@ -73,6 +84,47 @@ export function isValidFormationRuntime(runtime) {
         SLOTS.add(`${SLOT.role || 'player'}:${SLOT.id}`);
     }
     for (const EFFECT of runtime.effects) {
+        const EFFECT_DEFINITION = FORMATION_SKILL_DEFINITIONS.find((definition) => definition.id === EFFECT.kind);
+        if (EFFECT_DEFINITION?.healing && EFFECT.recipients !== undefined) {
+            if (!Array.isArray(EFFECT.recipients)) {
+                return false;
+            }
+            const RECIPIENTS = new Set();
+            for (const RECIPIENT of EFFECT.recipients) {
+                if (
+                    !RECIPIENT ||
+                    !isCombatActorId(RECIPIENT.id) ||
+                    !Number.isSafeInteger(RECIPIENT.generation) ||
+                    RECIPIENT.generation < 1
+                ) {
+                    return false;
+                }
+                const IDENTITY = `${RECIPIENT.id}:${RECIPIENT.generation}`;
+                if (RECIPIENTS.has(IDENTITY)) {
+                    return false;
+                }
+                RECIPIENTS.add(IDENTITY);
+            }
+        }
+        if (
+            EFFECT_DEFINITION?.healing &&
+            (!Number.isFinite(EFFECT.total) ||
+                EFFECT.total <= 0 ||
+                EFFECT.duration !== EFFECT_DEFINITION.durationSeconds)
+        ) {
+            return false;
+        }
+        if (
+            (EFFECT.maxHpDamageRatio !== undefined || EFFECT.missingHpDamageRatio !== undefined) &&
+            (![EFFECT.damage, EFFECT.maxHpDamageRatio, EFFECT.missingHpDamageRatio].every(Number.isFinite) ||
+                EFFECT.damage < 0 ||
+                EFFECT.maxHpDamageRatio < 0 ||
+                EFFECT.maxHpDamageRatio > 1 ||
+                EFFECT.missingHpDamageRatio < 0 ||
+                EFFECT.missingHpDamageRatio > 1)
+        ) {
+            return false;
+        }
         if (
             !FORMATION_SKILL_DEFINITIONS.some(({ id }) => id === EFFECT.kind) ||
             (EFFECT.role !== undefined && !['player', 'boss'].includes(EFFECT.role)) ||

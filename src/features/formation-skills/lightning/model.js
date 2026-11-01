@@ -13,7 +13,7 @@ export class LightningSkill extends FormationSkill {
             BODY = targetBodyDimensions(TARGET),
             SIZE = this.sizeState(owner, TARGET),
             RADIUS = sizeValue(PROFILE, SIZE, 'aoeRadius'),
-            DAMAGE = this.power(slot.level, PROFILE.upgradeBase);
+            DAMAGE = this.damageBudget(owner, slot);
         owner.addEffect(DEFINITION.id, {
             x: TARGET.x,
             y: TARGET.y,
@@ -24,11 +24,11 @@ export class LightningSkill extends FormationSkill {
             duration: PROFILE.telegraphSeconds + 0.65,
             telegraphSeconds: PROFILE.telegraphSeconds,
             radius: RADIUS,
-            damage: DAMAGE,
+            ...DAMAGE,
             impacted: RADIUS === 0,
         });
         if (RADIUS === 0) {
-            owner.damage(TARGET, DAMAGE);
+            owner.damage(TARGET, DAMAGE.damage, DAMAGE);
         }
         return true;
     }
@@ -36,7 +36,7 @@ export class LightningSkill extends FormationSkill {
         effect.age += dt;
         if (!effect.impacted && effect.age + 1e-9 >= effect.telegraphSeconds) {
             effect.impacted = true;
-            owner.areaDamage(effect.x, effect.y, effect.radius, effect.damage, false);
+            owner.areaDamage(effect.x, effect.y, effect.radius, effect.damage, false, false, effect);
         }
         return effect.age < effect.duration;
     }

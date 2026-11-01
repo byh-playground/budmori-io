@@ -153,6 +153,7 @@ export function resolvePeaContacts(world, unit, action, target, hit) {
                 attackerStats: SOURCE.attackerStats,
                 damageMultiplier: RECORD.directMultiplier * WEIGHT,
                 attackPowerMultiplier: SOURCE.attackPowerMultiplier,
+                giantBonusDamage: (RECORD.giantBonusDamage || 0) * STRIKE.weight,
                 sourceDamageScale: SOURCE.sourceDamageScale,
                 kind: 'ram',
                 strikeIndex: STRIKE.slot,
@@ -214,7 +215,7 @@ export function isPeaAttackRecord(record) {
         ) ||
         !Object.values(record.source.attackerStats).every((value) => Number.isFinite(value) && value >= 0) ||
         record.source.attackerStats.maxHp <= 0 ||
-        ![1, 3].includes(record.source.attackPowerMultiplier) ||
+        record.source.attackPowerMultiplier !== 1 ||
         !Number.isFinite(record.source.sourceDamageScale) ||
         record.source.sourceDamageScale < 0 ||
         !['direct', 'enemy'].includes(record.source.sourceKind) ||

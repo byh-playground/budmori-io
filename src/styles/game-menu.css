@@ -436,3 +436,82 @@ html.help-scene.barley-attack-preview #battleCommands {
 html.growth-preview-scene #bossbar {
     display: none;
 }
+
+.breed-chip-wrap {
+    position: relative;
+    min-width: 0;
+}
+.breed-chip-wrap .breed-chip {
+    width: 100%;
+    padding-top: 40px;
+}
+.species-info-open {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: var(--ui-r-s);
+    background: transparent;
+    color: var(--ui-ink);
+}
+.species-info-open:focus-visible {
+    outline: 2px solid var(--ui-focus);
+    outline-offset: 2px;
+}
+.species-info {
+    width: min(520px, calc(100% - 24px));
+    max-height: calc(100dvh - 24px);
+    box-sizing: border-box;
+    padding: 20px;
+    border: var(--ui-bw) solid var(--ui-line);
+    border-radius: var(--ui-r-m);
+    background: var(--ui-card);
+    color: var(--ui-ink);
+    overflow: auto;
+}
+.species-info::backdrop {
+    background: #101b18b3;
+}
+.species-info header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.species-info h2 {
+    margin: 0;
+    font-size: 20px;
+}
+.species-info h3 {
+    font-size: 16px;
+    margin: 20px 0 8px;
+}
+.species-info p {
+    font-size: 14px;
+    line-height: 1.6;
+}
+.species-info__portrait {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 16px;
+}
+.species-info table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+.species-info th,
+.species-info td {
+    padding: 8px 4px;
+    border-bottom: 1px solid var(--ui-line);
+    text-align: right;
+}
+.species-info th:first-child {
+    text-align: left;
+}

@@ -103,6 +103,23 @@ try {
         await PAGE.waitForFunction(() => document.querySelectorAll('[data-breed-species]').length === 3);
         await expectShares(PAGE, [70, 20, 10]);
         const SAVED = await weights(PAGE);
+        const SELECTED = await PAGE.locator('[data-breed-species][aria-pressed="true"]').getAttribute(
+            'data-breed-species',
+        );
+        for (const ID of [0, 2, 5]) {
+            const INFO = PAGE.locator(`[data-species-info="${ID}"]`);
+            await INFO.click();
+            await PAGE.waitForFunction(() => document.getElementById('speciesInfoDialog').open);
+            assert.match(await PAGE.locator('#speciesInfoBody').innerText(), /병종 특성[\s\S]*기본 스펙/);
+            assert.equal(await weights(PAGE), SAVED, 'information is read-only');
+            await PAGE.locator('[data-species-info-close]').press('Escape');
+            assert.equal(await PAGE.locator('#speciesInfoDialog').evaluate((node) => node.open), false);
+            assert.equal(
+                await PAGE.locator('[data-breed-species][aria-pressed="true"]').getAttribute('data-breed-species'),
+                SELECTED,
+            );
+        }
+        assert.equal(await PAGE.locator('[data-species-info="1"]').count(), 0, 'unowned species stay hidden');
         await setShare(PAGE, 70);
         assert.equal(await weights(PAGE), SAVED, 'no-op input must preserve raw saved weights');
         await PAGE.locator('[data-breed-species="2"]').click();

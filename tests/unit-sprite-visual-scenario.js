@@ -99,9 +99,19 @@ export function unitSpriteVisualScenario(app) {
         }
         let nativeMatrix = null,
             spriteMatrix = null,
-            spriteRect = null;
+            spriteRect = null,
+            drawingBodySprite = false;
         const DRAW_ACTOR = R.ctx.drawVectorActor,
-            DRAW_QUADS = R.ctx.drawQuads;
+            DRAW_QUADS = R.ctx.drawQuads,
+            DRAW_BODY_SPRITE = R.unitSprites.draw;
+        R.unitSprites.draw = function (prepared, options) {
+            drawingBodySprite = prepared === PREPARED && !!SAMPLED && prepared.sprite.entry === SAMPLED;
+            try {
+                return DRAW_BODY_SPRITE.call(this, prepared, options);
+            } finally {
+                drawingBodySprite = false;
+            }
+        };
         R.ctx.drawVectorActor = function (actor, options) {
             if (actor === PREPARED.player) {
                 nativeMatrix = [...options.matrix];
@@ -109,7 +119,11 @@ export function unitSpriteVisualScenario(app) {
             return DRAW_ACTOR.call(this, actor, options);
         };
         R.ctx.drawQuads = function (options) {
-            if (SAMPLED && options.layer === SAMPLED.atlas.region.layer) {
+            // Face drawRegion calls share the atlas layer and may omit their local matrix.
+            // Observe only this body's actor submission, whose explicit root transform is the contract.
+            if (drawingBodySprite) {
+                CHECK(options.layer === SAMPLED.atlas.region.layer, 'Body sprite used an unexpected atlas layer');
+                CHECK(options.matrix?.length === 6, 'Body sprite root transform was not submitted');
                 spriteMatrix = [...options.matrix];
                 spriteRect = [...options.localRects.slice(0, 4)];
             }
@@ -131,6 +145,7 @@ export function unitSpriteVisualScenario(app) {
             CANDIDATE = pixels(true);
         R.ctx.drawVectorActor = DRAW_ACTOR;
         R.ctx.drawQuads = DRAW_QUADS;
+        R.unitSprites.draw = DRAW_BODY_SPRITE;
         const REPEAT_MAX = VECTOR.reduce(
             (maximum, value, offset) => Math.max(maximum, Math.abs(value - REPEATED_VECTOR[offset])),
             0,
@@ -264,6 +279,7 @@ export function unitSpriteVisualScenario(app) {
         CHECK(maskIntersection / covered >= 0.8, 'Character silhouette content missing');
         CHECK(INTERIOR_MEAN === null || INTERIOR_MEAN <= 2, 'Flat interior colour changed');
         if (SAMPLED && !CASE.large) {
+            CHECK(nativeMatrix && spriteMatrix && spriteRect, 'Body root transform observation missing');
             CHECK(ROOT_MATRIX_ERROR <= 1e-6, 'Sprite root transform changed');
             CHECK(ALIGNMENTS[0].dx === 0 && ALIGNMENTS[0].dy === 0, 'Sprite integer alignment changed');
         }

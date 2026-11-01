@@ -1,4 +1,6 @@
+import { formationDamageBudget, formationDamageThreshold } from '../../formation/formation-damage.js';
 import { unitBodyRadius } from '../unit-body/definition.js';
+import { unitMaxHpFor } from '../../units/unit-stats.js';
 export const T1_DIAMETER = unitBodyRadius({ species: 0, tier: 1, growthElapsed: 1, growthDuration: 1 }) * 2;
 // A size reference changes parameters, never the shared skill's targeting or damage algorithm.
 export const CASTER_SIZE_PROFILE = Object.freeze({ sizeReference: 'caster', sizeScale: 0.8 });
@@ -37,6 +39,20 @@ export class FormationSkill {
     profile(owner) {
         return owner.role === 'boss' ? { ...this.definition, ...this.definition.boss } : this.definition;
     }
+    requiredCharge(owner, slot) {
+        const PROFILE = this.profile(owner);
+        if (!PROFILE.damageCharge) {
+            return PROFILE.required;
+        }
+        const CASTER = owner.caster;
+        slot.required = formationDamageThreshold(
+            PROFILE.damageCharge,
+            owner.world.tower.floor,
+            CASTER ? unitMaxHpFor(CASTER) : Infinity,
+        );
+        slot.charge = Math.min(slot.charge, slot.required);
+        return slot.required;
+    }
     sizeState(owner, target) {
         const PROFILE = this.profile(owner),
             REFERENCE = PROFILE.sizeReference === 'caster' ? owner.caster : target,
@@ -47,6 +63,9 @@ export class FormationSkill {
     }
     power(level, base) {
         return base * (this.definition.upgradeFactor ?? 1.5) ** (level - 1);
+    }
+    damageBudget(owner, slot, hitCount = 1) {
+        return formationDamageBudget(this.profile(owner), owner.world.tower.floor, slot.level, owner.role, hitCount);
     }
     canCast(owner) {
         // Offensive skills share target eligibility; allied skills override it without rolling targets.
@@ -86,7 +105,11 @@ export class MeteorSkill extends FormationSkill {
             duration: index * PROFILE.shotInterval + PROFILE.fallSeconds + 0.5,
             ...SIZE,
             radius: this.areaValue(PROFILE, SIZE, 'aoeRadius'),
-            damage: PROFILE.shotDamage ?? this.power(slot.level, PROFILE.upgradeBase),
+            ...this.damageBudget(
+                owner,
+                slot,
+                this.definition.damage.total ? PROFILE.upgradeBase + PROFILE.upgradeStep * (slot.level - 1) : 1,
+            ),
             impacted: false,
         });
         return true;
@@ -98,7 +121,7 @@ export class MeteorSkill extends FormationSkill {
         effect.age += dt;
         if (!effect.impacted && effect.age + 1e-9 >= effect.delay + (effect.fallSeconds ?? 0.75)) {
             effect.impacted = true;
-            owner.areaDamage(effect.x, effect.y, effect.radius, effect.damage, this.knockback === true);
+            owner.areaDamage(effect.x, effect.y, effect.radius, effect.damage, this.knockback === true, false, effect);
         }
         return effect.age < effect.duration;
     }
@@ -139,6 +162,13 @@ export class FlyingSkill extends FormationSkill {
             targetGeneration: owner.targetGeneration?.(target),
             targetCount: PROFILE.targetCount,
             duration: PROFILE.upgradeBase + PROFILE.upgradeStep * (slot.level - 1),
+            ...this.damageBudget(
+                owner,
+                slot,
+                Math.floor(
+                    (PROFILE.upgradeBase + PROFILE.upgradeStep * (slot.level - 1) + 1e-9) / PROFILE.pulseInterval,
+                ),
+            ),
             pulse: 0,
             lastPulse: -10,
             targetX: target.x,

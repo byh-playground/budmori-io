@@ -76,3 +76,39 @@ export function drawRay(renderer, from, to, halfWidth, color) {
     C.closePath();
     C.fill();
 }
+
+// PixelFX reference vocabulary: a colored edge around a compact hot center, not a screen-wide flash.
+// Pure drawing helpers use the caller's existing effect time and particle budget.
+export function drawLitSparkle(renderer, point, radius, color, alpha = 1, rotation = 0) {
+    if (radius <= 0 || alpha <= 0) {
+        return;
+    }
+    drawSparkle(renderer, point, radius, rgba(color, alpha * 0.78), rotation);
+    drawSparkle(renderer, point, radius * 0.42, rgba('#fffbee', alpha), rotation);
+}
+
+export function drawContactLight(renderer, x, y, z, radius, progress, color) {
+    const P = clamp01(progress / 0.2),
+        FADE = (1 - P) ** 2;
+    if (FADE <= 0) {
+        return;
+    }
+    const POINT = renderer.project(x, y, z),
+        SIZE = renderer.scale * radius * (0.5 + easeOut(P) * 0.5);
+    renderer.ellipse(POINT.x, POINT.y, SIZE * 1.25, SIZE * 0.62, rgba(color, FADE * 0.3));
+    drawLitSparkle(renderer, POINT, SIZE, color, FADE, 0.35);
+}
+
+export function drawLitMote(renderer, point, radius, color, alpha = 1) {
+    if (radius <= 0 || alpha <= 0) {
+        return;
+    }
+    renderer.ellipse(point.x, point.y, radius, radius * 0.7, rgba(color, alpha));
+    renderer.ellipse(
+        point.x - radius * 0.17,
+        point.y - radius * 0.15,
+        radius * 0.38,
+        radius * 0.24,
+        rgba('#fffbee', alpha * 0.88),
+    );
+}

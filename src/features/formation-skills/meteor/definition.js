@@ -4,7 +4,8 @@ export const DEFINITION = Object.freeze({
     name: '운석 낙하',
     condition: 'damageDealt',
     required: 250,
-    description: '정해진 곳에 운석을 떨어뜨려 주변에 피해 150을 주고 적을 밀쳐내요.',
+    description:
+        '정해진 곳에 운석을 떨어뜨려 층·유물 레벨에 따른 기본 피해와 대상 체력에 비례한 범위 피해를 주고 적을 밀쳐내요.',
     ...TARGET_SIZE_PROFILE,
     // The tier-1 radius is the floor; against a body the blast is half its drawn width.
     aoeRadius: T1_DIAMETER * 3,
@@ -16,13 +17,10 @@ export const DEFINITION = Object.freeze({
     boss: Object.freeze({
         ...CASTER_SIZE_PROFILE,
         condition: 'damageDealt',
-        required: 500,
+        damageCharge: Object.freeze({ base: 500, maxHpRatio: 0.1 }),
         aoeRadiusRatio: 0.5,
         scatterRadiusRatio: 0.5,
     }),
-    upgradeAxis: '피해 ×1.5',
-    upgradeBase: 150,
-    upgradeFactor: 1.5,
-    upgradeStep: 0,
-    upgradeUnit: ' 피해',
+    damage: Object.freeze({ base: 100, maxHpRatio: 0.005, missingHpRatio: 0, total: false }),
+    upgradeAxis: '기본 피해 ×2 · 체력 비례 계수 유지',
 });

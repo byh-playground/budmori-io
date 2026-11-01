@@ -249,7 +249,9 @@ function validateActorAttackState(actor, raw, cornActions, chestnutActions, allo
     const U = actor;
     validateAttackCycle(U.ability);
     ASSERT(
-        Number.isFinite(U.landingRecovery) &&
+        Number.isFinite(U.giantBonusDamage) &&
+            U.giantBonusDamage >= 0 &&
+            Number.isFinite(U.landingRecovery) &&
             U.landingRecovery >= 0 &&
             U.landingRecovery <= 0.25 + 1e-9 &&
             INTEGER(U.generation, 1, 1e12) &&
@@ -1317,6 +1319,7 @@ function validateProjectiles(raw, context) {
                     P.attackPayload?.damageMultiplier === P.attackMultiplier &&
                     P.attackPayload.sourceDamageScale === RECORD.source.sourceDamageScale &&
                     P.attackPayload.attackPowerMultiplier === RECORD.source.attackPowerMultiplier &&
+                    (P.attackPayload.giantBonusDamage ?? 0) === (RECORD.giantBonusDamage || 0) * SHOT.weight &&
                     P.attackPayload.attackerStats?.attackPower === RECORD.source.attackerStats.attackPower,
             );
             CORN_PROJECTILE_SLOTS.add(SLOT_KEY);

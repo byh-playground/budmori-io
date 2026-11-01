@@ -1,4 +1,4 @@
-import { DEFINITION } from './definition.js';
+import { DEFINITION, giantBonusFor } from './definition.js';
 import { FormationSkill } from '../model-base.js';
 import { formationUpgradeValue } from '../../../formation/formation-skill-state.js';
 export class GiantSkill extends FormationSkill {
@@ -25,6 +25,7 @@ export class GiantSkill extends FormationSkill {
             CANDIDATES[i] = UNIT;
             UNIT.giantSizeMultiplier = PROFILE.sizeMultiplier;
             UNIT.giantUntil = owner.world.time + PROFILE.durationSeconds;
+            UNIT.giantBonusDamage = giantBonusFor(owner.world.tower.floor, slot.level, owner.role);
             owner.addEffect(DEFINITION.id, {
                 x: UNIT.x,
                 y: UNIT.y,
@@ -39,18 +40,15 @@ export class GiantSkill extends FormationSkill {
     update(owner, effect, dt) {
         effect.age += dt;
         const UNIT = owner.world._unitForId(effect.unitId);
-        if (
-            !UNIT ||
-            UNIT.hp <= 0 ||
-            (effect.unitGeneration !== undefined && UNIT.generation !== effect.unitGeneration)
-        ) {
+        if (!UNIT || (effect.unitGeneration !== undefined && UNIT.generation !== effect.unitGeneration)) {
             return false;
         }
         effect.x = UNIT.x;
         effect.y = UNIT.y;
         effect.radius = UNIT.radius;
-        if (effect.age >= effect.duration) {
+        if (UNIT.hp <= 0 || effect.age >= effect.duration) {
             UNIT.giantUntil = 0;
+            UNIT.giantBonusDamage = 0;
             UNIT.giantSizeMultiplier = this.definition.sizeMultiplier;
             UNIT.giantEndedAt = owner.world.time;
             return false;

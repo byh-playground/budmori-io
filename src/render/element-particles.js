@@ -11,11 +11,11 @@ export const ELEMENT_RGB = Object.freeze(
         return `${(N >> 16) & 255},${(N >> 8) & 255},${N & 255}`;
     }),
 );
-// shape: dot (soft ember or droplet), shard (rotating crystal), leaf (spinning blade), bolt (flickering zigzag).
+// shape: flame (rising hot trail), dot (droplet), shard (rotating crystal), leaf (spinning blade), bolt (zigzag).
 // speed: ground reach in world units; lift: peak rise; gravity: pull back down; count: [normal, crowded fight].
 export const ELEMENT_PARTICLES = Object.freeze({
     1: {
-        shape: 'dot',
+        shape: 'flame',
         count: [6, 2],
         speed: 0.4,
         lift: 0.7,
@@ -62,7 +62,7 @@ export const ELEMENT_PARTICLES = Object.freeze({
         gravity: 1.5,
         size: 0.065,
         core: '176,206,255',
-        ring: 'solid',
+        ring: 'ripple',
     },
 });
 const MATCHUP_SIZE = Object.freeze({ 2: 1.25, 1: 1, 0.5: 0.8 });
@@ -81,50 +81,103 @@ export function matchupParticles(element, matchup, crowded) {
         count: crowded ? CROWDED : Math.max(2, NORMAL + (MATCHUP_COUNT[matchup] ?? 0)),
     };
 }
-// Draws `count` particles of `element` flying out of `at` (world x, y, z) at progress t in 0..1.
+// Visual language referenced against pixelfx's hit-spark, frost-nova and lightning-strike at
+// a84159688af3ca37a4be05a0d422b94451b2e24e. Geometry is authored here for the native vector renderer.
+// A restrained coloured shell, a narrow lit edge and a tiny hot core keep the element legible at game scale.
+function shard(renderer, point, radius, angle, color, core, alpha) {
+    const C = renderer.ctx,
+        DX = Math.cos(angle) * radius,
+        DY = Math.sin(angle) * radius;
+    C.beginPath();
+    C.moveTo(point.x + DX * 1.9, point.y + DY * 1.9);
+    C.lineTo(point.x - DY * 0.65, point.y + DX * 0.65);
+    C.lineTo(point.x - DX * 1.25, point.y - DY * 1.25);
+    C.lineTo(point.x + DY * 0.65, point.y - DX * 0.65);
+    C.closePath();
+    C.fillStyle = `rgba(${color},${alpha})`;
+    C.fill();
+    renderer.line(
+        { x: point.x - DX, y: point.y - DY },
+        { x: point.x + DX * 1.65, y: point.y + DY * 1.65 },
+        0.024,
+        `rgba(${core},${alpha})`,
+    );
+}
+
+// Draws the same bounded particle count as before. All paths depend only on progress and seed.
 export function emitElementParticles(renderer, element, at, t, { count, size = 1, seed = 0 }) {
+    if (t < 0 || t >= 1) {
+        return;
+    }
     const SPEC = ELEMENT_PARTICLES[element],
         RGB = ELEMENT_RGB[element],
-        ALPHA = Math.min(1, (1 - t) * 1.3),
+        ALPHA = Math.min(1, (1 - t) * 1.35),
         MOVE = EASE_OUT(Math.min(1, t * 1.4));
     for (let i = 0; i < count; i++) {
         const ANGLE = (i / count) * TAU + seed * 0.7,
             SPREAD = 0.75 + RAND(i + seed, 7) * 0.5,
             REACH = (0.08 + SPEC.speed * SPREAD * MOVE) * size,
             RISE = (SPEC.lift * EASE_OUT(t) * SPREAD - SPEC.gravity * t * t) * size,
-            POINT = renderer.project(
-                at.x + Math.cos(ANGLE) * REACH,
-                at.y + Math.sin(ANGLE) * REACH,
-                Math.max(0, at.z + 0.1 * size + RISE),
-            ),
-            R = renderer.scale * SPEC.size * size * (1 - t * 0.5);
-        if (SPEC.shape === 'dot') {
-            renderer.ellipse(POINT.x, POINT.y, R * 1.7, R * 1.7, `rgba(${RGB},${ALPHA * 0.45})`);
-            renderer.ellipse(POINT.x, POINT.y, R, R, `rgba(${SPEC.core},${ALPHA})`);
+            X = at.x + Math.cos(ANGLE) * REACH,
+            Y = at.y + Math.sin(ANGLE) * REACH,
+            Z = Math.max(0, at.z + 0.1 * size + RISE),
+            POINT = renderer.project(X, Y, Z),
+            R = Math.max(renderer.pixelRatio * 0.65, renderer.scale * SPEC.size * size * (1 - t * 0.5));
+        if (SPEC.shape === 'flame') {
+            const TAIL = renderer.project(
+                X - Math.cos(ANGLE) * 0.09 * size,
+                Y - Math.sin(ANGLE) * 0.09 * size,
+                Z - 0.12 * size,
+            );
+            renderer.line(TAIL, POINT, 0.11 * size * (1 - t * 0.55), `rgba(${RGB},${ALPHA * 0.7})`);
+            renderer.line(TAIL, POINT, 0.035 * size, `rgba(${SPEC.core},${ALPHA})`);
+            renderer.ellipse(POINT.x, POINT.y - R * 0.25, R * 0.52, R * 0.8, `rgba(255,250,209,${ALPHA})`);
+        } else if (SPEC.shape === 'dot') {
+            renderer.ellipse(POINT.x, POINT.y, R * 0.9, R * 1.55, `rgba(${RGB},${ALPHA * 0.85})`, ANGLE * 0.2);
+            renderer.ellipse(POINT.x - R * 0.25, POINT.y - R * 0.45, R * 0.3, R * 0.65, `rgba(232,250,255,${ALPHA})`);
         } else if (SPEC.shape === 'shard') {
-            const TURN = ANGLE + t * 2;
-            renderer.ellipse(POINT.x, POINT.y, R * 0.8, R * 1.7, `rgba(${RGB},${ALPHA})`, TURN);
-            renderer.ellipse(POINT.x, POINT.y, R * 0.3, R * 1.2, `rgba(${SPEC.core},${ALPHA * 0.9})`, TURN);
+            shard(renderer, POINT, R, ANGLE + t * 2, RGB, SPEC.core, ALPHA);
         } else if (SPEC.shape === 'leaf') {
-            renderer.ellipse(POINT.x, POINT.y, R, R * 0.45, `rgba(${i % 2 ? RGB : SPEC.core},${ALPHA})`, ANGLE + t * 5);
+            const TURN = ANGLE + t * 5;
+            renderer.ellipse(POINT.x, POINT.y, R * 1.25, R * 0.42, `rgba(${RGB},${ALPHA})`, TURN);
+            renderer.line(
+                { x: POINT.x - Math.cos(TURN) * R, y: POINT.y - Math.sin(TURN) * R },
+                { x: POINT.x + Math.cos(TURN) * R, y: POINT.y + Math.sin(TURN) * R },
+                0.025 * size,
+                `rgba(218,255,151,${ALPHA})`,
+            );
         } else if (Math.floor(t * 14 + i) % 3 !== 1 || t < 0.2) {
-            const JITTER = (RAND(i + seed, 3) - 0.5) * R * 2,
-                FROM = renderer.project(at.x, at.y, at.z + 0.15 * size);
-            renderer.line(FROM, { x: POINT.x + JITTER, y: POINT.y - JITTER }, 0.07, `rgba(${RGB},${ALPHA})`);
-            renderer.line(FROM, { x: POINT.x + JITTER, y: POINT.y - JITTER }, 0.025, `rgba(${SPEC.core},${ALPHA})`);
+            const FROM = renderer.project(at.x, at.y, at.z + 0.15 * size),
+                JITTER = (RAND(i + seed, 3) - 0.5) * R * 2,
+                KNEE = {
+                    x: FROM.x + (POINT.x - FROM.x) * 0.55 + JITTER,
+                    y: FROM.y + (POINT.y - FROM.y) * 0.55 - JITTER,
+                },
+                END = { x: POINT.x, y: POINT.y };
+            renderer.line(FROM, KNEE, 0.1 * size, `rgba(${RGB},${ALPHA * 0.7})`);
+            renderer.line(KNEE, END, 0.07 * size, `rgba(${RGB},${ALPHA})`);
+            renderer.line(FROM, KNEE, 0.025 * size, `rgba(${SPEC.core},${ALPHA})`);
+            renderer.line(KNEE, END, 0.02 * size, `rgba(${SPEC.core},${ALPHA})`);
         }
     }
 }
-// The floor mark under an elemental effect: a solid ring, a broken (frosty) ring, or none.
+// One expanding ground rim; water adds a quieter inner ripple, frost keeps separated teeth.
 export function drawElementRing(renderer, element, at, t, size) {
+    if (t < 0 || t >= 1) {
+        return;
+    }
     const STYLE = ELEMENT_PARTICLES[element].ring,
         RADIUS = (0.12 + EASE_OUT(t) * 0.65) * size,
-        COLOR = `rgba(${ELEMENT_RGB[element]},${(1 - t) * 0.8})`;
-    if (STYLE === 'solid') {
-        renderer.ring(at.x, at.y, RADIUS, COLOR, 0.05);
+        ALPHA = (1 - t) ** 1.5,
+        COLOR = `rgba(${ELEMENT_RGB[element]},${ALPHA * 0.65})`;
+    if (STYLE === 'solid' || STYLE === 'ripple') {
+        renderer.ring(at.x, at.y, RADIUS, COLOR, 0.045 * size);
+        if (STYLE === 'ripple' && t > 0.12) {
+            renderer.ring(at.x, at.y, RADIUS * 0.65, `rgba(207,239,255,${ALPHA * 0.48})`, 0.025 * size);
+        }
     } else if (STYLE === 'dashed') {
         for (let i = 0; i < 6; i++) {
-            renderer.ring(at.x, at.y, RADIUS, COLOR, 0.04, (i / 6) * TAU, (i / 6) * TAU + TAU / 9);
+            renderer.ring(at.x, at.y, RADIUS, COLOR, 0.045 * size, (i / 6) * TAU, (i / 6) * TAU + TAU / 9);
         }
     }
 }

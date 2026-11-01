@@ -1,3 +1,4 @@
+import { formationDamageForTarget } from './formation-damage.js';
 import { createFormationRuntime, FORMATION_COOLDOWN_SECONDS } from './formation-skill-state.js';
 import { applyDamage, unitMaxHpFor } from '../units/unit-stats.js';
 import { FixedSpatialGrid } from '../core/spatial-grid.js';
@@ -147,8 +148,28 @@ export class FormationSkills {
     }
     get caster() {
         return this.role === 'boss'
-            ? this.world._unitForId(this.casterId || this.runtime.bossCast?.casterId || this.world.boss.id)
+            ? this.world._unitForId(
+                  this.casterId ||
+                      this.currentBossCaster()?.id ||
+                      this.world.bosses.find((boss) => boss.active && boss.hp > 0)?.id ||
+                      this.world.boss.id,
+              )
             : null;
+    }
+    currentBossCaster() {
+        return this.runtime.bossCast
+            ? this.world._unitForId(this.runtime.bossCast.casterId)
+            : this.world.bosses.find(
+                  (boss) =>
+                      boss.active &&
+                      boss.hp > 0 &&
+                      boss.stun <= 0 &&
+                      !boss.patternRuntime.active &&
+                      boss.ability.phase === 'idle' &&
+                      (!boss.specialAbility || boss.specialAbility.phase === 'idle') &&
+                      boss.z <= 0.1 &&
+                      boss.landingRecovery <= 0,
+              );
     }
     get friendlyFaction() {
         return this.role === 'boss' ? 'enemy' : 'player';
@@ -185,11 +206,17 @@ export class FormationSkills {
         } else if (!this.active && this.runtime.active) {
             this.end();
         }
+        if (this.runtime.active) {
+            for (const SLOT of this.slots) {
+                this.requiredFor(SLOT);
+            }
+        }
     }
     end() {
         this.releaseBossHealth();
         for (const UNIT of [...this.members, ...this.world.bosses]) {
             UNIT.giantUntil = 0;
+            UNIT.giantBonusDamage = 0;
             UNIT.giantSizeMultiplier = MODELS.get('giant').definition.sizeMultiplier;
             UNIT.giantEndedAt = -10;
         }
@@ -198,6 +225,9 @@ export class FormationSkills {
         this.world.formationRuntime = createFormationRuntime();
         this.runtime.serial = SERIAL;
         this.air.clear();
+    }
+    requiredFor(slot, context = this.contextFor(slot.role || 'player'), force = false) {
+        return MODELS.get(slot.id).requiredCharge(context, slot, force);
     }
     contribute(event) {
         this.synchronize();
@@ -213,7 +243,27 @@ export class FormationSkills {
             }
             const MODEL = MODELS.get(SLOT.id),
                 DEFINITION = MODEL.profile(CONTEXT);
-            SLOT.charge = Math.min(DEFINITION.required, SLOT.charge + Math.max(0, event[DEFINITION.condition] || 0));
+            if (
+                ROLE === 'boss' &&
+                DEFINITION.condition === 'damageTaken' &&
+                !this.world.isBoss(this.world._unitForId(event.targetActor))
+            ) {
+                continue;
+            }
+            if (
+                ROLE === 'boss' &&
+                (['hits', 'hitCharge'].includes(DEFINITION.condition) ||
+                    (DEFINITION.damageCharge && DEFINITION.condition === 'damageDealt')) &&
+                !this.world.isBoss(this.world._unitForId(event.sourceActor))
+            ) {
+                continue;
+            }
+            const REQUIRED = this.requiredFor(SLOT, CONTEXT),
+                AMOUNT =
+                    DEFINITION.condition === 'hitCharge'
+                        ? (event.hits || 0) + (event.critHits || 0) * DEFINITION.criticalChargeBonus
+                        : event[DEFINITION.condition] || 0;
+            SLOT.charge = Math.min(REQUIRED, SLOT.charge + Math.max(0, AMOUNT));
         }
     }
     update(dt) {
@@ -249,7 +299,7 @@ export class FormationSkills {
                 continue;
             }
             const MODEL = MODELS.get(SLOT.id);
-            if (SLOT.cooldown < 1e-9 && SLOT.charge >= MODEL.definition.required && MODEL.cast(this, SLOT)) {
+            if (SLOT.cooldown < 1e-9 && SLOT.charge >= this.requiredFor(SLOT, this, true) && MODEL.cast(this, SLOT)) {
                 SLOT.charge = 0;
                 SLOT.cooldown = FORMATION_COOLDOWN_SECONDS;
                 this.world.combat('formation-cast', { skillId: SLOT.id, x: 0, y: 0, z: 0 });
@@ -258,19 +308,7 @@ export class FormationSkills {
     }
     updateBossCast(dt) {
         let cast = this.runtime.bossCast;
-        const BOSS = cast
-                ? this.world._unitForId(cast.casterId)
-                : this.world.bosses.find(
-                      (boss) =>
-                          boss.active &&
-                          boss.hp > 0 &&
-                          boss.stun <= 0 &&
-                          !boss.patternRuntime.active &&
-                          boss.ability.phase === 'idle' &&
-                          (!boss.specialAbility || boss.specialAbility.phase === 'idle') &&
-                          boss.z <= 0.1 &&
-                          boss.landingRecovery <= 0,
-                  ),
+        const BOSS = this.currentBossCaster(),
             CONTEXT = BOSS ? this.contextFor('boss', BOSS.id) : null;
         let failedId = null;
         if (
@@ -292,7 +330,12 @@ export class FormationSkills {
             if (cast.phase === 'prepare') {
                 const SLOT = this.slots.find((slot) => slot.role === 'boss' && slot.id === cast.id),
                     MODEL = SLOT && MODELS.get(SLOT.id);
-                if (MODEL && MODEL.canCast(CONTEXT, SLOT) && MODEL.cast(CONTEXT, SLOT)) {
+                if (
+                    MODEL &&
+                    SLOT.charge >= this.requiredFor(SLOT, CONTEXT, true) &&
+                    MODEL.canCast(CONTEXT, SLOT) &&
+                    MODEL.cast(CONTEXT, SLOT)
+                ) {
                     SLOT.charge = 0;
                     SLOT.cooldown = FORMATION_COOLDOWN_SECONDS;
                     this.world.combat('formation-cast', {
@@ -339,7 +382,7 @@ export class FormationSkills {
                 slot.id !== failedId &&
                 slot.id !== RETRY_ID &&
                 slot.cooldown < 1e-9 &&
-                slot.charge >= MODELS.get(slot.id).profile(CONTEXT).required &&
+                slot.charge >= this.requiredFor(slot, CONTEXT, true) &&
                 MODELS.get(slot.id).canCast(CONTEXT, slot),
         );
         if (SLOT) {
@@ -440,10 +483,11 @@ export class FormationSkills {
             this.world._endSpatialQueryBatch();
         }
     }
-    damage(target, amount) {
+    damage(target, amount, components = null) {
         if (!target || target.hp <= 0 || target.faction !== this.hostileFaction) {
             return;
         }
+        amount = formationDamageForTarget(amount, components, unitMaxHpFor(target), target.hp);
         const GUARD = target.ability?.receiveGuard?.(this.world);
         amount *= (GUARD?.receivedDamageMultiplier ?? 1) * this.world.passiveReceivedScale(target);
         target.ability?.receiveRawDamage?.(this.world, amount);
@@ -491,7 +535,7 @@ export class FormationSkills {
                 ) || null
         );
     }
-    areaDamage(x, y, radius, amount, knock = false, vertical = false) {
+    areaDamage(x, y, radius, amount, knock = false, vertical = false, components = null) {
         const TARGETS = this.role === 'boss' ? this.enemies(null, Infinity) : this.world.combatUnits();
         for (const TARGET of TARGETS) {
             if (
@@ -502,7 +546,7 @@ export class FormationSkills {
             ) {
                 continue;
             }
-            this.damage(TARGET, amount);
+            this.damage(TARGET, amount, components);
             if (knock) {
                 const DX = TARGET.x - x,
                     DY = TARGET.y - y,

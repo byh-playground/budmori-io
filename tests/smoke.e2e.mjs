@@ -99,6 +99,8 @@ function landedTroopsSnapshot() {
     return !OUT.inside && OUT.count > 0 && OUT.landed === OUT.count && OUT.queued === 0 ? OUT : null;
 }
 const WORLD = (fn, arg) => PAGE.evaluate(fn, arg);
+// Install before app timers/RAF exist; real time runs normally except the explicitly stepped help scene.
+await PAGE.clock.install();
 await PAGE.goto(`http://127.0.0.1:${PORT}/index.html`);
 await PAGE.waitForFunction(() => !!globalThis.BUDMORI && !document.getElementById('bloom-module-loading'));
 
@@ -177,9 +179,15 @@ await check('new game boots with a minimal HUD', async () => {
 
 await check('food workers hit grain piles and food is produced', async () => {
     await WORLD(() => {
-        const W = BUDMORI.sim;
+        const W = BUDMORI.sim,
+            POSITIONS = new globalThis.BloomGamekitDeterministic.SeededPRNG(731);
         for (let index = 0; index < 20; index++) {
-            W.spawn(index % 9, 1, (Math.random() - 0.5) * 20, (Math.random() - 0.5) * 12);
+            W.spawn(
+                index % 9,
+                1,
+                (POSITIONS.nextUint32() / 4294967296 - 0.5) * 20,
+                (POSITIONS.nextUint32() / 4294967296 - 0.5) * 12,
+            );
         }
         W.setWorkBasisPoints(6000);
         W._nextWorkerRefreshTick = 0;
@@ -259,6 +267,7 @@ await check('breeding weights split the breeders between species', async () => {
 });
 
 await check('units eat, breed and the farm stays under its capacity', async () => {
+    const STARTED = await WORLD(() => ({ time: BUDMORI.sim.time, tick: BUDMORI.sim.simulationTick }));
     await WORLD(() => {
         const W = BUDMORI.sim;
         for (let round = 0; round < 40; round++) {
@@ -270,7 +279,19 @@ await check('units eat, breed and the farm stays under its capacity', async () =
         births: BUDMORI.sim.metrics.births,
         owned: BUDMORI.sim.ownedPopulation,
         capacity: BUDMORI.sim.capacity,
+        time: BUDMORI.sim.time,
+        tick: BUDMORI.sim.simulationTick,
+        fed: BUDMORI.sim.units.filter((unit) => unit.fed).length,
+        food: BUDMORI.sim.food.length,
     }));
+    console.log(
+        'OBS farm births',
+        JSON.stringify({
+            ...GOT,
+            elapsedSimulationSeconds: GOT.time - STARTED.time,
+            elapsedTicks: GOT.tick - STARTED.tick,
+        }),
+    );
     expect(GOT.births > 0, `no births ${JSON.stringify(GOT)}`);
     expect(GOT.owned <= GOT.capacity, `over capacity ${JSON.stringify(GOT)}`);
 });
@@ -389,10 +410,9 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
     if (await PAGE.locator('#deckGo').isVisible()) {
         await PAGE.locator('#deckGo').click();
     }
-    await PAGE.waitForFunction(() => BUDMORI.sim.insideTower && BUDMORI.sim.farmBossEvent.phase !== 'marching', null, {
+    await PAGE.waitForFunction(() => BUDMORI.sim.insideTower && BUDMORI.sim.farmBossEvent.phase === 'fighting', null, {
         timeout: 15000,
     });
-    await PAGE.waitForTimeout(3500);
     const CLEAR_FLOOR = () =>
         WORLD(() => {
             const W = BUDMORI.sim;
@@ -403,8 +423,41 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
             }
             W.boss.hp = 0;
         });
+    const REWARDS_AND_DOORS = async () => {
+        await PAGE.waitForFunction(() => {
+            const W = BUDMORI.sim;
+            return W.tower.active && W.farmBossEvent.phase === 'idle' && W.tower.doors.length > 0;
+        });
+        // The product reveals earned boxes before offering the next floor. Observe that real flow;
+        // a fixed post-kill delay can see valid doors while their reward dialog still owns the screen.
+        await PAGE.waitForFunction(() => {
+            const RECEIPT = [...BUDMORI.sim.bossRewardReceipts]
+                .reverse()
+                .find((reward) => ['calculating', 'ready'].includes(reward.status));
+            return !RECEIPT || (RECEIPT.status === 'ready' && RECEIPT.revealedCount >= RECEIPT.boxCount);
+        });
+        if (await PAGE.locator('#bossRewardDialog').isVisible()) {
+            try {
+                await PAGE.locator('#bossRewardClose').click({ timeout: 2000 });
+            } catch (error) {
+                // Fully revealed rewards may auto-close between observation and the pointer click.
+                // Accept that product path only when the expected next-floor panel is already visible.
+                const AUTO_CLOSED = await WORLD(
+                    () =>
+                        document.getElementById('bossRewardDialog').hidden &&
+                        !document.getElementById('towerDoors').hidden,
+                );
+                if (!AUTO_CLOSED) {
+                    throw error;
+                }
+            }
+        }
+        await PAGE.locator('#towerDoors').waitFor({ state: 'visible' });
+        // The next choice is accepted only after the boss's card draw finishes.
+        await PAGE.waitForFunction(() => BUDMORI.sim.time >= (BUDMORI.sim.tower.bossCardDraw?.until || 0));
+    };
     await CLEAR_FLOOR();
-    await PAGE.waitForTimeout(3500);
+    await REWARDS_AND_DOORS();
     const ONE = await WORLD(() => {
         const W = BUDMORI.sim;
         return {
@@ -513,7 +566,7 @@ await check('tower: floors, doors, sleep, rest, mid-boss and best floor', async 
         `boss relic skills and roles in fight: ${JSON.stringify(SLOT)}`,
     );
     await CLEAR_FLOOR();
-    await PAGE.waitForTimeout(3500);
+    await REWARDS_AND_DOORS();
     const THREE = await WORLD(() => ({
         floor: BUDMORI.sim.tower.floor,
         best: BUDMORI.sim.playerProgression.towerBest,
@@ -576,33 +629,30 @@ await check(
         );
     },
 );
-await check(
-    'stat cards are (base + flat) x (1 + pct) for every unit, and clearing them restores the base',
-    async () => {
-        const ATTACK = () => baseUnitStatsFor(1, 0).attackPower,
-            HP = () => baseUnitStatsFor(1, 0).maxHp,
-            BEFORE = [ATTACK(), HP(), baseUnitStatsFor(1, 0).armor];
-        setRunStatMods(
-            runStatModifiers([
-                { id: 'attack-flat', rarity: 0 },
-                { id: 'attack-pct', rarity: 0 },
-                { id: 'attack-pct', rarity: 1 },
-                { id: 'regen-pct', rarity: 0 },
-                { id: 'armor-flat', rarity: 2 },
-            ]),
-        );
-        const DURING = baseUnitStatsFor(1, 0);
-        setRunStatMods({});
-        expect(
-            Math.abs(DURING.attackPower - (BEFORE[0] + 2) * (1 + 0.1 + 0.16)) < 1e-9 &&
-                DURING.armor === BEFORE[2] + 25 &&
-                Math.abs(DURING.regen - BEFORE[1] * 0.005) < 1e-9 &&
-                DURING.maxHp === BEFORE[1],
-            JSON.stringify(DURING),
-        );
-        expect(ATTACK() === BEFORE[0] && HP() === BEFORE[1], 'cleared');
-    },
-);
+await check('stat cards scale the base at every tier, and clearing them restores the base', async () => {
+    const ATTACK = () => baseUnitStatsFor(1, 0).attackPower,
+        HP = () => baseUnitStatsFor(1, 0).maxHp,
+        BEFORE = [ATTACK(), HP(), baseUnitStatsFor(1, 0).armor];
+    setRunStatMods(
+        runStatModifiers([
+            { id: 'attack-flat', rarity: 0 },
+            { id: 'attack-pct', rarity: 0 },
+            { id: 'attack-pct', rarity: 1 },
+            { id: 'regen-pct', rarity: 0 },
+            { id: 'armor-flat', rarity: 2 },
+        ]),
+    );
+    const DURING = baseUnitStatsFor(1, 0);
+    setRunStatMods({});
+    expect(
+        Math.abs(DURING.attackPower - BEFORE[0] * 1.1 * (1 + 0.1 + 0.16)) < 1e-9 &&
+            DURING.armor === BEFORE[2] + 25 &&
+            Math.abs(DURING.regen - BEFORE[1] * 0.005) < 1e-9 &&
+            DURING.maxHp === BEFORE[1],
+        JSON.stringify(DURING),
+    );
+    expect(ATTACK() === BEFORE[0] && HP() === BEFORE[1], 'cleared');
+});
 await check(
     'the next floor kind is drawn by weight: about one fight in five, never a long gap, never an event',
     async () => {
@@ -723,18 +773,56 @@ await check('progress survives a reload', async () => {
 await check('help cards play the real game in an isolated frame and leave the save alone', async () => {
     const BEFORE = await WORLD(() => JSON.stringify(Object.entries(localStorage).sort()));
     await PAGE.locator('#helpMenu').click();
-    await PAGE.locator('#helpTabs button').nth(1).click();
-    await PAGE.waitForFunction(
-        () => document.getElementById('helpCaption').textContent.includes('한 등급 위가 됐어요'),
-        null,
-        { timeout: 60000 },
-    );
-    const FRAME = await WORLD(() => {
-        const SNAP = document.querySelector('#helpDemo iframe').contentWindow.__budmoriHelp.snapshot();
-        return { step: SNAP.step, tabs: document.querySelectorAll('#helpTabs button').length };
-    });
-    expect(FRAME.step === 'done' && FRAME.tabs === 3, `help card state ${JSON.stringify(FRAME)}`);
-    await PAGE.locator('#gameMenuClose').click();
+    let frameObservation;
+    try {
+        await PAGE.locator('#helpTabs button').nth(1).click();
+        // Boot the real iframe in real time first: accelerating its loading timeout would race network/asset work.
+        await PAGE.waitForFunction(
+            () => document.querySelector('#helpDemo iframe')?.contentWindow.__budmoriHelp,
+            null,
+            {
+                timeout: 15000,
+            },
+        );
+        const HELP_OBSERVATION = () => {
+            const SNAP = document.querySelector('#helpDemo iframe')?.contentWindow.__budmoriHelp?.snapshot(),
+                CAPTION = document.getElementById('helpCaption').textContent;
+            return {
+                step: SNAP?.step,
+                state: SNAP?.state,
+                caption: CAPTION,
+                tabs: document.querySelectorAll('#helpTabs button').length,
+                complete: SNAP?.step === 'done' && CAPTION.includes('한 등급 위가 됐어요'),
+            };
+        };
+        await PAGE.clock.pauseAt(await WORLD(() => Date.now() + 1000));
+        try {
+            // Each 50ms chunk runs every scheduled native app RAF/timer. Never call world.step or skip the merge path.
+            // Read caption and model snapshot in one observation, before the product's automatic replay can remount it.
+            frameObservation = await WORLD(HELP_OBSERVATION);
+            for (let elapsed = 0; !frameObservation.complete && elapsed < 6000; elapsed += 50) {
+                await PAGE.clock.runFor(50);
+                frameObservation = await WORLD(HELP_OBSERVATION);
+            }
+        } finally {
+            await PAGE.clock.resume();
+        }
+        expect(
+            frameObservation.complete,
+            `help replay did not finish through its native clock ${JSON.stringify(frameObservation)}`,
+        );
+        expect(
+            frameObservation.step === 'done' && frameObservation.tabs === 3,
+            `help card state ${JSON.stringify(frameObservation)}`,
+        );
+    } finally {
+        if (!PAGE.isClosed()) {
+            await PAGE.clock.resume();
+            if (await PAGE.locator('#gameMenuClose').isVisible()) {
+                await PAGE.locator('#gameMenuClose').click();
+            }
+        }
+    }
     expect((await PAGE.locator('#helpDemo iframe').count()) === 0, 'the help frame stays mounted after the tab closes');
     const AFTER = await WORLD(() => JSON.stringify(Object.entries(localStorage).sort()));
     const KEYS = (text) => JSON.parse(text).map(([key]) => key);
@@ -745,6 +833,7 @@ await check('a full farm keeps queued rewards and the panel shows them as one sp
     await WORLD(() => document.getElementById('upgradeMenu').click());
     await WORLD(() => {
         const W = BUDMORI.sim;
+        window.__queueInventoryBefore = structuredClone(W.bossRewardInventory);
         window.__fillers = [];
         while (W.freeRoom() > 0) {
             window.__fillers.push(W.spawn(0, 1, 0, 0));
@@ -755,23 +844,36 @@ await check('a full farm keeps queued rewards and the panel shows them as one sp
         ];
         W.markProgressChanged();
     });
-    await PAGE.waitForFunction(() => document.querySelectorAll('#farmQueue .farm-queue__chip').length === 1, null, {
-        timeout: 5000,
-    });
-    const GOT = await WORLD(() => {
-        const W = BUDMORI.sim,
-            CHIPS = [...document.querySelectorAll('#farmQueue .farm-queue__chip b')].map((b) => b.textContent),
-            FULL = { free: W.freeRoom(), owned: W.ownedPopulation, capacity: W.capacity };
-        W.bossRewardInventory = [];
-        for (const UNIT of window.__fillers) {
-            W.removeUnit(UNIT);
+    let got;
+    try {
+        await PAGE.waitForFunction(() => document.querySelectorAll('#farmQueue .farm-queue__chip').length === 1, null, {
+            timeout: 5000,
+        });
+        got = await WORLD(() => {
+            const W = BUDMORI.sim,
+                CHIPS = [...document.querySelectorAll('#farmQueue .farm-queue__chip b')].map((b) => b.textContent);
+            return { free: W.freeRoom(), owned: W.ownedPopulation, capacity: W.capacity, CHIPS };
+        });
+    } finally {
+        if (!PAGE.isClosed()) {
+            // Synthetic queued counts must never leak into a later native reward settlement if this UI check fails.
+            await WORLD(() => {
+                const W = BUDMORI.sim;
+                W.bossRewardInventory = window.__queueInventoryBefore;
+                for (const UNIT of window.__fillers) {
+                    W.removeUnit(UNIT);
+                }
+                delete window.__queueInventoryBefore;
+                delete window.__fillers;
+                W.markProgressChanged();
+            });
+            if (await PAGE.locator('#gameMenuClose').isVisible()) {
+                await PAGE.locator('#gameMenuClose').click();
+            }
         }
-        W.markProgressChanged();
-        return { ...FULL, CHIPS };
-    });
-    await PAGE.locator('#gameMenuClose').click();
-    expect(GOT.free === 0, `room ${JSON.stringify(GOT)}`);
-    expect(GOT.CHIPS.join() === '8', `queue chips ${JSON.stringify(GOT)}`);
+    }
+    expect(got.free === 0, `room ${JSON.stringify(got)}`);
+    expect(got.CHIPS.join() === '8', `queue chips ${JSON.stringify(got)}`);
 });
 
 await check('a boss attack hits everyone it reaches: 35% each and 65% shared among those hit', async () => {
