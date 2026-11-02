@@ -316,7 +316,6 @@ try {
             );
         UNIT.setHealth(0);
         WORLD.handleUnitDeath(UNIT);
-        WORLD.bossEncounter.nextJoinAt = WORLD.bossEncounter.elapsed + 0.1;
     });
     await page.waitForFunction(
         () =>

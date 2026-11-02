@@ -71,6 +71,14 @@ const LEGACY_BOSS_FIELDS = new Set(
 
 // Runtime checkpoints retain the previous 60-tick shred ring at this boundary.
 // Disk save compatibility remains at the separate user-facing import boundary.
+// Tower encounters up to 0.67.12 joined one boss every 12 seconds (nextJoinAt). Bosses now drop together; an old
+// checkpoint's not-yet-joined bosses come as soon as the field clears (advanceBossEncounter).
+function migrateBossEncounter(encounter) {
+    if (encounter && Object.hasOwn(encounter, 'nextJoinAt')) {
+        delete encounter.nextJoinAt;
+    }
+}
+
 export function normalizeSnapshot(raw, { clone = true } = {}) {
     const SNAPSHOT = clone ? structuredClone(raw) : raw,
         LEGACY_ENCOUNTER = Object.hasOwn(SNAPSHOT, 'boss') && !Object.hasOwn(SNAPSHOT, 'bosses');
@@ -111,6 +119,7 @@ export function normalizeSnapshot(raw, { clone = true } = {}) {
     if (!Array.isArray(SNAPSHOT.bosses)) {
         throw new TypeError('Invalid boss encounter checkpoint');
     }
+    migrateBossEncounter(SNAPSHOT.bossEncounter);
     for (const TARGET of [...SNAPSHOT.units, ...SNAPSHOT.bosses]) {
         TARGET.statProfile ??= null;
         TARGET.statModifiers ??= {};

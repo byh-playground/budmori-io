@@ -19,7 +19,7 @@ import {
 import { ARENA_GEOMETRY } from './arena-geometry.js';
 import { FORMATION_SKILL_DEFINITIONS } from '../formation/formation-skill-state.js';
 import { FACTION_CONFIG, hasFaction } from '../core/factions.js';
-import { createTowerEncounter, encounterBudget, TOWER_ENCOUNTER_SETTINGS } from '../tower/tower-encounter.js';
+import { bossDropPoint, createTowerEncounter, encounterBudget } from '../tower/tower-encounter.js';
 import { bossStageStats } from '../boss/boss-rewards.js';
 import { BOSS_SPECIES } from '../units/species-catalog.js';
 import { Unit as UNIT } from './farm-unit.js';
@@ -323,7 +323,7 @@ export const FARM_TOWER_RUN = (base) =>
                 encounterId: this.nextBossEncounterId++,
                 rewardStatus: 'none',
             };
-            this.joinNextBoss(true);
+            this.joinOpeningBosses();
             // Nobody walks in by themselves: every living unit waits in the hand until the player deploys it.
             this._benched = new Set(this.unitCollection.items.filter((u) => !u.isBattleOnlySummon));
             this._benchRevision++;
@@ -331,6 +331,14 @@ export const FARM_TOWER_RUN = (base) =>
             this._unitSpatialDirty = true;
             this.markProgressChanged();
             return true;
+        }
+        // Drops every boss the encounter starts with (all but a crown). Returns how many joined.
+        joinOpeningBosses() {
+            let joined = 0;
+            while (this.joinNextBoss(true)) {
+                joined++;
+            }
+            return joined;
         }
         joinNextBoss(initial = false) {
             const ENCOUNTER = this.bossEncounter,
@@ -343,7 +351,8 @@ export const FARM_TOWER_RUN = (base) =>
                 KIND = CONFIG.farm.tower[this.tower.kind],
                 BUDGET = encounterBudget(ENCOUNTER.floor, this.tower.startFloor || 1),
                 STATS = bossStageStats(ENCOUNTER.floor),
-                ANGLE = INDEX * 2.399963229728653;
+                OPENING = ENCOUNTER.roster.filter((entry) => !entry.final).length,
+                DROP = ENTRY.final ? { x: 0, y: 0 } : bossDropPoint(INDEX, OPENING, ARENA_GEOMETRY.arena(this));
             BOSS.controller.configureStage(ENCOUNTER.floor, ENTRY.species);
             BOSS.setBaseStats({
                 maxHp: Math.max(1, Math.round(STATS.hp * KIND.hp * BUDGET.hp * ENTRY.hpShare)),
@@ -352,8 +361,8 @@ export const FARM_TOWER_RUN = (base) =>
             BOSS.setStatModifiers(runStatModifiers(this.tower.bossCards, 'boss'));
             BOSS.setHealth(BOSS.maxHp);
             Object.assign(BOSS, {
-                x: INDEX ? Math.cos(ANGLE) * 9 : 0,
-                y: INDEX ? Math.sin(ANGLE) * 6 : 0,
+                x: DROP.x,
+                y: DROP.y,
                 z: CONFIG.battle.dropHeight,
                 dropLanded: false,
                 active: true,
@@ -361,7 +370,6 @@ export const FARM_TOWER_RUN = (base) =>
                 isFinalBoss: ENTRY.final,
             });
             this.bosses.push(BOSS);
-            ENCOUNTER.nextJoinAt = ENCOUNTER.elapsed + TOWER_ENCOUNTER_SETTINGS.reinforcementSeconds;
             if (!initial) {
                 this.combat('tower-boss-join', { unit: BOSS.id, final: ENTRY.final, x: BOSS.x, y: BOSS.y, z: BOSS.z });
             }
@@ -384,10 +392,8 @@ export const FARM_TOWER_RUN = (base) =>
                 }
             }
             const ALIVE = this.bosses.some((boss) => boss.active && boss.hp > 0);
-            if (
-                ENCOUNTER.nextIndex < ENCOUNTER.roster.length &&
-                (!ALIVE || ENCOUNTER.elapsed >= ENCOUNTER.nextJoinAt)
-            ) {
+            // Only the crown is still waiting here (or an older save's late joiners): they come when the field clears.
+            if (ENCOUNTER.nextIndex < ENCOUNTER.roster.length && !ALIVE) {
                 this.joinNextBoss();
                 return false;
             }
