@@ -2,6 +2,10 @@ import { CONFIG } from './farm-config.js';
 import { FACTION_CONFIG, hasFaction, areOpposingFactions } from '../core/factions.js';
 import { resolveKnockback, resolveStatusDuration } from '../units/unit-stats.js';
 
+function contactQueryReachSquared(reach) {
+    const SQUARED = reach * reach;
+    return SQUARED + Math.max(1, SQUARED) * Number.EPSILON * 8;
+}
 function inverseBodyMass(body) {
     if (body.fixed === true) {
         return 0;
@@ -95,10 +99,7 @@ export const FARM_CONTACT_SOLVER = (base) =>
                 const I = ORDER[left],
                     A = units[I],
                     MAX_REACH = RADIUS[I] + maximumRadius + gap,
-                    MAX_SQUARED = MAX_REACH * MAX_REACH,
-                    X_LIMIT =
-                        Math.sqrt(MAX_SQUARED + Math.max(1, MAX_SQUARED) * Number.EPSILON * 8) *
-                        (1 + Number.EPSILON * 8);
+                    X_LIMIT = Math.sqrt(contactQueryReachSquared(MAX_REACH)) * (1 + Number.EPSILON * 8);
                 for (let right = left + 1; right < ORDER.length; right++) {
                     const J = ORDER[right],
                         B = units[J],
@@ -110,9 +111,8 @@ export const FARM_CONTACT_SOLVER = (base) =>
                         continue;
                     }
                     const DY = B.y - A.y,
-                        REACH = RADIUS[I] + RADIUS[J] + gap,
-                        SQUARED = REACH * REACH;
-                    if (DX * DX + DY * DY <= SQUARED + Math.max(1, SQUARED) * Number.EPSILON * 8) {
+                        REACH = RADIUS[I] + RADIUS[J] + gap;
+                    if (DX * DX + DY * DY <= contactQueryReachSquared(REACH)) {
                         NEIGHBORS[Math.min(I, J)].push(Math.max(I, J));
                     }
                 }
@@ -604,11 +604,10 @@ export const FARM_CONTACT_SOLVER = (base) =>
                         }
                         const DX = CANDIDATE.x - unit.x,
                             DY = CANDIDATE.y - unit.y,
-                            REACH = this._battleRadius[bodyOrder] + this._battleRadius[ORDER] + contactGap,
-                            REACH_SQUARED = REACH * REACH;
+                            REACH = this._battleRadius[bodyOrder] + this._battleRadius[ORDER] + contactGap;
                         // Keep the rounding boundary for the original Math.hypot comparison.
                         // Query again after every Jacobi move: a later pass can create a new contact.
-                        if (DX * DX + DY * DY > REACH_SQUARED + Math.max(1, REACH_SQUARED) * Number.EPSILON * 8) {
+                        if (DX * DX + DY * DY > contactQueryReachSquared(REACH)) {
                             continue;
                         }
                     }
