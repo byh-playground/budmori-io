@@ -115,9 +115,12 @@ export class BossController {
     }
     integrate(world, dt) {
         const BOSS = this.unit;
-        // Encounter entrance owns its drop trajectory. The regular body owns
-        // gravity, steering and basic-attack motion throughout live combat.
-        if (!BOSS.active || (world.scene === 'farm' && world.farmBossEvent.phase !== 'fighting')) {
+        // The farm boss's entrance owns its drop trajectory (boss-event-phases.js). A tower floor's entrance leaps
+        // are ordinary ballistic flight, so the regular body owns them as it owns gravity, steering and basic-attack
+        // motion throughout live combat.
+        const PHASE = world.farmBossEvent.phase,
+            BODY_MOVES = PHASE === 'fighting' || (PHASE === 'dropping' && !!world.bossEncounter);
+        if (!BOSS.active || (world.scene === 'farm' && !BODY_MOVES)) {
             return true;
         }
         this.integrateKnockback(world, dt);

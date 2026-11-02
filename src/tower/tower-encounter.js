@@ -3,9 +3,11 @@ import { TOWER_ELEMENT_ORDER, towerElement } from './tower-theme.js';
 
 // Initial tuning, not a time limit. A floor owns one finite roster and one
 // aggregate stat budget; adding actors divides that budget rather than copying it.
-// Every boss but the crown drops at the start, spread on a ring (`spreadRatio` of the arena radii) so the army,
-// arriving from every edge, meets different bosses at once instead of killing them one at a time.
-// The floor-100 crown waits until every other boss is down and drops at the centre.
+// Every boss but the crown enters at the start, spread on a ring (`spreadRatio` of the arena radii) so the army,
+// arriving from every edge, meets different bosses at once instead of killing them one at a time. They leap out of
+// the arena centre one after another (`launchStaggerSeconds` apart), each in an arc that peaks at `launchApex` (the
+// height troops leave the tower door at) and lands on its own spot; the fight starts once every one has landed.
+// The floor-100 crown waits until every other boss is down and leaps straight up and down at the centre.
 export const TOWER_ENCOUNTER_SETTINGS = Object.freeze({
     bands: Object.freeze([
         Object.freeze({ through: 20, count: 1 }),
@@ -14,6 +16,8 @@ export const TOWER_ENCOUNTER_SETTINGS = Object.freeze({
         Object.freeze({ through: 100, count: 4 }),
     ]),
     spreadRatio: 0.5,
+    launchStaggerSeconds: 0.5,
+    launchApex: 7,
     hpGainPerFloor: 0.018,
     attackGainPerFloor: 0.012,
     preparationFloors: 8,
