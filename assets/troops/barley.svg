@@ -6,13 +6,13 @@
     <path id="barley-arm-left" d="M422 139 C415 141 410 147 408 154 C406 160 409 166 414 169 C420 172 426 169 432 164 C437 160 441 155 439 150 C437 144 430 140 422 139 Z" fill="#dcad55" stroke="#342017" stroke-width="2.9" stroke-linejoin="round"/>
     <path id="barley-arm-right" d="M508 141 C514 144 519 150 522 157 C525 163 523 169 518 172 C512 174 507 170 502 165 C498 161 494 156 496 151 C498 146 502 142 508 141 Z" fill="#dcad55" stroke="#342017" stroke-width="2.9" stroke-linejoin="round"/>
     <path id="barley-seed-outline" d="M 465.5 87.5 C 482.0 87.5 497.0 94.0 506.0 105.0 C 512.5 114.0 515.5 126.0 515.5 139.0 C 515.5 153.0 512.5 166.0 506.0 175.0 C 499.0 184.0 487.0 191.0 475.0 194.0 C 471.5 195.0 468.0 194.5 465.5 194.5 C 456.0 194.5 447.5 192.0 440.0 188.0 C 431.0 183.0 424.0 175.0 420.5 164.0 C 417.0 155.0 415.5 145.0 415.5 135.0 C 415.5 124.0 418.5 113.0 424.0 104.0 C 432.0 94.0 445.0 89.0 458.0 88.5 C 461.0 87.5 463.0 87.5 465.5 87.5 Z" fill="#dcad55" stroke="#342017" stroke-width="2.9" stroke-linejoin="round"/>
-    <path id="barley-seed-right-shade" d="M476 94 C490 102 500 118 504 136 C508 154 504 171 495 183 C488 191 478 196 468 198 C480 185 486 168 487 150 C489 130 484 108 476 94 Z" fill="#c98f3a" opacity=".24"/>
-    <path id="barley-seed-base-shade" d="M418 176 C430 188 443 193 458 194 C473 195 486 190 497 180 C493 188 485 194 476 196 C460 201 442 197 430 190 C424 186 420 181 418 176 Z" fill="#bf8736" opacity=".24"/>
-    <ellipse id="barley-seed-highlight-large" cx="431" cy="122" rx="2.1" ry="4.2" fill="#f4cd79" opacity=".48"/>
-    <ellipse id="barley-seed-highlight-small" cx="427" cy="135" rx="1.6" ry="2.5" fill="#f4cd79" opacity=".42"/>
-    <path id="barley-seed-crease" d="M465 102 C464 109 465 114 465 118" fill="none" stroke="#aa7932" stroke-width="2.1" stroke-linecap="round" opacity=".8"/>
-    <path id="barley-seed-side-crease" d="M486 149 Q482 158 477 165 M482 162 Q478 169 474 174" fill="none" stroke="#ae7a32" stroke-width="1.9" stroke-linecap="round" opacity=".66"/>
-    <path id="barley-seed-base-crease" d="M459 139 C459 155 460 174 463 195" fill="none" stroke="#aa7932" stroke-width="2.8" stroke-linecap="round" opacity=".8"/>
+    <path id="barley-seed-right-shade" d="M476 94 C490 102 500 118 504 136 C508 154 504 171 495 183 C488 191 478 196 468 198 C480 185 486 168 487 150 C489 130 484 108 476 94 Z" fill="#d7a64f"/>
+    <path id="barley-seed-base-shade" d="M425 170 C438 181 450 186 463 187 C475 188 489 184 501 176 C495 184 486 189 475 191 C462 194 449 190 440 186 C434 182 429 176 425 170 Z" fill="#d5a44e"/>
+    <ellipse id="barley-seed-highlight-large" cx="431" cy="122" rx="2.1" ry="4.2" fill="#e8bc66"/>
+    <ellipse id="barley-seed-highlight-small" cx="427" cy="135" rx="1.6" ry="2.5" fill="#e6ba64"/>
+    <path id="barley-seed-crease" d="M465 102 C464 109 465 114 465 118" fill="none" stroke="#b48339" stroke-width="2.1" stroke-linecap="round"/>
+    <path id="barley-seed-side-crease" d="M486 149 Q482 158 477 165 M482 162 Q478 169 474 174" fill="none" stroke="#be8b3e" stroke-width="1.9" stroke-linecap="round"/>
+    <path id="barley-seed-base-crease" d="M459 139 C459 155 460 174 463 195" fill="none" stroke="#b48339" stroke-width="2.8" stroke-linecap="round"/>
     
     
     

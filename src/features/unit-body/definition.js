@@ -93,7 +93,7 @@ const AUTHORED_BODIES = [
         species: 4,
         asset: 'assets/troops/peanut.svg',
         shapeId: 'peanut-pod-outline',
-        sourceSha256: '9c758723459c227f422b25c783a056f9eca9d6117a2adce47ac39a7c8c60f150',
+        sourceSha256: '6b2ca359f0408689b797b780c3f1e2146c99f8d37be0db0b3d0ca6748a9c1131',
         viewBox: [0.0, 0.0, 320.0, 300.0],
         bounds: {
             left: 101.3125,
@@ -114,7 +114,7 @@ const AUTHORED_BODIES = [
         species: 5,
         asset: 'assets/troops/walnut.svg',
         shapeId: 'walnut-body-outline',
-        sourceSha256: 'f1f07b15a41ad7461156945293608142fbf660bc17a51896cdbaafb589b307c7',
+        sourceSha256: '24ed57f859d6c56228c8fc940d6a285780b9b8d13347f163e39cd40fe9474ff7',
         viewBox: [0.0, 0.0, 320.0, 300.0],
         bounds: {
             left: 83.5,
@@ -135,7 +135,7 @@ const AUTHORED_BODIES = [
         species: 6,
         asset: 'assets/troops/rice.svg',
         shapeId: 'rice-body-outline',
-        sourceSha256: '6976724f66805c497e348600f45bbb6064649a89e73122f54e6d360581282ae4',
+        sourceSha256: '182c9fcf45f48bafb2e9011389a4c33cfc6e38ae4bd4de1e024d30724d45ff62',
         viewBox: [0.0, 0.0, 320.0, 350.0],
         bounds: {
             left: 70.60885389809643,
@@ -156,7 +156,7 @@ const AUTHORED_BODIES = [
         species: 7,
         asset: 'assets/troops/wheat.svg',
         shapeId: 'wheat-grain-outline',
-        sourceSha256: 'ae8b5e13138529f7de1aabcaa17487531f37527897b84e937c90f98d57954a09',
+        sourceSha256: '5dbd77ef2f5f9ee31763c55be4d8fe5330ad399f3e5d0961c2e1c3dba0124a00',
         viewBox: [0.0, 0.0, 320.0, 350.0],
         bounds: {
             left: 85.19999999999996,
@@ -177,7 +177,7 @@ const AUTHORED_BODIES = [
         species: 8,
         asset: 'assets/troops/barley.svg',
         shapeId: 'barley-seed-outline',
-        sourceSha256: '43fd62e24d7b95e685716377acf6c720a8ac07bfa6ed4f8c563c10ee5864a6e4',
+        sourceSha256: 'ce106041ff0e8042cabd3e92a3e1f333a4c3faaed462ac4097e96ec8074b0394',
         viewBox: [0.0, 0.0, 320.0, 350.0],
         bounds: {
             left: 69.30899999999998,
@@ -198,7 +198,7 @@ const AUTHORED_BODIES = [
         species: 9,
         asset: 'assets/troops/sprout.svg',
         shapeId: 'body-outline',
-        sourceSha256: '4c18589cd791c270c8349fac2acd01777c4ea4803b856720a4146214dc8dc5e6',
+        sourceSha256: 'af499616ee5dbb85e6ac10234b67e358bc9f542fa1470484552dec1024bd8d99',
         viewBox: [0.0, 0.0, 320.0, 350.0],
         bounds: {
             left: 62.600001930191,

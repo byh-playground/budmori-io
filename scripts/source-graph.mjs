@@ -4,11 +4,12 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { parse } from 'espree';
 import { DOMParser } from '@xmldom/xmldom';
-import { validateAssetMetadata } from '../vendor/upstream-source/modules/vector-assets/schema.js';
 
 const DEFAULT_ROOT = fileURLToPath(new URL('../', import.meta.url));
+const REQUIRE = createRequire(import.meta.url);
 const HASH = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const SHA256 = /^[a-f0-9]{64}$/;
 function walk(node, visit) {
@@ -54,6 +55,10 @@ function moduleURL(node) {
 }
 
 export function sourceGraph(root = DEFAULT_ROOT) {
+    // Refresh verifies a staged SDK before replacing the working cache. Use that root's pinned schema.
+    const { validateAssetMetadata: VALIDATE_ASSET_METADATA } = REQUIRE(
+        path.resolve(root, 'vendor/upstream-source/modules/vector-assets/schema.js'),
+    );
     const ROOT = fs.realpathSync(root),
         FILES = new Map(),
         EDGES = [],
@@ -285,7 +290,7 @@ export function sourceGraph(root = DEFAULT_ROOT) {
         };
         VISIT_NODE(DOCUMENT.documentElement);
         assert.equal(DOCUMENT.documentElement.nodeName, 'svg');
-        const METADATA = validateAssetMetadata(JSON.parse(IDS.get('vector-asset')?.textContent), IDS);
+        const METADATA = VALIDATE_ASSET_METADATA(JSON.parse(IDS.get('vector-asset')?.textContent), IDS);
         for (const NAME of ['mouth', 'ground']) {
             assert.ok(METADATA.sockets[NAME], `Missing SVG socket ${NAME}: ${SPEC.file}`);
         }

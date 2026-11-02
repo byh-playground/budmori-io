@@ -1,31 +1,25 @@
-tree 6b54d85e77a4389e09256557a6147f092961abfe
-parent f983d7a053563bb7a054dd068e22dffdbda66002
-author byh020907 <byh020907@naver.com> 1793558442 +0900
-committer GitHub <noreply@github.com> 1793558442 +0900
+tree 1d49f785759c5cb821d51cd354da8aed065475e5
+parent e2ad338c216c85c30339505dd314db9d3a8def09
+author byh020907 <byh020907@naver.com> 1793579370 +0900
+committer GitHub <noreply@github.com> 1793579370 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq54eqCRC1aQ7uu5UhlAAAZEsQAAthXy1uiH9vLaqfeww+7rPF
- tK0lRB7E7Fj4w20ei41v4Cst+rKByjzetrgLJZrs7sUtefWhfkfgwQsWV271JlHC
- tcFCj8msoNuntjL9z2a4MBtrs9i52XiR9DORyxsE8xD1v8aVqabs7zALyP/styOi
- A1hV9y8EowkZX70mFvNerrrTbNVeoj7H2nou98+ovi3VLjWvTxqocL6Ajy66drk6
- G6gZmBOYT829dhYRJaihDHhFNEGNFlY0aZX6ICiJEzxZ/kC6s6e6ZWhl7+/gRQTD
- brtsGjGIvlZEm9KJBoL3QYtyC3TJfl6bQsuXz+cQL4cXHSSr5efZOyu8RkhvKwvS
- MaKMCSByKT458s250YAlLsHed3z3aXW3/Gt+UKaH784GK5lsAsLY30ifMTgbP38L
- NW8t/aN+7ZBiiho3zY0z/JmTOKtyrAzcbWCYQmGNDWFFYrd98cZwHBrMrSTrIzXd
- bqH3Ba5YPMqKox/o14aGhaUwfgVqCCCIefCCLMl66yMGH3YurGSmEdTpwwTXaDUY
- 92/CfMJ20OCsabVFvDwmqPrOzVe+R7yppteW9/9GqGf+mbkHAAMMg5AqGapv/tmn
- BejjifyW2Y8uNVXSrkygMt3ndQ6eJVXZp3ftyQxvmF8XhQnMNPbX+vWq64FxX7ig
- LonWRrLRoSxZ067eBYum
- =7r1X
+ wsFcBAABCAAQBQJq59lqCRC1aQ7uu5UhlAAAFPYQAJUdccFazfPUYbnt5+Nah/Bs
+ R/L9SfylbW+j2aA34ZxFcnRD1Gz14+8b+zoQPhAFcVxZepmOfiRtseY4cpffBpW0
+ gT0Nszk1DICAzDkC46XjlsJSpsEbNvK+rcj2GExO59c+qi7ErvLUO8g+ncy+sA6z
+ 6lQiMGMtqlSn+9SX7bNTVnGysNK/0jpl/J/sQtOonh9uUXxI95D/ZPV21dfdEdxP
+ CYwHc0RMdrkU1bz8VyZcRRZJEZRW6wYSv6gH1ZphHvEGEP2CBwglwyCxxWrura0M
+ DGF1jRm8nE1KqCnd1o0sjJtYoQRedLhmrWS+YLo2ulMWs7MHLZHfr3ZXbXFTVQLu
+ 5hP//B4hBW+El6+iu4MiTs1u4Ew4GVO/31jZB4o1YE00o7wwX2AAeelcff/iaHrb
+ QnJsk5WlfqjRa1tnwJJ/H66/ped1CiSgsrBbqRQajXb48Xef8dJBBPOuhqJ5XsO/
+ +Besk/aEwUSufUlK8hiblsux4EPyfC1+WwMsp2B8fMgdwArI3dPg0oG8niFg83Fq
+ z/DUq7v5PUR6Es5fwbJ+V43kpLT0fIM4xr+NSABV1BosZXhxRz4DYj5RQiK2ErS0
+ w+93R6dmdhEK2F5idGVu1RbXmk69JRteORakIl00TQMdNaw4Wu42jTIr0/5qixWd
+ wEFOCnr5H15UJUhzYFOW
+ =LGaC
  -----END PGP SIGNATURE-----
  
 
-[performance] 메시·얼굴·벡터 표식 순서 유지 배치 및 GPU 포즈 공유 (#184)
-
-* [performance] 반투명 메시·얼굴 배치와 GPU 포즈 공유
-
-* [performance] 일반 paint 배치와 chunk GPU 자원 재사용
-
----------
+[feature] 불투명 부품 접힘을 위한 크기 0 pose 허용 (#185)
 
 Co-authored-by: yong-ho bae <dragonlake.bae@gmail.com>
