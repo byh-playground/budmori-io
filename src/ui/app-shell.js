@@ -1,5 +1,6 @@
 import { PAGE } from '../i18n/messages/page.js';
 import { SHELL } from '../i18n/messages/shell.js';
+import { PRODUCT_VERSION } from '../version.js';
 
 // The app owns when an installed update may replace the running farm. The SDK owns
 // service-worker discovery/activation and never reads or deletes progress saves.
@@ -77,9 +78,10 @@ export async function startAppShell({ dollar, beforeUpdate, canAutoUpdate, onUpd
         SYNC();
         SHOW(SHELL.checkingUpdate());
         try {
+            // The check ends after a found worker is installed (onUpdate has run by then), so no update means latest.
             await PWA.checkForUpdate();
             if (!ready) {
-                SHOW(SHELL.updateRequested());
+                SHOW(SHELL.upToDate({ version: PRODUCT_VERSION }));
             }
         } catch (error) {
             SHOW(SHELL.checkFailed({ message: error.message }));
