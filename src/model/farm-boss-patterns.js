@@ -15,6 +15,7 @@ import { bossMouthWorldPoint } from '../render/boss-vector-sockets.js';
 import { elementDamageTaken } from './lineage.js';
 import { applyDamageToTargets, resolveCritical, resolveUnitStats, unitMaxHpFor } from '../units/unit-stats.js';
 import { runStatModifiers } from '../tower/tower-run.js';
+import { TOWER_ENCOUNTER_SETTINGS } from '../tower/tower-encounter.js';
 
 export const FARM_BOSS_PATTERNS = (base) =>
     class FarmBossPatterns extends base {
@@ -41,6 +42,39 @@ export const FARM_BOSS_PATTERNS = (base) =>
                 }
             }
             return best;
+        }
+        // Several bosses fight as one pack: each takes its nearest ally among those within `packLeash` boss radii of
+        // the pack's centre, so they stay together and back each other up instead of each chasing a straggler across
+        // the arena. With nobody in that circle the pack closes in on the ally nearest its centre. One boss: nearest.
+        bossPackTarget(living, boss = this.boss) {
+            let count = 0,
+                x = 0,
+                y = 0;
+            for (const B of this.bosses) {
+                if (B.active && B.hp > 0) {
+                    count++;
+                    x += B.x;
+                    y += B.y;
+                }
+            }
+            if (count <= 1) {
+                return this.nearestBossTarget(living, false, boss);
+            }
+            const CENTRE = { x: x / count, y: y / count },
+                LEASH = TOWER_ENCOUNTER_SETTINGS.packLeash * boss.radius;
+            let best = null,
+                distance = Infinity;
+            for (const UNIT_LOCAL of living) {
+                if (Math.hypot(UNIT_LOCAL.x - CENTRE.x, UNIT_LOCAL.y - CENTRE.y) > LEASH) {
+                    continue;
+                }
+                const NEXT = Math.hypot(UNIT_LOCAL.x - boss.x, UNIT_LOCAL.y - boss.y);
+                if (NEXT < distance || (NEXT === distance && UNIT_LOCAL.id < best.id)) {
+                    best = UNIT_LOCAL;
+                    distance = NEXT;
+                }
+            }
+            return best ?? this.nearestBossTarget(living, false, CENTRE);
         }
         bossTargetGrid(_living, boss = this.boss) {
             if (!this._spatialStepActive && this._spatialQueryDepth === 0) {

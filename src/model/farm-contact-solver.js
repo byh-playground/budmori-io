@@ -245,6 +245,32 @@ export const FARM_CONTACT_SOLVER = (base) =>
                 this.profiler?.count('physicsSolverIterations');
             }
         }
+        // Bosses of one pack never stand inside each other: each overlapping pair is pushed apart along the line
+        // between them, half each, until the bodies just touch.
+        separateBossPack() {
+            const PACK = this.bosses.filter((boss) => boss.active && boss.hp > 0 && boss.dropLanded);
+            for (let i = 0; i < PACK.length; i++) {
+                for (let j = i + 1; j < PACK.length; j++) {
+                    const A = PACK[i],
+                        B = PACK[j],
+                        DX = B.x - A.x,
+                        DY = B.y - A.y,
+                        DISTANCE = Math.hypot(DX, DY),
+                        OVERLAP = A.radius + B.radius - DISTANCE;
+                    if (OVERLAP <= 0) {
+                        continue;
+                    }
+                    // Exactly on top of each other (never after the spread landing): part along x by id order.
+                    const NX = DISTANCE > 1e-9 ? DX / DISTANCE : 1,
+                        NY = DISTANCE > 1e-9 ? DY / DISTANCE : 0,
+                        HALF = OVERLAP / 2;
+                    A.x -= NX * HALF;
+                    A.y -= NY * HALF;
+                    B.x += NX * HALF;
+                    B.y += NY * HALF;
+                }
+            }
+        }
         separateBossUnitsJacobi(units, boss = this.boss) {
             const BOSS = boss;
             if (!BOSS.active || !units.length) {
