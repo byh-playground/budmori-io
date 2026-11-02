@@ -185,8 +185,8 @@ try {
         CHECK(LEGACY_WORLD.units.length === 2, 'compatible checkpoint lost residents');
         const MANUAL = WORLD();
         UNIT(MANUAL, 2, -5, 0, true);
-        MANUAL.spawnFood(4, 3);
-        CHECK(MANUAL.food[0].tx === 4 && MANUAL.food[0].ty === 3, 'manual click moved to seed');
+        MANUAL.spawnFood(20, 14);
+        CHECK(MANUAL.food[0].tx === 20 && MANUAL.food[0].ty === 14, 'manual click moved to seed');
         const E = WORLD(),
             DEAD = UNIT(E, 2, 0, 0, true);
         E._foodReservations.prepareProtection();
