@@ -1,0 +1,419 @@
+.home-screen {
+    position: fixed;
+    inset: 0;
+    z-index: var(--ui-z-dock);
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+    padding: max(24px, env(safe-area-inset-top)) max(32px, env(safe-area-inset-right))
+        max(20px, env(safe-area-inset-bottom)) max(32px, env(safe-area-inset-left));
+    background: var(--ui-panel);
+    touch-action: pan-y;
+}
+.home-header,
+.home-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex: 0 0 auto;
+    color: var(--ui-ink-3);
+    font-size: 12px;
+}
+.home-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+}
+.home-brand .icon {
+    width: 25px;
+    height: 25px;
+}
+.home-screen #startVersion {
+    order: initial;
+    margin: 0;
+    font-size: 12px;
+}
+.home-screen #startVersion::before {
+    content: 'v';
+}
+.home-layout {
+    display: grid;
+    grid-template-columns: minmax(310px, 0.85fr) minmax(0, 1.4fr);
+    align-items: center;
+    width: min(1180px, 100%);
+    margin: auto;
+    padding: 28px 0;
+    gap: 24px;
+}
+.home-copy {
+    position: relative;
+    z-index: 1;
+    max-width: 410px;
+    padding-left: 24px;
+}
+.home-eyebrow {
+    margin: 0 0 12px;
+    font-size: 12px;
+    letter-spacing: 0.13em;
+    font-weight: 700;
+    color: var(--ui-primary);
+}
+.home-screen h1 {
+    position: relative;
+    display: inline-block;
+    margin: 0 0 24px;
+    font-size: clamp(72px, 8.2vw, 110px);
+    line-height: 0.95;
+    letter-spacing: -0.075em;
+    font-weight: 900;
+    color: var(--ui-ink);
+}
+.home-screen h1 span {
+    color: var(--ui-primary);
+}
+.home-screen h1 i {
+    position: absolute;
+    width: 15px;
+    height: 9px;
+    border-radius: 100% 0 100% 0;
+    background: #93ae73;
+    left: 23%;
+    top: -7px;
+    transform: rotate(-18deg);
+}
+.home-tagline {
+    margin: 0 0 16px;
+    font-size: clamp(25px, 2.7vw, 36px);
+    line-height: 1.35;
+    font-weight: 800;
+    letter-spacing: -0.055em;
+}
+.home-description {
+    margin: 0 0 24px;
+    font-size: 14px;
+    line-height: 1.8;
+    color: var(--ui-ink-2);
+}
+.home-progress {
+    margin: 0 0 12px;
+    color: var(--ui-ink-2);
+    font-size: 12px;
+}
+.home-actions {
+    display: grid;
+    gap: 10px;
+}
+.home-actions .btn {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 56px;
+    padding: 14px 20px;
+    border-radius: 14px;
+    text-align: left;
+    font-size: 16px;
+}
+.home-actions .btn::after {
+    content: '→';
+    font-size: 24px;
+    font-weight: 400;
+    line-height: 1;
+}
+.home-actions .btn--primary {
+    min-height: 64px;
+    background: var(--ui-primary);
+    color: var(--ui-primary-ink);
+    border-color: var(--ui-primary);
+}
+.save-actions {
+    display: flex;
+    gap: var(--ui-s2);
+}
+.save-actions button {
+    flex: 1;
+    min-height: var(--ui-tap);
+    font-size: var(--ui-fs-2);
+}
+.home-save-tools {
+    margin-top: 14px;
+    border: 0;
+    color: var(--ui-ink-2);
+}
+.home-save-tools > summary {
+    min-height: 44px;
+    padding: 0 3px;
+    font-size: 14px;
+    font-weight: 600;
+}
+.home-save-tools .save-actions .btn {
+    font-size: 14px;
+    min-height: 48px;
+}
+.home-copy #saveNotice,
+.home-copy #appNotice {
+    margin: 12px 0 0;
+    font-size: 13px;
+    background: var(--ui-card);
+    line-height: 1.5;
+}
+.home-copy #appUpdate,
+.home-copy #appInstall,
+.home-copy #resetSave {
+    margin-top: 12px;
+    min-height: 48px;
+    width: 100%;
+}
+.home-copy #newConfirm,
+.home-copy #importConfirm,
+.home-copy #resetConfirm {
+    margin-top: 12px;
+    background: var(--ui-card);
+    font-size: 13px;
+}
+.home-art {
+    pointer-events: none;
+    position: relative;
+    width: 100%;
+    margin: 0;
+    aspect-ratio: 8 / 7;
+}
+.home-landscape {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+.home-mori {
+    position: absolute;
+    object-fit: contain;
+}
+.home-mori--pea {
+    width: 20%;
+    height: 24%;
+    left: 18.4%;
+    bottom: 22.7%;
+    transform: rotate(-8deg);
+}
+.home-mori--sprout {
+    width: 27%;
+    height: 30%;
+    left: 41%;
+    bottom: 17.7%;
+}
+.home-mori--wheat {
+    width: 23%;
+    height: 27%;
+    left: 63%;
+    bottom: 23%;
+    transform: rotate(6deg);
+}
+.home-art figcaption {
+    position: absolute;
+    bottom: 3%;
+    width: 100%;
+    text-align: center;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: var(--ui-ink-3);
+}
+.home-footer {
+    gap: 16px;
+    font-size: 11px;
+}
+@media (max-width: 700px) {
+    .home-screen {
+        padding: max(18px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
+            max(18px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+    }
+    .home-header {
+        margin-bottom: 22px;
+    }
+    .home-layout {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+        max-width: 410px;
+        padding: 0;
+    }
+    .home-copy {
+        display: contents;
+    }
+    .home-eyebrow {
+        order: 0;
+        font-size: 11px;
+        text-align: center;
+        margin: 0 0 10px;
+    }
+    .home-screen h1 {
+        order: 1;
+        align-self: center;
+        font-size: 76px;
+        margin: 0 0 14px;
+    }
+    .home-tagline {
+        order: 2;
+        text-align: center;
+        font-size: 23px;
+        margin: 0;
+        line-height: 1.35;
+    }
+    .home-tagline br {
+        display: none;
+    }
+    .home-description {
+        display: none;
+    }
+    .home-art {
+        order: 3;
+        height: clamp(190px, 29vh, 250px);
+        width: 100%;
+        aspect-ratio: auto;
+        margin: 2px 0 4px;
+    }
+    .home-landscape {
+        position: absolute;
+        width: 100%;
+        height: auto;
+        bottom: -17%;
+    }
+    .home-mori--pea {
+        left: 18.4%;
+        bottom: 14%;
+        width: 20%;
+        height: 34%;
+    }
+    .home-mori--sprout {
+        left: 41%;
+        bottom: 7%;
+        width: 27%;
+        height: 43%;
+    }
+    .home-mori--wheat {
+        left: 63%;
+        bottom: 15%;
+        width: 23%;
+        height: 38%;
+    }
+    .home-art figcaption {
+        display: none;
+    }
+    .home-progress {
+        order: 4;
+        text-align: center;
+        margin-bottom: 12px;
+    }
+    .home-actions {
+        order: 5;
+    }
+    .home-save-tools {
+        order: 6;
+        margin-top: 8px;
+    }
+    .home-copy > p:not([class]),
+    .home-copy > button,
+    .home-copy > div:not(.home-actions) {
+        order: 7;
+    }
+    .home-footer {
+        margin-top: 22px;
+        justify-content: center;
+        font-size: 10px;
+    }
+    .home-footer > :last-child {
+        display: none;
+    }
+}
+@media (max-height: 600px) and (min-width: 701px) {
+    .home-screen {
+        padding-top: 16px;
+    }
+    .home-layout {
+        padding: 16px 0;
+    }
+    .home-screen h1 {
+        font-size: 72px;
+        margin-bottom: 12px;
+    }
+    .home-tagline {
+        font-size: 24px;
+        margin-bottom: 8px;
+    }
+    .home-description {
+        display: none;
+    }
+    .home-art {
+        max-height: 350px;
+    }
+}
+
+@media (max-height: 550px) and (min-width: 600px) {
+    .home-screen {
+        padding: 12px 24px;
+    }
+    .home-header {
+        margin-bottom: 0;
+    }
+    .home-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 16px;
+        padding: 12px 0;
+        max-width: 1100px;
+    }
+    .home-copy {
+        min-width: 0;
+        display: block;
+        padding-left: 0;
+    }
+    .home-eyebrow,
+    .home-description,
+    .home-footer {
+        display: none;
+    }
+    .home-screen h1 {
+        font-size: 56px;
+        margin-bottom: 10px;
+    }
+    .home-tagline {
+        font-size: 20px;
+        text-align: left;
+        margin-bottom: 10px;
+    }
+    .home-tagline br {
+        display: block;
+    }
+    .home-progress {
+        text-align: left;
+        margin-bottom: 8px;
+    }
+    .home-actions .btn,
+    .home-actions .btn--primary {
+        min-height: 48px;
+        padding: 10px 16px;
+    }
+    .home-art {
+        height: auto;
+        aspect-ratio: 8 / 7;
+        margin: 0;
+    }
+    .home-landscape {
+        position: static;
+        height: 100%;
+    }
+    .home-mori--pea {
+        height: 24%;
+        bottom: 22.7%;
+    }
+    .home-mori--sprout {
+        height: 30%;
+        bottom: 17.7%;
+    }
+    .home-mori--wheat {
+        height: 27%;
+        bottom: 23%;
+    }
+}

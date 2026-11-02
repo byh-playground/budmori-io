@@ -35,6 +35,8 @@ jobs:
             - id: check
               run: npm run check
             - if: ${{ !cancelled() && steps.check.outcome == 'success' }}
+              run: timeout 180s npm run test:home
+            - if: ${{ !cancelled() && steps.check.outcome == 'success' }}
               run: timeout 180s npm run test:source-smoke
             - if: ${{ !cancelled() && steps.check.outcome == 'success' }}
               run: timeout 180s npm run test:stat-cards

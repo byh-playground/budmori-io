@@ -22,6 +22,7 @@
         <title>BUDMORI · 농장과 커다란 이웃</title>
         <link rel="stylesheet" href="./src/styles/tokens.css" />
         <link rel="stylesheet" href="./src/styles/base.css" />
+        <link rel="stylesheet" href="./src/styles/home.css" />
         <link rel="stylesheet" href="./src/styles/tower.css" />
         <link rel="stylesheet" href="./src/styles/game-menu.css" />
         <link rel="stylesheet" href="./src/formation/formation-skills.css" />
@@ -429,6 +430,10 @@
                         role="tabpanel"
                         aria-labelledby="gameMenuTitle"
                     >
+                        <button id="returnHome" class="btn btn--secondary game-menu__return" type="button">
+                            <span data-icon="home"></span><span>메인 화면으로</span><span aria-hidden="true">→</span>
+                        </button>
+                        <p class="game-menu__return-note">농장과 진행 중인 도전을 잠시 멈춰요.</p>
                         <div class="game-menu__setting">
                             <span>효과음</span
                             ><button id="sound" type="button" aria-label="효과음 끄기" aria-pressed="true">
@@ -533,44 +538,68 @@
             </section>
         </div>
         <div class="error" id="error" hidden></div>
-        <section id="startScreen" class="product-sheet" aria-labelledby="startTitle">
-            <h1 id="startTitle">budmori</h1>
-            <p>작은 농장을 키워 커다란 이웃에게 도전해요.</p>
-            <p id="saveNotice" role="status"></p>
-            <button id="resetSave" class="btn" hidden>기록 지우고 새로 시작</button>
-            <div id="resetConfirm" hidden>
-                <p id="resetConfirmText"></p>
-                <button id="confirmReset" class="btn btn--danger">기록 지우기</button
-                ><button id="cancelReset" class="btn">취소</button>
+        <section id="startScreen" class="home-screen" aria-labelledby="startTitle">
+            <header class="home-header">
+                <span class="home-brand"><span data-icon="sprout"></span> BLOOM GAMES</span><small id="startVersion"></small>
+            </header>
+            <div class="home-layout">
+                <div class="home-copy">
+                    <p class="home-eyebrow">작은 농장, 커다란 모험</p>
+                    <h1 id="startTitle">bud<span>mori</span><i aria-hidden="true"></i></h1>
+                    <p class="home-tagline">작은 새싹이, <br />든든한 군단으로.</p>
+                    <p class="home-description">모리를 키우고, 합치고,<br />커다란 이웃에게 도전해요.</p>
+                    <p id="homeProgress" class="home-progress" hidden></p>
+                    <div class="home-actions">
+                        <button id="continueGame" class="btn btn--primary" hidden>농장 이어가기</button>
+                        <button id="newGame" class="btn btn--primary">새 농장 시작</button>
+                    </div>
+                    <details class="home-save-tools">
+                        <summary>저장 관리</summary>
+                        <div class="save-actions">
+                            <button id="exportSave" class="btn">저장 내보내기</button
+                            ><button id="importSave" class="btn">저장 불러오기</button>
+                        </div>
+                    </details>
+                    <p id="saveNotice" role="status"></p>
+                    <button id="resetSave" class="btn" hidden>기록 지우고 새로 시작</button>
+                    <div id="resetConfirm" hidden>
+                        <p id="resetConfirmText"></p>
+                        <button id="confirmReset" class="btn btn--danger">기록 지우기</button
+                        ><button id="cancelReset" class="btn">취소</button>
+                    </div>
+                    <p id="appNotice" role="status"></p>
+                    <button id="appUpdate" class="btn btn--primary" hidden>최신 버전 업데이트</button>
+                    <button id="appInstall" class="btn" hidden>앱으로 설치</button>
+                    <input id="saveFile" type="file" accept="application/json,.json" hidden />
+                    <div id="newConfirm" hidden>
+                        <p id="newConfirmText">현재 농장을 새 농장으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요.</p>
+                        <button id="confirmNew" class="btn btn--danger">기존 저장을 바꾸고 시작</button
+                        ><button id="cancelNew" class="btn">취소</button>
+                    </div>
+                    <div id="importConfirm" hidden>
+                        <p id="importConfirmText">선택한 파일로 현재 저장을 바꿀까요?</p>
+                        <button id="confirmImport" class="btn btn--danger">이 저장 불러오기</button
+                        ><button id="cancelImport" class="btn">취소</button>
+                    </div>
+                </div>
+                <figure class="home-art" aria-hidden="true">
+                    <img class="home-landscape" src="./assets/home-garden.svg" alt="" width="800" height="700" />
+                    <img class="home-mori home-mori--pea" data-home-species="0" alt="" />
+                    <img class="home-mori home-mori--sprout" data-home-species="9" alt="" />
+                    <img class="home-mori home-mori--wheat" data-home-species="7" alt="" />
+                    <figcaption>오늘도, 조금 더 자라는 중.</figcaption>
+                </figure>
             </div>
-            <button id="continueGame" class="btn btn--primary">농장 이어가기</button
-            ><button id="newGame" class="btn">새 농장 시작</button>
-            <div class="save-actions">
-                <button id="exportSave" class="btn">저장 내보내기</button
-                ><button id="importSave" class="btn">저장 불러오기</button>
-            </div>
-            <p id="appNotice" role="status"></p>
-            <button id="appUpdate" class="btn btn--primary" hidden>최신 버전 업데이트</button>
-            <button id="appInstall" class="btn" hidden>앱으로 설치</button>
-            <input id="saveFile" type="file" accept="application/json,.json" hidden />
-            <div id="newConfirm" hidden>
-                <p id="newConfirmText">현재 농장을 새 농장으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요.</p>
-                <button id="confirmNew" class="btn btn--danger">기존 저장을 바꾸고 시작</button
-                ><button id="cancelNew" class="btn">취소</button>
-            </div>
-            <div id="importConfirm" hidden>
-                <p id="importConfirmText">선택한 파일로 현재 저장을 바꿀까요?</p>
-                <button id="confirmImport" class="btn btn--danger">이 저장 불러오기</button
-                ><button id="cancelImport" class="btn">취소</button>
-            </div>
-            <small id="startVersion">v0.10.2</small>
+            <footer class="home-footer">
+                <span>씨앗 하나에서 시작하는 우리들의 농장</span><span>키우고 · 합치고 · 도전해요</span>
+            </footer>
         </section>
         <dialog id="appUpdateProgress" class="app-update-progress" aria-labelledby="appUpdateProgressText">
             <p id="appUpdateProgressText">농장을 저장하고 새 버전으로 바꾸고 있어요.</p>
         </dialog>
         <!-- Generated runtime manifest. -->
         <!-- prettier-ignore -->
-        <script id="bloom-runtime-manifest" type="application/json">{"vectorAssets":[{"kind":"troop","id":0,"file":"assets/troops/pea.svg","qualityPreset":"smallAsset","bytes":11947,"sha256":"3d11c0bef609432dfc375d6f77f4e0995dd02d860f49b3bd6f5d6413a66062f6"},{"kind":"troop","id":1,"file":"assets/troops/corn-kernel.svg","qualityPreset":"smallAsset","bytes":9822,"sha256":"885de67bc288faa9a155310ed0cb018f22a018adccf3a2415506a063d8af812a"},{"kind":"troop","id":2,"file":"assets/troops/kidney-bean.svg","qualityPreset":"smallAsset","bytes":9803,"sha256":"7a8c3abeb8e8390c12f63cb182d640512478c3b91f8b65f731845ca261761331"},{"kind":"troop","id":3,"file":"assets/troops/chestnut.svg","qualityPreset":"smallAsset","bytes":10852,"sha256":"31204217947db20fdf4a60072d8527e17894cae7a44654761ff1d7c4e729f5e5"},{"kind":"troop","id":4,"file":"assets/troops/peanut.svg","qualityPreset":"smallAsset","bytes":70672,"sha256":"6b2ca359f0408689b797b780c3f1e2146c99f8d37be0db0b3d0ca6748a9c1131"},{"kind":"troop","id":5,"file":"assets/troops/walnut.svg","qualityPreset":"smallAsset","bytes":30481,"sha256":"24ed57f859d6c56228c8fc940d6a285780b9b8d13347f163e39cd40fe9474ff7"},{"kind":"troop","id":6,"file":"assets/troops/rice.svg","qualityPreset":"smallAsset","bytes":21906,"sha256":"182c9fcf45f48bafb2e9011389a4c33cfc6e38ae4bd4de1e024d30724d45ff62"},{"kind":"troop","id":7,"file":"assets/troops/wheat.svg","qualityPreset":"smallAsset","bytes":32590,"sha256":"5dbd77ef2f5f9ee31763c55be4d8fe5330ad399f3e5d0961c2e1c3dba0124a00"},{"kind":"troop","id":8,"file":"assets/troops/barley.svg","qualityPreset":"smallAsset","bytes":30610,"sha256":"ce106041ff0e8042cabd3e92a3e1f333a4c3faaed462ac4097e96ec8074b0394"},{"kind":"troop","id":9,"file":"assets/troops/sprout.svg","qualityPreset":"smallAsset","bytes":10131,"sha256":"af499616ee5dbb85e6ac10234b67e358bc9f542fa1470484552dec1024bd8d99"},{"kind":"boss","id":"species-0","file":"assets/troops/pea.svg","qualityPreset":"standard","bytes":11947,"sha256":"3d11c0bef609432dfc375d6f77f4e0995dd02d860f49b3bd6f5d6413a66062f6"},{"kind":"boss","id":"species-1","file":"assets/troops/corn-kernel.svg","qualityPreset":"standard","bytes":9822,"sha256":"885de67bc288faa9a155310ed0cb018f22a018adccf3a2415506a063d8af812a"},{"kind":"boss","id":"species-2","file":"assets/troops/kidney-bean.svg","qualityPreset":"standard","bytes":9803,"sha256":"7a8c3abeb8e8390c12f63cb182d640512478c3b91f8b65f731845ca261761331"},{"kind":"boss","id":"species-3","file":"assets/troops/chestnut.svg","qualityPreset":"standard","bytes":10852,"sha256":"31204217947db20fdf4a60072d8527e17894cae7a44654761ff1d7c4e729f5e5"},{"kind":"boss","id":"species-4","file":"assets/troops/peanut.svg","qualityPreset":"standard","bytes":70672,"sha256":"6b2ca359f0408689b797b780c3f1e2146c99f8d37be0db0b3d0ca6748a9c1131"},{"kind":"boss","id":"species-5","file":"assets/troops/walnut.svg","qualityPreset":"standard","bytes":30481,"sha256":"24ed57f859d6c56228c8fc940d6a285780b9b8d13347f163e39cd40fe9474ff7"},{"kind":"boss","id":"species-6","file":"assets/troops/rice.svg","qualityPreset":"standard","bytes":21906,"sha256":"182c9fcf45f48bafb2e9011389a4c33cfc6e38ae4bd4de1e024d30724d45ff62"},{"kind":"boss","id":"species-7","file":"assets/troops/wheat.svg","qualityPreset":"standard","bytes":32590,"sha256":"5dbd77ef2f5f9ee31763c55be4d8fe5330ad399f3e5d0961c2e1c3dba0124a00"},{"kind":"boss","id":"species-8","file":"assets/troops/barley.svg","qualityPreset":"standard","bytes":30610,"sha256":"ce106041ff0e8042cabd3e92a3e1f333a4c3faaed462ac4097e96ec8074b0394"},{"kind":"boss","id":"species-9","file":"assets/troops/sprout.svg","qualityPreset":"standard","bytes":10131,"sha256":"af499616ee5dbb85e6ac10234b67e358bc9f542fa1470484552dec1024bd8d99"}],"schemaVersion":1,"sourceCommit":"f240b1211fd9086106117773f8458ea3cc4b4fff","distCommit":"34918d09b47541ce1db2f9a036ff21e2fc9aefa4","modules":[{"name":"input","globalName":"BloomGamekitInput","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/input.js","bytes":19111,"sha256":"a969755a39702723b35b6a1503e9b2e53a431ea91845017474c979752fdfb51f"},{"name":"interpolation","globalName":"BloomGamekitInterpolation","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/interpolation.js","bytes":55602,"sha256":"acad7ad93615633609a62e484bff918980fc84282840db9b5cd108e8f5bb133a"},{"name":"camera","globalName":"BloomGamekitCamera","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/camera.js","bytes":10177,"sha256":"99c1be43b6a38945028d029a5ecc594f7ff6dfc71075305264930748cafe88b6"},{"name":"hud","globalName":"BloomGamekitHud","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/hud.js","bytes":6026,"sha256":"bff21389e30f4c89b096977a5bf06988e0c6a1a5e58b51fea69779c50def33c2"},{"name":"presentation-events","globalName":"BloomGamekitPresentationEvents","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/presentation-events.js","bytes":11309,"sha256":"f7ef72116be78d348a6e45a5e47a23aad8d2f0be8c1401c69b9dea7e51d4ea55"},{"name":"debug-tools","globalName":"BloomGamekitDebugTools","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/debug-tools.js","bytes":25853,"sha256":"bd077de55035f4e258d341318108b32613de5153d09aa5f6edca6ad31eedb4a4"},{"name":"object-pool","globalName":"BloomGamekitObjectPool","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/object-pool.js","bytes":1856,"sha256":"4291d6d90f23b47024153e2d2db9e1af7f8b78586c8c0ee279621d42dc54f10b"},{"name":"rendering","globalName":"BloomGamekitRendering","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/rendering.js","bytes":405670,"sha256":"08a110906c3a249c892685940ff79b3ebe7bc34afe36f4c5d6b7b056572ccf8b"},{"name":"vector-assets","globalName":"BloomGamekitVectorAssets","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/vector-assets.js","bytes":193250,"sha256":"b3e6a20d29368985770e175ecb015da18c1ed00796d965e0b140051f61fceadf"},{"name":"vector-assets-loader","globalName":"BloomGamekitVectorAssetLoader","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/vector-assets-loader.js","bytes":1060980,"sha256":"f53c266c4bff3e79c0a6341b8e1c68525507199a920c7d6a97936ebc84ca6da9"},{"name":"deterministic","globalName":"BloomGamekitDeterministic","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/deterministic.js","bytes":47252,"sha256":"1917d9766f1a1a2bbd4eab3bf214205979e7881c8cfb34cd1183f462a47ba62f"},{"name":"simloop","globalName":"BloomGamekitSimloop","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/simloop.js","bytes":57952,"sha256":"c25a8f7f4999e4fe8beb6b08167fa4d0934c34098db2bf912335e81db53c4ef8"},{"name":"work-scheduler","globalName":"BloomGamekitWorkScheduler","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/work-scheduler.js","bytes":14682,"sha256":"d3d3ba0deb261a2a17da2ef6950450d45b28bc4870208037d0833b01ad010a25"},{"name":"scenario","globalName":"BloomGamekitScenario","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/scenario.js","bytes":41678,"sha256":"b21a2be85b497588589c796f8e95f932c464474cc4ea3f703a8718e96a9946ce"},{"name":"save","globalName":"BloomGamekitSave","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/save.js","bytes":10457,"sha256":"540b2af25e91bd6b5683c3ae8f80484a951baea9dc90452233dd72c26a4696ed"},{"name":"pwa","globalName":"BloomGamekitPwa","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/pwa.js","bytes":7333,"sha256":"146cc8f825adb6dccc50430bb758a63856c50766aa59bb018e0a0f13429ab24a"}],"game":{"file":"src/farm-app.js"},"bootstrap":{"file":"src/bootstrap.js"},"productVersion":"0.67.9"}</script>
+        <script id="bloom-runtime-manifest" type="application/json">{"vectorAssets":[{"kind":"troop","id":0,"file":"assets/troops/pea.svg","qualityPreset":"smallAsset","bytes":11947,"sha256":"3d11c0bef609432dfc375d6f77f4e0995dd02d860f49b3bd6f5d6413a66062f6"},{"kind":"troop","id":1,"file":"assets/troops/corn-kernel.svg","qualityPreset":"smallAsset","bytes":9822,"sha256":"885de67bc288faa9a155310ed0cb018f22a018adccf3a2415506a063d8af812a"},{"kind":"troop","id":2,"file":"assets/troops/kidney-bean.svg","qualityPreset":"smallAsset","bytes":9803,"sha256":"7a8c3abeb8e8390c12f63cb182d640512478c3b91f8b65f731845ca261761331"},{"kind":"troop","id":3,"file":"assets/troops/chestnut.svg","qualityPreset":"smallAsset","bytes":10852,"sha256":"31204217947db20fdf4a60072d8527e17894cae7a44654761ff1d7c4e729f5e5"},{"kind":"troop","id":4,"file":"assets/troops/peanut.svg","qualityPreset":"smallAsset","bytes":70672,"sha256":"6b2ca359f0408689b797b780c3f1e2146c99f8d37be0db0b3d0ca6748a9c1131"},{"kind":"troop","id":5,"file":"assets/troops/walnut.svg","qualityPreset":"smallAsset","bytes":30481,"sha256":"24ed57f859d6c56228c8fc940d6a285780b9b8d13347f163e39cd40fe9474ff7"},{"kind":"troop","id":6,"file":"assets/troops/rice.svg","qualityPreset":"smallAsset","bytes":21906,"sha256":"182c9fcf45f48bafb2e9011389a4c33cfc6e38ae4bd4de1e024d30724d45ff62"},{"kind":"troop","id":7,"file":"assets/troops/wheat.svg","qualityPreset":"smallAsset","bytes":32590,"sha256":"5dbd77ef2f5f9ee31763c55be4d8fe5330ad399f3e5d0961c2e1c3dba0124a00"},{"kind":"troop","id":8,"file":"assets/troops/barley.svg","qualityPreset":"smallAsset","bytes":30610,"sha256":"ce106041ff0e8042cabd3e92a3e1f333a4c3faaed462ac4097e96ec8074b0394"},{"kind":"troop","id":9,"file":"assets/troops/sprout.svg","qualityPreset":"smallAsset","bytes":10131,"sha256":"af499616ee5dbb85e6ac10234b67e358bc9f542fa1470484552dec1024bd8d99"},{"kind":"boss","id":"species-0","file":"assets/troops/pea.svg","qualityPreset":"standard","bytes":11947,"sha256":"3d11c0bef609432dfc375d6f77f4e0995dd02d860f49b3bd6f5d6413a66062f6"},{"kind":"boss","id":"species-1","file":"assets/troops/corn-kernel.svg","qualityPreset":"standard","bytes":9822,"sha256":"885de67bc288faa9a155310ed0cb018f22a018adccf3a2415506a063d8af812a"},{"kind":"boss","id":"species-2","file":"assets/troops/kidney-bean.svg","qualityPreset":"standard","bytes":9803,"sha256":"7a8c3abeb8e8390c12f63cb182d640512478c3b91f8b65f731845ca261761331"},{"kind":"boss","id":"species-3","file":"assets/troops/chestnut.svg","qualityPreset":"standard","bytes":10852,"sha256":"31204217947db20fdf4a60072d8527e17894cae7a44654761ff1d7c4e729f5e5"},{"kind":"boss","id":"species-4","file":"assets/troops/peanut.svg","qualityPreset":"standard","bytes":70672,"sha256":"6b2ca359f0408689b797b780c3f1e2146c99f8d37be0db0b3d0ca6748a9c1131"},{"kind":"boss","id":"species-5","file":"assets/troops/walnut.svg","qualityPreset":"standard","bytes":30481,"sha256":"24ed57f859d6c56228c8fc940d6a285780b9b8d13347f163e39cd40fe9474ff7"},{"kind":"boss","id":"species-6","file":"assets/troops/rice.svg","qualityPreset":"standard","bytes":21906,"sha256":"182c9fcf45f48bafb2e9011389a4c33cfc6e38ae4bd4de1e024d30724d45ff62"},{"kind":"boss","id":"species-7","file":"assets/troops/wheat.svg","qualityPreset":"standard","bytes":32590,"sha256":"5dbd77ef2f5f9ee31763c55be4d8fe5330ad399f3e5d0961c2e1c3dba0124a00"},{"kind":"boss","id":"species-8","file":"assets/troops/barley.svg","qualityPreset":"standard","bytes":30610,"sha256":"ce106041ff0e8042cabd3e92a3e1f333a4c3faaed462ac4097e96ec8074b0394"},{"kind":"boss","id":"species-9","file":"assets/troops/sprout.svg","qualityPreset":"standard","bytes":10131,"sha256":"af499616ee5dbb85e6ac10234b67e358bc9f542fa1470484552dec1024bd8d99"}],"schemaVersion":1,"sourceCommit":"f240b1211fd9086106117773f8458ea3cc4b4fff","distCommit":"34918d09b47541ce1db2f9a036ff21e2fc9aefa4","modules":[{"name":"input","globalName":"BloomGamekitInput","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/input.js","bytes":19111,"sha256":"a969755a39702723b35b6a1503e9b2e53a431ea91845017474c979752fdfb51f"},{"name":"interpolation","globalName":"BloomGamekitInterpolation","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/interpolation.js","bytes":55602,"sha256":"acad7ad93615633609a62e484bff918980fc84282840db9b5cd108e8f5bb133a"},{"name":"camera","globalName":"BloomGamekitCamera","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/camera.js","bytes":10177,"sha256":"99c1be43b6a38945028d029a5ecc594f7ff6dfc71075305264930748cafe88b6"},{"name":"hud","globalName":"BloomGamekitHud","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/hud.js","bytes":6026,"sha256":"bff21389e30f4c89b096977a5bf06988e0c6a1a5e58b51fea69779c50def33c2"},{"name":"presentation-events","globalName":"BloomGamekitPresentationEvents","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/presentation-events.js","bytes":11309,"sha256":"f7ef72116be78d348a6e45a5e47a23aad8d2f0be8c1401c69b9dea7e51d4ea55"},{"name":"debug-tools","globalName":"BloomGamekitDebugTools","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/debug-tools.js","bytes":25853,"sha256":"bd077de55035f4e258d341318108b32613de5153d09aa5f6edca6ad31eedb4a4"},{"name":"object-pool","globalName":"BloomGamekitObjectPool","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/object-pool.js","bytes":1856,"sha256":"4291d6d90f23b47024153e2d2db9e1af7f8b78586c8c0ee279621d42dc54f10b"},{"name":"rendering","globalName":"BloomGamekitRendering","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/rendering.js","bytes":405670,"sha256":"08a110906c3a249c892685940ff79b3ebe7bc34afe36f4c5d6b7b056572ccf8b"},{"name":"vector-assets","globalName":"BloomGamekitVectorAssets","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/vector-assets.js","bytes":193250,"sha256":"b3e6a20d29368985770e175ecb015da18c1ed00796d965e0b140051f61fceadf"},{"name":"vector-assets-loader","globalName":"BloomGamekitVectorAssetLoader","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/vector-assets-loader.js","bytes":1060980,"sha256":"f53c266c4bff3e79c0a6341b8e1c68525507199a920c7d6a97936ebc84ca6da9"},{"name":"deterministic","globalName":"BloomGamekitDeterministic","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/deterministic.js","bytes":47252,"sha256":"1917d9766f1a1a2bbd4eab3bf214205979e7881c8cfb34cd1183f462a47ba62f"},{"name":"simloop","globalName":"BloomGamekitSimloop","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/simloop.js","bytes":57952,"sha256":"c25a8f7f4999e4fe8beb6b08167fa4d0934c34098db2bf912335e81db53c4ef8"},{"name":"work-scheduler","globalName":"BloomGamekitWorkScheduler","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/work-scheduler.js","bytes":14682,"sha256":"d3d3ba0deb261a2a17da2ef6950450d45b28bc4870208037d0833b01ad010a25"},{"name":"scenario","globalName":"BloomGamekitScenario","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/scenario.js","bytes":41678,"sha256":"b21a2be85b497588589c796f8e95f932c464474cc4ea3f703a8718e96a9946ce"},{"name":"save","globalName":"BloomGamekitSave","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/save.js","bytes":10457,"sha256":"540b2af25e91bd6b5683c3ae8f80484a951baea9dc90452233dd72c26a4696ed"},{"name":"pwa","globalName":"BloomGamekitPwa","url":"https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/pwa.js","bytes":7333,"sha256":"146cc8f825adb6dccc50430bb758a63856c50766aa59bb018e0a0f13429ab24a"}],"game":{"file":"src/farm-app.js"},"bootstrap":{"file":"src/bootstrap.js"},"productVersion":"0.67.10"}</script>
         <!-- Generated bootstrap integrity. -->
         <!-- prettier-ignore -->
         <script type="module" src="./src/bootstrap.js" data-bloom-bootstrap></script>
