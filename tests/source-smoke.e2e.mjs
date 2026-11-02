@@ -183,7 +183,9 @@ try {
     // vector draws. Only the starting roster/encounter is arranged; never step or
     // render a synthetic world, and never replace attack/clip implementations.
     await PAGE.evaluate(async () => {
-        const { unitMaxHpFor: MAX_HP_FOR } = await import('./src/units/unit-stats.js'),
+        const { unitMaxHpFor: MAX_HP_FOR, baseUnitStatsFor: BASE_STATS } = await import('./src/units/unit-stats.js'),
+            STATS_OF_T1 = (species) => BASE_STATS(1, species, false),
+            { createBossPatternRuntime: CREATE_PATTERN_RUNTIME } = await import('./src/boss/boss-patterns.js'),
             { bossAttackArea: BOSS_ATTACK_AREA } = await import('./src/model/farm-model.js'),
             { Unit: UNIT_TYPE } = await import('./src/model/farm-unit.js');
         const WORLD = BUDMORI.sim,
@@ -293,6 +295,21 @@ try {
             const ENEMY = WORLD.units.findLast((unit) => unit.ownerId === 'boss'),
                 ANGLE = (species * Math.PI * 2) / 9,
                 DISTANCE = WORLD.boss.radius + 4.5;
+            // A boss-mouth minion is the boss shrunk to a giant unit with a share of the boss's stats; this fixture
+            // only needs every species' ordinary enemy attack, so it keeps the minion's body but gives it the
+            // species' T1 stats (a farm-stage boss share deals no damage through armor). Its HP is then set far
+            // above that maximum, as before, so the boss side never counts it injured.
+            ENEMY.setBaseStats({
+                maxHp: STATS_OF_T1(species).maxHp,
+                attackPower: STATS_OF_T1(species).attackPower,
+            });
+            // This fixture schedules every pattern itself (the boss's cooldowns are pinned below): the minion's own
+            // element skill stays pinned the same way, so only ordinary species attacks come from it.
+            const RUNTIME = CREATE_PATTERN_RUNTIME();
+            ENEMY.patternRuntime = {
+                ...RUNTIME,
+                cooldowns: Object.fromEntries(Object.keys(RUNTIME.cooldowns).map((id) => [id, 1000])),
+            };
             Object.assign(ENEMY, {
                 x: species === 0 ? -8 : Math.cos(ANGLE) * DISTANCE,
                 y: species === 0 ? 0 : Math.sin(ANGLE) * DISTANCE,
@@ -303,6 +320,10 @@ try {
                 hp: 1e7,
                 dropLanded: true,
             });
+            if (species === 0) {
+                // The low-health peanut stands just past the minion's body edge, in reach of its first hit.
+                Object.assign(PEANUT, { x: ENEMY.x - ENEMY.radius - PEANUT.radius - 0.3, y: 0 });
+            }
             if (WORLD.abilityProgressionFor(ENEMY) !== null) {
                 throw new Error('Boss-mouth summons must retain null player progression');
             }

@@ -309,14 +309,24 @@ try {
     await resume();
     await page.locator('label:has(input[name="battleCommand"][value="engage"])').click();
     await page.waitForFunction(() => BUDMORI.sim.battleCommand === 'engage');
-    await page.evaluate(() => {
+    // Bosses keep fighting meanwhile, so more troops may fall: every fallen troop is replaced from the reserves.
+    const BEFORE_LOSS = await page.evaluate(() => {
         const WORLD = BUDMORI.sim,
             UNIT = WORLD.units.find(
-                (unit) => unit.faction === 'player' && !unit.isBattleOnlySummon && unit.species !== 4,
-            );
+                (unit) =>
+                    unit.faction === 'player' &&
+                    !unit.isBattleOnlySummon &&
+                    unit.species !== 4 &&
+                    unit.hp > 0 &&
+                    WORLD.hasFieldUnit(unit),
+            ),
+            BEFORE = {
+                reserves: [...WORLD.reserveCounts.values()].reduce((sum, count) => sum + count, 0),
+                fallen: WORLD.tower.fallen,
+            };
         UNIT.setHealth(0);
         WORLD.handleUnitDeath(UNIT);
-        WORLD.bossEncounter.nextJoinAt = WORLD.bossEncounter.elapsed + 0.1;
+        return BEFORE;
     });
     await page.waitForFunction(
         () =>
@@ -328,13 +338,20 @@ try {
                 .every((boss) => BUDMORI.renderer.bossPlayers.has(boss.id + ':' + boss.generation)),
     );
     REPORT.stages.reinforcements = await page.evaluate(() => ({
+        fallen: BUDMORI.sim.tower.fallen,
         field: BUDMORI.sim.fieldFighterCount,
         reserves: [...BUDMORI.sim.reserveCounts.values()].reduce((sum, count) => sum + count, 0),
         liveBosses: BUDMORI.sim.bosses.filter((boss) => boss.hp > 0).length,
         renderedBosses: BUDMORI.runtime.presentationView.bosses.length,
         players: BUDMORI.renderer.bossPlayers.size,
     }));
-    assert.equal(REPORT.stages.reinforcements.reserves, 499);
+    const LOSSES = REPORT.stages.reinforcements.fallen - BEFORE_LOSS.fallen;
+    assert.ok(
+        LOSSES >= 1,
+        'the removed troop counts as fallen ' + JSON.stringify({ BEFORE_LOSS, after: REPORT.stages.reinforcements }),
+    );
+    assert.equal(REPORT.stages.reinforcements.field, 500, 'the frontline is refilled to its limit');
+    assert.equal(REPORT.stages.reinforcements.reserves, BEFORE_LOSS.reserves - LOSSES, 'one reserve per fallen troop');
     assert.ok(REPORT.stages.reinforcements.renderedBosses >= 2);
     assert.ok(REPORT.stages.reinforcements.players >= 2);
     await page.setViewportSize({ width: 1000, height: 700 });

@@ -64,7 +64,7 @@
     }
   });
 })({
-    "version": "a2ffc924bef4a50f",
+    "version": "33489091409210ef",
     "activateMessage": "bloom-pwa:activate",
     "gamekit": "^https:\\/\\/cdn\\.jsdelivr\\.net\\/gh\\/byh-playground\\/bloom-gamekit@[0-9a-f]{40}\\/[A-Za-z0-9._/-]+$",
     "precache": [
@@ -97,6 +97,7 @@
         "src/boss/boss-pattern-behaviors.js",
         "src/boss/boss-patterns.js",
         "src/boss/boss-rewards.js",
+        "src/boss/minion-caster.js",
         "src/core/combat-identity.js",
         "src/core/factions.js",
         "src/core/mutation-notifications.js",

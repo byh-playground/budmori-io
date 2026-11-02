@@ -246,6 +246,8 @@ function validateActorAttackState(actor, raw, cornActions, chestnutActions, allo
     ASSERT(
         Number.isFinite(U.giantBonusDamage) &&
             U.giantBonusDamage >= 0 &&
+            INTEGER(U.enemyElement, 0, 5) &&
+            (U.faction === 'enemy' || U.enemyElement === 0) &&
             Number.isFinite(U.landingRecovery) &&
             U.landingRecovery >= 0 &&
             U.landingRecovery <= 0.25 + 1e-9 &&
@@ -1421,8 +1423,8 @@ function validateTowerCheckpoint(raw) {
     }
     ASSERT(
         ENCOUNTER &&
-            Object.keys(ENCOUNTER).length === 7 &&
-            ['roster', 'nextIndex', 'elapsed', 'nextJoinAt', 'clearedIds', 'floor', 'completed'].every((key) =>
+            Object.keys(ENCOUNTER).length === 6 &&
+            ['roster', 'nextIndex', 'elapsed', 'clearedIds', 'floor', 'completed'].every((key) =>
                 Object.hasOwn(ENCOUNTER, key),
             ) &&
             Array.isArray(ENCOUNTER.roster) &&
@@ -1431,14 +1433,9 @@ function validateTowerCheckpoint(raw) {
             ENCOUNTER.roster.every(
                 (entry) =>
                     entry &&
-                    Object.keys(entry).length === 4 &&
+                    Object.keys(entry).length === 3 &&
                     INTEGER(entry.species, 0, CONFIG.unit.speciesCount) &&
-                    Number.isFinite(entry.hpShare) &&
-                    entry.hpShare > 0 &&
-                    entry.hpShare <= 1 &&
-                    Number.isFinite(entry.attackShare) &&
-                    entry.attackShare > 0 &&
-                    entry.attackShare <= 1 &&
+                    INTEGER(entry.element, 1, 5) &&
                     typeof entry.final === 'boolean',
             ) &&
             INTEGER(ENCOUNTER.nextIndex, 1, ENCOUNTER.roster.length) &&
@@ -1448,13 +1445,12 @@ function validateTowerCheckpoint(raw) {
                     boss.id === (index === 0 ? 'boss' : `boss-${index}`) &&
                     boss.species === ENCOUNTER.roster[index].species &&
                     boss.isFinalBoss === ENCOUNTER.roster[index].final &&
+                    boss.enemyElement === ENCOUNTER.roster[index].element &&
                     boss.stage === ENCOUNTER.floor &&
                     boss.encounterId === raw.farmBossEvent.encounterId,
             ) &&
             Number.isFinite(ENCOUNTER.elapsed) &&
             ENCOUNTER.elapsed >= 0 &&
-            Number.isFinite(ENCOUNTER.nextJoinAt) &&
-            ENCOUNTER.nextJoinAt >= 0 &&
             Array.isArray(ENCOUNTER.clearedIds) &&
             new Set(ENCOUNTER.clearedIds).size === ENCOUNTER.clearedIds.length &&
             ENCOUNTER.clearedIds.every((id) => raw.bosses.some((boss) => boss.id === id && boss.hp <= 0)) &&

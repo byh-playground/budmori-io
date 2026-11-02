@@ -49,7 +49,7 @@ export class MouthSummonPresentation extends BossAttackPresentation {
     }
     drawTelegraph(renderer, area) {
         // Summons announce arrival without claiming a damaging red area.
-        const REACH = this.config.landingRadius,
+        const REACH = area.reach,
             X = area.x + Math.cos(area.angle) * REACH,
             Y = area.y + Math.sin(area.angle) * REACH;
         renderer.strokeGroundEllipse(X, Y, 0.65, 0.48, '#bd915d', 0.085);

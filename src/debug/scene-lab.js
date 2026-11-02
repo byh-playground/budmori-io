@@ -6,7 +6,7 @@
 //     "seed": 731, "rate": 0.25, "ms": 8000,           // random seed, playback speed, scene length
 //     "floor": 1,                                      // tower floor: 1 water, 21 grass, 41 fire, 61 ice, 81 lightning
 //     "units": [{ "s": 3, "t": 1, "x": -7, "y": 0, "n": 1, "ring": 3, "giant": false, "hp": 1, "stun": 0 }],
-//     "boss": { "hp": 1e7, "stun": 60, "giant": false, "x": 0, "y": 0, "pattern": "signature.water" },
+//     "boss": { "hp": 1e7, "stun": 60, "giant": false, "x": 0, "y": 0, "pattern": "signature.water", "entry": false },
 //     "relics": { "meteor": 3 }, "bossRelics": { "hammer": 2 },    // formation skills of each side, id: level
 //     "charge": true                                   // fill every skill slot once the fight starts
 //   }
@@ -71,10 +71,11 @@ function labStates(spawned) {
 function labBoss(world, spec) {
     const BOSS = world.boss;
     const HP = spec.hp ?? 1e7;
+    // "entry": true keeps the floor's entry leaps (tower-encounter.js); otherwise the boss stands at x, y now.
+    if (!spec.entry) {
+        Object.assign(BOSS, { x: spec.x ?? 0, y: spec.y ?? 0, z: 0, vx: 0, vy: 0, vz: 0, dropLanded: true });
+    }
     Object.assign(BOSS, {
-        z: 0,
-        x: spec.x ?? 0,
-        y: spec.y ?? 0,
         hp: HP,
         maxHp: Math.max(HP, BOSS.maxHp),
         stun: spec.stun ?? 0,

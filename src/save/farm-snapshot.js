@@ -94,6 +94,7 @@ export const UNIT_SNAPSHOT_SHAPE = {
     giantEndedAt: -10,
     isFormationClone: false,
     cloneBornAt: -10,
+    enemyElement: 0,
 };
 // Both resident units and the boss own the same combat state. Keep one
 // field/default contract without copying farm-only lifecycle fields to the boss.
@@ -107,6 +108,7 @@ export const ACTOR_ATTACK_SNAPSHOT_SHAPE = Object.fromEntries(
         'chestnutNextThornTick landingRecovery walnutNextGuardTick walnutGuardUntilTick walnutStoredRawDamage',
         'wheatCommandUntil wheatCommandCritBonus wheatCommandBuffs barleyArmorBreakUntil barleyArmorBreakReduction',
         'barleyArmorShredBuckets giantUntil giantBonusDamage giantSizeMultiplier giantEndedAt isFormationClone cloneBornAt',
+        'enemyElement',
     ]
         .join(' ')
         .split(' ')

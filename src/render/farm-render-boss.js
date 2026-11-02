@@ -23,7 +23,6 @@ import { drawElementMark } from './unit-face-overlay.js';
 import { elementCheekColor, unitLook } from '../units/species-face.js';
 import { drawUnitFace } from './unit-face-draw.js';
 import { drawBossGrowth } from './boss-growth-draw.js';
-import { towerElement } from '../tower/tower-theme.js';
 import { SIGNATURE_PRESENTATIONS } from '../features/boss-patterns/signature/presentation.js';
 import { MouthSummonPresentation } from '../features/boss-patterns/mouth-summon/presentation.js';
 import { BarleyArmorShredPresentation } from '../features/abilities/barley-shred/presentation.js';
@@ -378,14 +377,7 @@ export class BossPresentation {
                 y: MOUTH_SOCKET.y * S_LOCAL + MATRIX[5],
             };
         if (world.tower.active && B.hp > 0) {
-            drawBossGrowth(
-                this.renderer.ctx,
-                RECORD,
-                PLAYER,
-                MATRIX,
-                towerElement(world.tower.floor),
-                world.tower.floor,
-            );
+            drawBossGrowth(this.renderer.ctx, RECORD, PLAYER, MATRIX, B.element, world.tower.floor);
         }
         this.renderer.ctx.drawVectorActor(PLAYER, { matrix: MATRIX });
         drawUnitFace(
@@ -393,13 +385,13 @@ export class BossPresentation {
             RECORD,
             PLAYER,
             LOOK.face,
-            elementCheekColor(world.tower.active ? towerElement(world.tower.floor) : 0),
+            elementCheekColor(world.tower.active ? B.element : 0),
             MATRIX,
         );
         PRESENTATION.drawRelease(this.renderer, B, POSE, MOUTH_SCREEN);
         if (world.tower.active && B.hp > 0) {
-            // A boss shows its floor band's element like every other enemy: cheeks in its colour and a mark above.
-            const ELEMENT = towerElement(world.tower.floor);
+            // A boss shows its own element like every other enemy: cheeks in its colour and a mark above.
+            const ELEMENT = B.element;
             drawElementMark(
                 this.renderer,
                 ELEMENT,

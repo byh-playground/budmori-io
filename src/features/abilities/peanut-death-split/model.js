@@ -48,6 +48,7 @@ export class PeanutDeathSplitModel {
             ownerId: unit.ownerId || '',
             farmId: unit.farmId || 0,
             faction: unit.faction,
+            enemyElement: unit.enemyElement,
             countsTowardPermanentRoster: false,
             breedingEligible: false,
             mergeEligible: false,

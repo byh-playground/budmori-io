@@ -227,6 +227,9 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
             giantEndedAt: -10,
             isFormationClone: false,
             cloneBornAt: -10,
+            // An enemy's element (lineage.js ids), assigned by whoever spawns it; 0 for the player's units, whose
+            // element comes from their genes.
+            enemyElement: 0,
         });
         if (!controller) {
             initializeFarmLifecycle(this, x, y);
