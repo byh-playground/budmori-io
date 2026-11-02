@@ -20,10 +20,10 @@ const { buildPwa: BUILD_PWA } = await import('../vendor/upstream/pwa-build.mjs')
 
 const { changed: CHANGED } = await BUILD_PWA({
     chromium,
-    name: 'budmori · 농장과 커다란 이웃',
+    name: 'BUDMORI · Little Farm, Giant Neighbors',
     shortName: 'budmori',
-    description: '작은 농장을 키워 커다란 이웃에게 도전해요.',
-    lang: 'ko',
+    description: 'Grow a little farm and take on giant neighbors.',
+    lang: 'en',
     icon: 'assets/pwa/icon.svg',
     maskableIcon: 'assets/pwa/icon-maskable.svg',
     share: 'assets/pwa/share.svg',

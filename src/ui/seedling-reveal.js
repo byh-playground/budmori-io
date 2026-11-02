@@ -1,7 +1,8 @@
-import { speciesById } from '../units/species-catalog.js';
 import { speciesPortraitSource } from '../units/species-paint.js';
 import { SEEDLING_TRANSFORM } from '../features/seedling-growth/definition.js';
 import { iconSvg } from './icons.js';
+import { SHELL } from '../i18n/messages/shell.js';
+import { speciesDescription, speciesName } from '../i18n/messages/species.js';
 
 // Committed growth notices feed a presentation-only queue. Loading a farm never scans its collection for reveals.
 export class SeedlingReveal {
@@ -14,9 +15,11 @@ export class SeedlingReveal {
         this.lastNow = null;
         this.animation = null;
         root.innerHTML =
-            '<img width="64" height="64" alt=""><div><small>새싹이 병사로 자랐어요</small><h2></h2><p></p></div><button type="button" aria-label="획득 카드 닫기">' +
+            '<img width="64" height="64" alt=""><div><small></small><h2></h2><p></p></div><button type="button">' +
             iconSvg('close') +
             '</button>';
+        root.querySelector('small').textContent = SHELL.seedlingGrown();
+        root.querySelector('button').setAttribute('aria-label', SHELL.seedlingClose());
         root.querySelector('button').onclick = () => {
             this.remainingMs = 0;
         };
@@ -51,12 +54,12 @@ export class SeedlingReveal {
                 return;
             }
             this.queue.shift();
-            const SPECIES = speciesById(NEXT.species),
+            const NAME = speciesName(NEXT.species),
                 PORTRAIT = this.root.querySelector('img');
             PORTRAIT.src = speciesPortraitSource(NEXT.species, NEXT.element, NEXT.temperament);
-            PORTRAIT.alt = SPECIES.name;
-            this.root.querySelector('h2').textContent = `${SPECIES.name} 병종 발견!`;
-            this.root.querySelector('p').textContent = SPECIES.description;
+            PORTRAIT.alt = NAME;
+            this.root.querySelector('h2').textContent = SHELL.seedlingFound({ name: NAME });
+            this.root.querySelector('p').textContent = speciesDescription(NEXT.species);
             this.root.dataset.species = String(NEXT.species);
             this.remainingMs = 4500;
             this.animation?.cancel();

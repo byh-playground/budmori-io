@@ -1,4 +1,5 @@
 import { drawGlyphText, formatDamage, textWidth } from '../../../render/damage-numbers.js';
+import { ABILITIES } from '../../../i18n/messages/abilities.js';
 
 // Pixel sizes: the mark is a readable fraction of the drawn body, never smaller or larger than these bounds.
 const STATUS = Object.freeze({ minHeight: 11, maxHeight: 34, bodyShare: 0.16 });
@@ -22,10 +23,10 @@ const SHIELD_STROKES = Object.freeze([
 ]);
 export class BarleyArmorShredPresentation {
     label(_definition, value) {
-        return `기본 공격 적중 후 방어력 ${value} 감소 · 감소마다 3초 · 방어력 최저 0`;
+        return ABILITIES.barleyShredLabel({ value });
     }
     title(value) {
-        return `방어력 −${value}`;
+        return ABILITIES.barleyShredTitle({ value });
     }
     draw(renderer, event, progress) {
         const T = Math.min(1, progress / 0.72),

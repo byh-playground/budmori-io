@@ -90,7 +90,7 @@ const MODEL_FILES = [
 ];
 const MODEL_BOUNDARY_MESSAGE = 'Model code must not depend on rendering, storage or UI adapters.';
 const MODEL_ADAPTER_IMPORT =
-    '(?:^|/)(?:farm-renderer|farm-render-[^/]+|presentation(?:-base)?|farm-storage|farm-app|ability-tree|bootstrap)(?:\\.[cm]?js)?$|(?:^|/)(?:renderer|storage|ui)(?:/|\\.[cm]?js$|$)';
+    '(?:^|/)(?:farm-renderer|farm-render-[^/]+|presentation(?:-base)?|farm-storage|farm-app|ability-tree|bootstrap|text|locale)(?:\\.[cm]?js)?$|(?:^|/)(?:renderer|storage|ui)(?:/|\\.[cm]?js$|$)';
 // ESQuery regex literals need a slash-free representation of path separators.
 const MODEL_ADAPTER_SELECTOR = MODEL_ADAPTER_IMPORT.replaceAll('/', '\\u002F');
 
@@ -135,6 +135,13 @@ export default [
         name: 'budmori/browser',
         files: ['src/**/*.js'],
         languageOptions: { globals: GLOBALS.browser },
+    },
+    {
+        name: 'budmori/localized-text',
+        files: ['src/**/*.js'],
+        // Developer tools, not player screens: the scene lab and the diagnostics report pasted into chat.
+        ignores: ['src/debug/**', 'src/core/performance-diagnostics.js'],
+        rules: { 'project/localized-text': 'error' },
     },
     {
         name: 'budmori/node',

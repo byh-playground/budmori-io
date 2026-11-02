@@ -103,6 +103,13 @@
     background: var(--ui-disabled);
     color: var(--ui-disabled-ink);
 }
+.game-menu__choices {
+    display: flex;
+    gap: var(--ui-s2);
+}
+.game-menu__choices button {
+    min-width: 88px;
+}
 /* 농장 탭 */
 .farm-admin h2,
 .farm-admin h3 {
@@ -365,7 +372,7 @@ html.help-scene.barley-attack-preview #battleCommands {
     pointer-events: none;
 }
 .help-demo[data-loading='true']::after {
-    content: '데모를 준비하고 있어요';
+    content: attr(data-loading-text);
     position: absolute;
     inset: 0;
     display: grid;

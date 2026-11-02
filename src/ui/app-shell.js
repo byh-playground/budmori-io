@@ -1,3 +1,6 @@
+import { PAGE } from '../i18n/messages/page.js';
+import { SHELL } from '../i18n/messages/shell.js';
+
 // The app owns when an installed update may replace the running farm. The SDK owns
 // service-worker discovery/activation and never reads or deletes progress saves.
 export async function startAppShell({ dollar, beforeUpdate, canAutoUpdate, onUpdating }) {
@@ -19,9 +22,9 @@ export async function startAppShell({ dollar, beforeUpdate, canAutoUpdate, onUpd
         UPDATE.hidden = !ready;
         UPDATE.disabled = applying;
         SETTINGS.dataset.updateReady = String(ready);
-        SETTINGS.setAttribute('aria-label', ready ? '게임 설정 열기, 새 버전 있음' : '게임 설정 열기');
-        SETTINGS.title = ready ? '설정 · 새 버전 있음' : '설정';
-        CHECK.textContent = ready ? '최신 버전 업데이트' : '새 버전 확인';
+        SETTINGS.setAttribute('aria-label', ready ? SHELL.settingsOpenUpdate() : PAGE.settingsOpen());
+        SETTINGS.title = ready ? SHELL.settingsTitleUpdate() : PAGE.settingsTitle();
+        CHECK.textContent = ready ? PAGE.appUpdate() : PAGE.checkUpdate();
         CHECK.classList.toggle('btn--primary', ready);
         CHECK.classList.toggle('btn--secondary', !ready);
         CHECK.disabled = applying || checking;
@@ -36,7 +39,7 @@ export async function startAppShell({ dollar, beforeUpdate, canAutoUpdate, onUpd
         onUpdating(true);
         try {
             if ((await beforeUpdate()) !== true) {
-                throw new Error('농장을 저장하지 못해 업데이트를 멈췄어요.');
+                throw new Error(SHELL.updateSaveFailed());
             }
             await PWA.update();
             // Keep the simulation paused and the dialog open until controllerchange reloads the page.
@@ -45,7 +48,7 @@ export async function startAppShell({ dollar, beforeUpdate, canAutoUpdate, onUpd
             PROGRESS.close();
             onUpdating(false);
             SYNC();
-            SHOW('새 버전으로 바꾸지 못했어요. ' + error.message);
+            SHOW(SHELL.updateFailed({ message: error.message }));
         }
     };
     const PWA = globalThis.BloomGamekitPwa.registerPwa({
@@ -53,12 +56,12 @@ export async function startAppShell({ dollar, beforeUpdate, canAutoUpdate, onUpd
         onUpdate: () => {
             ready = true;
             SYNC();
-            SHOW('새 버전이 준비됐어요. 농장을 저장하고 업데이트할 수 있어요.');
+            SHOW(SHELL.updateReady());
             if (canAutoUpdate()) {
                 initialUpdate = APPLY();
             }
         },
-        onError: (error) => SHOW('앱 설치·오프라인 준비를 하지 못했어요. ' + error.message),
+        onError: (error) => SHOW(SHELL.pwaFailed({ message: error.message })),
         onInstallable: () => {
             INSTALL.hidden = false;
         },
@@ -72,14 +75,14 @@ export async function startAppShell({ dollar, beforeUpdate, canAutoUpdate, onUpd
         }
         checking = true;
         SYNC();
-        SHOW('새 버전을 확인하고 있어요.');
+        SHOW(SHELL.checkingUpdate());
         try {
             await PWA.checkForUpdate();
             if (!ready) {
-                SHOW('새 버전 확인을 요청했어요. 준비되면 알려드려요.');
+                SHOW(SHELL.updateRequested());
             }
         } catch (error) {
-            SHOW('새 버전을 확인하지 못했어요. ' + error.message);
+            SHOW(SHELL.checkFailed({ message: error.message }));
         } finally {
             checking = false;
             SYNC();
@@ -90,7 +93,7 @@ export async function startAppShell({ dollar, beforeUpdate, canAutoUpdate, onUpd
         try {
             await PWA.install();
         } catch (error) {
-            SHOW('앱으로 설치하지 못했어요. ' + error.message);
+            SHOW(SHELL.installFailed({ message: error.message }));
         }
     };
     try {
@@ -98,7 +101,7 @@ export async function startAppShell({ dollar, beforeUpdate, canAutoUpdate, onUpd
         // refreshing a controlled page applies its new worker before play starts.
         await PWA.checkForUpdate();
     } catch (error) {
-        SHOW('새 버전을 확인하지 못해 현재 버전으로 시작해요. ' + error.message);
+        SHOW(SHELL.startCheckFailed({ message: error.message }));
     }
     await initialUpdate;
     return !applying;

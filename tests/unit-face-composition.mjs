@@ -99,7 +99,7 @@ for (let temperament = 0; temperament < TEMPERAMENTS.length; temperament++) {
 }
 assert.deepEqual(unitLook('neutral', -1), { body: 'neutral', face: 'neutral' }, 'Enemies and seedlings');
 assert.deepEqual(
-    TEMPERAMENTS.map((entry) => entry.name),
+    TEMPERAMENTS.map((entry) => entry.name.ko),
     ['느긋', '소심', '발끈', '까불', '다정'],
 );
 

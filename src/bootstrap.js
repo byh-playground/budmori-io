@@ -1,6 +1,9 @@
+import { PAGE } from './i18n/messages/page.js';
 import { labRequested } from './debug/lab.js';
 import { isolatedPage } from './save/save-adapter.js';
 import { createStartupLoading } from './startup-loading.js';
+import { formatNumber } from './i18n/text.js';
+import { BOOT } from './i18n/messages/boot.js';
 
 // The intro is a public route, not a normal farm state.
 if (new URLSearchParams(location.search).get('showcaseDemo') !== '1' && location.hash === '#/showcase') {
@@ -50,24 +53,24 @@ ERROR_PANEL.style.cssText =
     'width:min(100%,420px);max-height:90dvh;overflow:auto;box-sizing:border-box;padding:24px;border-radius:20px;background:#f9faee;box-shadow:0 12px 40px #0006';
 const ERROR_TITLE = document.createElement('h2');
 ERROR_TITLE.id = 'bloom-error-title';
-ERROR_TITLE.textContent = '게임이 오류로 중단됐어요';
+ERROR_TITLE.textContent = BOOT.errorTitle();
 const ERROR_MESSAGE = document.createElement('p');
-ERROR_MESSAGE.textContent = '진단 정보를 복사해 알려 주시거나 새로고침해 주세요.';
+ERROR_MESSAGE.textContent = BOOT.errorMessage();
 const DIAGNOSTIC_BUTTON = document.createElement('button');
 DIAGNOSTIC_BUTTON.id = 'bloom-diagnostic-copy';
 DIAGNOSTIC_BUTTON.type = 'button';
-DIAGNOSTIC_BUTTON.textContent = '진단 복사';
+DIAGNOSTIC_BUTTON.textContent = PAGE.copyDiagnostics();
 DIAGNOSTIC_BUTTON.style.cssText =
     'min-height:48px;padding:0 16px;border:0;border-radius:12px;background:#315b40;color:#fff;font:600 16px system-ui;touch-action:manipulation';
 const RELOAD_BUTTON = document.createElement('button');
 RELOAD_BUTTON.type = 'button';
-RELOAD_BUTTON.textContent = '새로고침';
+RELOAD_BUTTON.textContent = BOOT.reload();
 RELOAD_BUTTON.style.cssText =
     'min-height:48px;margin-left:8px;padding:0 16px;border:1px solid #526e50;border-radius:12px;background:#fff;color:#183225;font:600 16px system-ui;touch-action:manipulation';
 const DIAGNOSTIC_TEXT = document.createElement('textarea');
 DIAGNOSTIC_TEXT.id = 'bloom-diagnostic-text';
 DIAGNOSTIC_TEXT.readOnly = true;
-DIAGNOSTIC_TEXT.setAttribute('aria-label', '진단 정보 복사 결과');
+DIAGNOSTIC_TEXT.setAttribute('aria-label', BOOT.diagnosticResult());
 DIAGNOSTIC_TEXT.hidden = true;
 DIAGNOSTIC_TEXT.style.cssText =
     'display:block;box-sizing:border-box;width:100%;height:30vh;margin-top:12px;padding:10px;border:1px solid #526e50;border-radius:12px;background:#fff;color:#111;font:12px/1.4 ui-monospace,monospace';
@@ -162,13 +165,13 @@ function earlyError(event) {
         column: event.colno,
     });
     if (initStage !== 'ready') {
-        showErrorPopup('게임을 시작하는 중 오류가 발생했어요. 진단 정보를 복사해 알려 주세요.');
+        showErrorPopup(BOOT.startupError());
     }
 }
 function earlyRejection(event) {
     recordDiagnostic(event.reason ?? 'Unhandled promise rejection', 'unhandled-rejection');
     if (initStage !== 'ready') {
-        showErrorPopup('게임을 시작하는 중 오류가 발생했어요. 진단 정보를 복사해 알려 주세요.');
+        showErrorPopup(BOOT.startupError());
     }
 }
 window.addEventListener('error', earlyError, true);
@@ -248,24 +251,34 @@ function detailedDiagnosticSnapshot() {
 function diagnosticSnapshot() {
     const ERRORS = diagnosticRing?.snapshot() || { total: EARLY_ERRORS.length, errors: EARLY_ERRORS },
         LINES = [
-            `budmori ${appVersion()} · build ${config?.game?.sha256?.slice(0, 12) || '미확인'} · SDK source ${config?.sourceCommit?.slice(0, 12) || '미확인'}`,
+            `budmori ${appVersion()} · build ${config?.game?.sha256?.slice(0, 12) || BOOT.unknown()} · SDK source ${config?.sourceCommit?.slice(0, 12) || BOOT.unknown()}`,
         ];
-    LINES.push(...(globalThis.BudmoriPerformanceDiagnostics?.summary() || ['성능 미측정 · 시작 단계 ' + initStage]));
     LINES.push(
-        `오류 ${ERRORS.total || 0} · 단계 ${initStage} · 최근 입력 ${
-            RECENT_INPUTS.slice(-3)
-                .map((input) => `${input.type || 'input'}:${input.target?.id || input.target?.tag || ''}`)
-                .join(', ') || '없음'
-        }`,
+        ...(globalThis.BudmoriPerformanceDiagnostics?.summary() || [BOOT.performanceUnmeasured({ stage: initStage })]),
+    );
+    LINES.push(
+        BOOT.errorSummary({
+            total: formatNumber(ERRORS.total || 0),
+            stage: initStage,
+            inputs:
+                RECENT_INPUTS.slice(-3)
+                    .map((input) => `${input.type || 'input'}:${input.target?.id || input.target?.tag || ''}`)
+                    .join(', ') || BOOT.none(),
+        }),
     );
     for (const ERROR of (ERRORS.errors || []).slice(-1)) {
-        LINES.push(`[${ERROR.kind || 'error'} / ${ERROR.visibility || 'blocking'}] ${ERROR.message || '오류'}`);
+        LINES.push(
+            `[${ERROR.kind || 'error'} / ${ERROR.visibility || 'blocking'}] ${ERROR.message || BOOT.errorFallback()}`,
+        );
         if (ERROR.stack) {
             LINES.push(ERROR.stack.split('\n').slice(0, 4).join(' ← '));
         }
         if (ERROR.source || ERROR.line || ERROR.column || ERROR.cause) {
             LINES.push(
-                `위치 ${ERROR.source || ''}:${ERROR.line || 0}:${ERROR.column || 0} · 원인 ${ERROR.cause || '미제공'}`,
+                BOOT.errorLocation({
+                    location: `${ERROR.source || ''}:${ERROR.line || 0}:${ERROR.column || 0}`,
+                    cause: ERROR.cause || BOOT.notProvided(),
+                }),
             );
         }
     }
@@ -316,13 +329,13 @@ DIAGNOSTIC_BUTTON.addEventListener('click', async () => {
               })();
         if (RESULT.copied) {
             DIAGNOSTIC_TEXT.hidden = true;
-            DIAGNOSTIC_STATUS.textContent = '진단 정보가 복사됐어요';
+            DIAGNOSTIC_STATUS.textContent = BOOT.diagnosticsCopied();
         } else {
             DIAGNOSTIC_TEXT.value = RESULT.text || TEXT;
             DIAGNOSTIC_TEXT.hidden = false;
             DIAGNOSTIC_TEXT.focus();
             DIAGNOSTIC_TEXT.select();
-            DIAGNOSTIC_STATUS.textContent = '자동 복사를 못 했어요. 아래 텍스트를 길게 눌러 복사해 주세요';
+            DIAGNOSTIC_STATUS.textContent = BOOT.diagnosticsCopyManually();
         }
     } catch (error) {
         recordDiagnostic(error, 'diagnostic-copy-error');
@@ -331,7 +344,7 @@ DIAGNOSTIC_BUTTON.addEventListener('click', async () => {
         DIAGNOSTIC_TEXT.hidden = false;
         DIAGNOSTIC_TEXT.focus();
         DIAGNOSTIC_TEXT.select();
-        DIAGNOSTIC_STATUS.textContent = '자동 복사를 못 했어요. 아래 텍스트를 길게 눌러 복사해 주세요';
+        DIAGNOSTIC_STATUS.textContent = BOOT.diagnosticsCopyManually();
     }
 });
 try {
@@ -344,10 +357,10 @@ try {
     initStage = 'manifest';
     STARTUP.fail(fallbackText(error));
     recordDiagnostic(error, 'manifest-error');
-    LABEL.textContent = '게임 설정을 읽지 못했어요. 진단 정보를 복사해 알려 주세요';
-    RETRY.textContent = '다시 불러오기';
+    LABEL.textContent = BOOT.manifestFailed();
+    RETRY.textContent = PAGE.loadingRetry();
     RETRY.hidden = false;
-    showErrorPopup('게임 준비를 마치지 못했어요. ' + fallbackText(error));
+    showErrorPopup(BOOT.prepareFailed({ message: fallbackText(error) }));
     console.error('Game manifest failed to initialize', error);
 }
 const READY = new Map();
@@ -419,7 +432,7 @@ async function enableGamekitDiagnostics(record) {
     RING.installGlobal(window, {
         onReport: () => {
             if (initStage !== 'ready') {
-                showErrorPopup('게임을 시작하는 중 오류가 발생했어요. 진단 정보를 복사해 알려 주세요.');
+                showErrorPopup(BOOT.startupError());
             }
         },
     });
@@ -442,7 +455,7 @@ async function launch() {
     STARTUP.begin();
     STARTUP.report('modules', 0, config.modules.length);
     await STARTUP.yield();
-    LABEL.textContent = '게임을 준비하고 있어요';
+    LABEL.textContent = BOOT.preparingGame();
     try {
         if (!debugTools) {
             await loadDiagnostics();
@@ -475,7 +488,7 @@ async function launch() {
             }),
         );
         initStage = 'loading-vector-assets';
-        LABEL.textContent = '캐릭터를 준비하고 있어요';
+        LABEL.textContent = BOOT.preparingCharacters();
         // Keep troop and giant variants in separate quality-keyed startup cache entries.
         vectorLoader ||= globalThis.BloomGamekitVectorAssetLoader.createVectorAssetLoader({
             maxEntries: config.vectorAssets.length,
@@ -579,10 +592,10 @@ async function launch() {
     } catch (error) {
         STARTUP.fail(fallbackText(error));
         recordDiagnostic(error, 'startup-error');
-        LABEL.textContent = '게임을 시작하지 못했어요. 진단 정보를 복사해 알려 주세요';
+        LABEL.textContent = BOOT.startFailed();
         RETRY.hidden = false;
         console.error('Game startup failed at ' + initStage, error);
-        showErrorPopup('게임 준비를 마치지 못했어요. ' + fallbackText(error));
+        showErrorPopup(BOOT.prepareFailed({ message: fallbackText(error) }));
     } finally {
         pending = false;
     }
@@ -593,7 +606,7 @@ globalThis.BloomReportRuntimeFatal = (error) => {
         fatal: true,
     });
     console.error('Farm render loop stopped', error);
-    showErrorPopup('게임이 오류로 중단됐어요. 진단 정보를 복사해 알려 주세요.');
+    showErrorPopup(BOOT.runtimeStopped());
 };
 
 if (config) {

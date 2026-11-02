@@ -35,6 +35,7 @@ try {
         landscape: { width: 844, height: 390 },
     })) {
         const CONTEXT = await BROWSER.newContext({
+                locale: 'ko-KR',
                 serviceWorkers: 'block',
                 viewport: VIEWPORT,
                 isMobile: NAME !== 'desktop',

@@ -1,19 +1,21 @@
 import { RECIPES, TEMPERAMENTS, ELEMENTS, ELEMENT_COUNT, TEMPERAMENT_COUNT } from '../model/lineage.js';
-import { speciesById, SPECIES_COUNT } from '../units/species-catalog.js';
+import { SPECIES_COUNT } from '../units/species-catalog.js';
 import { elementIconSvg } from '../units/species-face.js';
 import { iconSvg } from './icons.js';
 import { speciesPortraitSource } from '../units/species-paint.js';
+import { localized } from '../i18n/text.js';
+import { CODEX } from '../i18n/messages/ui-codex.js';
+import { speciesName } from '../i18n/messages/species.js';
 
 const TABS = Object.freeze([
-    Object.freeze({ id: 'recipes', label: '조합식' }),
-    Object.freeze({ id: 'forms', label: '성향' }),
-    Object.freeze({ id: 'colors', label: '속성' }),
+    Object.freeze({ id: 'recipes', label: CODEX.tabRecipes() }),
+    Object.freeze({ id: 'forms', label: CODEX.tabForms() }),
+    Object.freeze({ id: 'colors', label: CODEX.tabColors() }),
 ]);
 
 // The authored face selection and cheek fills match the native player's data.
 function icon(species, known, look = null) {
-    const ENTRY = speciesById(species),
-        IMAGE = `<img class="codex-icon${known ? '' : ' is-unknown'}" src="${speciesPortraitSource(species, known ? look?.element : 0, known ? look?.temperament : -1)}" alt="${known ? ENTRY.name : '미발견'}" width="40" height="40" draggable="false">`;
+    const IMAGE = `<img class="codex-icon${known ? '' : ' is-unknown'}" src="${speciesPortraitSource(species, known ? look?.element : 0, known ? look?.temperament : -1)}" alt="${known ? speciesName(species) : CODEX.undiscovered()}" width="40" height="40" draggable="false">`;
     if (!known || !look) {
         return IMAGE;
     }
@@ -46,7 +48,7 @@ function recipesHtml(world) {
     }
     const PORTRAIT = (species) => {
         const KNOWN = KNOWN_SPECIES.has(species);
-        return `<span class="codex-ingredient">${icon(species, KNOWN)}<span>${KNOWN ? speciesById(species).name : '미발견'}</span></span>`;
+        return `<span class="codex-ingredient">${icon(species, KNOWN)}<span>${KNOWN ? speciesName(species) : CODEX.undiscovered()}</span></span>`;
     };
     const ROW = (recipe, index, species) => {
         const SELECTED = world.combine.recipe === index,
@@ -56,7 +58,7 @@ function recipesHtml(world) {
                 SELECTED && TIERS.length > 1
                     ? `<span class="codex-tiers">${TIERS.map((tier) => `<button type="button" class="codex-tier" data-tier="${tier}" aria-pressed="${tier === world.combine.tier}">T${tier}</button>`).join('')}</span>`
                     : '';
-        return `<li><button type="button" class="codex-recipe" data-recipe="${index}" aria-pressed="${SELECTED}">${PORTRAIT(species)}<b>${iconSvg('plus')}</b>${PORTRAIT(PARTNER)}<b>${iconSvg('arrow-right')}</b>${PORTRAIT(recipe.result)}<small>${SELECTED ? '선택됨' : world.codex.recipes.includes(index) ? '조합 발견' : '조합 미확인'}</small></button>${CHIPS}</li>`;
+        return `<li><button type="button" class="codex-recipe" data-recipe="${index}" aria-pressed="${SELECTED}">${PORTRAIT(species)}<b>${iconSvg('plus')}</b>${PORTRAIT(PARTNER)}<b>${iconSvg('arrow-right')}</b>${PORTRAIT(recipe.result)}<small>${SELECTED ? CODEX.selected() : world.codex.recipes.includes(index) ? CODEX.recipeFound() : CODEX.recipeUnknown()}</small></button>${CHIPS}</li>`;
     };
     const GROUPS = [...KNOWN_SPECIES]
         .sort((a, b) => a - b)
@@ -64,9 +66,9 @@ function recipesHtml(world) {
             const ROWS = RECIPES.flatMap((recipe, index) =>
                 recipe.a === species || recipe.b === species ? [ROW(recipe, index, species)] : [],
             );
-            return `<section class="codex-uses" data-ingredient="${species}"><h3>${speciesById(species).name}<span>현재 보유 ${COUNTS.get(species) || 0}마리</span></h3>${ROWS.length ? `<ul class="codex-recipes">${ROWS.join('')}</ul>` : '<p>이 병종을 재료로 쓰는 조합은 없어요.</p>'}</section>`;
+            return `<section class="codex-uses" data-ingredient="${species}"><h3>${speciesName(species)}<span>${CODEX.owned({ count: COUNTS.get(species) || 0 })}</span></h3>${ROWS.length ? `<ul class="codex-recipes">${ROWS.join('')}</ul>` : `<p>${CODEX.noRecipes()}</p>`}</section>`;
         });
-    return `<p>발견한 병종을 재료로 쓰는 조합이에요. 미발견 병종은 실루엣으로 보여요. 보유 수는 새싹을 제외한 전체 등급 합계예요.</p><p>조합식을 고른 뒤 조합 버튼을 누르세요. 각 재료 병종은 번식을 위해 최소 2마리를 남겨요(전체 등급 합산). 남겨둘 2마리를 제외한 여유 유닛 중 같은 등급의 성체를 각 병종에서 1마리씩 조합해요.</p>${GROUPS.length ? GROUPS.join('') : '<p>병종을 발견하면 활용할 수 있는 조합이 여기에 나타나요.</p>'}`;
+    return `<p>${CODEX.recipesIntro()}</p><p>${CODEX.recipesHowTo()}</p>${GROUPS.length ? GROUPS.join('') : `<p>${CODEX.recipesEmpty()}</p>`}`;
 }
 
 function gridHtml(list, columns, label, lookFor) {
@@ -76,7 +78,7 @@ function gridHtml(list, columns, label, lookFor) {
             const HAS = list.includes(species * columns.length + column);
             return `<td>${icon(species, HAS, lookFor(column))}</td>`;
         });
-        return `<tr><th scope="row">${speciesById(species).name}</th>${CELLS.join('')}</tr>`;
+        return `<tr><th scope="row">${speciesName(species)}</th>${CELLS.join('')}</tr>`;
     });
     return `<table class="codex-grid" aria-label="${label}"><thead><tr><td></td>${HEAD}</tr></thead><tbody>${ROWS.join('')}</tbody></table><p class="codex-count">${list.length} / ${SPECIES_COUNT * columns.length}</p>`;
 }
@@ -85,16 +87,16 @@ export function codexHtml(world, tab) {
     if (tab === 'forms') {
         return gridHtml(
             world.codex.forms,
-            TEMPERAMENTS.map((entry) => entry.name),
-            '성향 도감',
+            TEMPERAMENTS.map((entry) => localized(entry.name)),
+            CODEX.formsGrid(),
             (column) => ({ temperament: column, element: 0 }),
         );
     }
     if (tab === 'colors') {
         return gridHtml(
             world.codex.colors,
-            ELEMENTS.slice(1, ELEMENT_COUNT + 1).map((entry) => entry.name),
-            '속성 도감',
+            ELEMENTS.slice(1, ELEMENT_COUNT + 1).map((entry) => localized(entry.name)),
+            CODEX.colorsGrid(),
             (column) => ({ temperament: 0, element: column + 1 }),
         );
     }

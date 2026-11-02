@@ -1,8 +1,9 @@
+import { ABILITIES } from '../../../i18n/messages/abilities.js';
 export class KidneyLeapPresentation {
     label(_definition, value) {
-        return `가까운 적에게 도약 · 착지 후 도약 재사용 ${Math.round(value * 100)}% 확률`;
+        return ABILITIES.kidneyLeapLabel({ value });
     }
     title(value) {
-        return `재사용 ${Math.round(value * 100)}%`;
+        return ABILITIES.kidneyLeapTitle({ value });
     }
 }

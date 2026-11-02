@@ -557,14 +557,14 @@ export const FARM_MERGE_BREED = (base) =>
                 return {
                     available: false,
                     code: 'wrong-scene',
-                    reason: '농장 화면에서만 합성할 수 있어요.',
+                    reason: { ko: '농장 화면에서만 합성할 수 있어요.', en: 'You can only merge on the farm.' },
                 };
             }
             if (this.farmBossEvent?.phase !== 'idle') {
                 return {
                     available: false,
                     code: 'boss-event',
-                    reason: '레이드 중에는 합성할 수 없어요.',
+                    reason: { ko: '레이드 중에는 합성할 수 없어요.', en: 'You can’t merge during a raid.' },
                 };
             }
             const MATERIALS = this.selectMergeMaterials();
@@ -572,7 +572,10 @@ export const FARM_MERGE_BREED = (base) =>
                 return {
                     available: false,
                     code: 'no-eligible-materials',
-                    reason: '합성할 수 있는 같은 병종이 부족해요.',
+                    reason: {
+                        ko: '합성할 수 있는 같은 병종이 부족해요.',
+                        en: 'Not enough troops of the same species to merge.',
+                    },
                 };
             }
             return {
@@ -581,8 +584,17 @@ export const FARM_MERGE_BREED = (base) =>
                 tier: MATERIALS[0].tier + 1,
                 materialCount: MATERIALS.length,
                 materials: MATERIALS,
-                reason:
-                    'T' + MATERIALS[0].tier + ' ' + MATERIALS.length + '마리 → T' + (MATERIALS[0].tier + 1) + ' 합성',
+                reason: {
+                    ko:
+                        'T' +
+                        MATERIALS[0].tier +
+                        ' ' +
+                        MATERIALS.length +
+                        '마리 → T' +
+                        (MATERIALS[0].tier + 1) +
+                        ' 합성',
+                    en: `Merge ${MATERIALS.length} T${MATERIALS[0].tier} → T${MATERIALS[0].tier + 1}`,
+                },
             };
         }
         mergeAvailability() {
@@ -618,21 +630,36 @@ export const FARM_MERGE_BREED = (base) =>
         }
         combineDecision() {
             if (this.scene !== 'farm') {
-                return { available: false, code: 'wrong-scene', reason: '농장 화면에서만 조합할 수 있어요.' };
+                return {
+                    available: false,
+                    code: 'wrong-scene',
+                    reason: { ko: '농장 화면에서만 조합할 수 있어요.', en: 'You can only combine on the farm.' },
+                };
             }
             if (this.farmBossEvent?.phase !== 'idle') {
-                return { available: false, code: 'boss-event', reason: '레이드 중에는 조합할 수 없어요.' };
+                return {
+                    available: false,
+                    code: 'boss-event',
+                    reason: { ko: '레이드 중에는 조합할 수 없어요.', en: 'You can’t combine during a raid.' },
+                };
             }
             const RECIPE = RECIPES[this.combine.recipe];
             if (!RECIPE) {
-                return { available: false, code: 'no-recipe', reason: '도감에서 조합식을 골라 주세요.' };
+                return {
+                    available: false,
+                    code: 'no-recipe',
+                    reason: { ko: '도감에서 조합식을 골라 주세요.', en: 'Pick a recipe in the codex.' },
+                };
             }
             const MATERIALS = this.selectCombineMaterials(this.combine.recipe, this.combine.tier);
             if (!MATERIALS) {
                 return {
                     available: false,
                     code: 'no-eligible-materials',
-                    reason: `T${this.combine.tier} 재료가 부족해요. 번식을 위해 각 병종을 최소 2마리(전체 등급 합산) 남기고, 같은 등급의 성체를 각 1마리씩 사용할 수 있어야 해요.`,
+                    reason: {
+                        ko: `T${this.combine.tier} 재료가 부족해요. 번식을 위해 각 병종을 최소 2마리(전체 등급 합산) 남기고, 같은 등급의 성체를 각 1마리씩 사용할 수 있어야 해요.`,
+                        en: `Not enough T${this.combine.tier} materials. Each species must keep at least 2 troops (all tiers combined) for breeding, with 1 adult of each at this tier to spare.`,
+                    },
                 };
             }
             return {
@@ -641,7 +668,7 @@ export const FARM_MERGE_BREED = (base) =>
                 tier: this.combine.tier,
                 materialCount: 2,
                 materials: MATERIALS,
-                reason: `T${this.combine.tier} 조합`,
+                reason: { ko: `T${this.combine.tier} 조합`, en: `T${this.combine.tier} combine` },
             };
         }
         combineAvailability() {

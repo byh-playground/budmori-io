@@ -226,7 +226,11 @@ const BROWSER = await chromium.launch({
 const DEADLINE = setTimeout(() => BROWSER.close(), 180000);
 DEADLINE.unref();
 try {
-    const PAGE = await BROWSER.newPage({ viewport: { width: 1100, height: 850 }, serviceWorkers: 'block' }),
+    const PAGE = await BROWSER.newPage({
+            locale: 'ko-KR',
+            viewport: { width: 1100, height: 850 },
+            serviceWorkers: 'block',
+        }),
         ERRORS = [];
     PAGE.on('pageerror', (error) => ERRORS.push(String(error)));
     await PAGE.route(/cdn\.jsdelivr\.net\/gh\/byh-playground\/bloom-gamekit@[0-9a-f]+\/(.*)/, (route) =>

@@ -80,4 +80,64 @@ const BINDING_NAMES = {
     },
 };
 
-export default { rules: { 'binding-names': BINDING_NAMES } };
+// Player-visible text lives in TextPairs (src/i18n/text.js): a Hangul literal is allowed only inside the `ko` member
+// of an object that also has an `en` member. Error messages are developer diagnostics and stay exempt.
+const HANGUL = /[가-힣ㄱ-ㆎ]/u;
+function propertyName(property) {
+    return property.key.type === 'Identifier' ? property.key.name : property.key.value;
+}
+function isErrorConstruction(node) {
+    return (
+        (node.type === 'NewExpression' || node.type === 'CallExpression') &&
+        node.callee.type === 'Identifier' &&
+        /Error$/u.test(node.callee.name)
+    );
+}
+const LOCALIZED_TEXT = {
+    meta: {
+        type: 'problem',
+        docs: { description: 'Keep player-visible Korean text inside { ko, en } text pairs.' },
+        schema: [],
+        messages: {
+            unpaired: 'Player-visible text must be a { ko, en } pair resolved through src/i18n/text.js (docs/i18n.md).',
+        },
+    },
+    create(context) {
+        function check(node, text) {
+            if (!HANGUL.test(text)) {
+                return;
+            }
+            const ANCESTORS = context.sourceCode.getAncestors(node);
+            for (let index = ANCESTORS.length - 1; index >= 0; index -= 1) {
+                const ANCESTOR = ANCESTORS[index];
+                if (isErrorConstruction(ANCESTOR)) {
+                    return;
+                }
+                if (ANCESTOR.type === 'Property' && ANCESTOR.parent.type === 'ObjectExpression') {
+                    const PAIRED =
+                        propertyName(ANCESTOR) === 'ko' &&
+                        ANCESTOR.parent.properties.some(
+                            (sibling) => sibling.type === 'Property' && propertyName(sibling) === 'en',
+                        );
+                    if (!PAIRED) {
+                        context.report({ node, messageId: 'unpaired' });
+                    }
+                    return;
+                }
+            }
+            context.report({ node, messageId: 'unpaired' });
+        }
+        return {
+            Literal(node) {
+                if (typeof node.value === 'string') {
+                    check(node, node.value);
+                }
+            },
+            TemplateElement(node) {
+                check(node, node.value.cooked ?? node.value.raw);
+            },
+        };
+    },
+};
+
+export default { rules: { 'binding-names': BINDING_NAMES, 'localized-text': LOCALIZED_TEXT } };

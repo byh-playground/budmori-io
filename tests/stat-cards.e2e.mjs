@@ -46,7 +46,7 @@ const BROWSER = await chromium.launch({
 });
 try {
     REPORT.browser = BROWSER.version();
-    const CONTEXT = await BROWSER.newContext({ viewport: REPORT.viewport, serviceWorkers: 'block' }),
+    const CONTEXT = await BROWSER.newContext({ locale: 'ko-KR', viewport: REPORT.viewport, serviceWorkers: 'block' }),
         PAGE = await CONTEXT.newPage();
     PAGE.on('pageerror', (error) => ERRORS.push(String(error)));
     await PAGE.route(/cdn\.jsdelivr\.net\/gh\/byh-playground\/bloom-gamekit@[0-9a-f]+\/(.*)/, (route) => {

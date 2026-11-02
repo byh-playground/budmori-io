@@ -83,6 +83,7 @@ try {
 
     async function openFarm(label, query = '') {
         const CONTEXT = await browser.newContext({
+            locale: 'ko-KR',
             viewport: { width: 667, height: 375 },
             deviceScaleFactor: 0.75,
             serviceWorkers: 'block',

@@ -2,7 +2,7 @@
 
 ## 결정과 적용 범위
 
-사용자 요구는 새싹 성장 우선, 눈앞 먹이 섭취, 원거리 중복 추격 방지, 1,000마리 성능 보존이다. 기준본은 `78bda25ab7ad55c6b86c9d3a69fc542be62ed97d`(0.67.11)이다. 이전 미푸시 초기 커밋은 복구되지 않아 이 기준에서 구현했다.
+사용자 요구는 새싹 성장 우선, 눈앞 먹이 섭취, 원거리 중복 추격 방지, 1,000마리 성능 보존이다. 최초 기준본은 `78bda25ab7ad55c6b86c9d3a69fc542be62ed97d`(0.67.11)이며, 작업 중 추가된 다국어 지원·Pages 복구를 보존해 최종 통합·비교 기준은 `9353f0360735334239d84409e44a2b8f964d6a10`(0.67.12)이다. 이전 미푸시 초기 커밋은 복구되지 않아 이 기준에서 구현했다.
 
 조사·비교한 일차 자료는 [고정 SDK scheduler 원본](https://github.com/byh-playground/bloom-gamekit/blob/f0df18d64dfec77227200494f43419821b34aaf3/modules/work-scheduler/index.js), 로컬 `vendor/upstream/work-scheduler.js`, 기존 `farm-food-field.js`의 공간 그리드·검색 스냅샷이다. SDK는 제한된 작업 실행을 소유하고 식사 자격·분배 정책은 게임이 소유한다. 이번 변경도 SDK·논리 20Hz·물리 갱신 규칙을 유지한다(AI-003, AI-004, AI-009, AI-012).
 
@@ -55,7 +55,7 @@ node tests/food-reservations.e2e.mjs --bench
 
 첫 명령은 실제 Garden과 로컬 pinned SDK를 Chromium에서 실행하며 renderer/RAF 없이 예약·실제 식사·3회 성장·사망/합성/씬 해제·정체/원거리·디스크 복원·중간 커서 rollback을 검사한다. 220명 검색 중 복원한 전체 상태를 180틱 비교하고 잘못된 체크포인트 거절도 검사한다. core CI에는 이 기능 검사만 추가하며 벤치는 넣지 않는다.
 
-현재 비교 벤치는 기준 `78bda25ab7ad55c6b86c9d3a69fc542be62ed97d`의 전체 모델 모듈을 Git 객체에서 별도 URL로 읽어 후보 전체 모델과 비교한다. 단일 owner만 교체하지 않는다. 같은 초기 병력·위치·식사 상태를 assert하고, 커밋·후보 소스 SHA-256·Chromium/Playwright/Node 버전과 원시 결과를 `tests/output/food-reservations/benchmark-1000.json`에 기록한다. 이 원시 관찰물은 커밋하지 않는다.
+현재 비교 벤치는 기준 `9353f0360735334239d84409e44a2b8f964d6a10`의 전체 모델 모듈을 Git 객체에서 별도 URL로 읽어 후보 전체 모델과 비교한다. 단일 owner만 교체하지 않는다. 같은 초기 병력·위치·식사 상태를 assert하고, 커밋·후보 소스 SHA-256·Chromium/Playwright/Node 버전과 원시 결과를 `tests/output/food-reservations/benchmark-1000.json`에 기록한다. 이 원시 관찰물은 커밋하지 않는다.
 
 seed 424242, dt 0.05, 성체 900+새싹 100, 정원 1,000, 창고 50을 사용한다. 배부름/배고픔/밀집은 400틱, 지속 공급/자동 생산은 3,600틱이다. CPU는 첫 40틱을 제외한 모델 1틱 평균이며 렌더·상태 관찰용 이동량 집계를 제외한다. 추가 보호/근접/배달 메서드 CPU와 방문 수는 24작업과 별도로 기록한다. 측정 wrapper의 비용은 후보 CPU에 포함된다.
 

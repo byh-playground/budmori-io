@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 src/vector-assets.generated.js
 vendor/*.inline.js
 baseline.html

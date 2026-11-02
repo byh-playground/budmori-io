@@ -5,6 +5,7 @@
     "scripts": {
         "test": "node tests/smoke.e2e.mjs",
         "test:home": "node tests/home-screen.e2e.mjs",
+        "test:locale": "node tests/locale.e2e.mjs",
         "test:startup-loading": "node tests/startup-loading.e2e.mjs",
         "verify:upstream": "node scripts/gamekit-provenance.cjs refresh https://github.com/byh-playground/bloom-gamekit.git",
         "vector-assets:validate": "node scripts/vector-sources.cjs",

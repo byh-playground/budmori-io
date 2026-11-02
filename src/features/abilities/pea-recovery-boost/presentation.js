@@ -1,8 +1,9 @@
+import { ABILITIES } from '../../../i18n/messages/abilities.js';
 export class PeaRecoveryBoostPresentation {
     label(_definition, value) {
-        return `적에게 밀려난 뒤 2초 이동 속도 +${Math.round(value * 100)}%`;
+        return ABILITIES.peaRecoveryBoostLabel({ value });
     }
     title(value) {
-        return `빠른 복귀 +${Math.round(value * 100)}%`;
+        return ABILITIES.peaRecoveryBoostTitle({ value });
     }
 }

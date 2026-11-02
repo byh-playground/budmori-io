@@ -9,7 +9,7 @@ import { chromium } from 'playwright';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
-const FOOD_BASELINE_REF = '78bda25ab7ad55c6b86c9d3a69fc542be62ed97d';
+const FOOD_BASELINE_REF = '9353f0360735334239d84409e44a2b8f964d6a10';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     OUT = path.join(ROOT, 'tests/output/food-reservations');
@@ -49,7 +49,7 @@ await new Promise((resolve) => SERVER.listen(0, '127.0.0.1', resolve));
 const BROWSER = await chromium.launch(),
     ERRORS = [];
 try {
-    const PAGE = await BROWSER.newPage({ viewport: { width: 1280, height: 720 } });
+    const PAGE = await BROWSER.newPage({ locale: 'ko-KR', viewport: { width: 1280, height: 720 } });
     PAGE.on('pageerror', (error) => ERRORS.push(String(error)));
     await PAGE.goto(`http://127.0.0.1:${SERVER.address().port}/model-harness.html`);
     await PAGE.evaluate(async () => {

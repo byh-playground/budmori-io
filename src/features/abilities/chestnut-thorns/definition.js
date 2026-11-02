@@ -7,9 +7,11 @@ export const CHESTNUT_THORNS_FEATURE = Object.freeze({
         species: 3,
         availableByDefault: true,
         minimumTier: 1,
-        name: '대상 가시 연사',
-        description:
-            '현재 공격 대상을 향해 3초마다 가시를 발사해요. 가시는 0.1초 간격으로 나가며 각각 공격력 100% 피해를 줘요.',
+        name: { ko: '대상 가시 연사', en: 'Thorn Volley' },
+        description: {
+            ko: '현재 공격 대상을 향해 3초마다 가시를 발사해요. 가시는 0.1초 간격으로 나가며 각각 공격력 100% 피해를 줘요.',
+            en: 'Fires thorns at its target every 3s, 0.1s apart, each dealing 100% Attack.',
+        },
         powerValues: Object.freeze([1, 2, 3]),
         cooldownTicks: 60,
         spacingTicks: 2,

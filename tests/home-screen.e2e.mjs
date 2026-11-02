@@ -28,6 +28,7 @@ try {
         [667, 375],
     ]) {
         const CONTEXT = await BROWSER.newContext({
+            locale: 'ko-KR',
             viewport: { width: WIDTH, height: HEIGHT },
             isMobile: WIDTH === 390,
             hasTouch: WIDTH === 390,
