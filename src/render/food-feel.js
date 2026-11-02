@@ -1,3 +1,5 @@
+import { SHELL } from '../i18n/messages/shell.js';
+
 const DOLLAR = (id) => document.getElementById(id);
 class FoodFeel {
     // `muted` is the stored choice; `onMutedChange(muted)` keeps a new one (the play settings save).
@@ -43,9 +45,9 @@ class FoodFeel {
     }
     updateSoundButton() {
         const B = DOLLAR('sound');
-        DOLLAR('soundState').textContent = this.muted ? '꺼짐' : '켜짐';
+        DOLLAR('soundState').textContent = this.muted ? SHELL.soundOff() : SHELL.soundOn();
         B.setAttribute('aria-pressed', String(!this.muted));
-        B.setAttribute('aria-label', this.muted ? '효과음 켜기' : '효과음 끄기');
+        B.setAttribute('aria-label', this.muted ? SHELL.soundTurnOn() : SHELL.soundTurnOff());
     }
     unlock() {
         if (this.muted) {

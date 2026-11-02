@@ -6,20 +6,20 @@
         <!-- bloom-pwa:start -->
         <link rel="manifest" href="manifest.webmanifest">
         <meta name="theme-color" content="#e3ead6">
-        <meta name="description" content="작은 농장을 키워 커다란 이웃에게 도전해요.">
+        <meta name="description" content="Grow a little farm and take on giant neighbors.">
         <link rel="icon" type="image/png" sizes="192x192" href="pwa/icon-192.png">
         <link rel="apple-touch-icon" href="pwa/apple-touch-icon.png">
         <meta name="apple-mobile-web-app-title" content="budmori">
         <meta property="og:type" content="website">
         <meta property="og:url" content="https://byh-playground.github.io/budmori-io/">
-        <meta property="og:title" content="budmori · 농장과 커다란 이웃">
-        <meta property="og:description" content="작은 농장을 키워 커다란 이웃에게 도전해요.">
+        <meta property="og:title" content="BUDMORI · Little Farm, Giant Neighbors">
+        <meta property="og:description" content="Grow a little farm and take on giant neighbors.">
         <meta property="og:image" content="https://byh-playground.github.io/budmori-io/pwa/share.png">
         <meta property="og:image:width" content="1200">
         <meta property="og:image:height" content="630">
         <meta name="twitter:card" content="summary_large_image">
         <!-- bloom-pwa:end -->
-        <title>BUDMORI · 농장과 커다란 이웃</title>
+        <title>BUDMORI · Little Farm, Giant Neighbors</title>
         <link rel="stylesheet" href="./src/styles/tokens.css" />
         <link rel="stylesheet" href="./src/styles/base.css" />
         <link rel="stylesheet" href="./src/styles/home.css" />
@@ -97,15 +97,15 @@
         <section id="bloom-module-loading" aria-labelledby="bloom-loading-title">
             <div class="startup-panel">
                 <h1 id="bloom-loading-title">BUDMORI</h1>
-                <p id="bloom-loading-label" role="status" aria-live="polite">모험을 준비하고 있어요</p>
-                <progress id="bloom-loading-progress" aria-label="현재 단계 준비 진행"></progress>
-                <p id="bloom-loading-detail">시작 파일을 불러오는 중</p>
-                <a id="bloom-loading-retry" href="">다시 불러오기</a>
-                <noscript>게임을 시작하려면 JavaScript를 켜 주세요.</noscript>
+                <p id="bloom-loading-label" role="status" aria-live="polite" data-i18n="loadingLabel">Getting your adventure ready</p>
+                <progress id="bloom-loading-progress" aria-label="Progress of the current step" data-i18n-aria-label="loadingProgress"></progress>
+                <p id="bloom-loading-detail" data-i18n="loadingDetail">Loading startup files</p>
+                <a id="bloom-loading-retry" href="" data-i18n="loadingRetry">Reload</a>
+                <noscript>게임을 시작하려면 JavaScript를 켜 주세요. · Turn on JavaScript to play.</noscript>
             </div>
         </section>
         <script type="module" src="./src/startup-loading.js"></script>
-        <canvas id="world" aria-label="드래그해서 농장 둘러보기"></canvas>
+        <canvas id="world" data-i18n-aria-label="worldLabel"></canvas>
         <div class="tower-tint" id="towerTint" aria-hidden="true"></div>
         <aside id="seedlingReveal" class="seedling-reveal" role="status" aria-live="polite" hidden></aside>
         <div class="floor-banner" id="floorBanner" role="status" hidden>
@@ -114,12 +114,12 @@
         <header>
             <div class="hud__stats">
                 <div class="chip">
-                    <i class="dot"></i><span class="chip__label">병력</span><b id="count">36</b
+                    <i class="dot"></i><span class="chip__label" data-i18n="troopsLabel"></span><b id="count">36</b
                     ><small>/ <span id="capacity">72</span></small>
                 </div>
                 <div class="chip chip--floor" id="floorChip" hidden><b id="floorNow"></b></div>
                 <div class="chip chip--growth" id="overallGrowth">
-                    <span id="overallLevel">전체 Lv.1</span><small id="overallXp"></small>
+                    <span id="overallLevel" data-i18n="overallLevel"></span><small id="overallXp"></small>
                 </div>
                 <small id="starter" class="hud__note"></small>
                 <small id="productVersion" class="hud__version">0.10.2</small>
@@ -128,56 +128,54 @@
         <button
             id="gameMenu"
             class="corner-settings"
-            aria-label="게임 설정 열기"
+            data-i18n-aria-label="settingsOpen"
             aria-haspopup="dialog"
             aria-controls="gameMenuOverlay"
             aria-expanded="false"
-            title="설정"
+            data-i18n-title="settingsTitle"
             data-icon="settings"
         ></button>
 
         <section class="bossbar" id="bossbar" hidden>
-            <div class="bossbar__row bossbar__row--ally"><strong>아군</strong><small id="allyHealthText"></small></div>
+            <div class="bossbar__row bossbar__row--ally"><strong data-i18n="allies"></strong><small id="allyHealthText"></small></div>
             <div class="track track--ally">
                 <div
                     class="fill ally"
                     id="allyHealth"
                     role="progressbar"
-                    aria-label="아군 총합 체력"
+                    data-i18n-aria-label="allyHealth"
                     aria-valuemin="0"
                 ></div>
             </div>
             <div class="bossbar__row bossbar__row--boss">
-                <strong id="bossName">거대 콩</strong><small id="bossHealthText"></small>
+                <strong id="bossName" data-i18n="bossName"></strong><small id="bossHealthText"></small>
             </div>
             <div class="track track--boss">
-                <div class="fill" id="bossHealth" role="progressbar" aria-label="상대 체력" aria-valuemin="0"></div>
+                <div class="fill" id="bossHealth" role="progressbar" data-i18n-aria-label="bossHealth" aria-valuemin="0"></div>
             </div>
             <div id="bossRelicHost"></div>
-            <small id="bossHealthNote">쓰러진 병력 포함 최대 체력</small>
-            <button id="fightRetreat" class="btn btn--secondary" type="button" hidden>철수</button>
+            <small id="bossHealthNote" data-i18n="bossHealthNote"></small>
+            <button id="fightRetreat" class="btn btn--secondary" type="button" hidden data-i18n="fightRetreat"></button>
         </section>
         <dialog id="speciesInfoDialog" class="species-info" aria-labelledby="speciesInfoTitle">
-            <header><h2 id="speciesInfoTitle">병종 정보</h2><button type="button" class="dialog-close" data-species-info-close aria-label="병종 정보 닫기" autofocus>닫기</button></header>
+            <header><h2 id="speciesInfoTitle" data-i18n="speciesInfoTitle"></h2><button type="button" class="dialog-close" data-species-info-close data-i18n-aria-label="speciesInfoClose" autofocus data-i18n="close"></button></header>
             <div id="speciesInfoBody"></div>
         </dialog>
         <section id="deckDialog" class="deck-dialog" role="dialog" aria-modal="true" aria-labelledby="deckTitle" hidden>
             <div class="deck-dialog__card">
                 <header>
-                    <h2 id="deckTitle">출전 순서</h2>
+                    <h2 id="deckTitle" data-i18n="deckTitle"></h2>
                     <button
                         id="deckClose"
                         class="dialog-close"
                         type="button"
-                        aria-label="출전 순서 닫기"
+                        data-i18n-aria-label="deckClose"
                         data-icon="close"
                     ></button>
                 </header>
-                <p>
-                    카드 두 장을 차례로 눌러 자리를 바꿔요. 1번부터 전선을 채우고, 쓰러진 자리는 예비대가 자동 보충해요.
-                </p>
+                <p data-i18n="deckHint"></p>
                 <div class="deck-cards" id="deckCards"></div>
-                <button id="deckGo" class="btn btn--primary" type="button">탑 오르기</button>
+                <button id="deckGo" class="btn btn--primary" type="button" data-i18n="climbTower"></button>
             </div>
         </section>
         <section
@@ -190,12 +188,12 @@
         >
             <div class="deck-dialog__card">
                 <header>
-                    <h2 id="codexTitle">도감</h2>
+                    <h2 id="codexTitle" data-i18n="codex"></h2>
                     <button
                         id="codexClose"
                         class="dialog-close"
                         type="button"
-                        aria-label="도감 닫기"
+                        data-i18n-aria-label="codexClose"
                         data-icon="close"
                     ></button>
                 </header>
@@ -212,13 +210,13 @@
             hidden
         >
             <div class="tower-summit__title">
-                <small>100층 · 성의 정상</small>
-                <h1 id="summitTitle">100층 정복</h1>
-                <p>성 정상에 도착했습니다</p>
+                <small data-i18n="summitEyebrow"></small>
+                <h1 id="summitTitle" data-i18n="summitTitle"></h1>
+                <p data-i18n="summitArrived"></p>
             </div>
             <div class="tower-summit__footer">
-                <small>이번 층의 보상과 전체 성장은 확정됐어요. 건너뛰어도 유지돼요.</small
-                ><button id="summitSkip" class="btn btn--primary" type="button">농장으로 돌아가기 · 건너뛰기</button>
+                <small data-i18n="summitKept"></small
+                ><button id="summitSkip" class="btn btn--primary" type="button" data-i18n="summitSkip"></button>
             </div>
         </section>
         <p id="battleOutcome" role="status" hidden></p>
@@ -234,13 +232,13 @@
                 <header>
                     <div>
                         <small id="bossRewardStage"></small>
-                        <h2 id="bossRewardTitle">보상 상자</h2>
+                        <h2 id="bossRewardTitle" data-i18n="rewardChest"></h2>
                     </div>
                     <button
                         id="bossRewardClose"
                         class="dialog-close"
                         type="button"
-                        aria-label="보상 상자 닫기"
+                        data-i18n-aria-label="rewardChestClose"
                         data-icon="close"
                     ></button>
                 </header>
@@ -255,7 +253,7 @@
                             class="boss-reward-chest"
                             viewBox="60 -14 380 288"
                             role="img"
-                            aria-label="보상 상자"
+                            data-i18n-aria-label="rewardChest"
                         >
                             <defs>
                                 <clipPath id="bossRewardLidClip">
@@ -299,13 +297,13 @@
                 <p id="bossRewardTotals"></p>
                 <footer>
                     <small id="bossRewardRevealCount"></small>
-                    <button id="bossRewardOpenAll" type="button">결과 바로 보기</button>
+                    <button id="bossRewardOpenAll" type="button" data-i18n="rewardOpenAll"></button>
                 </footer>
             </div>
         </section>
         <div id="gameplayDock">
             <div class="bottom">
-                <button id="bossRewardOpen" class="boss-reward-open" type="button" hidden>보상 상자 열기</button>
+                <button id="bossRewardOpen" class="boss-reward-open" type="button" hidden data-i18n="rewardChestOpen"></button>
                 <section class="doors" id="towerDoors" hidden>
                     <h2 id="doorsTitle"></h2>
                     <small id="doorsNote"></small>
@@ -315,7 +313,7 @@
                             <img id="doorBossImg" width="96" height="96" alt="" draggable="false" />
                             <span class="doors__boss-ring" id="doorBossRing"></span>
                         </div>
-                        <div class="doors__boss-cards" id="doorBossCards" aria-label="보스가 가진 카드"></div>
+                        <div class="doors__boss-cards" id="doorBossCards" data-i18n-aria-label="bossCards"></div>
                     </div>
                     <div class="doors__cards" id="doorCards"></div>
                     <div class="doors__receipts" id="doorReceipts" hidden></div>
@@ -326,25 +324,25 @@
                         aria-live="polite"
                         aria-atomic="true"
                     ></span>
-                    <button id="towerLeave" class="btn btn--secondary" type="button">농장으로 내려가기</button>
+                    <button id="towerLeave" class="btn btn--secondary" type="button" data-i18n="towerLeave"></button>
                 </section>
-                <section class="battle-commands" id="battleCommands" aria-label="전투 명령" hidden>
+                <section class="battle-commands" id="battleCommands" data-i18n-aria-label="battleCommands" hidden>
                     <small id="frontlineStatus" class="battle-commands__status"></small>
-                    <div class="battle-commands__choices" role="radiogroup" aria-label="전체 병력과 예비대 명령">
+                    <div class="battle-commands__choices" role="radiogroup" data-i18n-aria-label="battleCommandChoices">
                         <label
-                            ><input type="radio" name="battleCommand" value="engage" checked /><span>교전</span></label
+                            ><input type="radio" name="battleCommand" value="engage" checked /><span data-i18n="commandEngage"></span></label
                         >
-                        <label><input type="radio" name="battleCommand" value="scatter" /><span>산개</span></label>
-                        <label><input type="radio" name="battleCommand" value="retreat" /><span>후퇴</span></label>
+                        <label><input type="radio" name="battleCommand" value="scatter" /><span data-i18n="commandScatter"></span></label>
+                        <label><input type="radio" name="battleCommand" value="retreat" /><span data-i18n="commandRetreat"></span></label>
                     </div>
-                    <small id="battleCommandNote" class="battle-commands__status">사거리까지 접근해 공격해요</small>
+                    <small id="battleCommandNote" class="battle-commands__status" data-i18n="commandEngageNote"></small>
                 </section>
                 <div class="work-hud" id="workHud">
                     <div class="work-hud__row">
-                        <b>역할 나누기</b><small id="workHudNote" role="status">일꾼 0마리 · 먹이 0/분</small>
+                        <b data-i18n="workHudTitle"></b><small id="workHudNote" role="status" data-i18n="workHudNote"></small>
                     </div>
                     <div class="work-hud__labels">
-                        <span id="workHudBreed">번식 0</span><span id="workHudFood">먹이 0</span>
+                        <span id="workHudBreed" data-i18n="workHudBreed"></span><span id="workHudFood" data-i18n="workHudFood"></span>
                     </div>
                     <input
                         id="workCutA"
@@ -354,11 +352,11 @@
                         max="100"
                         step="5"
                         value="60"
-                        aria-label="번식과 먹이 일꾼의 경계"
+                        data-i18n-aria-label="workCut"
                     />
                 </div>
                 <label class="start-floor" id="startFloorBox" hidden>
-                    <span id="startFloorValue">시작 1층</span>
+                    <span id="startFloorValue" data-i18n="startFloorValue"></span>
                     <input
                         id="startFloor"
                         class="flat-range"
@@ -367,16 +365,14 @@
                         max="1"
                         step="1"
                         value="1"
-                        aria-label="시작 층"
+                        data-i18n-aria-label="startFloor"
                     />
                 </label>
                 <div class="controls" id="farmControls">
-                    <button id="merge" class="btn btn--secondary" type="button" aria-describedby="mergeNotice">
-                        합성
-                    </button>
-                    <button id="combine" class="btn btn--secondary" type="button">조합</button>
-                    <button id="codexOpen" class="btn btn--secondary" type="button" aria-label="도감">도감</button>
-                    <button id="bossChallenge" class="btn btn--primary" type="button">탑 오르기</button>
+                    <button id="merge" class="btn btn--secondary" type="button" aria-describedby="mergeNotice" data-i18n="merge"></button>
+                    <button id="combine" class="btn btn--secondary" type="button" data-i18n="combine"></button>
+                    <button id="codexOpen" class="btn btn--secondary" type="button" data-i18n-aria-label="codex" data-i18n="codex"></button>
+                    <button id="bossChallenge" class="btn btn--primary" type="button" data-i18n="climbTower"></button>
                 </div>
                 <small id="towerResult" class="tower-result" role="status" hidden></small>
                 <small id="mergeNotice" role="status" aria-live="polite"></small>
@@ -386,8 +382,8 @@
             <div class="utility">
                 <button
                     id="upgradeMenu"
-                    aria-label="업그레이드 열기"
-                    title="업그레이드"
+                    data-i18n-aria-label="upgradesOpen"
+                    data-i18n-title="upgrades"
                     aria-haspopup="dialog"
                     aria-controls="gameMenuOverlay"
                     aria-expanded="false"
@@ -395,8 +391,8 @@
                 ></button>
                 <button
                     id="helpMenu"
-                    aria-label="도움말 열기"
-                    title="도움말"
+                    data-i18n-aria-label="helpOpen"
+                    data-i18n-title="help"
                     aria-haspopup="dialog"
                     aria-controls="gameMenuOverlay"
                     aria-expanded="false"
@@ -414,12 +410,12 @@
                 tabindex="-1"
             >
                 <header class="game-menu__header">
-                    <h2 id="gameMenuTitle">게임 설정</h2>
+                    <h2 id="gameMenuTitle" data-i18n="gameMenuTitle"></h2>
                     <button
                         id="gameMenuClose"
                         class="dialog-close"
                         type="button"
-                        aria-label="게임 설정 닫기"
+                        data-i18n-aria-label="gameMenuClose"
                         data-icon="close"
                     ></button>
                 </header>
@@ -431,13 +427,13 @@
                         aria-labelledby="gameMenuTitle"
                     >
                         <button id="returnHome" class="btn btn--secondary game-menu__return" type="button">
-                            <span data-icon="home"></span><span>메인 화면으로</span><span aria-hidden="true">→</span>
+                            <span data-icon="home"></span><span data-i18n="returnHome"></span><span aria-hidden="true">→</span>
                         </button>
-                        <p class="game-menu__return-note">농장과 진행 중인 도전을 잠시 멈춰요.</p>
+                        <p class="game-menu__return-note" data-i18n="returnHomeNote"></p>
                         <div class="game-menu__setting">
-                            <span>효과음</span
-                            ><button id="sound" type="button" aria-label="효과음 끄기" aria-pressed="true">
-                                <span id="soundState">켜짐</span>
+                            <span data-i18n="sound"></span
+                            ><button id="sound" type="button" data-i18n-aria-label="soundOff" aria-pressed="true">
+                                <span id="soundState" data-i18n="soundOn"></span>
                             </button>
                         </div>
                         <div class="game-menu__setting">
@@ -446,23 +442,21 @@
                         </div>
                         <p id="languageNotice" role="status"></p>
                         <div class="game-menu__setting">
-                            <label for="diagnosticDetail">상세 성능 측정</label
+                            <label for="diagnosticDetail" data-i18n="diagnosticDetail"></label
                             ><input id="diagnosticDetail" type="checkbox" />
                         </div>
-                        <button class="game-menu__home btn btn--secondary" id="copyDiagnostics" type="button">
-                            진단 복사
-                        </button>
+                        <button class="game-menu__home btn btn--secondary" id="copyDiagnostics" type="button" data-i18n="copyDiagnostics"></button>
                         <details>
-                            <summary>상세 진단 옵션</summary>
-                            <button id="exportDiagnostics" class="btn" type="button">상세 JSON 보기</button>
-                            <p>상세 측정을 켜고 같은 장면을 잠시 실행한 뒤 진단을 복사해요. 외부로 전송하지 않아요.</p>
+                            <summary data-i18n="diagnosticOptions"></summary>
+                            <button id="exportDiagnostics" class="btn" type="button" data-i18n="exportDiagnostics"></button>
+                            <p data-i18n="diagnosticHelp"></p>
                         </details>
                         <p id="diagnosticStatus" role="status"></p>
-                        <textarea id="settingsDiagnosticText" aria-label="진단 복사 결과" readonly hidden></textarea>
+                        <textarea id="settingsDiagnosticText" data-i18n-aria-label="diagnosticResult" readonly hidden></textarea>
                         <div class="game-menu__setting game-menu__version">
-                            <span>버전</span><span id="settingsVersion"></span>
+                            <span data-i18n="version"></span><span id="settingsVersion"></span>
                         </div>
-                        <button id="settingsCheckUpdate" class="btn btn--secondary" type="button">새 버전 확인</button>
+                        <button id="settingsCheckUpdate" class="btn btn--secondary" type="button" data-i18n="checkUpdate"></button>
                         <p id="settingsAppNotice" role="status"></p>
                     </section>
                     <section
@@ -474,32 +468,28 @@
                     >
                         <div class="farm-stats" aria-live="polite">
                             <div class="farm-stat">
-                                <small>배치</small><b id="farmStatPlaced">0</b><span id="farmStatCapacity"></span>
+                                <small data-i18n="farmPlaced"></small><b id="farmStatPlaced">0</b><span id="farmStatCapacity"></span>
                             </div>
-                            <div class="farm-stat"><small>보상 대기</small><b id="farmStatPending">0</b></div>
+                            <div class="farm-stat"><small data-i18n="farmPending"></small><b id="farmStatPending">0</b></div>
                         </div>
                         <div id="farmQueue" class="farm-queue" hidden></div>
-                        <p id="farmLockNote" class="farm-lock" role="status" hidden>
-                            전투 중에는 농장을 관리할 수 없어요.
-                        </p>
+                        <p id="farmLockNote" class="farm-lock" role="status" hidden data-i18n="farmLocked"></p>
                         <div class="breed-heading">
-                            <h3>번식 몫</h3>
-                            <button type="button" id="speciesBreedEqual" class="farm-sort">균등</button>
+                            <h3 data-i18n="breedShare"></h3>
+                            <button type="button" id="speciesBreedEqual" class="farm-sort" data-i18n="breedEqual"></button>
                         </div>
-                        <p id="speciesBreedHint" class="farm-hint">
-                            병종을 누르고 막대를 움직여요. 나머지는 기존 비율로 나눠 합계 100%를 맞춰요.
-                        </p>
-                        <div id="speciesRoles" class="breed-chips" role="group" aria-label="번식 몫을 바꿀 병종"></div>
+                        <p id="speciesBreedHint" class="farm-hint" data-i18n="breedHint"></p>
+                        <div id="speciesRoles" class="breed-chips" role="group" data-i18n-aria-label="breedSpecies"></div>
                         <div class="breed-editor">
                             <div class="breed-editor__label">
-                                <label id="speciesBreedLabel" for="speciesBreedShare">번식 몫</label>
+                                <label id="speciesBreedLabel" for="speciesBreedShare" data-i18n="breedShare"></label>
                                 <output id="speciesBreedValue" for="speciesBreedShare">0%</output>
                             </div>
                             <div class="breed-editor__controls">
                                 <button
                                     type="button"
                                     id="speciesBreedLess"
-                                    aria-label="번식 몫 1% 줄이기"
+                                    data-i18n-aria-label="breedLess"
                                     data-icon="minus"
                                 ></button>
                                 <input
@@ -515,13 +505,13 @@
                                 <button
                                     type="button"
                                     id="speciesBreedMore"
-                                    aria-label="번식 몫 1% 늘리기"
+                                    data-i18n-aria-label="breedMore"
                                     data-icon="plus"
                                 ></button>
                             </div>
                             <p id="speciesBreedPlan" class="farm-hint"></p>
                         </div>
-                        <p class="farm-hint">전체 번식 인원은 농장 화면의 역할 나누기로 정해요.</p>
+                        <p class="farm-hint" data-i18n="breedTotal"></p>
                     </section>
                     <aside
                         class="help game-menu__pane"
@@ -530,7 +520,7 @@
                         aria-labelledby="gameMenuTitle"
                         hidden
                     >
-                        <div class="pill-tabs" role="tablist" id="helpTabs" aria-label="도움말 카드"></div>
+                        <div class="pill-tabs" role="tablist" id="helpTabs" data-i18n-aria-label="helpCards"></div>
                         <div class="help-body">
                             <div class="help-stage">
                                 <div class="help-demo" id="helpDemo"></div>
@@ -549,42 +539,42 @@
             </header>
             <div class="home-layout">
                 <div class="home-copy">
-                    <p class="home-eyebrow">작은 농장, 커다란 모험</p>
+                    <p class="home-eyebrow" data-i18n="homeEyebrow"></p>
                     <h1 id="startTitle">bud<span>mori</span><i aria-hidden="true"></i></h1>
-                    <p class="home-tagline">작은 새싹이, <br />든든한 군단으로.</p>
-                    <p class="home-description">모리를 키우고, 합치고,<br />커다란 이웃에게 도전해요.</p>
+                    <p class="home-tagline"><span data-i18n="homeTaglineFirst"></span><br /><span data-i18n="homeTaglineSecond"></span></p>
+                    <p class="home-description"><span data-i18n="homeDescriptionFirst"></span><br /><span data-i18n="homeDescriptionSecond"></span></p>
                     <p id="homeProgress" class="home-progress" hidden></p>
                     <div class="home-actions">
-                        <button id="continueGame" class="btn btn--primary" hidden>농장 이어가기</button>
-                        <button id="newGame" class="btn btn--primary">새 농장 시작</button>
+                        <button id="continueGame" class="btn btn--primary" hidden data-i18n="continueFarm"></button>
+                        <button id="newGame" class="btn btn--primary" data-i18n="newGame"></button>
                     </div>
                     <details class="home-save-tools">
-                        <summary>저장 관리</summary>
+                        <summary data-i18n="saveTools"></summary>
                         <div class="save-actions">
-                            <button id="exportSave" class="btn">저장 내보내기</button
-                            ><button id="importSave" class="btn">저장 불러오기</button>
+                            <button id="exportSave" class="btn" data-i18n="exportSave"></button
+                            ><button id="importSave" class="btn" data-i18n="importSave"></button>
                         </div>
                     </details>
                     <p id="saveNotice" role="status"></p>
-                    <button id="resetSave" class="btn" hidden>기록 지우고 새로 시작</button>
+                    <button id="resetSave" class="btn" hidden data-i18n="resetSave"></button>
                     <div id="resetConfirm" hidden>
                         <p id="resetConfirmText"></p>
-                        <button id="confirmReset" class="btn btn--danger">기록 지우기</button
-                        ><button id="cancelReset" class="btn">취소</button>
+                        <button id="confirmReset" class="btn btn--danger" data-i18n="confirmReset"></button
+                        ><button id="cancelReset" class="btn" data-i18n="cancel"></button>
                     </div>
                     <p id="appNotice" role="status"></p>
-                    <button id="appUpdate" class="btn btn--primary" hidden>최신 버전 업데이트</button>
-                    <button id="appInstall" class="btn" hidden>앱으로 설치</button>
+                    <button id="appUpdate" class="btn btn--primary" hidden data-i18n="appUpdate"></button>
+                    <button id="appInstall" class="btn" hidden data-i18n="appInstall"></button>
                     <input id="saveFile" type="file" accept="application/json,.json" hidden />
                     <div id="newConfirm" hidden>
-                        <p id="newConfirmText">현재 농장을 새 농장으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요.</p>
-                        <button id="confirmNew" class="btn btn--danger">기존 저장을 바꾸고 시작</button
-                        ><button id="cancelNew" class="btn">취소</button>
+                        <p id="newConfirmText" data-i18n="newConfirm"></p>
+                        <button id="confirmNew" class="btn btn--danger" data-i18n="confirmNew"></button
+                        ><button id="cancelNew" class="btn" data-i18n="cancel"></button>
                     </div>
                     <div id="importConfirm" hidden>
-                        <p id="importConfirmText">선택한 파일로 현재 저장을 바꿀까요?</p>
-                        <button id="confirmImport" class="btn btn--danger">이 저장 불러오기</button
-                        ><button id="cancelImport" class="btn">취소</button>
+                        <p id="importConfirmText" data-i18n="importConfirm"></p>
+                        <button id="confirmImport" class="btn btn--danger" data-i18n="confirmImport"></button
+                        ><button id="cancelImport" class="btn" data-i18n="cancel"></button>
                     </div>
                 </div>
                 <figure class="home-art" aria-hidden="true">
@@ -592,15 +582,15 @@
                     <img class="home-mori home-mori--pea" data-home-species="0" alt="" />
                     <img class="home-mori home-mori--sprout" data-home-species="9" alt="" />
                     <img class="home-mori home-mori--wheat" data-home-species="7" alt="" />
-                    <figcaption>오늘도, 조금 더 자라는 중.</figcaption>
+                    <figcaption data-i18n="homeArtCaption"></figcaption>
                 </figure>
             </div>
             <footer class="home-footer">
-                <span>씨앗 하나에서 시작하는 우리들의 농장</span><span>키우고 · 합치고 · 도전해요</span>
+                <span data-i18n="homeFooterStory"></span><span data-i18n="homeFooterLoop"></span>
             </footer>
         </section>
         <dialog id="appUpdateProgress" class="app-update-progress" aria-labelledby="appUpdateProgressText">
-            <p id="appUpdateProgressText">농장을 저장하고 새 버전으로 바꾸고 있어요.</p>
+            <p id="appUpdateProgressText" data-i18n="appUpdateProgress"></p>
         </dialog>
         <!-- Generated runtime manifest. -->
         <!-- prettier-ignore -->

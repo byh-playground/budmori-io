@@ -1,22 +1,21 @@
 import { captureFarmProgress, restoreFarmProgress, sameFarmProgress } from '../model/farm-progress.js';
 import { FARM_SAVE, farmExportText, readFarmExport } from './farm-save-codec.js';
+import { SAVE } from '../i18n/messages/save.js';
 
 // What the player reads when the save module refuses. A game rule error (invalid progress) is a bug: it keeps the
 // existing save and asks for diagnostics.
 export function saveFailureMessage(error) {
     switch (error?.name === 'SaveError' ? error.kind : '') {
         case 'unreadable':
-            return '저장을 읽지 못해 원본을 그대로 두었어요. 이 브라우저의 저장은 덮어쓰지 않아요.';
+            return SAVE.unreadable();
         case 'conflict':
-            return '다른 탭에서 저장이 바뀌었어요. 이 탭을 새로고침해 이어가 주세요.';
+            return SAVE.conflict();
         case 'storage':
-            return error.cause?.name === 'QuotaExceededError'
-                ? '브라우저 저장 공간이 부족해 저장하지 못했어요. 기존 저장은 그대로예요. 저장 내보내기로 보관해 주세요.'
-                : '브라우저 저장소를 쓰지 못했어요. 기존 저장은 그대로예요. 진단 정보를 복사해 알려 주세요.';
+            return error.cause?.name === 'QuotaExceededError' ? SAVE.quotaExceeded() : SAVE.storage();
         case 'closed':
-            return '저장이 닫혔어요. 새로고침해 주세요.';
+            return SAVE.closed();
         default:
-            return '저장 데이터를 확인하지 못해 저장하지 않았어요. 기존 저장은 그대로예요. 진단 정보를 복사해 알려 주세요.';
+            return SAVE.invalid();
     }
 }
 export function reportSaveFailure(error, operation) {

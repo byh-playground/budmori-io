@@ -1,4 +1,5 @@
 import { HELP_SCENES } from './help-scenes.js';
+import { SHELL } from '../i18n/messages/shell.js';
 
 // The help tab: one pill tab per scene. A card is the real game in a frame (?help=<card>), so it is mounted only
 // while the tab is visible and thrown away when it is not. The caption follows the frame's authoritative state.
@@ -61,7 +62,7 @@ export function createHelpPanel(dollar) {
             }
         } else if (performance.now() - startedAt > LOAD_TIMEOUT_MS) {
             reveal();
-            CAPTION.textContent = '데모를 불러오지 못했어요. 잠시 뒤 다시 시도해 주세요';
+            CAPTION.textContent = SHELL.helpDemoFailed();
             return;
         }
         watch = requestAnimationFrame(observe);
@@ -101,7 +102,7 @@ export function createHelpPanel(dollar) {
         endedAt = 0;
         startedAt = performance.now();
         frame = document.createElement('iframe');
-        frame.title = `${SCENE.title} 데모`;
+        frame.title = SHELL.helpDemoFrame({ title: SCENE.title });
         frame.tabIndex = -1;
         frame.style.visibility = 'hidden';
         DEMO.dataset.loading = 'true';
