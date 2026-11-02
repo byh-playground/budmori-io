@@ -33,7 +33,10 @@ export const APP_HOME = defineMessages({
             `Delete the unreadable ${farm && play ? 'farm and play settings' : farm ? 'farm' : 'play settings'} save and start over? This can’t be undone.`,
     },
     saveTooLarge: { ko: '저장 파일이 너무 커요.', en: 'The save file is too large.' },
-    importConfirm: { ko: '선택한 파일로 현재 저장을 바꿀까요?', en: 'Replace the current save with the selected file?' },
+    importConfirm: {
+        ko: '선택한 파일로 현재 저장을 바꿀까요?',
+        en: 'Replace the current save with the selected file?',
+    },
     importConfirmButton: { ko: '이 저장 불러오기', en: 'Load this save' },
     importBlockedDuringRun: {
         ko: '탑 도전을 끝내고 농장으로 돌아온 뒤 저장을 불러올 수 있어요.',

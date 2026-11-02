@@ -36,7 +36,10 @@ export const APP_TOWER = defineMessages({
         ko: ({ boss, card, effect }) => `${boss ? '보스 획득' : '내 카드 획득'} · ${card}. ${effect}`,
         en: ({ boss, card, effect }) => `${boss ? 'Boss took' : 'I took'} · ${card}. ${effect}`,
     },
-    floorNow: { ko: ({ floor, theme }) => `${floor}층 · ${theme}`, en: ({ floor, theme }) => `Floor ${floor} · ${theme}` },
+    floorNow: {
+        ko: ({ floor, theme }) => `${floor}층 · ${theme}`,
+        en: ({ floor, theme }) => `Floor ${floor} · ${theme}`,
+    },
     floorNumber: { ko: ({ floor }) => `${floor}층`, en: ({ floor }) => `Floor ${floor}` },
     floorBannerKind: { ko: ({ theme, kind }) => `${theme} · ${kind}`, en: ({ theme, kind }) => `${theme} · ${kind}` },
     bossChoosing: { ko: '보스가 먼저 고르는 중', en: 'The boss is picking first' },
@@ -58,7 +61,8 @@ export const APP_TOWER = defineMessages({
     },
     towerResult: {
         ko: ({ floor, record, best }) => `지난 도전 ${floor}층${record ? ' · 새 기록!' : ''} · 최고 ${best}층`,
-        en: ({ floor, record, best }) => `Last run: floor ${floor}${record ? ' · New record!' : ''} · Best floor ${best}`,
+        en: ({ floor, record, best }) =>
+            `Last run: floor ${floor}${record ? ' · New record!' : ''} · Best floor ${best}`,
     },
     deckCard: { ko: ({ slot, name }) => `${slot}번 ${name}`, en: ({ slot, name }) => `No. ${slot} ${name}` },
     commandEngage: { ko: '사거리까지 접근해 공격해요', en: 'Close in to range and attack' },
@@ -102,7 +106,10 @@ export const APP_TOWER = defineMessages({
         ko: ({ floor, reward }) => `${floor}층 돌파 · 새 기록! 씨앗 ${reward} · 공간이 생기면 합류해요`,
         en: ({ floor, reward }) => `Floor ${floor} cleared · New record! Seeds ${reward} · Joins when there’s room`,
     },
-    victoryRecord: { ko: ({ floor }) => `${floor}층 돌파 · 새 기록!`, en: ({ floor }) => `Floor ${floor} cleared · New record!` },
+    victoryRecord: {
+        ko: ({ floor }) => `${floor}층 돌파 · 새 기록!`,
+        en: ({ floor }) => `Floor ${floor} cleared · New record!`,
+    },
     victoryXp: {
         ko: ({ floor }) => `${floor}층 돌파 · 전체 성장 XP 획득`,
         en: ({ floor }) => `Floor ${floor} cleared · Overall XP gained`,

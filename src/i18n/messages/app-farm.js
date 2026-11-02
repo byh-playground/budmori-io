@@ -1,4 +1,4 @@
-import { defineMessages, formatNumber, plural } from '../text.js';
+import { defineMessages, plural } from '../text.js';
 
 // Farm HUD, breeding, work, menu and raid text (src/farm-app.js).
 export const APP_FARM = defineMessages({
@@ -35,7 +35,8 @@ export const APP_FARM = defineMessages({
     capacityMax: { ko: '정원 최대', en: 'Max capacity' },
     overallGrowth: {
         ko: ({ xp, capacity, frontline }) => `전체 XP ${xp} · 농장 정원 ${capacity} · 다음 전선 ${frontline}`,
-        en: ({ xp, capacity, frontline }) => `Overall XP ${xp} · Farm capacity ${capacity} · Next front line ${frontline}`,
+        en: ({ xp, capacity, frontline }) =>
+            `Overall XP ${xp} · Farm capacity ${capacity} · Next front line ${frontline}`,
     },
     starterRewardWaiting: {
         ko: '씨앗 보상 대기 · 공간이 생기면 합류해요',
@@ -46,12 +47,13 @@ export const APP_FARM = defineMessages({
     starterBreed: { ko: '번식으로 식구를 늘려요', en: 'Breed to grow your farm' },
     armyHealth: {
         ko: ({ current, max, living, total }) => `${current}/${max} · ${living}/${total}마리`,
-        en: ({ current, max, living, total }) => `${current}/${max} · ${living}/${total} ${plural(total, 'troop', 'troops')}`,
+        en: ({ current, max, living, total }) =>
+            `${current}/${max} · ${living}/${total} ${plural(total, 'troop', 'troops')}`,
     },
+    // perMinute: already rounded to one decimal ("2.0").
     workNote: {
-        ko: ({ workers, perMinute }) => `일꾼 ${workers}마리 · 먹이 ${formatNumber(perMinute)}/분`,
-        en: ({ workers, perMinute }) =>
-            `${workers} ${plural(workers, 'worker', 'workers')} · ${formatNumber(perMinute)} food/min`,
+        ko: ({ workers, perMinute }) => `일꾼 ${workers}마리 · 먹이 ${perMinute}/분`,
+        en: ({ workers, perMinute }) => `${workers} ${plural(workers, 'worker', 'workers')} · ${perMinute} food/min`,
     },
     workFoodFull: {
         ko: '농장에 먹이가 가득해요 · 일꾼은 쉬는 중이에요',
