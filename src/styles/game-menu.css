@@ -372,7 +372,7 @@ html.help-scene.barley-attack-preview #battleCommands {
     pointer-events: none;
 }
 .help-demo[data-loading='true']::after {
-    content: '데모를 준비하고 있어요';
+    content: attr(data-loading-text);
     position: absolute;
     inset: 0;
     display: grid;

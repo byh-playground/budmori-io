@@ -25,7 +25,6 @@ export const APP_TOWER = defineMessages({
         ko: ({ rarity, effect, level, cap }) => `${rarity} · ${effect} · ${level}/${cap}장`,
         en: ({ rarity, effect, level, cap }) => `${rarity} · ${effect} · ${level}/${cap}`,
     },
-    newSkill: { ko: '새 기술', en: 'New skill' },
     bossPicked: { ko: '✓ 보스 선택', en: '✓ Boss pick' },
     receiptTitle: {
         ko: ({ boss, card }) => `${boss ? '보스 획득' : '내 카드'} · ${card}`,
@@ -65,7 +64,6 @@ export const APP_TOWER = defineMessages({
             `Last run: floor ${floor}${record ? ' · New record!' : ''} · Best floor ${best}`,
     },
     deckCard: { ko: ({ slot, name }) => `${slot}번 ${name}`, en: ({ slot, name }) => `No. ${slot} ${name}` },
-    commandEngage: { ko: '사거리까지 접근해 공격해요', en: 'Close in to range and attack' },
     commandScatter: { ko: '간격을 넓히며 공격해요', en: 'Spread out and attack' },
     commandRetreat: { ko: '공격을 멈추고 적에게서 물러나요', en: 'Stop attacking and fall back' },
     frontlineStatus: {
@@ -96,7 +94,6 @@ export const APP_TOWER = defineMessages({
         ko: ({ seconds }) => `전원 등장 · 격노까지 ${seconds}초`,
         en: ({ seconds }) => `All bosses in · Enrage in ${seconds}s`,
     },
-    bossHealthIdle: { ko: '쓰러진 병력 포함 최대 체력', en: 'Max HP, including fallen troops' },
     // reward: a rewardSummary/rewardNone text.
     victoryJoined: {
         ko: ({ floor, reward }) => `${floor}층 돌파 · 새 기록! 씨앗 ${reward} · 농장에 합류했어요`,
@@ -122,5 +119,4 @@ export const APP_TOWER = defineMessages({
         ko: ({ start, highest, best }) => `시작 ${start}층 · 최고 시작 ${highest} · 기록 ${best}층`,
         en: ({ start, highest, best }) => `Start floor ${start} · Highest start ${highest} · Record floor ${best}`,
     },
-    climbTower: { ko: '탑 오르기', en: 'Climb the tower' },
 });

@@ -3,7 +3,6 @@ import { defineMessages } from '../text.js';
 // Start screen, saves, diagnostics and app-level errors (src/farm-app.js).
 export const APP_HOME = defineMessages({
     continueRun: { ko: '도전 이어가기', en: 'Continue run' },
-    continueFarm: { ko: '농장 이어가기', en: 'Continue farm' },
     homeProgress: {
         ko: ({ population, best }) => `병력 ${population}마리 · 최고 ${best}층`,
         en: ({ population, best }) => `${population} troops · Best floor ${best}`,
@@ -21,10 +20,6 @@ export const APP_HOME = defineMessages({
             return `You were away for ${TIME}${PARTS.length ? ' · ' + PARTS.join(' · ') : ''}`;
         },
     },
-    newConfirm: {
-        ko: '현재 농장을 새 농장으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요.',
-        en: 'Replace this farm with a new one? Export any save you need first.',
-    },
     // farm / play: which unreadable records will be deleted.
     resetConfirm: {
         ko: ({ farm, play }) =>
@@ -38,11 +33,6 @@ export const APP_HOME = defineMessages({
         en: () => 'This file isn’t a BUDMORI farm save.',
     },
     saveTooLarge: { ko: '저장 파일이 너무 커요.', en: 'The save file is too large.' },
-    importConfirm: {
-        ko: '선택한 파일로 현재 저장을 바꿀까요?',
-        en: 'Replace the current save with the selected file?',
-    },
-    importConfirmButton: { ko: '이 저장 불러오기', en: 'Load this save' },
     importBlockedDuringRun: {
         ko: '탑 도전을 끝내고 농장으로 돌아온 뒤 저장을 불러올 수 있어요.',
         en: 'Finish the tower run and return to the farm to load a save.',

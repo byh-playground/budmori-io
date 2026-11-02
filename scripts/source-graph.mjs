@@ -54,6 +54,25 @@ function moduleURL(node) {
         : null;
 }
 
+// Stylesheets draw no text of their own (docs/i18n.md): Hangul is allowed only in comments; a ::before/::after
+// label reads a localized attribute instead (content: attr(data-…)).
+function checkStyleText(root) {
+    const DIRECTORY = path.join(root, 'src/styles'),
+        HANGUL = /[\u1100-\u11FF\u3130-\u318F\uAC00-\uD7A3]/u,
+        FOUND = fs
+            .readdirSync(DIRECTORY)
+            .filter((name) => name.endsWith('.css'))
+            .flatMap((name) =>
+                fs
+                    .readFileSync(path.join(DIRECTORY, name), 'utf8')
+                    .replace(/\/\*[\s\S]*?\*\//g, '')
+                    .split('\n')
+                    .filter((line) => HANGUL.test(line))
+                    .map((line) => `${name}: ${line.trim()}`),
+            );
+    assert.deepEqual(FOUND, [], 'CSS may hold Hangul only in comments; use content: attr(data-…) set from a message');
+}
+
 // index.html static text is localized (docs/i18n.md): Hangul only inside <noscript>, and every data-i18n /
 // data-i18n-<attr> key names a member of the defineMessages table in src/i18n/messages/page.js.
 function checkPageText(html, pageSource) {
@@ -122,6 +141,7 @@ export function sourceGraph(root = DEFAULT_ROOT) {
     assert.ok(MANIFEST_SCRIPT, 'Runtime manifest is required');
     const MANIFEST = JSON.parse(MANIFEST_SCRIPT[2]);
     checkPageText(HTML, READ('src/i18n/messages/page.js').toString('utf8'));
+    checkStyleText(ROOT);
     const VERSION_MODULE = parse(READ('src/version.js').toString('utf8'), {
         ecmaVersion: 'latest',
         sourceType: 'module',

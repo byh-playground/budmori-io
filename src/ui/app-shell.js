@@ -1,3 +1,4 @@
+import { PAGE } from '../i18n/messages/page.js';
 import { SHELL } from '../i18n/messages/shell.js';
 
 // The app owns when an installed update may replace the running farm. The SDK owns
@@ -21,9 +22,9 @@ export async function startAppShell({ dollar, beforeUpdate, canAutoUpdate, onUpd
         UPDATE.hidden = !ready;
         UPDATE.disabled = applying;
         SETTINGS.dataset.updateReady = String(ready);
-        SETTINGS.setAttribute('aria-label', ready ? SHELL.settingsOpenUpdate() : SHELL.settingsOpen());
-        SETTINGS.title = ready ? SHELL.settingsTitleUpdate() : SHELL.settingsTitle();
-        CHECK.textContent = ready ? SHELL.applyUpdate() : SHELL.checkUpdate();
+        SETTINGS.setAttribute('aria-label', ready ? SHELL.settingsOpenUpdate() : PAGE.settingsOpen());
+        SETTINGS.title = ready ? SHELL.settingsTitleUpdate() : PAGE.settingsTitle();
+        CHECK.textContent = ready ? PAGE.appUpdate() : PAGE.checkUpdate();
         CHECK.classList.toggle('btn--primary', ready);
         CHECK.classList.toggle('btn--secondary', !ready);
         CHECK.disabled = applying || checking;

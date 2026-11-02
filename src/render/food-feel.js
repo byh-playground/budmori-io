@@ -1,3 +1,4 @@
+import { PAGE } from '../i18n/messages/page.js';
 import { SHELL } from '../i18n/messages/shell.js';
 
 const DOLLAR = (id) => document.getElementById(id);
@@ -45,9 +46,9 @@ class FoodFeel {
     }
     updateSoundButton() {
         const B = DOLLAR('sound');
-        DOLLAR('soundState').textContent = this.muted ? SHELL.soundOff() : SHELL.soundOn();
+        DOLLAR('soundState').textContent = this.muted ? SHELL.soundOff() : PAGE.soundOn();
         B.setAttribute('aria-pressed', String(!this.muted));
-        B.setAttribute('aria-label', this.muted ? SHELL.soundTurnOn() : SHELL.soundTurnOff());
+        B.setAttribute('aria-label', this.muted ? SHELL.soundTurnOn() : PAGE.soundOff());
     }
     unlock() {
         if (this.muted) {

@@ -31,7 +31,7 @@ export const PAGE = defineMessages({
         ko: '카드 두 장을 차례로 눌러 자리를 바꿔요. 1번부터 전선을 채우고, 쓰러진 자리는 예비대가 자동 보충해요.',
         en: 'Tap two cards in turn to swap them. The front line fills from No. 1, and reserves refill fallen slots automatically.',
     },
-    climbTower: { ko: '탑 오르기', en: 'Climb the tower' },
+    climbTower: { ko: '탑 오르기', en: 'Climb' },
     codex: { ko: '도감', en: 'Codex' },
     codexClose: { ko: '도감 닫기', en: 'Close codex' },
     // Tower summit

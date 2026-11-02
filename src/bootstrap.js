@@ -1,3 +1,4 @@
+import { PAGE } from './i18n/messages/page.js';
 import { labRequested } from './debug/lab.js';
 import { isolatedPage } from './save/save-adapter.js';
 import { createStartupLoading } from './startup-loading.js';
@@ -58,7 +59,7 @@ ERROR_MESSAGE.textContent = BOOT.errorMessage();
 const DIAGNOSTIC_BUTTON = document.createElement('button');
 DIAGNOSTIC_BUTTON.id = 'bloom-diagnostic-copy';
 DIAGNOSTIC_BUTTON.type = 'button';
-DIAGNOSTIC_BUTTON.textContent = BOOT.copyDiagnostics();
+DIAGNOSTIC_BUTTON.textContent = PAGE.copyDiagnostics();
 DIAGNOSTIC_BUTTON.style.cssText =
     'min-height:48px;padding:0 16px;border:0;border-radius:12px;background:#315b40;color:#fff;font:600 16px system-ui;touch-action:manipulation';
 const RELOAD_BUTTON = document.createElement('button');
@@ -357,7 +358,7 @@ try {
     STARTUP.fail(fallbackText(error));
     recordDiagnostic(error, 'manifest-error');
     LABEL.textContent = BOOT.manifestFailed();
-    RETRY.textContent = BOOT.retry();
+    RETRY.textContent = PAGE.loadingRetry();
     RETRY.hidden = false;
     showErrorPopup(BOOT.prepareFailed({ message: fallbackText(error) }));
     console.error('Game manifest failed to initialize', error);

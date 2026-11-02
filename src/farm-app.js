@@ -1,3 +1,5 @@
+import { RELIC } from './i18n/messages/ui-relic.js';
+import { PAGE } from './i18n/messages/page.js';
 import { SpeciesInfoDialog } from './ui/species-info.js';
 import { PerformanceDiagnostics } from './core/performance-diagnostics.js';
 import { FarmHudCounts } from './ui/farm-hud-counts.js';
@@ -368,7 +370,7 @@ function refreshStart() {
     DOLLAR('continueGame').hidden = !HAS_FARM;
     DOLLAR('continueGame').disabled = LOCKED || !HAS_FARM;
     DOLLAR('continueGame').textContent =
-        hasMemoryRun() && GARDEN.tower.active ? APP_HOME.continueRun() : APP_HOME.continueFarm();
+        hasMemoryRun() && GARDEN.tower.active ? APP_HOME.continueRun() : PAGE.continueFarm();
     DOLLAR('newGame').classList.toggle('btn--primary', !HAS_FARM);
     DOLLAR('homeProgress').hidden = !HAS_FARM || LOCKED;
     DOLLAR('homeProgress').textContent = HAS_FARM
@@ -617,7 +619,7 @@ DOLLAR('newGame').onclick = () => {
         return;
     }
     if (STORAGE.hasWorld) {
-        DOLLAR('newConfirmText').textContent = APP_HOME.newConfirm();
+        DOLLAR('newConfirmText').textContent = PAGE.newConfirm();
         DOLLAR('newConfirm').hidden = false;
         return;
     }
@@ -686,8 +688,8 @@ DOLLAR('saveFile').onchange = async () => {
         const TEXT = await FILE.text();
         readFarmExport(TEXT);
         imported = TEXT;
-        DOLLAR('importConfirmText').textContent = APP_HOME.importConfirm();
-        DOLLAR('confirmImport').textContent = APP_HOME.importConfirmButton();
+        DOLLAR('importConfirmText').textContent = PAGE.importConfirm();
+        DOLLAR('confirmImport').textContent = PAGE.confirmImport();
         DOLLAR('importConfirm').hidden = false;
     } catch (e) {
         DOLLAR('saveNotice').textContent = importErrorText(e);
@@ -732,7 +734,7 @@ function stopMergeHold() {
     clearTimeout(mergeHold.delay);
     clearInterval(mergeHold.repeat);
     if (mergeHold.accelerate) {
-        mergeHold.button.textContent = APP_FARM.merge();
+        mergeHold.button.textContent = PAGE.merge();
     }
     mergeHold = null;
 }
@@ -1079,10 +1081,10 @@ function applyMenuTab(tab) {
     menuTab = tab;
     const UPGRADES = tab === 'farms';
     DOLLAR('gameMenuTitle').textContent = UPGRADES
-        ? APP_FARM.menuUpgrades()
+        ? PAGE.upgrades()
         : tab === 'help'
-          ? APP_FARM.menuHelp()
-          : APP_FARM.menuSettings();
+          ? PAGE.help()
+          : PAGE.settingsTitle();
     DOLLAR('gameMenuClose').setAttribute(
         'aria-label',
         APP_FARM.menuClose({ title: DOLLAR('gameMenuTitle').textContent }),
@@ -1268,7 +1270,7 @@ function passiveDoorCard(door, cards, index, role = 'player', receipt = null) {
 function skillDoorCard(tower, door, index, role = 'player', receipt = null) {
     const DEFINITION = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === door.id),
         LEVEL = receipt?.before.level ?? (tower.relics.get(door.id) || 0),
-        GAIN = LEVEL ? `Lv.${LEVEL} → ${LEVEL + 1}` : APP_TOWER.newSkill();
+        GAIN = LEVEL ? `Lv.${LEVEL} → ${LEVEL + 1}` : RELIC.newSkill();
     return `<button type="button" class="door door--skill" data-door="${index}"><b>${iconSvg(door.id)} ${localized(DEFINITION.name)}</b><small>${GAIN} · ${relicEffectText(DEFINITION, LEVEL + 1, role, 0, tower.floor)}</small></button>`;
 }
 function eventDoorCard(door, index) {
@@ -1651,7 +1653,7 @@ function ownedCounts(garden) {
 }
 // In a fight: how many fight on the field and how many wait; the deploy itself is automatic.
 const BATTLE_COMMAND_NOTES = Object.freeze({
-    engage: APP_TOWER.commandEngage,
+    engage: PAGE.commandEngageNote,
     scatter: APP_TOWER.commandScatter,
     retreat: APP_TOWER.commandRetreat,
 });
@@ -2096,7 +2098,7 @@ function sync(display, now, notices) {
                       })
               : FARM_EVENT_ACTIVE
                 ? ''
-                : APP_TOWER.bossHealthIdle(),
+                : PAGE.bossHealthNote(),
     );
     syncFlag('fightRetreat', 'hidden', !(FARM_EVENT_ACTIVE && ['dropping', 'fighting'].includes(FARM_EVENT.phase)));
     syncAttribute('allyHealth', 'aria-valuenow', armyCurrent);
@@ -2139,7 +2141,7 @@ function sync(display, now, notices) {
             best: BEST_FLOOR,
         }),
     );
-    syncText('bossChallenge', APP_TOWER.climbTower());
+    syncText('bossChallenge', PAGE.climbTower());
     syncFlag('bossChallenge', 'hidden', FARM_EVENT_ACTIVE || home);
     syncAttribute('bossChallenge', 'aria-disabled', String(raidStartBlockReason() !== ''));
     const WORK_WORLD = personalGarden || W,

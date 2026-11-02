@@ -28,14 +28,12 @@ export const BOOT = defineMessages({
         ko: '게임을 시작하지 못했어요. 진단 정보를 복사해 알려 주세요',
         en: 'Couldn’t start the game. Copy the diagnostics and send them to us',
     },
-    retry: { ko: '다시 불러오기', en: 'Reload' },
     // Error popup
     errorTitle: { ko: '게임이 오류로 중단됐어요', en: 'The game stopped because of an error' },
     errorMessage: {
         ko: '진단 정보를 복사해 알려 주시거나 새로고침해 주세요.',
         en: 'Copy the diagnostics and send them to us, or reload the page.',
     },
-    copyDiagnostics: { ko: '진단 복사', en: 'Copy diagnostics' },
     reload: { ko: '새로고침', en: 'Reload' },
     diagnosticResult: { ko: '진단 정보 복사 결과', en: 'Copied diagnostics' },
     startupError: {

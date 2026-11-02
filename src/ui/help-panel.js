@@ -25,6 +25,8 @@ export function createHelpPanel(dollar) {
         CAPTION = dollar('helpCaption'),
         POINTS = dollar('helpPoints'),
         TABS = dollar('helpTabs');
+    // The placeholder text is drawn by CSS (::after content: attr(data-loading-text)).
+    DEMO.dataset.loadingText = SHELL.helpDemoLoading();
     let index = 0,
         frame = null,
         watch = 0,

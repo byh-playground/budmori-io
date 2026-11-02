@@ -4,12 +4,8 @@ import { defineMessages } from '../text.js';
 // showcase launcher (src/ui/app-shell.js, src/render/food-feel.js, src/ui/help-panel.js, src/ui/seedling-reveal.js,
 // src/showcase.js).
 export const SHELL = defineMessages({
-    settingsOpen: { ko: '게임 설정 열기', en: 'Open game settings' },
     settingsOpenUpdate: { ko: '게임 설정 열기, 새 버전 있음', en: 'Open game settings, new version available' },
-    settingsTitle: { ko: '설정', en: 'Settings' },
     settingsTitleUpdate: { ko: '설정 · 새 버전 있음', en: 'Settings · New version available' },
-    applyUpdate: { ko: '최신 버전 업데이트', en: 'Update to the latest version' },
-    checkUpdate: { ko: '새 버전 확인', en: 'Check for updates' },
     updateSaveFailed: {
         ko: '농장을 저장하지 못해 업데이트를 멈췄어요.',
         en: 'Couldn’t save the farm, so the update was stopped.',
@@ -44,14 +40,13 @@ export const SHELL = defineMessages({
         ko: ({ message }) => `새 버전을 확인하지 못해 현재 버전으로 시작해요. ${message}`,
         en: ({ message }) => `Couldn’t check for a new version, so starting with this one. ${message}`,
     },
-    soundOn: { ko: '켜짐', en: 'On' },
     soundOff: { ko: '꺼짐', en: 'Off' },
     soundTurnOn: { ko: '효과음 켜기', en: 'Turn on sound effects' },
-    soundTurnOff: { ko: '효과음 끄기', en: 'Turn off sound effects' },
     helpDemoFailed: {
         ko: '데모를 불러오지 못했어요. 잠시 뒤 다시 시도해 주세요',
         en: 'Couldn’t load the demo. Try again in a moment',
     },
+    helpDemoLoading: { ko: '데모를 준비하고 있어요', en: 'Getting the demo ready' },
     helpDemoFrame: { ko: ({ title }) => `${title} 데모`, en: ({ title }) => `${title} demo` },
     seedlingGrown: { ko: '새싹이 병사로 자랐어요', en: 'A sprout grew into a soldier' },
     seedlingClose: { ko: '획득 카드 닫기', en: 'Close the new species card' },

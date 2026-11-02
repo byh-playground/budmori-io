@@ -8,7 +8,6 @@ export const APP_FARM = defineMessages({
         ko: '싸울 병력이 없어요. 먼저 모리를 키워 주세요.',
         en: 'No troops to fight. Raise some Mori first.',
     },
-    merge: { ko: '합성', en: 'Merge' },
     mergeCount: { ko: ({ count }) => `합성 ×${count}`, en: ({ count }) => `Merge ×${count}` },
     // label: the button's visible text; reason: the resolved status reason.
     mergeLabel: {
@@ -27,9 +26,6 @@ export const APP_FARM = defineMessages({
         en: ({ breeders, workers }) => `Plan · Breeding ${breeders} · Food ${workers}`,
     },
     sprout: { ko: '새싹', en: 'Sprout' },
-    menuUpgrades: { ko: '업그레이드', en: 'Upgrades' },
-    menuHelp: { ko: '도움말', en: 'Help' },
-    menuSettings: { ko: '설정', en: 'Settings' },
     menuClose: { ko: ({ title }) => `${title} 닫기`, en: ({ title }) => `Close ${title}` },
     overallLevel: { ko: ({ level }) => `전체 Lv.${level}`, en: ({ level }) => `Overall Lv.${level}` },
     capacityMax: { ko: '정원 최대', en: 'Max capacity' },
