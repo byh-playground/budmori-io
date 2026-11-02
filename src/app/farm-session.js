@@ -197,6 +197,45 @@ function updateUnitAttackRender(output, u, world) {
 
 // Health changes can interpolate while alive; death/revival must snap as one
 // state boundary so a 0→60 down reset never looks like half-completed sleep.
+// A boss pattern in progress, as the telegraph renderer reads it (renderedBossAttackArea). Bosses and casting
+// minions (boss/minion-caster.js) carry the same fields.
+const PATTERN_RENDER_SCHEMA = Object.freeze({
+    patternId: R.STATE_KEY,
+    patternPhase: R.STATE_KEY,
+    patternPhaseElapsed: R.LINEAR,
+    patternAim: R.ANGLE,
+    patternLocked: R.STEP,
+    patternTargetId: R.STEP,
+    patternTargetX: R.STEP,
+    patternTargetY: R.STEP,
+    patternTargetZ: R.STEP,
+    patternStartX: R.STEP,
+    patternStartY: R.STEP,
+    patternStartZ: R.STEP,
+    patternVolleyCount: R.STEP,
+    patternReleased: R.STEP,
+    patternTraveled: R.LINEAR,
+});
+function updatePatternRender(view, actor) {
+    const ACTION = actor.patternRuntime?.active ?? null,
+        TARGET = ACTION?.target || null,
+        START = ACTION?.start || null;
+    view.patternId = ACTION?.id || '';
+    view.patternPhase = ACTION?.phase || 'idle';
+    view.patternPhaseElapsed = ACTION?.phaseElapsed || 0;
+    view.patternAim = ACTION?.aim ?? actor.angle;
+    view.patternLocked = !!ACTION?.locked;
+    view.patternTargetId = ACTION?.targetId || 0;
+    view.patternTargetX = TARGET?.x ?? actor.x;
+    view.patternTargetY = TARGET?.y ?? actor.y;
+    view.patternTargetZ = TARGET?.z ?? 0;
+    view.patternStartX = START?.x ?? actor.x;
+    view.patternStartY = START?.y ?? actor.y;
+    view.patternStartZ = START?.z ?? actor.z;
+    view.patternVolleyCount = ACTION?.volleyCount || 0;
+    view.patternReleased = ACTION?.released || 0;
+    view.patternTraveled = ACTION?.traveled || 0;
+}
 class UnitRender extends RENDER_OBJECT {
     static renderSchema = Object.freeze({
         id: R.STEP,
@@ -255,6 +294,9 @@ class UnitRender extends RENDER_OBJECT {
         resolveOn: R.STEP,
         vengeanceStacks: R.STEP,
         openingLeft: R.LINEAR,
+        ...PATTERN_RENDER_SCHEMA,
+        attackArea: R.STEP,
+        giantScale: R.STEP,
     });
     constructor() {
         super();
@@ -297,6 +339,10 @@ class UnitRender extends RENDER_OBJECT {
         this.temperament = u.temperament;
         // An enemy's element is assigned when it spawns; the player's comes from its genes.
         this.element = u.faction === 'enemy' ? u.enemyElement : elementOf(u.genes);
+        // Only a casting minion draws a telegraph; its reach needs the resolved attack area (skip it for everyone else).
+        updatePatternRender(this, u);
+        this.attackArea = u.patternRuntime?.active ? resolveUnitStats(u).attackArea : 1;
+        this.giantScale = u.giantScale;
         this.isSeedling = !!u.seedling;
         this.seedlingScale = seedlingGrowthScale(u);
         const GROWTH = session.seedlingGrowthEffects.get(u.id),
@@ -380,22 +426,9 @@ class BossRender extends RENDER_OBJECT {
         height: R.STEP,
         flash: R.LINEAR,
         species: R.STEP,
-        patternId: R.STATE_KEY,
-        patternPhase: R.STATE_KEY,
-        patternPhaseElapsed: R.LINEAR,
-        patternAim: R.ANGLE,
-        patternLocked: R.STEP,
-        patternTargetId: R.STEP,
-        patternTargetX: R.STEP,
-        patternTargetY: R.STEP,
-        patternTargetZ: R.STEP,
+        ...PATTERN_RENDER_SCHEMA,
+        element: R.STEP,
         stage: R.STEP,
-        patternStartX: R.STEP,
-        patternStartY: R.STEP,
-        patternStartZ: R.STEP,
-        patternVolleyCount: R.STEP,
-        patternReleased: R.STEP,
-        patternTraveled: R.LINEAR,
         summonMouthX: R.STEP,
         summonMouthY: R.STEP,
         summonMouthZ: R.STEP,
@@ -434,8 +467,6 @@ class BossRender extends RENDER_OBJECT {
         });
         const ACTION = b.patternRuntime.active,
             EVENT = world.farmBossEvent,
-            TARGET = ACTION?.target || null,
-            START = ACTION?.start || null,
             MOUTH = b.summonMouth || {};
         this.generation = b.generation;
         this.x = b.x;
@@ -456,21 +487,7 @@ class BossRender extends RENDER_OBJECT {
         this.flash = b.flash;
         this.species = b.species ?? 3;
         this.stage = b.stage ?? 0;
-        this.patternId = ACTION?.id || '';
-        this.patternPhase = ACTION?.phase || 'idle';
-        this.patternPhaseElapsed = ACTION?.phaseElapsed || 0;
-        this.patternAim = ACTION?.aim ?? b.angle;
-        this.patternLocked = !!ACTION?.locked;
-        this.patternTargetId = ACTION?.targetId || 0;
-        this.patternTargetX = TARGET?.x ?? b.x;
-        this.patternTargetY = TARGET?.y ?? b.y;
-        this.patternTargetZ = TARGET?.z ?? 0;
-        this.patternStartX = START?.x ?? b.x;
-        this.patternStartY = START?.y ?? b.y;
-        this.patternStartZ = START?.z ?? b.z;
-        this.patternVolleyCount = ACTION?.volleyCount || 0;
-        this.patternReleased = ACTION?.released || 0;
-        this.patternTraveled = ACTION?.traveled || 0;
+        updatePatternRender(this, b);
         this.summonMouthX = MOUTH.x ?? b.x;
         this.summonMouthY = MOUTH.y ?? b.y;
         this.summonMouthZ = MOUTH.z ?? b.z;

@@ -65,6 +65,7 @@ import { FixedSpatialGrid } from '../core/spatial-grid.js';
 import {} from './army-scatter.js';
 import { CONFIG, CLAMP, STATS, MUTABLE_STATS } from './farm-config.js';
 import { bossAttackArea } from '../boss/boss-behaviors.js';
+import { MINION_CASTER } from '../boss/minion-caster.js';
 import { ARENA_GEOMETRY, BALLISTICS } from './arena-geometry.js';
 import { AttackCycle, CREATE_UNIT_ATTACK_CYCLE } from '../units/attack-cycle.js';
 import {} from '../boss/boss-controller.js';
@@ -1662,6 +1663,9 @@ const GARDEN = class Garden extends GARDEN_BASE {
             return;
         }
         if (this.isMergeTaskMaterial(unit)) {
+            return;
+        }
+        if (MINION_CASTER.update(this, unit, dt)) {
             return;
         }
         if (

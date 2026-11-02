@@ -15,6 +15,10 @@ export const TOWER_ENCOUNTER_SETTINGS = Object.freeze({
         Object.freeze({ through: 60, count: 3 }),
         Object.freeze({ through: 100, count: 4 }),
     ]),
+    // The floor budget × this, by how many bosses open the fight (index = count - 1), shared evenly among them.
+    // Bosses that fight at once and spread out hit fewer troops each than one boss the whole army crowds, so a
+    // floor with more of them needs a larger total to stay as hard (tuned against the 0.67.12 fights).
+    budgetByBossCount: Object.freeze([1, 1, 1.08, 1.5]),
     spreadRatio: 0.5,
     launchStaggerSeconds: 0.5,
     launchApex: 7,
@@ -40,11 +44,12 @@ export function encounterElements(floor, count) {
 
 export function createTowerEncounter(floor) {
     const COUNT = TOWER_ENCOUNTER_SETTINGS.bands.find((band) => floor <= band.through).count,
+        SHARE = TOWER_ENCOUNTER_SETTINGS.budgetByBossCount[COUNT - 1] / COUNT,
         ROSTER = encounterElements(floor, COUNT).map((element) => ({
             species: BOSS_SPECIES,
             element,
-            hpShare: floor === 100 ? 0.5 / COUNT : 1 / COUNT,
-            attackShare: floor === 100 ? 0.56 / COUNT : 1 / COUNT,
+            hpShare: floor === 100 ? 0.5 * SHARE : SHARE,
+            attackShare: floor === 100 ? 0.56 * SHARE : SHARE,
             final: false,
         }));
     if (floor === 100) {

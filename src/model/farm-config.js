@@ -15,6 +15,7 @@ export const MERGE_RESERVATION_OWNER = (ids) => `merge:${[...ids].sort((a, b) =>
 
 const FARM_MAX_UNITS = 1000,
     MAX_PEANUT_SPLIT_CHILDREN = 2,
+    // Boss minions alive at once: summon.mouth-t1 minionsPerBoss (2) × the most bosses on a floor (5 on floor 100).
     MAX_BOSS_SUMMONS = 10,
     BATTLE_ACTOR_CAPACITY = FARM_MAX_UNITS * (1 + MAX_PEANUT_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS + 2000;
 
@@ -136,7 +137,6 @@ export const CONFIG = Object.freeze({
         corpseRecoverySeconds: 60,
     }),
     boss: Object.freeze({
-        maxSummons: MAX_BOSS_SUMMONS,
         summonIdBase: 5000000,
         basicReach: 6.2,
         sweepReach: 6.5,

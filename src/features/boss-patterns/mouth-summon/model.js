@@ -9,11 +9,15 @@ export class MouthSummonBossPattern extends BossPattern {
     writeArea(_boss, _action, _scene, _pad, area) {
         area.kind = 'summon';
     }
+    // Minions may be alive at once: minionsPerBoss for every boss still standing.
+    minionRoom(world) {
+        const ALIVE = world.units.reduce((n, u) => n + (hasFaction(u, FACTION_CONFIG.ENEMY) && u.hp > 0 ? 1 : 0), 0),
+            BOSSES = world.bosses.filter((boss) => boss.active && boss.hp > 0).length;
+        return Math.max(0, this.config.minionsPerBoss * BOSSES - ALIVE);
+    }
     activate(world, action, boss) {
-        const { CONFIG } = this.dependencies;
         boss.patternRuntime.cooldowns[action.id] = this.config.cooldown;
-        const ALIVE = world.units.reduce((n, u) => n + (hasFaction(u, FACTION_CONFIG.ENEMY) && u.hp > 0 ? 1 : 0), 0);
-        action.volleyCount = Math.min(this.config.volleyCount, Math.max(0, CONFIG.boss.maxSummons - ALIVE));
+        action.volleyCount = Math.min(this.config.volleyCount, this.minionRoom(world));
         action.nextRelease = 0;
         world.spawnBossMouthUnit(action, boss);
         action.nextRelease = this.config.releaseInterval;
@@ -33,14 +37,12 @@ export class MouthSummonBossPattern extends BossPattern {
     selectedTarget(_world, _targets, fallback) {
         return fallback;
     }
-    eligible(_world, _targets, aliveAdds, boss) {
-        const { CONFIG } = this.dependencies;
-        return (
-            boss.patternRuntime.encounterElapsed + 1e-9 >= this.config.firstEligible &&
-            aliveAdds < CONFIG.boss.maxSummons
-        );
+    eligible(world, _targets, _aliveAdds, boss) {
+        return boss.patternRuntime.encounterElapsed + 1e-9 >= this.config.firstEligible && this.minionRoom(world) > 0;
     }
-    selected(_world, boss) {
+    // The shockwave goes off as the windup starts, so the ground is clear by the time the first minion lands.
+    selected(world, boss) {
         boss.patternRuntime.cooldowns[this.id] = this.config.cooldown;
+        world.bossSummonShockwave(boss, this.config.shockwave);
     }
 }
