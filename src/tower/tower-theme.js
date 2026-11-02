@@ -4,7 +4,7 @@ const TOWER_THEMES = Object.freeze([
     Object.freeze({
         id: 'entrance',
         element: 5,
-        name: '성의 입구',
+        name: { ko: '성의 입구', en: 'Castle Gate' },
         floor: [112, 107, 118],
         wall: [65, 60, 77],
         accent: [255, 195, 120],
@@ -12,7 +12,7 @@ const TOWER_THEMES = Object.freeze([
     Object.freeze({
         id: 'garden',
         element: 3,
-        name: '공중 정원',
+        name: { ko: '공중 정원', en: 'Sky Garden' },
         floor: [107, 128, 107],
         wall: [49, 78, 67],
         accent: [185, 237, 160],
@@ -20,7 +20,7 @@ const TOWER_THEMES = Object.freeze([
     Object.freeze({
         id: 'armory',
         element: 1,
-        name: '무기고',
+        name: { ko: '무기고', en: 'Armory' },
         floor: [101, 119, 133],
         wall: [43, 61, 78],
         accent: [157, 206, 235],
@@ -28,7 +28,7 @@ const TOWER_THEMES = Object.freeze([
     Object.freeze({
         id: 'royal',
         element: 2,
-        name: '왕실 홀',
+        name: { ko: '왕실 홀', en: 'Royal Hall' },
         floor: [130, 105, 126],
         wall: [76, 43, 73],
         accent: [250, 207, 132],
@@ -36,7 +36,7 @@ const TOWER_THEMES = Object.freeze([
     Object.freeze({
         id: 'terrace',
         element: 4,
-        name: '별빛 테라스',
+        name: { ko: '별빛 테라스', en: 'Starlight Terrace' },
         floor: [111, 122, 153],
         wall: [48, 60, 95],
         accent: [203, 217, 255],

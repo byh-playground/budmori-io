@@ -1,4 +1,5 @@
 import { WORLD_HEIGHT_PROJECTION } from '../../../vector-sockets.js';
+import { ABILITIES } from '../../../i18n/messages/abilities.js';
 
 // How a stuck kernel looks while it waits and when it pops. The model owns when it explodes; this only reads that.
 const DEFAULT_BODY = Object.freeze({ radius: 0.3, height: 1, scale: 1, shiftX: 0, shiftY: 0 });
@@ -104,10 +105,10 @@ function cornLocalPoint(attachment, group, definition) {
 
 export class CornAttachmentPresentation {
     label(_definition, value) {
-        return `부착 1초 후 연쇄 폭발 · 알갱이마다 공격력 ${Math.round(value * 100)}%`;
+        return ABILITIES.cornAttachmentLabel({ value });
     }
     title(value) {
-        return `알갱이 ${Math.round(value * 100)}%`;
+        return ABILITIES.cornAttachmentTitle({ value });
     }
     // Spreads the model's small offsets over the visible front of the target's body, so the kernels sit on it
     // (a boss is far bigger than the 0.18 the offsets were made for) and follow its hit recoil.

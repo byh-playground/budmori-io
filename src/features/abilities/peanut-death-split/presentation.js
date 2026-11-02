@@ -1,4 +1,5 @@
 import { drawUnitFace } from '../../../render/unit-face-draw.js';
+import { ABILITIES } from '../../../i18n/messages/abilities.js';
 const PEANUT_PLAYERS_BY_RENDERER = new WeakMap();
 
 export class PeanutDeathSplitPresentation {
@@ -14,10 +15,10 @@ export class PeanutDeathSplitPresentation {
         PEANUT_PLAYERS_BY_RENDERER.delete(renderer);
     }
     label(_definition, value) {
-        return `사망 시 T1 분열체 2마리 · 체력/공격력 ×${value}`;
+        return ABILITIES.peanutDeathSplitLabel({ value });
     }
     title(value) {
-        return `분열체 ×${value}`;
+        return ABILITIES.peanutDeathSplitTitle({ value });
     }
     draw(renderer, effect, progress) {
         this.drawSplit(renderer, effect, progress);

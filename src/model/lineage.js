@@ -5,11 +5,11 @@ import { SPECIES_COUNT } from '../units/species-catalog.js';
 // supplies the random source so every roll stays on the seeded stream.
 
 export const TEMPERAMENTS = Object.freeze([
-    Object.freeze({ id: 0, name: '느긋' }),
-    Object.freeze({ id: 1, name: '소심' }),
-    Object.freeze({ id: 2, name: '발끈' }),
-    Object.freeze({ id: 3, name: '까불' }),
-    Object.freeze({ id: 4, name: '다정' }),
+    Object.freeze({ id: 0, name: { ko: '느긋', en: 'Easygoing' } }),
+    Object.freeze({ id: 1, name: { ko: '소심', en: 'Timid' } }),
+    Object.freeze({ id: 2, name: { ko: '발끈', en: 'Hothead' } }),
+    Object.freeze({ id: 3, name: { ko: '까불', en: 'Playful' } }),
+    Object.freeze({ id: 4, name: { ko: '다정', en: 'Gentle' } }),
 ]);
 export const TEMPERAMENT_COUNT = TEMPERAMENTS.length;
 
@@ -26,12 +26,12 @@ export const TEMPERAMENT_PASSIVE_IDS = Object.freeze(['last-stand', 'resolve', '
 
 // Element 0 is "none": the plain colour. Elements 1..5 beat the next one in the cycle and lose to the previous one.
 export const ELEMENTS = Object.freeze([
-    Object.freeze({ id: 0, name: '무속성', color: '#d8d4bd' }),
-    Object.freeze({ id: 1, name: '불', color: '#d98f72' }),
-    Object.freeze({ id: 2, name: '얼음', color: '#93c2d8' }),
-    Object.freeze({ id: 3, name: '풀', color: '#86b583' }),
-    Object.freeze({ id: 4, name: '전기', color: '#d6c36d' }),
-    Object.freeze({ id: 5, name: '물', color: '#7b97cf' }),
+    Object.freeze({ id: 0, name: { ko: '무속성', en: 'Neutral' }, color: '#d8d4bd' }),
+    Object.freeze({ id: 1, name: { ko: '불', en: 'Fire' }, color: '#d98f72' }),
+    Object.freeze({ id: 2, name: { ko: '얼음', en: 'Ice' }, color: '#93c2d8' }),
+    Object.freeze({ id: 3, name: { ko: '풀', en: 'Grass' }, color: '#86b583' }),
+    Object.freeze({ id: 4, name: { ko: '전기', en: 'Electric' }, color: '#d6c36d' }),
+    Object.freeze({ id: 5, name: { ko: '물', en: 'Water' }, color: '#7b97cf' }),
 ]);
 export const ELEMENT_COUNT = ELEMENTS.length - 1;
 
