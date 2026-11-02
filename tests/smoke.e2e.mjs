@@ -5,7 +5,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BOSS_PATTERN_CONFIG } from '../src/boss/boss-patterns.js';
+import { BOSS_PATTERN_CONFIG, BOSS_PHASE_THRESHOLDS } from '../src/boss/boss-patterns.js';
 import { bossStageStats } from '../src/boss/boss-rewards.js';
 import { baseUnitStatsFor, setRunStatMods } from '../src/units/unit-stats.js';
 import {
@@ -387,7 +387,9 @@ await check('challenge button starts a boss fight and retreat ends it', async ()
         W.farmBossEvent.elapsed = 0;
         return { EARLY, P1, P5, CALM, ANGRY, PHASE };
     });
-    expect(RAGE.P1 === 1 && RAGE.P5 === 5, `phases ${RAGE.P1}/${RAGE.P5}`);
+    // One phase per distinct unlock threshold: at 30% HP every threshold has been passed.
+    const LAST_PHASE = 1 + BOSS_PHASE_THRESHOLDS.length;
+    expect(RAGE.P1 === 1 && RAGE.P5 === LAST_PHASE, `phases ${RAGE.P1}/${RAGE.P5} (last ${LAST_PHASE})`);
     expect(
         !RAGE.EARLY.some((id) => ['attack.sweep-360', 'attack.leap-slam', 'summon.mouth-t1'].includes(id)),
         `locked pattern eligible at full HP: ${RAGE.EARLY}`,
@@ -1205,8 +1207,11 @@ await check('a boss attack hits everyone it reaches: 35% each and 65% shared amo
     );
 });
 
-await check('each element band picks its own signature skill, and element damage follows the cycle', async () => {
-    const R = await WORLD(() => {
+await check('each boss element picks its own signature skill, and element damage follows the cycle', async () => {
+    const SIGNATURE_ELEMENTS = ['water', 'grass', 'fire', 'ice', 'lightning'].map(
+        (name) => BOSS_PATTERN_CONFIG[`signature.${name}`].element,
+    );
+    const R = await WORLD((elements) => {
         const W = BUDMORI.sim;
         W._flushEjected();
         for (const U of [...W.units]) {
@@ -1224,8 +1229,9 @@ await check('each element band picks its own signature skill, and element damage
         for (let i = 0; i < 30; i++) {
             W.step(1 / 30);
         }
-        const PICKS = [1, 21, 41, 61, 81].map((floor) => {
-            W.tower.floor = floor;
+        // A boss's own element (not the floor) picks its signature skill.
+        const PICKS = elements.map((element) => {
+            W.boss.enemyElement = element;
             for (const ID of Object.keys(W.boss.patternRuntime.cooldowns)) {
                 W.boss.patternRuntime.cooldowns[ID] = 0;
             }
@@ -1239,8 +1245,8 @@ await check('each element band picks its own signature skill, and element damage
                 id.startsWith('signature.'),
             );
         });
-        // A water boss (floor 1) against a plain, a fire (beaten by water), a water (even) and a lightning (beats water) unit.
-        W.tower.floor = 1;
+        // A water boss against a plain, a fire (beaten by water), a water (even) and a lightning (beats water) unit.
+        W.boss.enemyElement = elements[0];
         const ID = 'signature.water',
             LOSS = (genes) => {
                 const U = W.unitCollection.items.filter((u) => !u.isBattleOnlySummon && u.hp > 0)[0];
@@ -1265,7 +1271,7 @@ await check('each element band picks its own signature skill, and element damage
         }
         W._flushEjected();
         return { PICKS, PLAIN, FIRE, WATER, LIGHTNING };
-    });
+    }, SIGNATURE_ELEMENTS);
     expect(
         JSON.stringify(R.PICKS) ===
             JSON.stringify([
@@ -1285,13 +1291,7 @@ await check('each element band picks its own signature skill, and element damage
 });
 
 await check('each element signature skill is telegraphed and drawn with its own effect in the real game', async () => {
-    const BANDS = [
-        ['water', 1],
-        ['grass', 21],
-        ['fire', 41],
-        ['ice', 61],
-        ['lightning', 81],
-    ];
+    const NAMES = ['water', 'grass', 'fire', 'ice', 'lightning'];
     await WORLD(async () => {
         // Count what the renderer really draws per element, then call the original drawing.
         const MODULE = await import('/src/features/boss-patterns/signature/presentation.js');
@@ -1310,10 +1310,10 @@ await check('each element signature skill is telegraphed and drawn with its own 
             return EFFECT.call(this, renderer, event, progress);
         };
     });
-    for (const [NAME, FLOOR] of BANDS) {
+    for (const NAME of NAMES) {
         const ELEMENT = BOSS_PATTERN_CONFIG[`signature.${NAME}`].element;
         await WORLD(
-            ([id, band]) => {
+            ([id, element]) => {
                 const W = BUDMORI.sim;
                 W._flushEjected();
                 for (const U of [...W.units]) {
@@ -1323,10 +1323,11 @@ await check('each element signature skill is telegraphed and drawn with its own 
                     W.spawn(0, 3, i * 0.4, 0);
                 }
                 W.playerProgression.towerBest = 150;
-                W.startTower(Math.min(band, 80));
-                W.tower.floor = band;
+                W.startTower(1);
                 W.finishMarch();
+                // One boss whose own element is the one under test.
                 const BOSS = W.boss;
+                BOSS.enemyElement = element;
                 BOSS.hp = BOSS.maxHp = 1e9;
                 for (const U of W.units) {
                     if (U.faction !== 'enemy') {
@@ -1338,7 +1339,7 @@ await check('each element signature skill is telegraphed and drawn with its own 
                     BOSS.patternRuntime.cooldowns[SKILL] = SKILL === `signature.${id}` ? 0 : 1e6;
                 }
             },
-            [NAME, FLOOR],
+            [NAME, ELEMENT],
         );
         const STATE = () =>
             WORLD(() => ({
