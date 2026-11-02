@@ -1,6 +1,8 @@
 import { BOSS_REWARD_BANDS, revealBossReward } from '../boss/boss-rewards.js';
 import { BOSS_SPECIES } from '../units/species-catalog.js';
 import { speciesFacePortraitSource } from '../units/species-paint.js';
+import { localized } from '../i18n/text.js';
+import { BOSS_REWARD } from '../i18n/messages/ui-boss-reward.js';
 
 const PRESENTATION = Object.freeze({
     durationMs: 1000,
@@ -75,9 +77,9 @@ export class BossRewardDialog {
         this.onOpen();
         this.root.hidden = false;
         this.elements.Chest.dataset.tier = CHEST_TIERS[(Math.max(1, receipt.stage) - 1) % CHEST_TIERS.length];
-        this.elements.Stage.textContent = `${receipt.stage}층 · 보스 격파`;
-        this.elements.Title.textContent = '승리 보상';
-        this.elements.RevealCount.textContent = '보상 상자 1개';
+        this.elements.Stage.textContent = BOSS_REWARD.stage({ stage: receipt.stage });
+        this.elements.Title.textContent = BOSS_REWARD.title();
+        this.elements.RevealCount.textContent = BOSS_REWARD.chestCount();
         this.prepare();
         this.measure();
         this.elements.OpenAll.focus({ preventScroll: true });
@@ -181,25 +183,26 @@ export class BossRewardDialog {
             DONE = this.elapsedMs >= PRESENTATION.durationMs;
         this.elements.ChestScene.dataset.phase = DONE ? 'result' : 'opening';
         this.elements.Summary.textContent =
-            DONE && RECEIPT.acquiredCount === 0 ? '다음 전투의 보상을 기대해 주세요' : '새싹이 농장에 합류해요';
+            DONE && RECEIPT.acquiredCount === 0 ? BOSS_REWARD.summaryEmpty() : BOSS_REWARD.summaryJoin();
         this.elements.Band.hidden = !DONE || RECEIPT.bandIndex === null || RECEIPT.acquiredCount === 0;
-        this.elements.Band.textContent = BOSS_REWARD_BANDS[RECEIPT.bandIndex]?.label || '';
+        const BAND = BOSS_REWARD_BANDS[RECEIPT.bandIndex];
+        this.elements.Band.textContent = BAND ? localized(BAND.label) : '';
         this.elements.PopAmount.textContent = DONE
             ? RECEIPT.acquiredCount > 0
-                ? `새싹 ${RECEIPT.acquiredCount.toLocaleString('ko-KR')}마리`
-                : '이번 상자는 비었어요'
+                ? BOSS_REWARD.sprouts({ count: RECEIPT.acquiredCount })
+                : BOSS_REWARD.chestEmpty()
             : this.elapsedMs < 160
-              ? '상자가 열려요…'
+              ? BOSS_REWARD.opening()
               : RECEIPT.acquiredCount > 0
-                ? '새싹이 쏟아져요!'
-                : '상자가 열려요…';
+                ? BOSS_REWARD.pouring()
+                : BOSS_REWARD.opening();
         this.elements.Prize.dataset.phase = DONE ? 'result' : 'opening';
         this.elements.Totals.textContent =
             DONE && RECEIPT.acquiredCount > 0
-                ? `${RECEIPT.placedCount.toLocaleString('ko-KR')}마리 농장에 배치` +
-                  (RECEIPT.queuedCount > 0 ? ` · ${RECEIPT.queuedCount.toLocaleString('ko-KR')}마리 자리 대기` : '')
+                ? BOSS_REWARD.placed({ count: RECEIPT.placedCount }) +
+                  (RECEIPT.queuedCount > 0 ? ` · ${BOSS_REWARD.queued({ count: RECEIPT.queuedCount })}` : '')
                 : '';
-        this.elements.OpenAll.textContent = DONE ? '확인' : '결과 바로 보기';
+        this.elements.OpenAll.textContent = DONE ? BOSS_REWARD.confirm() : BOSS_REWARD.skip();
     }
     update(world) {
         if (!this.root.hidden && this.world === world && this.receipt) {
