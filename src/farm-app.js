@@ -1,3 +1,5 @@
+import { RELIC } from './i18n/messages/ui-relic.js';
+import { PAGE } from './i18n/messages/page.js';
 import { SpeciesInfoDialog } from './ui/species-info.js';
 import { PerformanceDiagnostics } from './core/performance-diagnostics.js';
 import { FarmHudCounts } from './ui/farm-hud-counts.js';
@@ -35,7 +37,12 @@ import { bossRewardQueueBySpecies } from './boss/boss-rewards.js';
 import { BossRewardDialog } from './ui/boss-reward-dialog.js';
 import { workersBySpecies } from './model/farm-work.js';
 import { apportionBreedShares, adjustBreedShare } from './model/breed-allocation.js';
-import { speciesById, giantSpeciesName, BOSS_SPECIES } from './units/species-catalog.js';
+import { BOSS_SPECIES } from './units/species-catalog.js';
+import { speciesName, giantSpeciesName } from './i18n/messages/species.js';
+import { localized } from './i18n/text.js';
+import { APP_HOME } from './i18n/messages/app-home.js';
+import { APP_FARM } from './i18n/messages/app-farm.js';
+import { APP_TOWER } from './i18n/messages/app-tower.js';
 import { speciesFacePortraitSource, speciesPortraitSource } from './units/species-paint.js';
 import { HELP_MAX_FRAME_MS, HELP_PLAYBACK_RATE, helpSceneById } from './ui/help-scenes.js';
 import { labScene } from './debug/lab.js';
@@ -44,6 +51,7 @@ import { codexHtml, CODEX_TABS } from './ui/codex-dialog.js';
 import { iconSvg, mountIcons } from './ui/icons.js';
 import { SeedlingReveal } from './ui/seedling-reveal.js';
 import { startAppShell } from './ui/app-shell.js';
+import { LanguageSetting } from './ui/language-setting.js';
 const DOLLAR = (id) => document.getElementById(id),
     ISOLATED_PAGE = isolatedPage(location.search),
     OPEN_SAVE = saveOpener(location.search),
@@ -117,18 +125,16 @@ function mergeAvailability(world, now) {
 }
 function rewardReceiptSummary(reward) {
     if (!reward) {
-        return '보상 없음';
+        return APP_TOWER.rewardNone();
     }
     if (reward.acquiredCount === 0) {
-        return '이번에는 획득한 새싹이 없어요';
+        return APP_TOWER.rewardNoSprouts();
     }
-    return (
-        reward.acquiredCount +
-        '마리 획득 · ' +
-        reward.placedCount +
-        '마리 배치' +
-        (reward.queuedCount ? ' · ' + reward.queuedCount + '마리 자리 대기' : '')
-    );
+    return APP_TOWER.rewardSummary({
+        acquired: reward.acquiredCount,
+        placed: reward.placedCount,
+        queued: reward.queuedCount,
+    });
 }
 function latestBossReward(world) {
     const RECEIPTS = world?.bossRewardReceipts || [];
@@ -165,8 +171,8 @@ DOLLAR('copyDiagnostics').onclick = async () => {
     const RESULT = await globalThis.BloomDiagnostics.copy({ textarea: DOLLAR('settingsDiagnosticText') });
     DOLLAR('settingsDiagnosticText').hidden = RESULT.copied;
     DOLLAR('diagnosticStatus').textContent = RESULT.copied
-        ? '진단 요약을 복사했어요. 채팅에 붙여 넣어 주세요.'
-        : '아래 진단 요약을 선택해 복사해 주세요.';
+        ? APP_HOME.diagnosticsCopied()
+        : APP_HOME.diagnosticsSelectToCopy();
 };
 DOLLAR('exportDiagnostics').onclick = () => {
     const TEXT = DOLLAR('settingsDiagnosticText');
@@ -174,11 +180,11 @@ DOLLAR('exportDiagnostics').onclick = () => {
     TEXT.hidden = false;
     TEXT.focus();
     TEXT.select();
-    DOLLAR('diagnosticStatus').textContent = '상세 진단 정보예요. 저장 데이터는 포함하지 않아요.';
+    DOLLAR('diagnosticStatus').textContent = APP_HOME.diagnosticsDetail();
 };
 const FAIL = (error) => {
     DOLLAR('error').hidden = false;
-    DOLLAR('error').textContent = '농장을 진행하지 못했어요. ' + error.message;
+    DOLLAR('error').textContent = APP_HOME.farmFailed({ message: error.message });
     console.error(error);
     if (active) {
         active.paused = true;
@@ -264,6 +270,12 @@ const FOOD_FEEL = new FoodFeel({
     onMutedChange: (muted) => void PLAY.set({ foodMuted: muted }),
 });
 const COMBAT_FEEL = new CombatFeel(FOOD_FEEL);
+// A tower run lives only in this page's memory: a language switch (a reload) waits until the run ends.
+new LanguageSetting({
+    choices: DOLLAR('languageChoices'),
+    notice: DOLLAR('languageNotice'),
+    canReload: () => !personalGarden?.tower.active,
+});
 // The worker ratio, breeding weights and deploy order are play settings, not part of the farm save.
 function applyPlaySettings(world) {
     const SETTINGS = PLAY.value;
@@ -326,13 +338,13 @@ install(new Garden());
 active.paused = true;
 function raidStartBlockReason() {
     if (!personalGarden) {
-        return '농장에서만 보스에 도전할 수 있어요.';
+        return APP_FARM.raidOnlyOnFarm();
     }
     if (personalGarden.farmBossEvent?.phase !== 'idle') {
-        return '이미 전투 중이에요.';
+        return APP_FARM.raidAlreadyFighting();
     }
     if (!personalGarden.units.some((unit) => !unit.isBattleOnlySummon && unit.hp > 0)) {
-        return '싸울 병력이 없어요. 먼저 모리를 키워 주세요.';
+        return APP_FARM.raidNoTroops();
     }
     return '';
 }
@@ -357,10 +369,13 @@ function refreshStart() {
         BEST = GARDEN?.playerProgression.towerBest ?? SAVED?.player.towerBest ?? 0;
     DOLLAR('continueGame').hidden = !HAS_FARM;
     DOLLAR('continueGame').disabled = LOCKED || !HAS_FARM;
-    DOLLAR('continueGame').textContent = hasMemoryRun() && GARDEN.tower.active ? '도전 이어가기' : '농장 이어가기';
+    DOLLAR('continueGame').textContent =
+        hasMemoryRun() && GARDEN.tower.active ? APP_HOME.continueRun() : PAGE.continueFarm();
     DOLLAR('newGame').classList.toggle('btn--primary', !HAS_FARM);
     DOLLAR('homeProgress').hidden = !HAS_FARM || LOCKED;
-    DOLLAR('homeProgress').textContent = HAS_FARM ? `병력 ${POPULATION ?? 0}마리 · 최고 ${BEST}층` : '';
+    DOLLAR('homeProgress').textContent = HAS_FARM
+        ? APP_HOME.homeProgress({ population: POPULATION ?? 0, best: BEST })
+        : '';
     DOLLAR('newGame').disabled = LOCKED;
     DOLLAR('resetSave').hidden = !LOCKED;
     DOLLAR('resetConfirm').hidden ||= !LOCKED;
@@ -392,16 +407,11 @@ function markSeen() {
     void PLAY.set({ lastSeenMs: Date.now() });
 }
 function offlineText(summary) {
-    const MINUTES = Math.floor(summary.seconds / 60),
-        TIME = MINUTES >= 60 ? `${Math.floor(MINUTES / 60)}시간 ${MINUTES % 60}분` : `${MINUTES}분`,
-        PARTS = [];
-    if (summary.births) {
-        PARTS.push(`새 식구 ${summary.births}마리`);
-    }
-    if (summary.food) {
-        PARTS.push(`먹이 ${summary.food}`);
-    }
-    return `${TIME} 동안 자리를 비웠어요${PARTS.length ? ' · ' + PARTS.join(' · ') : ''}`;
+    return APP_HOME.offlineAway({
+        minutes: Math.floor(summary.seconds / 60),
+        births: summary.births,
+        food: summary.food,
+    });
 }
 // The time spent away is settled by a formula when the farm comes back (see farm-offline.js).
 function settleOffline() {
@@ -609,7 +619,7 @@ DOLLAR('newGame').onclick = () => {
         return;
     }
     if (STORAGE.hasWorld) {
-        DOLLAR('newConfirmText').textContent = '현재 농장을 새 농장으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요.';
+        DOLLAR('newConfirmText').textContent = PAGE.newConfirm();
         DOLLAR('newConfirm').hidden = false;
         return;
     }
@@ -621,15 +631,11 @@ DOLLAR('cancelNew').onclick = () => {
 };
 // An unreadable record stays locked until the player chooses to discard it. Only the locked records are reset;
 // a readable farm or settings record is kept.
-function lockedRecordNames() {
-    return [STORAGE.locked && '농장', PLAY.locked && '플레이 설정'].filter(Boolean).join('·');
-}
 DOLLAR('resetSave').onclick = () => {
     if (!saveLocked()) {
         return;
     }
-    DOLLAR('resetConfirmText').textContent =
-        `읽지 못한 ${lockedRecordNames()} 저장을 지우고 새로 시작할까요? 지운 기록은 되돌릴 수 없어요.`;
+    DOLLAR('resetConfirmText').textContent = APP_HOME.resetConfirm({ farm: STORAGE.locked, play: PLAY.locked });
     DOLLAR('resetConfirm').hidden = false;
 };
 DOLLAR('cancelReset').onclick = () => {
@@ -677,27 +683,31 @@ DOLLAR('saveFile').onchange = async () => {
     }
     try {
         if (FILE.size > 2 * 1024 * 1024) {
-            throw Error('저장 파일이 너무 커요.');
+            throw Error(APP_HOME.saveTooLarge());
         }
         const TEXT = await FILE.text();
         readFarmExport(TEXT);
         imported = TEXT;
-        DOLLAR('importConfirmText').textContent = '선택한 파일로 현재 저장을 바꿀까요?';
-        DOLLAR('confirmImport').textContent = '이 저장 불러오기';
+        DOLLAR('importConfirmText').textContent = PAGE.importConfirm();
+        DOLLAR('confirmImport').textContent = PAGE.confirmImport();
         DOLLAR('importConfirm').hidden = false;
     } catch (e) {
-        DOLLAR('saveNotice').textContent = e.message;
+        DOLLAR('saveNotice').textContent = importErrorText(e);
     } finally {
         DOLLAR('saveFile').value = '';
     }
 };
+// The save codec rejects a file with a developer TypeError; the player reads it as "not a farm save".
+function importErrorText(error) {
+    return error instanceof TypeError ? APP_HOME.importUnreadable({ detail: error.message }) : error.message;
+}
 DOLLAR('cancelImport').onclick = () => {
     imported = null;
     DOLLAR('importConfirm').hidden = true;
 };
 DOLLAR('confirmImport').onclick = async () => {
     if (active?.world?.tower.active) {
-        DOLLAR('saveNotice').textContent = '탑 도전을 끝내고 농장으로 돌아온 뒤 저장을 불러올 수 있어요.';
+        DOLLAR('saveNotice').textContent = APP_HOME.importBlockedDuringRun();
         return;
     }
     try {
@@ -712,7 +722,7 @@ DOLLAR('confirmImport').onclick = async () => {
         DOLLAR('importConfirm').hidden = true;
         refreshStart();
     } catch (e) {
-        DOLLAR('saveNotice').textContent = e.message;
+        DOLLAR('saveNotice').textContent = importErrorText(e);
     }
 };
 // The pulse index belongs to this press, never to the materials or simulation/save state.
@@ -724,7 +734,7 @@ function stopMergeHold() {
     clearTimeout(mergeHold.delay);
     clearInterval(mergeHold.repeat);
     if (mergeHold.accelerate) {
-        mergeHold.button.textContent = '합성';
+        mergeHold.button.textContent = PAGE.merge();
     }
     mergeHold = null;
 }
@@ -764,7 +774,7 @@ function bindMergeButton(id, command, onBlocked = null, { accelerate = false } =
             }
             HOLD.pulses = PULSE;
             if (accelerate) {
-                BUTTON.textContent = `합성 ×${COUNT}`;
+                BUTTON.textContent = APP_FARM.mergeCount({ count: COUNT });
             }
         };
         EXECUTE();
@@ -936,8 +946,8 @@ function drawSpeciesRoles(world) {
         BREED_CONTROL.idsKey = STATE.idsKey;
         HOST.innerHTML = STATE.ids
             .map((id) => {
-                const SPECIES = speciesById(id);
-                return `<div class="breed-chip-wrap"><button type="button" class="breed-chip" data-breed-species="${id}" aria-pressed="false"><img src="${speciesPortraitSource(id)}" alt="" width="36" height="36"><span>${SPECIES.name}</span><b data-breed-percent></b></button><button type="button" class="species-info-open" data-species-info="${id}" aria-label="${SPECIES.name} 병종 정보" aria-haspopup="dialog">${iconSvg('info')}</button></div>`;
+                const NAME = speciesName(id);
+                return `<div class="breed-chip-wrap"><button type="button" class="breed-chip" data-breed-species="${id}" aria-pressed="false"><img src="${speciesPortraitSource(id)}" alt="" width="36" height="36"><span>${NAME}</span><b data-breed-percent></b></button><button type="button" class="species-info-open" data-species-info="${id}" aria-label="${APP_FARM.speciesInfo({ name: NAME })}" aria-haspopup="dialog">${iconSvg('info')}</button></div>`;
             })
             .join('');
     }
@@ -952,7 +962,7 @@ function drawSpeciesRoles(world) {
         RANGE = DOLLAR('speciesBreedShare'),
         DISABLED = STATE.ids.length < 2;
     DOLLAR('speciesBreedLabel').textContent =
-        INDEX < 0 ? '병종이 없어요' : `${speciesById(BREED_CONTROL.selected).name} 번식 몫`;
+        INDEX < 0 ? APP_FARM.noSpecies() : APP_FARM.breedShare({ name: speciesName(BREED_CONTROL.selected) });
     DOLLAR('speciesBreedValue').textContent = `${SHARE}%`;
     RANGE.value = String(SHARE);
     RANGE.disabled = DISABLED;
@@ -965,7 +975,10 @@ function drawSpeciesRoles(world) {
     DOLLAR('speciesBreedPlan').textContent =
         INDEX < 0
             ? ''
-            : `배분 계획 · 번식 ${STATE.counts.get(BREED_CONTROL.selected) - WORKERS.get(BREED_CONTROL.selected)} · 먹이 ${WORKERS.get(BREED_CONTROL.selected)}`;
+            : APP_FARM.breedPlan({
+                  breeders: STATE.counts.get(BREED_CONTROL.selected) - WORKERS.get(BREED_CONTROL.selected),
+                  workers: WORKERS.get(BREED_CONTROL.selected),
+              });
 }
 function applyBreedShares(world, ids, shares) {
     const WEIGHTS = new Array(Math.max(...ids) + 1).fill(0);
@@ -1037,7 +1050,7 @@ function drawRewardQueue(world) {
         BOX = DOLLAR('farmQueue'),
         HTML =
             WAITING > 0
-                ? `<span class="farm-queue__chip"><img src="${speciesPortraitSource(BOSS_SPECIES)}" alt="새싹" width="20" height="20"><b>${WAITING}</b></span>`
+                ? `<span class="farm-queue__chip"><img src="${speciesPortraitSource(BOSS_SPECIES)}" alt="${APP_FARM.sprout()}" width="20" height="20"><b>${WAITING}</b></span>`
                 : '';
     BOX.hidden = WAITING === 0;
     if (BOX.innerHTML !== HTML) {
@@ -1067,8 +1080,15 @@ const ROUTE_MENU_TAB = (route) => Object.keys(MENU_ROUTES).find((tab) => MENU_RO
 function applyMenuTab(tab) {
     menuTab = tab;
     const UPGRADES = tab === 'farms';
-    DOLLAR('gameMenuTitle').textContent = UPGRADES ? '업그레이드' : tab === 'help' ? '도움말' : '설정';
-    DOLLAR('gameMenuClose').setAttribute('aria-label', `${DOLLAR('gameMenuTitle').textContent} 닫기`);
+    DOLLAR('gameMenuTitle').textContent = UPGRADES
+        ? PAGE.upgrades()
+        : tab === 'help'
+          ? PAGE.help()
+          : PAGE.settingsTitle();
+    DOLLAR('gameMenuClose').setAttribute(
+        'aria-label',
+        APP_FARM.menuClose({ title: DOLLAR('gameMenuTitle').textContent }),
+    );
     for (const [ID, SELECTED] of [
         ['gameMenu', tab === 'play'],
         ['upgradeMenu', UPGRADES],
@@ -1222,42 +1242,44 @@ document.addEventListener('contextmenu', (event) => {
     }
 });
 // Compare with the actual DOM so event handlers and route changes remain authoritative.
-const FLOOR_KIND = { battle: '전투', elite: '정예', mid: '중간 보스', power: '강화', event: '이벤트' };
-const DOOR_TEXT = {
-    battle: '보스 전원 처치',
-    elite: '더 세지만 보상 ×2',
-    mid: '피할 수 없어요 · 보상 ×3',
+const FLOOR_KIND = {
+    battle: APP_TOWER.floorBattle,
+    elite: APP_TOWER.floorElite,
+    mid: APP_TOWER.floorMid,
+    power: APP_TOWER.floorPower,
+    event: APP_TOWER.floorEvent,
 };
+const DOOR_TEXT = { battle: APP_TOWER.doorBattle, elite: APP_TOWER.doorElite, mid: APP_TOWER.doorMid };
 const NEXT_FLOOR_TEXT = {
-    battle: '전투 준비 · 싸울 상대를 고르세요',
-    mid: '중간 보스 · 피할 수 없어요',
-    power: '강화 · 카드 한 장을 고르세요',
-    event: '이벤트',
+    battle: APP_TOWER.nextBattle,
+    mid: APP_TOWER.nextMid,
+    power: APP_TOWER.nextPower,
+    event: APP_TOWER.nextEvent,
 };
 function statDoorCard(door, cards, index, role = 'player', receipt = null) {
     const CARD = statCard(door.id),
         LEVEL = receipt?.before.level ?? cardStacks(cards, door.id);
-    return `<button type="button" class="door door--stat door--rarity-${door.rarity}" data-door="${index}"><b>${CARD.name} ${statCardText(CARD, door.rarity, role, door.effect)}</b><small>${RARITY_NAMES[door.rarity]} · ${role === 'boss' ? '보스 진영' : '모든 아군'} · ${LEVEL}/${TOWER_RUN_SETTINGS.cardCap}장</small></button>`;
+    return `<button type="button" class="door door--stat door--rarity-${door.rarity}" data-door="${index}"><b>${localized(CARD.name)} ${localized(statCardText(CARD, door.rarity, role, door.effect))}</b><small>${APP_TOWER.statDoorDetail({ rarity: localized(RARITY_NAMES[door.rarity]), boss: role === 'boss', level: LEVEL, cap: TOWER_RUN_SETTINGS.cardCap })}</small></button>`;
 }
 function passiveDoorCard(door, cards, index, role = 'player', receipt = null) {
     const CARD = passiveCard(door.id),
         LEVEL = receipt?.before.level ?? cardStacks(cards, door.id),
-        EFFECT = passiveEffectText(CARD, cardValue(CARD, door.rarity, role), role);
-    return `<button type="button" class="door door--passive door--rarity-${door.rarity}" data-door="${index}"><b>${CARD.name}</b><small>${RARITY_NAMES[door.rarity]} · ${EFFECT} · ${LEVEL}/${TOWER_RUN_SETTINGS.cardCap}장</small></button>`;
+        EFFECT = localized(passiveEffectText(CARD, cardValue(CARD, door.rarity, role), role));
+    return `<button type="button" class="door door--passive door--rarity-${door.rarity}" data-door="${index}"><b>${localized(CARD.name)}</b><small>${APP_TOWER.passiveDoorDetail({ rarity: localized(RARITY_NAMES[door.rarity]), effect: EFFECT, level: LEVEL, cap: TOWER_RUN_SETTINGS.cardCap })}</small></button>`;
 }
 function skillDoorCard(tower, door, index, role = 'player', receipt = null) {
     const DEFINITION = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === door.id),
         LEVEL = receipt?.before.level ?? (tower.relics.get(door.id) || 0),
-        GAIN = LEVEL ? `Lv.${LEVEL} → ${LEVEL + 1}` : '새 기술';
-    return `<button type="button" class="door door--skill" data-door="${index}"><b>${iconSvg(door.id)} ${DEFINITION.name}</b><small>${GAIN} · ${relicEffectText(DEFINITION, LEVEL + 1, role, 0, tower.floor)}</small></button>`;
+        GAIN = LEVEL ? `Lv.${LEVEL} → ${LEVEL + 1}` : RELIC.newSkill();
+    return `<button type="button" class="door door--skill" data-door="${index}"><b>${iconSvg(door.id)} ${localized(DEFINITION.name)}</b><small>${GAIN} · ${relicEffectText(DEFINITION, LEVEL + 1, role, 0, tower.floor)}</small></button>`;
 }
 function eventDoorCard(door, index) {
     const EVENT = TOWER_EVENTS.find((item) => item.id === door.id);
-    return `<button type="button" class="door door--event" data-door="${index}"><b>${EVENT.name}</b><small>${EVENT.text}</small></button>`;
+    return `<button type="button" class="door door--event" data-door="${index}"><b>${localized(EVENT.name)}</b><small>${localized(EVENT.text)}</small></button>`;
 }
 function doorCard(tower, door, index, role = 'player', receipt = null) {
     if (door.type === 'fight') {
-        return `<button type="button" class="door door--${door.kind}" data-door="${index}"><b>${FLOOR_KIND[door.kind]}</b><small>${DOOR_TEXT[door.kind]}</small></button>`;
+        return `<button type="button" class="door door--${door.kind}" data-door="${index}"><b>${FLOOR_KIND[door.kind]()}</b><small>${DOOR_TEXT[door.kind]()}</small></button>`;
     }
     if (door.type === 'stat') {
         return statDoorCard(door, tower.cards, index, role, receipt);
@@ -1274,18 +1296,20 @@ let tintFloor = -1;
 let doorAnnouncementTower = null;
 let doorAnnouncementSerial = 0;
 function bossCardName(card) {
-    return card?.type === 'skill'
-        ? FORMATION_SKILL_DEFINITIONS.find((item) => item.id === card.id)?.name
-        : card?.type === 'stat'
-          ? statCard(card.id)?.name
-          : card?.type === 'passive'
-            ? passiveCard(card.id)?.name
-            : '';
+    const NAME =
+        card?.type === 'skill'
+            ? FORMATION_SKILL_DEFINITIONS.find((item) => item.id === card.id)?.name
+            : card?.type === 'stat'
+              ? statCard(card.id)?.name
+              : card?.type === 'passive'
+                ? passiveCard(card.id)?.name
+                : null;
+    return NAME ? localized(NAME) : '';
 }
 function acquisitionText(receipt) {
     return receipt.card.type === 'skill'
         ? relicAcquisitionText(receipt, active?.world?.tower.floor || 1)
-        : cardAcquisitionText(receipt);
+        : localized(cardAcquisitionText(receipt));
 }
 function readonlyDoor(button, label, selected) {
     button.removeAttribute('data-door');
@@ -1325,11 +1349,15 @@ function syncSharedChoice(tower, draw, phase, locked) {
         const TAKEN = INDEX === draw.selectedIndex;
         BUTTON.dataset.bossOffer = String(INDEX);
         if (TAKEN) {
-            readonlyDoor(BUTTON, '✓ 보스 선택', ['selected', 'outcome'].includes(phase));
+            readonlyDoor(BUTTON, APP_TOWER.bossPicked(), ['selected', 'outcome'].includes(phase));
         } else if (LOCKED) {
             readonlyDoor(BUTTON, '', false);
         }
     }
+}
+// A catalog name, or the id when the catalog no longer has it.
+function localizedOr(pair, fallback) {
+    return pair ? localized(pair) : fallback;
 }
 // What the boss has picked so far, for the row of cards under it.
 function bossCardChips(tower) {
@@ -1337,7 +1365,7 @@ function bossCardChips(tower) {
         id,
         level,
         icon: id,
-        name: FORMATION_SKILL_DEFINITIONS.find((item) => item.id === id)?.name || id,
+        name: localizedOr(FORMATION_SKILL_DEFINITIONS.find((item) => item.id === id)?.name, id),
     }));
     const COUNTS = new Map();
     for (const CARD of tower.bossCards) {
@@ -1345,7 +1373,12 @@ function bossCardChips(tower) {
     }
     for (const [ID, LEVEL] of COUNTS) {
         const STAT = statCard(ID);
-        CHIPS.push({ id: ID, level: LEVEL, icon: STAT?.icon ?? ID, name: STAT?.name ?? passiveCard(ID)?.name ?? ID });
+        CHIPS.push({
+            id: ID,
+            level: LEVEL,
+            icon: STAT?.icon ?? ID,
+            name: localizedOr(STAT?.name ?? passiveCard(ID)?.name, ID),
+        });
     }
     return CHIPS.slice(-14);
 }
@@ -1383,7 +1416,10 @@ function syncCardReceipts(tower, draw, phase) {
                 EFFECT = document.createElement('span');
             ROW.dataset.role = RECEIPT.role;
             ROW.dataset.cardType = RECEIPT.card.type;
-            TITLE.textContent = `${RECEIPT.role === 'boss' ? '보스 획득' : '내 카드'} · ${bossCardName(RECEIPT.card)}`;
+            TITLE.textContent = APP_TOWER.receiptTitle({
+                boss: RECEIPT.role === 'boss',
+                card: bossCardName(RECEIPT.card),
+            });
             EFFECT.textContent = acquisitionText(RECEIPT);
             ROW.append(TITLE, EFFECT);
             HOST.append(ROW);
@@ -1391,7 +1427,7 @@ function syncCardReceipts(tower, draw, phase) {
         if (draw.status === 'maxed') {
             const EMPTY = document.createElement('p');
             EMPTY.dataset.role = 'boss';
-            EMPTY.textContent = '보스 카드 없음 · 모든 후보 강화 완료';
+            EMPTY.textContent = APP_TOWER.bossMaxed();
             HOST.append(EMPTY);
         }
     }
@@ -1405,11 +1441,14 @@ function syncCardReceipts(tower, draw, phase) {
             'doorAnnouncement',
             [tower.playerPick?.receipt, draw.receipt]
                 .filter(Boolean)
-                .map(
-                    (receipt) =>
-                        `${receipt.role === 'boss' ? '보스 획득' : '내 카드 획득'} · ${bossCardName(receipt.card)}. ${acquisitionText(receipt)}`,
+                .map((receipt) =>
+                    APP_TOWER.receiptAnnouncement({
+                        boss: receipt.role === 'boss',
+                        card: bossCardName(receipt.card),
+                        effect: acquisitionText(receipt),
+                    }),
                 )
-                .join('. ') + (draw.status === 'maxed' ? '. 보스 카드 없음 · 모든 후보 강화 완료' : ''),
+                .join('. ') + (draw.status === 'maxed' ? '. ' + APP_TOWER.bossMaxed() : ''),
         );
     }
 }
@@ -1441,7 +1480,7 @@ function syncTower(garden, home, event) {
     const DOWNED = T.downed.size;
     syncFlag('floorChip', 'hidden', !CLIMBING);
     if (CLIMBING) {
-        syncText('floorNow', `${T.floor}층 · ${towerTheme(T.floor).name}`);
+        syncText('floorNow', APP_TOWER.floorNow({ floor: T.floor, theme: localized(towerTheme(T.floor).name) }));
     }
     // A banner announces each new floor as the boss drops in, and the rest stop.
     const NEXT_BANNER = !CLIMBING
@@ -1452,8 +1491,11 @@ function syncTower(garden, home, event) {
             ? `e${event.encounterId}`
             : '';
     if (NEXT_BANNER && NEXT_BANNER !== bannerKey) {
-        DOLLAR('floorBannerNum').textContent = `${T.floor}층`;
-        DOLLAR('floorBannerKind').textContent = `${towerTheme(T.floor).name} · ${FLOOR_KIND[T.kind]}`;
+        DOLLAR('floorBannerNum').textContent = APP_TOWER.floorNumber({ floor: T.floor });
+        DOLLAR('floorBannerKind').textContent = APP_TOWER.floorBannerKind({
+            theme: localized(towerTheme(T.floor).name),
+            kind: FLOOR_KIND[T.kind](),
+        });
         const BANNER = DOLLAR('floorBanner');
         BANNER.hidden = false;
         clearTimeout(bannerTimer);
@@ -1514,21 +1556,18 @@ function syncTower(garden, home, event) {
                 'doorsTitle',
                 BOSS_CHOICE
                     ? PHASE === 'offers'
-                        ? '보스가 먼저 고르는 중'
-                        : `보스 선택 · ${bossCardName(DRAW.card)}`
-                    : `보스가 ${bossCardName(DRAW.card)} 선택`,
+                        ? APP_TOWER.bossChoosing()
+                        : APP_TOWER.bossChoice({ card: bossCardName(DRAW.card) })
+                    : APP_TOWER.bossChose({ card: bossCardName(DRAW.card) }),
             );
-            syncText(
-                'doorsNote',
-                BOSS_CHOICE ? '보스가 같은 카드 3장에서 먼저 한 장을 가져가요' : '남은 카드에서 한 장을 고르세요',
-            );
+            syncText('doorsNote', BOSS_CHOICE ? APP_TOWER.bossChoosingNote() : APP_TOWER.pickFromRest());
         } else {
-            syncText('doorsTitle', `${T.floor + 1}층 ${NEXT_FLOOR_TEXT[T.nextKind]}`);
+            syncText('doorsTitle', APP_TOWER.doorsTitle({ floor: T.floor + 1, next: NEXT_FLOOR_TEXT[T.nextKind]() }));
             syncText(
                 'doorsNote',
                 DRAW?.floor === T.floor && DRAW.card
-                    ? `보스가 ${bossCardName(DRAW.card)}을(를) 가져갔어요 · 남은 카드에서 고르세요`
-                    : `${T.floor}층 돌파 · 쓰러진 병력 ${DOWNED}마리 · 강화 카드 ${T.cards.length}장`,
+                    ? APP_TOWER.bossTookPickRest({ card: bossCardName(DRAW.card) })
+                    : APP_TOWER.floorCleared({ floor: T.floor, downed: DOWNED, cards: T.cards.length }),
             );
         }
     } else {
@@ -1545,7 +1584,7 @@ function syncTower(garden, home, event) {
     }
     const RESULT = !T.active && T.floor > 0 && !home && event?.phase === 'idle';
     syncFlag('towerResult', 'hidden', !RESULT);
-    syncText('towerResult', `지난 도전 ${T.floor}층${T.record ? ' · 새 기록!' : ''} · 최고 ${BEST}층`);
+    syncText('towerResult', APP_TOWER.towerResult({ floor: T.floor, record: T.record, best: BEST }));
 }
 function syncText(id, value) {
     const NODE = DOLLAR(id),
@@ -1601,8 +1640,7 @@ function saveDeployOrder(order) {
     void PLAY.set({ deployOrder: order });
 }
 function deckCardHtml(id, count, slot) {
-    const SPECIES = speciesById(id);
-    return `<button type="button" class="deck-card" data-deploy="${id}" aria-label="${slot}번 ${SPECIES.name}"><i>${slot}</i><img src="${speciesPortraitSource(id)}" alt="" width="40" height="40" draggable="false"><b>×${count}</b></button>`;
+    return `<button type="button" class="deck-card" data-deploy="${id}" aria-label="${APP_TOWER.deckCard({ slot, name: speciesName(id) })}"><i>${slot}</i><img src="${speciesPortraitSource(id)}" alt="" width="40" height="40" draggable="false"><b>×${count}</b></button>`;
 }
 function ownedCounts(garden) {
     const COUNTS = new Map();
@@ -1615,17 +1653,24 @@ function ownedCounts(garden) {
 }
 // In a fight: how many fight on the field and how many wait; the deploy itself is automatic.
 const BATTLE_COMMAND_NOTES = Object.freeze({
-    engage: '사거리까지 접근해 공격해요',
-    scatter: '간격을 넓히며 공격해요',
-    retreat: '공격을 멈추고 적에게서 물러나요',
+    engage: PAGE.commandEngageNote,
+    scatter: APP_TOWER.commandScatter,
+    retreat: APP_TOWER.commandRetreat,
 });
 function syncBattleCommands(garden, visible, counts) {
     syncFlag('battleCommands', 'hidden', !visible);
     if (!visible) {
         return;
     }
-    syncText('frontlineStatus', `전선 ${counts.fighters}/${garden.frontlineLimit} · 예비대 ${counts.reserves}`);
-    syncText('battleCommandNote', BATTLE_COMMAND_NOTES[garden.battleCommand]);
+    syncText(
+        'frontlineStatus',
+        APP_TOWER.frontlineStatus({
+            fighters: counts.fighters,
+            limit: garden.frontlineLimit,
+            reserves: counts.reserves,
+        }),
+    );
+    syncText('battleCommandNote', BATTLE_COMMAND_NOTES[garden.battleCommand]());
     for (const INPUT of DOLLAR('battleCommands').querySelectorAll('input')) {
         INPUT.checked = INPUT.value === garden.battleCommand;
     }
@@ -1812,7 +1857,7 @@ window.addEventListener('pagehide', () => {
     unsubscribeProgress = null;
     RENDERER.dispose();
 });
-const GRAPHICS_RECOVERY_MESSAGE = '그래픽 화면을 복구하고 있어요.';
+const GRAPHICS_RECOVERY_MESSAGE = APP_HOME.graphicsRecovering();
 function suspendGraphics() {
     if (frameRequest === null || active.closed) {
         return;
@@ -1852,7 +1897,7 @@ CANVAS.addEventListener('webglcontextrestored', () => {
         }
         if ([RENDERER.device, RENDERER.ctx].some((owner) => owner.state !== 'ready')) {
             RECOVERY.failed = true;
-            FAIL(Error('그래픽 화면을 복구하지 못했어요. 새로고침해 다시 이어가 주세요.'));
+            FAIL(Error(APP_HOME.graphicsRecoveryFailed()));
             return;
         }
         if (HELP.scene) {
@@ -1928,12 +1973,20 @@ function sync(display, now, notices) {
     syncAttribute(
         'merge',
         'aria-label',
-        `${DOLLAR('merge').textContent.trim()}${MERGE_STATUS.available ? '' : ' 불가'} · ${MERGE_STATUS.reason}`,
+        APP_FARM.mergeLabel({
+            label: DOLLAR('merge').textContent.trim(),
+            available: MERGE_STATUS.available,
+            reason: localized(MERGE_STATUS.reason),
+        }),
     );
-    syncText('mergeNotice', MERGE_STATUS.reason);
+    syncText('mergeNotice', localized(MERGE_STATUS.reason));
     syncFlag('combine', 'disabled', home || FARM_EVENT_ACTIVE || (W.combine.recipe >= 0 && !COMBINE_STATUS.available));
     syncData('combine', 'availability', COMBINE_STATUS.code || 'unavailable');
-    syncAttribute('combine', 'aria-label', `조합${COMBINE_STATUS.available ? '' : ' 불가'} · ${COMBINE_STATUS.reason}`);
+    syncAttribute(
+        'combine',
+        'aria-label',
+        APP_FARM.combineLabel({ available: COMBINE_STATUS.available, reason: localized(COMBINE_STATUS.reason) }),
+    );
     const WORLD_COUNT = HUD_COUNTS.worldPopulation(W),
         BATTLE_VISIBLE = !home && fightActive(),
         BATTLE_COUNTS = BATTLE_VISIBLE ? HUD_COUNTS.battleCounts(W) : null;
@@ -1964,32 +2017,41 @@ function sync(display, now, notices) {
         LEVEL = overallLevel(PROGRESSION),
         LEVEL_START = overallXpForLevel(LEVEL),
         NEXT_LEVEL = overallXpForLevel(LEVEL + 1);
-    syncText('overallLevel', `전체 Lv.${LEVEL}`);
+    syncText('overallLevel', APP_FARM.overallLevel({ level: LEVEL }));
     syncText(
         'overallXp',
         NEXT_LEVEL > LEVEL_START
             ? `${PROGRESSION.overallXp - LEVEL_START}/${NEXT_LEVEL - LEVEL_START} XP`
-            : '정원 최대',
+            : APP_FARM.capacityMax(),
     );
     syncAttribute(
         'overallGrowth',
         'title',
-        `전체 XP ${PROGRESSION.overallXp} · 농장 정원 ${W.capacity} · 다음 전선 ${Math.floor(W.capacity / 2)}`,
+        APP_FARM.overallGrowth({
+            xp: PROGRESSION.overallXp,
+            capacity: W.capacity,
+            frontline: Math.floor(W.capacity / 2),
+        }),
     );
     syncText(
         'starter',
         PENDING_REWARD
-            ? '씨앗 보상 대기 · 공간이 생기면 합류해요'
+            ? APP_FARM.starterRewardWaiting()
             : !HAS_READY_TROOPS
-              ? '모두 잠자는 중 · 회복을 기다려요'
+              ? APP_FARM.starterAllAsleep()
               : WORLD_COUNT >= W.capacity
-                ? '농장이 가득 찼어요'
-                : '번식으로 식구를 늘려요',
+                ? APP_FARM.starterFarmFull()
+                : APP_FARM.starterBreed(),
     );
     syncWidth('allyHealth', (armyMax ? (armyCurrent / armyMax) * 100 : 0) + '%');
     syncText(
         'allyHealthText',
-        Math.ceil(armyCurrent) + '/' + Math.ceil(armyMax) + ' · ' + armyLiving + '/' + armyTotal + '마리',
+        APP_FARM.armyHealth({
+            current: Math.ceil(armyCurrent),
+            max: Math.ceil(armyMax),
+            living: armyLiving,
+            total: armyTotal,
+        }),
     );
     const BOSS = display.boss,
         BOSSES = display.bosses,
@@ -2005,29 +2067,38 @@ function sync(display, now, notices) {
                       (reward) => reward.source === 'farm' && reward.encounterId === FARM_EVENT.encounterId,
                   )
                 : null,
-        REWARD_NAME = '씨앗',
         ENCOUNTER_NAME = giantSpeciesName(BOSS.species);
     syncText(
         'bossName',
         W.tower.active
-            ? `${BOSS.stage}층 · ${BOSS.isFinalBoss ? '최종 수호자' : `보스 ${BOSS_LIVING}/${BOSS_TOTAL}`}`
+            ? APP_TOWER.bossFloor({
+                  floor: BOSS.stage,
+                  final: BOSS.isFinalBoss,
+                  living: BOSS_LIVING,
+                  total: BOSS_TOTAL,
+              })
             : ENCOUNTER_NAME,
     );
-    syncAttribute('bossHealth', 'aria-label', '등장한 보스 합계 체력');
+    syncAttribute('bossHealth', 'aria-label', APP_TOWER.bossHealth());
     syncText('bossHealthText', Math.ceil(BOSS_HP) + '/' + Math.round(BOSS_MAX_HP));
     syncText(
         'bossHealthNote',
         FARM_EVENT_ACTIVE && FARM_EVENT.phase === 'dropping'
-            ? '보스가 있는 칸으로 가는 중이에요'
+            ? APP_TOWER.bossMarching()
             : FARM_EVENT_ACTIVE && FARM_EVENT.phase === 'fighting'
               ? W.bossEnraged
-                  ? '격노! 피해 2배, 공격이 빨라져요'
+                  ? APP_TOWER.bossEnraged()
                   : BOSS_PENDING > 0
-                    ? `남은 합류 ${BOSS_PENDING} · ${Math.max(0, Math.ceil(ENCOUNTER.nextJoinAt - ENCOUNTER.elapsed))}초 후 증원`
-                    : `전원 등장 · 격노까지 ${Math.max(0, Math.ceil(W.battleTimeLimit() - FARM_EVENT.elapsed))}초`
+                    ? APP_TOWER.bossReinforce({
+                          pending: BOSS_PENDING,
+                          seconds: Math.max(0, Math.ceil(ENCOUNTER.nextJoinAt - ENCOUNTER.elapsed)),
+                      })
+                    : APP_TOWER.bossAllIn({
+                          seconds: Math.max(0, Math.ceil(W.battleTimeLimit() - FARM_EVENT.elapsed)),
+                      })
               : FARM_EVENT_ACTIVE
                 ? ''
-                : '쓰러진 병력 포함 최대 체력',
+                : PAGE.bossHealthNote(),
     );
     syncFlag('fightRetreat', 'hidden', !(FARM_EVENT_ACTIVE && ['dropping', 'fighting'].includes(FARM_EVENT.phase)));
     syncAttribute('allyHealth', 'aria-valuenow', armyCurrent);
@@ -2039,14 +2110,14 @@ function sync(display, now, notices) {
         'battleOutcome',
         BATTLE_OUTCOME === 'victory'
             ? FARM_EVENT.rewardStatus === 'granted'
-                ? `${BOSS.stage}층 돌파 · 새 기록! ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 농장에 합류했어요`
+                ? APP_TOWER.victoryJoined({ floor: BOSS.stage, reward: rewardReceiptSummary(FARM_REWARD) })
                 : FARM_EVENT.rewardStatus === 'pending'
-                  ? `${BOSS.stage}층 돌파 · 새 기록! ${REWARD_NAME} ${rewardReceiptSummary(FARM_REWARD)} · 공간이 생기면 합류해요`
+                  ? APP_TOWER.victoryPending({ floor: BOSS.stage, reward: rewardReceiptSummary(FARM_REWARD) })
                   : W.tower.record
-                    ? `${BOSS.stage}층 돌파 · 새 기록!`
-                    : `${BOSS.stage}층 돌파 · 전체 성장 XP 획득`
+                    ? APP_TOWER.victoryRecord({ floor: BOSS.stage })
+                    : APP_TOWER.victoryXp({ floor: BOSS.stage })
             : BATTLE_OUTCOME === 'defeat'
-              ? `${BOSS.stage}층에서 쓰러졌어요 · 최고 ${W.playerProgression.towerBest}층 · 쓰러진 병력은 농장에서 쉬어요`
+              ? APP_TOWER.defeat({ floor: BOSS.stage, best: W.playerProgression.towerBest })
               : '',
     );
     syncFlag(
@@ -2064,9 +2135,13 @@ function sync(display, now, notices) {
     paintRange(DOLLAR('startFloor'));
     syncText(
         'startFloorValue',
-        `시작 ${START_FLOOR}층 · 최고 시작 ${highestTowerStartFloor(BEST_FLOOR)} · 기록 ${BEST_FLOOR}층`,
+        APP_TOWER.startFloor({
+            start: START_FLOOR,
+            highest: highestTowerStartFloor(BEST_FLOOR),
+            best: BEST_FLOOR,
+        }),
     );
-    syncText('bossChallenge', '탑 오르기');
+    syncText('bossChallenge', PAGE.climbTower());
     syncFlag('bossChallenge', 'hidden', FARM_EVENT_ACTIVE || home);
     syncAttribute('bossChallenge', 'aria-disabled', String(raidStartBlockReason() !== ''));
     const WORK_WORLD = personalGarden || W,
@@ -2074,21 +2149,21 @@ function sync(display, now, notices) {
         CUT = workCut(WORK_WORLD),
         PLAN = plannedWorkers(WORK_WORLD),
         BREEDERS = PLAN.total - PLAN.workers;
-    let note = `일꾼 ${WORKERS}마리 · 먹이 ${WORK_WORLD.workFoodPerMinute.toFixed(1)}/분`,
+    let note = APP_FARM.workNote({ workers: WORKERS, perMinute: WORK_WORLD.workFoodPerMinute.toFixed(1) }),
         warn = false;
     if (WORK_WORLD.warehouseFull) {
-        note = '농장에 먹이가 가득해요 · 일꾼은 쉬는 중이에요';
+        note = APP_FARM.workFoodFull();
         warn = true;
     } else if (WORKERS === 0) {
-        note = '일꾼이 없어서 먹이가 안 만들어져요';
+        note = APP_FARM.workNoWorkers();
         warn = true;
     }
     if (document.activeElement !== DOLLAR('workCutA') && !workSliderHeld) {
         DOLLAR('workCutA').value = String(CUT);
     }
     syncText('workHudNote', note);
-    syncText('workHudBreed', `번식 ${BREEDERS}`);
-    syncText('workHudFood', `먹이 ${PLAN.workers}`);
+    syncText('workHudBreed', APP_FARM.workHudBreed({ count: BREEDERS }));
+    syncText('workHudFood', APP_FARM.workHudFood({ count: PLAN.workers }));
     syncData('workHud', 'warn', warn);
     paintRange(DOLLAR('workCutA'));
     if (menuOpen && menuTab === 'farms') {

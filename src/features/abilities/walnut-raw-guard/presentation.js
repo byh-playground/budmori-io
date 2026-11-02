@@ -1,9 +1,10 @@
+import { ABILITIES } from '../../../i18n/messages/abilities.js';
 export class WalnutRawGuardPresentation {
     label(_definition, value) {
-        return `5초마다 2초 방어 · 방어력 +50 · 모아 둔 피해의 ${Math.round(value * 100)}% 추가 반격`;
+        return ABILITIES.walnutRawGuardLabel({ value });
     }
     title(value) {
-        return `추가 피해 ${Math.round(value * 100)}%`;
+        return ABILITIES.walnutRawGuardTitle({ value });
     }
     drawGuard(renderer, effect, progress) {
         const T = Math.min(1, progress / 0.3),

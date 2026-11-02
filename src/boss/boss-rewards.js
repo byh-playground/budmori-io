@@ -5,13 +5,13 @@ import { SPECIES_COUNT } from '../units/species-catalog.js';
 // the selected amount is floored, then bounded independently of presentation.
 export const BOSS_REWARD_BANDS = Object.freeze(
     [
-        ['꽝', 5, 0],
-        ['매우 적음', 10, 1],
-        ['적음', 20, 2],
-        ['보통', 30, 3],
-        ['많음', 20, 4],
-        ['매우 많음', 10, 5],
-        ['대박', 5, 6],
+        [{ ko: '꽝', en: 'Bust' }, 5, 0],
+        [{ ko: '매우 적음', en: 'Very Low' }, 10, 1],
+        [{ ko: '적음', en: 'Low' }, 20, 2],
+        [{ ko: '보통', en: 'Average' }, 30, 3],
+        [{ ko: '많음', en: 'High' }, 20, 4],
+        [{ ko: '매우 많음', en: 'Very High' }, 10, 5],
+        [{ ko: '대박', en: 'Jackpot' }, 5, 6],
     ].map(([label, weight, numerator]) => Object.freeze({ label, weight, numerator })),
 );
 const TOTAL_WEIGHT = BOSS_REWARD_BANDS.reduce((sum, band) => sum + band.weight, 0);

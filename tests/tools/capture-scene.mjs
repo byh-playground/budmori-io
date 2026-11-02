@@ -83,6 +83,7 @@ try {
             : { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] }),
     });
     const PAGE = await browser.newPage({
+        locale: 'ko-KR',
         viewport: { width: WIDTH, height: HEIGHT },
         deviceScaleFactor: Number(ARGS.scale ?? 1),
     });

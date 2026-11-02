@@ -54,6 +54,52 @@ function moduleURL(node) {
         : null;
 }
 
+// Stylesheets draw no text of their own (docs/i18n.md): Hangul is allowed only in comments; a ::before/::after
+// label reads a localized attribute instead (content: attr(data-…)).
+function checkStyleText(root) {
+    const DIRECTORY = path.join(root, 'src/styles'),
+        HANGUL = /[\u1100-\u11FF\u3130-\u318F\uAC00-\uD7A3]/u,
+        FOUND = fs
+            .readdirSync(DIRECTORY)
+            .filter((name) => name.endsWith('.css'))
+            .flatMap((name) =>
+                fs
+                    .readFileSync(path.join(DIRECTORY, name), 'utf8')
+                    .replace(/\/\*[\s\S]*?\*\//g, '')
+                    .split('\n')
+                    .filter((line) => HANGUL.test(line))
+                    .map((line) => `${name}: ${line.trim()}`),
+            );
+    assert.deepEqual(FOUND, [], 'CSS may hold Hangul only in comments; use content: attr(data-…) set from a message');
+}
+
+// index.html static text is localized (docs/i18n.md): Hangul only inside <noscript>, and every data-i18n /
+// data-i18n-<attr> key names a member of the defineMessages table in src/i18n/messages/page.js.
+function checkPageText(html, pageSource) {
+    const OUTSIDE_NOSCRIPT = html.replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript\s*>/gi, ''),
+        HANGUL = /[\u1100-\u11FF\u3130-\u318F\uAC00-\uD7A3]/u,
+        LINES = OUTSIDE_NOSCRIPT.split('\n').filter((line) => HANGUL.test(line));
+    assert.deepEqual(
+        LINES.map((line) => line.trim()),
+        [],
+        'index.html may hold Hangul only inside <noscript>; move the text to src/i18n/messages/page.js (data-i18n)',
+    );
+    const TREE = parse(pageSource, { ecmaVersion: 'latest', sourceType: 'module' }),
+        KEYS = new Set();
+    walk(TREE, (node) => {
+        if (node.type === 'CallExpression' && node.callee.name === 'defineMessages') {
+            assert.equal(node.arguments[0]?.type, 'ObjectExpression', 'page.js must call defineMessages({ ... })');
+            for (const PROPERTY of node.arguments[0].properties) {
+                KEYS.add(PROPERTY.key.name ?? PROPERTY.key.value);
+            }
+        }
+    });
+    const MISSING = [...html.matchAll(/\sdata-i18n(?:-[\w-]+)?\s*=\s*(["'])(.*?)\1/g)]
+        .map((match) => match[2])
+        .filter((key) => !KEYS.has(key));
+    assert.deepEqual([...new Set(MISSING)], [], 'index.html data-i18n keys missing from src/i18n/messages/page.js');
+}
+
 export function sourceGraph(root = DEFAULT_ROOT) {
     // Refresh verifies a staged SDK before replacing the working cache. Use that root's pinned schema.
     const { validateAssetMetadata: VALIDATE_ASSET_METADATA } = REQUIRE(
@@ -94,6 +140,8 @@ export function sourceGraph(root = DEFAULT_ROOT) {
         MANIFEST_SCRIPT = SCRIPTS.find((match) => attributes(match[1]).id === 'bloom-runtime-manifest');
     assert.ok(MANIFEST_SCRIPT, 'Runtime manifest is required');
     const MANIFEST = JSON.parse(MANIFEST_SCRIPT[2]);
+    checkPageText(HTML, READ('src/i18n/messages/page.js').toString('utf8'));
+    checkStyleText(ROOT);
     const VERSION_MODULE = parse(READ('src/version.js').toString('utf8'), {
         ecmaVersion: 'latest',
         sourceType: 'module',

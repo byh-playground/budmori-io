@@ -6,15 +6,18 @@ import {
     formationUpgradeValue,
 } from '../formation/formation-skill-state.js';
 import { iconSvg } from './icons.js';
+import { LOCALE_TAG } from '../i18n/locale.js';
+import { localized } from '../i18n/text.js';
+import { RELIC } from '../i18n/messages/ui-relic.js';
 
 const CONDITION_LABELS = Object.freeze({
-    damageDealt: '준 피해',
-    damageTaken: '받은 피해',
-    hits: '공격 적중',
-    critHits: '치명타',
-    hitCharge: '적중 충전',
-    allyDeaths: '아군 쓰러짐',
-    time: '전투 시간',
+    damageDealt: RELIC.conditionDamageDealt,
+    damageTaken: RELIC.conditionDamageTaken,
+    hits: RELIC.conditionHits,
+    critHits: RELIC.conditionCritHits,
+    hitCharge: RELIC.conditionHitCharge,
+    allyDeaths: RELIC.conditionAllyDeaths,
+    time: RELIC.conditionTime,
 });
 const ESCAPE = (value) =>
     String(value).replace(
@@ -28,8 +31,8 @@ const ESCAPE = (value) =>
                 "'": '&#39;',
             })[character],
     );
-const NUMBER = (value) => new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 }).format(value || 0);
-const SECONDS = (value) => `${NUMBER(Math.max(0, value))}초`;
+const NUMBER = (value) => new Intl.NumberFormat(LOCALE_TAG, { maximumFractionDigits: 2 }).format(value || 0);
+const SECONDS = (value) => RELIC.seconds({ value: NUMBER(Math.max(0, value)) });
 
 // Card previews and both docks describe the same level and role profile.
 export function relicEffectText(definition, level, role = 'player', previousLevel = 0, floor = 1, compact = false) {
@@ -39,52 +42,59 @@ export function relicEffectText(definition, level, role = 'player', previousLeve
             BEFORE = previousLevel ? formationDamageBudget(PROFILE, floor, previousLevel, role).damage : null,
             BASE = BEFORE === null ? NUMBER(BUDGET.damage) : `${NUMBER(BEFORE)} → ${NUMBER(BUDGET.damage)}`,
             PARTS = [
-                `기본 ${BASE}`,
-                ...(BUDGET.maxHpDamageRatio ? [`대상 최대 체력 ${NUMBER(BUDGET.maxHpDamageRatio * 100)}%`] : []),
+                RELIC.baseDamage({ amount: BASE }),
+                ...(BUDGET.maxHpDamageRatio
+                    ? [RELIC.maxHpDamage({ percent: NUMBER(BUDGET.maxHpDamageRatio * 100) })]
+                    : []),
                 ...(BUDGET.missingHpDamageRatio
-                    ? [`대상이 잃은 체력 ${NUMBER(BUDGET.missingHpDamageRatio * 100)}%`]
+                    ? [RELIC.missingHpDamage({ percent: NUMBER(BUDGET.missingHpDamageRatio * 100) })]
                     : []),
             ],
             DELIVERY = PROFILE.pulseInterval
-                ? `${SECONDS(PROFILE.upgradeBase + PROFILE.upgradeStep * (level - 1))} 동안 분할`
+                ? RELIC.splitOverTime({ duration: SECONDS(PROFILE.upgradeBase + PROFILE.upgradeStep * (level - 1)) })
                 : PROFILE.damage.total
-                  ? `유성 ${PROFILE.upgradeBase + PROFILE.upgradeStep * (level - 1)}개로 분할`
+                  ? RELIC.splitMeteors({ count: PROFILE.upgradeBase + PROFILE.upgradeStep * (level - 1) })
                   : PROFILE.stunSeconds
-                    ? `${SECONDS(PROFILE.stunSeconds)} 기절`
+                    ? RELIC.stun({ duration: SECONDS(PROFILE.stunSeconds) })
                     : PROFILE.aoeRadius > 0 || PROFILE.aoeRadiusRatio > 0
-                      ? '범위 피해'
-                      : '단일 피해';
-        return `${floor}층 · ${PROFILE.damage.total ? '1회 발동 총 ' : ''}${PARTS.join(' + ')}${compact ? '' : ` · ${DELIVERY} · 방어 적용 전`}`;
+                      ? RELIC.areaDamage()
+                      : RELIC.singleDamage(),
+            DAMAGE = PROFILE.damage.total ? RELIC.castTotal({ parts: PARTS.join(' + ') }) : PARTS.join(' + ');
+        return `${RELIC.floor({ floor })} · ${DAMAGE}${compact ? '' : ` · ${DELIVERY} · ${RELIC.beforeDefense()}`}`;
     }
     const PROFILE = role === 'boss' ? { ...definition, ...definition.boss } : definition,
         VALUE = formationUpgradeValue(PROFILE, level),
         PREVIOUS = previousLevel ? formationUpgradeValue(PROFILE, previousLevel) : null,
         AMOUNT = PREVIOUS === null ? NUMBER(VALUE) : `${NUMBER(PREVIOUS)} → ${NUMBER(VALUE)}`,
-        FRIEND = role === 'boss' ? '보스 진영' : '아군';
+        BOSS = role === 'boss';
     if (PROFILE.id === 'giant') {
         const BONUS = giantBonusFor(floor, level, role),
             BEFORE = previousLevel ? giantBonusFor(floor, previousLevel, role) : null,
             EXTRA = BEFORE === null ? NUMBER(BONUS) : `${NUMBER(BEFORE)} → ${NUMBER(BONUS)}`;
-        return `${floor}층 · 무작위 ${PROFILE.upgradeValues[0]}명 · ${SECONDS(PROFILE.durationSeconds)} · 기본 공격 한 동작 추가 피해 ${EXTRA}${compact ? '' : ` · 몸집 ×${NUMBER(PROFILE.sizeMultiplier)}, 방어력 +${NUMBER(PROFILE.armorBonus)} · 연타 분할·방어 적용 전`}`;
+        return `${RELIC.floor({ floor })} · ${RELIC.giantTargets({ count: PROFILE.upgradeValues[0] })} · ${SECONDS(PROFILE.durationSeconds)} · ${RELIC.giantExtraDamage({ amount: EXTRA })}${compact ? '' : ` · ${RELIC.giantBody({ size: NUMBER(PROFILE.sizeMultiplier), armor: NUMBER(PROFILE.armorBonus) })} · ${RELIC.giantSplit()}`}`;
     }
     if (PROFILE.id === 'copy') {
-        return `${FRIEND} 밀집 위치에 체력 1 분신 · 반경 ${AMOUNT} × T1 몸통 지름 · 전투 종료까지`;
+        return RELIC.copyEffect({ boss: BOSS, amount: AMOUNT });
     }
     if (PROFILE.id === 'healing-rain') {
         const BASE = formationBaseValue(PROFILE.healing.base, floor, level, role),
             BEFORE = previousLevel ? formationBaseValue(PROFILE.healing.base, floor, previousLevel, role) : null,
             AMOUNT = BEFORE === null ? NUMBER(BASE) : `${NUMBER(BEFORE)} → ${NUMBER(BASE)}`,
-            REFERENCE = role === 'boss' ? '보스 자신의' : '원본 아군 평균';
-        return `${floor}층 · 총 회복 ${AMOUNT} + ${REFERENCE} 최대 체력 ${NUMBER(PROFILE.healing.maxHpRatio * 100)}%${compact ? '' : ` · ${SECONDS(PROFILE.durationSeconds)} 동안 부상자에게 분배`}`;
+            TOTAL = RELIC.healingTotal({
+                boss: BOSS,
+                amount: AMOUNT,
+                percent: NUMBER(PROFILE.healing.maxHpRatio * 100),
+            });
+        return `${RELIC.floor({ floor })} · ${TOTAL}${compact ? '' : ` · ${RELIC.healingSpread({ duration: SECONDS(PROFILE.durationSeconds) })}`}`;
     }
-    return PROFILE.description;
+    return localized(PROFILE.description);
 }
 
 export function relicAcquisitionText(receipt, floor = 1) {
     const DEFINITION = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === receipt.card.id),
         BEFORE = receipt.before.level,
         AFTER = receipt.after.level;
-    return `${BEFORE ? `Lv.${BEFORE} → ${AFTER}` : '새 기술'} · ${relicEffectText(DEFINITION, AFTER, receipt.role, BEFORE, floor, true)}`;
+    return `${BEFORE ? `Lv.${BEFORE} → ${AFTER}` : RELIC.newSkill()} · ${relicEffectText(DEFINITION, AFTER, receipt.role, BEFORE, floor, true)}`;
 }
 
 function slotState(definition, runtime, cast) {
@@ -97,16 +107,16 @@ function slotState(definition, runtime, cast) {
         STATE = PHASE || (!runtime ? 'waiting' : COOLDOWN > 1e-9 ? 'cooldown' : READY ? 'ready' : 'charging'),
         LABEL =
             PHASE === 'prepare'
-                ? `시전 ${SECONDS(REMAINING)}`
+                ? RELIC.casting({ duration: SECONDS(REMAINING) })
                 : PHASE === 'recover'
-                  ? `후딜 ${SECONDS(REMAINING)}`
+                  ? RELIC.recovering({ duration: SECONDS(REMAINING) })
                   : STATE === 'waiting'
-                    ? '전투 대기'
+                    ? RELIC.waitingBattle()
                     : STATE === 'cooldown'
-                      ? `재사용 ${SECONDS(Math.ceil(COOLDOWN * 10) / 10)}`
+                      ? RELIC.cooldown({ duration: SECONDS(Math.ceil(COOLDOWN * 10) / 10) })
                       : STATE === 'ready'
-                        ? '발동 대기'
-                        : `충전 ${Math.floor((CHARGE / REQUIRED) * 100)}%`;
+                        ? RELIC.ready()
+                        : RELIC.charging({ percent: Math.floor((CHARGE / REQUIRED) * 100) });
     return {
         required: REQUIRED,
         charge: CHARGE,
@@ -132,7 +142,7 @@ export class RelicDock {
         this.root = document.createElement('section');
         this.root.className = 'formation-dock';
         this.root.dataset.role = role;
-        this.root.setAttribute('aria-label', `${role === 'boss' ? '보스' : '아군'} 기술`);
+        this.root.setAttribute('aria-label', RELIC.dockLabel({ boss: role === 'boss' }));
         this.root.innerHTML = '<div class="formation-slots"></div>';
         document.querySelector(host).prepend(this.root);
         this.slotHost = this.root.querySelector('.formation-slots');
@@ -140,7 +150,7 @@ export class RelicDock {
         this.dialog.id = `relicDetail-${role}`;
         this.dialog.className = 'relic-detail';
         this.dialog.setAttribute('aria-labelledby', `relicDetailTitle-${role}`);
-        this.dialog.innerHTML = `<div class="relic-detail__heading"><h2 id="relicDetailTitle-${role}"></h2><button type="button" class="relic-detail__close" aria-label="기술 상세 닫기">${iconSvg('close')}</button></div><p class="relic-detail__effect"></p><dl><dt>발동 조건</dt><dd class="relic-detail__condition"></dd><dt>현재 상태</dt><dd class="relic-detail__state"></dd><dt>재사용 대기</dt><dd>${FORMATION_COOLDOWN_SECONDS}초 · 조건과 재사용 대기를 모두 채우면 자동 발동</dd></dl>`;
+        this.dialog.innerHTML = `<div class="relic-detail__heading"><h2 id="relicDetailTitle-${role}"></h2><button type="button" class="relic-detail__close" aria-label="${RELIC.closeDetail()}">${iconSvg('close')}</button></div><p class="relic-detail__effect"></p><dl><dt>${RELIC.detailCondition()}</dt><dd class="relic-detail__condition"></dd><dt>${RELIC.detailState()}</dt><dd class="relic-detail__state"></dd><dt>${RELIC.detailCooldown()}</dt><dd>${RELIC.cooldownRule({ seconds: FORMATION_COOLDOWN_SECONDS })}</dd></dl>`;
         document.body.append(this.dialog);
         this.slotHost.addEventListener('click', (event) => {
             const BUTTON = event.target.closest('[data-relic-detail]');
@@ -209,18 +219,25 @@ export class RelicDock {
             CONDITION =
                 this.role === 'boss' && DAMAGE_CHARGE
                     ? DEFINITION.condition === 'damageTaken'
-                        ? '본체가 받은 피해'
-                        : '본체가 준 피해'
+                        ? RELIC.conditionBossDamageTaken()
+                        : RELIC.conditionBossDamageDealt()
                     : this.role === 'boss' && DEFINITION.condition === 'allyDeaths'
-                      ? '보스 진영 쓰러짐'
+                      ? RELIC.conditionBossAllyDeaths()
                       : DEFINITION.condition === 'hitCharge'
-                        ? `적중당 +1 · 치명타 추가 +${NUMBER(DEFINITION.criticalChargeBonus)}`
-                        : CONDITION_LABELS[DEFINITION.condition] || DEFINITION.condition,
+                        ? RELIC.conditionHitChargeRule({ bonus: NUMBER(DEFINITION.criticalChargeBonus) })
+                        : CONDITION_LABELS[DEFINITION.condition]?.() || DEFINITION.condition,
             THRESHOLD_RULE = DAMAGE_CHARGE
-                ? `${CURRENT.floor}층 기준 ${NUMBER(formationBaseValue(DAMAGE_CHARGE.base, CURRENT.floor, 1))}과 시전자 최대 체력 ${NUMBER(DAMAGE_CHARGE.maxHpRatio * 100)}% 중 작은 값 · 유물 레벨과 무관`
+                ? RELIC.thresholdRule({
+                      floor: CURRENT.floor,
+                      base: NUMBER(formationBaseValue(DAMAGE_CHARGE.base, CURRENT.floor, 1)),
+                      percent: NUMBER(DAMAGE_CHARGE.maxHpRatio * 100),
+                  })
                 : '';
-        this.dialog.querySelector('h2').textContent =
-            `${this.role === 'boss' ? '보스' : '아군'} · ${DEFINITION.name} Lv.${LEVEL}`;
+        this.dialog.querySelector('h2').textContent = RELIC.detailTitle({
+            boss: this.role === 'boss',
+            name: localized(DEFINITION.name),
+            level: LEVEL,
+        });
         this.dialog.querySelector('.relic-detail__effect').textContent = relicEffectText(
             DEFINITION,
             LEVEL,
@@ -232,11 +249,11 @@ export class RelicDock {
             ? `${CONDITION}${STATUS.thresholdKnown ? ` ${NUMBER(STATUS.charge)} / ${NUMBER(STATUS.required)}` : ''} · ${THRESHOLD_RULE}`
             : DEFINITION.healing && !STATUS.thresholdKnown
               ? this.role === 'boss'
-                  ? '전투에서 시전자 보스의 최대 체력으로 계산'
-                  : '전투에서 현재 원본 아군 기준으로 계산'
-              : `${CONDITION} ${NUMBER(STATUS.charge)} / ${NUMBER(STATUS.required)}${DEFINITION.healing ? ` · 이번 총 회복 ${NUMBER(STATUS.healingTotal)} · 문턱은 회복량 ×${NUMBER(DEFINITION.chargeRatio)}` : ''}`;
+                  ? RELIC.healingUnknownBoss()
+                  : RELIC.healingUnknownAlly()
+              : `${CONDITION} ${NUMBER(STATUS.charge)} / ${NUMBER(STATUS.required)}${DEFINITION.healing ? ` · ${RELIC.healingProgress({ total: NUMBER(STATUS.healingTotal), ratio: NUMBER(DEFINITION.chargeRatio) })}` : ''}`;
         this.dialog.querySelector('.relic-detail__state').textContent =
-            `${STATUS.label}${STATUS.state === 'recover' ? ` · 재사용 ${SECONDS(Math.ceil(STATUS.cooldown * 10) / 10)}` : ''}`;
+            `${STATUS.label}${STATUS.state === 'recover' ? ` · ${RELIC.cooldown({ duration: SECONDS(Math.ceil(STATUS.cooldown * 10) / 10) })}` : ''}`;
     }
     // A UI-only emphasis follows each acquired skill into its first following battle.
     // This never changes the model's receipt, skill level or cooldown.
@@ -287,7 +304,7 @@ export class RelicDock {
             this.closeDetail();
             this.slotHost.innerHTML = RELICS.map(([id, level]) => {
                 const DEFINITION = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === id);
-                return `<div class="formation-slot" data-formation-slot="${ESCAPE(id)}" data-empty="false"><button type="button" class="formation-icon" data-relic-detail="${ESCAPE(id)}" aria-label="${ESCAPE(DEFINITION.name)} Lv.${level} 상세" aria-haspopup="dialog" aria-controls="${this.dialog.id}" aria-expanded="false">${iconSvg(id)}<i class="formation-clock" aria-hidden="true"></i><em class="formation-lv">${level}</em></button><div class="formation-charge" aria-hidden="true"><i></i></div><small class="formation-status"></small><small class="formation-acquired" hidden></small></div>`;
+                return `<div class="formation-slot" data-formation-slot="${ESCAPE(id)}" data-empty="false"><button type="button" class="formation-icon" data-relic-detail="${ESCAPE(id)}" aria-label="${ESCAPE(RELIC.slotDetail({ name: localized(DEFINITION.name), level }))}" aria-haspopup="dialog" aria-controls="${this.dialog.id}" aria-expanded="false">${iconSvg(id)}<i class="formation-clock" aria-hidden="true"></i><em class="formation-lv">${level}</em></button><div class="formation-charge" aria-hidden="true"><i></i></div><small class="formation-status"></small><small class="formation-acquired" hidden></small></div>`;
             }).join('');
         }
         const SLOTS =
@@ -312,7 +329,7 @@ export class RelicDock {
                 BADGE = ACQUISITION
                     ? ACQUISITION.before.level
                         ? `Lv.${ACQUISITION.before.level} → ${ACQUISITION.after.level}`
-                        : '새 기술'
+                        : RELIC.newSkill()
                     : '';
             ELEMENT.dataset.acquired = ACQUISITION ? (ACQUISITION.before.level ? 'upgrade' : 'new') : '';
             ELEMENT.querySelector('.formation-acquired').hidden = !ACQUISITION;
@@ -331,7 +348,7 @@ export class RelicDock {
             ELEMENT.querySelector('.formation-status').textContent = STATUS.label;
             ELEMENT.querySelector('.formation-icon').setAttribute(
                 'aria-label',
-                `${this.role === 'boss' ? '보스' : '아군'} ${DEFINITION.name} Lv.${LEVELS.get(ID)} · ${STATUS.label}${BADGE ? ` · 이번 전투 ${BADGE}` : ''} · 상세 보기`,
+                `${RELIC.slotSummary({ boss: this.role === 'boss', name: localized(DEFINITION.name), level: LEVELS.get(ID) })} · ${STATUS.label}${BADGE ? ` · ${RELIC.thisBattle({ badge: BADGE })}` : ''} · ${RELIC.viewDetails()}`,
             );
             ELEMENT.dataset.state = STATUS.state;
             ELEMENT.dataset.ready = String(STATUS.state === 'ready');

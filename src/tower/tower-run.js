@@ -58,44 +58,74 @@ export const PASSIVE_SETTINGS = Object.freeze({
     resolveMaxReduction: 0.8,
     undyingMaxRestore: 0.9,
 });
-const NUMBER = (value) => new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 4 }).format(value);
-const PERCENT = (value) => `${NUMBER(value * 100)}%`;
+// Card texts are TextPairs (docs/i18n.md); each locale formats its own numbers.
+const NUMBER_FORMATS = Object.freeze({
+    ko: new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 4 }),
+    en: new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 }),
+});
+const NUMBER = Object.freeze({
+    ko: (value) => NUMBER_FORMATS.ko.format(value),
+    en: (value) => NUMBER_FORMATS.en.format(value),
+});
+const PERCENT = Object.freeze({
+    ko: (value) => `${NUMBER.ko(value * 100)}%`,
+    en: (value) => `${NUMBER.en(value * 100)}%`,
+});
 export const PASSIVE_CARDS = Object.freeze([
     {
         id: 'last-stand',
-        name: '배수진',
+        name: { ko: '배수진', en: 'Last Stand' },
         values: [0.15, 0.24, 0.38],
-        text: (value) => `체력 50% 이하일 때 공격력 +${PERCENT(value)}`,
+        text: {
+            ko: ({ value }) => `체력 50% 이하일 때 공격력 +${PERCENT.ko(value)}`,
+            en: ({ value }) => `+${PERCENT.en(value)} Attack at 50% HP or less`,
+        },
     },
     {
         id: 'resolve',
-        name: '불굴',
+        name: { ko: '불굴', en: 'Resolve' },
         values: [0.15, 0.22, 0.32],
-        text: (value) => `체력 30% 이하일 때 받는 피해 -${PERCENT(value)}`,
+        text: {
+            ko: ({ value }) => `체력 30% 이하일 때 받는 피해 -${PERCENT.ko(value)}`,
+            en: ({ value }) => `-${PERCENT.en(value)} damage taken at 30% HP or less`,
+        },
     },
     {
         id: 'vengeance',
-        name: '복수',
+        name: { ko: '복수', en: 'Vengeance' },
         values: [0.03, 0.045, 0.07],
-        text: (value) => `아군이 쓰러질 때마다 공격력 +${PERCENT(value)} (전투 동안, 최대 10회)`,
+        text: {
+            ko: ({ value }) => `아군이 쓰러질 때마다 공격력 +${PERCENT.ko(value)} (전투 동안, 최대 10회)`,
+            en: ({ value }) => `+${PERCENT.en(value)} Attack each time an ally falls (this battle, up to 10 times)`,
+        },
     },
     {
         id: 'opening',
-        name: '선제 공격',
+        name: { ko: '선제 공격', en: 'First Strike' },
         values: [0.4, 0.6, 0.9],
-        text: (value) => `전투 시작 후 ${PASSIVE_SETTINGS.openingSeconds}초간 공격력 +${PERCENT(value)}`,
+        text: {
+            ko: ({ value }) => `전투 시작 후 ${PASSIVE_SETTINGS.openingSeconds}초간 공격력 +${PERCENT.ko(value)}`,
+            en: ({ value }) =>
+                `+${PERCENT.en(value)} Attack for the first ${PASSIVE_SETTINGS.openingSeconds}s of battle`,
+        },
     },
     {
         id: 'helper',
-        name: '도우미',
+        name: { ko: '도우미', en: 'Helper' },
         values: [0.05, 0.08, 0.12],
-        text: (value) => `아군이 쓰러지면 주변 아군을 최대 체력의 ${PERCENT(value)}만큼 회복`,
+        text: {
+            ko: ({ value }) => `아군이 쓰러지면 주변 아군을 최대 체력의 ${PERCENT.ko(value)}만큼 회복`,
+            en: ({ value }) => `When an ally falls, nearby allies heal ${PERCENT.en(value)} of max HP`,
+        },
     },
     {
         id: 'undying',
-        name: '불사',
+        name: { ko: '불사', en: 'Undying' },
         values: [0.05, 0.15, 0.3],
-        text: (value) => `아군마다 전투당 한 번, 치명적인 피해를 견디고 체력 ${PERCENT(value)}로 남음`,
+        text: {
+            ko: ({ value }) => `아군마다 전투당 한 번, 치명적인 피해를 견디고 체력 ${PERCENT.ko(value)}로 남음`,
+            en: ({ value }) => `Once per battle, each ally survives a fatal hit with ${PERCENT.en(value)} HP`,
+        },
     },
 ]);
 
@@ -120,7 +150,11 @@ export function passiveTotals(cards, role = 'player') {
     return TOTALS;
 }
 
-export const RARITY_NAMES = Object.freeze(['일반', '희귀', '영웅']);
+export const RARITY_NAMES = Object.freeze([
+    { ko: '일반', en: 'Common' },
+    { ko: '희귀', en: 'Rare' },
+    { ko: '영웅', en: 'Epic' },
+]);
 
 // Stat cards share one resolver: (base * (1 + basePct) + flat) * (1 + pct).
 // Fixed cards serve early tiers; percentage cards overtake them after the agreed reference stats.
@@ -130,39 +164,60 @@ const HP_CARD_PERCENT = Object.freeze([0.12, 0.19, 0.3]);
 const REGEN_CARD_PERCENT = Object.freeze([0.0025, 0.004, 0.00625]);
 const CARD_STAT_REFERENCE = Object.freeze({ attackPower: 20, maxHp: 400 });
 const STAT_CARDS = Object.freeze([
-    { id: 'attack-pct', stat: 'attackPower', mode: 'pct', name: '공격력', icon: 'attack', values: ATTACK_CARD_PERCENT },
+    {
+        id: 'attack-pct',
+        stat: 'attackPower',
+        mode: 'pct',
+        name: { ko: '공격력', en: 'Attack' },
+        icon: 'attack',
+        values: ATTACK_CARD_PERCENT,
+    },
     {
         id: 'attack-flat',
         stat: 'attackPower',
         mode: 'flat',
-        name: '공격력',
+        name: { ko: '공격력', en: 'Attack' },
         icon: 'attack',
         values: ATTACK_CARD_PERCENT.map((value) => CARD_STAT_REFERENCE.attackPower * value),
     },
-    { id: 'hp-pct', stat: 'maxHp', mode: 'pct', name: '체력', icon: 'hp', values: HP_CARD_PERCENT },
+    { id: 'hp-pct', stat: 'maxHp', mode: 'pct', name: { ko: '체력', en: 'HP' }, icon: 'hp', values: HP_CARD_PERCENT },
     {
         id: 'hp-flat',
         stat: 'maxHp',
         mode: 'flat',
-        name: '체력',
+        name: { ko: '체력', en: 'HP' },
         icon: 'hp',
         values: HP_CARD_PERCENT.map((value) => CARD_STAT_REFERENCE.maxHp * value),
     },
-    { id: 'regen-pct', stat: 'regen', mode: 'pct', name: '재생', icon: 'regen', values: REGEN_CARD_PERCENT },
+    {
+        id: 'regen-pct',
+        stat: 'regen',
+        mode: 'pct',
+        name: { ko: '재생', en: 'Regen' },
+        icon: 'regen',
+        values: REGEN_CARD_PERCENT,
+    },
     {
         id: 'regen-flat',
         stat: 'regen',
         mode: 'flat',
-        name: '재생',
+        name: { ko: '재생', en: 'Regen' },
         icon: 'regen',
         values: REGEN_CARD_PERCENT.map((value) => CARD_STAT_REFERENCE.maxHp * value),
     },
-    { id: 'armor-flat', stat: 'armor', mode: 'flat', name: '방어력', icon: 'armor', values: [10, 16, 25] },
+    {
+        id: 'armor-flat',
+        stat: 'armor',
+        mode: 'flat',
+        name: { ko: '방어력', en: 'Defense' },
+        icon: 'armor',
+        values: [10, 16, 25],
+    },
     {
         id: 'attack-speed-pct',
         stat: 'attackSpeed',
         mode: 'pct',
-        name: '공격 속도',
+        name: { ko: '공격 속도', en: 'Attack Speed' },
         icon: 'attack-speed',
         values: [0.06, 0.1, 0.15],
     },
@@ -170,7 +225,7 @@ const STAT_CARDS = Object.freeze([
         id: 'move-speed-pct',
         stat: 'moveSpeed',
         mode: 'pct',
-        name: '이동 속도',
+        name: { ko: '이동 속도', en: 'Move Speed' },
         icon: 'move-speed',
         values: [0.06, 0.1, 0.15],
     },
@@ -178,7 +233,7 @@ const STAT_CARDS = Object.freeze([
         id: 'crit-chance-flat',
         stat: 'critChance',
         mode: 'flat',
-        name: '치명타 확률',
+        name: { ko: '치명타 확률', en: 'Crit Chance' },
         icon: 'crit-chance',
         values: [0.1, 0.15, 0.25],
     },
@@ -186,7 +241,7 @@ const STAT_CARDS = Object.freeze([
         id: 'crit-multiplier-flat',
         stat: 'critMultiplier',
         mode: 'flat',
-        name: '치명타 피해',
+        name: { ko: '치명타 피해', en: 'Crit Damage' },
         icon: 'crit-damage',
         values: [0.5, 0.75, 1],
     },
@@ -194,30 +249,33 @@ const STAT_CARDS = Object.freeze([
         id: 'lifesteal-flat',
         stat: 'lifesteal',
         mode: 'flat',
-        name: '흡혈',
+        name: { ko: '흡혈', en: 'Lifesteal' },
         icon: 'lifesteal',
         values: [0.03, 0.05, 0.075],
     },
 ]);
 
 // Previews and receipts use the same units, including the boss's explicit role profile.
+// Returns a TextPair of strings.
 function statModifierText(card, value) {
     if (card.stat === 'critChance' || card.stat === 'lifesteal') {
-        return `+${NUMBER(value * 100)}%p`;
+        return { ko: `+${NUMBER.ko(value * 100)}%p`, en: `+${NUMBER.en(value * 100)}%p` };
     }
     if (card.stat === 'regen' && card.mode === 'pct') {
-        return `+${NUMBER(value * 100)}% 체력/초`;
+        return { ko: `+${NUMBER.ko(value * 100)}% 체력/초`, en: `+${NUMBER.en(value * 100)}% HP/s` };
     }
     if (card.stat === 'regen') {
-        return `+${NUMBER(value)}/초`;
+        return { ko: `+${NUMBER.ko(value)}/초`, en: `+${NUMBER.en(value)}/s` };
     }
     if (card.stat === 'critMultiplier') {
-        return `치명타 피해 +${NUMBER(value * 100)}%p`;
+        return { ko: `치명타 피해 +${NUMBER.ko(value * 100)}%p`, en: `Crit Damage +${NUMBER.en(value * 100)}%p` };
     }
     if (card.mode === 'basePct') {
-        return `기초 수치 +${PERCENT(value)}`;
+        return { ko: `기초 수치 +${PERCENT.ko(value)}`, en: `Base stat +${PERCENT.en(value)}` };
     }
-    return card.mode === 'pct' ? `+${NUMBER(value * 100)}%` : `+${NUMBER(value)}`;
+    return card.mode === 'pct'
+        ? { ko: `+${NUMBER.ko(value * 100)}%`, en: `+${NUMBER.en(value * 100)}%` }
+        : { ko: `+${NUMBER.ko(value)}`, en: `+${NUMBER.en(value)}` };
 }
 export function statCardText(card, rarity, role = 'player', effect = null) {
     return statModifierText(
@@ -238,8 +296,18 @@ function passiveEffectValue(id, value) {
     }
     return value;
 }
+// Returns a TextPair of strings. The boss side reads its own cards: "ally" becomes the boss side in both locales.
 export function passiveEffectText(card, value, role = 'player') {
-    return card.text(passiveEffectValue(card.id, value)).replaceAll('아군', role === 'boss' ? '보스 진영' : '아군');
+    const VALUES = { value: passiveEffectValue(card.id, value) },
+        KO = card.text.ko(VALUES),
+        EN = card.text.en(VALUES);
+    if (role !== 'boss') {
+        return { ko: KO, en: EN };
+    }
+    return {
+        ko: KO.replaceAll('아군', '보스 진영'),
+        en: EN.replaceAll('an ally', 'a boss unit').replaceAll('allies', 'boss units').replaceAll('ally', 'boss unit'),
+    };
 }
 
 // One actual before/after value in the same units as the selected card.
@@ -248,11 +316,19 @@ export function cardAcquisitionText(receipt) {
         BEFORE = receipt.before.value,
         AFTER = receipt.after.value;
     if (CARD.type === 'stat') {
-        const DEFINITION = { ...statCard(CARD.id), ...CARD.effect };
-        return `${DEFINITION.name} 누적 강화 ${statModifierText(DEFINITION, BEFORE)} → ${statModifierText(DEFINITION, AFTER)}`;
+        const DEFINITION = { ...statCard(CARD.id), ...CARD.effect },
+            FROM = statModifierText(DEFINITION, BEFORE),
+            TO = statModifierText(DEFINITION, AFTER);
+        return {
+            ko: `${DEFINITION.name.ko} 누적 강화 ${FROM.ko} → ${TO.ko}`,
+            en: `${DEFINITION.name.en} total ${FROM.en} → ${TO.en}`,
+        };
     }
-    const DEFINITION = passiveCard(CARD.id);
-    return `${passiveEffectText(DEFINITION, AFTER, receipt.role)} · 누적 ${PERCENT(BEFORE)} → ${PERCENT(AFTER)}`;
+    const EFFECT = passiveEffectText(passiveCard(CARD.id), AFTER, receipt.role);
+    return {
+        ko: `${EFFECT.ko} · 누적 ${PERCENT.ko(BEFORE)} → ${PERCENT.ko(AFTER)}`,
+        en: `${EFFECT.en} · total ${PERCENT.en(BEFORE)} → ${PERCENT.en(AFTER)}`,
+    };
 }
 
 export function statCard(id) {

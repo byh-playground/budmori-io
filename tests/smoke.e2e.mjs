@@ -42,7 +42,7 @@ const BROWSER = await chromium.launch({
     args: ['--no-sandbox', '--use-gl=swiftshader', '--enable-unsafe-swiftshader'],
 });
 const PAGE = await (
-        await BROWSER.newContext({ viewport: { width: 1000, height: 700 }, serviceWorkers: 'block' })
+        await BROWSER.newContext({ locale: 'ko-KR', viewport: { width: 1000, height: 700 }, serviceWorkers: 'block' })
     ).newPage(),
     ERRORS = [];
 PAGE.on('pageerror', (error) => ERRORS.push(String(error)));
@@ -105,7 +105,7 @@ await PAGE.goto(`http://127.0.0.1:${PORT}/index.html`);
 await PAGE.waitForFunction(() => !!globalThis.BUDMORI && !document.getElementById('bloom-module-loading'));
 
 await check('retreat landing observation requires all 46 troops and survives a later hop', async () => {
-    const PROBE = await BROWSER.newPage();
+    const PROBE = await BROWSER.newPage({ locale: 'ko-KR' });
     try {
         await PROBE.evaluate(() => {
             globalThis.BUDMORI = {

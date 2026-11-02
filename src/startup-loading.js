@@ -1,12 +1,19 @@
 // Startup presentation only: no simulation clock, RNG or renderer state.
 // Loaded as the first native module and reused by bootstrap. The HTML reload
 // link remains usable even if this module itself is unavailable.
+import { applyPageText } from './i18n/text.js';
+import { BOOT } from './i18n/messages/boot.js';
+import { PAGE } from './i18n/messages/page.js';
+
+// The page's static text (data-i18n) in the page locale. This is the first module the page runs, so the loading
+// panel already reads in the player's language before bootstrap reports any step (docs/i18n.md).
+applyPageText(document, PAGE);
 addEventListener(
     'error',
     (event) => {
         if (event.target?.matches?.('script[data-bloom-bootstrap]')) {
-            document.getElementById('bloom-loading-label').textContent = '시작 파일을 불러오지 못했어요';
-            document.getElementById('bloom-loading-detail').textContent = '연결 상태를 확인하고 다시 불러와 주세요.';
+            document.getElementById('bloom-loading-label').textContent = BOOT.bootstrapUnavailable();
+            document.getElementById('bloom-loading-detail').textContent = BOOT.bootstrapUnavailableDetail();
             document.getElementById('bloom-loading-progress').hidden = true;
             document.getElementById('bloom-loading-retry').hidden = false;
         }
@@ -14,12 +21,12 @@ addEventListener(
     true,
 );
 const LABELS = {
-    modules: '게임 기능을 불러오고 있어요',
-    'vector-download': '캐릭터 그림을 불러오고 있어요',
-    vectors: '캐릭터 원본을 준비하고 있어요',
-    game: '게임 화면을 준비하고 있어요',
-    'atlas-plan': '애니메이션 구성을 준비하고 있어요',
-    atlas: '애니메이션 이미지를 준비하고 있어요',
+    modules: BOOT.stageModules,
+    'vector-download': BOOT.stageVectorDownload,
+    vectors: BOOT.stageVectors,
+    game: BOOT.stageGame,
+    'atlas-plan': BOOT.stageAtlasPlan,
+    atlas: BOOT.stageAtlas,
 };
 
 export function yieldStartupFrame() {
@@ -59,15 +66,15 @@ export function createStartupLoading() {
             STAGES.push(current);
         }
         Object.assign(current, { completed, total });
-        LABEL.textContent = LABELS[stage] || LABELS.game;
+        LABEL.textContent = (LABELS[stage] || LABELS.game)();
         PROGRESS.hidden = false;
         if (Number.isInteger(total) && total > 0) {
             PROGRESS.max = total;
             PROGRESS.value = completed;
-            DETAIL.textContent = `${completed} / ${total} 완료 · 현재 단계 기준`;
+            DETAIL.textContent = BOOT.stageProgress({ completed, total });
         } else {
             PROGRESS.removeAttribute('value');
-            DETAIL.textContent = '준비가 끝나면 자동으로 시작해요';
+            DETAIL.textContent = BOOT.stageAutoStart();
         }
     }
     return Object.freeze({
