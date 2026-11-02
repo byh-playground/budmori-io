@@ -103,7 +103,18 @@ async function openAndCloseReward() {
             }
         }
     }
-    await page.locator('#bossRewardClose').click();
+    try {
+        await page.locator('#bossRewardClose').click({ timeout: 2000 });
+    } catch (error) {
+        // The current single-chest presentation can auto-close between the
+        // readiness check and pointer click; the receipt must already be revealed.
+        const AUTO_CLOSED = await page.evaluate(
+            () => document.getElementById('bossRewardDialog').hidden && BUDMORI.sim.bossRewardReceipts.at(-1)?.revealed,
+        );
+        if (!AUTO_CLOSED) {
+            throw error;
+        }
+    }
     await page.locator('#bossRewardDialog').waitFor({ state: 'hidden' });
     return page.evaluate(() => {
         const RECEIPT = BUDMORI.sim.bossRewardReceipts.at(-1);
@@ -257,14 +268,14 @@ try {
     assert.ok(REPORT.stages.landscapeLayout.combatDamage > 0, 'the frame follows actual combat convergence');
     await page.setViewportSize({ width: 1000, height: 700 });
     await resume();
-    await page.locator('input[name="battleCommand"][value="scatter"]').check();
+    await page.locator('label:has(input[name="battleCommand"][value="scatter"])').click();
     await page.waitForFunction(() => BUDMORI.sim.battleCommand === 'scatter');
     await ticks(12);
     await capture('500-frontline-scatter-desktop.png');
     await page.setViewportSize({ width: 667, height: 375 });
     await capture('500-frontline-scatter-landscape.png');
     await resume();
-    await page.locator('input[name="battleCommand"][value="retreat"]').check();
+    await page.locator('label:has(input[name="battleCommand"][value="retreat"])').click();
     await page.waitForFunction(() => BUDMORI.sim.battleCommand === 'retreat');
     const BEFORE = await page.evaluate(() =>
         BUDMORI.sim.units
@@ -295,7 +306,7 @@ try {
     await page.setViewportSize({ width: 390, height: 844 });
     await capture('500-frontline-retreat-mobile.png');
     await resume();
-    await page.locator('input[name="battleCommand"][value="engage"]').check();
+    await page.locator('label:has(input[name="battleCommand"][value="engage"])').click();
     await page.waitForFunction(() => BUDMORI.sim.battleCommand === 'engage');
     await page.evaluate(() => {
         const WORLD = BUDMORI.sim,
