@@ -6,6 +6,8 @@ import { scatterHeading } from './army-scatter.js';
 import { unitCapabilityComposition } from '../units/unit-abilities.js';
 import { kitSpecies } from '../units/species-catalog.js';
 
+const NO_BODIES = Object.freeze([]);
+
 export const FARM_ARMY_BATTLE = (base) =>
     class FarmArmyBattle extends base {
         _armyThreatsForTick() {
@@ -21,15 +23,19 @@ export const FARM_ARMY_BATTLE = (base) =>
             return this._armyThreats;
         }
         _retreatArmyUnit(unit, dt) {
-            const THREATS = this._armyThreatsForTick(),
-                SPEED = scaleMoveSpeed(unit.bodyProfile ? 1 : 4.1, unit);
+            const THREATS = this._armyThreatsForTick();
             if (!THREATS.length) {
                 unit.vx = unit.vy = 0;
                 return;
             }
+            this.retreatFrom(unit, dt, THREATS, scaleMoveSpeed(unit.bodyProfile ? 1 : 4.1, unit));
+        }
+        // Steers `unit` toward the reachable spot farthest from every threat (nearer threats push harder), never into
+        // an `avoid` body. Returns false when no direction leads anywhere.
+        retreatFrom(unit, dt, threats, speed, avoid = NO_BODIES) {
             let awayX = 0,
                 awayY = 0;
-            for (const THREAT of THREATS) {
+            for (const THREAT of threats) {
                 const DX = unit.x - THREAT.x,
                     DY = unit.y - THREAT.y,
                     LENGTH = Math.hypot(DX, DY) || 1,
@@ -40,7 +46,7 @@ export const FARM_ARMY_BATTLE = (base) =>
             }
             const DIRECTION =
                     Math.abs(awayX) + Math.abs(awayY) > 1e-6 ? Math.atan2(awayY, awayX) : unit.seed * Math.PI * 2,
-                LOOK_AHEAD = Math.max(1.5, SPEED * 0.6);
+                LOOK_AHEAD = Math.max(1.5, speed * 0.6);
             let bestScore = -Infinity,
                 bestX = unit.x,
                 bestY = unit.y;
@@ -54,11 +60,14 @@ export const FARM_ARMY_BATTLE = (base) =>
                         unit.radius + 0.1,
                     ),
                     TRAVEL = Math.hypot(POINT.x - unit.x, POINT.y - unit.y);
-                if (TRAVEL < 0.12) {
+                if (
+                    TRAVEL < 0.12 ||
+                    avoid.some((body) => Math.hypot(POINT.x - body.x, POINT.y - body.y) < body.radius + unit.radius)
+                ) {
                     continue;
                 }
                 let safety = Infinity;
-                for (const THREAT of THREATS) {
+                for (const THREAT of threats) {
                     safety = Math.min(safety, Math.hypot(POINT.x - THREAT.x, POINT.y - THREAT.y) - THREAT.radius);
                 }
                 const SCORE = safety + TRAVEL * 0.12 + Math.cos(ANGLE - DIRECTION) * 0.05;
@@ -68,7 +77,11 @@ export const FARM_ARMY_BATTLE = (base) =>
                     bestY = POINT.y;
                 }
             }
-            this.steer(unit, bestX, bestY, dt, SPEED);
+            if (bestScore === -Infinity) {
+                return false;
+            }
+            this.steer(unit, bestX, bestY, dt, speed);
+            return true;
         }
         _prepareArmySpacing() {
             if (this._armySpacingTick !== this.simulationTick) {

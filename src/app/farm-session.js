@@ -1,4 +1,4 @@
-import { patternReachScale } from '../boss/boss-patterns.js';
+import { minionKindOf, patternReachScale } from '../boss/boss-patterns.js';
 import { updateBarleyPresentation } from '../features/unit-attacks/barley/presentation.js';
 import { updateWheatPresentation } from '../features/unit-attacks/wheat/presentation.js';
 import { growthBuildOf, growthForAbility } from '../features/species-growth/state.js';
@@ -199,7 +199,7 @@ function updateUnitAttackRender(output, u, world) {
 // Health changes can interpolate while alive; death/revival must snap as one
 // state boundary so a 0→60 down reset never looks like half-completed sleep.
 // A boss pattern in progress, as the telegraph renderer reads it (renderedBossAttackArea). Bosses and casting
-// minions (boss/minion-caster.js) carry the same fields.
+// minions (boss/boss-minions.js) carry the same fields.
 const PATTERN_RENDER_SCHEMA = Object.freeze({
     patternId: R.STATE_KEY,
     patternPhase: R.STATE_KEY,
@@ -274,6 +274,7 @@ class UnitRender extends RENDER_OBJECT {
         dropLanded: R.STEP,
         buffed: R.STEP,
         isBattleOnlySummon: R.STEP,
+        minionKind: R.STEP,
         isFormationClone: R.STEP,
         giantUntil: R.STEP,
         giantSizeMultiplier: R.STEP,
@@ -367,6 +368,7 @@ class UnitRender extends RENDER_OBJECT {
             ? Math.max(0, Math.min(1, (lastCommandTick + 6 - world.simulationTick) / 6))
             : 0;
         this.isBattleOnlySummon = u.isBattleOnlySummon;
+        this.minionKind = minionKindOf(u)?.id ?? '';
         this.isFormationClone = u.isFormationClone;
         this.giantUntil = u.giantUntil;
         this.giantSizeMultiplier = u.giantSizeMultiplier;
