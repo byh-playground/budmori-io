@@ -11,7 +11,7 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     ERRORS = [],
     REPORT = {
         status: 'running',
-        scope: 'Chromium SwiftShader functional pixels and CPU submission observations; not hardware/mobile FPS',
+        scope: 'Chromium SwiftShader functional pixels and palette logic only; no timing or performance measurement',
         views: [],
     };
 fs.mkdirSync(OUTPUT, { recursive: true });
@@ -95,6 +95,16 @@ try {
                 A.colours.add(String(R.ctx.fillStyle).toLowerCase());
                 return FILL(...args);
             };
+            // Faces drawn from the shared overlay images skip ctx.fill; record the cheek colour they were asked for.
+            const OVERLAYS = R.unitOverlays,
+                DRAW_FACE = OVERLAYS.drawFace.bind(OVERLAYS);
+            OVERLAYS.drawFace = (anchor, faceId, cheekColor, ...rest) => {
+                const DRAWN = DRAW_FACE(anchor, faceId, cheekColor, ...rest);
+                if (DRAWN && cheekColor) {
+                    globalThis.__paintAudit.colours.add(String(cheekColor).toLowerCase());
+                }
+                return DRAWN;
+            };
             BUDMORI.runtime.paused = false;
         });
         await PAGE.waitForFunction(async () => {
@@ -120,23 +130,8 @@ try {
         assert.equal(await PAGE.locator('#codexBody .codex-icon[src^="data:image/svg+xml"]').count(), 45);
         await PAGE.screenshot({ path: path.join(OUTPUT, MOBILE ? 'codex-mobile.png' : 'codex-desktop.png') });
         await PAGE.locator('#codexClose').click();
-        const COST = await PAGE.evaluate(() => {
-            BUDMORI.runtime.paused = true;
-            const R = BUDMORI.renderer,
-                W = R.cameraWorld,
-                SAMPLES = [];
-            for (let frame = 0; frame < 12; frame++) {
-                const START = performance.now();
-                R.render(W, null, R.displayTimeMs);
-                SAMPLES.push({ cpuMs: performance.now() - START, draws: R.device.stats.drawCalls });
-            }
-            return {
-                units: W.units.length,
-                cpuMs: SAMPLES.slice(2).reduce((sum, sample) => sum + sample.cpuMs, 0) / 10,
-                draws: SAMPLES.at(-1).draws,
-            };
-        });
         await PAGE.evaluate(() => {
+            BUDMORI.runtime.paused = true;
             const W = BUDMORI.sim;
             if (!W.startTower(1) || !W.finishMarch()) {
                 throw new Error('Real tower encounter did not start');
@@ -158,7 +153,7 @@ try {
             source: BUDMORI.renderer.bossPlayerAsset.compiled.sourcePath,
         }));
         await PAGE.screenshot({ path: path.join(OUTPUT, MOBILE ? 'tower-mobile.png' : 'tower-desktop.png') });
-        REPORT.views.push({ mobileTouchEmulation: MOBILE, environment: ENV, cost: COST, boss: BOSS });
+        REPORT.views.push({ mobileTouchEmulation: MOBILE, environment: ENV, boss: BOSS });
         await CONTEXT.close();
     }
     assert.deepEqual(ERRORS, []);

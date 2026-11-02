@@ -57,7 +57,7 @@ npm run test:codex
 
 정적 서버로 저장소 루트를 열면 `index.html` → `src/bootstrap.js` → `src/farm-app.js`와 그 원본 ES 모듈을 직접 실행합니다. 별도 번들·concat·생성 산출물 배포 단계는 없습니다. GameKit은 `gamekit-lock.json`의 불변 CDN ESM을 검증 후 로드합니다.
 
-200마리 렌더 벤치마크는 `node tests/unit-sprites.e2e.mjs --benchmark --count=200 --backend=vector --output=/tmp/budmori-benchmark`로 실행합니다. 각 회차는 고정 시드·카메라·50ms 진행, 24프레임 준비 뒤 60프레임 표본이며 두 번 반복합니다. 결과의 CPU 시간·GPU 제출 횟수와 [측정 범위](docs/performance-diagnostics.md)를 구분해 읽습니다. `--backend`를 생략하면 기존 vector/sprite 비교를 실행합니다. `--species=7`은 같은 밀만 배치하며, `--gpu-readback`은 렌더 CPU 측정 밖에서 프레임마다 GPU 읽기를 기다리는 별도 측정입니다. `--breeding-rings`는 번식 대기 표식을 갖춘 병력을 배치합니다. `--warmup=12 --samples=24 --rounds=1`처럼 준비·표본·반복 수를 지정할 수 있습니다. 전후에 같은 옵션을 사용하고 이 모드의 RAF 간격을 실제 게임 FPS로 해석하지 않습니다.
+테스트는 로직 정합성만 확인합니다(PM-009·PM-014 Correctness Gate). 부하·대량 병력·성능 측정·실시간 대기 시나리오는 테스트에 두지 않으며, 한 번의 실행은 180초 안에 끝납니다. 과거 렌더 측정 수치는 [성능 진단 기록](docs/performance-diagnostics.md)에 기록으로만 남아 있고, 그때 쓰던 `unit-sprites --benchmark` 모드는 제거했습니다.
 
 `node scripts/gamekit-provenance.cjs`는 고정 SDK의 Git 객체·manifest·SHA-256과 원본 import graph·SVG를 읽기 전용으로 검증합니다. SDK 갱신 중에는 교체 전 staging이 가진 source schema로 SVG를 검사합니다. `npm test`의 종료·복귀 흐름은 저장 뒤 렌더 프레임 취소, 자원 해제, 뒤로 가기 캐시의 `pageshow` 재로딩과 이어하기를 함께 확인합니다.
 
@@ -65,9 +65,9 @@ npm run test:codex
 
 병력의 충돌 반경·높이와 표시 배율은 원본의 이름 있는 몸통 외곽선·지면 소켓을 공유합니다. 옥수수 낟알은 발사 순간 몸통 높이의 20%이며, 최소 표시 픽셀은 충돌 크기에 영향을 주지 않습니다. 측정 기준과 저장 호환성은 [몸 크기와 투사체 크기](docs/unit-body-dimensions.md)에 정리했습니다.
 
-기본 PR CI는 코드 검사와 전투·카드·PWA·시작·그래픽 복구·병력 표현·농장·도감·합성·언어 전환 등 16개 필수 검사를 실행합니다. 실행 명령과 순서는 [Browser checks](.github/workflows/browser-checks.yml)가 원본입니다. `npm run test:source-smoke`는 실제 9종 혼합 전투와 보스의 자연 기본 공격·고유 효과를, `npm run test:stat-cards`는 카드 선택과 한 동작 전체 피해를, `npm run test:pwa-update`는 실제 서비스워커에서 새로고침마다 최신 버전·오프라인 시작·저장 후 새로고침을 검사합니다. `npm test`로 전체 게임 흐름을 별도 실행할 수 있습니다. 브라우저의 SDK 요청은 고정된 `vendor/upstream` 원본으로 응답하며, 서비스워커·전투·저장 판정은 실제 경로를 사용합니다.
+기본 PR CI는 코드 검사와 전투·카드·PWA·시작·그래픽 복구·병력 표현·농장·도감·합성·언어 전환·탑 병력·전투 카메라(데스크톱/세로/가로) 등 20개 필수 검사를 실행합니다. 실행 명령과 순서는 [Browser checks](.github/workflows/browser-checks.yml)가 원본입니다. `npm run test:source-smoke`는 실제 9종 혼합 전투와 보스의 자연 기본 공격·고유 효과를, `npm run test:stat-cards`는 카드 선택과 한 동작 전체 피해를, `npm run test:pwa-update`는 실제 서비스워커에서 새로고침마다 최신 버전·오프라인 시작·저장 후 새로고침을 검사합니다. `npm test`로 전체 게임 흐름을 별도 실행할 수 있습니다. 브라우저의 SDK 요청은 고정된 `vendor/upstream` 원본으로 응답하며, 서비스워커·전투·저장 판정은 실제 경로를 사용합니다.
 
-카메라·산개·탑 병력 등 확장 시나리오는 필요할 때 `workflow_dispatch`의 `extended`로 실행합니다. skipped 작업은 통과로 세지 않습니다. 모바일은 Chromium 터치 에뮬레이션이며 실제 기기와 구분하고, 성능은 기능 E2E와 별도로 측정합니다.
+별도 확장(`extended`) 작업은 없습니다. 탑 병력과 전투 카메라는 소수 병력과 고정 틱 진행으로 줄여 필수 검사에 넣었습니다. 모바일은 Chromium 터치 에뮬레이션이며 실제 기기와 구분하고, 성능은 테스트로 측정하지 않습니다.
 
 ## 농장
 
