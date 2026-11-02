@@ -22,14 +22,13 @@ export class MouthSummonBossPattern extends BossPattern {
     landingDistance(boss) {
         return boss.radius + this.minionRadius(boss) + this.config.landingGap;
     }
-    // Minions may be alive at once: minionsPerBoss for every boss still standing.
+    // Minions that may still join: the summon band's cap (bounded by the army's size) less those alive.
     minionRoom(world) {
-        const ALIVE = world.units.reduce((n, u) => n + (isBossMinion(u) && u.hp > 0 ? 1 : 0), 0),
-            BOSSES = world.bosses.filter((boss) => boss.active && boss.hp > 0).length;
-        return Math.max(0, this.config.minionsPerBoss * BOSSES - ALIVE);
+        const ALIVE = world.units.reduce((n, u) => n + (isBossMinion(u) && u.hp > 0 ? 1 : 0), 0);
+        return Math.max(0, world.bossMinionCap() - ALIVE);
     }
     activate(world, action, boss) {
-        boss.patternRuntime.cooldowns[action.id] = this.config.cooldown;
+        boss.patternRuntime.cooldowns[action.id] = world.bossPatternCooldown(this.id);
         action.volleyCount = Math.min(this.config.volleyCount, this.minionRoom(world));
         action.nextRelease = 0;
         world.spawnBossMouthUnit(action, boss);
@@ -55,7 +54,7 @@ export class MouthSummonBossPattern extends BossPattern {
     }
     // The shockwave goes off as the windup starts, so the ground is clear by the time the first minion lands.
     selected(world, boss) {
-        boss.patternRuntime.cooldowns[this.id] = this.config.cooldown;
+        boss.patternRuntime.cooldowns[this.id] = world.bossPatternCooldown(this.id);
         world.bossSummonShockwave(boss, this.config.shockwave);
     }
 }

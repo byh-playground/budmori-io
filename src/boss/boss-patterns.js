@@ -164,6 +164,7 @@ const MINION_PATTERN_CONFIG = Object.freeze({
         groundOnly: true,
     }),
 });
+export const SUMMON_PATTERN_ID = 'summon.mouth-t1';
 export const BOSS_PATTERN_CONFIG = Object.freeze({
     ...SIGNATURE_PATTERN_CONFIG,
     'attack.sweep-360': Object.freeze({
@@ -222,13 +223,14 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
         groundOnly: true,
     }),
     // Summon: a damage-free shockwave clears the ground around the boss as the windup starts, then the boss spits
-    // `volleyCount` minions onto the cleared ring. At most `minionsPerBoss` per living boss are alive at once.
+    // `volleyCount` minions onto the cleared ring. How many may be alive at once, the kinds, when it unlocks and its
+    // cooldown come from the floor's summon band (tower-encounter.js); unlockHp and cooldown here are the first band's.
     // A minion is the boss shrunk to a giant unit: weak stats, but it casts its summoner's element skill (minion).
     'summon.mouth-t1': Object.freeze({
         kind: 'mouth-t1',
-        // Takes the area slot whenever it can (its cooldown bounds how often), so minions are a steady pressure
-        // instead of one draw among five area patterns.
-        priority: true,
+        // On its own clock: cast whenever its cooldown is up and there is room for minions, outside the basic/special
+        // rhythm, so the boss keeps calling minions even while a crowd keeps cutting its basic attacks short.
+        ownClock: true,
         unlockHp: 0.75,
         windup: 0.5,
         active: 0.75,
@@ -237,7 +239,6 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
         firstEligible: 10,
         volleyCount: 2,
         releaseInterval: 0.25,
-        minionsPerBoss: 2,
         dropHeight: 3,
         landingSeconds: 0.56,
         // A minion lands this far past the boss's edge, with its whole body clear of the boss (mouth-summon model).
@@ -309,9 +310,9 @@ export function minionKindOf(unit) {
 export function isBossMinion(unit) {
     return MINION_KINDS_BY_SUMMON.has(unit?.battleSummonKind);
 }
-// The kind a roll in [0, 1) draws from the pool, by weight.
-export function drawMinionKind(roll) {
-    const KINDS = Object.values(MINION_KINDS),
+// The kind a roll in [0, 1) draws, by weight, from the pool kinds named in `ids`.
+export function drawMinionKind(roll, ids) {
+    const KINDS = ids.map((id) => MINION_KINDS[id]),
         TOTAL = KINDS.reduce((sum, kind) => sum + kind.weight, 0);
     let left = roll * TOTAL;
     for (const KIND of KINDS) {
@@ -347,6 +348,20 @@ export const BOSS_PHASE_THRESHOLDS = Object.freeze(
         (a, b) => b - a,
     ),
 );
+// Break: every time the boss loses another `step` of its health (80%, 60%, 40%, 20% left) it lets out a damage-free
+// shockwave at once (the summon's push), whatever it is doing, throwing the troops around it clear. A grown-up army
+// cannot just stand on the boss and melt it, and the push hurts nobody, so a big army is not punished for being big.
+// `patternRuntime.breaks` counts the breaks used; several steps lost in one blow still make one break.
+export const BOSS_BREAK = Object.freeze({
+    step: 0.2,
+    shockwave: Object.freeze({ radius: 7.2, knockback: 13, lift: 10.2 * 0.5 }),
+});
+export const BOSS_BREAK_COUNT = Math.round(1 / BOSS_BREAK.step) - 1;
+// The breaks a boss at this health has earned.
+export function bossBreaksEarned(boss) {
+    const LOST = 1 - Math.max(0, boss.hp) / Math.max(1, boss.maxHp);
+    return Math.min(BOSS_BREAK_COUNT, Math.floor(LOST / BOSS_BREAK.step + 1e-9));
+}
 export const BOSS_AIM_TURN_RATE = 5.5;
 export function createBossPatternRuntime() {
     return {
@@ -357,6 +372,7 @@ export function createBossPatternRuntime() {
         ),
         active: null,
         encounterElapsed: 0,
+        breaks: 0,
     };
 }
 
@@ -380,10 +396,6 @@ export function chooseBossPattern(runtime, eligibleIds, random, rhythm) {
     const AREA_DUE = (rhythm.specialCount + 1) % BOSS_RHYTHM.specialsPerArea === 0;
     if (!(AREA_DUE && AREA.length)) {
         return SIGNATURE[0] ?? null;
-    }
-    const PRIORITY = AREA.find((id) => BOSS_PATTERN_CONFIG[id].priority);
-    if (PRIORITY) {
-        return PRIORITY;
     }
     const TOTAL = AREA.reduce((sum, id) => sum + Math.max(0, runtime.weights[id] || 0), 0);
     if (!(TOTAL > 0)) {

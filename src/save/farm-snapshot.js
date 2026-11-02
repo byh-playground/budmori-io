@@ -169,6 +169,7 @@ export const BOSS_SNAPSHOT_SHAPE = {
         cooldowns: PATTERN_VALUES(0),
         active: null,
         encounterElapsed: 0,
+        breaks: 0,
     },
     knockVx: 0,
     knockVy: 0,

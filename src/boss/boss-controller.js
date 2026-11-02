@@ -1,7 +1,14 @@
 import { createBarleyArmorShredBuckets } from '../features/abilities/barley-shred/model.js';
 import { resolveUnitStats, applyHealing, resolveKnockback } from '../units/unit-stats.js';
 import { bossStageStats } from './boss-rewards.js';
-import { BOSS_PATTERN_IDS, createBossPatternRuntime, chooseBossPattern } from './boss-patterns.js';
+import {
+    BOSS_BREAK,
+    BOSS_PATTERN_CONFIG,
+    BOSS_PATTERN_IDS,
+    bossBreaksEarned,
+    createBossPatternRuntime,
+    chooseBossPattern,
+} from './boss-patterns.js';
 import { CONFIG, CLAMP } from '../model/farm-config.js';
 import { BOSS_BEHAVIORS } from '../boss/boss-behaviors.js';
 
@@ -82,12 +89,23 @@ export class BossController {
             const TARGETS = world.bossPatternTargets(living, this.unit),
                 TARGET = TARGETS.nearest || world.nearestBossTarget(living, undefined, this.unit),
                 ELIGIBLE = world.eligibleBossPatterns(living, TARGETS, this.unit),
-                SELECTED = chooseBossPattern(RUNTIME, ELIGIBLE, () => world.random(), B_LOCAL);
+                // A pattern on its own clock (the summon) comes before the rhythm and leaves its counters alone.
+                OWN_CLOCK = ELIGIBLE.find((id) => BOSS_PATTERN_CONFIG[id].ownClock) ?? null,
+                SELECTED =
+                    OWN_CLOCK ??
+                    chooseBossPattern(
+                        RUNTIME,
+                        ELIGIBLE.filter((id) => !BOSS_PATTERN_CONFIG[id].ownClock),
+                        () => world.random(),
+                        B_LOCAL,
+                    );
             if (SELECTED) {
                 const BEHAVIOR = BOSS_BEHAVIORS.forId(SELECTED),
                     PICK = BEHAVIOR.selectedTarget(world, TARGETS, TARGET, this.unit);
-                B_LOCAL.basicCount = 0;
-                B_LOCAL.specialCount++;
+                if (!OWN_CLOCK) {
+                    B_LOCAL.basicCount = 0;
+                    B_LOCAL.specialCount++;
+                }
                 world.beginBossPattern(SELECTED, PICK, this.unit);
                 action = RUNTIME.active;
                 BEHAVIOR.selected(world, this.unit);
@@ -161,6 +179,12 @@ export class BossController {
             B_LOCAL.patternRuntime.active = null;
             return;
         }
+        // A break (BOSS_BREAK) goes off at once, whatever the boss is doing.
+        const BREAKS = bossBreaksEarned(B_LOCAL);
+        if (BREAKS > B_LOCAL.patternRuntime.breaks) {
+            B_LOCAL.patternRuntime.breaks = BREAKS;
+            world.bossSummonShockwave(B_LOCAL, BOSS_BREAK.shockwave);
+        }
         const STATS = resolveUnitStats(B_LOCAL);
         if (STATS.regen > 0) {
             applyHealing(B_LOCAL, STATS.regen * dt, STATS);
@@ -188,7 +212,7 @@ export class BossController {
             return;
         }
         if (!this.updatePattern(world, dt, LIVING)) {
-            world.battleUnit(B_LOCAL, dt, world.bossPackTarget(LIVING, this.unit));
+            world.battleUnit(B_LOCAL, dt, world.nearestBossTarget(LIVING, false, this.unit));
             B_LOCAL.facing = B_LOCAL.angle;
             // A basic attack that just started counts toward the next special.
             if (B_LOCAL.ability.phase !== 'idle') {

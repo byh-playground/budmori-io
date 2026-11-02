@@ -347,7 +347,7 @@ try {
     await resume();
     await page.locator('label:has(input[name="battleCommand"][value="engage"])').click();
     await page.waitForFunction(() => BUDMORI.sim.battleCommand === 'engage');
-    // Bosses keep fighting meanwhile, so more troops may fall: every fallen troop is replaced from the reserves.
+    // The floor's one boss keeps fighting meanwhile, so more troops may fall: every fallen troop is replaced from the reserves.
     const BEFORE_LOSS = await page.evaluate(() => {
         const WORLD = BUDMORI.sim,
             UNIT = WORLD.units.find(
@@ -369,8 +369,8 @@ try {
     await page.waitForFunction(
         (frontline) =>
             BUDMORI.sim.fieldFighterCount === frontline &&
-            BUDMORI.sim.bosses.filter((boss) => boss.hp > 0).length >= 2 &&
-            BUDMORI.runtime.presentationView.bosses.length >= 2 &&
+            BUDMORI.sim.bosses.filter((boss) => boss.hp > 0).length === 1 &&
+            BUDMORI.runtime.presentationView.bosses.length === 1 &&
             BUDMORI.sim.bosses
                 .filter((boss) => boss.hp > 0)
                 .every((boss) => BUDMORI.renderer.bossPlayers.has(boss.id + ':' + boss.generation)),
@@ -391,10 +391,10 @@ try {
     );
     assert.equal(REPORT.stages.reinforcements.field, FRONTLINE, 'the frontline is refilled to its limit');
     assert.equal(REPORT.stages.reinforcements.reserves, BEFORE_LOSS.reserves - LOSSES, 'one reserve per fallen troop');
-    assert.ok(REPORT.stages.reinforcements.renderedBosses >= 2);
-    assert.ok(REPORT.stages.reinforcements.players >= 2);
+    assert.equal(REPORT.stages.reinforcements.renderedBosses, 1, 'a floor has one boss');
+    assert.ok(REPORT.stages.reinforcements.players >= 1);
     await page.setViewportSize({ width: 1000, height: 700 });
-    await capture('overlapping-bosses-desktop.png');
+    await capture('floor-boss-desktop.png');
     // Let each real floor-transition fade finish before freezing its native frame.
     REPORT.stages.themes = [];
     for (const [FLOOR, NAME] of [
@@ -421,7 +421,7 @@ try {
             units: BUDMORI.runtime.presentationView.units.length,
             bosses: BUDMORI.runtime.presentationView.bosses.length,
         }));
-        assert.ok(FRAME.fadeAgeMs >= 700 && FRAME.units >= FRONTLINE && FRAME.bosses >= 2);
+        assert.ok(FRAME.fadeAgeMs >= 700 && FRAME.units >= FRONTLINE && FRAME.bosses === 1);
         REPORT.stages.themes.push(FRAME);
     }
     await page.evaluate(() => {

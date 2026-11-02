@@ -1,27 +1,40 @@
 import { BOSS_SPECIES } from '../units/species-catalog.js';
 import { TOWER_ELEMENT_ORDER, towerElement } from './tower-theme.js';
 
-// Initial tuning, not a time limit. A floor owns one finite roster; every boss on it gets the floor's whole stat
-// budget (encounterBudget), so a floor with more bosses is that much harder rather than the same fight split up.
-// Every boss but the crown enters at the start and lands next to the others as one pack (`packSpacing`: centre to
-// centre in boss radii, so bodies do not overlap). In the fight they keep together (bossPackTarget: each takes its
-// nearest ally within `packLeash` radii of the pack centre) and never stand inside each other (separateBossPack), so the army
-// meets all of them at once instead of killing them one at a time. They leap out of
-// the arena centre one after another (`launchStaggerSeconds` apart), each in an arc that peaks at `launchApex` (the
-// height troops leave the tower door at) and lands on its own spot. The fight
-// does not wait for them: it starts with the first leap while the army is sent in.
-// The floor-100 crown waits until every other boss is down and leaps straight up and down at the centre.
+// Initial tuning, not a time limit. A floor owns one boss (floor 100: one guardian, then the crown once it is down):
+// the army gangs up on that one boss. Its difficulty grows through its summon band instead of more bosses: higher
+// floors call more minions at once (`minionCap`, also bounded by the army's size, see towerMinionCap), from more kinds
+// and from the start of the fight, carrying the elements of the bands already climbed (encounterElements). Each
+// minion's own strength stays a fixed share of the boss (summon.mouth-t1 minion). The boss leaps out of the arena
+// centre in an arc that peaks at `launchApex` (the height troops leave the tower door at) and lands at the centre; the
+// fight starts with the leap while the army is sent in. The floor-100 crown leaps straight up and down at the centre.
 export const TOWER_ENCOUNTER_SETTINGS = Object.freeze({
-    bands: Object.freeze([
-        Object.freeze({ through: 20, count: 1 }),
-        Object.freeze({ through: 40, count: 2 }),
-        Object.freeze({ through: 60, count: 3 }),
-        Object.freeze({ through: 100, count: 4 }),
+    summonBands: Object.freeze([
+        Object.freeze({ through: 20, minionCap: 2, kinds: Object.freeze(['caster']), summonFrom: 0.75, cooldown: 10 }),
+        Object.freeze({
+            through: 40,
+            minionCap: 3,
+            kinds: Object.freeze(['caster', 'ranged']),
+            summonFrom: 1,
+            cooldown: 10,
+        }),
+        Object.freeze({
+            through: 60,
+            minionCap: 4,
+            kinds: Object.freeze(['caster', 'ranged', 'bomber']),
+            summonFrom: 1,
+            cooldown: 9,
+        }),
+        Object.freeze({
+            through: 100,
+            minionCap: 6,
+            kinds: Object.freeze(['caster', 'ranged', 'bomber']),
+            summonFrom: 1,
+            cooldown: 8,
+        }),
     ]),
-    packSpacing: 2.2,
-    // A boss of the pack picks its own nearest ally only within this many boss radii of the pack centre.
-    packLeash: 3,
-    launchStaggerSeconds: 0.5,
+    // A small army meets fewer minions: one more minion may be alive per this many living troops (at least one).
+    troopsPerMinion: 25,
     launchApex: 7,
     hpGainPerFloor: 0.018,
     attackGainPerFloor: 0.012,
@@ -29,11 +42,30 @@ export const TOWER_ENCOUNTER_SETTINGS = Object.freeze({
     firstBattleScale: 0.55,
     summitSeconds: 8,
 });
+// The most minions any band allows alive at once (the battle actor capacity reserves this many).
+export const MAX_TOWER_MINIONS = Math.max(...TOWER_ENCOUNTER_SETTINGS.summonBands.map((band) => band.minionCap));
 
-// One element per opening boss: the floor's own band element first, then the bands already climbed, newest first.
-// Each boss keeps a single element, so a pair of bosses reads as "water and grass" rather than one boss that suddenly
-// uses two. From floor 81 there are five bands but four bosses: the floor number drops one earlier band, so the
-// line-up changes from floor to floor without any random state.
+// The summon band of a floor (the farm boss, outside the tower, uses the first one).
+export function towerSummonBand(floor) {
+    const BANDS = TOWER_ENCOUNTER_SETTINGS.summonBands;
+    return BANDS.find((band) => floor <= band.through) ?? BANDS.at(-1);
+}
+// Minions alive at once: the floor band's cap, bounded by the army still standing.
+export function towerMinionCap(floor, livingTroops) {
+    return Math.min(
+        towerSummonBand(floor).minionCap,
+        Math.max(1, Math.floor(livingTroops / TOWER_ENCOUNTER_SETTINGS.troopsPerMinion)),
+    );
+}
+// The elements a floor's minions draw from: the boss's band first, then one more earlier band per summon band
+// climbed (21-40: two, 41-60: three, 61-100: four).
+export function minionElements(floor) {
+    return encounterElements(floor, TOWER_ENCOUNTER_SETTINGS.summonBands.indexOf(towerSummonBand(floor)) + 1);
+}
+
+// `count` elements: the floor's own band element first, then the bands already climbed, newest first. From floor 81
+// there are five bands but four minion elements: the floor number drops one earlier band, so the line-up changes from
+// floor to floor without any random state.
 export function encounterElements(floor, count) {
     const BAND = TOWER_ELEMENT_ORDER.indexOf(towerElement(floor)),
         EARLIER = TOWER_ELEMENT_ORDER.slice(0, BAND).reverse();
@@ -44,8 +76,7 @@ export function encounterElements(floor, count) {
 }
 
 export function createTowerEncounter(floor) {
-    const COUNT = TOWER_ENCOUNTER_SETTINGS.bands.find((band) => floor <= band.through).count,
-        ROSTER = encounterElements(floor, COUNT).map((element) => ({ species: BOSS_SPECIES, element, final: false }));
+    const ROSTER = [{ species: BOSS_SPECIES, element: towerElement(floor), final: false }];
     if (floor === 100) {
         // The crown is one more plain sprout with the same authored rig/patterns, in the top band's element.
         ROSTER.push({ species: BOSS_SPECIES, element: towerElement(floor), final: true });
@@ -58,17 +89,6 @@ export function createTowerEncounter(floor) {
         floor,
         completed: false,
     };
-}
-
-// Where roster entry `index` of `count` opening bosses lands: around the centre on the smallest ring that keeps
-// neighbours `packSpacing` radii apart. One boss lands at the centre.
-export function bossDropPoint(index, count, radius) {
-    if (count <= 1) {
-        return { x: 0, y: 0 };
-    }
-    const ANGLE = -Math.PI / 2 + (index * Math.PI * 2) / count,
-        RING = (TOWER_ENCOUNTER_SETTINGS.packSpacing * radius) / (2 * Math.sin(Math.PI / count));
-    return { x: Math.cos(ANGLE) * RING, y: Math.sin(ANGLE) * RING };
 }
 
 export function encounterBudget(floor, startFloor) {

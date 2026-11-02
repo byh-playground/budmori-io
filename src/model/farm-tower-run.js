@@ -19,12 +19,7 @@ import {
 import { ARENA_GEOMETRY } from './arena-geometry.js';
 import { FORMATION_SKILL_DEFINITIONS } from '../formation/formation-skill-state.js';
 import { FACTION_CONFIG, hasFaction } from '../core/factions.js';
-import {
-    bossDropPoint,
-    createTowerEncounter,
-    encounterBudget,
-    TOWER_ENCOUNTER_SETTINGS,
-} from '../tower/tower-encounter.js';
+import { createTowerEncounter, encounterBudget, TOWER_ENCOUNTER_SETTINGS } from '../tower/tower-encounter.js';
 import { bossStageStats } from '../boss/boss-rewards.js';
 import { BOSS_SPECIES } from '../units/species-catalog.js';
 import { towerElement } from '../tower/tower-theme.js';
@@ -322,7 +317,7 @@ export const FARM_TOWER_RUN = (base) =>
             }
             this.replaceBosses([]);
             this.bossEncounter = createTowerEncounter(T.floor);
-            // The fight starts at once: bosses keep leaping in (advanceBossEncounter) while the army is sent in.
+            // The fight starts at once: the boss leaps in while the army is sent in.
             this.farmBossEvent = {
                 phase: 'fighting',
                 elapsed: 0,
@@ -330,7 +325,7 @@ export const FARM_TOWER_RUN = (base) =>
                 encounterId: this.nextBossEncounterId++,
                 rewardStatus: 'none',
             };
-            this.launchDueBosses();
+            this.joinNextBoss();
             // Nobody walks in by themselves: every living unit waits in the hand until the player deploys it.
             this._benched = new Set(this.unitCollection.items.filter((u) => !u.isBattleOnlySummon));
             this._benchRevision++;
@@ -338,17 +333,6 @@ export const FARM_TOWER_RUN = (base) =>
             this._unitSpatialDirty = true;
             this.markProgressChanged();
             return true;
-        }
-        // Launches each opening boss whose turn has come (`launchStaggerSeconds` apart from the encounter start).
-        launchDueBosses() {
-            const ENCOUNTER = this.bossEncounter,
-                OPENING = ENCOUNTER.roster.filter((entry) => !entry.final).length;
-            while (
-                ENCOUNTER.nextIndex < OPENING &&
-                ENCOUNTER.elapsed + 1e-9 >= ENCOUNTER.nextIndex * TOWER_ENCOUNTER_SETTINGS.launchStaggerSeconds
-            ) {
-                this.joinNextBoss();
-            }
         }
         joinNextBoss() {
             const ENCOUNTER = this.bossEncounter,
@@ -361,14 +345,9 @@ export const FARM_TOWER_RUN = (base) =>
                 KIND = CONFIG.farm.tower[this.tower.kind],
                 BUDGET = encounterBudget(ENCOUNTER.floor, this.tower.startFloor || 1),
                 STATS = bossStageStats(ENCOUNTER.floor),
-                OPENING = ENCOUNTER.roster.filter((entry) => !entry.final).length,
-                DROP = ENTRY.final ? { x: 0, y: 0 } : bossDropPoint(INDEX, OPENING, BOSS.radius),
-                // Up from the centre and down on its spot in `FLIGHT` seconds. Air drag (0.8/s while airborne, see
-                // Unit.dragRate) slows the horizontal speed, so it starts faster to cover the distance in that time.
+                // Straight up from the centre and back down in `FLIGHT` seconds.
                 GRAVITY = CONFIG.physics.gravity,
-                FLIGHT = Math.sqrt((8 * TOWER_ENCOUNTER_SETTINGS.launchApex) / GRAVITY),
-                AIR_DRAG = 0.8,
-                REACH = AIR_DRAG / (1 - Math.exp(-AIR_DRAG * FLIGHT));
+                FLIGHT = Math.sqrt((8 * TOWER_ENCOUNTER_SETTINGS.launchApex) / GRAVITY);
             BOSS.controller.configureStage(ENCOUNTER.floor, ENTRY.species);
             BOSS.setBaseStats({
                 maxHp: Math.max(1, Math.round(STATS.hp * KIND.hp * BUDGET.hp)),
@@ -380,8 +359,8 @@ export const FARM_TOWER_RUN = (base) =>
                 x: 0,
                 y: 0,
                 z: 0,
-                vx: DROP.x * REACH,
-                vy: DROP.y * REACH,
+                vx: 0,
+                vy: 0,
                 vz: (GRAVITY * FLIGHT) / 2,
                 dropLanded: false,
                 active: true,
@@ -397,8 +376,6 @@ export const FARM_TOWER_RUN = (base) =>
                 return this.boss.hp <= 0;
             }
             ENCOUNTER.elapsed += dt;
-            // Opening bosses leap in one after another during the fight (`launchStaggerSeconds` apart).
-            this.launchDueBosses();
             for (const BOSS of this.bosses) {
                 if (BOSS.hp <= 0 && !ENCOUNTER.clearedIds.includes(BOSS.id)) {
                     BOSS.die();
@@ -410,7 +387,7 @@ export const FARM_TOWER_RUN = (base) =>
                 }
             }
             const ALIVE = this.bosses.some((boss) => boss.active && boss.hp > 0);
-            // Only the crown is still waiting here (or an older save's late joiners): they come when the field clears.
+            // Only the floor-100 crown is still waiting here: it comes when the field clears.
             if (ENCOUNTER.nextIndex < ENCOUNTER.roster.length && !ALIVE) {
                 this.joinNextBoss();
                 return false;

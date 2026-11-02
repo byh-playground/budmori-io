@@ -53,7 +53,6 @@ export class SimulationScene {
         for (const BOSS of world.bosses) {
             world.separateBossUnitsJacobi(units, BOSS);
         }
-        world.separateBossPack();
     }
     updateBattle(world, dt) {
         for (const BOSS of world.bosses) {
