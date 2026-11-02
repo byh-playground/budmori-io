@@ -160,7 +160,7 @@ t = 0 .. 0.6             작은 회색 소멸 연기 (분신 소멸 formation-co
 
 ### 설치·오프라인 (PWA)
 
-GameKit `pwa` 모듈을 씁니다. `assets/pwa/`의 SVG 세 개(아이콘·마스커블 아이콘·공유 이미지, 게임 캐릭터 SVG와 얼굴 레이어로 만든 것)가 원본이고, `npm run pwa`(`scripts/pwa.mjs`)가 고정 생성기 `vendor/upstream/pwa-build.mjs`로 `manifest.webmanifest`·`pwa/*.png`·`sw.js`와 `index.html`의 `bloom-pwa` 마커 사이 태그를 만듭니다. 생성 결과는 커밋하고, `npm run check`의 `scripts/pwa.mjs --check`가 원본과 어긋난 결과를 막습니다. `index.html`·`sw.js`는 생성기가 쓰므로 Prettier에서 뺐습니다. `src/**`나 `assets/troops/*`를 바꾸면 `npm run pwa`를 다시 돌려 커밋합니다(sw.js의 캐시 버전이 바뀌어야 새 배포가 설치됩니다).
+GameKit `pwa` 모듈을 씁니다. `assets/pwa/`의 SVG 세 개(아이콘·마스커블 아이콘·공유 이미지, 게임 캐릭터 SVG와 얼굴 레이어로 만든 것)가 원본이고, `npm run pwa`(`scripts/pwa.mjs`)가 고정 생성기 `vendor/upstream/pwa-build.mjs`로 `manifest.webmanifest`·`pwa/*.png`·`sw.js`와 `index.html`의 `bloom-pwa` 마커 사이 태그를 만듭니다. 생성 결과는 커밋하고, `npm run check`의 `scripts/pwa.mjs --check`가 원본과 어긋난 결과를 막습니다. 생성 파일 `sw.js`·`manifest.webmanifest`·`pwa/`는 Prettier에서 뺐고, `index.html`은 Prettier로 포맷합니다(SDK 0.41.3 생성기는 마커 사이 태그를 Prettier 모양으로 쓰고, `--check`는 Prettier가 바꾼 공백·`/>` 차이를 같은 것으로 봅니다). `assets/pwa/*`를 바꾸거나 GameKit pin을 올리면 `npm run pwa`를 다시 돌려 커밋합니다.
 
 GameKit pwa 계약(SDK 0.41.2)은 **페이지를 읽을 때(새로고침 포함)마다 최신 배포본**입니다. sw.js는 받는 파일마다 서버에 재확인(`no-cache`)하고, 받은 사본을 오프라인용으로 보관합니다. 오프라인에서는 마지막으로 읽은 버전이 열리며(두 번째 방문부터), 고정 GameKit 모듈은 commit 고정 주소라 cache-first입니다. 백그라운드 다운로드·대기 worker·업데이트 알림은 없고, sw.js는 게임 파일과 무관해 GameKit pin을 올릴 때만 바뀝니다. 캐릭터 SVG는 오프라인 사본과 같은 주소로 읽도록 query 없이 요청하고(`cache: 'no-cache'`), 무결성은 manifest의 SHA-256으로 확인합니다. 브라우저가 설치를 허락하면 시작 화면에 `앱으로 설치`가 나옵니다. 도움말·장면 연구실·소개 데모는 service worker를 등록하지 않습니다(`src/ui/app-shell.js`).
 

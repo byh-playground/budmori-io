@@ -1,30 +1,28 @@
-tree 8015f9563f345d777a3c503f0114c9e5be5b9ca6
-parent cfd064ae3ea3f4ca624849fcd454662c4e098e04
-author byh020907 <byh020907@naver.com> 1793631625 +0900
-committer GitHub <noreply@github.com> 1793631625 +0900
+tree 9f3645c0107f4e7b3c5b50e929f5dacbcf0320f6
+parent bb72c6823b3045751b03d043e12b5193b661ac00
+author byh020907 <byh020907@naver.com> 1793632716 +0900
+committer GitHub <noreply@github.com> 1793632716 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq6KWJCRC1aQ7uu5UhlAAATB8QADr4NflynBpkmmz4MTv2L33x
- w5Ks2DqhP3jcDoB2hZmDkWDkKd83GIeM6mRYoYSC4AahNxJojO7PppRcRfOoYT0R
- D3uF0s74V6dStCQtb5EvOm3gv0T8Yg0A+iVZUdA66ejaJrSW1BK/goA8i2wxaIWY
- mKg42KSnqhg9aELjAWNyDYdeXm7aD90yzFdzE6dNYPqmVyh5EgdYAmRIqT8qI2Fl
- xena5nNQMelEVcHueYra2H9hXW3Y5JllDoZ059gmlOwD/pIaA0GFVaJz4YQCRGMh
- 1SK5lIZO1IZMnUsqxP5jofDNFIhZWtmgG7F5ZzX8LeW99FOnjrEyjqHEvwBT7AYt
- 6j4gKvKprU5H74Cye3rvmZ5BUcSKyZJuYhPkvUE7RpldUrGrGbegRln27NNo+eJL
- puG4yai91EizVD3YwDWyNXlE/uTgU2tUXrDupad9PvGgGX0T20zP5GK2KjAm/DVz
- 9Hgix9+rKFEQZiWd23xts8JKgBNgCvaNxDsCmEz8JrGUyoszUf6FDDZTCDK01NTF
- zS2kZ8lNOmGI1Mct0CcS7S9xiKLeoRVAL+wdAcnNoonCwNxHQvc2J9IaAa69Lc5e
- 4fqO1FkK26X6huPvyPzGezCE56OrkmDtAJs0Q4Xj/t7n2UuNDzZZMsDTBnM8+OKP
- VdTYGC7Wc3z54XjjkfxT
- =mv4h
+ wsFcBAABCAAQBQJq6KnMCRC1aQ7uu5UhlAAAHXAQABC5tVp5ykAbTOnK84G/UWs2
+ pk+hBoBytmjSoOBGOUVyXgWp1uc+LkISuGq+kucjbnGf/18Wn9KCdpZwwbMPKJS1
+ 0+rK/fX0QuAVF//DdQX0/CPfuiaroNFRPLAym+gSRlY5ltFNSpaAj9M8a5bk/Y0p
+ gcmZNWsyL0cCxAtMxS1qqdiBTf/RVCzJCRooLxQtLtAIK9Nwh6wzr2SbK7w9LDm2
+ JzahhIp03DfoCfie7BEa5ESDuJfgyRBFoNnAk4TWpWMaycK6PbEThwpe4OhNMsDL
+ EvYa1MC58MlH1jgqUGhBPYUpmkkVSxPvdKNBHkusxLqqCnEfr237ArPv4rXyVH8Y
+ 9b7+AhY3s89bps8t8F8JUrEVs7O0oQebYOcjIsGpaNsi/0MXaInRsKUVDoezZOG3
+ vwvVoS6kJNchIt8ji2rL66TT7IqZn/xlSm4bfiTwuAvDHcYK1StVYzJCM5aA5Abe
+ WhxL8gL9V+38qxdKpx0SxHDtri5BnSgj+YrkAUGcFsEVOhMEG2uPIYSKn7jiYt91
+ 3qcZskDfTJoGEyU/KdH6eeHuW6Iz68q8wJ0bOliaQzWLm/4i86DfipWDohZYwo4u
+ 3Cfiu18DB/+qLAuHh33gtDgktn6kEHA50sYtL1u46kyVlHKAarwF3cdV/4DaK5AK
+ jzbMtCYvoyzGm0aripLO
+ =12lw
  -----END PGP SIGNATURE-----
  
 
-[feature] 페이지 언어 결정·TextPair 문구를 맡는 i18n 모듈 추가 (v0.41.2) (#190)
+[bug-fix] dist 배포의 이전 번들 이름 검사가 숫자(i18n.js)를 허용하도록 수정 (#192)
 
-- createLocale: ?lang= → 저장한 선택(동기 localStorage) → 브라우저 언어 → fallback, 격리 장면은 저장 미사용, choose는 저장 후 ?lang=으로 새로고침
-- messages: 정의 시 TextPair 짝 검사, 없는 키 읽기는 오류. text·applyPage(data-i18n)·number·plural(Intl)
-- README에 i18next 대신 둔 이유: 키 오타·누락이 조용히 대체되지 않음, 언어별 함수가 문장(조사·어순) 소유, 외부 의존성 없음
-- 시험: modules/i18n/tests/i18n.e2e.mjs(core 목록, 헤드리스 Chromium)
+- BUNDLE_FILE_NAME을 ^[a-z][a-z0-9-]*\.m?js$로 넓힘, 경로 구분자·..는 계속 거부
+- v0.41.2 이후 main 배포가 "Invalid previous bundle path"로 막혀 v0.41.3 dist가 나오지 않던 문제
 
 Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
