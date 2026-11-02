@@ -7,7 +7,7 @@ const { DOMParser: DOM_PARSER } = require('@xmldom/xmldom');
 const { readVectorSockets: READ_VECTOR_SOCKETS } = require('../src/vector-sockets.cjs');
 const { validateUnitBodySource: VALIDATE_UNIT_BODY_SOURCE } = require('../src/features/unit-body/definition.cjs');
 const SVG_SHAPE_ELEMENTS = new Set(['path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon']);
-function validatePaintedShapeIds(bytes, file) {
+function validateTroopArtwork(bytes, file) {
     const ERRORS = [];
     const DOCUMENT = new DOM_PARSER({
         onError(level, message) {
@@ -24,6 +24,14 @@ function validatePaintedShapeIds(bytes, file) {
             return;
         }
         const ID = node.getAttribute('id');
+        for (const NAME of ['opacity', 'fill-opacity', 'stroke-opacity', 'stop-opacity']) {
+            if (node.hasAttribute(NAME)) {
+                const VALUE = Number(node.getAttribute(NAME));
+                if (VALUE !== 0 && VALUE !== 1) {
+                    throw new Error(`Troop artwork must use opaque paint: ${file}#${ID} ${NAME}`);
+                }
+            }
+        }
         if (ID) {
             if (IDS.has(ID)) {
                 throw new Error(`Duplicate SVG DOM id "${ID}" in ${file}`);
@@ -48,11 +56,21 @@ function validatePaintedShapeIds(bytes, file) {
     if (!METADATA_NODE || METADATA_NODE.getAttribute('id') !== 'vector-asset') {
         throw new Error(`Missing vector metadata in ${file}`);
     }
+    const METADATA = JSON.parse(METADATA_NODE.textContent);
     READ_VECTOR_SOCKETS({
-        metadata: JSON.parse(METADATA_NODE.textContent),
+        metadata: METADATA,
         viewBox: DOCUMENT.documentElement.getAttribute('viewBox').trim().split(/[ ,]+/).map(Number),
         sourcePath: file,
     });
+    for (const [NAME, CLIP] of Object.entries(METADATA.clips)) {
+        for (const FRAME of CLIP.keyframes) {
+            for (const POSE of Object.values(FRAME.parts)) {
+                if (Object.hasOwn(POSE, 'opacity')) {
+                    throw new Error(`Troop clips must use opaque part motion: ${file}#${NAME}`);
+                }
+            }
+        }
+    }
     return shapeCount;
 }
 function validateVectorSources(root) {
@@ -97,7 +115,7 @@ function validateVectorSources(root) {
         if (!BYTES.length || BYTES.length > 512 * 1024) {
             throw Error('SVG source size outside supported bounds');
         }
-        validatePaintedShapeIds(BYTES, spec.file);
+        validateTroopArtwork(BYTES, spec.file);
         const SOURCE = {
             ...spec,
             bytes: BYTES.length,
@@ -110,7 +128,6 @@ function validateVectorSources(root) {
     });
 }
 module.exports = {
-    validatePaintedShapeIds,
     validateVectorSources,
 };
 if (require.main === module) {

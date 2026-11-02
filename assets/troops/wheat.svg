@@ -7,10 +7,10 @@
       <path id="wheat-arm-left" d="M346 140 C340 143 335 151 333 158 C332 163 334 166 337 165 C342 162 346 153 349 147 Z" fill="#edc88f" stroke="#34271f" stroke-width="1.8" stroke-linejoin="round"/>
       <path id="wheat-arm-right" d="M409 140 C416 143 421 150 423 156 C424 161 420 165 416 166 C412 166 408 164 404 162 C401 160 401 157 403 153 C405 148 407 144 409 140 Z" fill="#edc88f" stroke="#34271f" stroke-width="1.8" stroke-linejoin="round"/>
       <path id="wheat-grain-outline" d="M 383.00 68.00 Q 385.00 67.50 388.25 70.75 Q 391.50 74.00 392.50 76.00 Q 393.50 78.00 392.50 83.50 Q 391.50 89.00 394.00 89.50 Q 396.50 90.00 396.50 94.00 Q 396.50 98.00 400.50 100.00 Q 404.50 102.00 407.00 114.50 Q 409.50 127.00 409.50 138.00 Q 409.50 149.00 408.50 155.50 Q 407.50 162.00 405.50 168.50 Q 403.50 175.00 400.00 181.00 Q 396.50 187.00 392.25 190.75 Q 388.00 194.50 385.50 195.50 Q 383.00 196.50 377.50 196.50 Q 372.00 196.50 368.50 195.00 Q 365.00 193.50 360.75 189.75 Q 356.50 186.00 352.50 179.00 Q 348.50 172.00 346.00 161.50 Q 343.50 151.00 344.00 149.00 Q 344.50 147.00 344.00 135.50 Q 343.50 124.00 345.50 114.00 Q 347.50 104.00 349.25 101.75 Q 351.00 99.50 353.25 98.25 C 356.50 96.50 369.00 69.00 383.00 68.00 Z" fill="#edce97" stroke="#34271f" stroke-width="2.6" stroke-linejoin="round"/>
-      <path id="wheat-grain-right-shade" d="M390 75 C401 88 407 108 409 132 C411 155 408 175 401 188 C396 196 390 199 384 200 C394 190 399 171 400 148 C401 120 397 95 390 75 Z" fill="#d8b77f" opacity=".14"/>
+      <path id="wheat-grain-right-shade" d="M390 88 C398 104 403 123 403 143 C402 163 396 181 384 191 C391 177 395 159 395 143 C397 119 394 101 390 88 Z" fill="#eacb94"/>
       <path id="wheat-grain-bottom-shade" d="M353 178 C361 181 369 184 377 184 C386 184 394 180 400 178 C397 184 391 190 384 194 C379 196 371 195 366 192 C361 189 357 184 353 178 Z" fill="#e5bc7d"/>
-      <path id="wheat-grain-central-crease" d="M380 83 C379 89 380 96 380 101 M380 151 C379 162 380 176 381 190" fill="none" stroke="#bd9662" stroke-width="1.15" stroke-linecap="round" opacity=".62"/>
-      <ellipse id="wheat-grain-highlight" cx="351" cy="107" rx="1.7" ry="4.3" fill="#fff6e1" opacity=".72"/>
+      <path id="wheat-grain-central-crease" d="M380 83 C379 89 380 96 380 101 M380 151 C379 162 380 176 381 190" fill="none" stroke="#cfab76" stroke-width="1.15" stroke-linecap="round"/>
+      <ellipse id="wheat-grain-highlight" cx="351" cy="107" rx="1.7" ry="4.3" fill="#faeacc"/>
       
       
       

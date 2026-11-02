@@ -20,6 +20,20 @@ export async function unitDepthBatchingScenario(app) {
         }
     };
     CHECK(R.unitArtMode !== 'sprite', 'Depth scene exercises production native vector bodies');
+    for (const RECORD of R.vectorAssets.values()) {
+        const VERTICES = RECORD.compiled.geometry.vertices;
+        for (let index = 5; index < VERTICES.length; index += 11) {
+            CHECK(VERTICES[index] === 0 || VERTICES[index] === 1, 'Troop geometry has no fractional vertex alpha');
+        }
+    }
+    let opaqueVariants = 0;
+    for (const GROUPS of R.unitPresentation.bodyGroups.values()) {
+        for (const GROUP of GROUPS.values()) {
+            CHECK(GROUP.opaqueCoverage, 'Every ordinary troop body variant qualifies for opaque depth batching');
+            opaqueVariants++;
+        }
+    }
+    CHECK(opaqueVariants === 11, 'All ten troops and the guarded body are checked');
     let nextId = 950000;
     function unit(species, x, y, extra = {}) {
         const { ability: ABILITY = {}, ...FIELDS } = extra;
@@ -216,6 +230,9 @@ export async function unitDepthBatchingScenario(app) {
             const REFERENCE = capture(VIEW, false),
                 ORDERED_PAINTER = capture(VIEW, false, true),
                 CANDIDATE = capture(VIEW, true);
+            for (const PREPARED of R.unitPresentation.preparedVisibleUnits.values()) {
+                CHECK(!PREPARED.player.hasOpacityChannel, 'Ordinary troop clips do not animate opacity');
+            }
             let changed = 0,
                 painterChanged = 0,
                 maxChannel = 0;
@@ -264,6 +281,7 @@ export async function unitDepthBatchingScenario(app) {
             dpr: globalThis.devicePixelRatio,
             depthBuffer: GL.getContextAttributes().depth,
             renderDidNotMutate: true,
+            opaqueBodyVariants: opaqueVariants,
             cases: CASES,
             images: IMAGES,
         };

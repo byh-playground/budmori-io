@@ -159,3 +159,19 @@ SDK 전체 core의 기존 GPU-vs-CPU uniform 비교는 auto frame1에서490픽�
 실제 앱 RAF·HUD·자동 저장을 유지하고 마우스로 합성 버튼을6초 누른 뒤 합성 완료를 확인했습니다. 수동 pulse나 RAF 대체 없이1,000마리→990마리, T2 10마리, 진행 중 합성18건, 페이지 오류0이었습니다. 소프트웨어 GPU의 실제 앱은약1.18FPS였으며 고립 프레임 개선을 실제 앱FPS 해결로 보고하지 않습니다.
 
 기능 E2E와 성능 측정은 분리하며, 기기 GPU·사용자 PC·모바일은 미측정입니다(AI-012·AI-017·PM-010).
+
+## 기본 병력 불투명 아트 (0.67.8)
+
+기준은 main `41a37a2` /0.67.7/GameKit0.40.2입니다. 기본 병력10종과 호두 방어 변형의 정적 도형을 불투명하게 authoring하고, 땅콩의 부품 숨김/등장은 alpha 대신 크기0으로 접고 펼칩니다. 분신·외부 효과·이미지 가장자리 커버리지는 별도 경로에 남습니다. [아트 계약](./unit-face-layer.md)의 빌드 검사와 실제 WebGL 시나리오가11개 variant·fractional vertex alpha 없음·일반 opacity clip 없음을 검증합니다.
+
+GameKit0.40.3(source `f240b1211fd9086106117773f8458ea3cc4b4fff`,dist `34918d09b47541ce1db2f9a036ff21e2fc9aefa4`)은 세 입력 검사에서 유한한 scale0을 허용합니다. `rendering.js` SHA는0.40.2와 같은 `08a110906c3a249c892685940ff79b3ebe7bc34afe36f4c5d6b7b056572ccf8b`이며 새 렌더 파이프라인을 추가하지 않습니다. 몸통 윤곽·소켓·충돌 치수·clip 시점·이동/회전은 유지합니다.
+
+비교는 기존 CLI로 혼합/밀/땅콩 각각1,000마리,seed731,고정50ms,1100×850/DPR1,회차별 warm12/sample24/round1을 A→B→B→A 순서로 실행합니다. 장면마다 전후48표본이며 원본 snapshot SHA가 같아야 합니다. 프레임별1×1 GPU readback은 렌더 CPU 밖에서 query 완료를 기다립니다. SwiftShader의 고립 프레임 CPU/GPU·draw·전송/메모리 비용이며 앱FPS나 실제PC/모바일 성능으로 환산하지 않습니다. 회차별 수치·모델SHA·실행 환경과 기능 검증 결과는 이 변경의 PR 본문에 기록합니다.
+
+```sh
+node tests/unit-sprites.e2e.mjs --benchmark --count=1000 --backend=vector --gpu-readback --warmup=12 --samples=24 --rounds=1 --output=/tmp/opaque-mixed
+node tests/unit-sprites.e2e.mjs --benchmark --count=1000 --backend=vector --species=7 --gpu-readback --warmup=12 --samples=24 --rounds=1 --output=/tmp/opaque-wheat
+node tests/unit-sprites.e2e.mjs --benchmark --count=1000 --backend=vector --species=4 --gpu-readback --warmup=12 --samples=24 --rounds=1 --output=/tmp/opaque-peanut
+```
+
+SDK 교체 검증은 staged root가 가진 검증된 source schema를 사용합니다. 체크아웃의 이전 schema를 고정 import하면 새로 허용된 SVG 입력을 cache 교체 전에 거부하므로 검증 대상 root의 schema를 읽습니다. Git 객체/파일 SHA 검증 후 staging을 검사하고, 성공한 뒤에만 cache를 교체합니다. 규칙 적용: AI-009·010·012·013·015·017,DEV-001·004·014,PM-010.
