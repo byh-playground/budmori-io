@@ -313,6 +313,24 @@ export const FARM_CONTACT_SOLVER = (base) =>
             this.metrics.physicsSolverIterations++;
             this.profiler?.count('physicsSolverIterations');
         }
+        // Per-tick body caches (radius, height, inverse mass) read by the contact solver; returns the largest radius.
+        _cacheBattleBodies(units) {
+            if (this._battleRadius.length < units.length) {
+                const CAPACITY = Math.max(units.length, this._battleRadius.length * 2, 16);
+                this._battleRadius = new Float64Array(CAPACITY);
+                this._battleHeight = new Float64Array(CAPACITY);
+                this._battleInverseMass = new Float64Array(CAPACITY);
+            }
+            let maximumRadius = 0;
+            for (let i = 0; i < units.length; i++) {
+                const UNIT_LOCAL = units[i];
+                this._battleRadius[i] = UNIT_LOCAL.radius;
+                this._battleHeight[i] = UNIT_LOCAL.height;
+                this._battleInverseMass[i] = inverseBodyMass(UNIT_LOCAL);
+                maximumRadius = Math.max(maximumRadius, this._battleRadius[i]);
+            }
+            return maximumRadius;
+        }
         resolveFarmContacts(units, dt = 1 / 20) {
             // Impulses only change velocity/stun, not body geometry or mass. Share the
             // existing solver cache across this pass and the following Jacobi solve.
