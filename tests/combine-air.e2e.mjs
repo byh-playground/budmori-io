@@ -302,6 +302,7 @@ try {
     console.log('PASS actual mobile combine button starts one pair');
 
     // Hold the real button while the native clock, commands and merge animations continue.
+    const HOLD_PULSE_MS = 100;
     await PAGE.clock.pauseAt(await PAGE.evaluate(() => Date.now() + 1000));
     const HOLD_OBSERVER = await PAGE.evaluate(() => {
         const SESSION = BUDMORI.runtime,
@@ -368,12 +369,24 @@ try {
             BOX = await BUTTON.boundingBox();
         await PAGE.mouse.move(BOX.x + BOX.width / 2, BOX.y + BOX.height / 2);
         await PAGE.mouse.down();
-        await PAGE.clock.runFor(50);
+        const QUEUED_MOUSE = await PAGE.evaluate(() => ({
+            committed: globalThis.__mergeHoldObservations.length,
+            pending: BUDMORI.runtime.pending
+                .filter((command) => command.type === 'merge')
+                .map((command) => command.count ?? 1),
+            label: document.getElementById('merge').textContent.trim(),
+        }));
+        assert.deepEqual(QUEUED_MOUSE.pending, [1], 'press immediately queues exactly one native intent');
+        assert.equal(QUEUED_MOUSE.committed, 0, 'native logic, not the DOM handler, commits the intent');
+        assert.equal(QUEUED_MOUSE.label, '합성 ×1');
+        // A 20 Hz deadline is visited by the next RAF: 50 ms alone can end before that frame.
+        // Observe just before the next 100 ms input pulse; keep every expected operation count unchanged.
+        await PAGE.clock.runFor(HOLD_PULSE_MS - 1);
         const PULSES = [],
             EXPECTED_COUNTS = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3];
         for (let pulse = 1; pulse <= 21; pulse++) {
             if (pulse > 1) {
-                await PAGE.clock.runFor(100);
+                await PAGE.clock.runFor(HOLD_PULSE_MS);
             }
             const OBS = await PAGE.evaluate(() => ({
                 commands: structuredClone(globalThis.__mergeHoldObservations),
@@ -514,7 +527,7 @@ try {
                 POINT = { x: START_BOX.x + 2, y: START_BOX.y + START_BOX.height / 2, id: 1 };
             await TOUCH.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [POINT] });
             touchActive = true;
-            await PAGE.clock.runFor(1050);
+            await PAGE.clock.runFor(11 * HOLD_PULSE_MS - 1);
             assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.length), 11);
             assert.equal(await PAGE.evaluate(() => globalThis.__mergeHoldObservations.at(-1).count), 2);
             assert.equal(
