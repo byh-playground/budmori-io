@@ -154,11 +154,6 @@ const GARDEN = class Garden extends GARDEN_BASE {
         this._contactCorrectionX = new Float64Array(0);
         this._contactCorrectionY = new Float64Array(0);
         this._contactCorrectionCount = new Uint32Array(0);
-        this._battlePairA = new Int32Array(0);
-        this._battlePairB = new Int32Array(0);
-        this._battlePairOpposing = new Uint8Array(0);
-        this._battlePairCount = 0;
-        this._battleMoved = new Uint8Array(0);
         this._battleRadius = new Float64Array(0);
         this._battleHeight = new Float64Array(0);
         this._battleInverseMass = new Float64Array(0);
@@ -213,11 +208,6 @@ const GARDEN = class Garden extends GARDEN_BASE {
             '_contactCorrectionX',
             '_contactCorrectionY',
             '_contactCorrectionCount',
-            '_battlePairA',
-            '_battlePairB',
-            '_battlePairOpposing',
-            '_battlePairCount',
-            '_battleMoved',
             '_battleRadius',
             '_battleHeight',
             '_battleInverseMass',
