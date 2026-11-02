@@ -44,6 +44,7 @@ import { codexHtml, CODEX_TABS } from './ui/codex-dialog.js';
 import { iconSvg, mountIcons } from './ui/icons.js';
 import { SeedlingReveal } from './ui/seedling-reveal.js';
 import { startAppShell } from './ui/app-shell.js';
+import { LanguageSetting } from './ui/language-setting.js';
 const DOLLAR = (id) => document.getElementById(id),
     ISOLATED_PAGE = isolatedPage(location.search),
     OPEN_SAVE = saveOpener(location.search),
@@ -264,6 +265,12 @@ const FOOD_FEEL = new FoodFeel({
     onMutedChange: (muted) => void PLAY.set({ foodMuted: muted }),
 });
 const COMBAT_FEEL = new CombatFeel(FOOD_FEEL);
+// A tower run lives only in this page's memory: a language switch (a reload) waits until the run ends.
+new LanguageSetting({
+    choices: DOLLAR('languageChoices'),
+    notice: DOLLAR('languageNotice'),
+    canReload: () => !personalGarden?.tower.active,
+});
 // The worker ratio, breeding weights and deploy order are play settings, not part of the farm save.
 function applyPlaySettings(world) {
     const SETTINGS = PLAY.value;
