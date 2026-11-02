@@ -371,7 +371,7 @@ export const FARM_TOWER_RUN = (base) =>
                 BUDGET = encounterBudget(ENCOUNTER.floor, this.tower.startFloor || 1),
                 STATS = bossStageStats(ENCOUNTER.floor),
                 OPENING = ENCOUNTER.roster.filter((entry) => !entry.final).length,
-                DROP = ENTRY.final ? { x: 0, y: 0 } : bossDropPoint(INDEX, OPENING, ARENA_GEOMETRY.arena(this)),
+                DROP = ENTRY.final ? { x: 0, y: 0 } : bossDropPoint(INDEX, OPENING, BOSS.radius),
                 // Up from the centre and down on its spot in `FLIGHT` seconds. Air drag (0.8/s while airborne, see
                 // Unit.dragRate) slows the horizontal speed, so it starts faster to cover the distance in that time.
                 GRAVITY = CONFIG.physics.gravity,

@@ -188,7 +188,7 @@ export class BossController {
             return;
         }
         if (!this.updatePattern(world, dt, LIVING)) {
-            world.battleUnit(B_LOCAL, dt, world.nearestBossTarget(LIVING, undefined, this.unit));
+            world.battleUnit(B_LOCAL, dt, world.bossPackTarget(LIVING, this.unit));
             B_LOCAL.facing = B_LOCAL.angle;
             // A basic attack that just started counts toward the next special.
             if (B_LOCAL.ability.phase !== 'idle') {
