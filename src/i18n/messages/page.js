@@ -5,7 +5,7 @@ import { defineMessages } from '../text.js';
 export const PAGE = defineMessages({
     // Startup loading panel
     loadingLabel: { ko: '모험을 준비하고 있어요', en: 'Getting your adventure ready' },
-    loadingProgress: { ko: '현재 단계 준비 진행', en: 'Progress of the current step' },
+    loadingProgress: { ko: '전체 시작 준비 진행', en: 'Overall startup progress' },
     loadingDetail: { ko: '시작 파일을 불러오는 중', en: 'Loading startup files' },
     loadingRetry: { ko: '다시 불러오기', en: 'Reload' },
     // Farm field and HUD
@@ -124,7 +124,6 @@ export const PAGE = defineMessages({
     resetSave: { ko: '기록 지우고 새로 시작', en: 'Delete records and start over' },
     confirmReset: { ko: '기록 지우기', en: 'Delete records' },
     cancel: { ko: '취소', en: 'Cancel' },
-    appUpdate: { ko: '최신 버전 업데이트', en: 'Update to the latest version' },
     appInstall: { ko: '앱으로 설치', en: 'Install as app' },
     newConfirm: {
         ko: '현재 농장을 새 농장으로 바꿀까요? 필요한 저장은 먼저 내보내 주세요.',
@@ -139,8 +138,4 @@ export const PAGE = defineMessages({
     homeArtCaption: { ko: '오늘도, 조금 더 자라는 중.', en: 'Growing a little more, every day.' },
     homeFooterStory: { ko: '씨앗 하나에서 시작하는 우리들의 농장', en: 'Our farm, grown from a single seed' },
     homeFooterLoop: { ko: '키우고 · 합치고 · 도전해요', en: 'Raise · Merge · Challenge' },
-    appUpdateProgress: {
-        ko: '농장을 저장하고 새 버전으로 바꾸고 있어요.',
-        en: 'Saving the farm and switching to the new version.',
-    },
 });

@@ -10,16 +10,15 @@ export const BOOT = defineMessages({
     stageModules: { ko: '게임 기능을 불러오고 있어요', en: 'Loading game features' },
     stageVectorDownload: { ko: '캐릭터 그림을 불러오고 있어요', en: 'Loading character art' },
     stageVectors: { ko: '캐릭터 원본을 준비하고 있어요', en: 'Preparing character sources' },
+    stageGameModules: { ko: '게임 파일을 불러오고 있어요', en: 'Loading game files' },
     stageGame: { ko: '게임 화면을 준비하고 있어요', en: 'Preparing the game screen' },
     stageAtlasPlan: { ko: '애니메이션 구성을 준비하고 있어요', en: 'Planning animations' },
     stageAtlas: { ko: '애니메이션 이미지를 준비하고 있어요', en: 'Preparing animation images' },
+    // The current stage and the overall progress of the whole startup (not of the stage).
     stageProgress: {
-        ko: ({ completed, total }) => `${completed} / ${total} 완료 · 현재 단계 기준`,
-        en: ({ completed, total }) => `${completed} / ${total} done · current step`,
+        ko: ({ stage, percent }) => `${stage} · ${percent}%`,
+        en: ({ stage, percent }) => `${stage} · ${percent}%`,
     },
-    stageAutoStart: { ko: '준비가 끝나면 자동으로 시작해요', en: 'The game starts by itself when ready' },
-    preparingGame: { ko: '게임을 준비하고 있어요', en: 'Preparing the game' },
-    preparingCharacters: { ko: '캐릭터를 준비하고 있어요', en: 'Preparing characters' },
     manifestFailed: {
         ko: '게임 설정을 읽지 못했어요. 진단 정보를 복사해 알려 주세요',
         en: 'Couldn’t read the game configuration. Copy the diagnostics and send them to us',

@@ -4,20 +4,9 @@ import { defineMessages } from '../text.js';
 // showcase launcher (src/ui/app-shell.js, src/render/food-feel.js, src/ui/help-panel.js, src/ui/seedling-reveal.js,
 // src/showcase.js).
 export const SHELL = defineMessages({
-    settingsOpenUpdate: { ko: '게임 설정 열기, 새 버전 있음', en: 'Open game settings, new version available' },
-    settingsTitleUpdate: { ko: '설정 · 새 버전 있음', en: 'Settings · New version available' },
     updateSaveFailed: {
-        ko: '농장을 저장하지 못해 업데이트를 멈췄어요.',
-        en: 'Couldn’t save the farm, so the update was stopped.',
-    },
-    // A translated lead; the error's own message follows it.
-    updateFailed: {
-        ko: ({ message }) => `새 버전으로 바꾸지 못했어요. ${message}`,
-        en: ({ message }) => `Couldn’t switch to the new version. ${message}`,
-    },
-    updateReady: {
-        ko: '새 버전이 준비됐어요. 농장을 저장하고 업데이트할 수 있어요.',
-        en: 'A new version is ready. You can save the farm and update.',
+        ko: '농장을 저장하지 못해 새로고침하지 않았어요. 저장된 농장은 그대로예요.',
+        en: 'Couldn’t save the farm, so the page wasn’t reloaded. Your saved farm is unchanged.',
     },
     pwaFailed: {
         ko: ({ message }) => `앱 설치·오프라인 준비를 하지 못했어요. ${message}`,
@@ -26,10 +15,6 @@ export const SHELL = defineMessages({
     installFailed: {
         ko: ({ message }) => `앱으로 설치하지 못했어요. ${message}`,
         en: ({ message }) => `Couldn’t install as an app. ${message}`,
-    },
-    startCheckFailed: {
-        ko: ({ message }) => `새 버전을 확인하지 못해 현재 버전으로 시작해요. ${message}`,
-        en: ({ message }) => `Couldn’t check for a new version, so starting with this one. ${message}`,
     },
     soundOff: { ko: '꺼짐', en: 'Off' },
     soundTurnOn: { ko: '효과음 켜기', en: 'Turn on sound effects' },
