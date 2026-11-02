@@ -9,6 +9,7 @@ import {
     BOSS_PATTERN_CONFIG,
     BOSS_AREA_MIN_HITS,
     BOSS_ENRAGE,
+    BOSS_SUMMON_MINIONS,
 } from '../boss/boss-patterns.js';
 import { bossMouthWorldPoint } from '../render/boss-vector-sockets.js';
 import { unitBodyRadius } from '../features/unit-body/definition.js';
@@ -590,13 +591,32 @@ export const FARM_BOSS_PATTERNS = (base) =>
                 }
             }
         }
+        // Throws the troops around a summoning boss clear of it without hurting them, and shows the ring.
+        bossSummonShockwave(boss, { radius, knockback, lift }) {
+            const REACH = boss.radius + radius;
+            for (const UNIT_LOCAL of this.units) {
+                if (!hasFaction(UNIT_LOCAL, FACTION_CONFIG.PLAYER) || UNIT_LOCAL.hp <= 0) {
+                    continue;
+                }
+                const DX = UNIT_LOCAL.x - boss.x,
+                    DY = UNIT_LOCAL.y - boss.y,
+                    DISTANCE = Math.hypot(DX, DY);
+                if (DISTANCE <= REACH + UNIT_LOCAL.radius) {
+                    const ANGLE = DISTANCE > 1e-6 ? Math.atan2(DY, DX) : this.random() * Math.PI * 2;
+                    UNIT_LOCAL.knock(Math.cos(ANGLE), Math.sin(ANGLE), knockback, lift, boss);
+                }
+            }
+            this.emit('landing-shockwave', boss.x, boss.y, 0, { radius: REACH, duration: 0.55 });
+        }
         bossMouthPoint(released, boss = this.boss) {
             return bossMouthWorldPoint(boss, released);
         }
         bossSummonLanding(angle, action = null, boss = this.boss) {
             const B_LOCAL = boss,
                 SCENE = this,
-                RADIUS = unitBodyRadius({ species: B_LOCAL.species, tier: 1, growthElapsed: 1, growthDuration: 1 });
+                RADIUS =
+                    unitBodyRadius({ species: B_LOCAL.species, tier: 1, growthElapsed: 1, growthDuration: 1 }) *
+                    BOSS_SUMMON_MINIONS['boss-mouth-t1'].bodyScale;
             for (let i = 0; i < 16; i++) {
                 const OFFSET = i === 0 ? 0 : ((i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI) / 8,
                     A_LOCAL = angle + OFFSET,
@@ -646,6 +666,7 @@ export const FARM_BOSS_PATTERNS = (base) =>
                 ownerId: 'boss',
                 farmId: 0,
                 faction: FACTION_CONFIG.ENEMY,
+                enemyElement: B_LOCAL.enemyElement,
                 home: {
                     x: MOUTH.x,
                     y: MOUTH.y,
@@ -678,6 +699,15 @@ export const FARM_BOSS_PATTERNS = (base) =>
                 landingRecovery: 0,
                 seed: ID * 2.39996,
             });
+            // The boss shrunk to a giant unit: a share of the summoner's stats; its element-skill reach is
+            // patternScale of the boss's, which the giant size would otherwise multiply (attackArea undoes it).
+            const MINION = BOSS_SUMMON_MINIONS[UNIT_LOCAL.battleSummonKind];
+            Object.assign(UNIT_LOCAL, { giantSizeMultiplier: MINION.bodyScale, giantUntil: Number.MAX_SAFE_INTEGER });
+            UNIT_LOCAL.setBaseStats({
+                maxHp: Math.max(1, Math.round(B_LOCAL.maxHp * MINION.hpRatio)),
+                attackPower: B_LOCAL.attackPower * MINION.attackRatio,
+                attackArea: MINION.patternScale / MINION.bodyScale,
+            });
             UNIT_LOCAL.setStatModifiers(runStatModifiers(this.tower.active ? this.tower.bossCards : [], 'boss'));
             UNIT_LOCAL.setHealth(unitMaxHpFor(UNIT_LOCAL));
             this.addUnit(UNIT_LOCAL, { markProgress: false });
@@ -706,8 +736,11 @@ export const FARM_BOSS_PATTERNS = (base) =>
             action.phaseElapsed = 0;
             B_LOCAL.attackId = ++this.attackSerial;
             action.hitIds.clear();
+            // A minion caster's runtime carries its own cooldown scale (minion-caster.js); a boss's has none.
             RUNTIME.cooldowns[action.id] =
-                CONFIG_LOCAL.cooldown * (this.bossEnraged ? BOSS_ENRAGE.cooldownMultiplier : 1);
+                CONFIG_LOCAL.cooldown *
+                (this.bossEnraged ? BOSS_ENRAGE.cooldownMultiplier : 1) *
+                (RUNTIME.cooldownScale ?? 1);
             this.combat('boss-pattern-launch', {
                 patternId: action.id,
                 attackKind: action.id,

@@ -1,17 +1,14 @@
 import { BossPattern } from '../model-base.js';
 import { SIGNATURE_FEATURES } from './definition.js';
-import { towerElement } from '../../../tower/tower-theme.js';
 
-// Shared by the five skills: only the boss of the matching element band uses it, on a unit it can reach.
+// Shared by the five skills: only a boss of the matching element uses it, on a unit it can reach.
 class SignaturePattern extends BossPattern {
     constructor(feature, dependencies) {
         super(feature, dependencies);
         this.physicalActive = true;
     }
     eligible(world, targets, aliveAdds, boss) {
-        return (
-            towerElement(world.tower.floor) === this.config.element && super.eligible(world, targets, aliveAdds, boss)
-        );
+        return boss.enemyElement === this.config.element && super.eligible(world, targets, aliveAdds, boss);
     }
     // An element skill is always worth using: its damage is not compared with the basic attack's.
     expectedHits() {

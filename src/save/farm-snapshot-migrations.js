@@ -2,6 +2,7 @@ import { ACTOR_ATTACK_SNAPSHOT_SHAPE, BOSS_SNAPSHOT_SHAPE } from './farm-snapsho
 import { specialAbilityCompositionFor } from '../units/unit-abilities.js';
 import { validateSnapshot } from './farm-snapshot-validation.js';
 import { freshTowerRun } from '../tower/tower-run.js';
+import { towerElement } from '../tower/tower-theme.js';
 import { migratePlayerProgressionState } from '../model/player-progression.js';
 import { migrateLegacyBarleyArmorShredBuckets } from '../features/abilities/barley-shred/model.js';
 import { migrateBossRewardLedger } from './boss-reward-ledger.js';
@@ -71,6 +72,26 @@ const LEGACY_BOSS_FIELDS = new Set(
 
 // Runtime checkpoints retain the previous 60-tick shred ring at this boundary.
 // Disk save compatibility remains at the separate user-facing import boundary.
+// Up to 0.67.13 a tower encounter joined one boss every 12 seconds (nextJoinAt), split the floor budget among its
+// bosses (hpShare, attackShare) and every enemy took the floor band's element. Bosses now enter together, each with
+// the whole floor budget and its own element. An old checkpoint keeps the bosses already on the field as they are;
+// its not-yet-joined bosses come at full budget and every enemy keeps the band element.
+function migrateBossEncounter(snapshot) {
+    const ENCOUNTER = snapshot.bossEncounter,
+        BAND_ELEMENT = towerElement(snapshot.tower?.active ? snapshot.tower.floor : 1);
+    if (ENCOUNTER) {
+        delete ENCOUNTER.nextJoinAt;
+        for (const ENTRY of ENCOUNTER.roster ?? []) {
+            ENTRY.element ??= towerElement(ENCOUNTER.floor);
+            delete ENTRY.hpShare;
+            delete ENTRY.attackShare;
+        }
+    }
+    for (const UNIT of [...snapshot.units, ...snapshot.bosses]) {
+        UNIT.enemyElement ??= UNIT.faction === 'enemy' ? BAND_ELEMENT : 0;
+    }
+}
+
 export function normalizeSnapshot(raw, { clone = true } = {}) {
     const SNAPSHOT = clone ? structuredClone(raw) : raw,
         LEGACY_ENCOUNTER = Object.hasOwn(SNAPSHOT, 'boss') && !Object.hasOwn(SNAPSHOT, 'bosses');
@@ -111,6 +132,7 @@ export function normalizeSnapshot(raw, { clone = true } = {}) {
     if (!Array.isArray(SNAPSHOT.bosses)) {
         throw new TypeError('Invalid boss encounter checkpoint');
     }
+    migrateBossEncounter(SNAPSHOT);
     for (const TARGET of [...SNAPSHOT.units, ...SNAPSHOT.bosses]) {
         TARGET.statProfile ??= null;
         TARGET.statModifiers ??= {};

@@ -43,6 +43,9 @@ const TOWER_THEMES = Object.freeze([
     }),
 ]);
 
+// Element ids in climbing order, one per band (the order every encounter's element line-up follows).
+export const TOWER_ELEMENT_ORDER = Object.freeze(TOWER_THEMES.map((theme) => theme.element));
+
 export function towerTheme(floor) {
     return TOWER_THEMES[Math.min(TOWER_THEMES.length - 1, Math.max(0, Math.floor((floor - 1) / 20)))];
 }

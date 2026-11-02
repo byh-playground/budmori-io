@@ -2089,10 +2089,7 @@ function sync(display, now, notices) {
               ? W.bossEnraged
                   ? APP_TOWER.bossEnraged()
                   : BOSS_PENDING > 0
-                    ? APP_TOWER.bossReinforce({
-                          pending: BOSS_PENDING,
-                          seconds: Math.max(0, Math.ceil(ENCOUNTER.nextJoinAt - ENCOUNTER.elapsed)),
-                      })
+                    ? APP_TOWER.bossCrownWaiting()
                     : APP_TOWER.bossAllIn({
                           seconds: Math.max(0, Math.ceil(W.battleTimeLimit() - FARM_EVENT.elapsed)),
                       })

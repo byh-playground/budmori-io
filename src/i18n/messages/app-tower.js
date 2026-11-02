@@ -86,9 +86,9 @@ export const APP_TOWER = defineMessages({
     bossHealth: { ko: '등장한 보스 합계 체력', en: 'Total HP of bosses on the field' },
     bossMarching: { ko: '보스가 있는 칸으로 가는 중이에요', en: 'Heading to the boss’s tile' },
     bossEnraged: { ko: '격노! 피해 2배, 공격이 빨라져요', en: 'Enraged! Double damage, faster attacks' },
-    bossReinforce: {
-        ko: ({ pending, seconds }) => `남은 합류 ${pending} · ${seconds}초 후 증원`,
-        en: ({ pending, seconds }) => `${pending} still to join · Reinforcements in ${seconds}s`,
+    bossCrownWaiting: {
+        ko: '모두 쓰러뜨리면 최종 수호자가 내려와요',
+        en: 'Defeat them all to face the Final Guardian',
     },
     bossAllIn: {
         ko: ({ seconds }) => `전원 등장 · 격노까지 ${seconds}초`,

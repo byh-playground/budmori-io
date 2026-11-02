@@ -13,7 +13,6 @@ import { resolveUnitStats, applyDamageToTargets, resolveCritical } from '../unit
 import { BarleyArmorShredModel } from '../features/abilities/barley-shred/model.js';
 import { CLAMP, CONFIG } from './farm-config.js';
 import { elementOf, elementHitScale, elementMultiplier } from './lineage.js';
-import { towerElement } from '../tower/tower-theme.js';
 
 export const FARM_COMBAT = (base) =>
     class FarmCombat extends base {
@@ -118,9 +117,9 @@ export const FARM_COMBAT = (base) =>
                     critChance:
                         CONTEXT.criticalChanceSnapshot ?? CLAMP(ATTACKER_STATS.critChance + CRITICAL_BONUS, 0, 1),
                 };
-            // A coloured unit's hit against the floor band's enemies carries element damage.
+            // A coloured unit's hit against an enemy carries element damage against that enemy's own element.
             const HIT_ELEMENT = target.faction === FACTION_CONFIG.ENEMY ? this.attackElement(SOURCE) : 0,
-                ELEMENT_SCALE = elementHitScale(HIT_ELEMENT, towerElement(this.tower.floor)),
+                ELEMENT_SCALE = elementHitScale(HIT_ELEMENT, target.enemyElement),
                 RAW_BASE_DAMAGE =
                     ATTACKER_STATS.attackPower *
                     (CONTEXT.attackPowerMultiplier ?? 1) *
@@ -217,7 +216,7 @@ export const FARM_COMBAT = (base) =>
                 critical: damage.critical,
                 damage: damage.totalActualLoss,
                 element,
-                elementMultiplier: element ? elementMultiplier(element, towerElement(this.tower.floor)) : 1,
+                elementMultiplier: element ? elementMultiplier(element, boss.enemyElement) : 1,
                 x: boss.x + (DX / D_LOCAL) * boss.radius,
                 y: boss.y + (DY / D_LOCAL) * boss.radius,
                 z: CLAMP(point.z + 0.2, 0.2, boss.height),

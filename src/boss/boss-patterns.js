@@ -170,22 +170,50 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
         lift: 10.2,
         groundOnly: true,
     }),
+    // Summon: a damage-free shockwave clears the ground around the boss as the windup starts, then the boss spits
+    // `volleyCount` minions onto the cleared ring. At most `minionsPerBoss` per living boss are alive at once.
+    // A minion is the boss shrunk to a giant unit: weak stats, but it casts its summoner's element skill (minion).
     'summon.mouth-t1': Object.freeze({
         kind: 'mouth-t1',
-        unlockHp: 0.5,
+        // Takes the area slot whenever it can (its cooldown bounds how often), so minions are a steady pressure
+        // instead of one draw among five area patterns.
+        priority: true,
+        unlockHp: 0.75,
         windup: 0.5,
         active: 0.75,
         recover: 0.5,
         cooldown: 10,
         firstEligible: 10,
-        volleyCount: 4,
+        volleyCount: 2,
         releaseInterval: 0.25,
-        maxAlive: 10,
+        minionsPerBoss: 2,
         dropHeight: 3,
         landingSeconds: 0.56,
         landingRadius: 4.8,
+        // Reaches past the landing ring by half of it (1.5×) and pushes like the boss's own arm sweep (fan-sweep
+        // knockback 13) with half of its lift, so the troops are thrown clear but not launched.
+        shockwave: Object.freeze({ radius: 4.8 * 1.5, knockback: 13, lift: 10.2 * 0.5 }),
+        // bodyScale: × the summoner species' T1 body (via the giant size; giant armor comes with it).
+        // patternScale: × the boss's element-skill reach. hpRatio/attackRatio: × the summoner's max HP and attack.
+        // castCooldownMultiplier: × the element skill's cooldown.
+        minion: Object.freeze({
+            bodyScale: 6,
+            patternScale: 0.5,
+            hpRatio: 0.05,
+            attackRatio: 0.25,
+            castCooldownMultiplier: 2,
+        }),
     }),
 });
+// The element skill (signature pattern id) of an element, or null.
+export function signaturePatternFor(element) {
+    return Object.keys(SIGNATURE_PATTERN_CONFIG).find((id) => SIGNATURE_PATTERN_CONFIG[id].element === element) ?? null;
+}
+// Minion behaviour by battleSummonKind (data, not a kind check): which summons cast element skills, and how.
+export const BOSS_SUMMON_MINIONS = Object.freeze({
+    'boss-mouth-t1': BOSS_PATTERN_CONFIG['summon.mouth-t1'].minion,
+});
+
 // The boss's basic attack throws its target as far as the arm sweep does, so a plain swing feels as heavy as a special.
 // It follows the sweep's numbers instead of keeping its own, so tuning the sweep tunes the swing too.
 export const BOSS_BASIC_KNOCK = Object.freeze({
@@ -237,6 +265,10 @@ export function chooseBossPattern(runtime, eligibleIds, random, rhythm) {
     const AREA_DUE = (rhythm.specialCount + 1) % BOSS_RHYTHM.specialsPerArea === 0;
     if (!(AREA_DUE && AREA.length)) {
         return SIGNATURE[0] ?? null;
+    }
+    const PRIORITY = AREA.find((id) => BOSS_PATTERN_CONFIG[id].priority);
+    if (PRIORITY) {
+        return PRIORITY;
     }
     const TOTAL = AREA.reduce((sum, id) => sum + Math.max(0, runtime.weights[id] || 0), 0);
     if (!(TOTAL > 0)) {

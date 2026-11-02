@@ -20,7 +20,6 @@ import { drawElementMark } from './unit-face-overlay.js';
 import { elementCheekColor, unitLook } from '../units/species-face.js';
 import { drawUnitFace } from './unit-face-draw.js';
 import { CombinePresentation } from '../features/farm-modes/combine/presentation.js';
-import { towerElement } from '../tower/tower-theme.js';
 import { PassiveMarksPresentation } from '../tower/tower-passive-presentations.js';
 
 const BARLEY_SHRED_PRESENTATION = new BarleyArmorShredPresentation();
@@ -394,10 +393,8 @@ export class UnitPresentation {
         PREPARED.cheekColor = elementCheekColor(
             u.isSeedling || u.isFormationClone
                 ? 0
-                : u.faction === 'enemy'
-                  ? sim.tower.active && !u.isBoss
-                      ? towerElement(sim.tower.floor)
-                      : 0
+                : u.faction === 'enemy' && !(sim.tower.active && !u.isBoss)
+                  ? 0
                   : u.element,
         );
         PREPARED.sprite = this.renderer.unitSprites.resolve(
@@ -530,7 +527,7 @@ export class UnitPresentation {
             return;
         }
         const ENEMY = u.faction === 'enemy',
-            ELEMENT = ENEMY ? towerElement(sim.tower.floor) : u.element;
+            ELEMENT = u.element;
         if (ENEMY && (!sim.tower.active || u.isBoss)) {
             return;
         }
