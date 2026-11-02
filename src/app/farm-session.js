@@ -109,7 +109,25 @@ const UNIT_ATTACK_SCHEMA = Object.freeze({
     'ability.wheatLongBaton': R.STEP,
     walnutGuarding: R.STEP,
 });
+const IDLE_ATTACK_RECORDS = new Map();
 function updateUnitAttackRender(output, u, world) {
+    // The no-action idle projection has only two scalar variants. Reuse the
+    // immutable projection, not an authoritative Ability or mutable render DTO.
+    const IDLE = u.ability.phase === 'idle' && u.ability.elapsed === 0 && !u.ability.action,
+        WHEAT_PROGRESSION = kitSpecies(u) === 7 ? world.abilityProgressionFor(u) : null,
+        WHEAT_BUILD = WHEAT_PROGRESSION ? WHEAT_PROGRESSION.abilities['wheat-command-crit'] : null,
+        LONG_BATON =
+            (WHEAT_BUILD?.treeVersion === 1
+                ? growthForAbility('wheat-command-crit').attackTier(growthBuildOf(WHEAT_BUILD), u.tier)
+                : 1) >= 4;
+    output.walnutGuarding = !!u.ability.isGuarding?.(world.simulationTick);
+    if (IDLE && IDLE_ATTACK_RECORDS.has(LONG_BATON)) {
+        output.ability = IDLE_ATTACK_RECORDS.get(LONG_BATON);
+        return;
+    }
+    if (Object.isFrozen(output.ability)) {
+        output.ability = {};
+    }
     output.ability.phase = u.ability.phase;
     output.ability.elapsed = u.ability.elapsed;
     output.ability.peanutStrikeCount = u.ability.action?.peanutStrikeCount || 2;
@@ -171,14 +189,10 @@ function updateUnitAttackRender(output, u, world) {
     updateBarleyPresentation(output.ability, u.ability.action, u.ability.phase, u.ability.elapsed);
     // Enemy summons intentionally have no player progression. Keep their base
     // baton unless an active attack supplies a form; never borrow player upgrades.
-    const WHEAT_PROGRESSION = kitSpecies(u) === 7 ? world.abilityProgressionFor(u) : null,
-        WHEAT_BUILD = WHEAT_PROGRESSION ? WHEAT_PROGRESSION.abilities['wheat-command-crit'] : null;
-    output.ability.wheatLongBaton =
-        (output.ability.wheatForm ||
-            (WHEAT_BUILD?.treeVersion === 1
-                ? growthForAbility('wheat-command-crit').attackTier(growthBuildOf(WHEAT_BUILD), u.tier)
-                : 1)) >= 4;
-    output.walnutGuarding = !!u.ability.isGuarding?.(world.simulationTick);
+    output.ability.wheatLongBaton = output.ability.wheatForm ? output.ability.wheatForm >= 4 : LONG_BATON;
+    if (IDLE) {
+        IDLE_ATTACK_RECORDS.set(LONG_BATON, Object.freeze(output.ability));
+    }
 }
 
 // Health changes can interpolate while alive; death/revival must snap as one

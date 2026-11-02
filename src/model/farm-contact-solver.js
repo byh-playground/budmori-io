@@ -75,6 +75,54 @@ export const FARM_CONTACT_SOLVER = (base) =>
             this._contactCorrectionY = new Float64Array(CAPACITY);
             this._contactCorrectionCount = new Uint32Array(CAPACITY);
         }
+        _prepareFarmContactNeighbors(units, maximumRadius, gap) {
+            const ORDER = this._farmContactOrder,
+                NEIGHBORS = this._farmContactNeighbors,
+                RADIUS = this._battleRadius,
+                HEIGHT = this._battleHeight;
+            ORDER.length = 0;
+            for (let i = 0; i < units.length; i++) {
+                const UNIT_LOCAL = units[i];
+                (NEIGHBORS[i] ||= []).length = 0;
+                if (Number.isFinite(UNIT_LOCAL.x) && Number.isFinite(UNIT_LOCAL.y)) {
+                    ORDER.push(i);
+                }
+            }
+            ORDER.sort((a, b) => units[a].x - units[b].x || a - b);
+            // Sweep the current centers once per solve pass. A Jacobi move may
+            // create contacts, so rebuild after every position correction.
+            for (let left = 0; left < ORDER.length; left++) {
+                const I = ORDER[left],
+                    A = units[I],
+                    MAX_REACH = RADIUS[I] + maximumRadius + gap,
+                    MAX_SQUARED = MAX_REACH * MAX_REACH,
+                    X_LIMIT =
+                        Math.sqrt(MAX_SQUARED + Math.max(1, MAX_SQUARED) * Number.EPSILON * 8) *
+                        (1 + Number.EPSILON * 8);
+                for (let right = left + 1; right < ORDER.length; right++) {
+                    const J = ORDER[right],
+                        B = units[J],
+                        DX = B.x - A.x;
+                    if (DX > X_LIMIT) {
+                        break;
+                    }
+                    if (A.z > B.z + HEIGHT[J] || B.z > A.z + HEIGHT[I]) {
+                        continue;
+                    }
+                    const DY = B.y - A.y,
+                        REACH = RADIUS[I] + RADIUS[J] + gap,
+                        SQUARED = REACH * REACH;
+                    if (DX * DX + DY * DY <= SQUARED + Math.max(1, SQUARED) * Number.EPSILON * 8) {
+                        NEIGHBORS[Math.min(I, J)].push(Math.max(I, J));
+                    }
+                }
+            }
+            // Keep the prior i/j order: impulses and floating-point sums must
+            // not depend on the sweep order or spatial bucket insertion order.
+            for (let i = 0; i < units.length; i++) {
+                NEIGHBORS[i].sort((a, b) => a - b);
+            }
+        }
         solveContactSeparations(units, dt, bodiesCached = false) {
             if (this.tower.active && this.battleCommand === 'scatter') {
                 this._prepareArmySpacing();
@@ -100,6 +148,7 @@ export const FARM_CONTACT_SOLVER = (base) =>
                 maximumRadius = Math.max(maximumRadius, BODY_RADIUS[index]);
             }
             for (let iteration = 0; iteration < ITERATIONS; iteration++) {
+                this._prepareFarmContactNeighbors(units, maximumRadius, QUERY_GAP);
                 CORRECTION_X.fill(0, 0, units.length);
                 CORRECTION_Y.fill(0, 0, units.length);
                 CORRECTION_COUNT.fill(0, 0, units.length);
@@ -110,15 +159,7 @@ export const FARM_CONTACT_SOLVER = (base) =>
                         continue;
                     }
                     const INVERSE_MASS_A = BODY_INVERSE_MASS[i];
-                    const PENDING = this._collectContactOrders(
-                        UNIT_LOCAL,
-                        i + 1,
-                        units.length - 1,
-                        this._contactPending,
-                        BODY_RADIUS[i] + maximumRadius + QUERY_GAP,
-                        i,
-                        QUERY_GAP,
-                    );
+                    const PENDING = this._farmContactNeighbors[i];
                     for (const J of PENDING) {
                         const OTHER = units[J];
                         if (this.isMergeTaskMaterial(OTHER)) {
@@ -298,12 +339,15 @@ export const FARM_CONTACT_SOLVER = (base) =>
                 this._battleHeight = new Float64Array(CAPACITY);
                 this._battleInverseMass = new Float64Array(CAPACITY);
             }
+            let maximumRadius = 0;
             for (let i = 0; i < units.length; i++) {
                 const UNIT_LOCAL = units[i];
                 this._battleRadius[i] = UNIT_LOCAL.radius;
                 this._battleHeight[i] = UNIT_LOCAL.height;
                 this._battleInverseMass[i] = inverseBodyMass(UNIT_LOCAL);
+                maximumRadius = Math.max(maximumRadius, this._battleRadius[i]);
             }
+            return maximumRadius;
         }
         _collectBattlePairs(units) {
             this._battlePairCount = 0;
@@ -469,8 +513,8 @@ export const FARM_CONTACT_SOLVER = (base) =>
         resolveFarmContacts(units, dt = 1 / 20) {
             // Impulses only change velocity/stun, not body geometry or mass. Share the
             // existing solver cache across this pass and the following Jacobi solve.
-            this._cacheBattleBodies(units);
-            const RADIUS = this._battleRadius,
+            const MAXIMUM_RADIUS = this._cacheBattleBodies(units),
+                RADIUS = this._battleRadius,
                 HEIGHT = this._battleHeight,
                 INVERSE_MASS = this._battleInverseMass,
                 GAP = this.tower.active && this.battleCommand === 'scatter' ? CONFIG.farm.deploy.scatterGap : 0.22;
@@ -481,7 +525,7 @@ export const FARM_CONTACT_SOLVER = (base) =>
                         i + 1,
                         units.length - 1,
                         this._contactPending,
-                        RADIUS[i] + CONFIG.unit.maxRadius + GAP,
+                        RADIUS[i] + Math.min(MAXIMUM_RADIUS, CONFIG.unit.maxRadius) + GAP,
                         i,
                     );
                 if (this.isMergeTaskMaterial(UNIT_LOCAL)) {
@@ -510,6 +554,11 @@ export const FARM_CONTACT_SOLVER = (base) =>
         }
         resolveFarmContactPairs(units) {
             for (let i = 0; i < units.length; i++) {
+                // A full farm cannot spawn a child. Merge movement still resolves
+                // in its separate scene step, including when it frees capacity.
+                if (this.ownedPopulation >= this.capacity) {
+                    break;
+                }
                 const UNIT_LOCAL = units[i],
                     PENDING = this._collectContactOrders(UNIT_LOCAL, i + 1, units.length - 1, this._contactPending);
                 if (this.isMergeTaskMaterial(UNIT_LOCAL)) {

@@ -64,7 +64,7 @@
     }
   });
 })({
-    "version": "5afa3ddac3ea1407",
+    "version": "3999bc0949a93978",
     "activateMessage": "bloom-pwa:activate",
     "gamekit": "^https:\\/\\/cdn\\.jsdelivr\\.net\\/gh\\/byh-playground\\/bloom-gamekit@[0-9a-f]{40}\\/[A-Za-z0-9._/-]+$",
     "precache": [
@@ -365,21 +365,21 @@
         "src/vector-sockets.cjs",
         "src/vector-sockets.js",
         "src/version.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/camera.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/debug-tools.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/deterministic.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/hud.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/input.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/interpolation.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/object-pool.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/presentation-events.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/pwa.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/rendering.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/save.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/scenario.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/simloop.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/vector-assets-loader.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/vector-assets.js",
-        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@34918d09b47541ce1db2f9a036ff21e2fc9aefa4/work-scheduler.js"
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@f0df18d64dfec77227200494f43419821b34aaf3/camera.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@f0df18d64dfec77227200494f43419821b34aaf3/debug-tools.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@f0df18d64dfec77227200494f43419821b34aaf3/deterministic.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@f0df18d64dfec77227200494f43419821b34aaf3/hud.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@f0df18d64dfec77227200494f43419821b34aaf3/input.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@f0df18d64dfec77227200494f43419821b34aaf3/interpolation.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@f0df18d64dfec77227200494f43419821b34aaf3/object-pool.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@f0df18d64dfec77227200494f43419821b34aaf3/presentation-events.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@f0df18d64dfec77227200494f43419821b34aaf3/pwa.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@f0df18d64dfec77227200494f43419821b34aaf3/rendering.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@f0df18d64dfec77227200494f43419821b34aaf3/save.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@f0df18d64dfec77227200494f43419821b34aaf3/scenario.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@f0df18d64dfec77227200494f43419821b34aaf3/simloop.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@f0df18d64dfec77227200494f43419821b34aaf3/vector-assets-loader.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@f0df18d64dfec77227200494f43419821b34aaf3/vector-assets.js",
+        "https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@f0df18d64dfec77227200494f43419821b34aaf3/work-scheduler.js"
     ]
 });

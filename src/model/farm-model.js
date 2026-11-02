@@ -148,6 +148,8 @@ const GARDEN = class Garden extends GARDEN_BASE {
         this._lastFoodSearchSchedulerMetrics = null;
         this._contactPending = [];
         this._contactQuery = [];
+        this._farmContactOrder = [];
+        this._farmContactNeighbors = [];
         this._contactCorrectionX = new Float64Array(0);
         this._contactCorrectionY = new Float64Array(0);
         this._contactCorrectionCount = new Uint32Array(0);
@@ -205,6 +207,8 @@ const GARDEN = class Garden extends GARDEN_BASE {
             '_lastFoodSearchSchedulerMetrics',
             '_contactPending',
             '_contactQuery',
+            '_farmContactOrder',
+            '_farmContactNeighbors',
             '_contactCorrectionX',
             '_contactCorrectionY',
             '_contactCorrectionCount',
