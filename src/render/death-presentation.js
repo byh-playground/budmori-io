@@ -2,14 +2,17 @@ import { CopyDissolvePresentation } from '../features/formation-skills/copy/pres
 
 // One death for every combatant in a fight (#SSOT): troop, boss-summoned minion, boss alike.
 //
-//   t = 0 .. clip            the body's own death clip with the dead face
-//   t = clip .. clip + fade  sink and fade: alpha 1 → 0, body squashes toward SINK_SCALE_Y
+//   t = 0 .. hold            the body's own death clip with the dead face, then it lies dead; the killing blow's
+//                            push carries on (the body keeps its knockback, ghosts drift and slow down the same way)
+//   t = hold .. hold + fade  sink and fade: alpha 1 → 0, body squashes toward SINK_SCALE_Y (hold = max(clip, 5 s))
 //   after                    not drawn (body, shadow, rings, markers)
 //   t = 0 .. PUFF_SECONDS    a small neutral dissolve puff, the formation copy's dissolve in grey
 //
 // The clock is presentation state keyed by id:generation: the first frame a view is dead (or, for a body the model
 // removes on death, missing). Outside a fight (farm idle) no death is sampled and the downed look stays.
 export const DEATH_TIMING = Object.freeze({
+    holdSeconds: 5,
+    ghostDragRate: 4,
     unitFadeSeconds: 0.5,
     bossFadeSeconds: 0.9,
     sinkScaleY: 0.6,
@@ -72,9 +75,21 @@ export class DeathPresentation {
                 this.states.delete(KEY);
                 continue;
             }
+            this.drift(STATE, NOW);
             GHOSTS.push(STATE.ghost);
         }
         return GHOSTS;
+    }
+    // A ghost (its body already removed by the model) keeps sliding from the killing blow and slows to a stop.
+    drift(state, now) {
+        const GHOST = state.ghost,
+            DT = Math.max(0, now - (state.driftAt ?? now)),
+            KEEP = Math.exp(-DEATH_TIMING.ghostDragRate * DT);
+        state.driftAt = now;
+        GHOST.x += ((GHOST.vx || 0) * (1 - KEEP)) / DEATH_TIMING.ghostDragRate;
+        GHOST.y += ((GHOST.vy || 0) * (1 - KEEP)) / DEATH_TIMING.ghostDragRate;
+        GHOST.vx = (GHOST.vx || 0) * KEEP;
+        GHOST.vy = (GHOST.vy || 0) * KEEP;
     }
     // Keyed by id, valid for one generation (a reused id is a new body).
     track(view, now) {
@@ -114,7 +129,8 @@ export class DeathPresentation {
             return null;
         }
         const AGE = Math.max(0, world.time - STATE.diedAt),
-            FADE = Math.min(1, Math.max(0, (AGE - clipMs / 1000) / fadeSeconds)),
+            HOLD = Math.max(clipMs / 1000, DEATH_TIMING.holdSeconds),
+            FADE = Math.min(1, Math.max(0, (AGE - HOLD) / fadeSeconds)),
             SINK = FADE * (2 - FADE);
         STATE.done = FADE >= 1;
         return {
