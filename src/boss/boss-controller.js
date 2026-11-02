@@ -119,7 +119,7 @@ export class BossController {
         // are ordinary ballistic flight, so the regular body owns them as it owns gravity, steering and basic-attack
         // motion throughout live combat.
         const PHASE = world.farmBossEvent.phase,
-            BODY_MOVES = PHASE === 'fighting' || (PHASE === 'dropping' && !!world.bossEncounter);
+            BODY_MOVES = PHASE === 'fighting';
         if (!BOSS.active || (world.scene === 'farm' && !BODY_MOVES)) {
             return true;
         }

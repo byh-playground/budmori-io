@@ -34,14 +34,7 @@ export function createFarmBossEventPhases(config) {
     class DroppingFarmBossEventPhase extends FarmBossEventPhase {
         update(world, dt) {
             world.farmBossEvent.elapsed += dt;
-            // A tower floor's bosses leap in one after another (farm-tower-run.js advanceBossLaunch).
-            if (world.bossEncounter) {
-                if (world.advanceBossLaunch(dt)) {
-                    world.farmBossEvent.phase = 'fighting';
-                    world.farmBossEvent.elapsed = 0;
-                }
-                return true;
-            }
+            // Only the farm boss drops (a tower floor starts fighting at once).
             world.boss.z = Math.max(
                 0,
                 config.battle.dropHeight -

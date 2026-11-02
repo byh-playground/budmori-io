@@ -322,8 +322,9 @@ export const FARM_TOWER_RUN = (base) =>
             }
             this.replaceBosses([]);
             this.bossEncounter = createTowerEncounter(T.floor);
+            // The fight starts at once: bosses keep leaping in (advanceBossEncounter) while the army is sent in.
             this.farmBossEvent = {
-                phase: 'dropping',
+                phase: 'fighting',
                 elapsed: 0,
                 outcome: 'fighting',
                 encounterId: this.nextBossEncounterId++,
@@ -348,16 +349,6 @@ export const FARM_TOWER_RUN = (base) =>
             ) {
                 this.joinNextBoss();
             }
-        }
-        // The entry leaps of a tower floor. True once every opening boss has launched and landed.
-        advanceBossLaunch(dt) {
-            const ENCOUNTER = this.bossEncounter;
-            ENCOUNTER.elapsed += dt;
-            this.launchDueBosses();
-            return (
-                ENCOUNTER.nextIndex === ENCOUNTER.roster.filter((entry) => !entry.final).length &&
-                this.bosses.every((boss) => boss.dropLanded)
-            );
         }
         joinNextBoss() {
             const ENCOUNTER = this.bossEncounter,
@@ -406,7 +397,7 @@ export const FARM_TOWER_RUN = (base) =>
                 return this.boss.hp <= 0;
             }
             ENCOUNTER.elapsed += dt;
-            // A fight that skipped the entry phase (a restored or scripted one) still launches every opening boss.
+            // Opening bosses leap in one after another during the fight (`launchStaggerSeconds` apart).
             this.launchDueBosses();
             for (const BOSS of this.bosses) {
                 if (BOSS.hp <= 0 && !ENCOUNTER.clearedIds.includes(BOSS.id)) {
