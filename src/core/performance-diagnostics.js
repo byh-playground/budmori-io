@@ -39,6 +39,7 @@ const COUNTERS = Object.freeze([
     'foodProtectionVisits',
     'foodPickupQueries',
     'foodPickupChecks',
+    'foodPickupRadiusChecks',
     'foodDeliveryVisits',
     'workSchedulerQueueDepth',
     'workSchedulerJobsQueued',

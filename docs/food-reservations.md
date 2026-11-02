@@ -38,7 +38,7 @@
 
 기존 원거리 검색은 링/버킷·제한적 fallback·검색 큐와 **틱당 24작업, quantum 1**을 유지한다. 후보 검사 또는 셀 방문을 각 1작업으로 세고 무효 작업 폐기도 최소 1작업을 쓴다. 새싹 검색 큐가 성체보다 먼저 처리된다. 새싹 큐는 오래 기다린 검색 하나를 완료한 뒤 다음 검색을 처리해, 모든 새싹이 미완료 커서만 순환하다 결과가 함께 낡는 상황을 줄인다. 새싹은 기존 링/버킷 탐색에서 거리 제한 안의 첫 유효 후보를 찾으면 다음 한 끼 예약을 확정한다. 정확한 최근접임을 증명하려고 나머지 후보를 전부 검사하지 않는다. 성체 큐와 성체 최근접 탐색은 기존 방식을 유지한다. 새싹도 매 SDK quantum마다 예산을 차감한다. 빈 검색은 기존 인덱스/해제 revision 또는 이동량으로 재시도한다.
 
-추가 작업은 위 24작업에 포함하지 않는다. `foodProtection`은 병력과 먹이의 선형 순회로 보호 준비, `foodPickup`은 먹이 주변의 국소 병력 후보, `foodDelivery`는 배달 대상 선택·먹이 생성·배정의 CPU다. 전체 생산 루프는 `foodProduction`으로 따로 본다. `foodProtectionVisits`, `foodPickupQueries`, `foodPickupChecks`, `foodDeliveryVisits`를 별도 계수한다. 전체 정렬이나 병력마다 전체 먹이를 훑는 탐색은 추가하지 않는다. 더미 배정은 기존 일꾼 refresh 주기/변경 시에 실행한다. 기능 E2E 통과는 CPU 성능 또는 실제 PC FPS 보증이 아니다.
+추가 작업은 위 24작업에 포함하지 않는다. `foodProtection`은 병력과 먹이의 선형 순회로 보호 준비, `foodPickup`은 먹이가 있을 때만 계산하는 실제 최대 섭취 반경과 먹이 주변의 국소 병력 후보, `foodDelivery`는 배달 대상 선택·먹이 생성·배정의 CPU다. 전체 생산 루프는 `foodProduction`으로 따로 본다. `foodProtectionVisits`, `foodPickupQueries`, `foodPickupChecks`, `foodPickupRadiusChecks`, `foodDeliveryVisits`를 별도 계수한다. 전체 정렬이나 병력마다 전체 먹이를 훑는 탐색은 추가하지 않는다. 더미 배정은 기존 일꾼 refresh 주기/변경 시에 실행한다. 기능 E2E 통과는 CPU 성능 또는 실제 PC FPS 보증이 아니다.
 
 ## 내부 rollback과 디스크 저장
 

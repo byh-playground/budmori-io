@@ -14,7 +14,13 @@ export class FoodReservations {
         this.waitingSeeds = new Set();
         this.nearbyUnits = [];
         this.eaten = new Set();
-        this.work = { protectionVisits: 0, pickupQueries: 0, pickupChecks: 0, deliveryVisits: 0 };
+        this.work = {
+            protectionVisits: 0,
+            pickupQueries: 0,
+            pickupChecks: 0,
+            pickupRadiusChecks: 0,
+            deliveryVisits: 0,
+        };
         this.groundedClaims = 0;
         this.byUnit = new Map();
         this.byFood = new Map();
@@ -222,6 +228,14 @@ export class FoodReservations {
             START = W.profiler?.start();
         const QUERIES = this.work.pickupQueries,
             CHECKS = this.work.pickupChecks;
+        if (W._groundedFoodCount > 0) {
+            this.maxPickupRadius = FOOD_RESERVATION.pickupMinimum;
+            for (const UNIT of W.unitCollection.items) {
+                this.maxPickupRadius = Math.max(this.maxPickupRadius, this.pickupRadius(UNIT));
+                this.work.pickupRadiusChecks++;
+            }
+            W.profiler?.count('foodPickupRadiusChecks', W.unitCollection.items.length);
+        }
         // Unit centers are already in the model's grid; reuse a buffer for local contenders.
         for (const FOOD of W._groundedFoods) {
             if (!W._isCurrentGroundedFood(FOOD)) {
@@ -278,10 +292,6 @@ export class FoodReservations {
     advance(dt = 0) {
         const W = this.world;
         this.eaten.clear();
-        this.maxPickupRadius = FOOD_RESERVATION.pickupMinimum;
-        for (const UNIT of W.unitCollection.items) {
-            this.maxPickupRadius = Math.max(this.maxPickupRadius, this.pickupRadius(UNIT));
-        }
         // At most one record per grounded food; no per-unit scan of the food field.
         for (const [UNIT, CLAIM] of this.byUnit) {
             const DISTANCE = Math.hypot(CLAIM.food.x - UNIT.x, CLAIM.food.y - UNIT.y);
