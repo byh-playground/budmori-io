@@ -1433,15 +1433,9 @@ function validateTowerCheckpoint(raw) {
             ENCOUNTER.roster.every(
                 (entry) =>
                     entry &&
-                    Object.keys(entry).length === 5 &&
+                    Object.keys(entry).length === 3 &&
                     INTEGER(entry.species, 0, CONFIG.unit.speciesCount) &&
                     INTEGER(entry.element, 1, 5) &&
-                    Number.isFinite(entry.hpShare) &&
-                    entry.hpShare > 0 &&
-                    entry.hpShare <= 1 &&
-                    Number.isFinite(entry.attackShare) &&
-                    entry.attackShare > 0 &&
-                    entry.attackShare <= 1 &&
                     typeof entry.final === 'boolean',
             ) &&
             INTEGER(ENCOUNTER.nextIndex, 1, ENCOUNTER.roster.length) &&

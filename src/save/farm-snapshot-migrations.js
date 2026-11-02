@@ -72,9 +72,10 @@ const LEGACY_BOSS_FIELDS = new Set(
 
 // Runtime checkpoints retain the previous 60-tick shred ring at this boundary.
 // Disk save compatibility remains at the separate user-facing import boundary.
-// Up to 0.67.12 a tower encounter joined one boss every 12 seconds (nextJoinAt) and every enemy took the floor
-// band's element. Bosses now drop together, each with its own element. An old checkpoint keeps its fight as it was:
-// its not-yet-joined bosses come when the field clears (advanceBossEncounter) and every enemy keeps the band element.
+// Up to 0.67.12 a tower encounter joined one boss every 12 seconds (nextJoinAt), split the floor budget among its
+// bosses (hpShare, attackShare) and every enemy took the floor band's element. Bosses now enter together, each with
+// the whole floor budget and its own element. An old checkpoint keeps the bosses already on the field as they are;
+// its not-yet-joined bosses come at full budget and every enemy keeps the band element.
 function migrateBossEncounter(snapshot) {
     const ENCOUNTER = snapshot.bossEncounter,
         BAND_ELEMENT = towerElement(snapshot.tower?.active ? snapshot.tower.floor : 1);
@@ -82,6 +83,8 @@ function migrateBossEncounter(snapshot) {
         delete ENCOUNTER.nextJoinAt;
         for (const ENTRY of ENCOUNTER.roster ?? []) {
             ENTRY.element ??= towerElement(ENCOUNTER.floor);
+            delete ENTRY.hpShare;
+            delete ENTRY.attackShare;
         }
     }
     for (const UNIT of [...snapshot.units, ...snapshot.bosses]) {

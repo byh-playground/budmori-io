@@ -380,8 +380,8 @@ export const FARM_TOWER_RUN = (base) =>
                 REACH = AIR_DRAG / (1 - Math.exp(-AIR_DRAG * FLIGHT));
             BOSS.controller.configureStage(ENCOUNTER.floor, ENTRY.species);
             BOSS.setBaseStats({
-                maxHp: Math.max(1, Math.round(STATS.hp * KIND.hp * BUDGET.hp * ENTRY.hpShare)),
-                attackPower: STATS.attackPower * KIND.attack * BUDGET.attack * ENTRY.attackShare,
+                maxHp: Math.max(1, Math.round(STATS.hp * KIND.hp * BUDGET.hp)),
+                attackPower: STATS.attackPower * KIND.attack * BUDGET.attack,
             });
             BOSS.setStatModifiers(runStatModifiers(this.tower.bossCards, 'boss'));
             BOSS.setHealth(BOSS.maxHp);
@@ -406,6 +406,8 @@ export const FARM_TOWER_RUN = (base) =>
                 return this.boss.hp <= 0;
             }
             ENCOUNTER.elapsed += dt;
+            // A fight that skipped the entry phase (a restored or scripted one) still launches every opening boss.
+            this.launchDueBosses();
             for (const BOSS of this.bosses) {
                 if (BOSS.hp <= 0 && !ENCOUNTER.clearedIds.includes(BOSS.id)) {
                     BOSS.die();

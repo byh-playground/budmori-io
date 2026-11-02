@@ -1,8 +1,8 @@
 import { BOSS_SPECIES } from '../units/species-catalog.js';
 import { TOWER_ELEMENT_ORDER, towerElement } from './tower-theme.js';
 
-// Initial tuning, not a time limit. A floor owns one finite roster and one
-// aggregate stat budget; adding actors divides that budget rather than copying it.
+// Initial tuning, not a time limit. A floor owns one finite roster; every boss on it gets the floor's whole stat
+// budget (encounterBudget), so a floor with more bosses is that much harder rather than the same fight split up.
 // Every boss but the crown enters at the start, spread on a ring (`spreadRatio` of the arena radii) so the army,
 // arriving from every edge, meets different bosses at once instead of killing them one at a time. They leap out of
 // the arena centre one after another (`launchStaggerSeconds` apart), each in an arc that peaks at `launchApex` (the
@@ -15,10 +15,6 @@ export const TOWER_ENCOUNTER_SETTINGS = Object.freeze({
         Object.freeze({ through: 60, count: 3 }),
         Object.freeze({ through: 100, count: 4 }),
     ]),
-    // The floor budget × this, by how many bosses open the fight (index = count - 1), shared evenly among them.
-    // Bosses that fight at once and spread out hit fewer troops each than one boss the whole army crowds, so a
-    // floor with more of them needs a larger total to stay as hard (tuned against the 0.67.12 fights).
-    budgetByBossCount: Object.freeze([1, 1, 1.08, 1.5]),
     spreadRatio: 0.5,
     launchStaggerSeconds: 0.5,
     launchApex: 7,
@@ -44,23 +40,10 @@ export function encounterElements(floor, count) {
 
 export function createTowerEncounter(floor) {
     const COUNT = TOWER_ENCOUNTER_SETTINGS.bands.find((band) => floor <= band.through).count,
-        SHARE = TOWER_ENCOUNTER_SETTINGS.budgetByBossCount[COUNT - 1] / COUNT,
-        ROSTER = encounterElements(floor, COUNT).map((element) => ({
-            species: BOSS_SPECIES,
-            element,
-            hpShare: floor === 100 ? 0.5 * SHARE : SHARE,
-            attackShare: floor === 100 ? 0.56 * SHARE : SHARE,
-            final: false,
-        }));
+        ROSTER = encounterElements(floor, COUNT).map((element) => ({ species: BOSS_SPECIES, element, final: false }));
     if (floor === 100) {
         // The crown is one more plain sprout with the same authored rig/patterns, in the top band's element.
-        ROSTER.push({
-            species: BOSS_SPECIES,
-            element: towerElement(floor),
-            hpShare: 0.5,
-            attackShare: 0.44,
-            final: true,
-        });
+        ROSTER.push({ species: BOSS_SPECIES, element: towerElement(floor), final: true });
     }
     return {
         roster: ROSTER,
