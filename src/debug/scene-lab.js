@@ -94,6 +94,10 @@ function labBoss(world, spec) {
         for (const ID of BOSS_PATTERN_IDS) {
             RUNTIME.cooldowns[ID] = ID === PATTERN ? 0 : 1e9;
         }
+        // An element skill is the boss's own: the boss takes that element.
+        if (CONFIG.element) {
+            BOSS.enemyElement = CONFIG.element;
+        }
         BOSS.basicCount = BOSS_RHYTHM.basicsPerSpecial;
         BOSS.specialCount = CONFIG.element ? 0 : BOSS_RHYTHM.specialsPerArea - 1;
         // Patterns gated by remaining HP need the boss at or below their unlock fraction.
