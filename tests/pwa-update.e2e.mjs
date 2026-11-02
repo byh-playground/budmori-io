@@ -340,7 +340,8 @@ async function nativeVisibilityContext() {
             '--enable-unsafe-swiftshader',
             'about:blank',
         ],
-        { stdio: ['ignore', 'ignore', 'pipe'] },
+        // Existing assertions read the Korean UI; Linux Chromium takes its language from LANGUAGE.
+        { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, LANGUAGE: 'ko' } },
     );
     REPORT.nativeBrowserStderr = '';
     nativeProcess.stderr.on('data', (chunk) => {
