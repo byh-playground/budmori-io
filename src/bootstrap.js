@@ -1,9 +1,10 @@
+import { LOCALE } from './i18n/locale.js';
 import { PAGE } from './i18n/messages/page.js';
 import { labRequested } from './debug/lab.js';
 import { isolatedPage } from './save/save-adapter.js';
 import { createStartupLoading, showStartupFailure } from './startup-loading.js';
-import { formatNumber } from './i18n/text.js';
 import { BOOT } from './i18n/messages/boot.js';
+import { gamekitEntry, loadGamekitModule, revokeGamekitModules, runtimeManifest } from './gamekit-module.js';
 
 // The intro is a public route, not a normal farm state.
 if (new URLSearchParams(location.search).get('showcaseDemo') !== '1' && location.hash === '#/showcase') {
@@ -256,7 +257,7 @@ function diagnosticSnapshot() {
     );
     LINES.push(
         BOOT.errorSummary({
-            total: formatNumber(ERRORS.total || 0),
+            total: LOCALE.number(ERRORS.total || 0),
             stage: initStage,
             inputs:
                 RECENT_INPUTS.slice(-3)
@@ -346,11 +347,7 @@ DIAGNOSTIC_BUTTON.addEventListener('click', async () => {
     }
 });
 try {
-    const MANIFEST = document.getElementById('bloom-runtime-manifest');
-    if (!MANIFEST) {
-        throw new Error('Runtime manifest is missing');
-    }
-    config = JSON.parse(MANIFEST.textContent);
+    config = runtimeManifest();
 } catch (error) {
     initStage = 'manifest';
     recordDiagnostic(error, 'manifest-error');
@@ -358,7 +355,6 @@ try {
     showErrorPopup(BOOT.prepareFailed({ message: fallbackText(error) }));
     console.error('Game manifest failed to initialize', error);
 }
-const READY = new Map();
 let pending = false;
 let started = false;
 let vectorLoader = null;
@@ -367,42 +363,6 @@ const VECTOR_RESPONSES = new Map();
 // The plain file address, so the service worker's offline copy (stored per exact address) serves it offline.
 // Integrity is the manifest SHA-256 the loader checks; no-cache revalidates when no service worker answers.
 const VECTOR_SOURCE_URL = (spec) => new URL(spec.file, document.baseURI).href;
-const DIGEST = async (bytes) =>
-    Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), (b) =>
-        b.toString(16).padStart(2, '0'),
-    ).join('');
-async function namespace(entry) {
-    if (READY.has(entry.name)) {
-        return READY.get(entry.name);
-    }
-    const RESPONSE = await fetch(entry.url, {
-        cache: 'force-cache',
-    });
-    if (!RESPONSE.ok) {
-        throw new Error('Module request failed: ' + RESPONSE.status + ' (' + entry.name + ')');
-    }
-    const BYTES = await RESPONSE.arrayBuffer();
-    if (BYTES.byteLength !== entry.bytes || (await DIGEST(BYTES)) !== entry.sha256) {
-        throw new Error('Module integrity failed: ' + entry.name);
-    }
-    const URL_LOCAL = URL.createObjectURL(
-        new Blob([BYTES], {
-            type: 'text/javascript',
-        }),
-    );
-    try {
-        const EXPORTS = await import(URL_LOCAL),
-            RECORD = {
-                exports: EXPORTS,
-                verifiedImportURL: URL_LOCAL,
-            };
-        READY.set(entry.name, RECORD);
-        return RECORD;
-    } catch (error) {
-        URL.revokeObjectURL(URL_LOCAL);
-        throw error;
-    }
-}
 async function enableGamekitDiagnostics(record) {
     const API = record?.exports;
     if (typeof API?.DiagnosticRing !== 'function' || typeof API?.copyDiagnostic !== 'function') {
@@ -435,12 +395,8 @@ async function enableGamekitDiagnostics(record) {
     EARLY_ERRORS.length = 0;
 }
 async function loadDiagnostics() {
-    const ENTRY = config.modules.find((module) => module.name === 'debug-tools');
-    if (!ENTRY) {
-        throw new Error('Required gamekit debug-tools module is missing from the manifest');
-    }
     initStage = 'loading-debug-tools';
-    await enableGamekitDiagnostics(await namespace(ENTRY));
+    await enableGamekitDiagnostics(await loadGamekitModule(gamekitEntry('debug-tools')));
 }
 async function launch() {
     if (pending || started || !config) {
@@ -452,18 +408,14 @@ async function launch() {
             await loadDiagnostics();
         }
         initStage = 'loading-boot';
-        const BOOT_ENTRY = config.modules.find((module) => module.name === 'boot');
-        if (!BOOT_ENTRY) {
-            throw new Error('Required gamekit boot module is missing from the manifest');
-        }
-        startup = createStartupLoading((await namespace(BOOT_ENTRY)).exports);
+        startup = createStartupLoading((await loadGamekitModule(gamekitEntry('boot'))).exports);
         globalThis.BudmoriStartup = startup;
         initStage = 'loading-modules';
         startup.report('modules', 0, config.modules.length);
         let modulesDone = 0;
         const MODULES = await Promise.all(
             config.modules.map(async (entry) => {
-                const RECORD = await namespace(entry);
+                const RECORD = await loadGamekitModule(entry);
                 startup.report('modules', ++modulesDone, config.modules.length);
                 return { entry, record: RECORD };
             }),
@@ -546,7 +498,7 @@ async function launch() {
                 name: 'app-simulation-scope',
                 url: new URL(config.scope.file + '?version=' + config.scope.sha256, document.baseURI).href,
             };
-            const RECORD = await namespace(ENTRY);
+            const RECORD = await loadGamekitModule(ENTRY);
             globalThis.BloomSimulationScopeModule = RECORD.exports;
             scope = Object.freeze({
                 ...ENTRY,
@@ -565,12 +517,7 @@ async function launch() {
                     }),
                 ),
             ),
-            dispose() {
-                for (const RECORD of READY.values()) {
-                    URL.revokeObjectURL(RECORD.verifiedImportURL);
-                }
-                READY.clear();
-            },
+            dispose: revokeGamekitModules,
         });
         // Native ES modules are the authored runtime; no generated IIFE or build artifact. The whole game graph
         // (listed at commit time by GameKit listModuleGraph) is requested in parallel first, so import() below

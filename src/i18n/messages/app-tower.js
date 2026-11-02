@@ -1,7 +1,7 @@
-import { defineMessages, plural } from '../text.js';
+import { LOCALE } from '../locale.js';
 
 // Tower climb, doors, cards and boss fight text (src/farm-app.js).
-export const APP_TOWER = defineMessages({
+export const APP_TOWER = LOCALE.messages({
     floorBattle: { ko: '전투', en: 'Battle' },
     floorElite: { ko: '정예', en: 'Elite' },
     floorMid: { ko: '중간 보스', en: 'Mid boss' },
@@ -56,7 +56,7 @@ export const APP_TOWER = defineMessages({
     floorCleared: {
         ko: ({ floor, downed, cards }) => `${floor}층 돌파 · 쓰러진 병력 ${downed}마리 · 강화 카드 ${cards}장`,
         en: ({ floor, downed, cards }) =>
-            `Floor ${floor} cleared · ${downed} ${plural(downed, 'troop', 'troops')} down · ${cards} upgrade ${plural(cards, 'card', 'cards')}`,
+            `Floor ${floor} cleared · ${downed} ${LOCALE.plural(downed, { one: 'troop', other: 'troops' })} down · ${cards} upgrade ${LOCALE.plural(cards, { one: 'card', other: 'cards' })}`,
     },
     towerResult: {
         ko: ({ floor, record, best }) => `지난 도전 ${floor}층${record ? ' · 새 기록!' : ''} · 최고 ${best}층`,

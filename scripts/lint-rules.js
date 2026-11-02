@@ -80,7 +80,7 @@ const BINDING_NAMES = {
     },
 };
 
-// Player-visible text lives in TextPairs (src/i18n/text.js): a Hangul literal is allowed only inside the `ko` member
+// Player-visible text lives in TextPairs (GameKit i18n via src/i18n/locale.js): a Hangul literal is allowed only inside the `ko` member
 // of an object that also has an `en` member. Error messages are developer diagnostics and stay exempt.
 const HANGUL = /[가-힣ㄱ-ㆎ]/u;
 function propertyName(property) {
@@ -99,7 +99,8 @@ const LOCALIZED_TEXT = {
         docs: { description: 'Keep player-visible Korean text inside { ko, en } text pairs.' },
         schema: [],
         messages: {
-            unpaired: 'Player-visible text must be a { ko, en } pair resolved through src/i18n/text.js (docs/i18n.md).',
+            unpaired:
+                'Player-visible text must be a { ko, en } pair resolved through LOCALE in src/i18n/locale.js (docs/i18n.md).',
         },
     },
     create(context) {

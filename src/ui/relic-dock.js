@@ -1,3 +1,4 @@
+import { LOCALE } from '../i18n/locale.js';
 import { formationBaseValue, formationDamageBudget } from '../formation/formation-damage.js';
 import { giantBonusFor } from '../features/formation-skills/giant/definition.js';
 import {
@@ -6,8 +7,6 @@ import {
     formationUpgradeValue,
 } from '../formation/formation-skill-state.js';
 import { iconSvg } from './icons.js';
-import { LOCALE_TAG } from '../i18n/locale.js';
-import { localized } from '../i18n/text.js';
 import { RELIC } from '../i18n/messages/ui-relic.js';
 
 const CONDITION_LABELS = Object.freeze({
@@ -31,7 +30,7 @@ const ESCAPE = (value) =>
                 "'": '&#39;',
             })[character],
     );
-const NUMBER = (value) => new Intl.NumberFormat(LOCALE_TAG, { maximumFractionDigits: 2 }).format(value || 0);
+const NUMBER = (value) => new Intl.NumberFormat(LOCALE.locale, { maximumFractionDigits: 2 }).format(value || 0);
 const SECONDS = (value) => RELIC.seconds({ value: NUMBER(Math.max(0, value)) });
 
 // Card previews and both docks describe the same level and role profile.
@@ -87,7 +86,7 @@ export function relicEffectText(definition, level, role = 'player', previousLeve
             });
         return `${RELIC.floor({ floor })} · ${TOTAL}${compact ? '' : ` · ${RELIC.healingSpread({ duration: SECONDS(PROFILE.durationSeconds) })}`}`;
     }
-    return localized(PROFILE.description);
+    return LOCALE.text(PROFILE.description);
 }
 
 export function relicAcquisitionText(receipt, floor = 1) {
@@ -235,7 +234,7 @@ export class RelicDock {
                 : '';
         this.dialog.querySelector('h2').textContent = RELIC.detailTitle({
             boss: this.role === 'boss',
-            name: localized(DEFINITION.name),
+            name: LOCALE.text(DEFINITION.name),
             level: LEVEL,
         });
         this.dialog.querySelector('.relic-detail__effect').textContent = relicEffectText(
@@ -304,7 +303,7 @@ export class RelicDock {
             this.closeDetail();
             this.slotHost.innerHTML = RELICS.map(([id, level]) => {
                 const DEFINITION = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === id);
-                return `<div class="formation-slot" data-formation-slot="${ESCAPE(id)}" data-empty="false"><button type="button" class="formation-icon" data-relic-detail="${ESCAPE(id)}" aria-label="${ESCAPE(RELIC.slotDetail({ name: localized(DEFINITION.name), level }))}" aria-haspopup="dialog" aria-controls="${this.dialog.id}" aria-expanded="false">${iconSvg(id)}<i class="formation-clock" aria-hidden="true"></i><em class="formation-lv">${level}</em></button><div class="formation-charge" aria-hidden="true"><i></i></div><small class="formation-status"></small><small class="formation-acquired" hidden></small></div>`;
+                return `<div class="formation-slot" data-formation-slot="${ESCAPE(id)}" data-empty="false"><button type="button" class="formation-icon" data-relic-detail="${ESCAPE(id)}" aria-label="${ESCAPE(RELIC.slotDetail({ name: LOCALE.text(DEFINITION.name), level }))}" aria-haspopup="dialog" aria-controls="${this.dialog.id}" aria-expanded="false">${iconSvg(id)}<i class="formation-clock" aria-hidden="true"></i><em class="formation-lv">${level}</em></button><div class="formation-charge" aria-hidden="true"><i></i></div><small class="formation-status"></small><small class="formation-acquired" hidden></small></div>`;
             }).join('');
         }
         const SLOTS =
@@ -348,7 +347,7 @@ export class RelicDock {
             ELEMENT.querySelector('.formation-status').textContent = STATUS.label;
             ELEMENT.querySelector('.formation-icon').setAttribute(
                 'aria-label',
-                `${RELIC.slotSummary({ boss: this.role === 'boss', name: localized(DEFINITION.name), level: LEVELS.get(ID) })} · ${STATUS.label}${BADGE ? ` · ${RELIC.thisBattle({ badge: BADGE })}` : ''} · ${RELIC.viewDetails()}`,
+                `${RELIC.slotSummary({ boss: this.role === 'boss', name: LOCALE.text(DEFINITION.name), level: LEVELS.get(ID) })} · ${STATUS.label}${BADGE ? ` · ${RELIC.thisBattle({ badge: BADGE })}` : ''} · ${RELIC.viewDetails()}`,
             );
             ELEMENT.dataset.state = STATUS.state;
             ELEMENT.dataset.ready = String(STATUS.state === 'ready');

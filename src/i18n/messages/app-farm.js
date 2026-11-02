@@ -1,7 +1,7 @@
-import { defineMessages, plural } from '../text.js';
+import { LOCALE } from '../locale.js';
 
 // Farm HUD, breeding, work, menu and raid text (src/farm-app.js).
-export const APP_FARM = defineMessages({
+export const APP_FARM = LOCALE.messages({
     raidOnlyOnFarm: { ko: '농장에서만 보스에 도전할 수 있어요.', en: 'You can only challenge the boss from the farm.' },
     raidAlreadyFighting: { ko: '이미 전투 중이에요.', en: 'Already in a fight.' },
     raidNoTroops: {
@@ -44,12 +44,13 @@ export const APP_FARM = defineMessages({
     armyHealth: {
         ko: ({ current, max, living, total }) => `${current}/${max} · ${living}/${total}마리`,
         en: ({ current, max, living, total }) =>
-            `${current}/${max} · ${living}/${total} ${plural(total, 'troop', 'troops')}`,
+            `${current}/${max} · ${living}/${total} ${LOCALE.plural(total, { one: 'troop', other: 'troops' })}`,
     },
     // perMinute: already rounded to one decimal ("2.0").
     workNote: {
         ko: ({ workers, perMinute }) => `일꾼 ${workers}마리 · 먹이 ${perMinute}/분`,
-        en: ({ workers, perMinute }) => `${workers} ${plural(workers, 'worker', 'workers')} · ${perMinute} food/min`,
+        en: ({ workers, perMinute }) =>
+            `${workers} ${LOCALE.plural(workers, { one: 'worker', other: 'workers' })} · ${perMinute} food/min`,
     },
     workFoodFull: {
         ko: '농장에 먹이가 가득해요 · 일꾼은 쉬는 중이에요',

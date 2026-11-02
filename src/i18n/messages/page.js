@@ -1,8 +1,8 @@
-import { defineMessages } from '../text.js';
+import { LOCALE } from '../locale.js';
 
 // Static text of index.html: <x data-i18n="key"> (textContent) and <x data-i18n-<attr>="key"> (that attribute).
-// Applied once by applyPageText in src/startup-loading.js, the first module the page runs (bootstrap imports it).
-export const PAGE = defineMessages({
+// Applied once by LOCALE.applyPage in src/startup-loading.js, the first module the page runs (bootstrap imports it).
+export const PAGE = LOCALE.messages({
     // Startup loading panel
     loadingLabel: { ko: '모험을 준비하고 있어요', en: 'Getting your adventure ready' },
     loadingProgress: { ko: '전체 시작 준비 진행', en: 'Overall startup progress' },

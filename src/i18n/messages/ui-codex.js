@@ -1,7 +1,7 @@
-import { defineMessages, formatNumber } from '../text.js';
+import { LOCALE } from '../locale.js';
 
 // Codex dialog (src/ui/codex-dialog.js): tabs, recipe list and the discovery grids.
-export const CODEX = defineMessages({
+export const CODEX = LOCALE.messages({
     tabRecipes: { ko: '조합식', en: 'Recipes' },
     tabForms: { ko: '성향', en: 'Temperaments' },
     tabColors: { ko: '속성', en: 'Elements' },
@@ -11,7 +11,7 @@ export const CODEX = defineMessages({
     recipeUnknown: { ko: '조합 미확인', en: 'Combination not found yet' },
     owned: {
         ko: ({ count }) => `현재 보유 ${count}마리`,
-        en: ({ count }) => `Owned: ${formatNumber(count)}`,
+        en: ({ count }) => `Owned: ${LOCALE.number(count)}`,
     },
     noRecipes: { ko: '이 병종을 재료로 쓰는 조합은 없어요.', en: 'No combination uses this species.' },
     recipesIntro: {

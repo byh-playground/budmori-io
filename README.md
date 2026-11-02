@@ -39,7 +39,7 @@
 
 ## 언어 (한국어 · English)
 
-화면 문구는 한국어와 영어를 지원합니다. `?lang=` → 저장한 선택 → 브라우저 언어 순으로 정하고, 그 외에는 영어로 시작합니다. 설정의 언어 버튼으로 바꾸면 저장 후 새로고침하며, 탑 도전 중에는 바꿀 수 없습니다. 모든 문구는 `{ ko, en }` 한 쌍으로 두고 lint가 짝 없는 한글을 막습니다. [다국어 계약·용어집](docs/i18n.md)을 참고하세요. 흐름은 `npm run test:locale`로 확인합니다.
+화면 문구는 한국어와 영어를 지원합니다. `?lang=` → 저장한 선택 → 브라우저 언어 순으로 정하고, 그 외에는 영어로 시작합니다. 설정의 언어 버튼으로 바꾸면 저장 후 새로고침하며, 탑 도전 중에는 바꿀 수 없습니다. 모든 문구는 `{ ko, en }` 한 쌍으로 두어 GameKit `i18n` 모듈(`src/i18n/locale.js`의 `LOCALE`)로 해석하고 lint가 짝 없는 한글을 막습니다. [다국어 계약·용어집](docs/i18n.md)을 참고하세요. 흐름은 `npm run test:locale`로 확인합니다.
 
 ## 실행과 검증
 
@@ -162,7 +162,7 @@ t = 0 .. 0.6             작은 회색 소멸 연기 (분신 소멸 formation-co
 
 GameKit `pwa` 모듈을 씁니다. `assets/pwa/`의 SVG 세 개(아이콘·마스커블 아이콘·공유 이미지, 게임 캐릭터 SVG와 얼굴 레이어로 만든 것)가 원본이고, `npm run pwa`(`scripts/pwa.mjs`)가 고정 생성기 `vendor/upstream/pwa-build.mjs`로 `manifest.webmanifest`·`pwa/*.png`·`sw.js`와 `index.html`의 `bloom-pwa` 마커 사이 태그를 만듭니다. 생성 결과는 커밋하고, `npm run check`의 `scripts/pwa.mjs --check`가 원본과 어긋난 결과를 막습니다. `index.html`·`sw.js`는 생성기가 쓰므로 Prettier에서 뺐습니다. `src/**`나 `assets/troops/*`를 바꾸면 `npm run pwa`를 다시 돌려 커밋합니다(sw.js의 캐시 버전이 바뀌어야 새 배포가 설치됩니다).
 
-GameKit pwa 계약(SDK 0.41.1)은 **페이지를 읽을 때(새로고침 포함)마다 최신 배포본**입니다. sw.js는 받는 파일마다 서버에 재확인(`no-cache`)하고, 받은 사본을 오프라인용으로 보관합니다. 오프라인에서는 마지막으로 읽은 버전이 열리며(두 번째 방문부터), 고정 GameKit 모듈은 commit 고정 주소라 cache-first입니다. 백그라운드 다운로드·대기 worker·업데이트 알림은 없고, sw.js는 게임 파일과 무관해 GameKit pin을 올릴 때만 바뀝니다. 캐릭터 SVG는 오프라인 사본과 같은 주소로 읽도록 query 없이 요청하고(`cache: 'no-cache'`), 무결성은 manifest의 SHA-256으로 확인합니다. 브라우저가 설치를 허락하면 시작 화면에 `앱으로 설치`가 나옵니다. 도움말·장면 연구실·소개 데모는 service worker를 등록하지 않습니다(`src/ui/app-shell.js`).
+GameKit pwa 계약(SDK 0.41.2)은 **페이지를 읽을 때(새로고침 포함)마다 최신 배포본**입니다. sw.js는 받는 파일마다 서버에 재확인(`no-cache`)하고, 받은 사본을 오프라인용으로 보관합니다. 오프라인에서는 마지막으로 읽은 버전이 열리며(두 번째 방문부터), 고정 GameKit 모듈은 commit 고정 주소라 cache-first입니다. 백그라운드 다운로드·대기 worker·업데이트 알림은 없고, sw.js는 게임 파일과 무관해 GameKit pin을 올릴 때만 바뀝니다. 캐릭터 SVG는 오프라인 사본과 같은 주소로 읽도록 query 없이 요청하고(`cache: 'no-cache'`), 무결성은 manifest의 SHA-256으로 확인합니다. 브라우저가 설치를 허락하면 시작 화면에 `앱으로 설치`가 나옵니다. 도움말·장면 연구실·소개 데모는 service worker를 등록하지 않습니다(`src/ui/app-shell.js`).
 
 설정의 `새 버전 확인`은 농장을 저장한 뒤 `location.reload()`합니다. 저장이 실패하면(예: localStorage 할당량 초과) 새로고침하지 않고 저장 원본을 그대로 둔 채 이유를 표시하며 다시 누를 수 있습니다. 캐시·사이트 데이터 삭제는 이 절차에 포함하지 않고, PWA 캐시 정리는 게임 범위의 코드 캐시만 다루며 `budmori-farm` 저장 키와 IndexedDB 데이터는 삭제하지 않습니다.
 

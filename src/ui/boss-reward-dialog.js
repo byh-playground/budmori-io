@@ -1,7 +1,7 @@
+import { LOCALE } from '../i18n/locale.js';
 import { BOSS_REWARD_BANDS, revealBossReward } from '../boss/boss-rewards.js';
 import { BOSS_SPECIES } from '../units/species-catalog.js';
 import { speciesFacePortraitSource } from '../units/species-paint.js';
-import { localized } from '../i18n/text.js';
 import { BOSS_REWARD } from '../i18n/messages/ui-boss-reward.js';
 
 const PRESENTATION = Object.freeze({
@@ -186,7 +186,7 @@ export class BossRewardDialog {
             DONE && RECEIPT.acquiredCount === 0 ? BOSS_REWARD.summaryEmpty() : BOSS_REWARD.summaryJoin();
         this.elements.Band.hidden = !DONE || RECEIPT.bandIndex === null || RECEIPT.acquiredCount === 0;
         const BAND = BOSS_REWARD_BANDS[RECEIPT.bandIndex];
-        this.elements.Band.textContent = BAND ? localized(BAND.label) : '';
+        this.elements.Band.textContent = BAND ? LOCALE.text(BAND.label) : '';
         this.elements.PopAmount.textContent = DONE
             ? RECEIPT.acquiredCount > 0
                 ? BOSS_REWARD.sprouts({ count: RECEIPT.acquiredCount })

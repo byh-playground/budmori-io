@@ -1,9 +1,9 @@
-import { defineMessages } from '../text.js';
+import { LOCALE } from '../locale.js';
 
 // App shell (install, update) and small presentation widgets: sound toggle, help demo frame, seedling reveal,
 // showcase launcher (src/ui/app-shell.js, src/render/food-feel.js, src/ui/help-panel.js, src/ui/seedling-reveal.js,
 // src/showcase.js).
-export const SHELL = defineMessages({
+export const SHELL = LOCALE.messages({
     updateSaveFailed: {
         ko: '농장을 저장하지 못해 새로고침하지 않았어요. 저장된 농장은 그대로예요.',
         en: 'Couldn’t save the farm, so the page wasn’t reloaded. Your saved farm is unchanged.',
