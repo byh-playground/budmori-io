@@ -294,9 +294,7 @@ export function migrateFarmProgress(data) {
     const PLAYER = migratePlayerProgressionState(data?.player),
         NEXT = structuredClone(data);
     NEXT.player = PLAYER;
-    if (Object.hasOwn(NEXT.ledger.boss, 'rewardStreams')) {
-        NEXT.ledger.boss = migrateBossRewardLedger(NEXT.ledger.boss);
-    }
+    NEXT.ledger.boss = migrateBossRewardLedger(NEXT.ledger.boss);
     validateFarmProgress(NEXT);
     return NEXT;
 }

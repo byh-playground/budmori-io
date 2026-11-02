@@ -4,10 +4,10 @@ import { validateFarmProgress, migrateFarmProgress } from '../model/farm-progres
 // The save module adds `schema` and `revision` around it; an export file is this data as JSON.
 export const FARM_SAVE = Object.freeze({
     key: 'budmori-farm',
-    version: 2,
+    version: 3,
     create: () => ({ farm: null }),
     validate: validateFarmRecord,
-    migrate: { 1: migrateFarmRecord },
+    migrate: { 1: migrateFarmRecord, 2: migrateFarmRecord },
 });
 function migrateFarmRecord(data) {
     if (!data || typeof data !== 'object' || Array.isArray(data) || Object.keys(data).join() !== 'farm') {
@@ -34,9 +34,7 @@ export function readFarmExport(text) {
     } catch {
         throw new TypeError('저장 파일이 JSON 형식이 아니에요.');
     }
-    if (data?.farm?.ledger?.boss && Object.hasOwn(data.farm.ledger.boss, 'rewardStreams')) {
-        data = migrateFarmRecord(data);
-    }
+    data = migrateFarmRecord(data);
     validateFarmRecord(data);
     if (data.farm === null) {
         throw new TypeError('저장 파일에 농장이 없어요.');

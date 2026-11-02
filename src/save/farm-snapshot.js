@@ -364,7 +364,7 @@ const BOSS = shapeFields(BOSS_SNAPSHOT_SHAPE, {
     }),
 });
 const REWARD = FIELDS(
-    'encounterId source receiptKey stage species tier baseAmount bandIndex kindReward record acquiredCount placedCount queuedCount revealed status',
+    'encounterId source receiptKey stage species tier payoutRule baseAmount bandIndex kindReward record acquiredCount placedCount queuedCount revealed status',
 );
 // Events, notices, effects and log entries are value payloads, not entities.
 // Their APIs and settlement summaries accept extensible JSON records. Keep

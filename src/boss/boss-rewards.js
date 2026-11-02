@@ -2,7 +2,7 @@ import { FARM_BOSS_EVENT_MAX_STAGE } from '../model/player-progression.js';
 import { SPECIES_COUNT } from '../units/species-catalog.js';
 
 // One categorical draw per victory. Numerators are thirds of the floor reward;
-// paired weights preserve its mean even when the resulting quantities round.
+// the selected amount is floored, then bounded independently of presentation.
 export const BOSS_REWARD_BANDS = Object.freeze(
     [
         ['꽝', 5, 0],
@@ -16,6 +16,8 @@ export const BOSS_REWARD_BANDS = Object.freeze(
 );
 const TOTAL_WEIGHT = BOSS_REWARD_BANDS.reduce((sum, band) => sum + band.weight, 0);
 const REWARD_DENOMINATOR = 3;
+const MULTIPLIER_SCALE = 10;
+const REWARD_BONUS = 1.2;
 export const BOSS_REWARD_SETTINGS = Object.freeze({
     // Combat progression is unchanged by the reward rework.
     stageHpBase: 200,
@@ -25,8 +27,10 @@ export const BOSS_REWARD_SETTINGS = Object.freeze({
     stageGrowth: 1.03,
     stageGrowthCap: 2,
     rewardFloorStep: 10,
-    maxKindReward: 3,
-    recordMultiplier: 2,
+    maxKindReward: REWARD_BONUS,
+    recordMultiplier: REWARD_BONUS,
+    minQuantity: 1,
+    maxQuantity: 20,
     maxStage: FARM_BOSS_EVENT_MAX_STAGE,
     speciesCount: SPECIES_COUNT,
 });
@@ -70,18 +74,14 @@ export function bossStageStats(stage) {
 
 export function bossRewardBaseAmount(stage, kindReward = 1, record = false) {
     validateStage(stage);
-    if (
-        !Number.isSafeInteger(kindReward) ||
-        kindReward < 1 ||
-        kindReward > BOSS_REWARD_SETTINGS.maxKindReward ||
-        typeof record !== 'boolean'
-    ) {
+    if (![1, BOSS_REWARD_SETTINGS.maxKindReward].includes(kindReward) || typeof record !== 'boolean') {
         throw new RangeError('Invalid boss floor reward multiplier');
     }
     return (
-        Math.ceil(stage / BOSS_REWARD_SETTINGS.rewardFloorStep) *
-        kindReward *
-        (record ? BOSS_REWARD_SETTINGS.recordMultiplier : 1)
+        (Math.ceil(stage / BOSS_REWARD_SETTINGS.rewardFloorStep) *
+            Math.round(kindReward * MULTIPLIER_SCALE) *
+            Math.round((record ? BOSS_REWARD_SETTINGS.recordMultiplier : 1) * MULTIPLIER_SCALE)) /
+        MULTIPLIER_SCALE ** 2
     );
 }
 
@@ -101,19 +101,25 @@ export function bossRewardBand(roll) {
 
 export function bossRewardAmount(baseAmount, bandIndex) {
     if (
-        !Number.isSafeInteger(baseAmount) ||
+        !Number.isFinite(baseAmount) ||
         baseAmount < 1 ||
-        baseAmount >
-            Math.ceil(BOSS_REWARD_SETTINGS.maxStage / BOSS_REWARD_SETTINGS.rewardFloorStep) *
-                BOSS_REWARD_SETTINGS.maxKindReward *
-                BOSS_REWARD_SETTINGS.recordMultiplier ||
+        baseAmount > bossRewardBaseAmount(BOSS_REWARD_SETTINGS.maxStage, BOSS_REWARD_SETTINGS.maxKindReward, true) ||
         !Number.isSafeInteger(bandIndex) ||
         bandIndex < 0 ||
         bandIndex >= BOSS_REWARD_BANDS.length
     ) {
         throw new RangeError('Invalid boss reward base amount or band');
     }
-    return Math.round((baseAmount * BOSS_REWARD_BANDS[bandIndex].numerator) / REWARD_DENOMINATOR);
+    const NUMERATOR = BOSS_REWARD_BANDS[bandIndex].numerator;
+    if (NUMERATOR === 0) {
+        return 0;
+    }
+    // Both bonuses are exact tenths. Recover their integer product before
+    // flooring so a decimal boundary cannot lose one earned seed.
+    const QUANTITY = Math.floor(
+        (Math.round(baseAmount * MULTIPLIER_SCALE ** 2) * NUMERATOR) / (MULTIPLIER_SCALE ** 2 * REWARD_DENOMINATOR),
+    );
+    return Math.min(BOSS_REWARD_SETTINGS.maxQuantity, Math.max(BOSS_REWARD_SETTINGS.minQuantity, QUANTITY));
 }
 
 export function bossRewardQueueBySpecies(world) {
@@ -260,6 +266,7 @@ function settleBossKillCommitted(world, options = {}) {
         stage: STAGE,
         species: SPECIES,
         tier: 1,
+        payoutRule: 'capped',
         baseAmount: BASE_AMOUNT,
         bandIndex: BAND_INDEX,
         kindReward: KIND_REWARD,

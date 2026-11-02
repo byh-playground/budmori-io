@@ -65,7 +65,6 @@ function finiteTree(v, depth = 0, key = '', progression = false) {
             'queuedCount',
             'acquiredCount',
             'placedCount',
-            'baseAmount',
             'bossRewardRngState',
             'rngState',
         ]);
