@@ -81,6 +81,10 @@ function migrateBossEncounter(snapshot) {
         BAND_ELEMENT = towerElement(snapshot.tower?.active ? snapshot.tower.floor : 1);
     if (ENCOUNTER) {
         delete ENCOUNTER.nextJoinAt;
+        // Tower floors no longer wait in 'dropping' for every boss to land: the fight runs while they leap in.
+        if (snapshot.farmBossEvent?.phase === 'dropping') {
+            snapshot.farmBossEvent.phase = 'fighting';
+        }
         for (const ENTRY of ENCOUNTER.roster ?? []) {
             ENTRY.element ??= towerElement(ENCOUNTER.floor);
             delete ENTRY.hpShare;
