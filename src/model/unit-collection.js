@@ -22,7 +22,7 @@ export class UnitCollection {
         this.onHealthChanged = new Signal(notifications, true);
     }
     has(unit) {
-        return this.items.includes(unit);
+        return !!unit && this.byId.get(unit.id) === unit;
     }
     unitById(id) {
         return this.byId.get(id) || null;

@@ -411,6 +411,9 @@ export const FARM_TOWER_RUN = (base) =>
             this._endTower();
             return true;
         }
+        hasFieldUnit(unit) {
+            return this.unitCollection.has(unit) && !this._benched.has(unit);
+        }
         _fieldUnits() {
             const CACHE = this._fieldCache;
             if (CACHE.revision !== this.unitCollection.revision || CACHE.bench !== this._benchRevision) {

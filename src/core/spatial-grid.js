@@ -140,7 +140,7 @@ class FixedSpatialGrid {
     }
     queryAABB(minX, minY, maxX, maxY, out) {
         out.length = 0;
-        if (![minX, minY, maxX, maxY].every(Number.isFinite)) {
+        if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
             return out;
         }
         if (maxX >= WORLD_MIN && maxY >= WORLD_MIN && minX < WORLD_MAX && minY < WORLD_MAX) {

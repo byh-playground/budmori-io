@@ -31,7 +31,8 @@ export class FarmingRoster {
     }
 
     residentById(id) {
-        return this.collection.items.find((unit) => isResident(unit) && unit.id === id) || null;
+        const UNIT = this.collection.unitById(id);
+        return isResident(UNIT) ? UNIT : null;
     }
 
     ownedPopulation() {

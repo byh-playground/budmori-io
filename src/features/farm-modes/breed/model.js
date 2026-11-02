@@ -21,7 +21,7 @@ export class BreedFarmMode extends FarmMode {
         } else if (u.cooldown === 0) {
             target = world.findOrReserveMate(u);
         }
-        const HAS_DESIGNATED_MATE = u.fed && target && world.units.includes(target);
+        const HAS_DESIGNATED_MATE = u.fed && target && world.hasFieldUnit(target);
         if (u.fed && !HAS_DESIGNATED_MATE && world.avoidNearbyFood(u, dt)) {
             return;
         }
@@ -49,8 +49,8 @@ export class BreedFarmMode extends FarmMode {
             !b.mature ||
             a.cooldown > 0 ||
             b.cooldown > 0 ||
-            !world.units.includes(a) ||
-            !world.units.includes(b) ||
+            !world.hasFieldUnit(a) ||
+            !world.hasFieldUnit(b) ||
             Math.hypot(a.x - b.x, a.y - b.y) > a.radius + b.radius + 0.2 ||
             world.senseEnemy(a) ||
             world.senseEnemy(b)

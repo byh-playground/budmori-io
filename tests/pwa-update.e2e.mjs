@@ -347,7 +347,7 @@ async function nativeVisibilityContext() {
         REPORT.nativeBrowserStderr = (REPORT.nativeBrowserStderr + chunk).slice(-12000);
     });
     nativeExit = new Promise((resolve, reject) => {
-        nativeProcess.once('exit', resolve);
+        nativeProcess.once('close', resolve);
         nativeProcess.once('error', reject);
     });
     let port;
@@ -632,5 +632,7 @@ try {
         clearTimeout(FORCE);
     }
     SERVER.close();
-    await rm(FIXTURE, { recursive: true, force: true });
+    // Chromium helpers can finish profile writes just after the browser exits.
+    // Node retries transient ENOTEMPTY/EBUSY cleanup failures within a bounded window.
+    await rm(FIXTURE, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }

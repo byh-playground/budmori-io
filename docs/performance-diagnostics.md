@@ -175,3 +175,29 @@ node tests/unit-sprites.e2e.mjs --benchmark --count=1000 --backend=vector --spec
 ```
 
 SDK 교체 검증은 staged root가 가진 검증된 source schema를 사용합니다. 체크아웃의 이전 schema를 고정 import하면 새로 허용된 SVG 입력을 cache 교체 전에 거부하므로 검증 대상 root의 schema를 읽습니다. Git 객체/파일 SHA 검증 후 staging을 검사하고, 성공한 뒤에만 cache를 교체합니다. 규칙 적용: AI-009·010·012·013·015·017,DEV-001·004·014,PM-010.
+
+## 1,000마리 시뮬레이션·표본 비용 (0.67.11)
+
+0.67.10 사용자 PC 진단은 RAF5.6FPS, callback CPU176.9ms 중 시뮬레이션128.0ms, WebGL 제출38.7ms입니다. 시뮬레이션 아래 표본 캡처50.5ms와 충돌46.5ms가 컸습니다. 부모/자식 시간은 더하지 않습니다. 앞선 draw 배치가 줄어든 뒤 드러난 CPU 병목이며, 저장은 평균0.1ms였습니다.
+
+- 충돌 위치 보정은 매 Jacobi pass 시작 위치로 x축 sweep 후보를 만들고 원래 unit 순서의 i/j로 정렬합니다. 각 보정 뒤 후보를 다시 만들므로 새 접촉을 놓치지 않습니다. 충격량 단계는 기존 공간 인덱스와 판정 범위를 유지합니다. 20Hz·물리 통합 횟수·보정 횟수·질량/반경/높이·시간선은 유지합니다.
+- 병력 존재 여부는 UnitCollection의 기존 ID 인덱스와 전장 제외 상태로 판정합니다. 같은 ID인 다른 객체는 포함하지 않습니다. 주민 검색도 같은 소유 인덱스를 사용합니다. 별도 병력 집합을 만들지 않습니다.
+- 수용량이 찼으면 출산할 수 없는 접촉 검사를 생략합니다. 합성 이동/완료 처리는 별도 단계에서 계속 실행합니다. 빈자리 하나·출생 예약·합성 중 해제된 자리의 규칙은 유지합니다.
+- 행동이 없는 idle/elapsed0 공격의 표시 상태는 기존 투영 함수로 만든 불변 scalar record를 공유합니다. 긴 지휘봉 여부에 따른 두 record만 보관하며, 활동 재개 시 가변 투영으로 교체합니다. 권위 Ability나 SDK가 소유한 표시 모델은 공유하지 않습니다. GameKit0.40.4는 이런 동결된 scalar 부모의 검증 표본만 약한 캐시로 재사용하고, STEP scalar마다 생성하던 순환 검사 Set을 없앱니다. 가변/중첩 데이터의 분리 복사·검증은 유지합니다.
+
+검증 기준은 seed731,50ms 고정 틱의 동일 전체 저장 스냅샷과 보간 모델입니다. 빈 농장·200마리 혼합 등급·999/1,000마리·밀집·공중·거대화·1,000마리 합성 후 출산을 비교합니다. 합성 버튼 길게 누르기는 실제 RAF/입력/HUD 경로로 따로 확인합니다. 모델 비교와 CPU 시간 비교는 기능/성능 근거로 구분합니다(AI-012·AI-017·PM-010).
+
+알고리즘 근거: [Bullet의 sweep-and-prune broadphase](https://github.com/bulletphysics/bullet3/blob/master/src/BulletCollision/BroadphaseCollision/btAxisSweep3.h)와 현재 Jacobi의 고정 누적 순서를 대조했습니다. SDK scalar 할당은 [MDN 기본 인자의 호출 시 평가](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Functions/Default_parameters#evaluated_at_call_time)와 실제 프로파일을 대조했습니다. 게임의 2D 후보 수집은 게임이 소유하고, 일반 표본 복사 비용만 모듈에서 개선합니다(AI-009·DEV-001).
+
+### CPU 전후 비교
+
+기준 게임 `c016849`/0.67.10, SDK source `f240b12`/0.40.3에서 게임0.67.11(실측 소스 `2dbd409`) + SDK source `829db43`/0.40.4(배포 interpolation SHA-256 `854e90343fba611d4f0d118048c33256624543c454c9134e0c4b5cd18d14a509`)로 비교했습니다. Node24.19·Chromium153.0.8010.12·Playwright1.63, Linux SwiftShader,1100×850/DPR1입니다. seed731,T1 혼합1,000마리,38열/.65간격,20Hz,150ms pulse80회/240틱을 독립 브라우저 컨텍스트 A→B→B→A 순서로 실행했습니다. CDP CPU profiler를 끄고 동일한 실제 FarmSession/Garden/presentation을 사용했습니다. RAF를 멈춘 수동 pulse 비용이며 GPU draw·DOM·입력·저장은 이 CPU 구간에 포함하지 않습니다. 준비 후240틱 전체를 측정하며 별도 warmup 표본은 제외하지 않았습니다.
+
+| CPU 구간                                  |   이전 평균 / p95 |   이후 평균 / p95 |
+| ----------------------------------------- | ----------------: | ----------------: |
+| 3틱 pulse + 보간 모델 준비                | 186.77 / 235.70ms | 121.60 / 145.60ms |
+| pulse(표본 캡처 포함)                     | 177.37 / 225.80ms | 112.98 / 137.00ms |
+| 보간 모델 준비                            |    9.40 / 11.80ms |    8.62 / 10.90ms |
+| 이후 같은 월드 반복 표본 캡처(별도80표본) |   22.25 / 26.50ms |   14.11 / 18.30ms |
+
+총 구간 평균은34.9%, 반복 캡처는36.6% 줄었습니다. 표의 pulse와 전체 값은 부모/자식이므로 합산하지 않습니다. 두 버전 각각160pulse 표본, 별도 캡처80표본입니다. 전체 월드 hash `79f07cdc…5c3`, 보간 병력 모델 hash `86024c4f…748`은 네 회차 모두 같습니다. 이는 같은 시뮬레이션과 표시 값으로 CPU 작업을 줄인 근거이며 실제 사용자 PC의 FPS나1,000마리60FPS 보장이 아닙니다. 실제 RAF에서 합성 버튼·HUD·오류 검증은 별도 사용자 흐름으로 확인합니다(PM-010).

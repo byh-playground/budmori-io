@@ -1,8 +1,8 @@
 {
     "schemaVersion": 3,
     "repository": "byh-playground/bloom-gamekit",
-    "sourceCommit": "f240b1211fd9086106117773f8458ea3cc4b4fff",
-    "distCommit": "34918d09b47541ce1db2f9a036ff21e2fc9aefa4",
+    "sourceCommit": "829db43c348159be0df51dd8a8b38439f8b3c825",
+    "distCommit": "f0df18d64dfec77227200494f43419821b34aaf3",
     "status": "verified immutable distribution",
     "esbuild": "0.28.2",
     "modules": [
@@ -28,7 +28,7 @@
         },
         {
             "name": "interpolation",
-            "bundleSHA256": "acad7ad93615633609a62e484bff918980fc84282840db9b5cd108e8f5bb133a"
+            "bundleSHA256": "854e90343fba611d4f0d118048c33256624543c454c9134e0c4b5cd18d14a509"
         },
         {
             "name": "hud",
@@ -71,7 +71,7 @@
             "bundleSHA256": "146cc8f825adb6dccc50430bb758a63856c50766aa59bb018e0a0f13429ab24a"
         }
     ],
-    "manifestSHA256": "795aa1e10a62ccae10b6d28590520b85823a4a6e96d3531e1b0eadc599fc5ed1",
+    "manifestSHA256": "f0fe496106b002ae9d510893535835122ba13d875d34af1d719b391813cad6f6",
     "assets": [
         {
             "file": "assets/fonts/noto-sans-kr-700-v1.json",
@@ -82,7 +82,7 @@
     ],
     "showcase": {
         "repository": "byh-playground/bloom-gamekit",
-        "distCommit": "34918d09b47541ce1db2f9a036ff21e2fc9aefa4",
+        "distCommit": "f0df18d64dfec77227200494f43419821b34aaf3",
         "module": "scenario.js",
         "bundleSHA256": "b21a2be85b497588589c796f8e95f932c464474cc4ea3f703a8718e96a9946ce"
     }

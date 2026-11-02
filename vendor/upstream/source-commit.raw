@@ -1,25 +1,25 @@
-tree 1d49f785759c5cb821d51cd354da8aed065475e5
-parent e2ad338c216c85c30339505dd314db9d3a8def09
-author byh020907 <byh020907@naver.com> 1793579370 +0900
-committer GitHub <noreply@github.com> 1793579370 +0900
+tree 491996c1caa386b1f00322b62f38158137c1ee16
+parent f240b1211fd9086106117773f8458ea3cc4b4fff
+author byh020907 <byh020907@naver.com> 1793591579 +0900
+committer GitHub <noreply@github.com> 1793591579 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq59lqCRC1aQ7uu5UhlAAAFPYQAJUdccFazfPUYbnt5+Nah/Bs
- R/L9SfylbW+j2aA34ZxFcnRD1Gz14+8b+zoQPhAFcVxZepmOfiRtseY4cpffBpW0
- gT0Nszk1DICAzDkC46XjlsJSpsEbNvK+rcj2GExO59c+qi7ErvLUO8g+ncy+sA6z
- 6lQiMGMtqlSn+9SX7bNTVnGysNK/0jpl/J/sQtOonh9uUXxI95D/ZPV21dfdEdxP
- CYwHc0RMdrkU1bz8VyZcRRZJEZRW6wYSv6gH1ZphHvEGEP2CBwglwyCxxWrura0M
- DGF1jRm8nE1KqCnd1o0sjJtYoQRedLhmrWS+YLo2ulMWs7MHLZHfr3ZXbXFTVQLu
- 5hP//B4hBW+El6+iu4MiTs1u4Ew4GVO/31jZB4o1YE00o7wwX2AAeelcff/iaHrb
- QnJsk5WlfqjRa1tnwJJ/H66/ped1CiSgsrBbqRQajXb48Xef8dJBBPOuhqJ5XsO/
- +Besk/aEwUSufUlK8hiblsux4EPyfC1+WwMsp2B8fMgdwArI3dPg0oG8niFg83Fq
- z/DUq7v5PUR6Es5fwbJ+V43kpLT0fIM4xr+NSABV1BosZXhxRz4DYj5RQiK2ErS0
- w+93R6dmdhEK2F5idGVu1RbXmk69JRteORakIl00TQMdNaw4Wu42jTIr0/5qixWd
- wEFOCnr5H15UJUhzYFOW
- =LGaC
+ wsFcBAABCAAQBQJq6AkbCRC1aQ7uu5UhlAAAIvUQAA8xccQs3kn0KrDLtCc14+BG
+ FVvve4eEGL45ha+UQM9JvkcLCu7oXCFYDjzzmdd76xPt147Bj3jxKscJDu4/9veA
+ V6t1ZhQrfQp3C4v7HhUggYF5fy8+qIHB9a9rpfjsvnqTjAV2yZvcTVICZo5nLG3f
+ z3PERDhf+r0crcECMFJBDOje9iDeTwDoY61sLP1Sh7GSTUZ2gbltkRS9zGv/aT1h
+ Pl7LC5kY8zNgx3xwZLz78EnmmXSEglILGHOl8GirDwXvp84uDvngZQZr+MEv+Sls
+ jZ707Y0t9oRRapo9//PJkmuNPnB5/fvI5zZPz2hwbSqcy2r5qh/YNhMqGG4hcJBG
+ Gj40g+9vPMp2CmLLhXL+5cZAw8VCUxQTfWpzEYYDO6tCVy1CHR8ABlaSyYionHMo
+ exPoUhVbC/EVM82OUNxxJOCelHVVQhwhZavyhX1yOxjgtVGgHc4v3BITcwVqJFVg
+ dT+7XiK043Jkgw7aNVSvkD5Z2oJTGL3B7kGo3wDEHGh13MsX7xkMWMnUsjnshf67
+ v2eN7RAf8d4dOhdxWDwb5Bo/3G7Ui2F2tCz9vXKroEDoabCNulIozRYbQEx72IBX
+ Q7QVuad+W4HaU6R/7a1s7VVBWj/xNcyOLtmAOUbaZKz/kW287KWuzDRUOeMfiqm8
+ KNON93OOLDb9C5xXC4JZ
+ =xCqs
  -----END PGP SIGNATURE-----
  
 
-[feature] 불투명 부품 접힘을 위한 크기 0 pose 허용 (#185)
+[performance] 불변 scalar 표본 재사용과 순환 검사 할당 절감 (#186)
 
 Co-authored-by: yong-ho bae <dragonlake.bae@gmail.com>
