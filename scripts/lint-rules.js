@@ -99,8 +99,7 @@ const LOCALIZED_TEXT = {
         docs: { description: 'Keep player-visible Korean text inside { ko, en } text pairs.' },
         schema: [],
         messages: {
-            unpaired:
-                'Player-visible text must be a { ko, en } pair resolved through src/i18n/text.js (docs/i18n.md).',
+            unpaired: 'Player-visible text must be a { ko, en } pair resolved through src/i18n/text.js (docs/i18n.md).',
         },
     },
     create(context) {

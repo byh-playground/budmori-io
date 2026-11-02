@@ -25,14 +25,18 @@ const ERRORS = [];
 // Hangul in text the player can currently see (hidden dialogs and noscript excluded).
 const VISIBLE_HANGUL = () =>
     [...document.body.querySelectorAll('*')]
-        .filter((element) => element.checkVisibility() && element.tagName !== 'NOSCRIPT')
+        // The language picker names Korean in Korean on purpose (lang="ko").
+        .filter(
+            (element) => element.checkVisibility() && element.tagName !== 'NOSCRIPT' && !element.closest('[lang="ko"]'),
+        )
         .flatMap((element) => [...element.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE))
         .map((node) => node.textContent.trim())
         .filter((text) => /[가-힣]/u.test(text));
 async function ready(page) {
     await page.waitForFunction(() => globalThis.BUDMORI && !document.getElementById('bloom-module-loading'));
 }
-try {
+// A fresh English farm page (its own storage) with the SDK served from vendor/upstream.
+async function openEnglishPage() {
     const CONTEXT = await BROWSER.newContext({
         locale: 'en-US',
         viewport: { width: 1280, height: 720 },
@@ -57,10 +61,13 @@ try {
             headers: { 'access-control-allow-origin': '*' },
         }),
     );
-
-    // 1. English browser → English home and farm.
     await PAGE.goto(TEST_URL);
     await ready(PAGE);
+    return PAGE;
+}
+try {
+    // 1. English browser → English home and farm.
+    const PAGE = await openEnglishPage();
     assert.equal(await PAGE.evaluate(() => document.documentElement.lang), 'en');
     assert.deepEqual(await PAGE.evaluate(VISIBLE_HANGUL), [], 'home screen shows no Korean');
     await PAGE.locator('#newGame').click();
@@ -69,15 +76,7 @@ try {
     assert.deepEqual(await PAGE.evaluate(VISIBLE_HANGUL), [], 'farm and settings show no Korean');
     assert.equal(await PAGE.locator('#languageChoices [data-locale="en"]').getAttribute('aria-pressed'), 'true');
 
-    // 2. Counterexample: during a tower run the switch is refused and the page stays.
-    await PAGE.evaluate(() => BUDMORI.sim.startTower(1));
-    await PAGE.locator('#languageChoices [data-locale="ko"]').click();
-    assert.match(await PAGE.locator('#languageNotice').textContent(), /tower run/u);
-    assert.equal(await PAGE.evaluate(() => document.documentElement.lang), 'en');
-    await PAGE.evaluate(() => BUDMORI.sim.leaveTower());
-    assert.equal(await PAGE.evaluate(() => BUDMORI.sim.tower.active), false, 'test left the tower');
-
-    // 3. Switching to Korean reloads into Korean and keeps the farm; the choice survives a plain reload.
+    // 2. Switching to Korean reloads into Korean and keeps the farm; the choice survives a plain reload.
     const TROOPS = await PAGE.evaluate(() => BUDMORI.sim.units.length);
     await Promise.all([PAGE.waitForURL(/[?&]lang=ko/u), PAGE.locator('#languageChoices [data-locale="ko"]').click()]);
     await ready(PAGE);
@@ -89,6 +88,17 @@ try {
     await PAGE.locator('#continueGame').click();
     await PAGE.waitForFunction(() => document.body.dataset.home === 'false');
     assert.equal(await PAGE.evaluate(() => BUDMORI.sim.units.length), TROOPS, 'farm kept across the switch');
+
+    // 3. Counterexample, separate farm: during a tower run the switch is refused and the page stays.
+    const RUN = await openEnglishPage();
+    await RUN.locator('#newGame').click();
+    await RUN.waitForFunction(() => document.body.dataset.home === 'false');
+    await RUN.evaluate(() => BUDMORI.sim.startTower(1) && BUDMORI.sim.finishMarch());
+    await RUN.locator('#gameMenu').click();
+    await RUN.locator('#languageChoices [data-locale="ko"]').click();
+    assert.match(await RUN.locator('#languageNotice').textContent(), /tower run/u);
+    assert.equal(await RUN.evaluate(() => document.documentElement.lang), 'en');
+    assert.equal(new URL(RUN.url()).searchParams.has('lang'), false, 'no reload during the run');
     assert.deepEqual(ERRORS, []);
     console.log('locale flow: PASS');
 } finally {

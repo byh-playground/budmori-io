@@ -32,6 +32,11 @@ export const APP_HOME = defineMessages({
         en: ({ farm, play }) =>
             `Delete the unreadable ${farm && play ? 'farm and play settings' : farm ? 'farm' : 'play settings'} save and start over? This can’t be undone.`,
     },
+    // ko shows the codec's own reason unchanged; en cannot, so it states the outcome.
+    importUnreadable: {
+        ko: ({ detail }) => detail,
+        en: () => 'This file isn’t a BUDMORI farm save.',
+    },
     saveTooLarge: { ko: '저장 파일이 너무 커요.', en: 'The save file is too large.' },
     importConfirm: {
         ko: '선택한 파일로 현재 저장을 바꿀까요?',

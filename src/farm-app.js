@@ -690,11 +690,15 @@ DOLLAR('saveFile').onchange = async () => {
         DOLLAR('confirmImport').textContent = APP_HOME.importConfirmButton();
         DOLLAR('importConfirm').hidden = false;
     } catch (e) {
-        DOLLAR('saveNotice').textContent = e.message;
+        DOLLAR('saveNotice').textContent = importErrorText(e);
     } finally {
         DOLLAR('saveFile').value = '';
     }
 };
+// The save codec rejects a file with a developer TypeError; the player reads it as "not a farm save".
+function importErrorText(error) {
+    return error instanceof TypeError ? APP_HOME.importUnreadable({ detail: error.message }) : error.message;
+}
 DOLLAR('cancelImport').onclick = () => {
     imported = null;
     DOLLAR('importConfirm').hidden = true;
@@ -716,7 +720,7 @@ DOLLAR('confirmImport').onclick = async () => {
         DOLLAR('importConfirm').hidden = true;
         refreshStart();
     } catch (e) {
-        DOLLAR('saveNotice').textContent = e.message;
+        DOLLAR('saveNotice').textContent = importErrorText(e);
     }
 };
 // The pulse index belongs to this press, never to the materials or simulation/save state.
