@@ -34,6 +34,7 @@ import { CONFIG, clamp, bossAttackArea, ArenaGeometry } from '../model/farm-mode
 import { BOSS_SPECIES, kitSpecies } from '../units/species-catalog.js';
 import { bossDangerContour } from './attack-telegraph.js';
 import { drawFarmGrounds, drawTowerHall } from './farm-scenery.js';
+import { DeathPresentation } from './death-presentation.js';
 const { bosses: BOSS_VECTOR_ASSETS, troops: TROOP_VECTOR_ASSETS } = globalThis.BudmoriVectorResources;
 // Original SVG sources are compiled once by the startup loader before this module runs.
 const { WebGLDevice: WEB_GL_DEVICE, VectorContext: VECTOR_CONTEXT } = globalThis.BloomGamekitRendering;
@@ -100,7 +101,9 @@ const DIORAMA = class Diorama {
         this.actorPool = [];
         this.actorLayerOffset = 0;
         this.liveUnitIds = new Set();
+        this.drawnUnits = [];
         this.joyEffects = [];
+        this.deathPresentation = new DeathPresentation();
         this.unitPresentation = new UnitPresentation(this);
         this.mergeHoleBackPresentation = { draw: (task) => drawMergeBlackHoleBack(this, task) };
         this.mergeHoleFrontPresentation = { draw: (task) => drawMergeBlackHoleFront(this, task) };
@@ -1060,7 +1063,14 @@ const DIORAMA = class Diorama {
         this.unitSprites.prepare();
         this.unitSprites.beginFrame();
         this.terrain(sim2, now);
-        this.unitPresentation.prepareUnits(sim2.units, sim2.time, sim2);
+        // Bodies the model removed on death keep their last view for the shared death (death-presentation.js).
+        const GHOSTS = this.deathPresentation.observe(sim2),
+            UNITS = GHOSTS.length ? this.drawnUnits : sim2.units;
+        if (GHOSTS.length) {
+            UNITS.length = 0;
+            UNITS.push(...sim2.units, ...GHOSTS);
+        }
+        this.unitPresentation.prepareUnits(UNITS, sim2.time, sim2);
         // Attachment targets need their native body transform even when their
         // center is outside the view; the attached art can still cross it.
         this.cornAttachmentBodies.clear();
@@ -1073,8 +1083,12 @@ const DIORAMA = class Diorama {
         this.unitCullingActive = CULL_UNITS;
         VISIBLE_UNITS.length = 0;
         const SIDES = sim2.insideTower || sim2.scene !== 'farm';
-        for (const SOURCE of sim2.units) {
-            const U = this.unitPresentation.displayUnit(SOURCE);
+        for (const SOURCE of UNITS) {
+            const U = this.unitPresentation.displayUnit(SOURCE),
+                DEATH = this.unitPresentation.deathOf(U, sim2);
+            if (DEATH?.done) {
+                continue;
+            }
             if (CULL_UNITS && !unitMayBeVisible(this, U, sim2)) {
                 if (!HIDDEN_MERGE_RESULT_IDS.has(U.id)) {
                     this.unitPresentation.prepareHiddenUnit(U, sim2);
@@ -1086,6 +1100,7 @@ const DIORAMA = class Diorama {
             }
             const A = clamp(0.22 / (1 + U.z * 0.3), 0.045, 0.22),
                 SHADOW = (U.size * 0.66) / (1 + U.z * 0.65);
+            this.ctx.globalAlpha = DEATH?.alpha ?? 1;
             this.groundEllipse(U.x, U.y, SHADOW, SHADOW * 0.62, `rgba(42,61,35,${A})`);
             // Grade is a ground ring batched with the shadows, so each unit needs one native vector draw.
             if (U.tier > 1 && !U.isFormationClone) {
@@ -1095,6 +1110,7 @@ const DIORAMA = class Diorama {
                 this.drawSideMarker(U, SHADOW);
             }
         }
+        this.ctx.globalAlpha = 1;
         this.drawDanger(sim2);
         feel?.drawGround(this, this.displayTimeMs);
         const BOSS_VISIBLE = PRESENTATION.bossVisible(sim2) && sim2.tower.phase !== 'summit',
@@ -1102,8 +1118,13 @@ const DIORAMA = class Diorama {
         DISPLAY_BOSSES.length = 0;
         if (BOSS_VISIBLE) {
             for (const SOURCE of sim2.bosses) {
-                const BOSS = this.bossPresentation.displayBoss(SOURCE, sim2);
+                const BOSS = this.bossPresentation.displayBoss(SOURCE, sim2),
+                    DEATH = this.bossPresentation.deathOf(BOSS, sim2);
+                if (DEATH?.done) {
+                    continue;
+                }
                 DISPLAY_BOSSES.push(BOSS);
+                this.ctx.globalAlpha = DEATH?.alpha ?? 1;
                 this.groundEllipse(BOSS.x, BOSS.y, BOSS.radius * 1.05, BOSS.radius * 0.75, '#38472c33');
                 if (SIDES) {
                     this.ring(BOSS.x, BOSS.y, BOSS.radius * 1.05, BOSS.isFinalBoss ? '#f5cc67' : '#f0463c', 0.12);
@@ -1112,6 +1133,7 @@ const DIORAMA = class Diorama {
                     }
                 }
             }
+            this.ctx.globalAlpha = 1;
         }
         const ACTORS = this.actors;
         ACTORS.length = 0;
@@ -1119,9 +1141,12 @@ const DIORAMA = class Diorama {
         // Both lists retain source order, so a cursor avoids a per-frame
         // visibility Set while keeping hidden actors at their original depth.
         let visibleIndex = 0;
-        for (const SOURCE of sim2.units) {
-            const U = this.unitPresentation.displayUnit(SOURCE),
-                CULLED = CULL_UNITS && U.id !== VISIBLE_UNITS[visibleIndex]?.id;
+        for (const SOURCE of UNITS) {
+            const U = this.unitPresentation.displayUnit(SOURCE);
+            if (this.unitPresentation.deathOf(U, sim2)?.done) {
+                continue;
+            }
+            const CULLED = CULL_UNITS && U.id !== VISIBLE_UNITS[visibleIndex]?.id;
             if (CULL_UNITS && !CULLED) {
                 visibleIndex++;
             }
@@ -1182,7 +1207,7 @@ const DIORAMA = class Diorama {
         }
         const LIVE_UNIT_IDS = this.liveUnitIds;
         LIVE_UNIT_IDS.clear();
-        for (const U of sim2.units) {
+        for (const U of UNITS) {
             LIVE_UNIT_IDS.add(U.id);
         }
         for (const [ID, PLAYER] of this.vectorPlayers) {
@@ -1278,6 +1303,8 @@ const DIORAMA = class Diorama {
         this.actors.length = 0;
         this.actorPool.length = 0;
         this.liveUnitIds.clear();
+        this.drawnUnits.length = 0;
+        this.deathPresentation.clear();
         this.unitPresentation.riceDisplayUnits.clear();
         this.unitPresentation.wheatDisplayUnits.clear();
         this.unitPresentation.barleyDisplayUnits.clear();

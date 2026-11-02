@@ -325,6 +325,9 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
             return false;
         }
         this.deathSplitHandled = true;
+        // The killing blow's knockback stops here: a corpse falls where it was hit instead of sliding on.
+        this.vx = 0;
+        this.vy = 0;
         this.onDied.emit({ unitId: this.id, x: this.x, y: this.y, z: this.z });
         return true;
     }
