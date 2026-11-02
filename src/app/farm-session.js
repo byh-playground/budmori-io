@@ -295,7 +295,8 @@ class UnitRender extends RENDER_OBJECT {
         this.farmId = u.farmId;
         this.dropLanded = u.dropLanded;
         this.temperament = u.temperament;
-        this.element = elementOf(u.genes);
+        // An enemy's element is assigned when it spawns; the player's comes from its genes.
+        this.element = u.faction === 'enemy' ? u.enemyElement : elementOf(u.genes);
         this.isSeedling = !!u.seedling;
         this.seedlingScale = seedlingGrowthScale(u);
         const GROWTH = session.seedlingGrowthEffects.get(u.id),
@@ -408,6 +409,7 @@ class BossRender extends RENDER_OBJECT {
     }
     update(b, world) {
         this.active = b.active;
+        this.element = b.enemyElement;
         this.isFinalBoss = !!b.isFinalBoss;
         updateUnitAttackRender(this, b, world);
         this.id = b.id;

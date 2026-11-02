@@ -246,6 +246,8 @@ function validateActorAttackState(actor, raw, cornActions, chestnutActions, allo
     ASSERT(
         Number.isFinite(U.giantBonusDamage) &&
             U.giantBonusDamage >= 0 &&
+            INTEGER(U.enemyElement, 0, 5) &&
+            (U.faction === 'enemy' || U.enemyElement === 0) &&
             Number.isFinite(U.landingRecovery) &&
             U.landingRecovery >= 0 &&
             U.landingRecovery <= 0.25 + 1e-9 &&
@@ -1431,8 +1433,9 @@ function validateTowerCheckpoint(raw) {
             ENCOUNTER.roster.every(
                 (entry) =>
                     entry &&
-                    Object.keys(entry).length === 4 &&
+                    Object.keys(entry).length === 5 &&
                     INTEGER(entry.species, 0, CONFIG.unit.speciesCount) &&
+                    INTEGER(entry.element, 1, 5) &&
                     Number.isFinite(entry.hpShare) &&
                     entry.hpShare > 0 &&
                     entry.hpShare <= 1 &&
@@ -1448,6 +1451,7 @@ function validateTowerCheckpoint(raw) {
                     boss.id === (index === 0 ? 'boss' : `boss-${index}`) &&
                     boss.species === ENCOUNTER.roster[index].species &&
                     boss.isFinalBoss === ENCOUNTER.roster[index].final &&
+                    boss.enemyElement === ENCOUNTER.roster[index].element &&
                     boss.stage === ENCOUNTER.floor &&
                     boss.encounterId === raw.farmBossEvent.encounterId,
             ) &&

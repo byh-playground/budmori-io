@@ -1,4 +1,5 @@
 import { BOSS_SPECIES } from '../units/species-catalog.js';
+import { TOWER_ELEMENT_ORDER, towerElement } from './tower-theme.js';
 
 // Initial tuning, not a time limit. A floor owns one finite roster and one
 // aggregate stat budget; adding actors divides that budget rather than copying it.
@@ -8,8 +9,8 @@ import { BOSS_SPECIES } from '../units/species-catalog.js';
 export const TOWER_ENCOUNTER_SETTINGS = Object.freeze({
     bands: Object.freeze([
         Object.freeze({ through: 20, count: 1 }),
-        Object.freeze({ through: 45, count: 2 }),
-        Object.freeze({ through: 75, count: 3 }),
+        Object.freeze({ through: 40, count: 2 }),
+        Object.freeze({ through: 60, count: 3 }),
         Object.freeze({ through: 100, count: 4 }),
     ]),
     spreadRatio: 0.5,
@@ -20,17 +21,37 @@ export const TOWER_ENCOUNTER_SETTINGS = Object.freeze({
     summitSeconds: 8,
 });
 
+// One element per opening boss: the floor's own band element first, then the bands already climbed, newest first.
+// Each boss keeps a single element, so a pair of bosses reads as "water and grass" rather than one boss that suddenly
+// uses two. From floor 81 there are five bands but four bosses: the floor number drops one earlier band, so the
+// line-up changes from floor to floor without any random state.
+export function encounterElements(floor, count) {
+    const BAND = TOWER_ELEMENT_ORDER.indexOf(towerElement(floor)),
+        EARLIER = TOWER_ELEMENT_ORDER.slice(0, BAND).reverse();
+    if (EARLIER.length >= count) {
+        EARLIER.splice(floor % EARLIER.length, EARLIER.length - (count - 1));
+    }
+    return [towerElement(floor), ...EARLIER].slice(0, count);
+}
+
 export function createTowerEncounter(floor) {
     const COUNT = TOWER_ENCOUNTER_SETTINGS.bands.find((band) => floor <= band.through).count,
-        ROSTER = Array.from({ length: COUNT }, () => ({
+        ROSTER = encounterElements(floor, COUNT).map((element) => ({
             species: BOSS_SPECIES,
+            element,
             hpShare: floor === 100 ? 0.5 / COUNT : 1 / COUNT,
             attackShare: floor === 100 ? 0.56 / COUNT : 1 / COUNT,
             final: false,
         }));
     if (floor === 100) {
-        // The crown is one more plain sprout with the same authored rig/patterns.
-        ROSTER.push({ species: BOSS_SPECIES, hpShare: 0.5, attackShare: 0.44, final: true });
+        // The crown is one more plain sprout with the same authored rig/patterns, in the top band's element.
+        ROSTER.push({
+            species: BOSS_SPECIES,
+            element: towerElement(floor),
+            hpShare: 0.5,
+            attackShare: 0.44,
+            final: true,
+        });
     }
     return {
         roster: ROSTER,

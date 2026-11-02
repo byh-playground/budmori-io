@@ -646,6 +646,7 @@ export const FARM_BOSS_PATTERNS = (base) =>
                 ownerId: 'boss',
                 farmId: 0,
                 faction: FACTION_CONFIG.ENEMY,
+                enemyElement: B_LOCAL.enemyElement,
                 home: {
                     x: MOUTH.x,
                     y: MOUTH.y,
