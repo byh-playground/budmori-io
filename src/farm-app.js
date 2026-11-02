@@ -510,7 +510,11 @@ function resumeMemoryRun(push = true) {
     // Home pauses this farm or climb; resuming keeps the same live session.
     active.loop.resetTiming();
     setHome(false, push);
-    markSeen();
+    if (personalGarden.tower.active) {
+        markSeen();
+    } else {
+        settleOffline();
+    }
     return true;
 }
 DOLLAR('continueGame').onclick = () => {

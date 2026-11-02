@@ -102,7 +102,18 @@ try {
         await PRESS(PAGE.locator('#newGame'));
         assert.equal(await PAGE.locator('#newConfirm').isVisible(), true);
         await PRESS(PAGE.locator('#cancelNew'));
+        if (WIDTH === 1280) {
+            await PAGE.evaluate(() => BUDMORI.play.set({ lastSeenMs: Date.now() - 120000 }));
+        }
         await PRESS(PAGE.locator('#continueGame'));
+        if (WIDTH === 1280) {
+            assert.match(await PAGE.locator('#offlineNotice').textContent(), /2분 동안 자리를 비웠어요/);
+            assert.equal(
+                await PAGE.locator('#offlineNotice').isVisible(),
+                true,
+                'farm continuation retains idle settlement',
+            );
+        }
         assert.equal(
             await PAGE.evaluate(() => BUDMORI.sim === globalThis.__homeFlowWorld),
             true,
