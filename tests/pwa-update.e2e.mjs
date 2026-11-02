@@ -393,6 +393,7 @@ try {
                 NAME === 'native-return'
                     ? await nativeVisibilityContext()
                     : await browser.newContext({
+                          locale: 'ko-KR',
                           serviceWorkers: 'allow',
                           viewport: { width: 1000, height: 760 },
                       });

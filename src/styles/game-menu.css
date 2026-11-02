@@ -103,6 +103,13 @@
     background: var(--ui-disabled);
     color: var(--ui-disabled-ink);
 }
+.game-menu__choices {
+    display: flex;
+    gap: var(--ui-s2);
+}
+.game-menu__choices button {
+    min-width: 88px;
+}
 /* 농장 탭 */
 .farm-admin h2,
 .farm-admin h3 {

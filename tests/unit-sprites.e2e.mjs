@@ -134,6 +134,7 @@ try {
                   ? ['sprite', 'vector']
                   : ['vector', 'sprite']) {
                 const CONTEXT = await browser.newContext({
+                    locale: 'ko-KR',
                     serviceWorkers: 'block',
                     viewport: { width: 1100, height: 850 },
                     deviceScaleFactor: 1,

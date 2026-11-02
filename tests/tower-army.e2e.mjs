@@ -142,6 +142,7 @@ try {
         args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
     });
     const CONTEXT = await browser.newContext({
+        locale: 'ko-KR',
         viewport: { width: 1000, height: 700 },
         deviceScaleFactor: 0.75,
         serviceWorkers: 'block',

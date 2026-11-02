@@ -360,6 +360,7 @@ try {
     });
     REPORT.browser = browser.version();
     const CONTEXT = await browser.newContext({
+        locale: 'ko-KR',
         serviceWorkers: 'block',
         viewport: SIZE,
         hasTouch: KIND !== 'desktop',

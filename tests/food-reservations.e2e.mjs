@@ -35,7 +35,7 @@ await new Promise((resolve) => SERVER.listen(0, '127.0.0.1', resolve));
 const BROWSER = await chromium.launch(),
     ERRORS = [];
 try {
-    const PAGE = await BROWSER.newPage();
+    const PAGE = await BROWSER.newPage({ locale: 'ko-KR' });
     PAGE.on('pageerror', (error) => ERRORS.push(String(error)));
     await PAGE.goto(`http://127.0.0.1:${SERVER.address().port}/model-harness.html`);
     await PAGE.evaluate(async () => {

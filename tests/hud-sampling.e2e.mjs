@@ -94,6 +94,7 @@ try {
         browser.close().catch(() => {});
     }, 170000);
     const CONTEXT = await browser.newContext({
+            locale: 'ko-KR',
             viewport: { width: 1100, height: 780 },
             deviceScaleFactor: 1,
             serviceWorkers: 'block',
