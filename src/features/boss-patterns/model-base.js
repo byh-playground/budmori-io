@@ -1,4 +1,5 @@
 import { scaleAttackArea } from '../../units/unit-stats.js';
+import { patternReachScale } from '../../boss/boss-patterns.js';
 
 // Shared contract only; concrete pattern behavior lives with its presentation.
 export class BossPattern {
@@ -18,13 +19,12 @@ export class BossPattern {
     attackExtentFor(boss, extent) {
         // Render projections carry the resolved scalar, while live Units own
         // their base profile/modifiers. Both use the same geometry calculation.
-        // A giant boss reaches as far past its larger body as it did past its normal one.
         return (
             scaleAttackArea(
                 extent,
                 boss,
                 Number.isFinite(boss.attackArea) ? { attackArea: boss.attackArea } : undefined,
-            ) * (boss.giantScale ?? 1)
+            ) * patternReachScale(boss)
         );
     }
     reachFor(boss) {

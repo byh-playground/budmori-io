@@ -1,13 +1,27 @@
 import { BossPattern } from '../model-base.js';
 import { FEATURE } from './definition.js';
 import { FACTION_CONFIG, hasFaction } from '../../../core/factions.js';
+import { unitBodyRadius } from '../../unit-body/definition.js';
+import { BOSS_SUMMON_MINIONS } from '../../../boss/boss-patterns.js';
 
 export class MouthSummonBossPattern extends BossPattern {
     constructor(dependencies) {
         super(FEATURE, dependencies);
     }
-    writeArea(_boss, _action, _scene, _pad, area) {
+    writeArea(boss, _action, _scene, _pad, area) {
         area.kind = 'summon';
+        area.reach = this.landingDistance(boss);
+    }
+    // A minion's body radius: its species' T1 body at the minion scale.
+    minionRadius(boss) {
+        return (
+            unitBodyRadius({ species: boss.species, tier: 1, growthElapsed: 1, growthDuration: 1 }) *
+            BOSS_SUMMON_MINIONS['boss-mouth-t1'].bodyScale
+        );
+    }
+    // Where minions land, from the boss's centre: just clear of its body.
+    landingDistance(boss) {
+        return boss.radius + this.minionRadius(boss) + this.config.landingGap;
     }
     // Minions may be alive at once: minionsPerBoss for every boss still standing.
     minionRoom(world) {

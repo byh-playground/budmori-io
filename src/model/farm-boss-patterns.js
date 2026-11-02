@@ -12,7 +12,6 @@ import {
     BOSS_SUMMON_MINIONS,
 } from '../boss/boss-patterns.js';
 import { bossMouthWorldPoint } from '../render/boss-vector-sockets.js';
-import { unitBodyRadius } from '../features/unit-body/definition.js';
 import { elementDamageTaken } from './lineage.js';
 import { applyDamageToTargets, resolveCritical, resolveUnitStats, unitMaxHpFor } from '../units/unit-stats.js';
 import { runStatModifiers } from '../tower/tower-run.js';
@@ -614,33 +613,50 @@ export const FARM_BOSS_PATTERNS = (base) =>
         bossSummonLanding(angle, action = null, boss = this.boss) {
             const B_LOCAL = boss,
                 SCENE = this,
-                RADIUS =
-                    unitBodyRadius({ species: B_LOCAL.species, tier: 1, growthElapsed: 1, growthDuration: 1 }) *
-                    BOSS_SUMMON_MINIONS['boss-mouth-t1'].bodyScale;
+                SUMMON = BOSS_BEHAVIORS.forId('summon.mouth-t1'),
+                RADIUS = SUMMON.minionRadius(B_LOCAL),
+                DISTANCE = SUMMON.landingDistance(B_LOCAL);
+            // The first clear spot from the aim outward. With none clear (troops packed against the boss despite the
+            // shockwave) the minion takes the least crowded one and the contact solver pushes the troops aside, so a
+            // summon never silently drops a minion.
+            let leastCrowded = null,
+                fewest = Infinity;
             for (let i = 0; i < 16; i++) {
                 const OFFSET = i === 0 ? 0 : ((i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI) / 8,
                     A_LOCAL = angle + OFFSET,
                     CANDIDATE = {
-                        x: B_LOCAL.x + Math.cos(A_LOCAL) * BOSS_PATTERN_CONFIG['summon.mouth-t1'].landingRadius,
-                        y: B_LOCAL.y + Math.sin(A_LOCAL) * BOSS_PATTERN_CONFIG['summon.mouth-t1'].landingRadius,
+                        x: B_LOCAL.x + Math.cos(A_LOCAL) * DISTANCE,
+                        y: B_LOCAL.y + Math.sin(A_LOCAL) * DISTANCE,
                     };
                 if (!ARENA_GEOMETRY.inside(CANDIDATE, SCENE, RADIUS)) {
                     continue;
                 }
-                const BLOCKED =
-                    this.units.some(
-                        (unit) =>
-                            unit.hp > 0 &&
-                            Math.hypot(unit.x - CANDIDATE.x, unit.y - CANDIDATE.y) < RADIUS + unit.radius + 0.08,
-                    ) ||
+                // Another minion of this volley landing on the same spot is never acceptable.
+                if (
                     (action?.landingPoints || []).some(
                         (point) => Math.hypot(point.x - CANDIDATE.x, point.y - CANDIDATE.y) < RADIUS * 2 + 0.08,
-                    );
-                if (!BLOCKED) {
+                    )
+                ) {
+                    continue;
+                }
+                const CROWD = this.units.reduce(
+                    (count, unit) =>
+                        count +
+                        (unit.hp > 0 &&
+                        Math.hypot(unit.x - CANDIDATE.x, unit.y - CANDIDATE.y) < RADIUS + unit.radius + 0.08
+                            ? 1
+                            : 0),
+                    0,
+                );
+                if (CROWD === 0) {
                     return CANDIDATE;
                 }
+                if (CROWD < fewest) {
+                    fewest = CROWD;
+                    leastCrowded = CANDIDATE;
+                }
             }
-            return null;
+            return leastCrowded;
         }
         spawnBossMouthUnit(action, boss = this.boss) {
             return this.mutateUnits(this._spawnBossMouthUnit, action, boss);
@@ -699,14 +715,13 @@ export const FARM_BOSS_PATTERNS = (base) =>
                 landingRecovery: 0,
                 seed: ID * 2.39996,
             });
-            // The boss shrunk to a giant unit: a share of the summoner's stats; its element-skill reach is
-            // patternScale of the boss's, which the giant size would otherwise multiply (attackArea undoes it).
+            // The boss shrunk to a giant unit: a share of the summoner's stats. Its element-skill reach is
+            // patternScale of the boss's (boss-patterns.js patternReachScale); its basic attack is a giant's.
             const MINION = BOSS_SUMMON_MINIONS[UNIT_LOCAL.battleSummonKind];
             Object.assign(UNIT_LOCAL, { giantSizeMultiplier: MINION.bodyScale, giantUntil: Number.MAX_SAFE_INTEGER });
             UNIT_LOCAL.setBaseStats({
                 maxHp: Math.max(1, Math.round(B_LOCAL.maxHp * MINION.hpRatio)),
                 attackPower: B_LOCAL.attackPower * MINION.attackRatio,
-                attackArea: MINION.patternScale / MINION.bodyScale,
             });
             UNIT_LOCAL.setStatModifiers(runStatModifiers(this.tower.active ? this.tower.bossCards : [], 'boss'));
             UNIT_LOCAL.setHealth(unitMaxHpFor(UNIT_LOCAL));

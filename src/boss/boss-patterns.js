@@ -189,10 +189,11 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
         minionsPerBoss: 2,
         dropHeight: 3,
         landingSeconds: 0.56,
-        landingRadius: 4.8,
-        // Reaches past the landing ring by half of it (1.5×) and pushes like the boss's own arm sweep (fan-sweep
-        // knockback 13) with half of its lift, so the troops are thrown clear but not launched.
-        shockwave: Object.freeze({ radius: 4.8 * 1.5, knockback: 13, lift: 10.2 * 0.5 }),
+        // A minion lands this far past the boss's edge, with its whole body clear of the boss (mouth-summon model).
+        landingGap: 0.3,
+        // Reaches 7.2 past the boss's edge (beyond the landing spot: gap + a minion's width ≈ 3.7) and pushes like the
+        // boss's own arm sweep (fan-sweep knockback 13) with half of its lift: troops are thrown clear, not launched.
+        shockwave: Object.freeze({ radius: 7.2, knockback: 13, lift: 10.2 * 0.5 }),
         // bodyScale: × the summoner species' T1 body (via the giant size; giant armor comes with it).
         // patternScale: × the boss's element-skill reach. hpRatio/attackRatio: × the summoner's max HP and attack.
         // castCooldownMultiplier: × the element skill's cooldown.
@@ -213,6 +214,14 @@ export function signaturePatternFor(element) {
 export const BOSS_SUMMON_MINIONS = Object.freeze({
     'boss-mouth-t1': BOSS_PATTERN_CONFIG['summon.mouth-t1'].minion,
 });
+// How far a caster's boss patterns reach, × the authored extent: a giant boss reaches as far past its larger body as
+// it did past its normal one (its giant scale); a minion reaches patternScale of the boss's. Render views carry the
+// value this returned for their unit (patternReachScale), so model and telegraph share one answer.
+export function patternReachScale(actor) {
+    return (
+        actor.patternReachScale ?? BOSS_SUMMON_MINIONS[actor.battleSummonKind]?.patternScale ?? actor.giantScale ?? 1
+    );
+}
 
 // The boss's basic attack throws its target as far as the arm sweep does, so a plain swing feels as heavy as a special.
 // It follows the sweep's numbers instead of keeping its own, so tuning the sweep tunes the swing too.

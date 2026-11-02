@@ -1,3 +1,4 @@
+import { patternReachScale } from '../boss/boss-patterns.js';
 import { updateBarleyPresentation } from '../features/unit-attacks/barley/presentation.js';
 import { updateWheatPresentation } from '../features/unit-attacks/wheat/presentation.js';
 import { growthBuildOf, growthForAbility } from '../features/species-growth/state.js';
@@ -297,6 +298,7 @@ class UnitRender extends RENDER_OBJECT {
         ...PATTERN_RENDER_SCHEMA,
         attackArea: R.STEP,
         giantScale: R.STEP,
+        patternReachScale: R.STEP,
     });
     constructor() {
         super();
@@ -343,6 +345,7 @@ class UnitRender extends RENDER_OBJECT {
         updatePatternRender(this, u);
         this.attackArea = u.patternRuntime?.active ? resolveUnitStats(u).attackArea : 1;
         this.giantScale = u.giantScale;
+        this.patternReachScale = patternReachScale(u);
         this.isSeedling = !!u.seedling;
         this.seedlingScale = seedlingGrowthScale(u);
         const GROWTH = session.seedlingGrowthEffects.get(u.id),
@@ -427,6 +430,7 @@ class BossRender extends RENDER_OBJECT {
         flash: R.LINEAR,
         species: R.STEP,
         ...PATTERN_RENDER_SCHEMA,
+        patternReachScale: R.STEP,
         element: R.STEP,
         stage: R.STEP,
         summonMouthX: R.STEP,
@@ -488,6 +492,7 @@ class BossRender extends RENDER_OBJECT {
         this.species = b.species ?? 3;
         this.stage = b.stage ?? 0;
         updatePatternRender(this, b);
+        this.patternReachScale = patternReachScale(b);
         this.summonMouthX = MOUTH.x ?? b.x;
         this.summonMouthY = MOUTH.y ?? b.y;
         this.summonMouthZ = MOUTH.z ?? b.z;
