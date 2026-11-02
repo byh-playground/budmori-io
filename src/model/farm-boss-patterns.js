@@ -10,17 +10,33 @@ import {
     BOSS_AREA_MIN_HITS,
     BOSS_ENRAGE,
     drawMinionKind,
+    SUMMON_PATTERN_ID,
 } from '../boss/boss-patterns.js';
 import { bossMouthWorldPoint } from '../render/boss-vector-sockets.js';
 import { elementDamageTaken } from './lineage.js';
 import { applyDamageToTargets, resolveCritical, resolveUnitStats, unitMaxHpFor } from '../units/unit-stats.js';
 import { runStatModifiers } from '../tower/tower-run.js';
-import { TOWER_ENCOUNTER_SETTINGS } from '../tower/tower-encounter.js';
+import { minionElements, towerMinionCap, towerSummonBand } from '../tower/tower-encounter.js';
 
 export const FARM_BOSS_PATTERNS = (base) =>
     class FarmBossPatterns extends base {
         bossAttackArea(unitRadius = 0) {
             return bossAttackArea(this.boss, unitRadius, this);
+        }
+        // The summon band in force: the tower floor's, or the first band for the farm boss.
+        bossSummonBand() {
+            return towerSummonBand(this.tower.active ? this.tower.floor : 1);
+        }
+        // Boss minions that may be alive at once: the band's cap, bounded by the troops still standing.
+        bossMinionCap() {
+            return towerMinionCap(this.tower.active ? this.tower.floor : 1, this.livingBossTargets().length);
+        }
+        // The HP fraction a pattern joins the rotation at; the summon's comes from the summon band.
+        bossPatternUnlockHp(id) {
+            return id === SUMMON_PATTERN_ID ? this.bossSummonBand().summonFrom : BOSS_PATTERN_CONFIG[id].unlockHp;
+        }
+        bossPatternCooldown(id) {
+            return id === SUMMON_PATTERN_ID ? this.bossSummonBand().cooldown : BOSS_PATTERN_CONFIG[id].cooldown;
         }
         livingBossTargets() {
             return this.units
@@ -42,39 +58,6 @@ export const FARM_BOSS_PATTERNS = (base) =>
                 }
             }
             return best;
-        }
-        // Several bosses fight as one pack: each takes its nearest ally among those within `packLeash` boss radii of
-        // the pack's centre, so they stay together and back each other up instead of each chasing a straggler across
-        // the arena. With nobody in that circle the pack closes in on the ally nearest its centre. One boss: nearest.
-        bossPackTarget(living, boss = this.boss) {
-            let count = 0,
-                x = 0,
-                y = 0;
-            for (const B of this.bosses) {
-                if (B.active && B.hp > 0) {
-                    count++;
-                    x += B.x;
-                    y += B.y;
-                }
-            }
-            if (count <= 1) {
-                return this.nearestBossTarget(living, false, boss);
-            }
-            const CENTRE = { x: x / count, y: y / count },
-                LEASH = TOWER_ENCOUNTER_SETTINGS.packLeash * boss.radius;
-            let best = null,
-                distance = Infinity;
-            for (const UNIT_LOCAL of living) {
-                if (Math.hypot(UNIT_LOCAL.x - CENTRE.x, UNIT_LOCAL.y - CENTRE.y) > LEASH) {
-                    continue;
-                }
-                const NEXT = Math.hypot(UNIT_LOCAL.x - boss.x, UNIT_LOCAL.y - boss.y);
-                if (NEXT < distance || (NEXT === distance && UNIT_LOCAL.id < best.id)) {
-                    best = UNIT_LOCAL;
-                    distance = NEXT;
-                }
-            }
-            return best ?? this.nearestBossTarget(living, false, CENTRE);
         }
         bossTargetGrid(_living, boss = this.boss) {
             if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
@@ -321,7 +304,7 @@ export const FARM_BOSS_PATTERNS = (base) =>
                 ),
                 ELIGIBLE = [];
             for (const ID of BOSS_PATTERN_IDS) {
-                if (RUNTIME.cooldowns[ID] > 1e-9 || this.bossHpRatioFor(boss) > BOSS_PATTERN_CONFIG[ID].unlockHp) {
+                if (RUNTIME.cooldowns[ID] > 1e-9 || this.bossHpRatioFor(boss) > this.bossPatternUnlockHp(ID)) {
                     continue;
                 }
                 const BEHAVIOR = BOSS_BEHAVIORS.forId(ID);
@@ -691,9 +674,19 @@ export const FARM_BOSS_PATTERNS = (base) =>
             }
             return leastCrowded;
         }
-        // The kind of the next minion a summon spits: drawn from the pool by weight with the world's seeded random.
+        // The kind of the next minion a summon spits: drawn by weight, among the summon band's kinds, with the world's
+        // seeded random.
         drawBossMinionKind() {
-            return drawMinionKind(this.random());
+            return drawMinionKind(this.random(), this.bossSummonBand().kinds);
+        }
+        // A tower minion's element: drawn from the bands climbed so far (minionElements), so a water boss may spit a
+        // grass minion. The farm boss's minions keep its own element.
+        drawBossMinionElement(boss) {
+            if (!this.tower.active) {
+                return boss.enemyElement;
+            }
+            const ELEMENTS = minionElements(this.tower.floor);
+            return ELEMENTS.length > 1 ? ELEMENTS[Math.floor(this.random() * ELEMENTS.length)] : ELEMENTS[0];
         }
         // `kind` (a MINION_KINDS row) is drawn from the pool unless given.
         spawnBossMouthUnit(action, boss = this.boss, kind = null) {
@@ -709,7 +702,8 @@ export const FARM_BOSS_PATTERNS = (base) =>
                 return false;
             }
             const MOUTH = this.bossMouthPoint(action.released + 1, boss),
-                KIND = kind ?? this.drawBossMinionKind();
+                KIND = kind ?? this.drawBossMinionKind(),
+                ELEMENT = this.drawBossMinionElement(B_LOCAL);
             const ID = CONFIG.boss.summonIdBase + ++this.bossSummonSerial,
                 UNIT_LOCAL = new UNIT(ID, B_LOCAL.species, 1, MOUTH.x, MOUTH.y),
                 ANGLE = Math.atan2(LANDING.y - MOUTH.y, LANDING.x - MOUTH.x),
@@ -721,7 +715,7 @@ export const FARM_BOSS_PATTERNS = (base) =>
                 ownerId: 'boss',
                 farmId: 0,
                 faction: FACTION_CONFIG.ENEMY,
-                enemyElement: B_LOCAL.enemyElement,
+                enemyElement: ELEMENT,
                 home: {
                     x: MOUTH.x,
                     y: MOUTH.y,
@@ -785,15 +779,14 @@ export const FARM_BOSS_PATTERNS = (base) =>
         }
         activateBossPattern(action, boss = this.boss) {
             const B_LOCAL = boss,
-                RUNTIME = B_LOCAL.patternRuntime,
-                CONFIG_LOCAL = BOSS_PATTERN_CONFIG[action.id];
+                RUNTIME = B_LOCAL.patternRuntime;
             action.phase = 'active';
             action.phaseElapsed = 0;
             B_LOCAL.attackId = ++this.attackSerial;
             action.hitIds.clear();
             // A minion's runtime carries its kind's cooldown scale (boss-minions.js); a boss's has none.
             RUNTIME.cooldowns[action.id] =
-                CONFIG_LOCAL.cooldown *
+                this.bossPatternCooldown(action.id) *
                 (this.bossEnraged ? BOSS_ENRAGE.cooldownMultiplier : 1) *
                 (RUNTIME.cooldownScale ?? 1);
             this.combat('boss-pattern-launch', {

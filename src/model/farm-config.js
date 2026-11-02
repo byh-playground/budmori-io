@@ -5,6 +5,7 @@ import { SPECIES_COUNT } from '../units/species-catalog.js';
 import { FARM_BOSS_EVENT_MAX_STAGE } from './player-progression.js';
 import { MAX_UNIT_TIER, MAX_GRADE_MATERIAL_COUNT } from '../units/unit-grades.js';
 import { FACTION_CONFIG } from '../core/factions.js';
+import { MAX_TOWER_MINIONS } from '../tower/tower-encounter.js';
 
 // sim.js
 const BREED_COOLDOWN_SECONDS = 10;
@@ -15,8 +16,8 @@ export const MERGE_RESERVATION_OWNER = (ids) => `merge:${[...ids].sort((a, b) =>
 
 const FARM_MAX_UNITS = 1000,
     MAX_PEANUT_SPLIT_CHILDREN = 2,
-    // Boss minions alive at once: summon.mouth-t1 minionsPerBoss (2) × the most bosses on a floor (5 on floor 100).
-    MAX_BOSS_SUMMONS = 10,
+    // Boss minions alive at once: the largest summon band cap (tower-encounter.js).
+    MAX_BOSS_SUMMONS = MAX_TOWER_MINIONS,
     BATTLE_ACTOR_CAPACITY = FARM_MAX_UNITS * (1 + MAX_PEANUT_SPLIT_CHILDREN) + MAX_BOSS_SUMMONS + 2000;
 
 const WORLD_ARENA = Object.freeze({
