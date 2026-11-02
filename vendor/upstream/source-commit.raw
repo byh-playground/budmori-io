@@ -1,25 +1,34 @@
-tree 491996c1caa386b1f00322b62f38158137c1ee16
-parent f240b1211fd9086106117773f8458ea3cc4b4fff
-author byh020907 <byh020907@naver.com> 1793591579 +0900
-committer GitHub <noreply@github.com> 1793591579 +0900
+tree f0838f499d3cf4b7aab6e02938b075b11e624502
+parent 84c23cecd3dc0cc5c006e8018e6e24a4df79b3a9
+author byh020907 <byh020907@naver.com> 1793622076 +0900
+committer GitHub <noreply@github.com> 1793622076 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq6AkbCRC1aQ7uu5UhlAAAIvUQAA8xccQs3kn0KrDLtCc14+BG
- FVvve4eEGL45ha+UQM9JvkcLCu7oXCFYDjzzmdd76xPt147Bj3jxKscJDu4/9veA
- V6t1ZhQrfQp3C4v7HhUggYF5fy8+qIHB9a9rpfjsvnqTjAV2yZvcTVICZo5nLG3f
- z3PERDhf+r0crcECMFJBDOje9iDeTwDoY61sLP1Sh7GSTUZ2gbltkRS9zGv/aT1h
- Pl7LC5kY8zNgx3xwZLz78EnmmXSEglILGHOl8GirDwXvp84uDvngZQZr+MEv+Sls
- jZ707Y0t9oRRapo9//PJkmuNPnB5/fvI5zZPz2hwbSqcy2r5qh/YNhMqGG4hcJBG
- Gj40g+9vPMp2CmLLhXL+5cZAw8VCUxQTfWpzEYYDO6tCVy1CHR8ABlaSyYionHMo
- exPoUhVbC/EVM82OUNxxJOCelHVVQhwhZavyhX1yOxjgtVGgHc4v3BITcwVqJFVg
- dT+7XiK043Jkgw7aNVSvkD5Z2oJTGL3B7kGo3wDEHGh13MsX7xkMWMnUsjnshf67
- v2eN7RAf8d4dOhdxWDwb5Bo/3G7Ui2F2tCz9vXKroEDoabCNulIozRYbQEx72IBX
- Q7QVuad+W4HaU6R/7a1s7VVBWj/xNcyOLtmAOUbaZKz/kW287KWuzDRUOeMfiqm8
- KNON93OOLDb9C5xXC4JZ
- =xCqs
+ wsFcBAABCAAQBQJq6IA8CRC1aQ7uu5UhlAAAxwYQAAywIshUV8dXuDGuDJfsLYxy
+ ZfOuWHzgo5548ow6qQQFuPoueX1bZeFsfDUNwhcPGXBYrNVaII1tjrEjS4TC8J/Y
+ 7Du7wzW0d8aVurftX1wHmsIBHjPPBAfsbI8Rzl3vITlisAjBBGLCE8kSUOb+0hpw
+ VOEOkfkx9gW0pvymCbwQ5ldaFkcI8hhcht3y7pLQHC3H/gh6NOeX2VlanhjD9Xpk
+ fhkutrZqHWJiC9LD5dOOrBuXbp4nqaTu/aJxZuPJWF1ouubBtsjqB1OOh2wzVk5Z
+ kpJFGSzL9ISaRmeAFSHo3F9g8Qg9ul/bM1O0SqMZhN1mI4dL5MX9KxJxtK1aehpi
+ 3Y80gplXFIOaK29RfM+Jh98jL4oN3oWFVrBIun3VzAFIcNSDXw1XeJ3BgwZ34JVC
+ rsYW7GwDk4Fuqddiwe6GxSYiMHATYIXhlIkZIZffliiRSAmv2OURkXjGr4+ZlW8W
+ rtDfqR2frUYy1y3HiUFYC9vofUHVRWZMYYl4qFcFeSWCkMCDmtkk0WUoqzVSvwkr
+ /iQt7VAagOsoAK99URugOroHML5gF46HHA4AXNO1Bc9Rb6QKchgWBqlsZeJ2fpTD
+ Ss38cFnk7QD/IknhK6GOkHeFdAbQ05u1Q8O2+pIgzH07lv3P4Rcpei78cIs4ltHn
+ bNm51PqGCWezyV/ymz23
+ =tm02
  -----END PGP SIGNATURE-----
  
 
-[performance] 불변 scalar 표본 재사용과 순환 검사 할당 절감 (#186)
+[feature] 시작 로딩 진행률·모듈 그래프 병렬 preload를 맡는 boot 모듈 추가 (#189)
 
-Co-authored-by: yong-ho bae <dragonlake.bae@gmail.com>
+- listModuleGraph(dist/boot-build.mjs): 진입 모듈의 정적 import·export-from·문자열 import()를 따라 로컬 모듈 목록 생성, 없는 파일·bare 지정자는 던짐
+- createBoot(dist/boot.js): 단계 가중치 기반 전체 진행률(0..1, 단조), begin/advance/finish/complete/fail, preloadModules(modulepreload 병렬, 파일별 n/N)
+- bindBootProgress·yieldFrame으로 게임의 표시 코드 제거
+- 검증: npm run check, npm run build, release 검사, modules/boot/tests/boot.e2e.mjs(헤드리스 Chromium, 19개 모듈 n/N·overall 1·import 추가 요청 0·실패 경로)
+- SDK 0.41.1(호환 추가, v0.41.0 위)
+
+
+Claude-Session: https://claude.ai/code/session_0196akmcKHMndSjhrzqUxNvK
+
+Co-authored-by: Claude <noreply@anthropic.com>

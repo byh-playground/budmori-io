@@ -160,7 +160,6 @@
     background: var(--ui-card);
     line-height: 1.5;
 }
-.home-copy #appUpdate,
 .home-copy #appInstall,
 .home-copy #resetSave {
     margin-top: 12px;
