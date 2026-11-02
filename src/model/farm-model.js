@@ -1262,7 +1262,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
             let tx = CLAMP(DELIVERY ? DELIVERY.x : x, -RADIUS_X, RADIUS_X);
             let ty = CLAMP(DELIVERY ? DELIVERY.y : y, -RADIUS_Y, RADIUS_Y);
             const BOUNDARY = Math.hypot(tx / RADIUS_X, ty / RADIUS_Y);
-            if (BOUNDARY > 1) {
+            if (BOUNDARY > 1 && !DELIVERY) {
                 tx /= BOUNDARY;
                 ty /= BOUNDARY;
             }

@@ -158,8 +158,8 @@ try {
         CHECK(U.seedling.fed === 1 && T.food.length === 2, 'more than one meal in a tick');
         // A delivery is counted immediately, while flight/bounce has not ARRIVED yet.
         const D = WORLD(),
-            D1 = UNIT(D, 2, -3, 0, true),
-            D2 = UNIT(D, 2, 3, 0, true);
+            D1 = UNIT(D, 2, -20, 14, true),
+            D2 = UNIT(D, 2, 20, 14, true);
         D._foodReservations.prepareProtection();
         D.spawnFood(12, 8, 3, { automatic: true, from: { x: 0, y: 0, z: 0.9 } });
         CHECK(D._foodReservations.byUnit.size === 2, 'flight delivery did not cover exactly one meal per seed');
