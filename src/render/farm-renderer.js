@@ -952,7 +952,8 @@ const DIORAMA = class Diorama {
         const PILE = pile;
         const SEEN = this.pileHits || (this.pileHits = new Map());
         {
-            const S = this.scale * (0.95 + 0.5 * (PILE.food / PILE.maxFood));
+            const ART = CONFIG.farm.work.pileArt,
+                S = this.scale * (ART.baseScale + ART.foodScale * (PILE.food / PILE.maxFood));
             let seen = SEEN.get(PILE.id);
             if (!seen) {
                 seen = { rev: PILE.hitRev, at: -1e9 };
@@ -966,10 +967,10 @@ const DIORAMA = class Diorama {
             const HIT = clamp(1 - (now - seen.at) / 220, 0, 1),
                 BASE = this.project(PILE.x, PILE.y, 0),
                 X = BASE.x + Math.sin(now * 0.07) * HIT * 0.05 * S,
-                SQUASH = 1 + HIT * 0.14,
+                SQUASH = 1 + HIT * ART.hitSquash,
                 LIFT = 1 - HIT * 0.16;
             {
-                this.ellipse(X, BASE.y - 0.16 * S * LIFT, 0.86 * S * SQUASH, 0.4 * S * LIFT, '#c99f4a');
+                this.ellipse(X, BASE.y - 0.16 * S * LIFT, ART.radiusX * S * SQUASH, 0.4 * S * LIFT, '#c99f4a');
                 this.ellipse(X, BASE.y - 0.34 * S * LIFT, 0.72 * S * SQUASH, 0.44 * S * LIFT, '#dcb85f');
                 this.ellipse(X, BASE.y - 0.56 * S * LIFT, 0.5 * S * SQUASH, 0.34 * S * LIFT, '#e6c773');
                 this.ellipse(X - 0.1 * S, BASE.y - 0.72 * S * LIFT, 0.2 * S, 0.12 * S, '#f1dc9a');

@@ -1246,18 +1246,23 @@ const GARDEN = class Garden extends GARDEN_BASE {
             this.refreshWorkers();
         }
         if (this.scene === 'farm') {
+            this._foodReservations.prepareProtection();
+            const PRODUCTION_START = this.profiler?.start();
             stepWork(this, CONFIG, Math.min(elapsed, 0.1));
+            this.profiler?.end('foodProduction', PRODUCTION_START);
         }
     }
-    spawnFood(x, y, count = 1, { from = null } = {}) {
+    spawnFood(x, y, count = 1, { from = null, automatic = false } = {}) {
         let spawned = 0;
         for (let i = 0; i < count && this.food.length < CONFIG.farm.work.maxFood; i++) {
             const RADIUS_X = CONFIG.farm.arena.radiusX - 1.5,
                 RADIUS_Y = CONFIG.farm.arena.radiusY - 1.1;
-            let tx = CLAMP(x, -RADIUS_X, RADIUS_X);
-            let ty = CLAMP(y, -RADIUS_Y, RADIUS_Y);
+            const DELIVERY_START = automatic ? this.profiler?.start() : undefined;
+            const DELIVERY = automatic ? this._foodReservations.deliveryTarget() : null;
+            let tx = CLAMP(DELIVERY ? DELIVERY.x : x, -RADIUS_X, RADIUS_X);
+            let ty = CLAMP(DELIVERY ? DELIVERY.y : y, -RADIUS_Y, RADIUS_Y);
             const BOUNDARY = Math.hypot(tx / RADIUS_X, ty / RADIUS_Y);
-            if (BOUNDARY > 1) {
+            if (BOUNDARY > 1 && CONFIG.farm.arena.shape !== 'rect') {
                 tx /= BOUNDARY;
                 ty /= BOUNDARY;
             }
@@ -1279,6 +1284,10 @@ const GARDEN = class Garden extends GARDEN_BASE {
                 ty,
             };
             this.food.push(FOOD);
+            this._foodReservations.assignDelivery(DELIVERY, FOOD);
+            if (automatic) {
+                this.profiler?.end('foodDelivery', DELIVERY_START);
+            }
             this._trackFoodAdded(FOOD);
             this.emit('feed', tx, ty);
             this.markProgressChanged();
@@ -1420,7 +1429,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
             PROJECTILE_BEHAVIORS.forProjectile(PROJECTILE).advanceLifecycle(this, PROJECTILE, dt);
         }
         this._rebuildFoodSpatialIndex();
-        this._foodReservations.advance();
+        this._foodReservations.advance(dt);
         const WORK_START = this.profiler?.start(),
             PREVIOUS_WORK = this._lastFoodSearchSchedulerMetrics,
             CANDIDATES_BEFORE = this._foodSearchWork.candidateChecks,
@@ -1515,6 +1524,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
             this.updateUnitIntent(U, dt, ENEMY_LOCAL, SCENE);
             this.profiler?.end('ai', AI_START);
         }
+        this._foodReservations.pickup();
         // Timed growth/rest is real progress, but movement is not. Checkpoint
         // advancing timers at a coarse cadence, never once per physics tick.
         SCENE.checkpointProgress(this, dt, progressTimersAdvanced);
@@ -1576,6 +1586,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
                     } else {
                         F.vz = 0;
                         F.phase = 'grounded';
+                        this._foodReservations.foodLanded(F);
                     }
                 }
                 this.updateFoodSpatial(F);

@@ -11,43 +11,58 @@ const FOOD_DROP_MIN = 1.5,
     CHARGE_TIMEOUT = 1.6,
     RECOIL_SPEED = 5.5;
 const STACKS_PER_FOOD = 5;
+// Stable lattice candidates, farthest available position first. No random retries or
+// narrowing the gap when crowded; additions alone choose new centers.
 function pilePosition(world, config) {
     const WORK = config.farm.work;
     let best = null,
-        bestGap = -1;
-    for (let attempt = 0; attempt < 14; attempt++) {
-        const ANGLE = world.random() * Math.PI * 2,
-            REACH = Math.sqrt(world.random()),
-            X = Math.cos(ANGLE) * REACH * WORK.pileRadiusX,
-            Y = Math.sin(ANGLE) * REACH * WORK.pileRadiusY;
-        let gap = Infinity;
-        for (const PILE of world.piles) {
-            gap = Math.min(gap, Math.hypot(PILE.x - X, PILE.y - Y));
-        }
-        if (gap >= WORK.pileGap) {
-            return { x: X, y: Y };
-        }
-        if (gap > bestGap) {
-            bestGap = gap;
-            best = { x: X, y: Y };
+        bestGap = -1,
+        bestReach = Infinity;
+    const COLUMNS = Math.floor((2 * WORK.pileRadiusX) / WORK.pileGap),
+        ROWS = Math.floor((2 * WORK.pileRadiusY) / WORK.pileGap);
+    for (let row = 0; row <= ROWS; row++) {
+        const Y = (row - ROWS / 2) * WORK.pileGap;
+        for (let column = 0; column <= COLUMNS; column++) {
+            const X = (column - COLUMNS / 2) * WORK.pileGap;
+            let gap = Infinity;
+            for (const PILE of world.piles) {
+                gap = Math.min(gap, Math.hypot(PILE.x - X, PILE.y - Y));
+            }
+            const REACH = Math.hypot(X, Y);
+            if (gap + 1e-9 >= WORK.pileGap && (gap > bestGap || (gap === bestGap && REACH < bestReach))) {
+                bestGap = gap;
+                bestReach = REACH;
+                best = { x: X, y: Y };
+            }
         }
     }
-    return best || { x: 0, y: 0 };
+    return best;
 }
-function spawnPile(world, config) {
-    const POSITION = pilePosition(world, config),
-        AMOUNT = config.farm.work.pileKind.amount;
-    world.piles.push({
-        id: ++world._pileId,
-        x: POSITION.x,
-        y: POSITION.y,
-        food: AMOUNT,
-        maxFood: AMOUNT,
-        stack: 0,
-        hitRev: 0,
-        big: false,
-    });
-    world.emit('drop-dust', POSITION.x, POSITION.y);
+function resizePiles(world, config, workers) {
+    const TARGET = Math.ceil(workers / config.farm.work.workersPerPile);
+    if (world._pileWorkerTarget === TARGET) {
+        return;
+    }
+    world._pileWorkerTarget = TARGET;
+    world.piles.length = Math.min(world.piles.length, TARGET);
+    while (world.piles.length < TARGET) {
+        const POSITION = pilePosition(world, config),
+            AMOUNT = config.farm.work.pileKind.amount;
+        if (!POSITION) {
+            break;
+        }
+        world.piles.push({
+            id: ++world._pileId,
+            ...POSITION,
+            food: AMOUNT,
+            maxFood: AMOUNT,
+            stack: 0,
+            hitRev: 0,
+            big: false,
+            refillAt: 0,
+        });
+        world.emit('drop-dust', POSITION.x, POSITION.y);
+    }
 }
 // Piles are solid: the radius shrinks a little as the pile is used up.
 function pileRadius(pile) {
@@ -133,16 +148,17 @@ export function workersBySpecies(lengths, ratio, weights) {
 export function resetWork(world) {
     world._piles = [];
     world._pileId = 0;
-    world._pileRespawn = 0;
+    world._pileWorkerTarget = -1;
     world._workAssign = new Map();
     world._swings = new Map();
 }
 // Assignments are sticky: a worker keeps its pile until the pile is gone or the worker stops working,
 // so re-running this never reshuffles who attacks what. Everyone attacks; newcomers go to the pile with the fewest workers.
-export function assignWorkers(world, _config) {
+export function assignWorkers(world, config) {
     const WORKERS = world.units.filter((u) => world.isWorker(u) && u.hp > 0 && u.down <= 0 && u.mature),
-        PREVIOUS = world._workAssign,
-        ASSIGN = new Map(),
+        PREVIOUS = world._workAssign;
+    resizePiles(world, config, WORKERS.length);
+    const ASSIGN = new Map(),
         COUNTS = new Map(world.piles.map((pile) => [pile, 0]));
     if (!world.piles.length) {
         world._workAssign = ASSIGN;
@@ -226,12 +242,12 @@ function impact(world, config, pile) {
         REACH = FOOD_DROP_MIN + world.random() * (FOOD_DROP_MAX - FOOD_DROP_MIN);
     world.spawnFood(pile.x + Math.cos(ANGLE) * REACH, pile.y + Math.sin(ANGLE) * REACH * 0.8, 1, {
         from: { x: pile.x, y: pile.y, z: 0.9 },
+        automatic: true,
     });
     world.markProgressChanged();
     if (pile.food <= 0) {
-        world.piles.splice(world.piles.indexOf(pile), 1);
+        pile.refillAt = world.time + config.farm.work.pileRespawnSeconds;
         world.emit('landing-shockwave', pile.x, pile.y);
-        assignWorkers(world, config);
     }
 }
 // What a worker should do this tick: where to go and how fast, or hold still while winding up or recoiling.
@@ -244,7 +260,9 @@ export function workOrder(world, unit) {
         SWING = world._swings.get(unit.id),
         DISTANCE = Math.hypot(unit.x - PILE.x, unit.y - PILE.y),
         ORDER = { x: PILE.x, y: PILE.y, fx: PILE.x, fy: PILE.y, speed: 9, hold: false, face: false };
-    if (!SWING || SWING.phase === 'idle') {
+    if (PILE.food <= 0) {
+        ORDER.hold = true;
+    } else if (!SWING || SWING.phase === 'idle') {
         // Anywhere near its own pile a worker just turns to it; only a far one walks over.
         ORDER.hold = DISTANCE <= NEAR_PILE;
         ORDER.face = ORDER.hold;
@@ -284,13 +302,10 @@ function pushOutOfPiles(world) {
 export function stepWork(world, config, dt) {
     const WORK = config.farm.work;
     pushOutOfPiles(world);
-    // Keep the configured number of piles; refill one at a time after a short wait.
-    if (world.piles.length < WORK.pileKind.count) {
-        world._pileRespawn += dt;
-        if (world.piles.length === 0 || world._pileRespawn >= WORK.pileRespawnSeconds) {
-            spawnPile(world, config);
-            world._pileRespawn = 0;
-            assignWorkers(world, config);
+    // Empty piles refill in place; changing workers/rates never moves existing centers.
+    for (const PILE of world.piles) {
+        if (PILE.food <= 0 && world.time >= PILE.refillAt) {
+            PILE.food = PILE.maxFood;
         }
     }
     const FOOD_FULL = world.food.length >= WORK.maxFood;
@@ -304,6 +319,9 @@ export function stepWork(world, config, dt) {
             continue;
         }
         const PILE = ASSIGN.pile;
+        if (PILE.food <= 0) {
+            continue;
+        }
         let swing = world._swings.get(ID);
         if (!swing) {
             swing = { phase: 'idle', elapsed: 0, wait: (UNIT.seed * 7) % 0.8 };

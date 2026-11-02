@@ -10,14 +10,6 @@ export class BreedFarmMode extends FarmMode {
         let target = null;
         if (!u.fed) {
             target = world.requestGroundFoodTarget(u);
-            if (target && Math.hypot(target.x - u.x, target.y - u.y) < 0.42 && world.consumeGroundFood(target, u)) {
-                world.clearFoodTargetSearch(u);
-                u.meals = 1;
-                world.markProgressChanged();
-                u.vz = 2;
-                world.emit('eat', u.x, u.y, 0.5);
-                target = null;
-            }
         } else if (u.cooldown === 0) {
             target = world.findOrReserveMate(u);
         }
