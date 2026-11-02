@@ -35,7 +35,7 @@ const { changed: CHANGED } = await BUILD_PWA({
     html: 'index.html',
     // Everything the page reads from this origin to start: the page, the authored ESM and CSS, and the troop SVGs
     // the bootstrap compiles. Pinned GameKit modules are listed in index.html and src/showcase.js and are cached too.
-    precache: ['index.html', 'src/**', 'assets/troops/*'],
+    precache: ['index.html', 'src/**', 'assets/troops/*', 'assets/home-garden.svg'],
     out: '.',
     check: process.argv.includes('--check'),
 });

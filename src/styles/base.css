@@ -705,56 +705,6 @@ body > header {
 .app-update-progress::backdrop {
     background: var(--ui-dim);
 }
-.product-sheet {
-    position: fixed;
-    inset: 0;
-    z-index: var(--ui-z-dock);
-    background: var(--ui-bg);
-    overflow: auto;
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    justify-content: center;
-    gap: var(--ui-s3);
-    padding: var(--ui-s5) max(var(--ui-s5), calc((100vw - 440px) / 2));
-    touch-action: pan-y;
-}
-.product-sheet h1 {
-    margin: 0;
-    font-size: var(--ui-fs-6);
-    letter-spacing: -0.04em;
-    color: var(--ui-ink);
-}
-.product-sheet p {
-    margin: 0;
-    font-size: var(--ui-fs-2);
-    font-weight: var(--ui-fw-m);
-    line-height: 1.6;
-    color: var(--ui-ink-2);
-}
-.product-sheet button {
-    min-height: 56px;
-    font-size: var(--ui-fs-3);
-}
-.product-sheet small {
-    color: var(--ui-ink-3);
-    font-size: var(--ui-fs-1);
-    font-weight: var(--ui-fw-m);
-}
-#startVersion {
-    order: 99;
-    margin-top: var(--ui-s4);
-    text-align: center;
-}
-.save-actions {
-    display: flex;
-    gap: var(--ui-s2);
-}
-.save-actions button {
-    flex: 1;
-    min-height: var(--ui-tap);
-    font-size: var(--ui-fs-2);
-}
 #saveNotice:empty,
 #appNotice:empty,
 #sessionNotice:empty {
@@ -777,18 +727,8 @@ body > header {
     margin-top: var(--ui-s2);
     width: 100%;
 }
-.product-sheet > div[hidden] {
-    display: none;
-}
 body[data-home='true'] #bossbar {
     display: none;
-}
-@media (max-height: 650px) {
-    .product-sheet {
-        justify-content: flex-start;
-        padding-top: var(--ui-s5);
-        padding-bottom: var(--ui-s5);
-    }
 }
 /* 낮은 화면(가로 모드) */
 @media (max-height: 550px) {

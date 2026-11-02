@@ -64,10 +64,11 @@
     }
   });
 })({
-    "version": "9825a7afb73a9df8",
+    "version": "5afa3ddac3ea1407",
     "activateMessage": "bloom-pwa:activate",
     "gamekit": "^https:\\/\\/cdn\\.jsdelivr\\.net\\/gh\\/byh-playground\\/bloom-gamekit@[0-9a-f]{40}\\/[A-Za-z0-9._/-]+$",
     "precache": [
+        "assets/home-garden.svg",
         "assets/troops/barley.svg",
         "assets/troops/chestnut.svg",
         "assets/troops/corn-kernel.svg",
@@ -330,6 +331,7 @@
         "src/styles/boss-reward-dialog.css",
         "src/styles/boss-reward.css",
         "src/styles/game-menu.css",
+        "src/styles/home.css",
         "src/styles/seedling-reveal.css",
         "src/styles/tokens.css",
         "src/styles/tower.css",

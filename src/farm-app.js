@@ -36,7 +36,7 @@ import { BossRewardDialog } from './ui/boss-reward-dialog.js';
 import { workersBySpecies } from './model/farm-work.js';
 import { apportionBreedShares, adjustBreedShare } from './model/breed-allocation.js';
 import { speciesById, giantSpeciesName, BOSS_SPECIES } from './units/species-catalog.js';
-import { speciesPortraitSource } from './units/species-paint.js';
+import { speciesFacePortraitSource, speciesPortraitSource } from './units/species-paint.js';
 import { HELP_MAX_FRAME_MS, HELP_PLAYBACK_RATE, helpSceneById } from './ui/help-scenes.js';
 import { labScene } from './debug/lab.js';
 import { createHelpPanel } from './ui/help-panel.js';
@@ -52,6 +52,9 @@ const DOLLAR = (id) => document.getElementById(id),
     PLAY = await PlaySettings.open(OPEN_SAVE);
 const HELP_PANEL = createHelpPanel(DOLLAR);
 mountIcons();
+for (const PORTRAIT of document.querySelectorAll('[data-home-species]')) {
+    PORTRAIT.src = speciesFacePortraitSource(Number(PORTRAIT.dataset.homeSpecies), 'happy');
+}
 const SEEDLING_REVEAL = new SeedlingReveal(DOLLAR('seedlingReveal'));
 const BOSS_REWARD_DIALOG = new BossRewardDialog(DOLLAR('bossRewardDialog'), { onOpen: stopWorldInput });
 let imported = null;
@@ -345,7 +348,19 @@ function say(text) {
 }
 function refreshStart() {
     const LOCKED = saveLocked();
-    DOLLAR('continueGame').disabled = LOCKED || (!hasMemoryRun() && !STORAGE.hasWorld);
+    const HAS_FARM = hasMemoryRun() || STORAGE.hasWorld,
+        GARDEN = personalGarden,
+        SAVED = STORAGE.savedProgress,
+        POPULATION = GARDEN
+            ? GARDEN.ownedPopulation
+            : SAVED?.roster.reduce((sum, row) => sum + row.residentIds.length, 0),
+        BEST = GARDEN?.playerProgression.towerBest ?? SAVED?.player.towerBest ?? 0;
+    DOLLAR('continueGame').hidden = !HAS_FARM;
+    DOLLAR('continueGame').disabled = LOCKED || !HAS_FARM;
+    DOLLAR('continueGame').textContent = hasMemoryRun() && GARDEN.tower.active ? '도전 이어가기' : '농장 이어가기';
+    DOLLAR('newGame').classList.toggle('btn--primary', !HAS_FARM);
+    DOLLAR('homeProgress').hidden = !HAS_FARM || LOCKED;
+    DOLLAR('homeProgress').textContent = HAS_FARM ? `병력 ${POPULATION ?? 0}마리 · 최고 ${BEST}층` : '';
     DOLLAR('newGame').disabled = LOCKED;
     DOLLAR('resetSave').hidden = !LOCKED;
     DOLLAR('resetConfirm').hidden ||= !LOCKED;
@@ -370,7 +385,7 @@ function setHome(value, push = true) {
     }
     refreshStart();
     if (value) {
-        DOLLAR('continueGame').focus();
+        DOLLAR(saveLocked() ? 'resetSave' : DOLLAR('continueGame').disabled ? 'newGame' : 'continueGame').focus();
     }
 }
 function markSeen() {
@@ -486,16 +501,20 @@ DOLLAR('deckCards').addEventListener('click', (e) => {
     paintDeck();
 });
 function hasMemoryRun() {
-    return !!(personalGarden?.tower.active && active?.world === personalGarden && !active.closed);
+    return !!(personalGarden && active?.world === personalGarden && !active.closed);
 }
 function resumeMemoryRun(push = true) {
     if (!hasMemoryRun()) {
         return false;
     }
-    // Home pauses this session; it is not a disk checkpoint or a new climb.
+    // Home pauses this farm or climb; resuming keeps the same live session.
     active.loop.resetTiming();
     setHome(false, push);
-    markSeen();
+    if (personalGarden.tower.active) {
+        markSeen();
+    } else {
+        settleOffline();
+    }
     return true;
 }
 DOLLAR('continueGame').onclick = () => {
@@ -1126,6 +1145,7 @@ function closeMenu(push = true) {
     }
     DOLLAR(menuTab === 'farms' ? 'upgradeMenu' : menuTab === 'help' ? 'helpMenu' : 'gameMenu').focus();
 }
+DOLLAR('returnHome').onclick = () => setHome(true);
 DOLLAR('gameMenu').onclick = () => (menuOpen && menuTab === 'play' ? closeMenu() : openMenu());
 DOLLAR('upgradeMenu').onclick = () => openMenu('farms');
 DOLLAR('helpMenu').onclick = () => openMenu('help');
@@ -2105,7 +2125,9 @@ function frame(now) {
         COMBAT_FEEL.observe(active.world, DISPLAY.displayTimeMs, DISPLAY.presentationRevision, NOTICES);
         PERFORMANCE_DIAGNOSTICS.end('presentation', PRESENTATION_START);
         const RENDER_START = PERFORMANCE_DIAGNOSTICS.start();
-        RENDERER.render(DISPLAY, COMBAT_FEEL, DISPLAY.displayTimeMs);
+        if (!home) {
+            RENDERER.render(DISPLAY, COMBAT_FEEL, DISPLAY.displayTimeMs);
+        }
         PERFORMANCE_DIAGNOSTICS.end('render', RENDER_START);
         const UI_START = PERFORMANCE_DIAGNOSTICS.start();
         sync(DISPLAY, now, NOTICES);
