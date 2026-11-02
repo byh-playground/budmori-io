@@ -26,6 +26,7 @@ import { drawBossGrowth } from './boss-growth-draw.js';
 import { SIGNATURE_PRESENTATIONS } from '../features/boss-patterns/signature/presentation.js';
 import { MouthSummonPresentation } from '../features/boss-patterns/mouth-summon/presentation.js';
 import { BarleyArmorShredPresentation } from '../features/abilities/barley-shred/presentation.js';
+import { DEATH_TIMING } from './death-presentation.js';
 
 const IDLE_PRESENTATION = new BossAttackPresentation();
 const BARLEY_SHRED_PRESENTATION = new BarleyArmorShredPresentation();
@@ -127,13 +128,18 @@ export class BossPresentation {
             k: K,
         };
     }
+    // Where this boss is in its death during a fight (death-presentation.js), or null.
+    deathOf(boss, world) {
+        const CLIP = this.renderer.bossSpeciesAssets.get(boss.species)?.compiled.metadata.clips.death;
+        return this.renderer.deathPresentation.sample(boss, world, CLIP?.durationMs ?? 0, DEATH_TIMING.bossFadeSeconds);
+    }
     bossMotion(b, world, event = world.farmBossEvent) {
         const EVENT = event;
-        if (EVENT?.phase === 'celebrating' && EVENT.outcome === 'defeat') {
-            return 'idle';
-        }
         if (b.hp <= 0) {
             return 'death';
+        }
+        if (EVENT?.phase === 'celebrating' && EVENT.outcome === 'defeat') {
+            return 'idle';
         }
         if (visibleSkillCast(b)) {
             return 'idle';
@@ -223,12 +229,8 @@ export class BossPresentation {
         const PHASE_TIME_MS = BASIC ? ATTACK.clipElapsedMs?.(B, NAME) : null,
             HAS_PHASE_CLOCK = Number.isFinite(PHASE_TIME_MS),
             TIMED = ['windup', 'strike', 'sweep', 'recover', 'hit', 'death', 'fire', 'airborne'].includes(NAME),
-            ELAPSED =
-                B.hp <= 0 && EVENT?.phase === 'fighting'
-                    ? CLIP.durationMs / 1000
-                    : B.patternId
-                      ? B.patternPhaseElapsed
-                      : B.clock;
+            DEATH = this.deathOf(B, world),
+            ELAPSED = DEATH ? DEATH.clipMs / 1000 : B.patternId ? B.patternPhaseElapsed : B.clock;
         const CLIP_START_AT_MS = BASIC
             ? HAS_PHASE_CLOCK
                 ? 0
@@ -286,7 +288,9 @@ export class BossPresentation {
                 ? unitAttackDisplayScale(this.renderer, B, world.time)
                 : this.renderer.scale * bossVectorScale(B),
             GROUND = RECORD.anchors.ground,
-            MATRIX = [S_LOCAL, 0, 0, S_LOCAL, P.x - GROUND.x * S_LOCAL, P.y - GROUND.y * S_LOCAL];
+            SINK = DEATH?.scaleY ?? 1,
+            // Sink: squash toward the ground anchor, which stays where it is.
+            MATRIX = [S_LOCAL, 0, 0, S_LOCAL * SINK, P.x - GROUND.x * S_LOCAL, P.y - GROUND.y * S_LOCAL * SINK];
         const DEFEAT_BOUNCE =
             EVENT?.phase === 'celebrating' && EVENT.outcome === 'defeat'
                 ? Math.max(0, Math.sin(((EVENT.elapsed * Math.PI * 2) / CONFIG.farm.bossEvent.celebrationSeconds) * 2))
@@ -345,6 +349,7 @@ export class BossPresentation {
             pose: POSE,
             matrix: MATRIX,
             scale: S_LOCAL,
+            death: DEATH,
         };
         this.preparedVisibleBosses.set(PREPARED_KEY, PREPARED);
         return PREPARED;
@@ -362,7 +367,9 @@ export class BossPresentation {
             pose: POSE,
             matrix: MATRIX,
             scale: S_LOCAL,
+            death: DEATH,
         } = PREPARED;
+        const ALPHA = DEATH?.alpha ?? 1;
         this.renderer.bossPlayer = PLAYER;
         this.renderer.bossPlayerAsset = RECORD;
         if (BASIC) {
@@ -379,7 +386,7 @@ export class BossPresentation {
         if (world.tower.active && B.hp > 0) {
             drawBossGrowth(this.renderer.ctx, RECORD, PLAYER, MATRIX, B.element, world.tower.floor);
         }
-        this.renderer.ctx.drawVectorActor(PLAYER, { matrix: MATRIX });
+        this.renderer.ctx.drawVectorActor(PLAYER, { matrix: MATRIX, alpha: ALPHA });
         drawUnitFace(
             this.renderer,
             RECORD,
@@ -387,6 +394,7 @@ export class BossPresentation {
             LOOK.face,
             elementCheekColor(world.tower.active ? B.element : 0),
             MATRIX,
+            ALPHA,
         );
         PRESENTATION.drawRelease(this.renderer, B, POSE, MOUTH_SCREEN);
         if (world.tower.active && B.hp > 0) {
@@ -402,5 +410,8 @@ export class BossPresentation {
         }
         drawUnitAttackContact(this.renderer, B, PLAYER, MATRIX);
         BARLEY_SHRED_PRESENTATION.drawStatus(this.renderer, B);
+        if (DEATH) {
+            this.renderer.deathPresentation.drawPuff(this.renderer, B, DEATH);
+        }
     }
 }
