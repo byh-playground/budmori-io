@@ -22,7 +22,7 @@ import { isValidPlayerProgressionState, FARM_BOSS_EVENT_MAX_STAGE } from '../mod
 import { hasUnitCapability, specialAbilityCompositionFor } from '../units/unit-abilities.js';
 import { kitSpecies } from '../units/species-catalog.js';
 import { mergeMaterialCostForTier } from '../units/unit-grades.js';
-import { BOSS_PATTERN_IDS, BOSS_PATTERN_CONFIG } from '../boss/boss-patterns.js';
+import { BOSS_PATTERN_IDS, BOSS_PATTERN_CONFIG, isBossMinion } from '../boss/boss-patterns.js';
 import { BOSS_REWARD_SETTINGS, bossStageStats } from '../boss/boss-rewards.js';
 import { validateBossRewardLedger } from './boss-reward-ledger.js';
 import { resolveUnitStats } from '../units/unit-stats.js';
@@ -922,14 +922,9 @@ function validateUnits(raw, context, allowLegacyBarleyShred) {
             ASSERT(U.down === 0);
         }
         if (hasFaction(U, FACTION_CONFIG.ENEMY)) {
-            ASSERT(
-                U.isBattleOnlySummon &&
-                    U.battleSummonKind === 'boss-mouth-t1' &&
-                    U.ownerId === 'boss' &&
-                    U.farmId === 0,
-            );
+            ASSERT(U.isBattleOnlySummon && isBossMinion(U) && U.ownerId === 'boss' && U.farmId === 0);
         } else {
-            ASSERT(U.battleSummonKind !== 'boss-mouth-t1' && U.ownerId !== 'boss');
+            ASSERT(!isBossMinion(U) && U.ownerId !== 'boss');
         }
         ASSERT(!IDS.has(U.id));
         IDS.add(U.id);
@@ -993,7 +988,7 @@ function validateUnits(raw, context, allowLegacyBarleyShred) {
                 ASSERT(INTEGER(U.id, 1, raw.nextId - 1) && raw.farmBossEvent.phase !== 'idle');
             } else {
                 ASSERT(
-                    U.battleSummonKind === 'boss-mouth-t1' &&
+                    isBossMinion(U) &&
                         U.battleSummonParentId === 0 &&
                         INTEGER(U.battleSummonEncounterId, 1, 1e12) &&
                         raw.bosses.some(

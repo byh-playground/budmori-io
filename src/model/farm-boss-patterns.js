@@ -9,7 +9,7 @@ import {
     BOSS_PATTERN_CONFIG,
     BOSS_AREA_MIN_HITS,
     BOSS_ENRAGE,
-    BOSS_SUMMON_MINIONS,
+    drawMinionKind,
 } from '../boss/boss-patterns.js';
 import { bossMouthWorldPoint } from '../render/boss-vector-sockets.js';
 import { elementDamageTaken } from './lineage.js';
@@ -474,9 +474,8 @@ export const FARM_BOSS_PATTERNS = (base) =>
             for (const HIT of BATCH) {
                 const UNIT_LOCAL = HIT.unit,
                     CONFIG_LOCAL = BOSS_PATTERN_CONFIG[HIT.patternId],
-                    ELEMENT_TAKEN = CONFIG_LOCAL.element
-                        ? elementDamageTaken(CONFIG_LOCAL.element, UNIT_LOCAL.genes)
-                        : 1;
+                    ELEMENT = BOSS_BEHAVIORS.forId(HIT.patternId).hitElement(B_LOCAL),
+                    ELEMENT_TAKEN = ELEMENT ? elementDamageTaken(ELEMENT, UNIT_LOCAL.genes) : 1;
                 const RAW_DAMAGE =
                     B_LOCAL.attackPower *
                     CONFIG_LOCAL.damageMultiplier *
@@ -692,10 +691,15 @@ export const FARM_BOSS_PATTERNS = (base) =>
             }
             return leastCrowded;
         }
-        spawnBossMouthUnit(action, boss = this.boss) {
-            return this.mutateUnits(this._spawnBossMouthUnit, action, boss);
+        // The kind of the next minion a summon spits: drawn from the pool by weight with the world's seeded random.
+        drawBossMinionKind() {
+            return drawMinionKind(this.random());
         }
-        _spawnBossMouthUnit(action, boss = this.boss) {
+        // `kind` (a MINION_KINDS row) is drawn from the pool unless given.
+        spawnBossMouthUnit(action, boss = this.boss, kind = null) {
+            return this.mutateUnits(this._spawnBossMouthUnit, action, boss, kind);
+        }
+        _spawnBossMouthUnit(action, boss = this.boss, kind = null) {
             if (action.released >= action.volleyCount) {
                 return false;
             }
@@ -704,7 +708,8 @@ export const FARM_BOSS_PATTERNS = (base) =>
             if (!LANDING) {
                 return false;
             }
-            const MOUTH = this.bossMouthPoint(action.released + 1, boss);
+            const MOUTH = this.bossMouthPoint(action.released + 1, boss),
+                KIND = kind ?? this.drawBossMinionKind();
             const ID = CONFIG.boss.summonIdBase + ++this.bossSummonSerial,
                 UNIT_LOCAL = new UNIT(ID, B_LOCAL.species, 1, MOUTH.x, MOUTH.y),
                 ANGLE = Math.atan2(LANDING.y - MOUTH.y, LANDING.x - MOUTH.x),
@@ -724,7 +729,7 @@ export const FARM_BOSS_PATTERNS = (base) =>
                 hp: STATS(1, B_LOCAL.species).maxHp,
                 down: 0,
                 isBattleOnlySummon: true,
-                battleSummonKind: 'boss-mouth-t1',
+                battleSummonKind: KIND.summonKind,
                 battleSummonParentId: 0,
                 battleSummonParentGeneration: 0,
                 peanutInheritedPowerRank: 0,
@@ -749,12 +754,12 @@ export const FARM_BOSS_PATTERNS = (base) =>
                 landingRecovery: 0,
                 seed: ID * 2.39996,
             });
-            // The boss shrunk to a giant unit: a share of the summoner's stats. Its element-skill reach is
-            // patternScale of the boss's (boss-patterns.js patternReachScale); its basic attack is a giant's.
-            const MINION = BOSS_SUMMON_MINIONS[UNIT_LOCAL.battleSummonKind];
+            // The boss shrunk to a giant unit: a share of the summoner's stats (its kind scales the health). How it
+            // fights is its kind's behaviour (boss/boss-minions.js).
+            const MINION = BOSS_PATTERN_CONFIG['summon.mouth-t1'].minion;
             Object.assign(UNIT_LOCAL, { giantSizeMultiplier: MINION.bodyScale, giantUntil: Number.MAX_SAFE_INTEGER });
             UNIT_LOCAL.setBaseStats({
-                maxHp: Math.max(1, Math.round(B_LOCAL.maxHp * MINION.hpRatio)),
+                maxHp: Math.max(1, Math.round(B_LOCAL.maxHp * MINION.hpRatio * KIND.hpScale)),
                 attackPower: B_LOCAL.attackPower * MINION.attackRatio,
             });
             UNIT_LOCAL.setStatModifiers(runStatModifiers(this.tower.active ? this.tower.bossCards : [], 'boss'));
@@ -774,6 +779,7 @@ export const FARM_BOSS_PATTERNS = (base) =>
                 landingX: LANDING.x,
                 landingY: LANDING.y,
                 sequence: action.released,
+                minionKind: KIND.id,
             });
             return true;
         }
@@ -785,7 +791,7 @@ export const FARM_BOSS_PATTERNS = (base) =>
             action.phaseElapsed = 0;
             B_LOCAL.attackId = ++this.attackSerial;
             action.hitIds.clear();
-            // A minion caster's runtime carries its own cooldown scale (minion-caster.js); a boss's has none.
+            // A minion's runtime carries its kind's cooldown scale (boss-minions.js); a boss's has none.
             RUNTIME.cooldowns[action.id] =
                 CONFIG_LOCAL.cooldown *
                 (this.bossEnraged ? BOSS_ENRAGE.cooldownMultiplier : 1) *

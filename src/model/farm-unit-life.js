@@ -6,6 +6,7 @@ import { unitMaxHpFor, applyHealing, resolveUnitStats } from '../units/unit-stat
 import { CONFIG } from './farm-config.js';
 import { Unit as UNIT } from './farm-unit.js';
 import { CornAttachmentModel } from '../features/abilities/corn-attachment/model.js';
+import { isBossMinion } from '../boss/boss-patterns.js';
 
 export const FARM_UNIT_LIFE = (base) =>
     class FarmUnitLife extends base {
@@ -22,6 +23,13 @@ export const FARM_UNIT_LIFE = (base) =>
             const SPLIT_BEFORE = unit.splitUsedThisBattle,
                 DIED = unit.die();
             return DIED && !SPLIT_BEFORE && unit.splitUsedThisBattle;
+        }
+        // A battle summon whose own action ends its life (a bomber's blast) dies like any other death.
+        endBattleSummon(unit) {
+            unit.setHealth(0);
+            unit.down = 0;
+            this._syncUnitAliveCount(unit);
+            this.handleUnitDeath(unit);
         }
         processUnitDeath(unit) {
             return this.mutateUnits(this._processUnitDeath, unit);
@@ -93,11 +101,7 @@ export const FARM_UNIT_LIFE = (base) =>
         }
         passiveAllyFell(unit) {
             const TOWER = this.tower;
-            if (
-                !TOWER.active ||
-                unit.isFormationClone ||
-                (unit.isBattleOnlySummon && unit.battleSummonKind !== 'boss-mouth-t1')
-            ) {
+            if (!TOWER.active || unit.isFormationClone || (unit.isBattleOnlySummon && !isBossMinion(unit))) {
                 return;
             }
             const ENEMY = unit.faction === FACTION_CONFIG.ENEMY;
@@ -148,10 +152,7 @@ export const FARM_UNIT_LIFE = (base) =>
             unit.ability.resetCombatEffects?.();
             this.clearPeaRecoveryBoost(unit);
             this.onCombatResolved.emit({
-                allyDeaths:
-                    !unit.isFormationClone && (!unit.isBattleOnlySummon || unit.battleSummonKind === 'boss-mouth-t1')
-                        ? 1
-                        : 0,
+                allyDeaths: !unit.isFormationClone && (!unit.isBattleOnlySummon || isBossMinion(unit)) ? 1 : 0,
                 role: unit.faction === FACTION_CONFIG.ENEMY ? 'boss' : 'player',
                 sourceFaction: unit.faction,
                 targetFaction: unit.faction,

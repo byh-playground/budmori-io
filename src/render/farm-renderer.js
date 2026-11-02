@@ -59,6 +59,7 @@ function renderedBossAttackArea(boss, scene, scratch, area) {
     scratch.patternReachScale = boss.patternReachScale;
     scratch.height = boss.height;
     scratch.attackArea = boss.attackArea;
+    scratch.enemyElement = boss.element;
     ACTION.id = boss.patternId;
     ACTION.phase = boss.patternPhase;
     ACTION.phaseElapsed = boss.patternPhaseElapsed;
@@ -920,7 +921,7 @@ const DIORAMA = class Diorama {
                 }
             }
         }
-        // Minions casting their summoner's element skill warn with the same telegraph.
+        // Casting minions (boss/boss-minions.js) warn with the same telegraph.
         for (const UNIT_VIEW of sim2.units) {
             if (UNIT_VIEW.patternId) {
                 const AREA = renderedBossAttackArea(UNIT_VIEW, sim2, this.telegraphBoss, this.dangerArea);

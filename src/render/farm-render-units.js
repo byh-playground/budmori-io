@@ -22,6 +22,7 @@ import { drawUnitFace } from './unit-face-draw.js';
 import { CombinePresentation } from '../features/farm-modes/combine/presentation.js';
 import { PassiveMarksPresentation } from '../tower/tower-passive-presentations.js';
 import { DEATH_TIMING } from './death-presentation.js';
+import { addMinionRings, drawMinionFuseGlow } from '../features/boss-patterns/minion/presentation.js';
 
 const BARLEY_SHRED_PRESENTATION = new BarleyArmorShredPresentation();
 const PASSIVE_MARKS = new PassiveMarksPresentation();
@@ -86,7 +87,8 @@ export class UnitPresentation {
         this.riceDisplayUnits = new Map();
         this.wheatDisplayUnits = new Map();
         this.barleyDisplayUnits = new Map();
-        this.unitRingPool = [{}, {}, {}, {}];
+        this.unitRingPool = [{}, {}, {}, {}, {}, {}];
+        this.addMinionRing = (radius, color, width, progress) => this.addUnitRing(radius, color, width, progress);
         this.breedingIndicator = {};
         this.restIndicator = {};
         this.preparedVisibleUnits = new Map();
@@ -239,6 +241,7 @@ export class UnitPresentation {
         if (BREEDING && BREEDING.progress > 0) {
             this.addUnitRing(u.radius + 0.085, '#8fac68', 0.035, BREEDING.progress);
         }
+        addMinionRings(u, this.addMinionRing);
         return EFFECTS;
     }
     drawUnitRingLayer(u, effects, side) {
@@ -604,6 +607,7 @@ export class UnitPresentation {
         const POSE = this.drawUnit(u, sim, REST);
         C.depth = DEPTH - OFFSET;
         this.drawUnitRingLayer(u, EFFECTS, 'front');
+        drawMinionFuseGlow(this.renderer, u);
         this.drawSleepIndicator(REST, POSE);
         PASSIVE_MARKS.drawUnit(this.renderer, u, sim.time);
         BARLEY_SHRED_PRESENTATION.drawStatus(this.renderer, u);

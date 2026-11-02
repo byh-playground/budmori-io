@@ -8,11 +8,13 @@
 //     "units": [{ "s": 3, "t": 1, "x": -7, "y": 0, "n": 1, "ring": 3, "giant": false, "hp": 1, "stun": 0 }],
 //     "boss": { "hp": 1e7, "stun": 60, "giant": false, "x": 0, "y": 0, "pattern": "signature.water", "entry": false },
 //     "relics": { "meteor": 3 }, "bossRelics": { "hammer": 2 },    // formation skills of each side, id: level
-//     "charge": true                                   // fill every skill slot once the fight starts
+//     "charge": true,                                  // fill every skill slot once the fight starts
+//     "minions": "ranged"                              // every boss summon spits this MINION_KINDS kind
 //   }
 // `s` species 0-8, `t` tier 1-6, `n` copies spread on a circle of radius `ring` around (x, y).
 // Every field is optional. A boss without `stun` fights; `pattern` makes its next special exactly that pattern.
-import { BOSS_PATTERN_CONFIG, BOSS_PATTERN_IDS, BOSS_RHYTHM } from '../boss/boss-patterns.js';
+// The step names the boss's pattern in progress, else a minion's (`minion.mortar:windup`), else flight or idle.
+import { BOSS_PATTERN_CONFIG, BOSS_PATTERN_IDS, BOSS_RHYTHM, MINION_KINDS } from '../boss/boss-patterns.js';
 
 const DEFAULTS = Object.freeze({ seed: 731, rate: 0.25, ms: 8000, floor: 1 });
 
@@ -100,8 +102,10 @@ function labBoss(world, spec) {
         }
         BOSS.basicCount = BOSS_RHYTHM.basicsPerSpecial;
         BOSS.specialCount = CONFIG.element ? 0 : BOSS_RHYTHM.specialsPerArea - 1;
-        // Patterns gated by remaining HP need the boss at or below their unlock fraction.
+        // Patterns gated by remaining HP need the boss at or below their unlock fraction, and by fight time past
+        // their first use.
         BOSS.hp = Math.min(HP, BOSS.maxHp * Math.min(1, CONFIG.unlockHp));
+        RUNTIME.encounterElapsed = Math.max(RUNTIME.encounterElapsed, CONFIG.firstEligible ?? 0);
     }
 }
 
@@ -135,6 +139,13 @@ export function createLabScene(text) {
             world._benched.clear();
             world._benchRevision++;
             labBoss(world, P.boss ?? { stun: 60 });
+            if (P.minions) {
+                const KIND = MINION_KINDS[P.minions];
+                if (!KIND) {
+                    throw new Error(`lab: unknown minion kind ${P.minions}`);
+                }
+                world.drawBossMinionKind = () => KIND;
+            }
             labStates(SPAWNED);
             world.farmBossEvent.phase = 'fighting';
             world.farmBossEvent.elapsed = 0;
@@ -154,6 +165,10 @@ export function createLabScene(text) {
             const ACTIVE = world.boss?.patternRuntime?.active;
             if (ACTIVE) {
                 return `${ACTIVE.id}:${ACTIVE.phase}`;
+            }
+            const CAST = world.units.find((unit) => unit.hp > 0 && unit.patternRuntime?.active)?.patternRuntime.active;
+            if (CAST) {
+                return `${CAST.id}:${CAST.phase}`;
             }
             return world.projectiles.length > 0 ? 'flight' : 'idle';
         },

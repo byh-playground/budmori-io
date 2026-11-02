@@ -49,6 +49,10 @@ export class BossPattern {
     updateActive(_world, _action, _dt) {
         /* Instant patterns enter recovery on activation. */
     }
+    // The element its hits carry (elementDamageTaken), 0 for plain damage. A signature skill's is its own.
+    hitElement(_caster) {
+        return this.config.element || 0;
+    }
     get hitMetric() {
         return 'basicHits';
     }

@@ -25,6 +25,7 @@ import { drawUnitFace } from './unit-face-draw.js';
 import { drawBossGrowth } from './boss-growth-draw.js';
 import { SIGNATURE_PRESENTATIONS } from '../features/boss-patterns/signature/presentation.js';
 import { MouthSummonPresentation } from '../features/boss-patterns/mouth-summon/presentation.js';
+import { MINION_PRESENTATIONS } from '../features/boss-patterns/minion/presentation.js';
 import { BarleyArmorShredPresentation } from '../features/abilities/barley-shred/presentation.js';
 import { DEATH_TIMING } from './death-presentation.js';
 
@@ -38,6 +39,7 @@ const BOSS_PRESENTATIONS = new Map(
         new FanSweepPresentation(),
         new MouthSummonPresentation(),
         ...SIGNATURE_PRESENTATIONS,
+        ...MINION_PRESENTATIONS,
     ].map((presentation) => [presentation.id, presentation]),
 );
 export function bossAttackPresentation(boss) {
