@@ -314,16 +314,19 @@ try {
         WORLD.piles.splice(
             0,
             WORLD.piles.length,
-            ...Array.from({ length: PILES.count }, (_, index) => ({
-                id: ++WORLD._pileId,
-                x: 15,
-                y: 8 + index * 3,
-                food: PILES.amount,
-                maxFood: PILES.amount,
-                stack: 0,
-                hitRev: 0,
-                big: false,
-            })),
+            ...Array.from(
+                { length: Math.ceil(ALLIES.length / BUDMORI.CONFIG.farm.work.workersPerPile) },
+                (_, index) => ({
+                    id: ++WORLD._pileId,
+                    x: 15,
+                    y: 8 + index * 3,
+                    food: PILES.amount,
+                    maxFood: PILES.amount,
+                    stack: 0,
+                    hitRev: 0,
+                    big: false,
+                }),
+            ),
         );
         WORLD.setWorkBasisPoints(10000);
         for (const UNIT of ALLIES.filter((unit) => unit.species === 7)) {

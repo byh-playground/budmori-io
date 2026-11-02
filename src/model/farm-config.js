@@ -24,6 +24,8 @@ const WORLD_ARENA = Object.freeze({
 });
 
 const FARM_ARENA = Object.freeze({ radiusX: 23, radiusY: 17, shape: 'rect' });
+const PILE_ART = Object.freeze({ radiusX: 0.86, baseScale: 0.95, foodScale: 0.5, hitSquash: 0.14 });
+const PILE_WIDTH = 2 * PILE_ART.radiusX * (PILE_ART.baseScale + PILE_ART.foodScale) * (1 + PILE_ART.hitSquash);
 
 // Runtime configuration is separate from saved world fields and their import
 // migration. Only already-established capacity/growth relations are derived.
@@ -44,10 +46,14 @@ export const CONFIG = Object.freeze({
             refreshTicks: 20,
             defaultBasisPoints: 4000,
             maxFood: 50,
-            pileKind: Object.freeze({ count: 2, amount: 12 }),
-            pileGap: 6,
-            pileRadiusX: 8,
-            pileRadiusY: 6,
+            pileKind: Object.freeze({ amount: 12 }),
+            workersPerPile: 20,
+            // Full pile artwork width, including its maximum hit squash.
+            pileArt: PILE_ART,
+            pileWidth: PILE_WIDTH,
+            pileGap: 3 * PILE_WIDTH,
+            pileRadiusX: FARM_ARENA.radiusX * 0.86,
+            pileRadiusY: FARM_ARENA.radiusY * 0.86,
             pileRespawnSeconds: 3,
             starterUnits: 6,
         }),

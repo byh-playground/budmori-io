@@ -30,6 +30,7 @@ export function captureFoodRuntime(owner) {
         STATES = [...W._foodSearchStates.values()],
         STATE_INDEX = new Map(STATES.map((state, index) => [state, index]));
     return {
+        protectedFoods: [...owner.protectedFoods].map((food) => FOOD_INDEX.get(food)),
         revision: owner.revision,
         availabilityRevision: owner.availabilityRevision,
         groundedRevision: W._groundedFoodRevision,
@@ -57,6 +58,7 @@ export function captureFoodRuntime(owner) {
             unitId: claim.unit.id,
             generation: claim.unit.generation,
             food: FOOD_INDEX.get(claim.food),
+            grounded: claim.grounded,
             since: claim.since,
             progressAt: claim.progressAt,
             distance: claim.distance,
@@ -112,16 +114,19 @@ export function restoreFoodRuntime(owner, data) {
         return STATE;
     });
     owner.queues = data.queues.map((indices) => indices.map((index) => STATES[index]));
+    owner.protectedFoods = new Set((data.protectedFoods || []).map((index) => W.food[index]));
     owner.revision = data.revision;
     owner.availabilityRevision = data.availabilityRevision;
     for (const RECORD of data.claims) {
         const CLAIM = {
             unit: UNITS.get(RECORD.unitId),
             food: W.food[RECORD.food],
+            grounded: RECORD.grounded ?? W.food[RECORD.food].phase === 'grounded',
             since: RECORD.since,
             progressAt: RECORD.progressAt,
             distance: RECORD.distance,
         };
+        owner.groundedClaims += Number(CLAIM.grounded);
         owner.byUnit.set(CLAIM.unit, CLAIM);
         owner.byFood.set(CLAIM.food, CLAIM);
     }
@@ -251,6 +256,14 @@ export function validateFoodRuntime(data, raw, assert) {
             ),
     );
     assert(data.states.every((state, index) => state.values.status !== 'searching' || QUEUED.includes(index)));
+    const PROTECTED = data.protectedFoods === undefined ? [] : data.protectedFoods;
+    assert(
+        Array.isArray(PROTECTED) &&
+            new Set(PROTECTED).size === PROTECTED.length &&
+            PROTECTED.every(
+                (index) => INDEX(index, raw.food.length) && !data.claims.some((claim) => claim.food === index),
+            ),
+    );
     const CLAIMED_UNITS = new Set(),
         CLAIMED_FOOD = new Set();
     for (const CLAIM of data.claims) {
@@ -260,7 +273,8 @@ export function validateFoodRuntime(data, raw, assert) {
                 UNIT.generation === CLAIM.generation &&
                 UNIT.hp > 0 &&
                 INDEX(CLAIM.food, raw.food.length) &&
-                raw.food[CLAIM.food].phase === 'grounded' &&
+                (raw.food[CLAIM.food].phase === 'grounded' || !!UNIT.seedling) &&
+                (CLAIM.grounded === undefined || CLAIM.grounded === (raw.food[CLAIM.food].phase === 'grounded')) &&
                 !CLAIMED_UNITS.has(CLAIM.unitId) &&
                 !CLAIMED_FOOD.has(CLAIM.food) &&
                 CLAIM.since >= 0 &&
