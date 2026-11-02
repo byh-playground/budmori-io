@@ -185,7 +185,8 @@ try {
     await PAGE.evaluate(async () => {
         const { unitMaxHpFor: MAX_HP_FOR, baseUnitStatsFor: BASE_STATS } = await import('./src/units/unit-stats.js'),
             STATS_OF_T1 = (species) => BASE_STATS(1, species, false),
-            { createBossPatternRuntime: CREATE_PATTERN_RUNTIME } = await import('./src/boss/boss-patterns.js'),
+            { createBossPatternRuntime: CREATE_PATTERN_RUNTIME, MINION_KINDS: KINDS } =
+                await import('./src/boss/boss-patterns.js'),
             { bossAttackArea: BOSS_ATTACK_AREA } = await import('./src/model/farm-model.js'),
             { Unit: UNIT_TYPE } = await import('./src/model/farm-unit.js');
         const WORLD = BUDMORI.sim,
@@ -289,13 +290,14 @@ try {
                 phaseElapsed: 0,
             };
             WORLD.boss.patternRuntime.active = ACTION;
-            if (!WORLD.spawnBossMouthUnit(ACTION)) {
+            // The caster kind keeps the species' ordinary melee basic, which is what this fixture renders.
+            if (!WORLD.spawnBossMouthUnit(ACTION, WORLD.boss, KINDS.caster)) {
                 throw new Error(`Could not create real enemy summon for species ${species}`);
             }
             const ENEMY = WORLD.units.findLast((unit) => unit.ownerId === 'boss'),
                 ANGLE = (species * Math.PI * 2) / 9,
                 DISTANCE = WORLD.boss.radius + 4.5;
-            // A boss-mouth minion is the boss shrunk to a giant unit with a share of the boss's stats; this fixture
+            // A boss minion (caster kind) is the boss shrunk to a giant unit with a share of the boss's stats; this fixture
             // only needs every species' ordinary enemy attack, so it keeps the minion's body but gives it the
             // species' T1 stats (a farm-stage boss share deals no damage through armor). Its HP is then set far
             // above that maximum, as before, so the boss side never counts it injured.
@@ -1018,7 +1020,8 @@ try {
         const WORLD = BUDMORI.sim,
             SESSION = BUDMORI.runtime,
             PRESENTATION = BUDMORI.renderer.bossPresentation,
-            { createBossPatternRuntime: PATTERNS } = await import('./src/boss/boss-patterns.js'),
+            { createBossPatternRuntime: PATTERNS, MINION_KINDS: MINION_KINDS_LOCAL } =
+                await import('./src/boss/boss-patterns.js'),
             OBS = (globalThis.__bossBasics = {
                 order: [7, 5, 0, 1, 2, 3, 4, 6, 8],
                 cases: [],
@@ -1062,7 +1065,8 @@ try {
                 phaseElapsed: 0,
             };
         WORLD.boss.patternRuntime.active = MOUTH;
-        if (!WORLD.spawnBossMouthUnit(MOUTH)) {
+        // A caster drawn explicitly: the pool's random draw would change this rotation's RNG sequence.
+        if (!WORLD.spawnBossMouthUnit(MOUTH, WORLD.boss, MINION_KINDS_LOCAL.caster)) {
             throw new Error('The automatic boss rotation needs one real same-faction summon');
         }
         const PEER = WORLD.units.findLast((unit) => unit.ownerId === 'boss');

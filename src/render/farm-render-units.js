@@ -21,6 +21,8 @@ import { elementCheekColor, unitLook } from '../units/species-face.js';
 import { drawUnitFace } from './unit-face-draw.js';
 import { CombinePresentation } from '../features/farm-modes/combine/presentation.js';
 import { PassiveMarksPresentation } from '../tower/tower-passive-presentations.js';
+import { DEATH_TIMING } from './death-presentation.js';
+import { addMinionRings, drawMinionFuseGlow } from '../features/boss-patterns/minion/presentation.js';
 
 const BARLEY_SHRED_PRESENTATION = new BarleyArmorShredPresentation();
 const PASSIVE_MARKS = new PassiveMarksPresentation();
@@ -85,7 +87,8 @@ export class UnitPresentation {
         this.riceDisplayUnits = new Map();
         this.wheatDisplayUnits = new Map();
         this.barleyDisplayUnits = new Map();
-        this.unitRingPool = [{}, {}, {}, {}];
+        this.unitRingPool = [{}, {}, {}, {}, {}, {}];
+        this.addMinionRing = (radius, color, width, progress) => this.addUnitRing(radius, color, width, progress);
         this.breedingIndicator = {};
         this.restIndicator = {};
         this.preparedVisibleUnits = new Map();
@@ -238,6 +241,7 @@ export class UnitPresentation {
         if (BREEDING && BREEDING.progress > 0) {
             this.addUnitRing(u.radius + 0.085, '#8fac68', 0.035, BREEDING.progress);
         }
+        addMinionRings(u, this.addMinionRing);
         return EFFECTS;
     }
     drawUnitRingLayer(u, effects, side) {
@@ -298,11 +302,20 @@ export class UnitPresentation {
             C.stroke();
         }
     }
-    prepareHiddenUnit(u, sim) {
-        const REST = unitRestPresentation(u, sim, CONFIG.unit.corpseRecoverySeconds, this.restIndicator);
-        this.drawVectorUnit(u, sim, null, null, REST, true);
+    // Where this unit is in its death during a fight (death-presentation.js), or null.
+    deathOf(u, sim) {
+        const CLIP = this.renderer.vectorAssets.get(kitSpecies(u))?.compiled.metadata.clips.death;
+        return this.renderer.deathPresentation.sample(u, sim, CLIP?.durationMs ?? 0, DEATH_TIMING.unitFadeSeconds);
     }
-    prepareUnitPlayer(u, sim, rest) {
+    // In a fight the death replaces the downed rest; outside one the rest look is unchanged.
+    restOf(u, sim, death) {
+        return death ? null : unitRestPresentation(u, sim, CONFIG.unit.corpseRecoverySeconds, this.restIndicator);
+    }
+    prepareHiddenUnit(u, sim) {
+        const DEATH = this.deathOf(u, sim);
+        this.drawVectorUnit(u, sim, null, null, this.restOf(u, sim, DEATH), true, DEATH);
+    }
+    prepareUnitPlayer(u, sim, rest, death = null) {
         const RECORD = this.renderer.vectorAssets.get(kitSpecies(u));
         if (!RECORD) {
             throw new Error('Missing required troop vector asset for species ' + u.species);
@@ -320,10 +333,14 @@ export class UnitPresentation {
             player = null;
         }
         const METADATA = RECORD.compiled.metadata,
-            SWING = rest ? null : workSwing(u, sim),
+            SWING = rest || death ? null : workSwing(u, sim),
             MOTION_NAME = SWING?.name || unitMotion(u, sim, rest),
             CLIP = METADATA.clips[MOTION_NAME] || METADATA.clips.idle,
-            PHASE_TIME_MS = !rest && !SWING ? unitAttackPresentation(u).clipElapsedMs?.(u, MOTION_NAME) : null,
+            PHASE_TIME_MS = death
+                ? death.clipMs
+                : !rest && !SWING
+                  ? unitAttackPresentation(u).clipElapsedMs?.(u, MOTION_NAME)
+                  : null,
             HAS_PHASE_CLOCK = Number.isFinite(PHASE_TIME_MS);
         const CLIP_START_AT_MS =
             rest || HAS_PHASE_CLOCK
@@ -379,9 +396,11 @@ export class UnitPresentation {
         ) {
             return CACHED;
         }
-        const REST_RESULT = unitRestPresentation(u, sim, CONFIG.unit.corpseRecoverySeconds, this.restIndicator);
+        const DEATH = this.deathOf(u, sim),
+            REST_RESULT = this.restOf(u, sim, DEATH);
         const REST = REST_RESULT ? { ...REST_RESULT } : null;
-        const PREPARED = this.prepareUnitPlayer(u, sim, REST);
+        const PREPARED = this.prepareUnitPlayer(u, sim, REST, DEATH);
+        PREPARED.death = DEATH;
         const { player: PLAYER, clip: CLIP, phaseTimeMs: PHASE_TIME_MS, hasPhaseClock: HAS_PHASE_CLOCK } = PREPARED;
         PLAYER.seek(
             HAS_PHASE_CLOCK
@@ -426,9 +445,15 @@ export class UnitPresentation {
         if (!SWING && !PREPARED.rest) {
             applyUnitAttackPose(MATRIX, u, GROUND);
         }
+        const DEATH = PREPARED.death;
+        if (DEATH) {
+            // Sink: squash toward the ground anchor, which stays where it is.
+            MATRIX[5] += GROUND.y * MATRIX[3] * (1 - DEATH.scaleY);
+            MATRIX[3] *= DEATH.scaleY;
+        }
         const DRAW_OPTIONS = {
             matrix: MATRIX,
-            alpha: u.isFormationClone ? 0.52 : 1,
+            alpha: (u.isFormationClone ? 0.52 : 1) * (DEATH?.alpha ?? 1),
             color: u.isFormationClone ? [0.55, 0.82, 1, 1] : [1, 1, 1, 1],
         };
         return { prepared: PREPARED, player: PLAYER, matrix: MATRIX, options: DRAW_OPTIONS };
@@ -456,6 +481,7 @@ export class UnitPresentation {
             if (
                 this.renderer.unitSprites.enabled ||
                 U.isFormationClone ||
+                (PREPARED.death && PREPARED.death.alpha < 1) ||
                 PREPARED.player.hasNonUnitBaseOpacity ||
                 PREPARED.player.hasOpacityChannel
             ) {
@@ -490,9 +516,9 @@ export class UnitPresentation {
         C.depthWrite = false;
         return true;
     }
-    drawVectorUnit(u, sim, p, r, rest, hidden = false) {
+    drawVectorUnit(u, sim, p, r, rest, hidden = false, death = null) {
         if (hidden) {
-            const { player: PLAYER } = this.prepareUnitPlayer(u, sim, rest);
+            const { player: PLAYER } = this.prepareUnitPlayer(u, sim, rest, death);
             // Observe clip transitions without evaluating native poses or art.
             // Active melee trails are kept visible; this clears inactive history.
             drawUnitAttackContact(this.renderer, u, PLAYER, null);
@@ -519,6 +545,9 @@ export class UnitPresentation {
         );
         drawUnitAttackContact(this.renderer, u, ART.player, ART.matrix);
         this.drawElementIndicator(u, sim);
+        if (PREPARED.death) {
+            this.renderer.deathPresentation.drawPuff(this.renderer, u, PREPARED.death);
+        }
         return true;
     }
     // The face is a layer drawn over the body (unit-face-draw.js); this is only the separate element icon.
@@ -578,6 +607,7 @@ export class UnitPresentation {
         const POSE = this.drawUnit(u, sim, REST);
         C.depth = DEPTH - OFFSET;
         this.drawUnitRingLayer(u, EFFECTS, 'front');
+        drawMinionFuseGlow(this.renderer, u);
         this.drawSleepIndicator(REST, POSE);
         PASSIVE_MARKS.drawUnit(this.renderer, u, sim.time);
         BARLEY_SHRED_PRESENTATION.drawStatus(this.renderer, u);

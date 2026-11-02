@@ -8,7 +8,8 @@ import { TOWER_ELEMENT_ORDER, towerElement } from './tower-theme.js';
 // nearest ally within `packLeash` radii of the pack centre) and never stand inside each other (separateBossPack), so the army
 // meets all of them at once instead of killing them one at a time. They leap out of
 // the arena centre one after another (`launchStaggerSeconds` apart), each in an arc that peaks at `launchApex` (the
-// height troops leave the tower door at) and lands on its own spot; the fight starts once every one has landed.
+// height troops leave the tower door at) and lands on its own spot. The fight
+// does not wait for them: it starts with the first leap while the army is sent in.
 // The floor-100 crown waits until every other boss is down and leaps straight up and down at the centre.
 export const TOWER_ENCOUNTER_SETTINGS = Object.freeze({
     bands: Object.freeze([

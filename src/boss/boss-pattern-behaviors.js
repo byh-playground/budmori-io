@@ -11,6 +11,7 @@ import {
     FrostPulsePattern,
     ChainLightningPattern,
 } from '../features/boss-patterns/signature/model.js';
+import { MinionBoltPattern, MinionMortarPattern, MinionBlastPattern } from '../features/boss-patterns/minion/model.js';
 import { BOSS_PATTERN_CONFIG, BOSS_AIM_TURN_RATE } from './boss-patterns.js';
 
 // Compose the model perspective once. Feature folders own their concrete
@@ -31,6 +32,9 @@ export function createBossPatternBehaviors(dependencies) {
                 new FireBreathPattern(DEPENDENCIES),
                 new FrostPulsePattern(DEPENDENCIES),
                 new ChainLightningPattern(DEPENDENCIES),
+                new MinionBoltPattern(DEPENDENCIES),
+                new MinionMortarPattern(DEPENDENCIES),
+                new MinionBlastPattern(DEPENDENCIES),
             ].map((pattern) => [pattern.feature.id, Object.freeze(pattern)]),
         ),
     );

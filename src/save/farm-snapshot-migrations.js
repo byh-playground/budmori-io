@@ -3,6 +3,7 @@ import { specialAbilityCompositionFor } from '../units/unit-abilities.js';
 import { validateSnapshot } from './farm-snapshot-validation.js';
 import { freshTowerRun } from '../tower/tower-run.js';
 import { towerElement } from '../tower/tower-theme.js';
+import { MINION_KINDS } from '../boss/boss-patterns.js';
 import { migratePlayerProgressionState } from '../model/player-progression.js';
 import { migrateLegacyBarleyArmorShredBuckets } from '../features/abilities/barley-shred/model.js';
 import { migrateBossRewardLedger } from './boss-reward-ledger.js';
@@ -81,6 +82,10 @@ function migrateBossEncounter(snapshot) {
         BAND_ELEMENT = towerElement(snapshot.tower?.active ? snapshot.tower.floor : 1);
     if (ENCOUNTER) {
         delete ENCOUNTER.nextJoinAt;
+        // Tower floors no longer wait in 'dropping' for every boss to land: the fight runs while they leap in.
+        if (snapshot.farmBossEvent?.phase === 'dropping') {
+            snapshot.farmBossEvent.phase = 'fighting';
+        }
         for (const ENTRY of ENCOUNTER.roster ?? []) {
             ENTRY.element ??= towerElement(ENCOUNTER.floor);
             delete ENTRY.hpShare;
@@ -89,6 +94,14 @@ function migrateBossEncounter(snapshot) {
     }
     for (const UNIT of [...snapshot.units, ...snapshot.bosses]) {
         UNIT.enemyElement ??= UNIT.faction === 'enemy' ? BAND_ELEMENT : 0;
+    }
+}
+// Before the minion pool (0.67.24) every boss minion was 'boss-mouth-t1', the kind now called caster.
+function migrateBossMinionKinds(snapshot) {
+    for (const UNIT of snapshot.units) {
+        if (UNIT.battleSummonKind === 'boss-mouth-t1') {
+            UNIT.battleSummonKind = MINION_KINDS.caster.summonKind;
+        }
     }
 }
 
@@ -133,6 +146,7 @@ export function normalizeSnapshot(raw, { clone = true } = {}) {
         throw new TypeError('Invalid boss encounter checkpoint');
     }
     migrateBossEncounter(SNAPSHOT);
+    migrateBossMinionKinds(SNAPSHOT);
     for (const TARGET of [...SNAPSHOT.units, ...SNAPSHOT.bosses]) {
         TARGET.statProfile ??= null;
         TARGET.statModifiers ??= {};

@@ -23,26 +23,34 @@ export class CopyPresentation extends FormationPresentation {
         }
     }
 }
+// The copy's blue dissolve; the shared death puff (render/death-presentation.js) is the same streaks in grey,
+// spread with the body's radius.
 export class CopyDissolvePresentation {
+    constructor({ streak = '115,190,244', glint: glintColor = '189,240,255', spreadPerRadius = 0 } = {}) {
+        this.streak = streak;
+        this.glint = glintColor;
+        this.spreadPerRadius = spreadPerRadius;
+    }
     draw(renderer, effect, age) {
         const Q = Math.min(1, age / 0.6),
-            FADE = (1 - Q) ** 1.3;
+            FADE = (1 - Q) ** 1.3,
+            SPREAD = Q * Math.max(1, (effect.radius || 0) * this.spreadPerRadius);
         for (let i = 0; i < 9; i++) {
             const A = i * 2.39996,
-                X = effect.x + Math.cos(A) * Q,
-                Y = effect.y + Math.sin(A) * Q,
-                Z = effect.z + Q * 1.3;
+                X = effect.x + Math.cos(A) * SPREAD,
+                Y = effect.y + Math.sin(A) * SPREAD,
+                Z = effect.z + SPREAD * 1.3;
             stroke(
                 renderer,
                 [
                     [X, Y, Z],
                     [X + 0.04, Y, Z + 0.14],
                 ],
-                `rgba(115,190,244,${FADE})`,
+                `rgba(${this.streak},${FADE})`,
                 0.055 * (1 - Q),
             );
             if (i % 3 === 0) {
-                glint(renderer, X, Y, Z, 0.05 * bodyScale(effect.radius), FADE, '189,240,255');
+                glint(renderer, X, Y, Z, 0.05 * bodyScale(effect.radius), FADE, this.glint);
             }
         }
     }

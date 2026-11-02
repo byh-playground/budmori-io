@@ -113,6 +113,57 @@ const SIGNATURE_PATTERN_CONFIG = Object.freeze({
         groundOnly: false,
     }),
 });
+// Patterns only minions cast (MINION_KINDS), through the same kit as the boss's: telegraph, hit settlement, element
+// damage. Their element is the caster's own (enemyElement). Extents are world units at the minion's size (its kind's
+// patternScale is 1). bolt: the ranged basic, a shot that flies `speed` to the locked point and hits one ally within
+// hitRadius of it. mortar: a shell lobbed onto the target, telegraphed `radius` circle there. blast: the bomber's fuse,
+// a `radius` circle past its own body edge; it explodes when the windup ends and the bomber dies with it.
+const MINION_PATTERN_CONFIG = Object.freeze({
+    'minion.bolt': Object.freeze({
+        kind: 'minion-bolt',
+        unlockHp: 1,
+        windup: 0.35,
+        active: 9 / 18,
+        recover: 0.25,
+        cooldown: 1.6,
+        reach: 9,
+        speed: 18,
+        hitRadius: 0.6,
+        damageMultiplier: 1,
+        knockback: 2,
+        lift: 0.6,
+        groundOnly: true,
+    }),
+    'minion.mortar': Object.freeze({
+        kind: 'minion-mortar',
+        unlockHp: 1,
+        windup: 1.1,
+        active: 0.3,
+        recover: 0.5,
+        cooldown: 6,
+        reach: 11,
+        radius: 2.6,
+        damageMultiplier: 1.6,
+        knockback: 4,
+        lift: 3,
+        groundOnly: true,
+    }),
+    'minion.blast': Object.freeze({
+        kind: 'minion-blast',
+        unlockHp: 1,
+        windup: 0.9,
+        active: 0.05,
+        recover: 0,
+        cooldown: 0,
+        // Lights once the pack it runs at is within this gap of its body edge.
+        reach: 1.5,
+        radius: 3,
+        damageMultiplier: 4,
+        knockback: 13,
+        lift: 6,
+        groundOnly: true,
+    }),
+});
 export const BOSS_PATTERN_CONFIG = Object.freeze({
     ...SIGNATURE_PATTERN_CONFIG,
     'attack.sweep-360': Object.freeze({
@@ -194,33 +245,88 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
         // Reaches 7.2 past the boss's edge (beyond the landing spot: gap + a minion's width ≈ 3.7) and pushes like the
         // boss's own arm sweep (fan-sweep knockback 13) with half of its lift: troops are thrown clear, not launched.
         shockwave: Object.freeze({ radius: 7.2, knockback: 13, lift: 10.2 * 0.5 }),
-        // bodyScale: × the summoner species' T1 body (via the giant size; giant armor comes with it).
-        // patternScale: × the boss's element-skill reach. hpRatio/attackRatio: × the summoner's max HP and attack.
-        // castCooldownMultiplier: × the element skill's cooldown.
-        minion: Object.freeze({
-            bodyScale: 6,
-            patternScale: 0.5,
-            hpRatio: 0.05,
-            attackRatio: 0.25,
-            castCooldownMultiplier: 2,
-        }),
+        // Every minion's body and stat share: bodyScale × the summoner species' T1 body (via the giant size; giant
+        // armor comes with it); hpRatio/attackRatio × the summoner's max HP and attack. Its kind (MINION_KINDS) adds
+        // how it fights.
+        minion: Object.freeze({ bodyScale: 6, hpRatio: 0.05, attackRatio: 0.25 }),
     }),
+    ...MINION_PATTERN_CONFIG,
 });
 // The element skill (signature pattern id) of an element, or null.
 export function signaturePatternFor(element) {
     return Object.keys(SIGNATURE_PATTERN_CONFIG).find((id) => SIGNATURE_PATTERN_CONFIG[id].element === element) ?? null;
 }
-// Minion behaviour by battleSummonKind (data, not a kind check): which summons cast element skills, and how.
-export const BOSS_SUMMON_MINIONS = Object.freeze({
-    'boss-mouth-t1': BOSS_PATTERN_CONFIG['summon.mouth-t1'].minion,
+// The minion pool (#SSOT, data-driven): every kind IS-A boss minion (the body and shares above) and HAS-A behaviour
+// (boss/boss-minions.js) that casts the boss-kit patterns named here. A summon draws each minion by `weight`.
+//   caster  melee basic + the summoner's element skill at patternScale of the boss's reach, castCooldownMultiplier × cooldown
+//   ranged  holds keepDistance from its nearest ally (steps back first inside fleeDistance); `basic` bolt whenever ready,
+//           `pattern` mortar on its own cooldown
+//   bomber  runs at speedMultiplier × unit speed to the densest pack (most allies within clusterRadius, among those
+//           within scanRadius, re-picked every retargetSeconds) and lights `pattern` (the fuse) once in reach of it
+// hpScale: × the minion health share. patternScale: × the authored extent of the patterns it casts.
+export const MINION_KINDS = Object.freeze({
+    caster: Object.freeze({
+        id: 'caster',
+        summonKind: 'boss-minion-caster',
+        weight: 2,
+        hpScale: 1,
+        patternScale: 0.5,
+        castCooldownMultiplier: 2,
+    }),
+    ranged: Object.freeze({
+        id: 'ranged',
+        summonKind: 'boss-minion-ranged',
+        weight: 2,
+        hpScale: 1,
+        patternScale: 1,
+        castCooldownMultiplier: 1,
+        keepDistance: 8,
+        // Closer than this (half of keepDistance) it steps back before it shoots, unless a wall stops it.
+        fleeDistance: 4,
+        basic: 'minion.bolt',
+        pattern: 'minion.mortar',
+    }),
+    bomber: Object.freeze({
+        id: 'bomber',
+        summonKind: 'boss-minion-bomber',
+        weight: 1,
+        hpScale: 0.6,
+        patternScale: 1,
+        castCooldownMultiplier: 1,
+        speedMultiplier: 1.6,
+        clusterRadius: 3,
+        scanRadius: 14,
+        retargetSeconds: 0.5,
+        pattern: 'minion.blast',
+    }),
 });
+const MINION_KINDS_BY_SUMMON = new Map(Object.values(MINION_KINDS).map((kind) => [kind.summonKind, kind]));
+// The kind row of a boss minion (by its saved battleSummonKind), or null for everyone else.
+export function minionKindOf(unit) {
+    return MINION_KINDS_BY_SUMMON.get(unit?.battleSummonKind) ?? null;
+}
+// The one predicate for "a boss-summoned minion" (counts, deaths, validation, render).
+export function isBossMinion(unit) {
+    return MINION_KINDS_BY_SUMMON.has(unit?.battleSummonKind);
+}
+// The kind a roll in [0, 1) draws from the pool, by weight.
+export function drawMinionKind(roll) {
+    const KINDS = Object.values(MINION_KINDS),
+        TOTAL = KINDS.reduce((sum, kind) => sum + kind.weight, 0);
+    let left = roll * TOTAL;
+    for (const KIND of KINDS) {
+        left -= KIND.weight;
+        if (left < 0) {
+            return KIND;
+        }
+    }
+    return KINDS[KINDS.length - 1];
+}
 // How far a caster's boss patterns reach, × the authored extent: a giant boss reaches as far past its larger body as
 // it did past its normal one (its giant scale); a minion reaches patternScale of the boss's. Render views carry the
 // value this returned for their unit (patternReachScale), so model and telegraph share one answer.
 export function patternReachScale(actor) {
-    return (
-        actor.patternReachScale ?? BOSS_SUMMON_MINIONS[actor.battleSummonKind]?.patternScale ?? actor.giantScale ?? 1
-    );
+    return actor.patternReachScale ?? minionKindOf(actor)?.patternScale ?? actor.giantScale ?? 1;
 }
 
 // The boss's basic attack throws its target as far as the arm sweep does, so a plain swing feels as heavy as a special.

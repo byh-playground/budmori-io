@@ -1,5 +1,6 @@
 import { presentationEventTimeMs } from '../model/farm-model.js';
 import { SignatureEffectPresentation } from '../features/boss-patterns/signature/presentation.js';
+import { MinionImpactPresentation } from '../features/boss-patterns/minion/presentation.js';
 import { DamageNumberPresentation } from './damage-numbers.js';
 import { BarleyArmorShredPresentation } from '../features/abilities/barley-shred/presentation.js';
 import { PASSIVE_PRESENTATION_EVENTS } from '../tower/tower-passive-presentations.js';
@@ -310,6 +311,7 @@ const COMBAT_EFFECT_PRESENTATIONS = new Map([
     ['attack-launch', Object.freeze(new AttackLaunchPresentation())],
     ['boss-launch', Object.freeze(new BossLaunchPresentation())],
     ['boss-signature', Object.freeze(new SignatureEffectPresentation())],
+    ['minion-impact', Object.freeze(new MinionImpactPresentation())],
     ...PASSIVE_PRESENTATION_EVENTS,
 ]);
 

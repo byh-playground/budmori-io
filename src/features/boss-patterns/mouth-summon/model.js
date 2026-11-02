@@ -1,8 +1,7 @@
 import { BossPattern } from '../model-base.js';
 import { FEATURE } from './definition.js';
-import { FACTION_CONFIG, hasFaction } from '../../../core/factions.js';
 import { unitBodyRadius } from '../../unit-body/definition.js';
-import { BOSS_SUMMON_MINIONS } from '../../../boss/boss-patterns.js';
+import { isBossMinion } from '../../../boss/boss-patterns.js';
 
 export class MouthSummonBossPattern extends BossPattern {
     constructor(dependencies) {
@@ -16,7 +15,7 @@ export class MouthSummonBossPattern extends BossPattern {
     minionRadius(boss) {
         return (
             unitBodyRadius({ species: boss.species, tier: 1, growthElapsed: 1, growthDuration: 1 }) *
-            BOSS_SUMMON_MINIONS['boss-mouth-t1'].bodyScale
+            this.config.minion.bodyScale
         );
     }
     // Where minions land, from the boss's centre: just clear of its body.
@@ -25,7 +24,7 @@ export class MouthSummonBossPattern extends BossPattern {
     }
     // Minions may be alive at once: minionsPerBoss for every boss still standing.
     minionRoom(world) {
-        const ALIVE = world.units.reduce((n, u) => n + (hasFaction(u, FACTION_CONFIG.ENEMY) && u.hp > 0 ? 1 : 0), 0),
+        const ALIVE = world.units.reduce((n, u) => n + (isBossMinion(u) && u.hp > 0 ? 1 : 0), 0),
             BOSSES = world.bosses.filter((boss) => boss.active && boss.hp > 0).length;
         return Math.max(0, this.config.minionsPerBoss * BOSSES - ALIVE);
     }
