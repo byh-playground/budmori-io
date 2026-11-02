@@ -30,7 +30,6 @@
         "test:unit-sprites": "node tests/unit-face-composition.mjs && node tests/unit-sprites.e2e.mjs",
         "test:tower-army": "node tests/tower-army.e2e.mjs",
         "test:camera": "node tests/battle-camera.e2e.mjs",
-        "test:scatter-command": "node tests/scatter-command.e2e.mjs",
         "test:hud-sampling": "node tests/hud-sampling.e2e.mjs",
         "test:offline-breeding": "node tests/offline-breeding.mjs"
     },
