@@ -313,25 +313,7 @@ export const FARM_CONTACT_SOLVER = (base) =>
             this.metrics.physicsSolverIterations++;
             this.profiler?.count('physicsSolverIterations');
         }
-        _pushBattlePair(first, second, opposing) {
-            const COUNT = this._battlePairCount;
-            if (COUNT >= this._battlePairA.length) {
-                const CAPACITY = Math.max(256, this._battlePairA.length * 2),
-                    A = new Int32Array(CAPACITY),
-                    B = new Int32Array(CAPACITY),
-                    O = new Uint8Array(CAPACITY);
-                A.set(this._battlePairA);
-                B.set(this._battlePairB);
-                O.set(this._battlePairOpposing);
-                this._battlePairA = A;
-                this._battlePairB = B;
-                this._battlePairOpposing = O;
-            }
-            this._battlePairA[COUNT] = first;
-            this._battlePairB[COUNT] = second;
-            this._battlePairOpposing[COUNT] = opposing ? 1 : 0;
-            this._battlePairCount = COUNT + 1;
-        }
+        // Per-tick body caches (radius, height, inverse mass) read by the contact solver; returns the largest radius.
         _cacheBattleBodies(units) {
             if (this._battleRadius.length < units.length) {
                 const CAPACITY = Math.max(units.length, this._battleRadius.length * 2, 16);
@@ -349,167 +331,6 @@ export const FARM_CONTACT_SOLVER = (base) =>
             }
             return maximumRadius;
         }
-        _collectBattlePairs(units) {
-            this._battlePairCount = 0;
-            this._cacheBattleBodies(units);
-            const RADIUS = this._battleRadius,
-                HEIGHT = this._battleHeight;
-            const MARGIN = CONFIG.physics.battleNeighborMargin,
-                RESERVED = this.unitCollection.reservations.size > 0;
-            for (let i = 0; i < units.length; i++) {
-                const UNIT_LOCAL = units[i];
-                if (
-                    UNIT_LOCAL.hp <= 0 ||
-                    !UNIT_LOCAL.dropLanded ||
-                    (RESERVED && this.isMergeTaskMaterial(UNIT_LOCAL))
-                ) {
-                    continue;
-                }
-                const QUERY_RADIUS = RADIUS[i] + CONFIG.unit.maxRadius + MARGIN,
-                    PENDING = this._contactPending;
-                this.unitSpatial.queryAABB(
-                    UNIT_LOCAL.x - QUERY_RADIUS,
-                    UNIT_LOCAL.y - QUERY_RADIUS,
-                    UNIT_LOCAL.x + QUERY_RADIUS,
-                    UNIT_LOCAL.y + QUERY_RADIUS,
-                    this._contactQuery,
-                );
-                PENDING.length = 0;
-                // Filter before sorting: only real neighbors are ordered, not every grid candidate.
-                for (const OTHER of this._contactQuery) {
-                    const J = this._unitStepOrder.get(OTHER);
-                    if (
-                        J === undefined ||
-                        J <= i ||
-                        OTHER.hp <= 0 ||
-                        !OTHER.dropLanded ||
-                        (RESERVED && this.isMergeTaskMaterial(OTHER))
-                    ) {
-                        continue;
-                    }
-                    if (UNIT_LOCAL.z > OTHER.z + HEIGHT[J] || OTHER.z > UNIT_LOCAL.z + HEIGHT[i]) {
-                        continue;
-                    }
-                    const REACH = RADIUS[i] + RADIUS[J] + MARGIN,
-                        DX = OTHER.x - UNIT_LOCAL.x,
-                        DY = OTHER.y - UNIT_LOCAL.y;
-                    if (DX * DX + DY * DY < REACH * REACH) {
-                        PENDING.push(J);
-                    }
-                }
-                PENDING.sort((a, b) => a - b);
-                for (const J of PENDING) {
-                    this._pushBattlePair(i, J, areOpposingFactions(UNIT_LOCAL, units[J]));
-                }
-            }
-        }
-        battleContacts(units) {
-            this._collectBattlePairs(units);
-            // Bump impulses and stuns only apply between opposing sides. Allies just separate.
-            for (let p = 0; p < this._battlePairCount; p++) {
-                if (this._battlePairOpposing[p] && contact(units[this._battlePairA[p]], units[this._battlePairB[p]])) {
-                    this.metrics.contacts++;
-                }
-            }
-            this.solveBattleSeparations(units);
-        }
-        solveBattleSeparations(units) {
-            const COUNT = this._battlePairCount;
-            if (!COUNT) {
-                return;
-            }
-            this._ensureContactSolverBuffers(units.length);
-            if (this._battleMoved.length < units.length) {
-                this._battleMoved = new Uint8Array(this._contactCorrectionX.length);
-            }
-            const CORRECTION_X = this._contactCorrectionX,
-                CORRECTION_Y = this._contactCorrectionY,
-                CORRECTION_COUNT = this._contactCorrectionCount,
-                MOVED = this._battleMoved,
-                PAIR_A = this._battlePairA,
-                PAIR_B = this._battlePairB,
-                PAIR_OPPOSING = this._battlePairOpposing,
-                RADIUS = this._battleRadius,
-                INVERSE_MASS = this._battleInverseMass,
-                ITERATIONS = CONFIG.physics.battleSeparationIterations,
-                RELAXATION = CONFIG.physics.separationRelaxation,
-                ALLY_SCALE = 1 - CONFIG.physics.battleAllyOverlap;
-            MOVED.fill(0, 0, units.length);
-            for (let iteration = 0; iteration < ITERATIONS; iteration++) {
-                CORRECTION_X.fill(0, 0, units.length);
-                CORRECTION_Y.fill(0, 0, units.length);
-                CORRECTION_COUNT.fill(0, 0, units.length);
-                let correctionCount = 0;
-                for (let p = 0; p < COUNT; p++) {
-                    const I = PAIR_A[p],
-                        J = PAIR_B[p],
-                        UNIT_LOCAL = units[I],
-                        OTHER = units[J],
-                        INVERSE_MASS_A = INVERSE_MASS[I],
-                        INVERSE_MASS_B = INVERSE_MASS[J],
-                        INVERSE_MASS_SUM = INVERSE_MASS_A + INVERSE_MASS_B;
-                    if (INVERSE_MASS_SUM <= 0) {
-                        continue;
-                    }
-                    const DX = OTHER.x - UNIT_LOCAL.x,
-                        DY = OTHER.y - UNIT_LOCAL.y,
-                        DISTANCE = Math.hypot(DX, DY),
-                        TARGET_DISTANCE = (RADIUS[I] + RADIUS[J]) * (PAIR_OPPOSING[p] ? 1 : ALLY_SCALE);
-                    if (DISTANCE >= TARGET_DISTANCE) {
-                        continue;
-                    }
-                    const ANGLE =
-                            ((Math.min(UNIT_LOCAL.id, OTHER.id) * 0.61803398875 +
-                                Math.max(UNIT_LOCAL.id, OTHER.id) * 0.38196601125) %
-                                1) *
-                            Math.PI *
-                            2,
-                        NORMAL_SIGN = UNIT_LOCAL.id < OTHER.id ? 1 : -1,
-                        NORMAL_X = DISTANCE > 1e-6 ? DX / DISTANCE : Math.cos(ANGLE) * NORMAL_SIGN,
-                        NORMAL_Y = DISTANCE > 1e-6 ? DY / DISTANCE : Math.sin(ANGLE) * NORMAL_SIGN,
-                        PENETRATION = (TARGET_DISTANCE - DISTANCE) * RELAXATION,
-                        SHARE_A = INVERSE_MASS_A / INVERSE_MASS_SUM,
-                        SHARE_B = INVERSE_MASS_B / INVERSE_MASS_SUM;
-                    CORRECTION_X[I] -= NORMAL_X * PENETRATION * SHARE_A;
-                    CORRECTION_Y[I] -= NORMAL_Y * PENETRATION * SHARE_A;
-                    CORRECTION_COUNT[I] += SHARE_A > 0 ? 1 : 0;
-                    CORRECTION_X[J] += NORMAL_X * PENETRATION * SHARE_B;
-                    CORRECTION_Y[J] += NORMAL_Y * PENETRATION * SHARE_B;
-                    CORRECTION_COUNT[J] += SHARE_B > 0 ? 1 : 0;
-                    correctionCount++;
-                }
-                if (!correctionCount) {
-                    break;
-                }
-                for (let i = 0; i < units.length; i++) {
-                    const UNIT_LOCAL = units[i],
-                        COUNT_LOCAL = CORRECTION_COUNT[i];
-                    if (!COUNT_LOCAL) {
-                        continue;
-                    }
-                    let deltaX = CORRECTION_X[i] / COUNT_LOCAL,
-                        deltaY = CORRECTION_Y[i] / COUNT_LOCAL;
-                    const LENGTH = Math.hypot(deltaX, deltaY),
-                        MAX_CORRECTION = Math.max(0.05, RADIUS[i] * 1.25);
-                    if (LENGTH > MAX_CORRECTION) {
-                        const SCALE = MAX_CORRECTION / LENGTH;
-                        deltaX *= SCALE;
-                        deltaY *= SCALE;
-                    }
-                    UNIT_LOCAL.x += deltaX;
-                    UNIT_LOCAL.y += deltaY;
-                    this.boundBody(UNIT_LOCAL, this.scene, RADIUS[i]);
-                    MOVED[i] = 1;
-                }
-                this.metrics.physicsSolverIterations++;
-                this.profiler?.count('physicsSolverIterations');
-            }
-            for (let i = 0; i < units.length; i++) {
-                if (MOVED[i]) {
-                    this.updateUnitSpatial(units[i]);
-                }
-            }
-        }
         resolveFarmContacts(units, dt = 1 / 20) {
             // Impulses only change velocity/stun, not body geometry or mass. Share the
             // existing solver cache across this pass and the following Jacobi solve.
@@ -517,7 +338,8 @@ export const FARM_CONTACT_SOLVER = (base) =>
                 RADIUS = this._battleRadius,
                 HEIGHT = this._battleHeight,
                 INVERSE_MASS = this._battleInverseMass,
-                GAP = this.tower.active && this.battleCommand === 'scatter' ? CONFIG.farm.deploy.scatterGap : 0.22;
+                GAP = this.tower.active && this.battleCommand === 'scatter' ? CONFIG.farm.deploy.scatterGap : 0.22,
+                FIGHTING = this.farmBossEvent.phase !== 'idle';
             for (let i = 0; i < units.length; i++) {
                 const UNIT_LOCAL = units[i],
                     PENDING = this._collectContactOrders(
@@ -533,6 +355,11 @@ export const FARM_CONTACT_SOLVER = (base) =>
                 }
                 for (const J of PENDING) {
                     if (this.isMergeTaskMaterial(units[J])) {
+                        continue;
+                    }
+                    // In a fight, bump impulses and stuns only pass between opposing sides: allies just separate
+                    // (solveContactSeparations), so a crowd never stuns its own troops out of their attacks.
+                    if (FIGHTING && !areOpposingFactions(UNIT_LOCAL, units[J])) {
                         continue;
                     }
                     if (

@@ -153,11 +153,6 @@ export const CONFIG = Object.freeze({
         gravity: 19,
         separationIterations: 4,
         separationRelaxation: 0.8,
-        // Raid battles only: allies may overlap by this fraction of their summed radii, solved on a
-        // neighbor list built once per tick. Opposing sides still separate at full radius.
-        battleSeparationIterations: 3,
-        battleAllyOverlap: 0.2,
-        battleNeighborMargin: 0.4,
         softSeparationRate: -Math.log(1 - 0.035) * 120,
     }),
 });
