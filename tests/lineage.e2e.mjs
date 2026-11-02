@@ -192,7 +192,7 @@ try {
                 source: 'farm',
                 stage: 40,
                 species: 7,
-                kindReward: 3,
+                kindReward: 1.2,
                 record: false,
             });
         });
@@ -202,7 +202,7 @@ try {
             decodeURIComponent(PORTRAIT).includes('budmori-sprout'),
             'reward reuses the actual seedling body and face',
         );
-        assert.equal(await PAGE.locator('#bossRewardSprouts .boss-reward-sprout').count(), 12);
+        assert.equal(await PAGE.locator('#bossRewardSprouts .boss-reward-sprout').count(), 4);
         await PAGE.screenshot({ path: path.join(OUTPUT, MOBILE ? 'reward-mobile.png' : 'reward-desktop.png') });
         assert.deepEqual(ERRORS, []);
         console.log(

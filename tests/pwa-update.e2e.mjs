@@ -164,7 +164,7 @@ async function seed(page) {
             source: 'farm',
             stage: 40,
             species: 2,
-            kindReward: 3,
+            kindReward: 1.2,
             record: false,
         }).receipt;
         REVEAL(W, CLAIM.receiptKey);
@@ -421,8 +421,8 @@ try {
         assert.equal(await revision(PAGE), 'one');
         await seed(PAGE);
         const INITIAL = await saved(OBSERVER);
-        assert.equal(INITIAL.totalRights, 27);
-        assert.deepEqual(INITIAL.claims, [['farm:1', 24]]);
+        assert.equal(INITIAL.totalRights, 12);
+        assert.deepEqual(INITIAL.claims, [['farm:1', 9]]);
         CASE.initial = INITIAL;
         if (NAME === 'startup') {
             assert.equal(await PAGE.evaluate(() => location.hash), '#/farm');
@@ -524,7 +524,7 @@ try {
                 await PAGE.locator('#settingsCheckUpdate').click();
                 await updated(PAGE, 'two');
                 CASE.result = await saved(OBSERVER);
-                preserve(CASE.result, INITIAL, { xp: 8888, totalRights: 28 });
+                preserve(CASE.result, INITIAL, { xp: 8888, totalRights: 13 });
             } else if (NAME === 'in-flight-save') {
                 await PAGE.evaluate(() => {
                     const STORAGE = BUDMORI.storage,

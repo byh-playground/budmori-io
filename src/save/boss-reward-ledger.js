@@ -271,11 +271,15 @@ function validateLegacyBossRewardLedger(boss) {
 }
 
 const REWARD_KEYS =
-    'encounterId source receiptKey stage species tier baseAmount bandIndex kindReward record acquiredCount placedCount queuedCount revealed status'.split(
+    'encounterId source receiptKey stage species tier payoutRule baseAmount bandIndex kindReward record acquiredCount placedCount queuedCount revealed status'.split(
         ' ',
     );
 // One ledger invariant for disk saves and runtime checkpoints.
 export function validateBossRewardLedger(boss) {
+    return validateSingleChestLedger(boss);
+}
+
+function validateSingleChestLedger(boss, { legacyCategorical = false } = {}) {
     keys(boss, ['nextEncounterId', 'settledThrough', 'pendingRewards', 'rewardRngState', 'queuedRewards']);
     keys(boss.settledThrough, ['farm']);
     ASSERT(INTEGER(boss.settledThrough.farm) && INTEGER(boss.nextEncounterId, boss.settledThrough.farm + 1));
@@ -298,7 +302,7 @@ export function validateBossRewardLedger(boss) {
         INVENTORY.set(KEY, GROUP.count);
     }
     for (const REWARD of boss.pendingRewards) {
-        keys(REWARD, REWARD_KEYS);
+        keys(REWARD, legacyCategorical ? REWARD_KEYS.filter((key) => key !== 'payoutRule') : REWARD_KEYS);
         ASSERT(
             REWARD.source === 'farm' &&
                 INTEGER(REWARD.encounterId, 1, boss.settledThrough.farm) &&
@@ -312,24 +316,40 @@ export function validateBossRewardLedger(boss) {
                 INTEGER(REWARD.species, 0, CONFIG.unit.speciesCount - 1) &&
                 REWARD.tier === 1,
         );
-        ASSERT(
-            INTEGER(REWARD.kindReward, 1, BOSS_REWARD_SETTINGS.maxKindReward) &&
-                typeof REWARD.record === 'boolean' &&
-                typeof REWARD.revealed === 'boolean' &&
-                REWARD.status === 'ready',
-        );
+        ASSERT(typeof REWARD.record === 'boolean' && typeof REWARD.revealed === 'boolean' && REWARD.status === 'ready');
         ASSERT(
             SAFE_INTEGER(REWARD.acquiredCount) &&
                 SAFE_INTEGER(REWARD.placedCount) &&
                 SAFE_INTEGER(REWARD.queuedCount) &&
                 REWARD.placedCount + REWARD.queuedCount === REWARD.acquiredCount,
         );
-        if (REWARD.bandIndex === null) {
-            // A pre-rework entitlement has no new distribution outcome. Preserve its exact amount.
-            ASSERT(REWARD.baseAmount === 0 && REWARD.revealed === true);
+        if (legacyCategorical) {
+            // Schema 2 only: validate its earned amount before converting it.
+            // These historical numbers never participate in a new settlement.
+            ASSERT(INTEGER(REWARD.kindReward, 1, 3));
+            if (REWARD.bandIndex === null) {
+                ASSERT(REWARD.baseAmount === 0 && REWARD.revealed === true);
+            } else {
+                const BASE = Math.ceil(REWARD.stage / 10) * REWARD.kindReward * (REWARD.record ? 2 : 1);
+                ASSERT(
+                    INTEGER(REWARD.bandIndex, 0, 6) &&
+                        REWARD.baseAmount === BASE &&
+                        REWARD.acquiredCount === Math.round((BASE * REWARD.bandIndex) / 3),
+                );
+            }
+        } else if (REWARD.payoutRule === 'settled') {
+            // Earned historical entitlements are preserved, including unopened
+            // receipts and quantities above the new cap. Do not reinterpret them.
+            ASSERT(
+                REWARD.baseAmount === 0 &&
+                    REWARD.bandIndex === null &&
+                    REWARD.kindReward === 1 &&
+                    REWARD.record === false,
+            );
         } else {
             ASSERT(
-                INTEGER(REWARD.bandIndex, 0, 6) &&
+                REWARD.payoutRule === 'capped' &&
+                    INTEGER(REWARD.bandIndex, 0, 6) &&
                     REWARD.baseAmount === bossRewardBaseAmount(REWARD.stage, REWARD.kindReward, REWARD.record) &&
                     REWARD.acquiredCount === bossRewardAmount(REWARD.baseAmount, REWARD.bandIndex),
             );
@@ -395,7 +415,7 @@ function finishLegacyCalculation(receipt, stream) {
 
 // Explicit schema migration only: no live simulation or new settlement calls this.
 // The caller validates the enclosing farm/checkpoint before committing the clone.
-export function migrateBossRewardLedger(boss) {
+function migratePrdBossRewardLedger(boss) {
     validateLegacyBossRewardLedger(boss);
     const LEGACY = structuredClone(boss),
         INVENTORY = LEGACY.queuedRewards;
@@ -422,6 +442,7 @@ export function migrateBossRewardLedger(boss) {
             stage: Math.max(1, receipt.stage || 1),
             species: receipt.species,
             tier: 1,
+            payoutRule: 'settled',
             baseAmount: 0,
             bandIndex: null,
             kindReward: 1,
@@ -442,4 +463,29 @@ export function migrateBossRewardLedger(boss) {
     };
     validateBossRewardLedger(MIGRATED);
     return MIGRATED;
+}
+
+// Import boundaries only: schema 1 PRD and schema 2 categorical receipts are
+// validated in their original contract, then become immutable earned claims.
+export function migrateBossRewardLedger(boss) {
+    ASSERT(boss && typeof boss === 'object' && !Array.isArray(boss));
+    if (Object.hasOwn(boss, 'rewardStreams')) {
+        return migratePrdBossRewardLedger(boss);
+    }
+    ASSERT(Array.isArray(boss.pendingRewards));
+    if (boss.pendingRewards.some((receipt) => !Object.hasOwn(receipt, 'payoutRule'))) {
+        validateSingleChestLedger(boss, { legacyCategorical: true });
+        const NEXT = structuredClone(boss);
+        for (const RECEIPT of NEXT.pendingRewards) {
+            RECEIPT.payoutRule = 'settled';
+            RECEIPT.baseAmount = 0;
+            RECEIPT.bandIndex = null;
+            RECEIPT.kindReward = 1;
+            RECEIPT.record = false;
+        }
+        validateBossRewardLedger(NEXT);
+        return NEXT;
+    }
+    validateBossRewardLedger(boss);
+    return boss;
 }

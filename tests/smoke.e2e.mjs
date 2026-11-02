@@ -607,9 +607,9 @@ await check(
                 OUTCOMES = [];
             // Native RNG scene states: normal (.627...), empty (.011...), jackpot (.956...). No outcome is mocked.
             for (const [STATE, AMOUNT, BAND] of [
-                [1, 12, 3],
+                [1, 4, 3],
                 [7, 0, 0],
-                [36, 24, 6],
+                [36, 9, 6],
             ]) {
                 const W = new GARDEN(731);
                 W._flushEjected();
@@ -666,6 +666,7 @@ await check(
                 REVEAL(W, RECEIPT.receiptKey);
                 OUTCOMES.push({
                     expected: AMOUNT,
+                    overallXp: W.playerProgression.overallXp,
                     expectedBand: BAND,
                     record: W.tower.record,
                     stage: RECEIPT.stage,
@@ -690,7 +691,11 @@ await check(
         });
         for (const OUTCOME of R) {
             expect(
-                OUTCOME.stage === 40 && OUTCOME.kindReward === 3 && OUTCOME.record === false && OUTCOME.base === 12,
+                OUTCOME.stage === 40 &&
+                    OUTCOME.kindReward === 1.2 &&
+                    OUTCOME.record === false &&
+                    OUTCOME.base === 4.8 &&
+                    OUTCOME.overallXp === 528,
                 `40-floor mid-boss basis ${JSON.stringify(OUTCOME)}`,
             );
             expect(
@@ -729,12 +734,28 @@ await check('a full farm saves every earned seed and grants only the room freed 
             source: 'farm',
             stage: 40,
             species: 2,
-            kindReward: 3,
+            kindReward: 1.2,
             record: false,
         }).receipt;
         GRANT(W);
         REVEAL(W, RECEIPT.receiptKey);
         const SAVED = CAPTURE(W),
+            HISTORICAL = structuredClone(SAVED),
+            OLD = HISTORICAL.ledger.boss.pendingRewards[0];
+        delete OLD.payoutRule;
+        Object.assign(OLD, {
+            baseAmount: 12,
+            bandIndex: 6,
+            kindReward: 3,
+            acquiredCount: 24,
+            queuedCount: 24,
+            revealed: false,
+        });
+        HISTORICAL.ledger.boss.queuedRewards[0].count = 24;
+        const { readFarmExport: READ_EXPORT } = await import('./src/save/farm-save-codec.js'),
+            HISTORICAL_LOADED = RESTORE(READ_EXPORT(JSON.stringify({ farm: HISTORICAL })).farm),
+            HISTORICAL_AGAIN = RESTORE(CAPTURE(HISTORICAL_LOADED)),
+            OLD_CLAIM = HISTORICAL_AGAIN.bossRewardReceipts[0],
             LOADED = RESTORE(SAVED),
             PENDING = LOADED.bossRewardReceipts.find((r) => r.receiptKey === RECEIPT.receiptKey),
             BEFORE = {
@@ -756,11 +777,19 @@ await check('a full farm saves every earned seed and grants only the room freed 
             source: 'farm',
             stage: 40,
             species: 2,
-            kindReward: 3,
+            kindReward: 1.2,
             record: false,
         }).receipt;
         return {
             BEFORE,
+            historical: {
+                acquired: OLD_CLAIM.acquiredCount,
+                queued: OLD_CLAIM.queuedCount,
+                placed: OLD_CLAIM.placedCount,
+                revealed: OLD_CLAIM.revealed,
+                rule: OLD_CLAIM.payoutRule,
+                rngPreserved: HISTORICAL_AGAIN.bossRewardRngState === HISTORICAL.ledger.boss.rewardRngState,
+            },
             granted: GRANTED.length,
             acquired: FINAL.acquiredCount,
             placed: FINAL.placedCount,
@@ -774,25 +803,34 @@ await check('a full farm saves every earned seed and grants only the room freed 
         };
     });
     expect(
-        R.BEFORE.acquired === 24 &&
+        R.BEFORE.acquired === 9 &&
             R.BEFORE.placed === 0 &&
-            R.BEFORE.queued === 24 &&
-            R.BEFORE.pendingPopulation === 24 &&
-            R.BEFORE.inventory === 24,
-        `full farm keeps all 24 seeds ${JSON.stringify(R)}`,
+            R.BEFORE.queued === 9 &&
+            R.BEFORE.pendingPopulation === 9 &&
+            R.BEFORE.inventory === 9,
+        `full farm keeps all 9 seeds ${JSON.stringify(R)}`,
     );
     expect(
         R.granted === 3 &&
-            R.acquired === 24 &&
+            R.acquired === 9 &&
             R.placed === 3 &&
-            R.queued === 21 &&
-            R.pendingPopulation === 21 &&
-            R.inventory === 21 &&
+            R.queued === 6 &&
+            R.pendingPopulation === 6 &&
+            R.inventory === 6 &&
             R.free === 0 &&
             R.revealed &&
             R.sameReceipt &&
             R.sameRng,
         `reload and three free places conserve the entitlement ${JSON.stringify(R)}`,
+    );
+    expect(
+        R.historical.acquired === 24 &&
+            R.historical.queued === 24 &&
+            R.historical.placed === 0 &&
+            R.historical.revealed === false &&
+            R.historical.rule === 'settled' &&
+            R.historical.rngPreserved,
+        `old unopened 24-seed claim survives import and two reloads without recapping ${JSON.stringify(R.historical)}`,
     );
 });
 await check('fixed stat cards add their stated amount and clearing the climb restores the base', async () => {
@@ -928,6 +966,13 @@ await check('progress survives a reload', async () => {
         expect(await PAGE.locator('#bloom-module-loading').isVisible(), 'loading UI missing during reload');
         release();
         await PAGE.waitForFunction(() => !!globalThis.BUDMORI && !document.getElementById('bloom-module-loading'));
+    } catch (error) {
+        const DIAGNOSTICS = await WORLD(() => ({
+            loading: document.getElementById('bloom-module-loading')?.textContent,
+            error: document.getElementById('bloom-error-popup')?.textContent,
+            diagnostics: globalThis.BloomDiagnostics?.summary?.(),
+        }));
+        throw new Error(`${error.message}\n${JSON.stringify(DIAGNOSTICS)}`, { cause: error });
     } finally {
         release();
         await PAGE.unroute('**/src/farm-app.js', HOLD);

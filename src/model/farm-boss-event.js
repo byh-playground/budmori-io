@@ -79,7 +79,7 @@ export const FARM_BOSS_EVENT = (base) =>
                         this.playerProgression,
                         this.tower.rewardRunId,
                         EVENT_STAGE,
-                        KIND.reward,
+                        KIND.xpMultiplier,
                     );
                     this.playerProgression = OVERALL.state;
                     this.combat('tower-overall-xp', {

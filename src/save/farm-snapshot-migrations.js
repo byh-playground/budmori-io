@@ -9,6 +9,14 @@ import { migrateTowerCardEffects } from './tower-card-migrations.js';
 
 function migrateSnapshotRewards(snapshot) {
     if (!Object.hasOwn(snapshot, 'bossRewardStreams')) {
+        const LEDGER = migrateBossRewardLedger({
+            nextEncounterId: snapshot.nextBossEncounterId,
+            settledThrough: snapshot.bossRewardWatermarks,
+            pendingRewards: snapshot.bossRewardReceipts,
+            rewardRngState: snapshot.bossRewardRngState,
+            queuedRewards: snapshot.bossRewardInventory,
+        });
+        snapshot.bossRewardReceipts = LEDGER.pendingRewards;
         return;
     }
     const EVENT = snapshot.farmBossEvent;
