@@ -756,7 +756,8 @@ await check('a full farm saves every earned seed and grants only the room freed 
             HISTORICAL_LOADED = RESTORE(READ_EXPORT(JSON.stringify({ farm: HISTORICAL })).farm),
             HISTORICAL_AGAIN = RESTORE(CAPTURE(HISTORICAL_LOADED)),
             OLD_CLAIM = HISTORICAL_AGAIN.bossRewardReceipts[0],
-            LOADED = RESTORE(SAVED),
+            { snapshot: SNAPSHOT, restore: RESTORE_SNAPSHOT } = await import('./src/model/farm-state.js'),
+            LOADED = RESTORE_SNAPSHOT(SNAPSHOT(RESTORE(SAVED))),
             PENDING = LOADED.bossRewardReceipts.find((r) => r.receiptKey === RECEIPT.receiptKey),
             BEFORE = {
                 acquired: PENDING.acquiredCount,
