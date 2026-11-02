@@ -23,19 +23,6 @@ export const SHELL = defineMessages({
         ko: ({ message }) => `앱 설치·오프라인 준비를 하지 못했어요. ${message}`,
         en: ({ message }) => `Couldn’t set up app install and offline play. ${message}`,
     },
-    // The check also downloads a new version's files before it ends, so it can take a while.
-    checkingUpdate: {
-        ko: '새 버전을 확인하고 있어요. 새 버전이 있으면 파일을 다 받은 뒤 알려드려요.',
-        en: 'Checking for a new version. If there is one, we’ll tell you once its files are downloaded.',
-    },
-    upToDate: {
-        ko: ({ version }) => `최신 버전이에요 (v${version}).`,
-        en: ({ version }) => `You’re on the latest version (v${version}).`,
-    },
-    checkFailed: {
-        ko: ({ message }) => `새 버전을 확인하지 못했어요. ${message}`,
-        en: ({ message }) => `Couldn’t check for a new version. ${message}`,
-    },
     installFailed: {
         ko: ({ message }) => `앱으로 설치하지 못했어요. ${message}`,
         en: ({ message }) => `Couldn’t install as an app. ${message}`,

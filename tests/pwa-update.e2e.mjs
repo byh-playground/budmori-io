@@ -262,10 +262,12 @@ async function settings(page) {
     await page.locator('#gameMenu').click();
     await page.locator('#settingsCheckUpdate').waitFor({ state: 'visible' });
 }
+// A running farm finds a new version in the background (the browser's own worker update check); the check button
+// itself saves and reloads, so it is not used to discover.
 async function discover(page, target) {
     deployed = target;
     await settings(page);
-    await page.locator('#settingsCheckUpdate').click();
+    await page.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
     await waitInstalled(page, target);
     assert.equal(await page.locator('#settingsCheckUpdate').innerText(), '최신 버전 업데이트');
     assert.equal(await page.locator('#gameMenu').getAttribute('data-update-ready'), 'true');

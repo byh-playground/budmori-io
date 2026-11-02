@@ -1,6 +1,5 @@
 import { PAGE } from '../i18n/messages/page.js';
 import { SHELL } from '../i18n/messages/shell.js';
-import { PRODUCT_VERSION } from '../version.js';
 
 // The app owns when an installed update may replace the running farm. The SDK owns
 // service-worker discovery/activation and never reads or deletes progress saves.
@@ -14,7 +13,6 @@ export async function startAppShell({ dollar, beforeUpdate, canAutoUpdate, onUpd
         INSTALL = dollar('appInstall');
     let ready = false,
         applying = false,
-        checking = false,
         initialUpdate = null;
     const SHOW = (text) => {
         NOTICE.textContent = SETTINGS_NOTICE.textContent = text;
@@ -28,7 +26,7 @@ export async function startAppShell({ dollar, beforeUpdate, canAutoUpdate, onUpd
         CHECK.textContent = ready ? PAGE.appUpdate() : PAGE.checkUpdate();
         CHECK.classList.toggle('btn--primary', ready);
         CHECK.classList.toggle('btn--secondary', !ready);
-        CHECK.disabled = applying || checking;
+        CHECK.disabled = applying;
     };
     const APPLY = async () => {
         if (applying || !ready) {
@@ -69,26 +67,21 @@ export async function startAppShell({ dollar, beforeUpdate, canAutoUpdate, onUpd
     });
     PROGRESS.addEventListener('cancel', (event) => event.preventDefault());
     UPDATE.onclick = APPLY;
+    // A new version is found and applied by the startup check (below), so checking means saving and reloading.
     CHECK.onclick = async () => {
         if (ready) {
             await APPLY();
             return;
         }
-        checking = true;
+        applying = true;
         SYNC();
-        SHOW(SHELL.checkingUpdate());
-        try {
-            // The check ends after a found worker is installed (onUpdate has run by then), so no update means latest.
-            await PWA.checkForUpdate();
-            if (!ready) {
-                SHOW(SHELL.upToDate({ version: PRODUCT_VERSION }));
-            }
-        } catch (error) {
-            SHOW(SHELL.checkFailed({ message: error.message }));
-        } finally {
-            checking = false;
+        if ((await beforeUpdate()) !== true) {
+            applying = false;
             SYNC();
+            SHOW(SHELL.updateSaveFailed());
+            return;
         }
+        location.reload();
     };
     INSTALL.onclick = async () => {
         INSTALL.hidden = true;
