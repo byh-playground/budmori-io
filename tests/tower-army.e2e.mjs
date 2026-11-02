@@ -1,7 +1,7 @@
-// Fixed user flow: max-size frontline commands, finite reinforcements, and a saved summit.
-// The fixture provides a mature 1,000-unit roster and durable targets. Movement,
+// Fixed user flow: frontline commands, finite reinforcements, and a saved summit.
+// Logic only: a small mature roster, a test-lowered frontline cap (the product rule
+// min(maxFrontline, capacity / 2) is still checked) and durable targets. Movement,
 // deployment, encounter transitions, input, native SVG rendering and storage run normally.
-// Chromium SwiftShader verifies functionality/layout, not real-device performance.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -10,6 +10,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
+// The smallest army that still has a full frontline plus reserves to call in.
+const ROSTER = 12,
+    FRONTLINE = 6;
 const ROOT = path.resolve(fileURLToPath(new URL('../', import.meta.url))),
     OUTPUT = path.join(ROOT, 'tests/output/tower-army'),
     HTML = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'),
@@ -23,7 +26,7 @@ const ROOT = path.resolve(fileURLToPath(new URL('../', import.meta.url))),
         renderer: 'Chromium SwiftShader',
         captures: [],
         stages: {},
-        fixture: '1,000 mature T1 units, high-HP low-damage bosses; native simulation and render',
+        fixture: ROSTER + ' mature T1 units, frontline cap ' + FRONTLINE + ', high-HP low-damage bosses',
     },
     TYPES = {
         '.html': 'text/html',
@@ -69,9 +72,25 @@ async function resume() {
         BUDMORI.runtime.paused = false;
     });
 }
+// Logic only: advance the real model with fixed 20 Hz ticks inside one evaluate instead of waiting
+// for software-rendered frames to carry the live loop there in real time.
+async function stepUntil(predicate, arg, maxTicks = 1200) {
+    const DONE = await page.evaluate(
+        ({ source, value, limit }) => {
+            const TEST = new Function('value', `return (${source})(value);`),
+                WORLD = BUDMORI.sim;
+            for (let tick = 0; tick < limit && !TEST(value); tick++) {
+                WORLD.step(1 / 20);
+            }
+            return TEST(value);
+        },
+        { source: predicate.toString(), value: arg, limit: maxTicks },
+    );
+    assert.ok(DONE, `model did not reach ${predicate} within ${maxTicks} ticks`);
+}
 async function ticks(count) {
-    const START = await page.evaluate(() => BUDMORI.sim.simulationTick);
-    await page.waitForFunction((target) => BUDMORI.sim.simulationTick >= target, START + count);
+    const TARGET = (await page.evaluate(() => BUDMORI.sim.simulationTick)) + count;
+    await stepUntil((target) => BUDMORI.sim.simulationTick >= target, TARGET, count);
 }
 async function defeatVisibleBosses() {
     return page.evaluate(() => {
@@ -85,35 +104,43 @@ async function defeatVisibleBosses() {
         return COUNT;
     });
 }
-async function openAndCloseReward() {
-    await page.locator('#bossRewardDialog').waitFor({ state: 'visible' });
+const LATEST_REWARD_KEY = () => page.evaluate(() => BUDMORI.sim.bossRewardReceipts.at(-1)?.receiptKey ?? null);
+// The chest reveals itself and closes after its result hold, so it can close between any two test steps.
+const REWARD_AUTO_CLOSED = () =>
+    page.evaluate(
+        () => document.getElementById('bossRewardDialog').hidden && BUDMORI.sim.bossRewardReceipts.at(-1)?.revealed,
+    );
+async function clickRewardButton(selector) {
+    try {
+        await page.locator(selector).click({ timeout: 2000 });
+    } catch (error) {
+        if (!(await REWARD_AUTO_CLOSED()) && !(await page.locator('#bossRewardClose').isVisible())) {
+            throw error;
+        }
+    }
+}
+async function openAndCloseReward(previousKey) {
+    // Wait for the new receipt, then use the open dialog or accept the completed automatic reveal.
+    await page.waitForFunction((previous) => {
+        const RECEIPT = BUDMORI.sim.bossRewardReceipts.at(-1);
+        return (
+            RECEIPT &&
+            RECEIPT.receiptKey !== previous &&
+            (!document.querySelector('#bossRewardDialog').hidden || RECEIPT.revealed)
+        );
+    }, previousKey);
     await page.waitForFunction(
         () =>
+            document.querySelector('#bossRewardDialog').hidden ||
             !document.querySelector('#bossRewardClose').hidden ||
             (!document.querySelector('#bossRewardOpenAll').hidden &&
                 !document.querySelector('#bossRewardOpenAll').disabled),
     );
     if (await page.locator('#bossRewardOpenAll').isVisible()) {
-        try {
-            await page.locator('#bossRewardOpenAll').click({ timeout: 2000 });
-        } catch (error) {
-            // The normal automatic reveal can finish between the readiness check and click.
-            if (!(await page.locator('#bossRewardClose').isVisible())) {
-                throw error;
-            }
-        }
+        await clickRewardButton('#bossRewardOpenAll');
     }
-    try {
-        await page.locator('#bossRewardClose').click({ timeout: 2000 });
-    } catch (error) {
-        // The current single-chest presentation can auto-close between the
-        // readiness check and pointer click; the receipt must already be revealed.
-        const AUTO_CLOSED = await page.evaluate(
-            () => document.getElementById('bossRewardDialog').hidden && BUDMORI.sim.bossRewardReceipts.at(-1)?.revealed,
-        );
-        if (!AUTO_CLOSED) {
-            throw error;
-        }
+    if (await page.locator('#bossRewardClose').isVisible()) {
+        await clickRewardButton('#bossRewardClose');
     }
     await page.locator('#bossRewardDialog').waitFor({ state: 'hidden' });
     return page.evaluate(() => {
@@ -174,84 +201,95 @@ try {
     await page.goto(ORIGIN);
     await page.waitForFunction(() => Boolean(globalThis.BUDMORI));
     await page.locator('#newGame').click();
-    await page.evaluate(async () => {
-        const WORLD = BUDMORI.sim,
-            { overallXpForLevel: XP_FOR_LEVEL } = await import('./src/model/player-progression.js');
-        BUDMORI.runtime.paused = true;
-        WORLD.resetUnits();
-        WORLD.playerProgression.overallXp = XP_FOR_LEVEL(41);
-        WORLD.playerProgression.towerBest = 100;
-        WORLD.setWorkBasisPoints(0);
-        for (let index = 0; index < 1000; index++) {
-            const UNIT = WORLD.spawn(index % 9, 1, 0, 0);
-            UNIT.growthElapsed = UNIT.growthDuration;
-            UNIT.dropLanded = true;
-        }
-        const DRAW = BUDMORI.renderer.unitPresentation.draw;
-        globalThis.__towerRenderedIds = new Set();
-        BUDMORI.renderer.unitPresentation.draw = function (unit, world) {
-            if (
-                world.tower.active &&
-                world.farmBossEvent.phase === 'fighting' &&
-                unit.faction === 'player' &&
-                !unit.isBattleOnlySummon
-            ) {
-                globalThis.__towerRenderedIds.add(unit.id);
+    await page.evaluate(
+        async ({ roster, frontline }) => {
+            const WORLD = BUDMORI.sim,
+                { overallXpForLevel: XP_FOR_LEVEL } = await import('./src/model/player-progression.js');
+            BUDMORI.runtime.paused = true;
+            WORLD.resetUnits();
+            WORLD.playerProgression.overallXp = XP_FOR_LEVEL(41);
+            WORLD.playerProgression.towerBest = 100;
+            WORLD.setWorkBasisPoints(0);
+            for (let index = 0; index < roster; index++) {
+                const UNIT = WORLD.spawn(index % 9, 1, 0, 0);
+                UNIT.growthElapsed = UNIT.growthDuration;
+                UNIT.dropLanded = true;
             }
-            return DRAW.call(this, unit, world);
-        };
-        globalThis.__restoreTowerDraw = () => {
-            BUDMORI.renderer.unitPresentation.draw = DRAW;
-        };
-        WORLD.markProgressChanged();
-    });
+            const DRAW = BUDMORI.renderer.unitPresentation.draw;
+            globalThis.__towerRenderedIds = new Set();
+            BUDMORI.renderer.unitPresentation.draw = function (unit, world) {
+                if (
+                    world.tower.active &&
+                    world.farmBossEvent.phase === 'fighting' &&
+                    unit.faction === 'player' &&
+                    !unit.isBattleOnlySummon
+                ) {
+                    globalThis.__towerRenderedIds.add(unit.id);
+                }
+                return DRAW.call(this, unit, world);
+            };
+            globalThis.__restoreTowerDraw = () => {
+                BUDMORI.renderer.unitPresentation.draw = DRAW;
+            };
+            // Test hook on the live world (CONFIG is frozen): keep the product cap rule, then lower it for this run.
+            const BEGIN = WORLD._beginArmyDeployment;
+            WORLD._beginArmyDeployment = function () {
+                BEGIN.call(this);
+                globalThis.__towerProductCap = this.frontlineLimit;
+                this.frontlineLimit = frontline;
+            };
+            WORLD.markProgressChanged();
+        },
+        { roster: ROSTER, frontline: FRONTLINE },
+    );
     await page.waitForFunction(() => document.querySelector('#startFloor').max === '80');
     assert.match(await page.locator('#startFloorValue').innerText(), /80/);
-    assert.equal(await page.locator('#count').innerText(), '1000', 'the farm header counts owned regular troops');
+    assert.equal(
+        await page.locator('#count').innerText(),
+        String(ROSTER),
+        'the farm header counts owned regular troops',
+    );
     await page.locator('#bossChallenge').click();
     await page.locator('#deckGo').click();
     await page.evaluate(() => {
         const WORLD = BUDMORI.sim;
-        // Arrange arrival at the gate, not deployment: the following 500 births use the normal batch loop.
+        // Arrange arrival at the gate, not deployment: the frontline births use the normal batch loop.
         WORLD.finishMarch();
         WORLD.boss.setBaseStats({ maxHp: 1e9, attackPower: 0.01 });
         WORLD.boss.setHealth(WORLD.boss.maxHp);
-        globalThis.__towerDeploymentStart = WORLD.simulationTick;
         globalThis.__towerRenderedIds.clear();
-        const STEP = WORLD.step;
-        WORLD.step = function (dt) {
-            const RESULT = STEP.call(this, dt);
-            if (this.fieldFighterCount === 500) {
-                globalThis.__towerDeploymentEnd = this.simulationTick;
-                this.step = STEP;
-            }
-            return RESULT;
-        };
     });
+    await stepUntil((frontline) => BUDMORI.sim.fieldFighterCount === frontline, FRONTLINE);
     await page.waitForFunction(
-        () => BUDMORI.sim.fieldFighterCount === 500 && globalThis.__towerRenderedIds.size >= 500,
+        (frontline) => BUDMORI.sim.fieldFighterCount === frontline && globalThis.__towerRenderedIds.size >= frontline,
+        FRONTLINE,
     );
     REPORT.stages.deployment = await page.evaluate(() => ({
         field: BUDMORI.sim.fieldFighterCount,
         cap: BUDMORI.sim.frontlineLimit,
         owned: Number(document.querySelector('#count').textContent),
         reserves: [...BUDMORI.sim.reserveCounts.values()].reduce((sum, count) => sum + count, 0),
+        productCap: globalThis.__towerProductCap,
+        capacity: BUDMORI.sim.capacity,
         rendered: globalThis.__towerRenderedIds.size,
-        elapsed: (globalThis.__towerDeploymentEnd - globalThis.__towerDeploymentStart) / 20,
         mode: BUDMORI.sim.battleCommand,
     }));
-    assert.equal(REPORT.stages.deployment.cap, 500);
-    assert.equal(REPORT.stages.deployment.owned, 1000, 'benching must not shrink the owned-population header');
-    assert.equal(REPORT.stages.deployment.reserves, 500);
+    assert.equal(
+        REPORT.stages.deployment.productCap,
+        Math.min(500, Math.floor(REPORT.stages.deployment.capacity / 2)),
+        'product frontline cap is min(maxFrontline, capacity / 2)',
+    );
+    assert.equal(REPORT.stages.deployment.cap, FRONTLINE);
+    assert.equal(REPORT.stages.deployment.field, FRONTLINE, 'deployment stops at the frontline cap');
+    assert.equal(REPORT.stages.deployment.owned, ROSTER, 'benching must not shrink the owned-population header');
+    assert.equal(REPORT.stages.deployment.reserves, ROSTER - FRONTLINE);
     assert.equal(REPORT.stages.deployment.mode, 'engage');
-    // Native post-step observation includes the boss drop but excludes browser polling/render latency.
-    assert.ok(REPORT.stages.deployment.elapsed < 5, 'a 500-unit frontline must not take 50 seconds');
-    await capture('500-frontline-engage-desktop.png');
+    await capture('frontline-engage-desktop.png');
     await resume();
     await ticks(80);
     await page.waitForFunction(() => BUDMORI.sim.boss.hp < BUDMORI.sim.boss.maxHp);
     await page.setViewportSize({ width: 667, height: 375 });
-    await capture('500-frontline-engage-converged-landscape.png');
+    await capture('frontline-engage-converged-landscape.png');
     REPORT.stages.landscapeLayout = await page.evaluate(() => {
         const BOX = (selector) => {
             const RECT = document.querySelector(selector).getBoundingClientRect();
@@ -272,9 +310,9 @@ try {
     await page.locator('label:has(input[name="battleCommand"][value="scatter"])').click();
     await page.waitForFunction(() => BUDMORI.sim.battleCommand === 'scatter');
     await ticks(12);
-    await capture('500-frontline-scatter-desktop.png');
+    await capture('frontline-scatter-desktop.png');
     await page.setViewportSize({ width: 667, height: 375 });
-    await capture('500-frontline-scatter-landscape.png');
+    await capture('frontline-scatter-landscape.png');
     await resume();
     await page.locator('label:has(input[name="battleCommand"][value="retreat"])').click();
     await page.waitForFunction(() => BUDMORI.sim.battleCommand === 'retreat');
@@ -300,12 +338,12 @@ try {
         };
     }, BEFORE);
     assert.equal(REPORT.stages.retreat.mode, 'retreat');
-    assert.equal(REPORT.stages.retreat.owned, 1000, 'command switches preserve the owned-population header');
+    assert.equal(REPORT.stages.retreat.owned, ROSTER, 'command switches preserve the owned-population header');
     assert.ok(REPORT.stages.retreat.moved > 0, 'retreat must move actual frontline bodies');
     assert.deepEqual(REPORT.stages.retreat.selected, ['retreat']);
-    await capture('500-frontline-retreat-landscape.png');
+    await capture('frontline-retreat-landscape.png');
     await page.setViewportSize({ width: 390, height: 844 });
-    await capture('500-frontline-retreat-mobile.png');
+    await capture('frontline-retreat-mobile.png');
     await resume();
     await page.locator('label:has(input[name="battleCommand"][value="engage"])').click();
     await page.waitForFunction(() => BUDMORI.sim.battleCommand === 'engage');
@@ -329,13 +367,14 @@ try {
         return BEFORE;
     });
     await page.waitForFunction(
-        () =>
-            BUDMORI.sim.fieldFighterCount === 500 &&
+        (frontline) =>
+            BUDMORI.sim.fieldFighterCount === frontline &&
             BUDMORI.sim.bosses.filter((boss) => boss.hp > 0).length >= 2 &&
             BUDMORI.runtime.presentationView.bosses.length >= 2 &&
             BUDMORI.sim.bosses
                 .filter((boss) => boss.hp > 0)
                 .every((boss) => BUDMORI.renderer.bossPlayers.has(boss.id + ':' + boss.generation)),
+        FRONTLINE,
     );
     REPORT.stages.reinforcements = await page.evaluate(() => ({
         fallen: BUDMORI.sim.tower.fallen,
@@ -350,7 +389,7 @@ try {
         LOSSES >= 1,
         'the removed troop counts as fallen ' + JSON.stringify({ BEFORE_LOSS, after: REPORT.stages.reinforcements }),
     );
-    assert.equal(REPORT.stages.reinforcements.field, 500, 'the frontline is refilled to its limit');
+    assert.equal(REPORT.stages.reinforcements.field, FRONTLINE, 'the frontline is refilled to its limit');
     assert.equal(REPORT.stages.reinforcements.reserves, BEFORE_LOSS.reserves - LOSSES, 'one reserve per fallen troop');
     assert.ok(REPORT.stages.reinforcements.renderedBosses >= 2);
     assert.ok(REPORT.stages.reinforcements.players >= 2);
@@ -382,13 +421,14 @@ try {
             units: BUDMORI.runtime.presentationView.units.length,
             bosses: BUDMORI.runtime.presentationView.bosses.length,
         }));
-        assert.ok(FRAME.fadeAgeMs >= 700 && FRAME.units >= 500 && FRAME.bosses >= 2);
+        assert.ok(FRAME.fadeAgeMs >= 700 && FRAME.units >= FRONTLINE && FRAME.bosses >= 2);
         REPORT.stages.themes.push(FRAME);
     }
     await page.evaluate(() => {
         BUDMORI.sim.tower.floor = 80;
     });
-    const XP_BEFORE = await page.evaluate(() => BUDMORI.sim.playerProgression.overallXp);
+    const XP_BEFORE = await page.evaluate(() => BUDMORI.sim.playerProgression.overallXp),
+        FLOOR_REWARD_BEFORE = await LATEST_REWARD_KEY();
     await resume();
     for (let index = 0; index < 4; index++) {
         if (await page.evaluate(() => BUDMORI.sim.farmBossEvent.phase !== 'fighting')) {
@@ -410,8 +450,8 @@ try {
     assert.ok(REPORT.stages.floorReward.xp > XP_BEFORE);
     assert.equal(REPORT.stages.floorReward.afterRetry, REPORT.stages.floorReward.xp);
     assert.equal(REPORT.stages.floorReward.retryAccepted, false);
-    await openAndCloseReward();
-    REPORT.stages.floorReward.chestClosedThroughUi = true;
+    REPORT.stages.floorReward.chest = await openAndCloseReward(FLOOR_REWARD_BEFORE);
+    assert.equal(REPORT.stages.floorReward.chest.revealed, true);
     await page.evaluate(() => {
         // Arrange the last door of an otherwise completed climb. The actual door,
         // finite roster, final guardian, reward, skip and reload remain product paths.
@@ -421,7 +461,7 @@ try {
         WORLD.tower.doors = [{ type: 'fight', kind: 'mid' }];
     });
     await page.locator('#doorCards [data-door="0"]').click();
-    await page.waitForFunction(() => BUDMORI.sim.tower.floor === 100 && BUDMORI.sim.farmBossEvent.phase === 'fighting');
+    await stepUntil(() => BUDMORI.sim.tower.floor === 100 && BUDMORI.sim.farmBossEvent.phase === 'fighting');
     for (let index = 0; index < 6; index++) {
         if (await page.evaluate(() => BUDMORI.sim.bosses.some((boss) => boss.isFinalBoss && boss.hp > 0))) {
             break;
@@ -433,6 +473,7 @@ try {
         await page.evaluate(() => BUDMORI.sim.bosses.filter((boss) => boss.hp > 0).every((boss) => boss.isFinalBoss)),
         true,
     );
+    await stepUntil(() => BUDMORI.sim.bosses.find((boss) => boss.isFinalBoss && boss.hp > 0)?.dropLanded);
     await page.waitForFunction(() => {
         const FINAL = BUDMORI.sim.bosses.find((boss) => boss.isFinalBoss && boss.hp > 0);
         return (
@@ -475,7 +516,7 @@ try {
     await page.locator('#summitSkip').click();
     await page.waitForFunction(() => !BUDMORI.sim.tower.active && document.querySelector('#towerSummit').hidden);
     assert.equal(await page.evaluate(() => BUDMORI.sim.playerProgression.overallXp), REPORT.stages.summit.xp);
-    REPORT.stages.finalReward = await openAndCloseReward();
+    REPORT.stages.finalReward = await openAndCloseReward(REPORT.stages.floorReward.chest.key);
     assert.equal(REPORT.stages.finalReward.status, 'ready');
     assert.equal(REPORT.stages.finalReward.revealed, true);
     await page.waitForFunction((receipt) => {

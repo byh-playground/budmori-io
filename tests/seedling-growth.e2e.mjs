@@ -439,7 +439,7 @@ try {
         assert.ok(submittedBodies > 0, `${BACKEND} body path actually submitted`);
         await PAGE.evaluate(() => {
             const W = BUDMORI.sim;
-            for (let count = 0; count < 500; count++) {
+            for (let count = 0; count < 3; count++) {
                 const U = W.spawn(0, 1, 2, 2, {
                     lineage: { temperament: 0, genes: [0, 0], seedling: { fed: 2, cooldown: 0 } },
                 });
@@ -462,7 +462,7 @@ try {
             BUDMORI.runtime.capturePresentation('reset');
         });
         await PAGE.waitForTimeout(100);
-        assert.equal(await PAGE.locator('#seedlingReveal').isVisible(), false, '500 known growths never queue cards');
+        assert.equal(await PAGE.locator('#seedlingReveal').isVisible(), false, 'known growths never queue cards');
         await PAGE.waitForFunction(() =>
             BUDMORI.runtime.presentationView.units.some(
                 (u) => u.id === globalThis.adultSprout && !u.isSeedling && u.seedlingScale === 1 && u.fed,

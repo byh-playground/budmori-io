@@ -1,15 +1,11 @@
 // Farm food -> exclusive target -> actual meals/growth -> checkpoint and disk resume.
-// The harness loads only the pinned model SDKs: no renderer, RAF or GPU benchmark.
+// The harness loads only the pinned model SDKs: no renderer, RAF or GPU.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
-
-const FOOD_BASELINE_REF = '9353f0360735334239d84409e44a2b8f964d6a10';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     OUT = path.join(ROOT, 'tests/output/food-reservations');
@@ -18,20 +14,6 @@ const SERVER = http.createServer((request, response) => {
     if (request.url === '/model-harness.html') {
         response.setHeader('content-type', 'text/html');
         response.end('<!doctype html><title>Farm model integration</title>');
-        return;
-    }
-    if (request.url.startsWith('/__baseline/src/') && request.url.endsWith('.js')) {
-        try {
-            const SOURCE = execFileSync(
-                'git',
-                ['show', `${FOOD_BASELINE_REF}:${request.url.slice('/__baseline/'.length)}`],
-                { cwd: ROOT },
-            );
-            response.setHeader('content-type', 'text/javascript');
-            response.end(SOURCE);
-        } catch {
-            response.writeHead(404).end();
-        }
         return;
     }
     const FILE = path.resolve(ROOT, '.' + decodeURIComponent(request.url.split('?')[0]));
@@ -604,11 +586,19 @@ try {
         return { claimDoesNotWake: true, releaseWakes: true, noFreeFoodSkipsSearch: true };
     });
     console.log('PASS negative cache availability and no-free-food fast path', CACHE);
-    const LARGE_ROLLBACK = await PAGE.evaluate(() => {
+    const ROLLBACK = await PAGE.evaluate(() => {
         const { world: WORLD, unit: UNIT, step: STEP, check: CHECK, STATE } = globalThis.foodTest,
-            W = WORLD();
-        for (let i = 0; i < 220; i++) {
-            UNIT(W, i < 200 ? 0 : 2, ((i % 20) - 9.5) * 0.85, (Math.floor(i / 20) - 5) * 0.9, i >= 200);
+            W = WORLD(),
+            POPULATION = 12;
+        // Enough eaters that some wait in a search queue while others hold claims at the checkpoint.
+        for (let i = 0; i < POPULATION; i++) {
+            UNIT(
+                W,
+                i < POPULATION - 2 ? 0 : 2,
+                ((i % 4) - 1.5) * 0.85,
+                (Math.floor(i / 4) - 1.5) * 0.9,
+                i >= POPULATION - 2,
+            );
         }
         for (let tick = 0; tick < 40; tick++) {
             if (tick % 2 === 0) {
@@ -618,8 +608,8 @@ try {
         }
         const SAVED = STATE.snapshot(W),
             R = STATE.restore(SAVED);
-        CHECK(SAVED.foodRuntime.queues.flat().length > 0, 'large checkpoint was not captured during search');
-        CHECK(JSON.stringify(SAVED) === JSON.stringify(STATE.snapshot(R)), 'large immediate snapshot changed');
+        CHECK(SAVED.foodRuntime.queues.flat().length > 0, 'checkpoint was not captured during search');
+        CHECK(JSON.stringify(SAVED) === JSON.stringify(STATE.snapshot(R)), 'immediate snapshot changed');
         for (let tick = 0; tick < 180; tick++) {
             if (tick % 3 === 0) {
                 W.spawnFood(((tick % 10) - 4.5) * 1.8, -2, 1);
@@ -627,7 +617,7 @@ try {
             }
             STEP(W);
             STEP(R);
-            CHECK(JSON.stringify(STATE.snapshot(W)) === JSON.stringify(STATE.snapshot(R)), 'large rollback diverged', {
+            CHECK(JSON.stringify(STATE.snapshot(W)) === JSON.stringify(STATE.snapshot(R)), 'rollback diverged', {
                 tick,
             });
         }
@@ -654,210 +644,14 @@ try {
         }
         CHECK(rejected === 4, 'corrupt checkpoint was accepted');
         return {
-            population: 220,
+            population: POPULATION,
             comparedTicks: 180,
             queued: SAVED.foodRuntime.queues.flat().length,
             claims: SAVED.foodRuntime.claims.length,
             corruptionsRejected: rejected,
         };
     });
-    console.log('PASS 220-unit in-progress rollback and checkpoint rejection', LARGE_ROLLBACK);
-    if (process.argv.includes('--bench')) {
-        const BENCHMARK = await PAGE.evaluate(async () => {
-            const { Garden: BASELINE } = await import('/__baseline/src/model/farm-model.js');
-            const { overallXpForLevel: XP } = await import('/src/model/player-progression.js');
-            const { GARDEN, unit: UNIT, check: CHECK } = globalThis.foodTest;
-            const RESULTS = [],
-                INITIALS = new Map();
-            function run(type, scenario) {
-                const W = new type(424242);
-                W.resetUnits();
-                W.food.length = 0;
-                W.setWorkBasisPoints(0);
-                W.playerProgression.overallXp = XP(50);
-                const UNITS = [],
-                    SEEDS = [],
-                    LAST_MEAL = new Map(),
-                    GROWN = new Map(),
-                    XY = new Float64Array(2000);
-                for (let i = 0; i < 1000; i++) {
-                    const SEED = i >= 900,
-                        U = UNIT(
-                            W,
-                            SEED ? 2 : 0,
-                            scenario === 'dense' ? (i % 20) * 0.025 : ((i % 40) - 19.5) * 0.85,
-                            scenario === 'dense' ? Math.floor(i / 20) * 0.025 : (Math.floor(i / 40) - 12) * 0.8,
-                            SEED,
-                        );
-                    if (scenario === 'fed') {
-                        if (SEED) {
-                            U.seedling.cooldown = 10000;
-                        } else {
-                            U.meals = 1;
-                        }
-                    }
-                    UNITS.push(U);
-                    LAST_MEAL.set(U, 0);
-                    if (SEED) {
-                        SEEDS.push(U);
-                    }
-                }
-                CHECK(W.capacity === 1000 && W.units.length === 1000, '1000 population fixture changed');
-                const INITIAL = JSON.stringify(UNITS.map((u) => [u.id, u.x, u.y, u.meals, u.seedling]));
-                if (INITIALS.has(scenario)) {
-                    CHECK(INITIALS.get(scenario) === INITIAL, 'initial units changed');
-                } else {
-                    INITIALS.set(scenario, INITIAL);
-                }
-                if (scenario === 'automatic') {
-                    W.setWorkBasisPoints(2000);
-                }
-                let attempts = 0,
-                    supplied = 0,
-                    meals = 0,
-                    movement = 0,
-                    maxBudget = 0,
-                    maxSeedWait = 0,
-                    at30 = null;
-                const SPAWN = W.spawnFood,
-                    CONSUME = W.consumeGroundFood,
-                    TIMES = [],
-                    EXTRA_MS = {};
-                W.spawnFood = function (...args) {
-                    attempts += args[2] || 1;
-                    const N = SPAWN.apply(this, args);
-                    supplied += N;
-                    return N;
-                };
-                W.consumeGroundFood = function (food, unit) {
-                    const OK = CONSUME.call(this, food, unit);
-                    if (OK) {
-                        meals++;
-                        if (unit.seedling) {
-                            maxSeedWait = Math.max(
-                                maxSeedWait,
-                                this.time - LAST_MEAL.get(unit) - (LAST_MEAL.get(unit) > 0 ? 5 : 0),
-                            );
-                        }
-                        LAST_MEAL.set(unit, this.time);
-                    }
-                    return OK;
-                };
-                // Observe the added work independently of the 24-unit scheduler. Both
-                // models get these wrappers where the corresponding method exists.
-                for (const METHOD of ['prepareProtection', 'pickup', 'deliveryTarget', 'assignDelivery']) {
-                    const FN = W._foodReservations[METHOD];
-                    if (!FN) {
-                        continue;
-                    }
-                    EXTRA_MS[METHOD] = 0;
-                    W._foodReservations[METHOD] = function (...args) {
-                        const START = performance.now(),
-                            RESULT = FN.apply(this, args);
-                        EXTRA_MS[METHOD] += performance.now() - START;
-                        return RESULT;
-                    };
-                }
-                const TICKS = ['supply', 'automatic'].includes(scenario) ? 3600 : 400;
-                for (let tick = 0; tick < TICKS; tick++) {
-                    if (['supply', 'dense'].includes(scenario) && tick % 2 === 0) {
-                        W.spawnFood(Math.sin(tick * 0.13) * 16, Math.cos(tick * 0.17) * 11);
-                    }
-                    for (let i = 0; i < UNITS.length; i++) {
-                        XY[i * 2] = UNITS[i].x;
-                        XY[i * 2 + 1] = UNITS[i].y;
-                    }
-                    const START = performance.now();
-                    if (scenario === 'automatic') {
-                        W.advanceWork(0.05);
-                    }
-                    W.step(0.05);
-                    const CPU = performance.now() - START;
-                    if (tick >= 40) {
-                        TIMES.push(CPU);
-                    }
-                    maxBudget = Math.max(maxBudget, W._foodSearchScheduler.metrics.lastTickUnits);
-                    CHECK(maxBudget <= 24, '1000 benchmark exceeded scheduler budget');
-                    for (let i = 0; i < UNITS.length; i++) {
-                        movement += Math.hypot(UNITS[i].x - XY[i * 2], UNITS[i].y - XY[i * 2 + 1]);
-                    }
-                    for (const U of SEEDS) {
-                        if (!U.seedling && !GROWN.has(U)) {
-                            GROWN.set(U, W.time);
-                        }
-                    }
-                    if (tick === 599) {
-                        at30 = { meals, supplied, grown: GROWN.size };
-                    }
-                }
-                const GROWTH = [...GROWN.values()];
-                return {
-                    scenario,
-                    ticks: TICKS,
-                    cpuMs: TIMES.reduce((a, b) => a + b, 0) / TIMES.length,
-                    attempts,
-                    supplied,
-                    meals,
-                    movement,
-                    grown: GROWN.size,
-                    growthAverage: GROWTH.reduce((a, b) => a + b, 0) / (GROWTH.length || 1),
-                    growthMax: Math.max(0, ...GROWTH),
-                    maxSeedWait,
-                    maxBudget,
-                    at30,
-                    extraWork: W._foodReservations.work || null,
-                    extraMsPerTick: Object.fromEntries(
-                        Object.entries(EXTRA_MS).map(([key, value]) => [key, value / TICKS]),
-                    ),
-                    workers: W._workAssign.size,
-                    piles: W.piles.length,
-                    productionCounter: W.foodTaps.produced,
-                    remaining: W.food.length,
-                };
-            }
-            for (const SCENARIO of ['fed', 'hungry', 'supply', 'dense', 'automatic']) {
-                for (const [NAME, TYPE] of [
-                    ['baseline', BASELINE],
-                    ['candidate', GARDEN],
-                ]) {
-                    RESULTS.push({ name: NAME, ...run(TYPE, SCENARIO) });
-                }
-            }
-            return {
-                seed: 424242,
-                dt: 0.05,
-                population: 1000,
-                adults: 900,
-                seeds: 100,
-                viewport: { width: 1280, height: 720 },
-                results: RESULTS,
-            };
-        });
-        BENCHMARK.baselineCommit = FOOD_BASELINE_REF;
-        BENCHMARK.candidateCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
-        BENCHMARK.browser = BROWSER.version();
-        BENCHMARK.node = process.version;
-        BENCHMARK.playwright = JSON.parse(
-            fs.readFileSync(path.join(ROOT, 'node_modules/playwright/package.json')),
-        ).version;
-        BENCHMARK.candidateSourceSHA256 = createHash('sha256')
-            .update(fs.readFileSync(path.join(ROOT, 'src/features/farm-modes/food-reservations/model.js')))
-            .digest('hex');
-        const FILE = path.join(OUT, 'benchmark-1000.json');
-        fs.writeFileSync(FILE, JSON.stringify(BENCHMARK, null, 2));
-        console.log('MODEL benchmark result', JSON.stringify(BENCHMARK));
-        for (const SCENARIO of ['supply', 'automatic']) {
-            const BEFORE = BENCHMARK.results.find((row) => row.name === 'baseline' && row.scenario === SCENARIO),
-                AFTER = BENCHMARK.results.find((row) => row.name === 'candidate' && row.scenario === SCENARIO);
-            assert.equal(AFTER.grown, 100, 'not all seeds grew');
-            assert.ok(
-                AFTER.growthAverage <= BEFORE.growthAverage &&
-                    AFTER.growthMax <= BEFORE.growthMax &&
-                    AFTER.maxSeedWait <= BEFORE.maxSeedWait,
-                'seed growth/wait regressed; raw results preserved',
-            );
-        }
-    }
+    console.log('PASS in-progress rollback and checkpoint rejection', ROLLBACK);
     assert.deepEqual(ERRORS, []);
     fs.writeFileSync(
         path.join(OUT, 'functional.json'),
@@ -870,7 +664,7 @@ try {
                 checkpoints: CHECKPOINTS,
                 limits: LIMITS,
                 cache: CACHE,
-                largeRollback: LARGE_ROLLBACK,
+                rollback: ROLLBACK,
                 errors: ERRORS,
             },
             null,

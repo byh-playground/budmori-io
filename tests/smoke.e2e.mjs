@@ -14,6 +14,7 @@ import {
     rollCardOffers,
     rollFloorKind,
     runStatModifiers,
+    TOWER_RUN_SETTINGS,
 } from '../src/tower/tower-run.js';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url)),
@@ -178,28 +179,33 @@ await check('new game boots with a minimal HUD', async () => {
 });
 
 await check('food workers hit grain piles and food is produced', async () => {
-    await WORLD(() => {
-        const W = BUDMORI.sim,
-            POSITIONS = new globalThis.BloomGamekitDeterministic.SeededPRNG(731);
-        for (let index = 0; index < 20; index++) {
-            W.spawn(
-                index % 9,
-                1,
-                (POSITIONS.nextUint32() / 4294967296 - 0.5) * 20,
-                (POSITIONS.nextUint32() / 4294967296 - 0.5) * 12,
-            );
+    // A few adult workers and fixed ticks inside one evaluate, so the live loop cannot interleave.
+    const GOT = await WORLD(() => {
+        const W = BUDMORI.sim;
+        for (let index = 0; index < 4; index++) {
+            const U = W.spawn(0, 1, index - 1.5, 0);
+            U.growthElapsed = U.growthDuration;
         }
         W.setWorkBasisPoints(6000);
         W._nextWorkerRefreshTick = 0;
         W.refreshWorkers();
+        const PRODUCED = W.foodTaps.produced;
+        let tick = 0;
+        // One session tick: farm work (worker swings and grain production) then the model step, both at 20 Hz.
+        for (; tick < 1200 && W.foodTaps.produced === PRODUCED; tick++) {
+            W.advanceWork(1 / 20);
+            W.step(1 / 20);
+        }
+        return {
+            ticks: tick,
+            workers: W.workerCount,
+            piles: W.piles.length,
+            hit: W.piles.some((pile) => pile.hitRev > 0),
+            produced: W.foodTaps.produced - PRODUCED,
+        };
     });
-    await PAGE.waitForFunction(() => BUDMORI.sim.foodTaps.produced > 0, null, { timeout: 45000 }).catch(() => {});
-    const GOT = await WORLD(() => ({
-        workers: BUDMORI.sim.workerCount,
-        piles: BUDMORI.sim.piles.length,
-        produced: BUDMORI.sim.foodTaps.produced,
-    }));
     expect(GOT.workers > 0 && GOT.piles > 0, `no workers or piles ${JSON.stringify(GOT)}`);
+    expect(GOT.hit, `no pile was hit ${JSON.stringify(GOT)}`);
     expect(GOT.produced > 0, `no food produced ${JSON.stringify(GOT)}`);
     const SPREAD = await WORLD(() => {
         const W = BUDMORI.sim,
@@ -267,33 +273,41 @@ await check('breeding weights split the breeders between species', async () => {
 });
 
 await check('units eat, breed and the farm stays under its capacity', async () => {
-    const STARTED = await WORLD(() => ({ time: BUDMORI.sim.time, tick: BUDMORI.sim.simulationTick }));
-    await WORLD(() => {
-        const W = BUDMORI.sim;
-        for (let round = 0; round < 40; round++) {
-            W.spawnFood((round % 8) - 4, Math.floor(round / 8) - 2, 1);
+    // A hungry adult pair beside food, a farm with room for exactly one more, and fixed ticks inside one evaluate.
+    const GOT = await WORLD(() => {
+        const W = BUDMORI.sim,
+            BIRTHS = W.metrics.births,
+            STARTED = { time: W.time, tick: W.simulationTick };
+        W.setWorkBasisPoints(0);
+        for (const X of [-0.4, 0.4]) {
+            const U = W.spawn(2, 1, X, 0);
+            Object.assign(U, { growthElapsed: U.growthDuration, meals: 0, cooldown: 0 });
         }
+        W.spawnFood(-1, 0.5, 1);
+        W.spawnFood(1, 0.5, 1);
+        const CAPACITY = W.ownedPopulation + 1;
+        Object.defineProperty(W, 'capacity', { configurable: true, get: () => CAPACITY });
+        let peak = 0;
+        try {
+            for (let tick = 0; tick < 600; tick++) {
+                W.advanceWork(1 / 20);
+                W.step(1 / 20);
+                peak = Math.max(peak, W.ownedPopulation);
+            }
+        } finally {
+            delete W.capacity;
+        }
+        return {
+            births: W.metrics.births - BIRTHS,
+            peak,
+            capacity: CAPACITY,
+            elapsedSimulationSeconds: W.time - STARTED.time,
+            elapsedTicks: W.simulationTick - STARTED.tick,
+        };
     });
-    await PAGE.waitForFunction(() => BUDMORI.sim.metrics.births > 0, null, { timeout: 60000 }).catch(() => {});
-    const GOT = await WORLD(() => ({
-        births: BUDMORI.sim.metrics.births,
-        owned: BUDMORI.sim.ownedPopulation,
-        capacity: BUDMORI.sim.capacity,
-        time: BUDMORI.sim.time,
-        tick: BUDMORI.sim.simulationTick,
-        fed: BUDMORI.sim.units.filter((unit) => unit.fed).length,
-        food: BUDMORI.sim.food.length,
-    }));
-    console.log(
-        'OBS farm births',
-        JSON.stringify({
-            ...GOT,
-            elapsedSimulationSeconds: GOT.time - STARTED.time,
-            elapsedTicks: GOT.tick - STARTED.tick,
-        }),
-    );
+    console.log('OBS farm births', JSON.stringify(GOT));
     expect(GOT.births > 0, `no births ${JSON.stringify(GOT)}`);
-    expect(GOT.owned <= GOT.capacity, `over capacity ${JSON.stringify(GOT)}`);
+    expect(GOT.peak <= GOT.capacity, `over capacity ${JSON.stringify(GOT)}`);
 });
 
 await check('challenge button starts a boss fight and retreat ends it', async () => {
@@ -869,10 +883,17 @@ await check(
                 return seed / 4294967296;
             },
             COUNT = { battle: 0, power: 0, event: 0, mid: 0 };
+        // The weight table itself: fight 1.5 against strengthening 8, events weigh nothing while none exist.
+        const BASE = TOWER_RUN_SETTINGS.floorBase;
+        expect(
+            BASE.battle === 1.5 && BASE.power === 8 && TOWER_RUN_SETTINGS.battleMaxGap === 4,
+            JSON.stringify(TOWER_RUN_SETTINGS),
+        );
         let since = freshTowerRun().since,
             gap = 0,
             worst = 0;
-        for (let floor = 2; floor < 20000; floor++) {
+        // 300 floors with the fixed seed: 240 weighted draws (every 5th is the mid boss).
+        for (let floor = 2; floor < 302; floor++) {
             const KIND = rollFloorKind({ floor, since, random: RANDOM, midBossEvery: 5, topFloor: 1e9 });
             COUNT[KIND]++;
             since = advanceSince(since, KIND);
@@ -881,12 +902,23 @@ await check(
         }
         const SHARE = COUNT.battle / (COUNT.battle + COUNT.power);
         expect(
-            SHARE > 0.17 && SHARE < 0.25 && COUNT.event === 0 && worst <= 4,
+            // The long-run share is about 0.19; for 240 draws three standard deviations is about +-0.08.
+            SHARE > 0.12 && SHARE < 0.27 && COUNT.event === 0 && worst <= 4,
             JSON.stringify({ COUNT, SHARE, worst }),
         );
         expect(
             rollFloorKind({ floor: 61, since, random: RANDOM, midBossEvery: 5, topFloor: 61 }) === 'battle',
             'top floor',
+        );
+        expect(
+            rollFloorKind({
+                floor: 7,
+                since: { battle: 4, power: 0, event: 0 },
+                random: () => 0.99,
+                midBossEvery: 5,
+                topFloor: 1e9,
+            }) === 'battle',
+            'four floors without a fight force one',
         );
     },
 );
@@ -908,8 +940,14 @@ await check('a strengthening floor offers three different cards, stat : passive 
                 random: RANDOM,
             }),
         COUNT = { stat: 0, passive: 0, skill: 0 };
+    const WEIGHTS = TOWER_RUN_SETTINGS.kindWeights;
+    expect(
+        WEIGHTS.stat === 8 && WEIGHTS.passive === 1 && WEIGHTS.skill === 1 && TOWER_RUN_SETTINGS.cardsPerFloor === 3,
+        JSON.stringify(WEIGHTS),
+    );
     let slots = 0;
-    for (let index = 0; index < 20000; index++) {
+    // 300 floors with the fixed seed: 900 slots.
+    for (let index = 0; index < 300; index++) {
         const OFFERS = OFFER([]);
         expect(OFFERS.length === 3 && new Set(OFFERS.map((offer) => offer.id)).size === 3, JSON.stringify(OFFERS));
         for (const OFFER_CARD of OFFERS) {
@@ -917,10 +955,11 @@ await check('a strengthening floor offers three different cards, stat : passive 
             slots++;
         }
     }
+    // For 900 slots three standard deviations is about 0.04 for stat and 0.03 for passive or skill.
     expect(
-        Math.abs(COUNT.stat / slots - 0.8) < 0.03 &&
-            Math.abs(COUNT.passive / slots - 0.1) < 0.03 &&
-            Math.abs(COUNT.skill / slots - 0.1) < 0.03,
+        Math.abs(COUNT.stat / slots - 0.8) < 0.04 &&
+            Math.abs(COUNT.passive / slots - 0.1) < 0.035 &&
+            Math.abs(COUNT.skill / slots - 0.1) < 0.035,
         JSON.stringify(COUNT),
     );
     const CAPPED = Array.from({ length: 10 }, () => ({ id: 'attack-pct', rarity: 0 }));
@@ -1349,6 +1388,16 @@ await check('each element signature skill is telegraphed and drawn with its own 
                 draws: globalThis.__sigDraws,
                 paused: BUDMORI.runtime?.paused,
             }));
+        // Advance the real model with fixed 20 Hz ticks until the boss starts this skill, instead of waiting
+        // for software-rendered frames to get there; the live loop then draws its telegraph and effect.
+        const STARTED = await WORLD((id) => {
+            const W = BUDMORI.sim;
+            for (let tick = 0; tick < 1200 && W.boss.patternRuntime.active?.id !== `signature.${id}`; tick++) {
+                W.step(1 / 20);
+            }
+            return W.boss.patternRuntime.active?.id === `signature.${id}`;
+        }, NAME);
+        expect(STARTED, `${NAME}: the boss never started its signature skill ${JSON.stringify(await STATE())}`);
         await PAGE.waitForFunction(
             (element) => {
                 const D = globalThis.__sigDraws;

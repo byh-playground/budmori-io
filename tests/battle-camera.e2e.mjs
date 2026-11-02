@@ -8,6 +8,9 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
+// Logic only: a handful of troops is enough for gestures, culling parity and state isolation.
+const FARM_UNITS = 10,
+    TOWER_UNITS = 12;
 const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     KIND = process.argv[2] || 'desktop',
     SIZES = {
@@ -322,7 +325,7 @@ async function capture(name) {
     });
     REPORT.captures.push({ name, ...DRAW });
     assert.ok(
-        DRAW.fadeMs >= 700 && DRAW.troops >= 100 && DRAW.unculledDraws >= 100,
+        DRAW.fadeMs >= 700 && DRAW.troops >= FARM_UNITS && DRAW.unculledDraws >= FARM_UNITS,
         'capture retains the populated fixture after scene fade',
     );
     assert.deepEqual(DRAW.nativeIds, DRAW.visibleIds, 'every admitted troop submits its native body exactly once');
@@ -415,22 +418,23 @@ try {
         }
     });
     await page.locator('#newGame').click();
-    await page.evaluate(async () => {
+    await page.evaluate(async (count) => {
         const W = BUDMORI.sim,
             { overallXpForLevel: XP } = await import('./src/model/player-progression.js');
         W.resetUnits();
         W.playerProgression.overallXp = XP(41);
         W.playerProgression.towerBest = 100;
         W.setWorkBasisPoints(0);
-        for (let i = 0; i < 200; i++) {
-            const U = W.spawn(i % 9, 1, ((i % 40) - 19.5) * 1.05, (Math.floor(i / 40) - 12) * 1.1);
+        for (let i = 0; i < count; i++) {
+            const U = W.spawn(i % 9, 1, ((i % 5) - 2) * 3, (Math.floor(i / 5) - 1) * 3);
             U.growthElapsed = U.growthDuration;
             U.dropLanded = true;
         }
         W.markProgressChanged();
-    });
+    }, FARM_UNITS);
     await page.waitForFunction(
-        () => BUDMORI.renderer.cameraWorld.units.length === 200 && !BUDMORI.renderer.cameraDirected,
+        (count) => BUDMORI.renderer.cameraWorld.units.length === count && !BUDMORI.renderer.cameraDirected,
+        FARM_UNITS,
     );
     await freeze();
     const FARM_STATE = await state(),
@@ -441,31 +445,48 @@ try {
     assert.equal(await state(), FARM_STATE, 'farm gestures preserve full checkpoint');
     await resume();
     REPORT.checks.push('farm shares the same native gestures and state isolation');
-    await page.evaluate(() => {
-        const W = BUDMORI.sim;
-        // 500 frontline + 100 reserves; the separate tower-army flow covers a full 1,000 roster.
-        for (let i = 200; i < 600; i++) {
-            const U = W.spawn(i % 9, 1, ((i % 40) - 19.5) * 1.05, (Math.floor(i / 40) - 12) * 1.1);
-            U.growthElapsed = U.growthDuration;
-            U.dropLanded = true;
-        }
-    });
+    await page.evaluate(
+        ({ from, to }) => {
+            const W = BUDMORI.sim;
+            // The whole roster fits under the frontline cap; tower-army covers the cap and reserves.
+            for (let i = from; i < to; i++) {
+                const U = W.spawn(i % 9, 1, ((i % 5) - 2) * 3, (Math.floor(i / 5) - 1) * 3);
+                U.growthElapsed = U.growthDuration;
+                U.dropLanded = true;
+            }
+        },
+        { from: FARM_UNITS, to: TOWER_UNITS },
+    );
     await page.locator('#bossChallenge').click();
     await page.locator('#deckGo').click();
-    await page.evaluate(() => {
+    // Logic only: arrange gate arrival, then advance the real model with fixed 20 Hz ticks until the whole
+    // roster is deployed and fighting the boss pack, instead of waiting for software-rendered frames.
+    const ENGAGED = await page.evaluate((count) => {
         const W = BUDMORI.sim;
         W.finishMarch();
-        W.boss.setBaseStats({ maxHp: 1e9, attackPower: 0.01 });
-        W.boss.setHealth(W.boss.maxHp);
-    });
-    await page.waitForFunction(
-        () =>
-            BUDMORI.sim.fieldFighterCount === 500 &&
-            BUDMORI.renderer.displayTimeMs - BUDMORI.renderer.sceneChangedAt > 1000,
-        null,
-        { timeout: 45000 },
+        const DAMAGED = () => W.bosses.some((boss) => boss.active && boss.hp > 0 && boss.hp < boss.maxHp);
+        let armed = false;
+        for (let tick = 0; tick < 1200 && !(W.fieldFighterCount === count && armed && DAMAGED()); tick++) {
+            if (!armed && W.bosses.some((boss) => boss.active)) {
+                // The pack is on the field: make every boss durable and harmless so the fight stays open.
+                for (const BOSS of W.bosses) {
+                    BOSS.setBaseStats({ maxHp: 1e9, attackPower: 0.01 });
+                    BOSS.setHealth(BOSS.maxHp);
+                }
+                armed = true;
+            }
+            W.step(1 / 20);
+        }
+        return { field: W.fieldFighterCount, armed, damaged: DAMAGED(), phase: W.farmBossEvent.phase };
+    }, TOWER_UNITS);
+    assert.deepEqual(
+        ENGAGED,
+        { field: TOWER_UNITS, armed: true, damaged: true, phase: 'fighting' },
+        'the whole roster deploys and hits the boss pack',
     );
-    await page.waitForFunction(() => BUDMORI.sim.boss.hp < BUDMORI.sim.boss.maxHp, null, { timeout: 45000 });
+    await page.waitForFunction(() => BUDMORI.renderer.displayTimeMs - BUDMORI.renderer.sceneChangedAt > 1000, null, {
+        timeout: 45000,
+    });
     await freeze();
     const BEFORE = await state(),
         INITIAL = await camera(),
@@ -541,14 +562,14 @@ try {
     await page.setViewportSize(SIZE);
     await page.waitForFunction((width) => BUDMORI.renderer.canvas.width === width, SIZE.width);
     REPORT.checks.push('native viewport resize/rotation preserves center and releases captured drag');
-    await page.locator('input[name="battleCommand"][value="scatter"]').check();
+    await page.locator('label:has(input[name="battleCommand"][value="scatter"])').click();
     await resume();
     await page.waitForFunction(() => BUDMORI.sim.battleCommand === 'scatter');
-    await page.locator('#upgradeMenu').click();
+    await page.locator('#gameMenu').click();
     const MENU_CAMERA = await camera();
     await page.mouse.move(CX, CY);
     await page.mouse.wheel(0, -200);
-    assert.deepEqual(await camera(), MENU_CAMERA, 'scrollable upgrade UI does not zoom world');
+    assert.deepEqual(await camera(), MENU_CAMERA, 'the scrollable game menu does not zoom world');
     await page.locator('#gameMenuClose').click();
     await page.mouse.move(CX, CY);
     await page.mouse.down();
@@ -567,7 +588,7 @@ try {
     await page.mouse.up();
     await page.mouse.wheel(0, -100);
     assert.deepEqual(await camera(), REWARD_CAMERA, 'automatic reward cancels a captured drag');
-    REPORT.checks.push('radio command, upgrade scroll and automatic reward interrupt gestures');
+    REPORT.checks.push('radio command, game-menu scroll and automatic reward interrupt gestures');
     assert.deepEqual(ERRORS, []);
     REPORT.status = 'passed';
 } catch (error) {

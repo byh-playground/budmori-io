@@ -101,7 +101,9 @@ Context loss suspends the session clock and RAF work while SDK resources recover
 
 `npm run test:unit-sprites`의 깊이 장면 9개는 같은 DTO/시각의 원래 actor 순서와 전체 RGBA 픽셀 차이 0을 검사합니다. 정상 겹침·역순/동일 깊이·분신·숨긴/페이드 껍질·외곽 반투명·전부 반투명인 장면·거대화 벡터 얼굴·시설/먹이/전후 링을 포함합니다. sprite 전용 화면은 깊이 버퍼·정책 경계를 추가하지 않습니다. 원본 모델은 렌더로 바뀌지 않습니다.
 
-재실행 명령(관찰 JSON/이미지는 임시 경로에 기록):
+당시 재실행 명령(관찰 JSON/이미지는 임시 경로에 기록):
+
+> 이 측정에 쓴 `tests/unit-sprites.e2e.mjs --benchmark` 모드와 `--count`·`--backend`·`--species`·`--gpu-readback`·`--breeding-rings`·`--warmup`·`--samples`·`--rounds` 옵션은 제거했습니다(PM-014: 머지 전 검사에 부하·타이밍 측정을 두지 않음). 아래 명령은 당시 커밋에서만 재현되는 기록입니다.
 
 ```sh
 node tests/unit-sprites.e2e.mjs --benchmark --count=200 --backend=vector --output=/tmp/budmori-benchmark
@@ -144,6 +146,8 @@ Chromium153.0.8010.12 / Playwright1.63 / Node24.19 / Linux SwiftShader(소프트
 
 재현은 동일 게임 소스에서 기준/후보 rendering 번들을 각각 고정하고 아래 CLI를 A→B→B→A로 실행합니다. 관찰물은 임시 경로에만 둡니다. 일회용 override 스크립트는 저장소에 포함하지 않습니다.
 
+> 제거된 `--benchmark` 모드의 당시 명령 기록입니다(현재 코드에서는 실행되지 않음).
+
 ```sh
 node tests/unit-sprites.e2e.mjs --benchmark --count=882 --backend=vector --species=7 --gpu-readback --warmup=12 --samples=24 --rounds=1 --output=/tmp/budmori-wheat
 node tests/unit-sprites.e2e.mjs --benchmark --count=1000 --backend=vector --gpu-readback --warmup=12 --samples=24 --rounds=1 --output=/tmp/budmori-mixed
@@ -167,6 +171,8 @@ SDK 전체 core의 기존 GPU-vs-CPU uniform 비교는 auto frame1에서490픽�
 GameKit0.40.3(source `f240b1211fd9086106117773f8458ea3cc4b4fff`,dist `34918d09b47541ce1db2f9a036ff21e2fc9aefa4`)은 세 입력 검사에서 유한한 scale0을 허용합니다. `rendering.js` SHA는0.40.2와 같은 `08a110906c3a249c892685940ff79b3ebe7bc34afe36f4c5d6b7b056572ccf8b`이며 새 렌더 파이프라인을 추가하지 않습니다. 몸통 윤곽·소켓·충돌 치수·clip 시점·이동/회전은 유지합니다.
 
 비교는 기존 CLI로 혼합/밀/땅콩 각각1,000마리,seed731,고정50ms,1100×850/DPR1,회차별 warm12/sample24/round1을 A→B→B→A 순서로 실행합니다. 장면마다 전후48표본이며 원본 snapshot SHA가 같아야 합니다. 프레임별1×1 GPU readback은 렌더 CPU 밖에서 query 완료를 기다립니다. SwiftShader의 고립 프레임 CPU/GPU·draw·전송/메모리 비용이며 앱FPS나 실제PC/모바일 성능으로 환산하지 않습니다. 회차별 수치·모델SHA·실행 환경과 기능 검증 결과는 이 변경의 PR 본문에 기록합니다.
+
+> 제거된 `--benchmark` 모드의 당시 명령 기록입니다(현재 코드에서는 실행되지 않음).
 
 ```sh
 node tests/unit-sprites.e2e.mjs --benchmark --count=1000 --backend=vector --gpu-readback --warmup=12 --samples=24 --rounds=1 --output=/tmp/opaque-mixed
