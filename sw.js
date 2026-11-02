@@ -64,7 +64,7 @@
     }
   });
 })({
-    "version": "7783160a1c4fdc2a",
+    "version": "fe62215703b2b643",
     "activateMessage": "bloom-pwa:activate",
     "gamekit": "^https:\\/\\/cdn\\.jsdelivr\\.net\\/gh\\/byh-playground\\/bloom-gamekit@[0-9a-f]{40}\\/[A-Za-z0-9._/-]+$",
     "precache": [
@@ -316,6 +316,7 @@
         "src/render/boss-vector-sockets.js",
         "src/render/combat-feel.js",
         "src/render/damage-numbers.js",
+        "src/render/death-presentation.js",
         "src/render/element-hit-effects.js",
         "src/render/element-particles.js",
         "src/render/element-projectile.js",
