@@ -1,4 +1,4 @@
-import { labRequested } from '../debug/lab.js';
+import { unitArtMode } from './unit-art.js';
 import { barleyPreviewEnvelope } from '../features/unit-attacks/barley/presentation.js';
 import { wheatPreviewEnvelope } from '../features/unit-attacks/wheat/presentation.js';
 import { ricePreviewEnvelope } from '../features/unit-attacks/rice/presentation.js';
@@ -81,16 +81,7 @@ const ZOOM_MAX = 1.8;
 const DIORAMA = class Diorama {
     constructor(canvas, { deferSpritePreparation = false } = {}) {
         this.canvas = canvas;
-        // The single code setting chooses only body art, never game state.
-        // Help iframes retain native vectors instead of preparing a whole atlas.
-        const ART_QUERY = new URLSearchParams(globalThis.location?.search);
-        if (!['vector', 'sprite'].includes(CONFIG.render.unitArt)) {
-            throw new TypeError('CONFIG.render.unitArt must be vector or sprite');
-        }
-        this.unitArtMode =
-            ART_QUERY.has('help') || labRequested(globalThis.location?.search)
-                ? 'previewVector'
-                : CONFIG.render.unitArt;
+        this.unitArtMode = unitArtMode(globalThis.location?.search);
         this.device = new WEB_GL_DEVICE(canvas, {
             alpha: false,
             depth: this.unitArtMode !== 'sprite',

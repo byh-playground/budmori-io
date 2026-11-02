@@ -1,7 +1,7 @@
 import { PAGE } from './i18n/messages/page.js';
 import { labRequested } from './debug/lab.js';
 import { isolatedPage } from './save/save-adapter.js';
-import { createStartupLoading } from './startup-loading.js';
+import { createStartupLoading, showStartupFailure } from './startup-loading.js';
 import { formatNumber } from './i18n/text.js';
 import { BOOT } from './i18n/messages/boot.js';
 
@@ -36,10 +36,8 @@ let config = null;
 let initStage = 'bootstrap';
 let debugTools = null;
 let diagnosticRing = null;
-const STARTUP = createStartupLoading();
-globalThis.BudmoriStartup = STARTUP;
-const LABEL = STARTUP.label;
-const RETRY = STARTUP.retry;
+// Created once the verified GameKit boot module is loaded (launch); also globalThis.BudmoriStartup for the game.
+let startup = null;
 const ERROR_POPUP = document.createElement('div');
 ERROR_POPUP.id = 'bloom-error-popup';
 ERROR_POPUP.hidden = true;
@@ -355,11 +353,8 @@ try {
     config = JSON.parse(MANIFEST.textContent);
 } catch (error) {
     initStage = 'manifest';
-    STARTUP.fail(fallbackText(error));
     recordDiagnostic(error, 'manifest-error');
-    LABEL.textContent = BOOT.manifestFailed();
-    RETRY.textContent = PAGE.loadingRetry();
-    RETRY.hidden = false;
+    showStartupFailure(BOOT.manifestFailed(), fallbackText(error));
     showErrorPopup(BOOT.prepareFailed({ message: fallbackText(error) }));
     console.error('Game manifest failed to initialize', error);
 }
@@ -369,7 +364,7 @@ let started = false;
 let vectorLoader = null;
 const VECTOR_SOURCE_TEXT = new Map();
 const VECTOR_RESPONSES = new Map();
-// The plain file address, so the service worker's precache (which matches the exact address) serves it offline.
+// The plain file address, so the service worker's offline copy (stored per exact address) serves it offline.
 // Integrity is the manifest SHA-256 the loader checks; no-cache revalidates when no service worker answers.
 const VECTOR_SOURCE_URL = (spec) => new URL(spec.file, document.baseURI).href;
 const DIGEST = async (bytes) =>
@@ -452,20 +447,24 @@ async function launch() {
         return;
     }
     pending = true;
-    STARTUP.begin();
-    STARTUP.report('modules', 0, config.modules.length);
-    await STARTUP.yield();
-    LABEL.textContent = BOOT.preparingGame();
     try {
         if (!debugTools) {
             await loadDiagnostics();
         }
+        initStage = 'loading-boot';
+        const BOOT_ENTRY = config.modules.find((module) => module.name === 'boot');
+        if (!BOOT_ENTRY) {
+            throw new Error('Required gamekit boot module is missing from the manifest');
+        }
+        startup = createStartupLoading((await namespace(BOOT_ENTRY)).exports);
+        globalThis.BudmoriStartup = startup;
         initStage = 'loading-modules';
+        startup.report('modules', 0, config.modules.length);
         let modulesDone = 0;
         const MODULES = await Promise.all(
             config.modules.map(async (entry) => {
                 const RECORD = await namespace(entry);
-                STARTUP.report('modules', ++modulesDone, config.modules.length);
+                startup.report('modules', ++modulesDone, config.modules.length);
                 return { entry, record: RECORD };
             }),
         );
@@ -474,7 +473,7 @@ async function launch() {
         }
         const VECTOR_URLS = [...new Set(config.vectorAssets.map((spec) => VECTOR_SOURCE_URL(spec)))];
         let downloaded = 0;
-        STARTUP.report('vector-download', downloaded, VECTOR_URLS.length);
+        startup.report('vector-download', downloaded, VECTOR_URLS.length);
         await Promise.all(
             VECTOR_URLS.map(async (url) => {
                 const RESPONSE = await fetch(url, { cache: 'no-cache' });
@@ -484,11 +483,10 @@ async function launch() {
                 // Download in parallel, then compile each quality variant between paints.
                 VECTOR_SOURCE_TEXT.set(url, await RESPONSE.clone().text());
                 VECTOR_RESPONSES.set(url, RESPONSE);
-                STARTUP.report('vector-download', ++downloaded, VECTOR_URLS.length);
+                startup.report('vector-download', ++downloaded, VECTOR_URLS.length);
             }),
         );
         initStage = 'loading-vector-assets';
-        LABEL.textContent = BOOT.preparingCharacters();
         // Keep troop and giant variants in separate quality-keyed startup cache entries.
         vectorLoader ||= globalThis.BloomGamekitVectorAssetLoader.createVectorAssetLoader({
             maxEntries: config.vectorAssets.length,
@@ -506,9 +504,9 @@ async function launch() {
             BOSSES = {},
             SOURCES = {};
         const RECORDS = [];
-        STARTUP.report('vectors', 0, config.vectorAssets.length);
+        startup.report('vectors', 0, config.vectorAssets.length);
         for (const SPEC of config.vectorAssets) {
-            await STARTUP.yield();
+            await startup.yield();
             const URL_LOCAL = VECTOR_SOURCE_URL(SPEC);
             const PRESET = globalThis.BloomGamekitVectorAssetLoader.VECTOR_ASSET_QUALITY_PRESETS[SPEC.qualityPreset];
             if (!PRESET) {
@@ -527,7 +525,7 @@ async function launch() {
                 spec: SPEC,
                 compiled: COMPILED,
             });
-            STARTUP.report('vectors', RECORDS.length, config.vectorAssets.length);
+            startup.report('vectors', RECORDS.length, config.vectorAssets.length);
         }
         for (const { spec: SPEC, compiled: COMPILED } of RECORDS) {
             (SPEC.kind === 'troop' ? TROOPS : BOSSES)[SPEC.id] = COMPILED;
@@ -574,11 +572,21 @@ async function launch() {
                 READY.clear();
             },
         });
+        // Native ES modules are the authored runtime; no generated IIFE or build artifact. The whole game graph
+        // (listed at commit time by GameKit listModuleGraph) is requested in parallel first, so import() below
+        // evaluates from the module map instead of discovering imports one level per round trip.
+        initStage = 'loading-game-modules';
+        const GAME_URL = new URL('./farm-app.js', import.meta.url).href,
+            GAME_MODULE_URLS = config.gameModules.map((file) => new URL(file, document.baseURI).href);
+        // import() reuses a preloaded module only for the identical URL.
+        if (GAME_MODULE_URLS[0] !== GAME_URL) {
+            throw new Error('Runtime manifest gameModules must start with the game entry ' + GAME_URL);
+        }
+        await startup.boot.preloadModules(GAME_MODULE_URLS, { stage: 'game-modules' });
         initStage = 'loading-game-script';
-        STARTUP.report('game');
-        await STARTUP.yield();
-        // Native ES modules are the authored runtime; no generated IIFE or build artifact.
-        const GAME_URL = new URL('./farm-app.js', import.meta.url).href;
+        // The game finishes this stage once its own initialization is done and reports its renderer stages.
+        startup.report('game', 0, null);
+        await startup.yield();
         globalThis.BloomGameSourceURL = GAME_URL;
         globalThis.BloomGameSourceIntegrity = null;
         await import(GAME_URL);
@@ -588,12 +596,14 @@ async function launch() {
         }
         started = true;
         initStage = 'ready';
-        STARTUP.complete();
+        startup.complete();
     } catch (error) {
-        STARTUP.fail(fallbackText(error));
+        if (startup) {
+            startup.fail(error, fallbackText(error));
+        } else {
+            showStartupFailure(BOOT.startFailed(), fallbackText(error));
+        }
         recordDiagnostic(error, 'startup-error');
-        LABEL.textContent = BOOT.startFailed();
-        RETRY.hidden = false;
         console.error('Game startup failed at ' + initStage, error);
         showErrorPopup(BOOT.prepareFailed({ message: fallbackText(error) }));
     } finally {

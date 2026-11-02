@@ -31,8 +31,6 @@ const PILE_WIDTH = 2 * PILE_ART.radiusX * (PILE_ART.baseScale + PILE_ART.foodSca
 // Runtime configuration is separate from saved world fields and their import
 // migration. Only already-established capacity/growth relations are derived.
 export const CONFIG = Object.freeze({
-    // Presentation only; SVG assets and native animation/socket data stay shared.
-    render: Object.freeze({ unitArt: 'vector' }), // 'vector' | 'sprite'
     factions: FACTION_CONFIG,
     farm: Object.freeze({
         arena: FARM_ARENA,

@@ -22,7 +22,7 @@
         "test:seedling-growth": "node tests/seedling-growth.e2e.mjs",
         "test:palette": "node tests/palette.e2e.mjs",
         "pwa": "node scripts/pwa.mjs",
-        "check": "npm run format:check && npm run lint && node scripts/pwa.mjs --check && node --check src/bootstrap.js && node --check src/farm-app.js && node --check src/vector-sockets.js && node --check src/features/unit-body/definition.js && node scripts/source-graph.mjs",
+        "check": "npm run format:check && npm run lint && node scripts/pwa.mjs --check && node scripts/update-runtime-manifest.cjs --check && node --check src/bootstrap.js && node --check src/farm-app.js && node --check src/vector-sockets.js && node --check src/features/unit-body/definition.js && node scripts/source-graph.mjs",
         "test:source-smoke": "node tests/source-smoke.e2e.mjs",
         "test:stat-cards": "node tests/stat-cards.e2e.mjs",
         "test:pwa-update": "node tests/pwa-update.e2e.mjs",

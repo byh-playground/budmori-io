@@ -89,7 +89,7 @@ const REPORT = {
             'src/render/farm-render-units.js',
             'src/render/farm-renderer.js',
             'src/render/unit-face-overlay.js',
-            'src/model/farm-config.js',
+            'src/render/unit-art.js',
             'src/units/species-face.js',
             'src/units/species-paint.js',
             'src/ui/codex-dialog.js',
@@ -231,12 +231,12 @@ try {
                 });
                 // Exercise the production code setting itself. There is no
                 // separate URL/runtime renderer switch in the product.
-                await PAGE.route('**/src/model/farm-config.js', (route) => {
-                    const SOURCE = fs.readFileSync(path.join(ROOT, 'src/model/farm-config.js'), 'utf8');
-                    assert.match(SOURCE, /unitArt: 'vector'/);
+                await PAGE.route('**/src/render/unit-art.js', (route) => {
+                    const SOURCE = fs.readFileSync(path.join(ROOT, 'src/render/unit-art.js'), 'utf8');
+                    assert.match(SOURCE, /UNIT_ART = 'vector'/);
                     return route.fulfill({
                         contentType: 'text/javascript',
-                        body: SOURCE.replace("unitArt: 'vector'", `unitArt: '${BACKEND}'`),
+                        body: SOURCE.replace("UNIT_ART = 'vector'", `UNIT_ART = '${BACKEND}'`),
                     });
                 });
                 await PAGE.goto(`http://127.0.0.1:${SERVER.address().port}/index.html`);

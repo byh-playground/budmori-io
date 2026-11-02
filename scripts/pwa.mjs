@@ -1,5 +1,6 @@
 // `node scripts/pwa.mjs` writes the web app manifest, icons, share image, sw.js and the <head> tags between the
 // bloom-pwa markers; `--check` (part of `npm run check`) only fails when the committed files are out of date.
+// sw.js does not depend on the game's files (every load revalidates them), so only a GameKit pin bump changes it.
 // The generator is the pinned GameKit dist file vendor/upstream/pwa-build.mjs. Its bytes are checked here against
 // the pinned dist manifest, whose hash is the one in gamekit-lock.json, before it is imported.
 import { createHash } from 'node:crypto';
@@ -33,9 +34,6 @@ const { changed: CHANGED } = await BUILD_PWA({
     scope: './',
     siteUrl: 'https://byh-playground.github.io/budmori-io/',
     html: 'index.html',
-    // Everything the page reads from this origin to start: the page, the authored ESM and CSS, and the troop SVGs
-    // the bootstrap compiles. Pinned GameKit modules are listed in index.html and src/showcase.js and are cached too.
-    precache: ['index.html', 'src/**', 'assets/troops/*', 'assets/home-garden.svg'],
     out: '.',
     check: process.argv.includes('--check'),
 });

@@ -72,7 +72,6 @@ let graphicsRecovery = null;
 let sessionClockNow = () => performance.now();
 let home = true;
 let personalGarden = null;
-let appPhase = ISOLATED_PAGE ? 'ready' : 'checking';
 let unsubscribeProgress = null;
 let menuOpen = false;
 let menuTab = 'play';
@@ -95,6 +94,8 @@ let mergeStatusCache = {
     combine: null,
 };
 const RENDERER = new Diorama(DOLLAR('world'), { deferSpritePreparation: true });
+// Startup progress (src/startup-loading.js): game initialization ends here; the renderer reports its atlas stages.
+globalThis.BudmoriStartup?.finish('game');
 await RENDERER.prepareStartup({
     onProgress: globalThis.BudmoriStartup?.report,
     yieldControl: () => globalThis.BudmoriStartup?.yield() ?? new Promise((resolve) => setTimeout(resolve, 0)),
@@ -208,34 +209,12 @@ function showSaveError(message) {
 STORAGE.onError = showSaveError;
 PLAY.onError = showSaveError;
 // Isolated scenes run this same page and must not install, cache or update the app.
-let appStartup = null;
 if (!ISOLATED_PAGE) {
-    let updatePause = null;
-    appStartup = startAppShell({
+    startAppShell({
         dollar: DOLLAR,
         // A fresh page has no changed farm in memory. Even a locked save stays
-        // byte-for-byte intact while only the application code is updated.
+        // byte-for-byte intact while the page reloads into the latest version.
         beforeUpdate: () => (personalGarden === null ? true : saveLocked() ? false : persist()),
-        canAutoUpdate: () => home && personalGarden === null,
-        onUpdating: (updating) => {
-            if (updating) {
-                stopWorldInput();
-                updatePause = { phase: appPhase, session: active, paused: active?.paused };
-                appPhase = 'updating';
-                if (active) {
-                    active.paused = true;
-                }
-            } else {
-                appPhase = updatePause.phase;
-                if (updatePause?.session === active && active) {
-                    active.paused = updatePause.paused;
-                }
-                updatePause = null;
-                if (appPhase === 'ready') {
-                    route();
-                }
-            }
-        },
     });
 }
 function saveLocked() {
@@ -1819,12 +1798,12 @@ document.addEventListener('visibilitychange', () => {
         if (!home) {
             markSeen();
         }
-    } else if (!home && appPhase === 'ready') {
+    } else if (!home) {
         settleOffline();
     }
 });
 window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && menuOpen && appPhase === 'ready') {
+    if (e.key === 'Escape' && menuOpen) {
         e.preventDefault();
         closeMenu();
     }
@@ -1912,9 +1891,6 @@ CANVAS.addEventListener('webglcontextrestored', () => {
     }, 0);
 });
 function route() {
-    if (appPhase !== 'ready') {
-        return;
-    }
     stopWorldInput();
     const R = location.hash;
     if (R === '#/' || !R) {
@@ -2247,11 +2223,7 @@ DOLLAR('productVersion').textContent = PRODUCT_VERSION;
 DOLLAR('startVersion').textContent = PRODUCT_VERSION;
 DOLLAR('settingsVersion').textContent = `v${PRODUCT_VERSION}`;
 setHome(true, false);
-const CAN_START = appStartup ? await appStartup : true;
-if (CAN_START) {
-    appPhase = 'ready';
-}
-if (CAN_START && location.hash && location.hash !== '#/') {
+if (location.hash && location.hash !== '#/') {
     route();
 }
 
