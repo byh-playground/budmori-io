@@ -1,12 +1,11 @@
-import { LOCALE_TAG } from '../i18n/locale.js';
-import { localized } from '../i18n/text.js';
+import { LOCALE } from '../i18n/locale.js';
 import { SPECIES_INFO } from '../i18n/messages/ui-species-info.js';
 import { speciesDescription, speciesName } from '../i18n/messages/species.js';
 import { speciesPortraitSource } from '../units/species-paint.js';
 import { baseUnitStatsFor } from '../units/unit-stats.js';
 import { SPECIES_ABILITY_DEFINITIONS } from '../abilities/ability-definitions.js';
 
-const NUMBER = (value) => new Intl.NumberFormat(LOCALE_TAG, { maximumFractionDigits: 2 }).format(value);
+const NUMBER = (value) => new Intl.NumberFormat(LOCALE.locale, { maximumFractionDigits: 2 }).format(value);
 const TEXT = (value) =>
     String(value).replace(
         /[&<>"']/g,
@@ -30,7 +29,7 @@ export function speciesInfoHtml(world, id) {
         OWNED = baseUnitStatsFor(TIER, id, false),
         ABILITY = SPECIES_ABILITY_DEFINITIONS.find((definition) => definition.species === id);
     return `<div class="species-info__portrait"><img src="${speciesPortraitSource(id)}" alt="" width="64" height="64"><p>${TEXT(speciesDescription(id))}</p></div>
-        <h3>${TEXT(SPECIES_INFO.trait({ name: localized(ABILITY.name) }))}</h3><p>${TEXT(localized(ABILITY.description))}</p>
+        <h3>${TEXT(SPECIES_INFO.trait({ name: LOCALE.text(ABILITY.name) }))}</h3><p>${TEXT(LOCALE.text(ABILITY.description))}</p>
         <h3>${SPECIES_INFO.baseStats()}</h3><p>${SPECIES_INFO.baseStatsNote()}</p>
         <table><thead><tr><th scope="col">${SPECIES_INFO.statColumn()}</th><th scope="col">T1</th><th scope="col">${SPECIES_INFO.bestOwned({ tier: TIER })}</th></tr></thead><tbody>${STATS.map(([stat, label, format = NUMBER]) => `<tr><th scope="row">${label()}</th><td>${format(BASE[stat])}</td><td>${format(OWNED[stat])}</td></tr>`).join('')}</tbody></table>`;
 }

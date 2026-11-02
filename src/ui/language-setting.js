@@ -1,4 +1,4 @@
-import { LOCALE, LOCALES, LOCALE_NAMES, chooseLocale } from '../i18n/locale.js';
+import { LOCALE, LOCALE_NAMES } from '../i18n/locale.js';
 import { LANGUAGE } from '../i18n/messages/language.js';
 
 // Settings row that switches the display language. A switch reloads the page (see i18n/locale.js), so the host
@@ -8,20 +8,20 @@ export class LanguageSetting {
         this.notice = notice;
         this.canReload = canReload;
         choices.replaceChildren(
-            ...LOCALES.map((locale) => {
+            ...LOCALE.locales.map((locale) => {
                 const BUTTON = document.createElement('button');
                 BUTTON.type = 'button';
                 BUTTON.lang = locale;
                 BUTTON.dataset.locale = locale;
                 BUTTON.textContent = LOCALE_NAMES[locale];
-                BUTTON.setAttribute('aria-pressed', String(locale === LOCALE));
+                BUTTON.setAttribute('aria-pressed', String(locale === LOCALE.locale));
                 BUTTON.onclick = () => this.choose(locale);
                 return BUTTON;
             }),
         );
     }
     choose(locale) {
-        if (locale === LOCALE) {
+        if (locale === LOCALE.locale) {
             return;
         }
         if (!this.canReload()) {
@@ -29,6 +29,6 @@ export class LanguageSetting {
             return;
         }
         this.notice.textContent = '';
-        chooseLocale(locale);
+        LOCALE.choose(locale);
     }
 }

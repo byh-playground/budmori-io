@@ -1,7 +1,7 @@
-import { defineMessages } from '../text.js';
+import { LOCALE } from '../locale.js';
 
 // Help cards (src/ui/help-scenes.js): titles, bullet points and the captions that follow each scene's step.
-export const HELP = defineMessages({
+export const HELP = LOCALE.messages({
     breedTitle: { ko: '먹이와 번식', en: 'Food and Breeding' },
     breedPointWorkers: { ko: '일꾼이 곡식 더미를 쳐서 낟알을 만들어요', en: 'Workers hit grain piles to make grains' },
     breedPointBirth: {

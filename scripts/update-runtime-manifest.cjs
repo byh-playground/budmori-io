@@ -48,6 +48,7 @@ function prepareRuntime(root = PATH.resolve(__dirname, '..'), { check = false } 
         save: 'BloomGamekitSave',
         pwa: 'BloomGamekitPwa',
         boot: 'BloomGamekitBoot',
+        i18n: 'BloomGamekitI18n',
     };
     const SHA = (bytes) => CRYPTO.createHash('sha256').update(bytes).digest('hex');
     const MODULES = Object.entries(NAMESPACES).map(([name, globalName]) => {

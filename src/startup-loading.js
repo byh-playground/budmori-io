@@ -3,28 +3,21 @@
 // link remains usable even if this module itself is unavailable.
 // Progress itself is GameKit boot (createBoot/bindBootProgress/yieldFrame); this file owns the stages, their
 // weights and the text (docs/startup-loading.md).
-import { applyPageText } from './i18n/text.js';
+import { BOOTSTRAP_UNAVAILABLE } from './startup-guard.js';
+import { LOCALE } from './i18n/locale.js';
 import { BOOT } from './i18n/messages/boot.js';
 import { PAGE } from './i18n/messages/page.js';
 import { unitArtMode } from './render/unit-art.js';
 
 // The page's static text (data-i18n) in the page locale. This is the first module the page runs, so the loading
 // panel already reads in the player's language before bootstrap reports any step (docs/i18n.md).
-applyPageText(document, PAGE);
+LOCALE.applyPage(document, PAGE);
 const ELEMENT = document.getElementById('bloom-module-loading'),
     LABEL = document.getElementById('bloom-loading-label'),
     DETAIL = document.getElementById('bloom-loading-detail'),
     PROGRESS = document.getElementById('bloom-loading-progress'),
     RETRY = document.getElementById('bloom-loading-retry');
-addEventListener(
-    'error',
-    (event) => {
-        if (event.target?.matches?.('script[data-bloom-bootstrap]')) {
-            showStartupFailure(BOOT.bootstrapUnavailable(), BOOT.bootstrapUnavailableDetail());
-        }
-    },
-    true,
-);
+BOOTSTRAP_UNAVAILABLE.then(() => showStartupFailure(BOOT.bootstrapUnavailable(), BOOT.bootstrapUnavailableDetail()));
 // Weight = the stage's share of the bar: its measured wall time in tenths of a second, at least 1
 // (docs/startup-loading.md "단계 가중치"; the sprite path sums to the measured 6.1 s). The atlas stages exist only
 // with the sprite body-art backend, so the default vector path fills the bar with its own five stages.

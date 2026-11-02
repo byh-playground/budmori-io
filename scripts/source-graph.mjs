@@ -74,7 +74,7 @@ function checkStyleText(root) {
 }
 
 // index.html static text is localized (docs/i18n.md): Hangul only inside <noscript>, and every data-i18n /
-// data-i18n-<attr> key names a member of the defineMessages table in src/i18n/messages/page.js.
+// data-i18n-<attr> key names a member of the LOCALE.messages table in src/i18n/messages/page.js.
 function checkPageText(html, pageSource) {
     const OUTSIDE_NOSCRIPT = html.replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript\s*>/gi, ''),
         HANGUL = /[\u1100-\u11FF\u3130-\u318F\uAC00-\uD7A3]/u,
@@ -87,8 +87,13 @@ function checkPageText(html, pageSource) {
     const TREE = parse(pageSource, { ecmaVersion: 'latest', sourceType: 'module' }),
         KEYS = new Set();
     walk(TREE, (node) => {
-        if (node.type === 'CallExpression' && node.callee.name === 'defineMessages') {
-            assert.equal(node.arguments[0]?.type, 'ObjectExpression', 'page.js must call defineMessages({ ... })');
+        if (
+            node.type === 'CallExpression' &&
+            node.callee.type === 'MemberExpression' &&
+            node.callee.object.name === 'LOCALE' &&
+            node.callee.property.name === 'messages'
+        ) {
+            assert.equal(node.arguments[0]?.type, 'ObjectExpression', 'page.js must call LOCALE.messages({ ... })');
             for (const PROPERTY of node.arguments[0].properties) {
                 KEYS.add(PROPERTY.key.name ?? PROPERTY.key.value);
             }
@@ -199,7 +204,7 @@ export function sourceGraph(root = DEFAULT_ROOT) {
                     if (URLS.length === 1) {
                         specifier = URLS[0];
                     } else if (
-                        file === MANIFEST.bootstrap.file &&
+                        file === 'src/gamekit-module.js' &&
                         node.source.name === 'URL_LOCAL' &&
                         VALUES.some(
                             (value) =>
@@ -210,7 +215,7 @@ export function sourceGraph(root = DEFAULT_ROOT) {
                                 value.arguments[0].callee.name === 'Blob',
                         )
                     ) {
-                        // The existing bootstrap imports hash-verified immutable SDK bytes, not generated app code.
+                        // The shared GameKit loader imports hash-verified immutable SDK bytes, not generated app code.
                         EDGES.push({ from: file, kind: 'verified-sdk-manifest', to: 'runtime-manifest.modules' });
                         return;
                     }

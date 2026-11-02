@@ -1,7 +1,7 @@
-import { defineMessages } from '../text.js';
+import { LOCALE } from '../locale.js';
 
 // Start screen, saves, diagnostics and app-level errors (src/farm-app.js).
-export const APP_HOME = defineMessages({
+export const APP_HOME = LOCALE.messages({
     continueRun: { ko: '도전 이어가기', en: 'Continue run' },
     homeProgress: {
         ko: ({ population, best }) => `병력 ${population}마리 · 최고 ${best}층`,
