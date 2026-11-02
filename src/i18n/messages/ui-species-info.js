@@ -1,7 +1,7 @@
-import { defineMessages } from '../text.js';
+import { LOCALE } from '../locale.js';
 
 // Species info dialog (src/ui/species-info.js).
-export const SPECIES_INFO = defineMessages({
+export const SPECIES_INFO = LOCALE.messages({
     title: { ko: ({ name }) => `${name} 병종 정보`, en: ({ name }) => `${name} Species Info` },
     trait: { ko: ({ name }) => `병종 특성 · ${name}`, en: ({ name }) => `Species Trait · ${name}` },
     baseStats: { ko: '기본 스펙', en: 'Base Stats' },

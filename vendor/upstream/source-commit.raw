@@ -1,34 +1,30 @@
-tree f0838f499d3cf4b7aab6e02938b075b11e624502
-parent 84c23cecd3dc0cc5c006e8018e6e24a4df79b3a9
-author byh020907 <byh020907@naver.com> 1793622076 +0900
-committer GitHub <noreply@github.com> 1793622076 +0900
+tree 8015f9563f345d777a3c503f0114c9e5be5b9ca6
+parent cfd064ae3ea3f4ca624849fcd454662c4e098e04
+author byh020907 <byh020907@naver.com> 1793631625 +0900
+committer GitHub <noreply@github.com> 1793631625 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq6IA8CRC1aQ7uu5UhlAAAxwYQAAywIshUV8dXuDGuDJfsLYxy
- ZfOuWHzgo5548ow6qQQFuPoueX1bZeFsfDUNwhcPGXBYrNVaII1tjrEjS4TC8J/Y
- 7Du7wzW0d8aVurftX1wHmsIBHjPPBAfsbI8Rzl3vITlisAjBBGLCE8kSUOb+0hpw
- VOEOkfkx9gW0pvymCbwQ5ldaFkcI8hhcht3y7pLQHC3H/gh6NOeX2VlanhjD9Xpk
- fhkutrZqHWJiC9LD5dOOrBuXbp4nqaTu/aJxZuPJWF1ouubBtsjqB1OOh2wzVk5Z
- kpJFGSzL9ISaRmeAFSHo3F9g8Qg9ul/bM1O0SqMZhN1mI4dL5MX9KxJxtK1aehpi
- 3Y80gplXFIOaK29RfM+Jh98jL4oN3oWFVrBIun3VzAFIcNSDXw1XeJ3BgwZ34JVC
- rsYW7GwDk4Fuqddiwe6GxSYiMHATYIXhlIkZIZffliiRSAmv2OURkXjGr4+ZlW8W
- rtDfqR2frUYy1y3HiUFYC9vofUHVRWZMYYl4qFcFeSWCkMCDmtkk0WUoqzVSvwkr
- /iQt7VAagOsoAK99URugOroHML5gF46HHA4AXNO1Bc9Rb6QKchgWBqlsZeJ2fpTD
- Ss38cFnk7QD/IknhK6GOkHeFdAbQ05u1Q8O2+pIgzH07lv3P4Rcpei78cIs4ltHn
- bNm51PqGCWezyV/ymz23
- =tm02
+ wsFcBAABCAAQBQJq6KWJCRC1aQ7uu5UhlAAATB8QADr4NflynBpkmmz4MTv2L33x
+ w5Ks2DqhP3jcDoB2hZmDkWDkKd83GIeM6mRYoYSC4AahNxJojO7PppRcRfOoYT0R
+ D3uF0s74V6dStCQtb5EvOm3gv0T8Yg0A+iVZUdA66ejaJrSW1BK/goA8i2wxaIWY
+ mKg42KSnqhg9aELjAWNyDYdeXm7aD90yzFdzE6dNYPqmVyh5EgdYAmRIqT8qI2Fl
+ xena5nNQMelEVcHueYra2H9hXW3Y5JllDoZ059gmlOwD/pIaA0GFVaJz4YQCRGMh
+ 1SK5lIZO1IZMnUsqxP5jofDNFIhZWtmgG7F5ZzX8LeW99FOnjrEyjqHEvwBT7AYt
+ 6j4gKvKprU5H74Cye3rvmZ5BUcSKyZJuYhPkvUE7RpldUrGrGbegRln27NNo+eJL
+ puG4yai91EizVD3YwDWyNXlE/uTgU2tUXrDupad9PvGgGX0T20zP5GK2KjAm/DVz
+ 9Hgix9+rKFEQZiWd23xts8JKgBNgCvaNxDsCmEz8JrGUyoszUf6FDDZTCDK01NTF
+ zS2kZ8lNOmGI1Mct0CcS7S9xiKLeoRVAL+wdAcnNoonCwNxHQvc2J9IaAa69Lc5e
+ 4fqO1FkK26X6huPvyPzGezCE56OrkmDtAJs0Q4Xj/t7n2UuNDzZZMsDTBnM8+OKP
+ VdTYGC7Wc3z54XjjkfxT
+ =mv4h
  -----END PGP SIGNATURE-----
  
 
-[feature] 시작 로딩 진행률·모듈 그래프 병렬 preload를 맡는 boot 모듈 추가 (#189)
+[feature] 페이지 언어 결정·TextPair 문구를 맡는 i18n 모듈 추가 (v0.41.2) (#190)
 
-- listModuleGraph(dist/boot-build.mjs): 진입 모듈의 정적 import·export-from·문자열 import()를 따라 로컬 모듈 목록 생성, 없는 파일·bare 지정자는 던짐
-- createBoot(dist/boot.js): 단계 가중치 기반 전체 진행률(0..1, 단조), begin/advance/finish/complete/fail, preloadModules(modulepreload 병렬, 파일별 n/N)
-- bindBootProgress·yieldFrame으로 게임의 표시 코드 제거
-- 검증: npm run check, npm run build, release 검사, modules/boot/tests/boot.e2e.mjs(헤드리스 Chromium, 19개 모듈 n/N·overall 1·import 추가 요청 0·실패 경로)
-- SDK 0.41.1(호환 추가, v0.41.0 위)
+- createLocale: ?lang= → 저장한 선택(동기 localStorage) → 브라우저 언어 → fallback, 격리 장면은 저장 미사용, choose는 저장 후 ?lang=으로 새로고침
+- messages: 정의 시 TextPair 짝 검사, 없는 키 읽기는 오류. text·applyPage(data-i18n)·number·plural(Intl)
+- README에 i18next 대신 둔 이유: 키 오타·누락이 조용히 대체되지 않음, 언어별 함수가 문장(조사·어순) 소유, 외부 의존성 없음
+- 시험: modules/i18n/tests/i18n.e2e.mjs(core 목록, 헤드리스 Chromium)
 
-
-Claude-Session: https://claude.ai/code/session_0196akmcKHMndSjhrzqUxNvK
-
-Co-authored-by: Claude <noreply@anthropic.com>
+Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>

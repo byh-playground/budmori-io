@@ -283,6 +283,20 @@ try {
         await RELOAD;
         REPORT.scenarios.bootstrapAndGuardFailure = 'PASS';
         await GUARD.close();
+        // The page locale awaits the verified i18n bundle: without it no message module runs, and the authored
+        // HTML reload link is what remains (docs/i18n.md).
+        const I18N = await context(),
+            I18N_PAGE = await I18N.newPage(),
+            I18N_URL = MANIFEST.modules.find((entry) => entry.name === 'i18n').url;
+        await I18N_PAGE.route(I18N_URL, (route) => route.fulfill({ status: 503, body: '' }));
+        const MODULE_ERROR = I18N_PAGE.waitForEvent('pageerror');
+        await I18N_PAGE.goto(`${ORIGIN}/index.html`);
+        assert.match(String(await MODULE_ERROR), /Module request failed: 503 \(i18n\)/);
+        assert.equal(await I18N_PAGE.evaluate(() => !!globalThis.BUDMORI), false, 'no i18n, no game');
+        assert.equal(await I18N_PAGE.locator('#newGame').isVisible(), false);
+        assert.equal(await I18N_PAGE.locator('#bloom-loading-retry').isVisible(), true);
+        REPORT.scenarios.i18nFailure = 'PASS';
+        await I18N.close();
     }
     REPORT.status = 'PASS';
     console.log(JSON.stringify({ status: REPORT.status, scenarios: Object.keys(REPORT.scenarios) }));

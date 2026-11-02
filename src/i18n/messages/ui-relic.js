@@ -1,8 +1,8 @@
-import { defineMessages } from '../text.js';
+import { LOCALE } from '../locale.js';
 
 // Relic (tower auto-skill) docks and their detail dialog (src/ui/relic-dock.js).
 // Values arrive already formatted as strings; `boss` picks the boss side's wording.
-export const RELIC = defineMessages({
+export const RELIC = LOCALE.messages({
     seconds: { ko: ({ value }) => `${value}초`, en: ({ value }) => `${value}s` },
     floor: { ko: ({ floor }) => `${floor}층`, en: ({ floor }) => `Floor ${floor}` },
     newSkill: { ko: '새 기술', en: 'New skill' },

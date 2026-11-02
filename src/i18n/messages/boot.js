@@ -1,7 +1,7 @@
-import { defineMessages } from '../text.js';
+import { LOCALE } from '../locale.js';
 
 // Startup loading panel, startup error popup and the diagnostic summary (src/startup-loading.js, src/bootstrap.js).
-export const BOOT = defineMessages({
+export const BOOT = LOCALE.messages({
     bootstrapUnavailable: { ko: '시작 파일을 불러오지 못했어요', en: 'Couldn’t load the startup files' },
     bootstrapUnavailableDetail: {
         ko: '연결 상태를 확인하고 다시 불러와 주세요.',

@@ -1,9 +1,9 @@
+import { LOCALE } from '../i18n/locale.js';
 import { RECIPES, TEMPERAMENTS, ELEMENTS, ELEMENT_COUNT, TEMPERAMENT_COUNT } from '../model/lineage.js';
 import { SPECIES_COUNT } from '../units/species-catalog.js';
 import { elementIconSvg } from '../units/species-face.js';
 import { iconSvg } from './icons.js';
 import { speciesPortraitSource } from '../units/species-paint.js';
-import { localized } from '../i18n/text.js';
 import { CODEX } from '../i18n/messages/ui-codex.js';
 import { speciesName } from '../i18n/messages/species.js';
 
@@ -87,7 +87,7 @@ export function codexHtml(world, tab) {
     if (tab === 'forms') {
         return gridHtml(
             world.codex.forms,
-            TEMPERAMENTS.map((entry) => localized(entry.name)),
+            TEMPERAMENTS.map((entry) => LOCALE.text(entry.name)),
             CODEX.formsGrid(),
             (column) => ({ temperament: column, element: 0 }),
         );
@@ -95,7 +95,7 @@ export function codexHtml(world, tab) {
     if (tab === 'colors') {
         return gridHtml(
             world.codex.colors,
-            ELEMENTS.slice(1, ELEMENT_COUNT + 1).map((entry) => localized(entry.name)),
+            ELEMENTS.slice(1, ELEMENT_COUNT + 1).map((entry) => LOCALE.text(entry.name)),
             CODEX.colorsGrid(),
             (column) => ({ temperament: 0, element: column + 1 }),
         );

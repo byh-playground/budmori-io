@@ -10,10 +10,21 @@ import { chromium } from 'playwright';
 const ROOT = fileURLToPath(new URL('../', import.meta.url)),
     OUT = path.join(ROOT, 'tests/output/food-reservations');
 fs.mkdirSync(OUT, { recursive: true });
+// The page locale loads the pinned i18n bundle through the runtime manifest; the harness serves the same verified
+// bytes from vendor/upstream instead of the CDN.
+const I18N = JSON.parse(
+        fs
+            .readFileSync(path.join(ROOT, 'index.html'), 'utf8')
+            .match(/<script id="bloom-runtime-manifest" type="application\/json">(.*?)<\/script>/s)[1],
+    ).modules.find((entry) => entry.name === 'i18n'),
+    HARNESS_MANIFEST = JSON.stringify({ modules: [{ ...I18N, url: '/vendor/upstream/i18n.js' }] });
 const SERVER = http.createServer((request, response) => {
     if (request.url === '/model-harness.html') {
         response.setHeader('content-type', 'text/html');
-        response.end('<!doctype html><title>Farm model integration</title>');
+        response.end(
+            '<!doctype html><title>Farm model integration</title>' +
+                `<script id="bloom-runtime-manifest" type="application/json">${HARNESS_MANIFEST}</script>`,
+        );
         return;
     }
     const FILE = path.resolve(ROOT, '.' + decodeURIComponent(request.url.split('?')[0]));

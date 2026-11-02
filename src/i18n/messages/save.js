@@ -1,7 +1,7 @@
-import { defineMessages } from '../text.js';
+import { LOCALE } from '../locale.js';
 
 // What the player reads when the save module refuses (src/save/farm-storage.js saveFailureMessage).
-export const SAVE = defineMessages({
+export const SAVE = LOCALE.messages({
     unreadable: {
         ko: '저장을 읽지 못해 원본을 그대로 두었어요. 이 브라우저의 저장은 덮어쓰지 않아요.',
         en: 'Couldn’t read the save, so it was left as it is. This browser’s save won’t be overwritten.',

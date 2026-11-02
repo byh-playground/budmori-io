@@ -1,9 +1,9 @@
-import { defineMessages } from '../text.js';
+import { LOCALE } from '../locale.js';
 
 // Ability chips (src/features/abilities/*/presentation.js): `label` is the effect line, `title` the short chip.
 const PERCENT = (value) => Math.round(value * 100);
 
-export const ABILITIES = defineMessages({
+export const ABILITIES = LOCALE.messages({
     barleyShredLabel: {
         ko: ({ value }) => `기본 공격 적중 후 방어력 ${value} 감소 · 감소마다 3초 · 방어력 최저 0`,
         en: ({ value }) => `Basic hits cut Defense by ${value} · 3s each · Defense min 0`,

@@ -1,3 +1,4 @@
+import { LOCALE } from './i18n/locale.js';
 import { RELIC } from './i18n/messages/ui-relic.js';
 import { PAGE } from './i18n/messages/page.js';
 import { SpeciesInfoDialog } from './ui/species-info.js';
@@ -39,7 +40,6 @@ import { workersBySpecies } from './model/farm-work.js';
 import { apportionBreedShares, adjustBreedShare } from './model/breed-allocation.js';
 import { BOSS_SPECIES } from './units/species-catalog.js';
 import { speciesName, giantSpeciesName } from './i18n/messages/species.js';
-import { localized } from './i18n/text.js';
 import { APP_HOME } from './i18n/messages/app-home.js';
 import { APP_FARM } from './i18n/messages/app-farm.js';
 import { APP_TOWER } from './i18n/messages/app-tower.js';
@@ -1238,23 +1238,23 @@ const NEXT_FLOOR_TEXT = {
 function statDoorCard(door, cards, index, role = 'player', receipt = null) {
     const CARD = statCard(door.id),
         LEVEL = receipt?.before.level ?? cardStacks(cards, door.id);
-    return `<button type="button" class="door door--stat door--rarity-${door.rarity}" data-door="${index}"><b>${localized(CARD.name)} ${localized(statCardText(CARD, door.rarity, role, door.effect))}</b><small>${APP_TOWER.statDoorDetail({ rarity: localized(RARITY_NAMES[door.rarity]), boss: role === 'boss', level: LEVEL, cap: TOWER_RUN_SETTINGS.cardCap })}</small></button>`;
+    return `<button type="button" class="door door--stat door--rarity-${door.rarity}" data-door="${index}"><b>${LOCALE.text(CARD.name)} ${LOCALE.text(statCardText(CARD, door.rarity, role, door.effect))}</b><small>${APP_TOWER.statDoorDetail({ rarity: LOCALE.text(RARITY_NAMES[door.rarity]), boss: role === 'boss', level: LEVEL, cap: TOWER_RUN_SETTINGS.cardCap })}</small></button>`;
 }
 function passiveDoorCard(door, cards, index, role = 'player', receipt = null) {
     const CARD = passiveCard(door.id),
         LEVEL = receipt?.before.level ?? cardStacks(cards, door.id),
-        EFFECT = localized(passiveEffectText(CARD, cardValue(CARD, door.rarity, role), role));
-    return `<button type="button" class="door door--passive door--rarity-${door.rarity}" data-door="${index}"><b>${localized(CARD.name)}</b><small>${APP_TOWER.passiveDoorDetail({ rarity: localized(RARITY_NAMES[door.rarity]), effect: EFFECT, level: LEVEL, cap: TOWER_RUN_SETTINGS.cardCap })}</small></button>`;
+        EFFECT = LOCALE.text(passiveEffectText(CARD, cardValue(CARD, door.rarity, role), role));
+    return `<button type="button" class="door door--passive door--rarity-${door.rarity}" data-door="${index}"><b>${LOCALE.text(CARD.name)}</b><small>${APP_TOWER.passiveDoorDetail({ rarity: LOCALE.text(RARITY_NAMES[door.rarity]), effect: EFFECT, level: LEVEL, cap: TOWER_RUN_SETTINGS.cardCap })}</small></button>`;
 }
 function skillDoorCard(tower, door, index, role = 'player', receipt = null) {
     const DEFINITION = FORMATION_SKILL_DEFINITIONS.find((item) => item.id === door.id),
         LEVEL = receipt?.before.level ?? (tower.relics.get(door.id) || 0),
         GAIN = LEVEL ? `Lv.${LEVEL} → ${LEVEL + 1}` : RELIC.newSkill();
-    return `<button type="button" class="door door--skill" data-door="${index}"><b>${iconSvg(door.id)} ${localized(DEFINITION.name)}</b><small>${GAIN} · ${relicEffectText(DEFINITION, LEVEL + 1, role, 0, tower.floor)}</small></button>`;
+    return `<button type="button" class="door door--skill" data-door="${index}"><b>${iconSvg(door.id)} ${LOCALE.text(DEFINITION.name)}</b><small>${GAIN} · ${relicEffectText(DEFINITION, LEVEL + 1, role, 0, tower.floor)}</small></button>`;
 }
 function eventDoorCard(door, index) {
     const EVENT = TOWER_EVENTS.find((item) => item.id === door.id);
-    return `<button type="button" class="door door--event" data-door="${index}"><b>${localized(EVENT.name)}</b><small>${localized(EVENT.text)}</small></button>`;
+    return `<button type="button" class="door door--event" data-door="${index}"><b>${LOCALE.text(EVENT.name)}</b><small>${LOCALE.text(EVENT.text)}</small></button>`;
 }
 function doorCard(tower, door, index, role = 'player', receipt = null) {
     if (door.type === 'fight') {
@@ -1283,12 +1283,12 @@ function bossCardName(card) {
               : card?.type === 'passive'
                 ? passiveCard(card.id)?.name
                 : null;
-    return NAME ? localized(NAME) : '';
+    return NAME ? LOCALE.text(NAME) : '';
 }
 function acquisitionText(receipt) {
     return receipt.card.type === 'skill'
         ? relicAcquisitionText(receipt, active?.world?.tower.floor || 1)
-        : localized(cardAcquisitionText(receipt));
+        : LOCALE.text(cardAcquisitionText(receipt));
 }
 function readonlyDoor(button, label, selected) {
     button.removeAttribute('data-door');
@@ -1336,7 +1336,7 @@ function syncSharedChoice(tower, draw, phase, locked) {
 }
 // A catalog name, or the id when the catalog no longer has it.
 function localizedOr(pair, fallback) {
-    return pair ? localized(pair) : fallback;
+    return pair ? LOCALE.text(pair) : fallback;
 }
 // What the boss has picked so far, for the row of cards under it.
 function bossCardChips(tower) {
@@ -1459,7 +1459,7 @@ function syncTower(garden, home, event) {
     const DOWNED = T.downed.size;
     syncFlag('floorChip', 'hidden', !CLIMBING);
     if (CLIMBING) {
-        syncText('floorNow', APP_TOWER.floorNow({ floor: T.floor, theme: localized(towerTheme(T.floor).name) }));
+        syncText('floorNow', APP_TOWER.floorNow({ floor: T.floor, theme: LOCALE.text(towerTheme(T.floor).name) }));
     }
     // A banner announces each new floor as the boss drops in, and the rest stop.
     const NEXT_BANNER = !CLIMBING
@@ -1472,7 +1472,7 @@ function syncTower(garden, home, event) {
     if (NEXT_BANNER && NEXT_BANNER !== bannerKey) {
         DOLLAR('floorBannerNum').textContent = APP_TOWER.floorNumber({ floor: T.floor });
         DOLLAR('floorBannerKind').textContent = APP_TOWER.floorBannerKind({
-            theme: localized(towerTheme(T.floor).name),
+            theme: LOCALE.text(towerTheme(T.floor).name),
             kind: FLOOR_KIND[T.kind](),
         });
         const BANNER = DOLLAR('floorBanner');
@@ -1952,16 +1952,16 @@ function sync(display, now, notices) {
         APP_FARM.mergeLabel({
             label: DOLLAR('merge').textContent.trim(),
             available: MERGE_STATUS.available,
-            reason: localized(MERGE_STATUS.reason),
+            reason: LOCALE.text(MERGE_STATUS.reason),
         }),
     );
-    syncText('mergeNotice', localized(MERGE_STATUS.reason));
+    syncText('mergeNotice', LOCALE.text(MERGE_STATUS.reason));
     syncFlag('combine', 'disabled', home || FARM_EVENT_ACTIVE || (W.combine.recipe >= 0 && !COMBINE_STATUS.available));
     syncData('combine', 'availability', COMBINE_STATUS.code || 'unavailable');
     syncAttribute(
         'combine',
         'aria-label',
-        APP_FARM.combineLabel({ available: COMBINE_STATUS.available, reason: localized(COMBINE_STATUS.reason) }),
+        APP_FARM.combineLabel({ available: COMBINE_STATUS.available, reason: LOCALE.text(COMBINE_STATUS.reason) }),
     );
     const WORLD_COUNT = HUD_COUNTS.worldPopulation(W),
         BATTLE_VISIBLE = !home && fightActive(),
