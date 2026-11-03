@@ -1502,6 +1502,9 @@ function validateBoss(boss, raw) {
             Number.isFinite(RUNTIME.encounterElapsed) &&
             RUNTIME.encounterElapsed >= 0 &&
             INTEGER(RUNTIME.breaks, 0, BOSS_BREAK_COUNT) &&
+            Number.isFinite(RUNTIME.staggerFrom) &&
+            RUNTIME.staggerFrom >= 0 &&
+            RUNTIME.staggerFrom <= 1 &&
             RUNTIME.weights &&
             RUNTIME.cooldowns,
     );

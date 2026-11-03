@@ -666,6 +666,9 @@ try {
                 }
             });
         WORLD.step = function (dt) {
+            // This fixture scripts the boss's health to time the heal and the sweep; a stagger (BOSS_STAGGER) would
+            // cancel the heal's preparation, so the gauge stays empty here.
+            this.boss.patternRuntime.staggerFrom = Math.max(0, this.boss.hp) / this.boss.maxHp;
             const ABILITY = PROBE.ability,
                 RETRY_BEFORE = this.formationRuntime.bossRetrySkillId,
                 BUSY_BEFORE = !!(

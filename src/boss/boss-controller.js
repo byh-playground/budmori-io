@@ -4,8 +4,10 @@ import { bossStageStats } from './boss-rewards.js';
 import {
     BOSS_BREAK,
     BOSS_PATTERN_CONFIG,
+    BOSS_STAGGER,
     BOSS_PATTERN_IDS,
     bossBreaksEarned,
+    bossHealthFraction,
     createBossPatternRuntime,
     chooseBossPattern,
 } from './boss-patterns.js';
@@ -67,6 +69,20 @@ export class BossController {
     armorModifier() {
         const UNIT = this.unit;
         return (1 - CLAMP(UNIT.hp / Math.max(1, UNIT.maxHp), 0, 1)) * 100;
+    }
+    receivedDamageScale() {
+        return this.unit.stun > 0 ? BOSS_STAGGER.damageTaken : 1;
+    }
+    updateStagger() {
+        const BOSS = this.unit,
+            RUNTIME = BOSS.patternRuntime,
+            HEALTH = bossHealthFraction(BOSS);
+        if (BOSS.stun > 0 || HEALTH > RUNTIME.staggerFrom) {
+            RUNTIME.staggerFrom = HEALTH;
+        } else if (RUNTIME.staggerFrom - HEALTH >= BOSS_STAGGER.gauge - 1e-9) {
+            RUNTIME.staggerFrom = HEALTH;
+            BOSS.stun = Math.max(BOSS.stun, BOSS_STAGGER.seconds);
+        }
     }
     knock(nx, ny, power, _lift, source) {
         const UNIT = this.unit,
@@ -185,6 +201,7 @@ export class BossController {
             B_LOCAL.patternRuntime.breaks = BREAKS;
             world.bossSummonShockwave(B_LOCAL, BOSS_BREAK.shockwave);
         }
+        this.updateStagger();
         const STATS = resolveUnitStats(B_LOCAL);
         if (STATS.regen > 0) {
             applyHealing(B_LOCAL, STATS.regen * dt, STATS);

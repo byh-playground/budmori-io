@@ -66,7 +66,11 @@ export const FARM_UNIT_LIFE = (base) =>
             return scale;
         }
         passiveDamageScale(source, sourceMaxHp, target, targetMaxHp) {
-            return this.passiveAttackScale(source, sourceMaxHp) * this.passiveReceivedScale(target, targetMaxHp);
+            return this.passiveAttackScale(source, sourceMaxHp) * this.receivedDamageScale(target, targetMaxHp);
+        }
+        // Everything that scales the damage a target takes: tower passives, and a boss that is down.
+        receivedDamageScale(unit, maxHp = unitMaxHpFor(unit)) {
+            return this.passiveReceivedScale(unit, maxHp) * (unit.controller?.receivedDamageScale?.() ?? 1);
         }
         passiveReceivedScale(unit, maxHp = unitMaxHpFor(unit)) {
             const TOWER = this.tower;

@@ -362,6 +362,14 @@ export function bossBreaksEarned(boss) {
     const LOST = 1 - Math.max(0, boss.hp) / Math.max(1, boss.maxHp);
     return Math.min(BOSS_BREAK_COUNT, Math.floor(LOST / BOSS_BREAK.step + 1e-9));
 }
+// Stagger: the boss shrugs off single hits (super armor), but every `gauge` of its health lost since it last went
+// down puts it down for `seconds`, and a boss that is down (stunned by anything) takes `damageTaken` times the
+// damage. `patternRuntime.staggerFrom` is the health fraction the gauge counts from; damage taken while down does
+// not fill it, and healing drains it.
+export const BOSS_STAGGER = Object.freeze({ gauge: 0.1, seconds: 1, damageTaken: 1.5 });
+export function bossHealthFraction(boss) {
+    return Math.min(1, Math.max(0, boss.hp) / Math.max(1, boss.maxHp));
+}
 export const BOSS_AIM_TURN_RATE = 5.5;
 export function createBossPatternRuntime() {
     return {
@@ -373,6 +381,7 @@ export function createBossPatternRuntime() {
         active: null,
         encounterElapsed: 0,
         breaks: 0,
+        staggerFrom: 1,
     };
 }
 
