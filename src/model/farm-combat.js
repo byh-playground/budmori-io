@@ -127,13 +127,13 @@ export const FARM_COMBAT = (base) =>
                     ELEMENT_SCALE,
                 ORIGINAL_RAW_DAMAGE = Number.isFinite(CONTEXT.sourceDamageScale)
                     ? (RAW_BASE_DAMAGE * CONTEXT.sourceDamageScale + (CONTEXT.rawDamageBonus || 0)) *
-                      this.passiveReceivedScale(target, DEFENSE.maxHp)
+                      this.receivedDamageScale(target, DEFENSE.maxHp)
                     : (RAW_BASE_DAMAGE + (SOURCE.ability?.rawDamageBonus?.(this, action, KIND) || 0)) *
                       this.passiveDamageScale(SOURCE, ATTACKER_STATS.maxHp, target, DEFENSE.maxHp);
             // A giant adds one unscaled cycle budget, distributed by the authored strike weights.
             // Crit/element/grade/source bonuses strengthen the original hit only; defense still affects both parts.
             const GIANT_BONUS =
-                    Math.max(0, CONTEXT.giantBonusDamage || 0) * this.passiveReceivedScale(target, DEFENSE.maxHp),
+                    Math.max(0, CONTEXT.giantBonusDamage || 0) * this.receivedDamageScale(target, DEFENSE.maxHp),
                 CRIT_SCALE =
                     GIANT_BONUS > 0 &&
                     SOURCE_STAT_OVERRIDES.critChance > 0 &&

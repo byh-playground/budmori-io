@@ -411,9 +411,27 @@ export class BossPresentation {
             );
         }
         drawUnitAttackContact(this.renderer, B, PLAYER, MATRIX);
+        if (B.stun > 0 && B.hp > 0) {
+            this.drawStunStars(B, world.time);
+        }
         BARLEY_SHRED_PRESENTATION.drawStatus(this.renderer, B);
         if (DEATH) {
             this.renderer.deathPresentation.drawPuff(this.renderer, B, DEATH);
+        }
+    }
+    // A boss that is down (stagger or a stun) has three small stars circling over its head.
+    drawStunStars(b, time) {
+        const RENDERER = this.renderer;
+        for (let index = 0; index < 3; index++) {
+            const ANGLE = time * 5 + (index * Math.PI * 2) / 3,
+                POINT = RENDERER.project(
+                    b.x + Math.cos(ANGLE) * b.radius * 0.7,
+                    b.y + Math.sin(ANGLE) * b.radius * 0.35,
+                    (b.z || 0) + b.height + 2.8,
+                ),
+                SIZE = RENDERER.scale * 0.42;
+            RENDERER.ellipse(POINT.x, POINT.y, SIZE * 1.3, SIZE * 1.3, '#3a2a1c');
+            RENDERER.ellipse(POINT.x, POINT.y, SIZE, SIZE, '#ffd84a');
         }
     }
 }

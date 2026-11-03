@@ -3,7 +3,7 @@ import { specialAbilityCompositionFor } from '../units/unit-abilities.js';
 import { validateSnapshot } from './farm-snapshot-validation.js';
 import { freshTowerRun } from '../tower/tower-run.js';
 import { towerElement } from '../tower/tower-theme.js';
-import { MINION_KINDS, bossBreaksEarned } from '../boss/boss-patterns.js';
+import { MINION_KINDS, bossBreaksEarned, bossHealthFraction } from '../boss/boss-patterns.js';
 import { migratePlayerProgressionState } from '../model/player-progression.js';
 import { migrateLegacyBarleyArmorShredBuckets } from '../features/abilities/barley-shred/model.js';
 import { migrateBossRewardLedger } from './boss-reward-ledger.js';
@@ -159,6 +159,8 @@ export function normalizeSnapshot(raw, { clone = true } = {}) {
         // Before breaks (0.67.25): the steps already lost count as used, so a restored fight does not sweep at once.
         if (BOSS.patternRuntime) {
             BOSS.patternRuntime.breaks ??= bossBreaksEarned(BOSS);
+            // Before the stagger gauge (0.67.29): the gauge starts empty at the current health.
+            BOSS.patternRuntime.staggerFrom ??= bossHealthFraction(BOSS);
         }
         const LEGACY_SPECIAL = !Object.hasOwn(BOSS, 'specialAbility');
         for (const KEY of Object.keys(ACTOR_ATTACK_SNAPSHOT_SHAPE)) {

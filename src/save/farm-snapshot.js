@@ -170,6 +170,7 @@ export const BOSS_SNAPSHOT_SHAPE = {
         active: null,
         encounterElapsed: 0,
         breaks: 0,
+        staggerFrom: 1,
     },
     knockVx: 0,
     knockVy: 0,

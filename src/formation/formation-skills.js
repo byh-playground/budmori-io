@@ -489,7 +489,7 @@ export class FormationSkills {
         }
         amount = formationDamageForTarget(amount, components, unitMaxHpFor(target), target.hp);
         const GUARD = target.ability?.receiveGuard?.(this.world);
-        amount *= (GUARD?.receivedDamageMultiplier ?? 1) * this.world.passiveReceivedScale(target);
+        amount *= (GUARD?.receivedDamageMultiplier ?? 1) * this.world.receivedDamageScale(target);
         target.ability?.receiveRawDamage?.(this.world, amount);
         applyDamage(target, amount, { armor: this.world.combatTargetDefense(target).armor });
         this.world.passiveUndying(target);
