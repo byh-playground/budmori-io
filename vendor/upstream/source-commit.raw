@@ -1,28 +1,31 @@
-tree 9f3645c0107f4e7b3c5b50e929f5dacbcf0320f6
-parent bb72c6823b3045751b03d043e12b5193b661ac00
-author byh020907 <byh020907@naver.com> 1793632716 +0900
-committer GitHub <noreply@github.com> 1793632716 +0900
+tree 09139d54416fe6e2c6f386183738509fa4b11306
+parent f729b85bbbefd0d82537087ccc56b5f586fea511
+author byh020907 <byh020907@naver.com> 1793714048 +0900
+committer GitHub <noreply@github.com> 1793714048 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq6KnMCRC1aQ7uu5UhlAAAHXAQABC5tVp5ykAbTOnK84G/UWs2
- pk+hBoBytmjSoOBGOUVyXgWp1uc+LkISuGq+kucjbnGf/18Wn9KCdpZwwbMPKJS1
- 0+rK/fX0QuAVF//DdQX0/CPfuiaroNFRPLAym+gSRlY5ltFNSpaAj9M8a5bk/Y0p
- gcmZNWsyL0cCxAtMxS1qqdiBTf/RVCzJCRooLxQtLtAIK9Nwh6wzr2SbK7w9LDm2
- JzahhIp03DfoCfie7BEa5ESDuJfgyRBFoNnAk4TWpWMaycK6PbEThwpe4OhNMsDL
- EvYa1MC58MlH1jgqUGhBPYUpmkkVSxPvdKNBHkusxLqqCnEfr237ArPv4rXyVH8Y
- 9b7+AhY3s89bps8t8F8JUrEVs7O0oQebYOcjIsGpaNsi/0MXaInRsKUVDoezZOG3
- vwvVoS6kJNchIt8ji2rL66TT7IqZn/xlSm4bfiTwuAvDHcYK1StVYzJCM5aA5Abe
- WhxL8gL9V+38qxdKpx0SxHDtri5BnSgj+YrkAUGcFsEVOhMEG2uPIYSKn7jiYt91
- 3qcZskDfTJoGEyU/KdH6eeHuW6Iz68q8wJ0bOliaQzWLm/4i86DfipWDohZYwo4u
- 3Cfiu18DB/+qLAuHh33gtDgktn6kEHA50sYtL1u46kyVlHKAarwF3cdV/4DaK5AK
- jzbMtCYvoyzGm0aripLO
- =12lw
+ wsFcBAABCAAQBQJq6eeACRC1aQ7uu5UhlAAA4Z0QAJA8CDM38/bPyhTgkCcYMrY+
+ gyvQsHqbSpcXc7jtB02YoU2mmF0hpbI7hKrJpcuyhlIKzwMPhHlh2TnVH9GWMGHz
+ 81qcwy5NzjBwkWx4wX96ISqOB689OY6xlAvR+1QtaLdW7rD9rk4cGKC6zKCHExxq
+ 3SAywmnSAe6Nj13ZTy66hd7oeRp6RsnvakWSiEDLmFL2CiklIdDicOBdyhBmfQFI
+ cvK/Mf+15ovhTQsu6V8R3+cw+XTlycyywH3HeyW0lBR6mslr+PatLuq2MN7dNBNe
+ IaTyiE30DEzYyhC2jxyCq++pmeJwHsRzwctN7J2ybGFBMo2gTfNPk7wdlJvb4mJ2
+ B23dprTnp/34/gnR8ZCgjHyBtDzl9CaK8u9HtyWWVf4X13dvCFF3QX2Nzf+1neeW
+ ugr2RwS7tl64IOaU/Fdj7Gecz8MSdsCYVv9oIg0kmGosKp9+lp2GnxK178adRBwm
+ fKiVFkCcUOmMRae4vXg/WtjfaO/S5+fNx60iZog3JBRPCkATYWE5d8alml/NzxS1
+ lgcCnKpo0mfjD88znH/27osaxvdJT/v9Fr0o6I6zdOSYu1lPr6wlxs08VIh36p26
+ +uDlxlw7vc6e1ocRkxcblIRkOqWhPkGSol+UpHBz8glSoyxRPxnNGxAFulx+Phi/
+ hNOGJwW9mat/Rajj8OE4
+ =gYh+
  -----END PGP SIGNATURE-----
  
 
-[bug-fix] dist 배포의 이전 번들 이름 검사가 숫자(i18n.js)를 허용하도록 수정 (#192)
+[performance] 보간 capture·sample 군중 규모 비용 절감 (v0.42.2) (#195)
 
-- BUNDLE_FILE_NAME을 ^[a-z][a-z0-9-]*\.m?js$로 넓힘, 경로 구분자·..는 계속 거부
-- v0.41.2 이후 main 배포가 "Invalid previous bundle path"로 막혀 v0.41.3 dist가 나오지 않던 문제
+- 스키마 컴파일 때 자식 배열·배열 인덱스·discrete 여부 미리 계산
+- delayMs capture는 DECAY 필드만 필드별 규칙 적용(나머지는 이전 목표값)
+- sample은 트랙별 시계 비율·보류를 한 번 계산
+- 재사용 모델에 마지막으로 쓴 값을 기억해 shape가 같으면 바뀐 필드만 씀
+- runtime-benchmark.mjs: 1,000개체·87필드 capture/sample 측정
 
 Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>

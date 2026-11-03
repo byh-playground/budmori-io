@@ -10,7 +10,7 @@
 //   --seconds 8               frame mode measuring window (after 3 s warm-up)
 //   --rounds 3                alternating rounds per root
 //   --root <dir>[,<dir>]      code to serve (default this checkout); two roots compare before,after
-//   --profile 20              logic mode: also print the top N functions by self time (CPU profile)
+//   --profile 20              also print the top N functions by self time (CPU profile of the measured window)
 //   --hash                    logic mode: pin performance.now to a call counter (time-budgeted work becomes
 //                             deterministic) and print a hash of every unit's state; equal hashes = same simulation
 // Not part of npm run check (PM-014): timing depends on the machine and its load.
@@ -139,12 +139,45 @@ async function round(browser, site) {
     return { loadMs: LOAD_MS, ...RESULT };
 }
 
-async function logic(page) {
-    const CDP = PROFILE ? await page.context().newCDPSession(page) : null;
-    if (CDP) {
-        await CDP.send('Profiler.enable');
-        await CDP.send('Profiler.setSamplingInterval', { interval: 200 });
+async function startProfile(page) {
+    if (!PROFILE) {
+        return null;
     }
+    const CDP = await page.context().newCDPSession(page);
+    await CDP.send('Profiler.enable');
+    await CDP.send('Profiler.setSamplingInterval', { interval: 200 });
+    await CDP.send('Profiler.start');
+    return CDP;
+}
+// Top functions by self time over the profiled window.
+async function stopProfile(cdp) {
+    if (!cdp) {
+        return undefined;
+    }
+    const { profile: PROFILE_DATA } = await cdp.send('Profiler.stop'),
+        NODES = new Map(PROFILE_DATA.nodes.map((node) => [node.id, node])),
+        SELF = new Map();
+    PROFILE_DATA.samples.forEach((id, index) => {
+        const FRAME = NODES.get(id).callFrame,
+            KEY = `${FRAME.functionName || '(anonymous)'} ${FRAME.url.split('/').at(-1)}:${FRAME.lineNumber + 1}`;
+        SELF.set(KEY, (SELF.get(KEY) || 0) + (PROFILE_DATA.timeDeltas[index] || 0));
+    });
+    const TOTAL = [...SELF.values()].reduce((sum, value) => sum + value, 0),
+        FILES = new Map();
+    for (const [KEY, VALUE] of SELF) {
+        const FILE = KEY.split(' ').at(-1).replace(/:\d+$/, '');
+        FILES.set(FILE, (FILES.get(FILE) || 0) + VALUE);
+    }
+    const LINES = (map, limit) =>
+        [...map]
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, limit)
+            .map(([key, value]) => `${((100 * value) / TOTAL).toFixed(1)}% ${key}`);
+    // GameKit modules load from blob URLs: a file line reads as its blob id, named by the functions listed above.
+    return [...LINES(SELF, PROFILE), '-- by file', ...LINES(FILES, 12)];
+}
+
+async function logic(page) {
     const RUN = page.evaluate(async (ticks) => {
         const W = BUDMORI.sim,
             TICK = 1 / 20,
@@ -201,26 +234,10 @@ async function logic(page) {
         };
     }, TICKS);
     await page.waitForFunction(() => globalThis.__benchReady, null, { timeout: 0 });
-    if (CDP) {
-        await CDP.send('Profiler.start');
-    }
+    const CDP = await startProfile(page);
     await page.evaluate(() => globalThis.__benchGo());
     const RESULT = await RUN;
-    if (CDP) {
-        const { profile: PROFILE_DATA } = await CDP.send('Profiler.stop'),
-            NODES = new Map(PROFILE_DATA.nodes.map((node) => [node.id, node])),
-            SELF = new Map();
-        PROFILE_DATA.samples.forEach((id, index) => {
-            const FRAME = NODES.get(id).callFrame,
-                KEY = `${FRAME.functionName || '(anonymous)'} ${FRAME.url.split('/').at(-1)}:${FRAME.lineNumber + 1}`;
-            SELF.set(KEY, (SELF.get(KEY) || 0) + (PROFILE_DATA.timeDeltas[index] || 0));
-        });
-        const TOTAL = [...SELF.values()].reduce((sum, value) => sum + value, 0);
-        RESULT.profile = [...SELF]
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, PROFILE)
-            .map(([key, value]) => `${((100 * value) / TOTAL).toFixed(1)}% ${key}`);
-    }
+    RESULT.profile = await stopProfile(CDP);
     return RESULT;
 }
 
@@ -234,8 +251,10 @@ async function frame(page) {
         CHECK.checked = true;
         CHECK.dispatchEvent(new Event('change'));
     });
+    const CDP = await startProfile(page);
     await page.waitForTimeout(SECONDS * 1000);
-    return page.evaluate(() => {
+    const PROFILE_LINES = await stopProfile(CDP);
+    const RESULT = await page.evaluate(() => {
         const SNAPSHOT = globalThis.BudmoriPerformanceDiagnostics.snapshot();
         return {
             fps: SNAPSHOT.fps,
@@ -245,6 +264,8 @@ async function frame(page) {
             summary: globalThis.BudmoriPerformanceDiagnostics.summary(),
         };
     });
+    RESULT.profile = PROFILE_LINES;
+    return RESULT;
 }
 
 const SITES = await Promise.all(ROOTS.map(serve)),

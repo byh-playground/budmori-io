@@ -3,7 +3,7 @@
   "modules": [
     {
       "file": "interpolation.js",
-      "sha256": "854e90343fba611d4f0d118048c33256624543c454c9134e0c4b5cd18d14a509"
+      "sha256": "a805b98739901f6dc408e3cc87d1d2a90635418a7fc0fe2d25d7b27673a29c47"
     },
     {
       "file": "rendering.js",
@@ -43,7 +43,7 @@
     },
     {
       "file": "rollback.js",
-      "sha256": "10a057e4d6e47e9d095ddfe323100e50f0e347d7f5db93b979cd456c1c22a030"
+      "sha256": "d81b0a5eafe10f7349b1c10d196acc56819ffee3f45c4ac4b81e489b43882dfd"
     },
     {
       "file": "camera.js",
@@ -71,7 +71,7 @@
     },
     {
       "file": "scenario.js",
-      "sha256": "b21a2be85b497588589c796f8e95f932c464474cc4ea3f703a8718e96a9946ce"
+      "sha256": "065c912be4b2cedfb4aded14fb8f94cc0d2311dc8ebccb066ec8327e982e601b"
     },
     {
       "file": "object-pool.js",
