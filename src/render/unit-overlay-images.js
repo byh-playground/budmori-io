@@ -18,35 +18,29 @@ const MAX_DISPLAY_TO_IMAGE_SCALE = 0.5;
 
 // Face parts, the cheek and the element marks as images on the device atlas, uploaded once and overlaid on any body
 // in every art mode. Every species shares one eye and mouth part per expression; one white cheek takes the element
-// colour when drawn. Pictures are rasterised once per page; prepare() uploads them outside game frames (renderer
-// start and a restored graphics context), and a frame before that draws the same parts as paths.
+// colour when drawn. prepare() rasterises and uploads them once, outside game frames (renderer start); the device
+// keeps each uploaded rectangle and replays it after a lost context is restored, so the same regions stay valid and
+// nothing is uploaded again. A frame before prepare(), or while the context is lost, draws the same parts as paths.
 export class UnitOverlayImages {
     constructor(renderer) {
         this.renderer = renderer;
-        this.pictures = null;
         this.images = new Map();
-        this.generation = -1;
         this.disposed = false;
     }
     prepare() {
-        const DEVICE = this.renderer.device,
-            GENERATION = DEVICE.stats.restores ?? 0;
-        if (this.disposed || DEVICE.state !== 'ready' || GENERATION === this.generation) {
+        const DEVICE = this.renderer.device;
+        if (this.disposed || DEVICE.state !== 'ready' || this.images.size) {
             return;
         }
-        this.pictures ??= overlayPictures();
         const ATLAS = DEVICE.textureAtlas;
-        this.images.clear();
-        for (const [KEY, PICTURE] of this.pictures) {
+        for (const [KEY, PICTURE] of overlayPictures()) {
             const REGION = ATLAS.allocate(PICTURE.canvas.width, PICTURE.canvas.height);
             ATLAS.upload(REGION, PICTURE.canvas);
             this.images.set(KEY, { ...PICTURE, region: REGION });
         }
-        this.generation = GENERATION;
     }
     _ready() {
-        const DEVICE = this.renderer.device;
-        return !this.disposed && DEVICE.state === 'ready' && (DEVICE.stats.restores ?? 0) === this.generation;
+        return !this.disposed && this.images.size > 0 && this.renderer.device.state === 'ready';
     }
     // Draws a face on the current transform, which maps the body's own canvas (the posed face). `pixelsPerUnit` is
     // how many screen pixels one body-canvas unit covers. False when it would be magnified: the caller draws paths.
