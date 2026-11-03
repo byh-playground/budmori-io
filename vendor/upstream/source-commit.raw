@@ -1,31 +1,28 @@
-tree 09139d54416fe6e2c6f386183738509fa4b11306
-parent f729b85bbbefd0d82537087ccc56b5f586fea511
-author byh020907 <byh020907@naver.com> 1793714048 +0900
-committer GitHub <noreply@github.com> 1793714048 +0900
+tree d528cb4404edea29fe4b50819bbe926448115b29
+parent 23d823dc6cb3324d30c7dc153831af1ba25e135f
+author byh020907 <byh020907@naver.com> 1793717263 +0900
+committer GitHub <noreply@github.com> 1793717263 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq6eeACRC1aQ7uu5UhlAAA4Z0QAJA8CDM38/bPyhTgkCcYMrY+
- gyvQsHqbSpcXc7jtB02YoU2mmF0hpbI7hKrJpcuyhlIKzwMPhHlh2TnVH9GWMGHz
- 81qcwy5NzjBwkWx4wX96ISqOB689OY6xlAvR+1QtaLdW7rD9rk4cGKC6zKCHExxq
- 3SAywmnSAe6Nj13ZTy66hd7oeRp6RsnvakWSiEDLmFL2CiklIdDicOBdyhBmfQFI
- cvK/Mf+15ovhTQsu6V8R3+cw+XTlycyywH3HeyW0lBR6mslr+PatLuq2MN7dNBNe
- IaTyiE30DEzYyhC2jxyCq++pmeJwHsRzwctN7J2ybGFBMo2gTfNPk7wdlJvb4mJ2
- B23dprTnp/34/gnR8ZCgjHyBtDzl9CaK8u9HtyWWVf4X13dvCFF3QX2Nzf+1neeW
- ugr2RwS7tl64IOaU/Fdj7Gecz8MSdsCYVv9oIg0kmGosKp9+lp2GnxK178adRBwm
- fKiVFkCcUOmMRae4vXg/WtjfaO/S5+fNx60iZog3JBRPCkATYWE5d8alml/NzxS1
- lgcCnKpo0mfjD88znH/27osaxvdJT/v9Fr0o6I6zdOSYu1lPr6wlxs08VIh36p26
- +uDlxlw7vc6e1ocRkxcblIRkOqWhPkGSol+UpHBz8glSoyxRPxnNGxAFulx+Phi/
- hNOGJwW9mat/Rajj8OE4
- =gYh+
+ wsFcBAABCAAQBQJq6fQPCRC1aQ7uu5UhlAAAwtEQAGQzKbYfJ4rnIFZlOgj1wfBD
+ Xd980fWSs9Uy+CUwl+heLT05uglmTnpoT7WBskm2ukD4zu+xaRDupxRm+oiTEQ8l
+ wMXhY3Mgc9EZJ7/h3vL0NSsu142WwWj9uICBNLcPUajhhJ1qQvOSrb7FTUkCBUCE
+ DhhM5nbNR/+ZOgpPIwmGMGK2+uooFR1bz17Vul0iEqjbWQASMA/qIGhIxIDExESU
+ emATju/aom6oIh58dfpgjQdXXwfh6P9QsUgVY8Fk45Uz3Fx41+EIjKTz3LRq6Y3e
+ ybv73qoco2BKf6UEUvvDNqxS4/QRc06NUW0FLlBrHtvqsDN+XXzXFWGoRFTjtsTc
+ MV81Aa+oHOxMDzXEJLSCJQRp1TZic8+acyX2S3wqqrp+z3wCjgCKgPP9XFHgf81R
+ dJWwttUTXPYO2WuZGUS4/Aboe/B4G0rVBOe6tmkfw2fC4NZgjblyDNS1mft3NDtI
+ vc5kvvwMmx9/CdhfQwzIXbYTMS75FK0OpDRqTdIQ0Qu9v7QZCM67lwhSoXM8JHNy
+ xiO2stm42L7pjymc350uCobea1mK9W0asl9DwEuhPRk/EBb5AZtCAz92sqTB/bzy
+ YShl5gHLT8dI1Dq6pm6EQhxZml90KmyDD3SViSWEv/Ysg5BfNEBNsV2dlwn1VopG
+ jrmI1VFXSltszNGhsll0
+ =3oS1
  -----END PGP SIGNATURE-----
  
 
-[performance] 보간 capture·sample 군중 규모 비용 절감 (v0.42.2) (#195)
+[bug-fix] 틱보다 느린 화면에서 보간 sample 회귀 수정 (v0.42.4) (#197)
 
-- 스키마 컴파일 때 자식 배열·배열 인덱스·discrete 여부 미리 계산
-- delayMs capture는 DECAY 필드만 필드별 규칙 적용(나머지는 이전 목표값)
-- sample은 트랙별 시계 비율·보류를 한 번 계산
-- 재사용 모델에 마지막으로 쓴 값을 기억해 shape가 같으면 바뀐 필드만 씀
-- runtime-benchmark.mjs: 1,000개체·87필드 capture/sample 측정
+- 움직이는 필드 목록을 같은 구간의 두 번째 sample에서 만들도록 지연
+- runtime-benchmark.mjs --frames 옵션(프레임/틱)
 
 Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>

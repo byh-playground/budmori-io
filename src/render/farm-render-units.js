@@ -80,6 +80,9 @@ const ATTACK_ACCENTS = ['#8fac68', '#dbb76b', '#b58b9c', '#9a6947', '#d7914f', '
 
 // The unit presentation owns its reusable indicator scratch and the ordering of
 // rear rings, native vector passes, front rings, and sleep feedback.
+// Read-only draw tints shared by every unit (the renderer never writes into options.color).
+const NO_TINT = Object.freeze([1, 1, 1, 1]),
+    CLONE_TINT = Object.freeze([0.55, 0.82, 1, 1]);
 export class UnitPresentation {
     constructor(renderer) {
         this.renderer = renderer;
@@ -165,7 +168,7 @@ export class UnitPresentation {
                 };
                 CACHE.set(UNIT.id, entry);
             }
-            updateUnitAttackDisplay(this.renderer, entry, UNIT, time);
+            entry.display = updateUnitAttackDisplay(this.renderer, entry, UNIT, time);
         }
         for (const CACHE of [this.riceDisplayUnits, this.wheatDisplayUnits, this.barleyDisplayUnits]) {
             for (const ID of CACHE.keys()) {
@@ -184,7 +187,7 @@ export class UnitPresentation {
                   : unit.species === 6
                     ? this.riceDisplayUnits
                     : null;
-        const BASE = CACHE?.get(unit.id)?.unit || unit;
+        const BASE = CACHE?.get(unit.id)?.display || unit;
         if (!BASE.growthActive || this.combinePresentation.parts.has(BASE.id)) {
             this.growthDisplayUnits.delete(unit.id);
             return this.combinePresentation.display(BASE);
@@ -424,16 +427,14 @@ export class UnitPresentation {
         if (!PREPARED.sprite.entry) {
             PLAYER.preparePose();
         }
-        const ENTRY = {
-            ...PREPARED,
-            unit: u,
-            sim,
-            seed: u.seed,
-            generation: u.generation,
-            displayTimeMs: this.renderer.displayTimeMs,
-        };
-        this.preparedVisibleUnits.set(u.id, ENTRY);
-        return ENTRY;
+        // prepareUnitPlayer returns a fresh object, so it becomes the cache entry without another copy.
+        PREPARED.unit = u;
+        PREPARED.sim = sim;
+        PREPARED.seed = u.seed;
+        PREPARED.generation = u.generation;
+        PREPARED.displayTimeMs = this.renderer.displayTimeMs;
+        this.preparedVisibleUnits.set(u.id, PREPARED);
+        return PREPARED;
     }
     prepareUnitArt(u, sim, p, r) {
         const PREPARED = this.prepareVisibleUnit(u, sim);
@@ -454,7 +455,7 @@ export class UnitPresentation {
         const DRAW_OPTIONS = {
             matrix: MATRIX,
             alpha: (u.isFormationClone ? 0.52 : 1) * (DEATH?.alpha ?? 1),
-            color: u.isFormationClone ? [0.55, 0.82, 1, 1] : [1, 1, 1, 1],
+            color: u.isFormationClone ? CLONE_TINT : NO_TINT,
         };
         return { prepared: PREPARED, player: PLAYER, matrix: MATRIX, options: DRAW_OPTIONS };
     }
