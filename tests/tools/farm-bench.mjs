@@ -4,7 +4,7 @@
 //                             drawing), per-stage ms per tick from the game's own profiler marks.
 //                             frame: the real page on the real GPU, RAF running, the in-game diagnostics (FPS,
 //                             simulation, capture, interpolation, WebGL submit) over --seconds.
-//   --units 1000              army size (species 0..8 and tiers 1..3 in turn, seeded positions)
+//   --units 500               army size (species 0..8 and tiers 1..3 in turn, seeded positions)
 //   --scene farm|tower        tower starts --floor and walks straight into the fight
 //   --floor 30                tower floor   --ticks 200   logic ticks measured (after 40 warm-up ticks)
 //   --seconds 8               frame mode measuring window (after 3 s warm-up)
@@ -29,7 +29,7 @@ const ARGS = Object.fromEntries(
         .map((pair) => pair.split(/\s+/)),
 );
 const MODE = ARGS.mode ?? 'logic',
-    UNITS = Number(ARGS.units ?? 1000),
+    UNITS = Number(ARGS.units ?? 500),
     SCENE = ARGS.scene ?? 'farm',
     FLOOR = Number(ARGS.floor ?? 30),
     TICKS = Number(ARGS.ticks ?? 200),

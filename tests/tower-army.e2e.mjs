@@ -546,7 +546,7 @@ try {
     }));
     assert.equal(REPORT.stages.reload.towerActive, false);
     assert.equal(REPORT.stages.reload.farm, 'idle');
-    assert.equal(REPORT.stages.reload.cap, 1000);
+    assert.equal(REPORT.stages.reload.cap, 500);
     assert.deepEqual(
         REPORT.stages.reload.rewards.filter((receipt) => receipt.key === REPORT.stages.finalReward.key),
         [REPORT.stages.finalReward],

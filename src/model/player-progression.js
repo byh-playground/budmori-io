@@ -16,9 +16,9 @@ import { SPECIES_ABILITY_DEFINITIONS } from '../abilities/ability-definitions.js
 const BOSS_KILL_XP = 20;
 export const FARM_BOSS_EVENT_MAX_STAGE = 100;
 export const OVERALL_PROGRESSION_SETTINGS = Object.freeze({
-    initialCapacity: 200,
-    capacityPerLevel: 20,
-    maxCapacity: 1000,
+    initialCapacity: 100,
+    capacityPerLevel: 10,
+    maxCapacity: 500,
     firstLevelXp: 100,
     levelXpStep: 25,
     floorXpBase: 20,

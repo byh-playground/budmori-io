@@ -14,7 +14,7 @@ export const BREED_RESERVATION_OWNER = (aId, bId) => `breed:${Math.min(aId, bId)
 
 export const MERGE_RESERVATION_OWNER = (ids) => `merge:${[...ids].sort((a, b) => a - b).join(':')}`;
 
-const FARM_MAX_UNITS = 1000,
+const FARM_MAX_UNITS = 500,
     MAX_PEANUT_SPLIT_CHILDREN = 2,
     // Boss minions alive at once: the largest summon band cap (tower-encounter.js).
     MAX_BOSS_SUMMONS = MAX_TOWER_MINIONS,
