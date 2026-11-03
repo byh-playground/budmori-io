@@ -169,7 +169,15 @@ export function updateUnitAttackDisplay(renderer, entry, unit, time, record, ena
     } else {
         entry.releasedAt ??= renderer.displayTimeMs;
     }
-    const LEFT = entry.releasedAt === null ? 1 : Math.max(0, 1 - (renderer.displayTimeMs - entry.releasedAt) / 120);
-    Object.assign(entry.unit, unit, { x: unit.x + entry.offset.x * LEFT, y: unit.y + entry.offset.y * LEFT });
+    const LEFT = entry.releasedAt === null ? 1 : Math.max(0, 1 - (renderer.displayTimeMs - entry.releasedAt) / 120),
+        DX = entry.offset.x * LEFT,
+        DY = entry.offset.y * LEFT;
+    // Without an offset the display is the unit itself; copying every field per frame was most of this cost.
+    if (DX === 0 && DY === 0) {
+        return unit;
+    }
+    Object.assign(entry.unit, unit);
+    entry.unit.x = unit.x + DX;
+    entry.unit.y = unit.y + DY;
     return entry.unit;
 }

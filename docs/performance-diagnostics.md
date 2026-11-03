@@ -243,3 +243,10 @@ SDK 교체 검증은 staged root가 가진 검증된 source schema를 사용합�
 
 - 실제 GPU 프레임(`perf:farm --mode frame --units 1000`, 이 PC 부하 상태 교대 3회 중앙값): `runtimeCapture` 37.7 → 27.4ms(-27%), `presentation`(보간) 15.5 → 7.7ms(-50%). FPS는 이 PC에서 CPU 한계라 따라잡기 틱이 늘어 그대로(5.1 → 5.2)입니다.
 - 스프라이트 모드(`UNIT_ART='sprite'`)를 같은 방법으로 비교: 같은 라운드끼리 WebGL 제출 -10~15%, 시작 로딩 +1.5~2초(+60~90%). 로딩 대비 이득이 작아 벡터를 유지합니다.
+
+## GameKit 0.42.4·표시 복사 생략 (0.67.35)
+
+- 레퍼런스: A083 Delta Write(바뀐 필드만 쓰기), A078 Cache Invalidation(한 번만 하는 accessor 검사).
+- GameKit 0.42.3: capture가 필드마다 descriptor 객체를 만들지 않고, 같은 구간을 다시 sample하면 움직이는 필드만 씁니다. 그러나 이 PC(1,000마리 9fps, 틱 20Hz)는 프레임마다 새 구간이라 목록 준비만 늘어 CPU 보간이 5.8 → 8.8ms로 **회귀**했습니다(교대 5회). 0.42.4에서 목록을 두 번째 sample 때 만들도록 고쳤습니다. 교훈: 보간 벤치는 `--frames 1`(느린 화면)과 `--frames 3`을 둘 다 잰다.
+- 쌀·밀·보리 유닛은 공격 이동 오프셋이 0이면 표시용 복사본 대신 유닛을 그대로 씁니다(전 필드 `Object.assign` 생략). 준비 결과는 복사 없이 캐시 항목이 되고, 색조 배열은 공유 상수입니다.
+- 측정 `perf:farm --mode frame --units 1000 --rounds 5`(main 0.67.34 대비, 교대): render 40.5 → 36.8ms(-9%), runtimeCapture 14.9 → 12.5ms(-16%), presentation 5.5 → 5.2ms(-5%). simulation 등 로직 단계 차이는 이번 변경과 무관한 기계 부하 변동입니다.
