@@ -207,6 +207,7 @@ const DIORAMA = class Diorama {
         // SDK resources restore first; the app resumes its suspended clock
         // after this listener, so image preparation cannot advance game time.
         this.onSpritesRestored = () => {
+            // Overlays already uploaded are replayed by the device; this only uploads them if start could not.
             this.unitOverlays.prepare();
             if (
                 !this.assetsReady ||
