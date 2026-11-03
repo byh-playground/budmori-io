@@ -140,7 +140,8 @@ export const FARM_CONTACT_SOLVER = (base) =>
             for (let key = 0; key < CELLS; key++) {
                 START[key + 1] += START[key];
             }
-            // Filling in unit order keeps each cell ascending; the start offsets are restored after the fill.
+            // Filling in unit order keeps each cell ascending; the start offsets are restored after the fill. Each list
+            // stays in ascending order (the prior i/j order): impulses and floating-point sums must not depend on cells.
             for (let i = 0; i < COUNT; i++) {
                 if (CELL_OF[i] >= 0) {
                     ITEMS[START[CELL_OF[i]]++] = i;
@@ -175,13 +176,18 @@ export const FARM_CONTACT_SOLVER = (base) =>
                                 DY = B.y - A.y,
                                 REACH = RADIUS[i] + RADIUS[J] + gap;
                             if (DX * DX + DY * DY <= contactQueryReachSquared(REACH)) {
+                                // Lists hold a few bodies: inserting in place keeps them ascending without a sort.
+                                let at = LIST.length;
                                 LIST.push(J);
+                                while (at > 0 && LIST[at - 1] > J) {
+                                    LIST[at] = LIST[at - 1];
+                                    at--;
+                                }
+                                LIST[at] = J;
                             }
                         }
                     }
                 }
-                // Keep the prior i/j order: impulses and floating-point sums must not depend on cell order.
-                LIST.sort((a, b) => a - b);
             }
         }
         solveContactSeparations(units, dt, bodiesCached = false) {
@@ -399,18 +405,13 @@ export const FARM_CONTACT_SOLVER = (base) =>
                 RADIUS = this._battleRadius,
                 HEIGHT = this._battleHeight,
                 INVERSE_MASS = this._battleInverseMass,
-                GAP = this.tower.active && this.battleCommand === 'scatter' ? CONFIG.farm.deploy.scatterGap : 0.22,
                 FIGHTING = this.farmBossEvent.phase !== 'idle';
+            // Impulses never move a body, so one grid of the current centers serves the whole pass. Touching bodies
+            // only (no gap): the gap is the separation's soft spacing, not a bump.
+            this._prepareFarmContactNeighbors(units, MAXIMUM_RADIUS, 0);
             for (let i = 0; i < units.length; i++) {
                 const UNIT_LOCAL = units[i],
-                    PENDING = this._collectContactOrders(
-                        UNIT_LOCAL,
-                        i + 1,
-                        units.length - 1,
-                        this._contactPending,
-                        RADIUS[i] + Math.min(MAXIMUM_RADIUS, CONFIG.unit.maxRadius) + GAP,
-                        i,
-                    );
+                    PENDING = this._farmContactNeighbors[i];
                 if (this.isMergeTaskMaterial(UNIT_LOCAL)) {
                     continue;
                 }
