@@ -84,6 +84,8 @@ export const FARM_CONTACT_SOLVER = (base) =>
                 RADIUS = this._battleRadius,
                 HEIGHT = this._battleHeight,
                 COUNT = units.length;
+            // Uniform grid by design (bloom-reference algorithms A001; docs/performance-diagnostics.md, 0.67.31): an x-axis
+            // sweep here took a full-height strip of the farm as candidates (16x the needed pairs at 1,000 troops).
             // A uniform grid rebuilt from the current centers once per solve pass (a Jacobi move may create contacts).
             // A cell is at least the widest reach, so every pair in reach sits in the same or a neighbouring cell. An
             // x-axis sweep would test every body in a full-height strip of the farm instead of its 3x3 cells.
