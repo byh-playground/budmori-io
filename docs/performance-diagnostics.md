@@ -250,3 +250,9 @@ SDK 교체 검증은 staged root가 가진 검증된 source schema를 사용합�
 - GameKit 0.42.3: capture가 필드마다 descriptor 객체를 만들지 않고, 같은 구간을 다시 sample하면 움직이는 필드만 씁니다. 그러나 이 PC(1,000마리 9fps, 틱 20Hz)는 프레임마다 새 구간이라 목록 준비만 늘어 CPU 보간이 5.8 → 8.8ms로 **회귀**했습니다(교대 5회). 0.42.4에서 목록을 두 번째 sample 때 만들도록 고쳤습니다. 교훈: 보간 벤치는 `--frames 1`(느린 화면)과 `--frames 3`을 둘 다 잰다.
 - 쌀·밀·보리 유닛은 공격 이동 오프셋이 0이면 표시용 복사본 대신 유닛을 그대로 씁니다(전 필드 `Object.assign` 생략). 준비 결과는 복사 없이 캐시 항목이 되고, 색조 배열은 공유 상수입니다.
 - 측정 `perf:farm --mode frame --units 1000 --rounds 5`(main 0.67.34 대비, 교대): render 40.5 → 36.8ms(-9%), runtimeCapture 14.9 → 12.5ms(-16%), presentation 5.5 → 5.2ms(-5%). simulation 등 로직 단계 차이는 이번 변경과 무관한 기계 부하 변동입니다.
+
+## GameKit 0.42.5 그리기 할당 (0.67.36)
+
+- 레퍼런스: A075 Buffer Reuse(scratch 사각형), A074 Object Pooling(동결 상수 공유). `drawRegion`이 호출마다 배열·`Float32Array`를 10개 넘게 만들고, 정렬 경로가 명령마다 20칸 배열을 만들던 것을 없앴습니다(GameKit #198).
+- 측정 `perf:farm --mode frame --units 1000 --rounds 5`(rendering.js만 바꾼 사본 대 main, 교대): render 50.3 → 48.9ms(-3%).
+- 남은 비용(같은 프로파일, 자기 시간): (program) 22%·GC 7%, 보간 `captureRenderData` 7%(1,000마리 × 약 100필드 × 20Hz, 필드당 최소 작업만 남음), 접촉 해소 약 10%. 그리기는 GameKit 렌더링 함수 수십 개에 1% 안팎으로 퍼져 있어 단일 병목이 없습니다. 더 줄이려면 렌더 스키마 필드 수나 1,000마리라는 규모 자체를 바꿔야 합니다.

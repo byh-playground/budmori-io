@@ -1,28 +1,29 @@
-tree d528cb4404edea29fe4b50819bbe926448115b29
-parent 23d823dc6cb3324d30c7dc153831af1ba25e135f
-author byh020907 <byh020907@naver.com> 1793717263 +0900
-committer GitHub <noreply@github.com> 1793717263 +0900
+tree d9f7242c41fe4040889fec345f3562fc575ec347
+parent 8d0714d15b092a59186659907996c8cfa15bd655
+author byh020907 <byh020907@naver.com> 1793718646 +0900
+committer GitHub <noreply@github.com> 1793718646 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq6fQPCRC1aQ7uu5UhlAAAwtEQAGQzKbYfJ4rnIFZlOgj1wfBD
- Xd980fWSs9Uy+CUwl+heLT05uglmTnpoT7WBskm2ukD4zu+xaRDupxRm+oiTEQ8l
- wMXhY3Mgc9EZJ7/h3vL0NSsu142WwWj9uICBNLcPUajhhJ1qQvOSrb7FTUkCBUCE
- DhhM5nbNR/+ZOgpPIwmGMGK2+uooFR1bz17Vul0iEqjbWQASMA/qIGhIxIDExESU
- emATju/aom6oIh58dfpgjQdXXwfh6P9QsUgVY8Fk45Uz3Fx41+EIjKTz3LRq6Y3e
- ybv73qoco2BKf6UEUvvDNqxS4/QRc06NUW0FLlBrHtvqsDN+XXzXFWGoRFTjtsTc
- MV81Aa+oHOxMDzXEJLSCJQRp1TZic8+acyX2S3wqqrp+z3wCjgCKgPP9XFHgf81R
- dJWwttUTXPYO2WuZGUS4/Aboe/B4G0rVBOe6tmkfw2fC4NZgjblyDNS1mft3NDtI
- vc5kvvwMmx9/CdhfQwzIXbYTMS75FK0OpDRqTdIQ0Qu9v7QZCM67lwhSoXM8JHNy
- xiO2stm42L7pjymc350uCobea1mK9W0asl9DwEuhPRk/EBb5AZtCAz92sqTB/bzy
- YShl5gHLT8dI1Dq6pm6EQhxZml90KmyDD3SViSWEv/Ysg5BfNEBNsV2dlwn1VopG
- jrmI1VFXSltszNGhsll0
- =3oS1
+ wsFcBAABCAAQBQJq6fl2CRC1aQ7uu5UhlAAAuBgQADC6k/YFkyhV7D1YRFQallaa
+ OCCTjZxW9EGAef9r2qQgn7fQizSO1gq0XKGSVjQrz/neeWUH3c/eaZWgRpNkxr1t
+ Z0mX7XysC0hGMSWvatodnMpbsIssD/Qt/fV76uULIy53KXykgGyerObpm5gwaLt8
+ lEYGuarNMb4PBkziI95atqof4PReuvmum68MTC6Dhi08APCHhojQHgzzbk4hjMEl
+ XG3OwC6MPbH569JbmA2/4XJf7xn7sDSJbCw6iPE1U6FsG2W9S09/C8KbY5IIi1Kp
+ wL4RiSigg69oZUvbhmQcOlmkQDKut1TXHtus/MdCtMdGrWALhmn83eEbTEwEgp2M
+ cuOHMkpsRHNqN7ddGOmYBPjYJpEJL5OQchvYwRMZ/5Nq8rCnxbdeM2mRa6pmU9Ac
+ XK2If02eFvBxJmE4MmIQaghBOkf4356u40TaA0aYj6Txp7LYjDRoYM3ukecWVviz
+ cMjcbGmFaJrx9ixnh4+aYwlpG0/tesM6FxZYOfG2zY8AOebM7hR+TX00N/pWFxMV
+ y9rD7iEsGd3vOsmEqCSXHEpuPCPfgZkaWLOs3EykdCZ7mHUtNjYcg4rEzFPfx3p+
+ mPm9L1r21fAH+kVGNODlYRShfFRnbxvDOBwWoLzgcSMSPE/lekDyqlZQ1sD+CKLW
+ +HhDC9nlU8QA+i9lmFBY
+ =qXAv
  -----END PGP SIGNATURE-----
  
 
-[bug-fix] 틱보다 느린 화면에서 보간 sample 회귀 수정 (v0.42.4) (#197)
+[performance] drawRegion·정렬 quad 제출의 호출당 할당 제거 (v0.42.5) (#198)
 
-- 움직이는 필드 목록을 같은 구간의 두 번째 sample에서 만들도록 지연
-- runtime-benchmark.mjs --frames 옵션(프레임/틱)
+- drawRegion scratch 사각형, 흰색 상수, 인라인 finite 검사
+- validateQuads 배열 생성 없는 검사
+- 정렬 명령 기록을 칸별 쓰기로, quad 기본 색·morph 상수, index 직접 쓰기
 
 Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
