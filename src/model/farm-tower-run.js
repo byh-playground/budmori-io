@@ -2,7 +2,13 @@ import { highestTowerStartFloor, beginTowerRewardRun } from './player-progressio
 import { CONFIG, CLAMP } from './farm-config.js';
 import { isDeployOrder } from './play-choices.js';
 import { AUTO_FORM_PROGRESSION } from './auto-forms.js';
-import { applyRunGrowthHealth, unitMaxHpFor, setRunStatMods } from '../units/unit-stats.js';
+import {
+    applyRunGrowthHealth,
+    baseUnitStatsFor,
+    resolveUnitStats,
+    unitMaxHpFor,
+    setRunStatMods,
+} from '../units/unit-stats.js';
 import {
     freshTowerRun,
     rollFloorKind,
@@ -19,9 +25,14 @@ import {
 import { ARENA_GEOMETRY } from './arena-geometry.js';
 import { FORMATION_SKILL_DEFINITIONS } from '../formation/formation-skill-state.js';
 import { FACTION_CONFIG, hasFaction } from '../core/factions.js';
-import { createTowerEncounter, encounterBudget, TOWER_ENCOUNTER_SETTINGS } from '../tower/tower-encounter.js';
+import {
+    armyBudgetScale,
+    createTowerEncounter,
+    encounterBudget,
+    TOWER_ENCOUNTER_SETTINGS,
+} from '../tower/tower-encounter.js';
 import { bossStageStats } from '../boss/boss-rewards.js';
-import { BOSS_SPECIES } from '../units/species-catalog.js';
+import { BOSS_SPECIES, SPECIES_COUNT } from '../units/species-catalog.js';
 import { towerElement } from '../tower/tower-theme.js';
 import { Unit as UNIT } from './farm-unit.js';
 import { bossBodyRadius, bossBodyHeight, bossTorsoHeight } from '../features/unit-body/definition.js';
@@ -29,6 +40,21 @@ import { bossVectorScale } from '../vector-sockets.js';
 import { BossController } from '../boss/boss-controller.js';
 import { createBossPatternRuntime } from '../boss/boss-patterns.js';
 import { createBarleyArmorShredBuckets } from '../features/abilities/barley-shred/model.js';
+
+// Army strength (armyScaling): Σ √(attack × max health). The reference army is plain troops without run cards.
+function troopStrength(stats) {
+    return Math.sqrt(Math.max(0, stats.attackPower) * Math.max(0, stats.maxHp));
+}
+const { referenceCount: REFERENCE_COUNT, referenceTier: REFERENCE_TIER } = TOWER_ENCOUNTER_SETTINGS.armyScaling;
+let referenceStrength = 0;
+function referenceArmyStrength() {
+    if (!referenceStrength) {
+        for (let index = 0; index < REFERENCE_COUNT; index++) {
+            referenceStrength += troopStrength(baseUnitStatsFor(REFERENCE_TIER, index % SPECIES_COUNT, false));
+        }
+    }
+    return referenceStrength;
+}
 
 export const FARM_TOWER_RUN = (base) =>
     class FarmTowerRun extends base {
@@ -334,6 +360,16 @@ export const FARM_TOWER_RUN = (base) =>
             this.markProgressChanged();
             return true;
         }
+        // The strength of the troops still in the climb (armyScaling), run cards included.
+        towerArmyStrength() {
+            let strength = 0;
+            for (const UNIT_LOCAL of this.unitCollection.items) {
+                if (!UNIT_LOCAL.isBattleOnlySummon && !UNIT_LOCAL.isFormationClone && UNIT_LOCAL.hp > 0) {
+                    strength += troopStrength(resolveUnitStats(UNIT_LOCAL));
+                }
+            }
+            return strength;
+        }
         joinNextBoss() {
             const ENCOUNTER = this.bossEncounter,
                 ENTRY = ENCOUNTER?.roster[ENCOUNTER.nextIndex];
@@ -345,13 +381,14 @@ export const FARM_TOWER_RUN = (base) =>
                 KIND = CONFIG.farm.tower[this.tower.kind],
                 BUDGET = encounterBudget(ENCOUNTER.floor, this.tower.startFloor || 1),
                 STATS = bossStageStats(ENCOUNTER.floor),
+                ARMY = armyBudgetScale(this.towerArmyStrength(), referenceArmyStrength()),
                 // Straight up from the centre and back down in `FLIGHT` seconds.
                 GRAVITY = CONFIG.physics.gravity,
                 FLIGHT = Math.sqrt((8 * TOWER_ENCOUNTER_SETTINGS.launchApex) / GRAVITY);
             BOSS.controller.configureStage(ENCOUNTER.floor, ENTRY.species);
             BOSS.setBaseStats({
-                maxHp: Math.max(1, Math.round(STATS.hp * KIND.hp * BUDGET.hp)),
-                attackPower: STATS.attackPower * KIND.attack * BUDGET.attack,
+                maxHp: Math.max(1, Math.round(STATS.hp * KIND.hp * BUDGET.hp * ARMY)),
+                attackPower: STATS.attackPower * KIND.attack * BUDGET.attack * ARMY,
             });
             BOSS.setStatModifiers(runStatModifiers(this.tower.bossCards, 'boss'));
             BOSS.setHealth(BOSS.maxHp);

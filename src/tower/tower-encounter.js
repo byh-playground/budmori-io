@@ -33,6 +33,13 @@ export const TOWER_ENCOUNTER_SETTINGS = Object.freeze({
             cooldown: 8,
         }),
     ]),
+    // The boss follows the army it meets, more slowly than the army grows (a flexible raid): its health and attack are
+    // × (army strength / reference)^exponent, army strength = Σ √(attack × max health) of the troops still in the climb.
+    // A fight's balance goes as army strength² against boss health × attack; 0.25 (measured with tests/tools/
+    // tower-climb.mjs against 0.5, which flattened a 400-troop army to a 200-troop one) keeps bigger armies clearly
+    // ahead while narrowing the spread. The reference is `referenceCount` plain (cardless) troops of
+    // `referenceTier`, the species in turn.
+    armyScaling: Object.freeze({ exponent: 0.25, referenceCount: 100, referenceTier: 3 }),
     // A small army meets fewer minions: one more minion may be alive per this many living troops (at least one).
     troopsPerMinion: 25,
     launchApex: 7,
@@ -89,6 +96,11 @@ export function createTowerEncounter(floor) {
         floor,
         completed: false,
     };
+}
+
+// The boss stat multiplier for an army of `strength` against the reference army's.
+export function armyBudgetScale(strength, referenceStrength) {
+    return Math.pow(Math.max(1e-6, strength) / referenceStrength, TOWER_ENCOUNTER_SETTINGS.armyScaling.exponent);
 }
 
 export function encounterBudget(floor, startFloor) {
