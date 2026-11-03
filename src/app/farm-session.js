@@ -7,7 +7,7 @@ import { updateRicePresentation } from '../features/unit-attacks/rice/presentati
 import { updateWalnutPresentation } from '../features/unit-attacks/walnut/presentation.js';
 import { Garden, bindPresentationClock } from '../model/farm-model.js';
 import { elementOf } from '../model/lineage.js';
-import { unitMaxHpFor, resolveUnitStats } from '../units/unit-stats.js';
+import { unitMaxHpFor, unitStats } from '../units/unit-stats.js';
 import { kitSpecies } from '../units/species-catalog.js';
 import { PASSIVE_SETTINGS } from '../tower/tower-run.js';
 import { BarleyArmorShredModel } from '../features/abilities/barley-shred/model.js';
@@ -344,7 +344,7 @@ class UnitRender extends RENDER_OBJECT {
         this.element = u.faction === 'enemy' ? u.enemyElement : elementOf(u.genes);
         // Only a casting minion draws a telegraph; its reach needs the resolved attack area (skip it for everyone else).
         updatePatternRender(this, u);
-        this.attackArea = u.patternRuntime?.active ? resolveUnitStats(u).attackArea : 1;
+        this.attackArea = u.patternRuntime?.active ? unitStats(u).attackArea : 1;
         this.giantScale = u.giantScale;
         this.patternReachScale = patternReachScale(u);
         this.isSeedling = !!u.seedling;
@@ -488,7 +488,7 @@ class BossRender extends RENDER_OBJECT {
         this.maxHp = b.maxHp;
         this.radius = b.radius;
         this.giantScale = b.giantScale;
-        this.attackArea = resolveUnitStats(b).attackArea;
+        this.attackArea = unitStats(b).attackArea;
         this.height = b.height;
         this.flash = b.flash;
         this.species = b.species ?? 3;

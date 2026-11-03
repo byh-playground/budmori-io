@@ -10,7 +10,7 @@ import {
     unitBodyHeight,
     unitTorsoHeight,
 } from '../features/unit-body/definition.js';
-import { baseUnitStatsFor, resolveUnitStats, resolveKnockback, resolveStatusDuration } from '../units/unit-stats.js';
+import { baseUnitStatsFor, unitStats, resolveKnockback, resolveStatusDuration } from '../units/unit-stats.js';
 import { kitSpecies } from '../units/species-catalog.js';
 
 const BODY = class Body {
@@ -292,19 +292,19 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
         this.notifyHealthCapacity(PREVIOUS_MAX_HP);
     }
     get maxHp() {
-        return resolveUnitStats(this).maxHp;
+        return unitStats(this).maxHp;
     }
     set maxHp(value) {
         this.setBaseStats({ maxHp: value });
     }
     get attackPower() {
-        return resolveUnitStats(this).attackPower;
+        return unitStats(this).attackPower;
     }
     set attackPower(value) {
         this.setBaseStats({ attackPower: value });
     }
     get moveSpeed() {
-        return resolveUnitStats(this).moveSpeed;
+        return unitStats(this).moveSpeed;
     }
     set moveSpeed(value) {
         this.setBaseStats({ moveSpeed: value });

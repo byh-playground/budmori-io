@@ -1,5 +1,5 @@
 import { createBarleyArmorShredBuckets } from '../features/abilities/barley-shred/model.js';
-import { resolveUnitStats, applyHealing, resolveKnockback } from '../units/unit-stats.js';
+import { unitStats, applyHealing, resolveKnockback } from '../units/unit-stats.js';
 import { bossStageStats } from './boss-rewards.js';
 import {
     BOSS_BREAK,
@@ -202,7 +202,7 @@ export class BossController {
             world.bossSummonShockwave(B_LOCAL, BOSS_BREAK.shockwave);
         }
         this.updateStagger();
-        const STATS = resolveUnitStats(B_LOCAL);
+        const STATS = unitStats(B_LOCAL);
         if (STATS.regen > 0) {
             applyHealing(B_LOCAL, STATS.regen * dt, STATS);
         }

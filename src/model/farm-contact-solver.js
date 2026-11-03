@@ -68,6 +68,14 @@ function contact(
     }
     return true;
 }
+// Verlet neighbour list skin (docs/performance-diagnostics.md, 0.67.33): the solve's neighbour lists are built once per
+// tick with this much extra reach and reused by every pass until some body has moved half of it from where the list
+// was built. Any pair in reach now was then within reach + skin, so the lists stay a superset; every pass still tests
+// the true distance, and each list keeps ascending order, so corrections and their floating-point sums are unchanged.
+const CONTACT_SKIN = 0.3;
+const CONTACT_MERGE = 1,
+    CONTACT_IDLE = 2,
+    CONTACT_PLAYER = 4;
 export const FARM_CONTACT_SOLVER = (base) =>
     class FarmContactSolver extends base {
         _ensureContactSolverBuffers(length) {
@@ -192,6 +200,31 @@ export const FARM_CONTACT_SOLVER = (base) =>
                 }
             }
         }
+        _contactQueryGap() {
+            return this.tower.active && this.battleCommand === 'scatter' ? CONFIG.farm.deploy.scatterGap : 0.22;
+        }
+        // Neighbour lists in reach + gap + skin of the current centers, remembering those centers.
+        _prepareFarmContactList(units, maximumRadius, gap) {
+            this._prepareFarmContactNeighbors(units, maximumRadius, gap + CONTACT_SKIN);
+            for (let i = 0; i < units.length; i++) {
+                this._farmContactAnchorX[i] = units[i].x;
+                this._farmContactAnchorY[i] = units[i].y;
+            }
+        }
+        // False once any body moved more than half the skin since the lists were built (or left the finite plane).
+        _farmContactListHolds(units) {
+            const LIMIT = (CONTACT_SKIN / 2) * (CONTACT_SKIN / 2),
+                ANCHOR_X = this._farmContactAnchorX,
+                ANCHOR_Y = this._farmContactAnchorY;
+            for (let i = 0; i < units.length; i++) {
+                const DX = units[i].x - ANCHOR_X[i],
+                    DY = units[i].y - ANCHOR_Y[i];
+                if (!(DX * DX + DY * DY <= LIMIT)) {
+                    return false;
+                }
+            }
+            return true;
+        }
         solveContactSeparations(units, dt, bodiesCached = false) {
             if (this.tower.active && this.battleCommand === 'scatter') {
                 this._prepareArmySpacing();
@@ -200,7 +233,7 @@ export const FARM_CONTACT_SOLVER = (base) =>
             // Body geometry does not change inside a Jacobi solve. Cache it once,
             // rather than evaluating authored shape/grade/giant getters per pair.
             if (!bodiesCached) {
-                this._cacheBattleBodies(units);
+                this._prepareFarmContactList(units, this._cacheBattleBodies(units), this._contactQueryGap());
             }
             const CORRECTION_X = this._contactCorrectionX,
                 CORRECTION_Y = this._contactCorrectionY,
@@ -208,8 +241,9 @@ export const FARM_CONTACT_SOLVER = (base) =>
                 BODY_RADIUS = this._battleRadius,
                 BODY_HEIGHT = this._battleHeight,
                 BODY_INVERSE_MASS = this._battleInverseMass,
+                FLAGS = this._contactBodyFlags,
                 SCATTER_COMMAND = this.tower.active && this.battleCommand === 'scatter',
-                QUERY_GAP = SCATTER_COMMAND ? CONFIG.farm.deploy.scatterGap : 0.22,
+                QUERY_GAP = this._contactQueryGap(),
                 ITERATIONS = CONFIG.physics.separationIterations,
                 SOFT_FACTOR = 1 - Math.exp((-CONFIG.physics.softSeparationRate * dt) / ITERATIONS);
             let maximumRadius = 0;
@@ -217,21 +251,26 @@ export const FARM_CONTACT_SOLVER = (base) =>
                 maximumRadius = Math.max(maximumRadius, BODY_RADIUS[index]);
             }
             for (let iteration = 0; iteration < ITERATIONS; iteration++) {
-                this._prepareFarmContactNeighbors(units, maximumRadius, QUERY_GAP);
+                if (iteration > 0 && !this._farmContactListHolds(units)) {
+                    this._prepareFarmContactList(units, maximumRadius, QUERY_GAP);
+                    this.profiler?.count('contactListRebuilds');
+                }
                 CORRECTION_X.fill(0, 0, units.length);
                 CORRECTION_Y.fill(0, 0, units.length);
                 CORRECTION_COUNT.fill(0, 0, units.length);
                 let correctionCount = 0;
                 for (let i = 0; i < units.length; i++) {
-                    const UNIT_LOCAL = units[i];
-                    if (this.isMergeTaskMaterial(UNIT_LOCAL)) {
+                    const UNIT_LOCAL = units[i],
+                        FLAGS_A = FLAGS[i];
+                    if (FLAGS_A & CONTACT_MERGE) {
                         continue;
                     }
                     const INVERSE_MASS_A = BODY_INVERSE_MASS[i];
                     const PENDING = this._farmContactNeighbors[i];
                     for (const J of PENDING) {
-                        const OTHER = units[J];
-                        if (this.isMergeTaskMaterial(OTHER)) {
+                        const OTHER = units[J],
+                            FLAGS_B = FLAGS[J];
+                        if (FLAGS_B & CONTACT_MERGE) {
                             continue;
                         }
                         if (UNIT_LOCAL.z > OTHER.z + BODY_HEIGHT[J] || OTHER.z > UNIT_LOCAL.z + BODY_HEIGHT[i]) {
@@ -246,17 +285,14 @@ export const FARM_CONTACT_SOLVER = (base) =>
                         if (INVERSE_MASS_SUM <= 0) {
                             continue;
                         }
-                        const SCATTER =
-                                SCATTER_COMMAND &&
-                                hasFaction(UNIT_LOCAL, FACTION_CONFIG.PLAYER) &&
-                                hasFaction(OTHER, FACTION_CONFIG.PLAYER),
+                        const SCATTER = SCATTER_COMMAND && (FLAGS_A & FLAGS_B & CONTACT_PLAYER) !== 0,
                             GAP = SCATTER ? CONFIG.farm.deploy.scatterGap : 0.22,
                             SOFT =
                                 DISTANCE >= RADIUS &&
                                 DISTANCE < RADIUS + GAP &&
                                 UNIT_LOCAL.z < 0.1 &&
                                 OTHER.z < 0.1 &&
-                                (SCATTER || (UNIT_LOCAL.ability.phase === 'idle' && OTHER.ability.phase === 'idle')),
+                                (SCATTER || (FLAGS_A & FLAGS_B & CONTACT_IDLE) !== 0),
                             TARGET_DISTANCE = SOFT ? RADIUS + GAP : RADIUS;
                         if (DISTANCE >= TARGET_DISTANCE) {
                             continue;
@@ -389,6 +425,9 @@ export const FARM_CONTACT_SOLVER = (base) =>
                 this._battleRadius = new Float64Array(CAPACITY);
                 this._battleHeight = new Float64Array(CAPACITY);
                 this._battleInverseMass = new Float64Array(CAPACITY);
+                this._farmContactAnchorX = new Float64Array(CAPACITY);
+                this._farmContactAnchorY = new Float64Array(CAPACITY);
+                this._contactBodyFlags = new Uint8Array(CAPACITY);
             }
             let maximumRadius = 0;
             for (let i = 0; i < units.length; i++) {
@@ -396,6 +435,11 @@ export const FARM_CONTACT_SOLVER = (base) =>
                 this._battleRadius[i] = UNIT_LOCAL.radius;
                 this._battleHeight[i] = UNIT_LOCAL.height;
                 this._battleInverseMass[i] = inverseBodyMass(UNIT_LOCAL);
+                // Merge reservations, attack phases and sides hold for the whole contact step: read once per body.
+                this._contactBodyFlags[i] =
+                    (this.isMergeTaskMaterial(UNIT_LOCAL) ? CONTACT_MERGE : 0) |
+                    (UNIT_LOCAL.ability?.phase === 'idle' ? CONTACT_IDLE : 0) |
+                    (hasFaction(UNIT_LOCAL, FACTION_CONFIG.PLAYER) ? CONTACT_PLAYER : 0);
                 maximumRadius = Math.max(maximumRadius, this._battleRadius[i]);
             }
             return maximumRadius;
@@ -408,17 +452,17 @@ export const FARM_CONTACT_SOLVER = (base) =>
                 HEIGHT = this._battleHeight,
                 INVERSE_MASS = this._battleInverseMass,
                 FIGHTING = this.farmBossEvent.phase !== 'idle';
-            // Impulses never move a body, so one grid of the current centers serves the whole pass. Touching bodies
-            // only (no gap): the gap is the separation's soft spacing, not a bump.
-            this._prepareFarmContactNeighbors(units, MAXIMUM_RADIUS, 0);
+            // Impulses never move a body, so the separation's first lists serve this pass too: contact() bumps touching
+            // bodies only (no gap, no skin) and returns before any change for the rest.
+            this._prepareFarmContactList(units, MAXIMUM_RADIUS, this._contactQueryGap());
             for (let i = 0; i < units.length; i++) {
                 const UNIT_LOCAL = units[i],
                     PENDING = this._farmContactNeighbors[i];
-                if (this.isMergeTaskMaterial(UNIT_LOCAL)) {
+                if (this._contactBodyFlags[i] & CONTACT_MERGE) {
                     continue;
                 }
                 for (const J of PENDING) {
-                    if (this.isMergeTaskMaterial(units[J])) {
+                    if (this._contactBodyFlags[J] & CONTACT_MERGE) {
                         continue;
                     }
                     // In a fight, bump impulses and stuns only pass between opposing sides: allies just separate

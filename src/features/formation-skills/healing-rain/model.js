@@ -1,7 +1,7 @@
 import { formationHealingBudget } from '../../../formation/formation-damage.js';
 import { DEFINITION } from './definition.js';
 import { FormationSkill } from '../model-base.js';
-import { applyHealing, resolveUnitStats, unitMaxHpFor } from '../../../units/unit-stats.js';
+import { applyHealing, resolveUnitStats, unitStats, unitMaxHpFor } from '../../../units/unit-stats.js';
 export class HealingRainSkill extends FormationSkill {
     constructor() {
         super(DEFINITION);
@@ -83,7 +83,7 @@ export class HealingRainSkill extends FormationSkill {
             let remaining = 0;
             for (let i = 0; i < injuredCount; i++) {
                 const UNIT = INJURED[i];
-                if (UNIT.hp < resolveUnitStats(UNIT).maxHp - 1e-9) {
+                if (UNIT.hp < unitStats(UNIT).maxHp - 1e-9) {
                     INJURED[remaining++] = UNIT;
                 }
             }

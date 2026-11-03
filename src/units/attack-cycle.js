@@ -4,7 +4,7 @@ import { riceRange } from '../features/species-growth/rice-attack.js';
 import { peanutRange } from '../features/species-growth/peanut-attack.js';
 import { chestnutRange } from '../features/species-growth/chestnut-attack.js';
 import { WheatCommandModel } from '../features/abilities/wheat-command/model.js';
-import { resolveUnitStats, scaleAttackRecovery } from './unit-stats.js';
+import { unitStats, scaleAttackRecovery } from './unit-stats.js';
 import { abilityProfile, unitCapabilityComposition } from './unit-abilities.js';
 import { kitSpecies } from './species-catalog.js';
 import { AttackAction } from '../features/species-growth/attack-action.js';
@@ -59,7 +59,7 @@ export class AttackCycle {
     }
     attackRecoverySecondsFor(multiplier) {
         const U = this.owner,
-            BASE_ATTACK_SPEED = resolveUnitStats(U).attackSpeed;
+            BASE_ATTACK_SPEED = unitStats(U).attackSpeed;
         return scaleAttackRecovery(this.spec.timing.recovery, U, {
             attackSpeed: BASE_ATTACK_SPEED * multiplier,
         });
