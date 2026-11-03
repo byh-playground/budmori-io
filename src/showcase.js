@@ -1,6 +1,7 @@
 // The farm loads its vetted GameKit intro only when the visitor requests it.
 // Normal gameplay and offline smoke tests do not fetch another SDK module.
 import { SHELL } from './i18n/messages/shell.js';
+import { LOCALE } from './i18n/locale.js';
 
 if (new URLSearchParams(location.search).get('showcaseDemo') !== '1') {
     const START_BUTTON = document.getElementById('newGame');
@@ -18,9 +19,10 @@ if (new URLSearchParams(location.search).get('showcaseDemo') !== '1') {
         }
         if (!pending) {
             pending =
-                import('https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@c819a0b48fb650ee8222f7d5ea90a63a2b9306d1/scenario.js')
+                import('https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@64707bae015a894c832fecb15e640345174a9fdd/scenario.js')
                     .then(({ installShowcase }) => {
                         hostInstance = installShowcase({
+                            locale: LOCALE.locale,
                             title: SHELL.showcaseTitle(),
                             launcher: '#newGame',
                             playSelector: '#newGame',
