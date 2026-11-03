@@ -35,6 +35,7 @@ import { syncBossChoiceMascot } from './ui/boss-eat.js';
 import { FoodFeel } from './render/food-feel.js';
 import { CombatFeel } from './render/combat-feel.js';
 import { bossRewardQueueBySpecies } from './boss/boss-rewards.js';
+import { bossStaggerGauge } from './boss/boss-patterns.js';
 import { BossRewardDialog } from './ui/boss-reward-dialog.js';
 import { workersBySpecies } from './model/farm-work.js';
 import { apportionBreedShares, adjustBreedShare } from './model/breed-allocation.js';
@@ -2079,6 +2080,9 @@ function sync(display, now, notices) {
     syncAttribute('bossHealth', 'aria-valuenow', BOSS_HP);
     syncAttribute('bossHealth', 'aria-valuemax', BOSS_MAX_HP);
     syncWidth('bossHealth', BOSS_MAX_HP ? (BOSS_HP / BOSS_MAX_HP) * 100 + '%' : '0%');
+    const STAGGER_BOSS = W.bosses.find((boss) => boss.id === BOSS.id && boss.hp > 0);
+    syncWidth('bossStagger', STAGGER_BOSS ? bossStaggerGauge(STAGGER_BOSS) * 100 + '%' : '0%');
+    syncData('bossStagger', 'down', !!STAGGER_BOSS && STAGGER_BOSS.stun > 0);
     syncText(
         'battleOutcome',
         BATTLE_OUTCOME === 'victory'
