@@ -80,47 +80,108 @@ export const FARM_CONTACT_SOLVER = (base) =>
             this._contactCorrectionCount = new Uint32Array(CAPACITY);
         }
         _prepareFarmContactNeighbors(units, maximumRadius, gap) {
-            const ORDER = this._farmContactOrder,
-                NEIGHBORS = this._farmContactNeighbors,
+            const NEIGHBORS = this._farmContactNeighbors,
                 RADIUS = this._battleRadius,
-                HEIGHT = this._battleHeight;
-            ORDER.length = 0;
-            for (let i = 0; i < units.length; i++) {
+                HEIGHT = this._battleHeight,
+                COUNT = units.length;
+            // A uniform grid rebuilt from the current centers once per solve pass (a Jacobi move may create contacts).
+            // A cell is at least the widest reach, so every pair in reach sits in the same or a neighbouring cell. An
+            // x-axis sweep would test every body in a full-height strip of the farm instead of its 3x3 cells.
+            let minX = Infinity,
+                minY = Infinity,
+                maxX = -Infinity,
+                maxY = -Infinity;
+            for (let i = 0; i < COUNT; i++) {
                 const UNIT_LOCAL = units[i];
                 (NEIGHBORS[i] ||= []).length = 0;
                 if (Number.isFinite(UNIT_LOCAL.x) && Number.isFinite(UNIT_LOCAL.y)) {
-                    ORDER.push(i);
+                    minX = Math.min(minX, UNIT_LOCAL.x);
+                    minY = Math.min(minY, UNIT_LOCAL.y);
+                    maxX = Math.max(maxX, UNIT_LOCAL.x);
+                    maxY = Math.max(maxY, UNIT_LOCAL.y);
                 }
             }
-            ORDER.sort((a, b) => units[a].x - units[b].x || a - b);
-            // Sweep the current centers once per solve pass. A Jacobi move may
-            // create contacts, so rebuild after every position correction.
-            for (let left = 0; left < ORDER.length; left++) {
-                const I = ORDER[left],
-                    A = units[I],
-                    MAX_REACH = RADIUS[I] + maximumRadius + gap,
-                    X_LIMIT = Math.sqrt(contactQueryReachSquared(MAX_REACH)) * (1 + Number.EPSILON * 8);
-                for (let right = left + 1; right < ORDER.length; right++) {
-                    const J = ORDER[right],
-                        B = units[J],
-                        DX = B.x - A.x;
-                    if (DX > X_LIMIT) {
-                        break;
-                    }
-                    if (A.z > B.z + HEIGHT[J] || B.z > A.z + HEIGHT[I]) {
-                        continue;
-                    }
-                    const DY = B.y - A.y,
-                        REACH = RADIUS[I] + RADIUS[J] + gap;
-                    if (DX * DX + DY * DY <= contactQueryReachSquared(REACH)) {
-                        NEIGHBORS[Math.min(I, J)].push(Math.max(I, J));
-                    }
+            if (!(minX <= maxX)) {
+                return;
+            }
+            // Larger cells keep every pair too, so far-flung bodies only coarsen the grid, never grow it past this.
+            let cell = Math.sqrt(contactQueryReachSquared(2 * maximumRadius + gap)) * (1 + 1e-9),
+                columns = Math.floor((maxX - minX) / cell) + 1,
+                rows = Math.floor((maxY - minY) / cell) + 1;
+            while (columns * rows > COUNT * 4 + 1024) {
+                cell *= 2;
+                columns = Math.floor((maxX - minX) / cell) + 1;
+                rows = Math.floor((maxY - minY) / cell) + 1;
+            }
+            const CELLS = columns * rows;
+            if (this._farmContactCellStart.length < CELLS + 1) {
+                this._farmContactCellStart = new Int32Array(Math.max(CELLS + 1, this._farmContactCellStart.length * 2));
+            }
+            if (this._farmContactCellOf.length < COUNT) {
+                const CAPACITY = Math.max(COUNT, this._farmContactCellOf.length * 2, 16);
+                this._farmContactCellOf = new Int32Array(CAPACITY);
+                this._farmContactCellItems = new Int32Array(CAPACITY);
+            }
+            const START = this._farmContactCellStart,
+                CELL_OF = this._farmContactCellOf,
+                ITEMS = this._farmContactCellItems;
+            START.fill(0, 0, CELLS + 1);
+            for (let i = 0; i < COUNT; i++) {
+                const UNIT_LOCAL = units[i];
+                if (!(Number.isFinite(UNIT_LOCAL.x) && Number.isFinite(UNIT_LOCAL.y))) {
+                    CELL_OF[i] = -1;
+                    continue;
+                }
+                const KEY =
+                    Math.floor((UNIT_LOCAL.x - minX) / cell) + Math.floor((UNIT_LOCAL.y - minY) / cell) * columns;
+                CELL_OF[i] = KEY;
+                START[KEY + 1]++;
+            }
+            for (let key = 0; key < CELLS; key++) {
+                START[key + 1] += START[key];
+            }
+            // Filling in unit order keeps each cell ascending; the start offsets are restored after the fill.
+            for (let i = 0; i < COUNT; i++) {
+                if (CELL_OF[i] >= 0) {
+                    ITEMS[START[CELL_OF[i]]++] = i;
                 }
             }
-            // Keep the prior i/j order: impulses and floating-point sums must
-            // not depend on the sweep order or spatial bucket insertion order.
-            for (let i = 0; i < units.length; i++) {
-                NEIGHBORS[i].sort((a, b) => a - b);
+            for (let key = CELLS; key > 0; key--) {
+                START[key] = START[key - 1];
+            }
+            START[0] = 0;
+            for (let i = 0; i < COUNT; i++) {
+                const KEY = CELL_OF[i];
+                if (KEY < 0) {
+                    continue;
+                }
+                const A = units[i],
+                    CX = KEY % columns,
+                    CY = (KEY - CX) / columns,
+                    LIST = NEIGHBORS[i];
+                for (let y = Math.max(0, CY - 1); y <= Math.min(rows - 1, CY + 1); y++) {
+                    for (let x = Math.max(0, CX - 1); x <= Math.min(columns - 1, CX + 1); x++) {
+                        const OTHER_KEY = x + y * columns;
+                        for (let slot = START[OTHER_KEY]; slot < START[OTHER_KEY + 1]; slot++) {
+                            const J = ITEMS[slot];
+                            if (J <= i) {
+                                continue;
+                            }
+                            const B = units[J];
+                            if (A.z > B.z + HEIGHT[J] || B.z > A.z + HEIGHT[i]) {
+                                continue;
+                            }
+                            const DX = B.x - A.x,
+                                DY = B.y - A.y,
+                                REACH = RADIUS[i] + RADIUS[J] + gap;
+                            if (DX * DX + DY * DY <= contactQueryReachSquared(REACH)) {
+                                LIST.push(J);
+                            }
+                        }
+                    }
+                }
+                // Keep the prior i/j order: impulses and floating-point sums must not depend on cell order.
+                LIST.sort((a, b) => a - b);
             }
         }
         solveContactSeparations(units, dt, bodiesCached = false) {
