@@ -242,6 +242,26 @@ body > header {
 .fill.ally {
     background: var(--ui-gauge-ally);
 }
+/* The boss's stagger gauge: a thin strip just under its health bar that fills toward the next down. While the boss is
+   down it fills again, brighter, as the boss recovers. */
+.track--boss {
+    position: relative;
+    overflow: visible;
+}
+.stagger {
+    position: absolute;
+    left: 0;
+    top: calc(100% + 2px);
+    height: 3px;
+    width: 0;
+    border-radius: var(--ui-r-pill);
+    background: var(--ui-gauge-stagger);
+    opacity: 0.7;
+}
+.stagger[data-down='true'] {
+    opacity: 1;
+    box-shadow: 0 0 4px var(--ui-gauge-stagger);
+}
 #bossHealthNote {
     color: var(--ui-ink-3);
     text-align: center;

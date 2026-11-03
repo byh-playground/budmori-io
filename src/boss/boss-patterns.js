@@ -370,6 +370,15 @@ export const BOSS_STAGGER = Object.freeze({ gauge: 0.1, seconds: 1, damageTaken:
 export function bossHealthFraction(boss) {
     return Math.min(1, Math.max(0, boss.hp) / Math.max(1, boss.maxHp));
 }
+// How full the stagger gauge is, 0..1. While the boss is down it shows the recovery instead: empty as it falls,
+// full as it gets up.
+export function bossStaggerGauge(boss) {
+    if (boss.stun > 0) {
+        return 1 - Math.min(1, boss.stun / BOSS_STAGGER.seconds);
+    }
+    const FROM = boss.patternRuntime?.staggerFrom ?? 1;
+    return Math.min(1, Math.max(0, (FROM - bossHealthFraction(boss)) / BOSS_STAGGER.gauge));
+}
 export const BOSS_AIM_TURN_RATE = 5.5;
 export function createBossPatternRuntime() {
     return {
