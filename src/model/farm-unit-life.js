@@ -2,7 +2,7 @@ import { SIMULATION_SCENES } from './simulation-scenes.js';
 import { FACTION_CONFIG, hasFaction } from '../core/factions.js';
 import { TEMPERAMENT_PASSIVE_IDS } from './lineage.js';
 import { passiveCard, PASSIVE_SETTINGS } from '../tower/tower-run.js';
-import { unitMaxHpFor, applyHealing, resolveUnitStats } from '../units/unit-stats.js';
+import { unitMaxHpFor, applyHealing, unitStats } from '../units/unit-stats.js';
 import { CONFIG } from './farm-config.js';
 import { Unit as UNIT } from './farm-unit.js';
 import { CornAttachmentModel } from '../features/abilities/corn-attachment/model.js';
@@ -202,7 +202,7 @@ export const FARM_UNIT_LIFE = (base) =>
                     dropLanded: true,
                     deathSplitHandled: false,
                 });
-                CHILD.hp = resolveUnitStats(CHILD).maxHp;
+                CHILD.hp = unitStats(CHILD).maxHp;
                 this.addUnit(CHILD, { markProgress: false });
             }
             const EFFECT_ID = ++this.eventSequence;

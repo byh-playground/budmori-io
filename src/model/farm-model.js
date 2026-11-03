@@ -42,13 +42,7 @@ import {} from '../features/abilities/barley-shred/model.js';
 import { CornAttachmentModel } from '../features/abilities/corn-attachment/model.js';
 const { SeededPRNG: SEEDED_PRNG } = globalThis.BloomGamekitDeterministic;
 const { createBudgetedScheduler: CREATE_BUDGETED_SCHEDULER } = globalThis.BloomGamekitWorkScheduler;
-import {
-    resolveUnitStats,
-    applyRunGrowthHealth,
-    unitMaxHpFor,
-    applyHealing,
-    scaleAttackArea,
-} from '../units/unit-stats.js';
+import { unitStats, applyRunGrowthHealth, unitMaxHpFor, applyHealing, scaleAttackArea } from '../units/unit-stats.js';
 import { UNIT_ABILITY_PROFILES as ATTACK_TYPES, abilityProfile } from '../units/unit-abilities.js';
 import { grantPendingBossAcquisitions, createBossRewardRngState } from '../boss/boss-rewards.js';
 import { freshTowerRun } from '../tower/tower-run.js';
@@ -153,6 +147,9 @@ const GARDEN = class Garden extends GARDEN_BASE {
         this._farmContactCellOf = new Int32Array(0);
         this._farmContactCellItems = new Int32Array(0);
         this._farmContactNeighbors = [];
+        this._farmContactAnchorX = new Float64Array(0);
+        this._farmContactAnchorY = new Float64Array(0);
+        this._contactBodyFlags = new Uint8Array(0);
         this._contactCorrectionX = new Float64Array(0);
         this._contactCorrectionY = new Float64Array(0);
         this._contactCorrectionCount = new Uint32Array(0);
@@ -209,6 +206,9 @@ const GARDEN = class Garden extends GARDEN_BASE {
             '_farmContactCellOf',
             '_farmContactCellItems',
             '_farmContactNeighbors',
+            '_farmContactAnchorX',
+            '_farmContactAnchorY',
+            '_contactBodyFlags',
             '_contactCorrectionX',
             '_contactCorrectionY',
             '_contactCorrectionCount',
@@ -1480,7 +1480,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
                 U.statModifiers.regen ||
                 TEMPERAMENT_TILTS[U.temperament]?.regenPct
             ) {
-                const UNIT_STATS = resolveUnitStats(U);
+                const UNIT_STATS = unitStats(U);
                 applyHealing(U, UNIT_STATS.regen * dt, UNIT_STATS);
             }
             if (U.seedling) {
@@ -1835,7 +1835,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
         { attackMultiplier = null, attackKind = null, strikeIndex = null, area = false, criticalRoll = null } = {},
     ) {
         const SPEC = abilityProfile(kitSpecies(u)),
-            ATTACKER_STATS = resolveUnitStats(u);
+            ATTACKER_STATS = unitStats(u);
         return {
             source: u,
             sourceKind: 'direct',

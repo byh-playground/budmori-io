@@ -9,7 +9,7 @@ import { BOSS_BASIC_KNOCK } from '../boss/boss-patterns.js';
 // What a basic hit between two units does to its target.
 const UNIT_BASIC_KNOCK = Object.freeze({ power: 5, lift: 2.4 });
 import { CREATE_UNIT_ATTACK_CYCLE } from '../units/attack-cycle.js';
-import { resolveUnitStats, applyDamageToTargets, resolveCritical } from '../units/unit-stats.js';
+import { unitStats, applyDamageToTargets, resolveCritical } from '../units/unit-stats.js';
 import { BarleyArmorShredModel } from '../features/abilities/barley-shred/model.js';
 import { CLAMP, CONFIG } from './farm-config.js';
 import { elementOf, elementHitScale, elementMultiplier } from './lineage.js';
@@ -67,10 +67,10 @@ export const FARM_COMBAT = (base) =>
                 : null;
         }
         unitStatsFor(unit) {
-            return resolveUnitStats(unit);
+            return unitStats(unit);
         }
         combatTargetDefense(target) {
-            const STATS = resolveUnitStats(target),
+            const STATS = unitStats(target),
                 ABILITY_ARMOR = target.ability?.armorModifier?.(this, this.simulationTick) || 0,
                 ROLE_ARMOR = target.controller?.armorModifier?.() || 0;
             return {

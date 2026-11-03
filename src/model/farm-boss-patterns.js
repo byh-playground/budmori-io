@@ -14,7 +14,7 @@ import {
 } from '../boss/boss-patterns.js';
 import { bossMouthWorldPoint } from '../render/boss-vector-sockets.js';
 import { elementDamageTaken } from './lineage.js';
-import { applyDamageToTargets, resolveCritical, resolveUnitStats, unitMaxHpFor } from '../units/unit-stats.js';
+import { applyDamageToTargets, resolveCritical, unitStats, unitMaxHpFor } from '../units/unit-stats.js';
 import { runStatModifiers } from '../tower/tower-run.js';
 import { minionElements, towerMinionCap, towerSummonBand } from '../tower/tower-encounter.js';
 
@@ -441,7 +441,7 @@ export const FARM_BOSS_PATTERNS = (base) =>
                 return;
             }
             const SHARE = BOSS_HIT_SPLIT.everyone + (1 - BOSS_HIT_SPLIT.everyone) / BATCH.length,
-                STATS = resolveUnitStats(B_LOCAL),
+                STATS = unitStats(B_LOCAL),
                 ACTION = B_LOCAL.patternRuntime.active;
             let criticalRoll = ACTION?.criticalRoll;
             const ROLL = () => {

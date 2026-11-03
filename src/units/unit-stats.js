@@ -153,6 +153,7 @@ export function setRunStatMods(mods) {
     }
     Object.assign(RUN_MODS, mods);
     fillBaseStats();
+    runModsRevision++;
 }
 export function baseUnitStatsFor(tier, species, includePlayerRun = true) {
     tier = Math.max(1, Math.min(MAX_UNIT_TIER, Number.isInteger(tier) ? tier : 1));
@@ -162,6 +163,53 @@ export function baseUnitStatsFor(tier, species, includePlayerRun = true) {
 
 // Preserve the public mutable-result contract; callers never receive the cache.
 export function resolveUnitStats(unit, overrides) {
+    return overrides === undefined ? { ...unitStats(unit) } : computeUnitStats(unit, overrides);
+}
+// Read-only resolved stats, cached per body (bloom-reference algorithms A078 Cache Invalidation): contacts, damage
+// and the maxHp getter ask for the same body's stats many times a tick, and each fresh resolve spreads several
+// objects. The entry is keyed on every input computeUnitStats reads; statProfile and statModifiers are replaced,
+// never edited in place (Unit.setBaseStats/setStatModifiers, snapshot restore), so identity is their version.
+let runModsRevision = 0;
+const UNIT_STATS = new WeakMap();
+export function unitStats(unit) {
+    if (!unit || typeof unit !== 'object') {
+        return computeUnitStats(unit);
+    }
+    const SPECIES = kitSpecies(unit);
+    let entry = UNIT_STATS.get(unit);
+    if (
+        !entry ||
+        entry.revision !== runModsRevision ||
+        entry.tier !== unit.tier ||
+        entry.species !== SPECIES ||
+        entry.faction !== unit.faction ||
+        entry.statProfile !== unit.statProfile ||
+        entry.statModifiers !== unit.statModifiers ||
+        entry.permanentStatMultiplier !== unit.permanentStatMultiplier ||
+        entry.isFormationClone !== unit.isFormationClone ||
+        entry.isBattleOnlySummon !== unit.isBattleOnlySummon ||
+        entry.temperament !== unit.temperament ||
+        entry.growthMaxHpMultiplier !== unit.growthMaxHpMultiplier
+    ) {
+        entry = {
+            revision: runModsRevision,
+            tier: unit.tier,
+            species: SPECIES,
+            faction: unit.faction,
+            statProfile: unit.statProfile,
+            statModifiers: unit.statModifiers,
+            permanentStatMultiplier: unit.permanentStatMultiplier,
+            isFormationClone: unit.isFormationClone,
+            isBattleOnlySummon: unit.isBattleOnlySummon,
+            temperament: unit.temperament,
+            growthMaxHpMultiplier: unit.growthMaxHpMultiplier,
+            stats: Object.freeze(computeUnitStats(unit)),
+        };
+        UNIT_STATS.set(unit, entry);
+    }
+    return entry.stats;
+}
+function computeUnitStats(unit, overrides) {
     const BASE = withRunMods(
             unit?.statProfile
                 ? { ...COMMON_UNIT_STAT_DEFAULTS, ...unit.statProfile }
@@ -214,7 +262,7 @@ function growthHealthMultiplierFor(unit) {
 // Legacy base-HP consumers retain their established semantics for all other species.
 export function unitMaxHpFor(unit) {
     if (unit.statProfile || Object.keys(unit.statModifiers || {}).length || temperamentTiltOf(unit)) {
-        return resolveUnitStats(unit).maxHp;
+        return unitStats(unit).maxHp;
     }
     const SPLIT_MULTIPLIER =
         kitSpecies(unit) === 4 && unit.isBattleOnlySummon && Number.isFinite(unit.permanentStatMultiplier)
@@ -266,15 +314,7 @@ export function applyRunGrowthHealth(unit, progression, { preserveRatio = false 
     }
 }
 function combatStats(unit, overrides) {
-    return overrides === undefined &&
-        !unit?.statProfile &&
-        !Object.keys(unit?.statModifiers || {}).length &&
-        !temperamentTiltOf(unit) &&
-        !unit?.isFormationClone &&
-        (unit?.permanentStatMultiplier ?? 1) === 1 &&
-        growthHealthMultiplierFor(unit) === 1
-        ? baseUnitStatsFor(unit?.tier, kitSpecies(unit), unit?.faction !== 'enemy')
-        : resolveUnitStats(unit, overrides);
+    return overrides === undefined ? unitStats(unit) : computeUnitStats(unit, overrides);
 }
 function resolveDamage(
     rawDamage,

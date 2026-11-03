@@ -5,7 +5,7 @@ import { AUTO_FORM_PROGRESSION } from './auto-forms.js';
 import {
     applyRunGrowthHealth,
     baseUnitStatsFor,
-    resolveUnitStats,
+    unitStats,
     unitMaxHpFor,
     setRunStatMods,
 } from '../units/unit-stats.js';
@@ -365,7 +365,7 @@ export const FARM_TOWER_RUN = (base) =>
             let strength = 0;
             for (const UNIT_LOCAL of this.unitCollection.items) {
                 if (!UNIT_LOCAL.isBattleOnlySummon && !UNIT_LOCAL.isFormationClone && UNIT_LOCAL.hp > 0) {
-                    strength += troopStrength(resolveUnitStats(UNIT_LOCAL));
+                    strength += troopStrength(unitStats(UNIT_LOCAL));
                 }
             }
             return strength;
