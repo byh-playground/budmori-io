@@ -256,3 +256,10 @@ SDK 교체 검증은 staged root가 가진 검증된 source schema를 사용합�
 - 레퍼런스: A075 Buffer Reuse(scratch 사각형), A074 Object Pooling(동결 상수 공유). `drawRegion`이 호출마다 배열·`Float32Array`를 10개 넘게 만들고, 정렬 경로가 명령마다 20칸 배열을 만들던 것을 없앴습니다(GameKit #198).
 - 측정 `perf:farm --mode frame --units 1000 --rounds 5`(rendering.js만 바꾼 사본 대 main, 교대): render 50.3 → 48.9ms(-3%).
 - 남은 비용(같은 프로파일, 자기 시간): (program) 22%·GC 7%, 보간 `captureRenderData` 7%(1,000마리 × 약 100필드 × 20Hz, 필드당 최소 작업만 남음), 접촉 해소 약 10%. 그리기는 GameKit 렌더링 함수 수십 개에 1% 안팎으로 퍼져 있어 단일 병목이 없습니다. 더 줄이려면 렌더 스키마 필드 수나 1,000마리라는 규모 자체를 바꿔야 합니다.
+
+## 적 탐색 가까운 칸부터 (0.67.37)
+
+- 레퍼런스: A001 Uniform Grid(같은 격자) + 가까운 고리부터 보고 멈추는 최근접 탐색.
+- `senseEnemy`가 유닛마다 지각 범위 상자(약 26×26칸) 후보를 전부 모았습니다. `SpatialGrid.visitNearestFirst`는 같은 칸들을 자기 칸에서 바깥 고리 순으로 보고, k번째 고리가 (k−1)칸 거리보다 멀어 지금까지의 최근접을 이길 수 없으면 멈춥니다. 반경 getter는 더 가까운 후보에만 읽습니다.
+- 결정론: `--hash`로 농장 1,000·탑 30층 500·탑 61층 300의 상태 해시가 main과 같습니다.
+- 측정 `perf:farm --mode logic --scene tower --floor 30 --units 500 --rounds 3`(교대): tick 18.6 → 17.1ms(-8%), logic 10.2 → 8.6ms(-15%). 농장(적 없음)은 변화 없음.

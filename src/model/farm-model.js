@@ -880,20 +880,17 @@ const GARDEN = class Garden extends GARDEN_BASE {
         let nearestDistance = Infinity;
         let nearestId = Infinity;
         const CONSIDER = (target) => {
-            if (
-                !target ||
-                !Number.isFinite(target.x) ||
-                !Number.isFinite(target.y) ||
-                !Number.isFinite(target.radius)
-            ) {
+            if (!target || !Number.isFinite(target.x) || !Number.isFinite(target.y)) {
                 return;
             }
             const DISTANCE = Math.hypot(unit.x - target.x, unit.y - target.y),
                 ID = target.id || 0;
-            if (
-                DISTANCE <= unit.perceptionRange + target.radius + 1e-9 &&
-                (DISTANCE < nearestDistance || (DISTANCE === nearestDistance && ID < nearestId))
-            ) {
+            // Rank before reading the radius: the radius getter is the costly part and only a closer target needs it.
+            if (!(DISTANCE < nearestDistance || (DISTANCE === nearestDistance && ID < nearestId))) {
+                return;
+            }
+            const RADIUS = target.radius;
+            if (Number.isFinite(RADIUS) && DISTANCE <= unit.perceptionRange + RADIUS + 1e-9) {
                 nearest = target;
                 nearestDistance = DISTANCE;
                 nearestId = ID;
@@ -904,24 +901,28 @@ const GARDEN = class Garden extends GARDEN_BASE {
         }
         if (hasUnitEnemy) {
             const EXTENT = Math.max(0, unit.perceptionRange + CONFIG.unit.maxRadius + 1e-9);
-            this.unitSpatial.queryAABB(
+            // Nearest first: in a crowded fight the closest enemy is a few cells away, so the walk stops long before
+            // the whole perception box (about 26 x 26 cells) is read.
+            this.unitSpatial.visitNearestFirst(
+                unit.x,
+                unit.y,
                 unit.x - EXTENT,
                 unit.y - EXTENT,
                 unit.x + EXTENT,
                 unit.y + EXTENT,
-                this._unitCandidates,
+                (candidate) => {
+                    if (
+                        candidate !== unit &&
+                        candidate.hp > 0 &&
+                        candidate.dropLanded &&
+                        areOpposingFactions(unit, candidate) &&
+                        this._unitIsActive(candidate)
+                    ) {
+                        CONSIDER(candidate);
+                    }
+                    return nearestDistance;
+                },
             );
-            for (const CANDIDATE of this._unitCandidates) {
-                if (
-                    CANDIDATE !== unit &&
-                    this._unitIsActive(CANDIDATE) &&
-                    CANDIDATE.hp > 0 &&
-                    CANDIDATE.dropLanded &&
-                    areOpposingFactions(unit, CANDIDATE)
-                ) {
-                    CONSIDER(CANDIDATE);
-                }
-            }
         }
         return nearest;
     }

@@ -167,6 +167,57 @@ class FixedSpatialGrid {
         }
         return out;
     }
+    // Nearest-first walk over the same cells queryAABB would return: overflow items in the box, then the box's cells
+    // ring by ring outward from (x, y)'s cell. `visit(item)` returns the best distance found so far; items are
+    // bucketed by their center, so every cell k rings out is more than (k - 1) cell sizes away and the walk stops
+    // once that cannot beat the best. Same candidates as queryAABB for any search whose answer is the nearest one.
+    visitNearestFirst(x, y, minX, minY, maxX, maxY, visit) {
+        if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+            return;
+        }
+        let best = Infinity;
+        if (maxX >= WORLD_MIN && maxY >= WORLD_MIN && minX < WORLD_MAX && minY < WORLD_MAX) {
+            const X0 = Math.max(0, this.cellX(minX)),
+                Y0 = Math.max(0, this.cellY(minY)),
+                X1 = Math.min(CELL_COUNT - 1, this.cellX(maxX)),
+                Y1 = Math.min(CELL_COUNT - 1, this.cellY(maxY)),
+                CX = this.cellX(x),
+                CY = this.cellY(y),
+                INSIDE = CX >= X0 && CX <= X1 && CY >= Y0 && CY <= Y1,
+                // A center outside the box has no ring order to rely on: one pass over the whole box, never cut short.
+                LAST = INSIDE ? Math.max(CX - X0, X1 - CX, CY - Y0, Y1 - CY) : 0;
+            for (let ring = 0; ring <= LAST; ring++) {
+                if (INSIDE && ring > 0 && best <= (ring - 1) * CELL_SIZE) {
+                    break;
+                }
+                const RING_Y0 = INSIDE ? Math.max(Y0, CY - ring) : Y0,
+                    RING_Y1 = INSIDE ? Math.min(Y1, CY + ring) : Y1;
+                for (let cellY = RING_Y0; cellY <= RING_Y1; cellY++) {
+                    const ROW = cellY * CELL_COUNT,
+                        EDGE = !INSIDE || Math.abs(cellY - CY) === ring,
+                        RING_X0 = INSIDE ? Math.max(X0, CX - ring) : X0,
+                        RING_X1 = INSIDE ? Math.min(X1, CX + ring) : X1,
+                        STEP = EDGE || ring === 0 ? 1 : 2 * ring;
+                    for (let cellX = EDGE ? RING_X0 : CX - ring; cellX <= RING_X1; cellX += STEP) {
+                        if (cellX < X0) {
+                            continue;
+                        }
+                        const BUCKET = this.cells[ROW + cellX];
+                        if (BUCKET) {
+                            for (let i = 0; i < BUCKET.length; i++) {
+                                best = visit(BUCKET[i]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for (const ITEM of this.overflowItems) {
+            if (ITEM.x >= minX && ITEM.x <= maxX && ITEM.y >= minY && ITEM.y <= maxY) {
+                visit(ITEM);
+            }
+        }
+    }
     queryCellRing(centerX, centerY, radius, out) {
         out.length = 0;
         const X0 = centerX - radius,
