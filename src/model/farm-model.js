@@ -59,7 +59,7 @@ import { FixedSpatialGrid } from '../core/spatial-grid.js';
 import {} from './army-scatter.js';
 import { CONFIG, CLAMP, STATS, MUTABLE_STATS } from './farm-config.js';
 import { bossAttackArea } from '../boss/boss-behaviors.js';
-import { bossMinionBehavior } from '../boss/boss-minions.js';
+import { UNIT_INTENT, UnitIntentTurn } from './unit-turn.js';
 import { ARENA_GEOMETRY, BALLISTICS } from './arena-geometry.js';
 import { AttackCycle, CREATE_UNIT_ATTACK_CYCLE } from '../units/attack-cycle.js';
 import {} from '../boss/boss-controller.js';
@@ -1673,54 +1673,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
         }
     }
     updateUnitIntent(unit, dt, enemy, scene) {
-        if (this.farmBossEvent.phase === 'marching') {
-            this._marchUnit(unit);
-            return;
-        }
-        if (this.isMergeTaskMaterial(unit)) {
-            return;
-        }
-        if (bossMinionBehavior(unit)?.update(this, unit, dt)) {
-            return;
-        }
-        if (
-            this.tower.active &&
-            ['dropping', 'fighting'].includes(this.farmBossEvent.phase) &&
-            hasFaction(unit, FACTION_CONFIG.PLAYER)
-        ) {
-            // Commands are army-wide, even after retreat has taken a unit beyond
-            // its ordinary farm perception. Never resume farming inside a fight.
-            let target = enemy,
-                nearestDistance = Infinity;
-            if (!target && this.farmBossEvent.phase === 'fighting') {
-                for (const THREAT of this._armyThreatsForTick()) {
-                    const DISTANCE = Math.hypot(unit.x - THREAT.x, unit.y - THREAT.y);
-                    if (THREAT.hp > 0 && DISTANCE < nearestDistance) {
-                        target = THREAT;
-                        nearestDistance = DISTANCE;
-                    }
-                }
-            }
-            this.battleUnit(unit, dt, target);
-            return;
-        }
-        if (enemy) {
-            this.battleUnit(unit, dt, enemy);
-            return;
-        }
-        if (unit.hp > 0 && hasFaction(unit, FACTION_CONFIG.PLAYER) && !unit.isBattleOnlySummon) {
-            const ACTIVE_ATTACK =
-                unit.specialAbility && unit.specialAbility.phase !== 'idle' ? unit.specialAbility : unit.ability;
-            if (ACTIVE_ATTACK.phase !== 'idle') {
-                if (ACTIVE_ATTACK.phase !== 'recover') {
-                    ACTIVE_ATTACK.interrupt();
-                }
-                ACTIVE_ATTACK.update(this, dt);
-            }
-            this.farmUnit(unit, dt);
-            return;
-        }
-        scene.updateUnoccupied(this, unit, dt);
+        UNIT_INTENT.decide((this._unitIntentTurn ??= new UnitIntentTurn()).begin(this, unit, dt, enemy, scene));
     }
     clearPeaRecoveryBoost(unit) {
         unit.peaRecoveryPending = false;

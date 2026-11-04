@@ -387,7 +387,7 @@ export const FARM_BOSS_PATTERNS = (base) =>
                 AIM = TARGET_POINT ? Math.atan2(TARGET_POINT.y - B_LOCAL.y, TARGET_POINT.x - B_LOCAL.x) : B_LOCAL.angle;
             RUNTIME.active = {
                 id,
-                phase: 'windup',
+                phase: BOSS_BEHAVIORS.initialPhase,
                 phaseElapsed: 0,
                 targetId: target?.id ?? 0,
                 target: TARGET_POINT,
@@ -808,10 +808,14 @@ export const FARM_BOSS_PATTERNS = (base) =>
             });
             return true;
         }
+        // Launch a cast now (its windup is over, or it starts at once): the active phase.
         activateBossPattern(action, boss = this.boss) {
+            BOSS_BEHAVIORS.activate(this, action, boss);
+        }
+        // Entering the active phase: stamp the attack, start its cooldown and let the pattern act.
+        launchBossPattern(action, boss) {
             const B_LOCAL = boss,
                 RUNTIME = B_LOCAL.patternRuntime;
-            action.phase = 'active';
             action.phaseElapsed = 0;
             B_LOCAL.attackId = ++this.attackSerial;
             action.hitIds.clear();
@@ -833,7 +837,6 @@ export const FARM_BOSS_PATTERNS = (base) =>
             BOSS_BEHAVIORS.forId(action.id).activate(this, action, boss);
         }
         enterBossPatternRecovery(action) {
-            action.phase = 'recover';
-            action.phaseElapsed = 0;
+            BOSS_BEHAVIORS.recover(action);
         }
     };
