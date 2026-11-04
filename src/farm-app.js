@@ -2007,7 +2007,7 @@ function sync(display, now, notices) {
         APP_FARM.overallGrowth({
             xp: PROGRESSION.overallXp,
             capacity: W.capacity,
-            frontline: Math.floor(W.capacity / 2),
+            frontline: W.capacity,
         }),
     );
     syncText(

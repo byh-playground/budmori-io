@@ -548,7 +548,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
             farm: 0,
         };
         this.playerProgression = createPlayerProgressionState();
-        this.frontlineLimit = Math.min(CONFIG.farm.deploy.maxFrontline, Math.floor(this.capacity / 2));
+        this.frontlineLimit = this.capacity;
         this.runProgressionSnapshot = null;
         this.workBasisPoints = CONFIG.farm.work.defaultBasisPoints;
         // null: every species gives the same worker share. Otherwise the breeders are split between species by weight.
