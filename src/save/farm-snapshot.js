@@ -50,7 +50,6 @@ export const UNIT_SNAPSHOT_SHAPE = {
     age: 0,
     cooldown: 0,
     cooldownDuration: 0,
-    mateId: 0,
     perceptionRange: 18,
     home: {
         x: 0,

@@ -5,6 +5,7 @@ import { applyOffline } from '../save/farm-offline.js';
 import { Unit as UNIT } from './farm-unit.js';
 import { FARM_FOOD_FIELD } from './farm-food-field.js';
 import { FoodReservations } from '../features/farm-modes/food-reservations/model.js';
+import { BreedPairs } from './breed-pairs.js';
 import { FARM_CONTACT_SOLVER } from './farm-contact-solver.js';
 import { FARM_MERGE_BREED } from './farm-merge-breed.js';
 import { FARM_BOSS_PATTERNS } from './farm-boss-patterns.js';
@@ -137,6 +138,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
         this._foodSearchSnapshot = { revision: 0, foods: this._groundedFoods, cells: new Map() };
         this._foodSearchStates = new Map();
         this._foodReservations = new FoodReservations(this);
+        this.breedPairs = new BreedPairs(this);
         this._foodSearchJobSequence = 0;
         this._foodSearchScheduler = null;
         this._foodSearchWork = { candidateChecks: 0, cellVisits: 0 };
@@ -503,8 +505,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
         this.progressRevision = 0;
         this._progressTimerCheckpoint = 0;
         this.cancelMergeTasks();
-        this.cancelBreedPlans();
-        this._activeBreedReservations = new Map();
+        this.breedPairs.clear();
         this._benched = new Set();
         this._ejectQueue = [];
         this._bossHitBatch = [];
@@ -658,11 +659,11 @@ const GARDEN = class Garden extends GARDEN_BASE {
     // The one answer to "may another unit join the farm?": a placed unit and a reserved birth each take one slot.
     // A birth that already holds a reservation passes its own slot back by naming itself as `reservationOwner`.
     freeRoom(reservationOwner = null) {
-        const OWN = reservationOwner && this._activeBreedReservations?.has(reservationOwner) ? 1 : 0;
+        const OWN = reservationOwner && this.breedPairs.has(reservationOwner) ? 1 : 0;
         return this.capacity - this.ownedPopulation - this.birthReservations + OWN;
     }
     get birthReservations() {
-        return this._activeBreedReservations?.size || 0;
+        return this.breedPairs.count;
     }
     get pendingRewardPopulation() {
         return (this.bossRewardReceipts || []).reduce(

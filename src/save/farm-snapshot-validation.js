@@ -875,8 +875,7 @@ function validateUnits(raw, context, allowLegacyBarleyShred) {
             INTEGER(raw.bossSummonSerial, 0, 1e12) &&
             INTEGER(raw.foodTaps.produced, 0, 1e12),
     );
-    const IDS = new Set(),
-        MATE_ID_LIMIT = CONFIG.farm.maxUnitId;
+    const IDS = new Set();
     const UNITS_BY_ID = new Map(),
         SUMMONS_BY_PARENT = new Map();
     for (const U of raw.units) {
@@ -892,7 +891,6 @@ function validateUnits(raw, context, allowLegacyBarleyShred) {
                 Number.isFinite(U.cooldownDuration) &&
                 U.cooldownDuration >= U.cooldown - 1e-9 &&
                 U.cooldownDuration <= 100000 &&
-                INTEGER(U.mateId, 0, MATE_ID_LIMIT) &&
                 Number.isFinite(U.perceptionRange) &&
                 U.perceptionRange > 0 &&
                 U.perceptionRange <= 100 &&
