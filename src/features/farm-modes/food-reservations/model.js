@@ -368,14 +368,11 @@ export class FoodReservations {
             if (RESULT.done) {
                 this.world._finishFoodTargetSearch(STATE, RESULT.result);
             } else {
-                // Finish the oldest seed search before starting another. Rotating all
-                // seeds after every candidate made their nearest results stale together.
+                // Finish the oldest search before starting another. Rotating all searches after every candidate made
+                // their nearest results stale together: foods are claimed and spawned while they wait, so most
+                // finished searches lost their food to an earlier claim and started over.
                 // The broker still spends only the SDK quantum and 24 units per tick.
-                if (UNIT.seedling) {
-                    QUEUE.unshift(STATE);
-                } else {
-                    QUEUE.push(STATE);
-                }
+                QUEUE.unshift(STATE);
             }
         }
         return { done: !this.queues.some((queue) => queue.length), unitsUsed };
