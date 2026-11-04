@@ -1,0 +1,32 @@
+name: Check
+on:
+    pull_request:
+    push:
+        branches: [main]
+    workflow_dispatch:
+permissions:
+    contents: read
+# CI is the minimum: static checks only. Browser scenarios run locally (README), never here.
+jobs:
+    check:
+        runs-on: ubuntu-24.04
+        timeout-minutes: 10
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+            - run: npm ci
+            # The PWA check rasterizes the icons in Chromium, so check needs it; no browser scenario runs here.
+            - uses: actions/cache@v4
+              with:
+                  path: ~/.cache/ms-playwright
+                  key: playwright-ubuntu-24.04-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
+            - name: Install Chromium
+              run: |
+                  ./node_modules/.bin/playwright install-deps chromium
+                  ./node_modules/.bin/playwright install chromium
+            - run: npm run check
