@@ -88,7 +88,10 @@ export const APP_TOWER = LOCALE.messages({
     },
     bossHealth: { ko: '등장한 보스 합계 체력', en: 'Total HP of bosses on the field' },
     bossMarching: { ko: '보스가 있는 칸으로 가는 중이에요', en: 'Heading to the boss’s tile' },
-    bossEnraged: { ko: '격노! 피해 2배, 공격이 빨라져요', en: 'Enraged! Double damage, faster attacks' },
+    bossEnraged: {
+        ko: '격노! 범위기를 퍼붓고 쫓아와요 · 후퇴해도 회복되지 않아요',
+        en: 'Enraged! It rains area attacks and runs you down · retreating no longer heals',
+    },
     bossCrownWaiting: {
         ko: '모두 쓰러뜨리면 최종 수호자가 내려와요',
         en: 'Defeat them all to face the Final Guardian',

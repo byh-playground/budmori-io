@@ -1484,7 +1484,12 @@ const GARDEN = class Garden extends GARDEN_BASE {
                 const UNIT_STATS = unitStats(U);
                 applyHealing(U, UNIT_STATS.regen * dt, UNIT_STATS);
             }
-            if (this.tower.active && this.battleCommand === 'retreat' && hasFaction(U, FACTION_CONFIG.PLAYER)) {
+            if (
+                this.tower.active &&
+                this.battleCommand === 'retreat' &&
+                !this.bossEnraged &&
+                hasFaction(U, FACTION_CONFIG.PLAYER)
+            ) {
                 const UNIT_STATS = unitStats(U);
                 applyHealing(U, TOWER_ENCOUNTER_SETTINGS.retreatRegen * UNIT_STATS.maxHp * dt, UNIT_STATS);
             }

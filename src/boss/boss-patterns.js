@@ -393,7 +393,20 @@ const BOSS_PATTERN_WEIGHT_DEFAULTS = Object.freeze({
     cap: 3,
 });
 // Boss phases: a pattern joins the rotation once boss HP falls to its unlockHp fraction.
-export const BOSS_ENRAGE = Object.freeze({ damageMultiplier: 2, cooldownMultiplier: 0.5 });
+// Enraged (past the fight's time limit; a tower boss at 60 s): double damage and half cooldowns, it fires the area
+// patterns ready instead of slamming, walks `chaseMultiplier` x faster and its gap closers (charge, leap) go
+// `gapCloserScale` x as far and as fast, so an army running round to heal is caught.
+export const BOSS_ENRAGE = Object.freeze({
+    damageMultiplier: 2,
+    cooldownMultiplier: 0.5,
+    chaseMultiplier: 2,
+    gapCloserScale: 2,
+});
+// The charge's and leap's reach (and the charge's speed) multiplier: `boss.enraged` is set by its controller each
+// tick and carried by the render projection, never saved.
+export function gapCloserScale(boss) {
+    return boss.enraged ? BOSS_ENRAGE.gapCloserScale : 1;
+}
 export const BOSS_PHASE_THRESHOLDS = Object.freeze(
     [...new Set(BOSS_PATTERN_IDS.map((id) => BOSS_PATTERN_CONFIG[id].unlockHp).filter((t) => t < 1))].sort(
         (a, b) => b - a,

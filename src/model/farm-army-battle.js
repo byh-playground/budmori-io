@@ -1,5 +1,6 @@
 import { hasFaction, FACTION_CONFIG, areOpposingFactions } from '../core/factions.js';
 import { scaleMoveSpeed } from '../units/unit-stats.js';
+import { BOSS_ENRAGE } from '../boss/boss-patterns.js';
 import { ARENA_GEOMETRY } from './arena-geometry.js';
 import { CONFIG } from './farm-config.js';
 import { scatterHeading } from './army-scatter.js';
@@ -222,7 +223,14 @@ export const FARM_ARMY_BATTLE = (base) =>
                 // A ranged actor at the wall can fire within its existing maximum
                 // range instead of endlessly steering toward a clamped retreat point.
                 if (N > MAX || Math.hypot(SLOT.x - u.x, SLOT.y - u.y) > 0.08) {
-                    this.steer(u, SLOT.x, SLOT.y, dt, scaleMoveSpeed(u.bodyProfile ? 1 : 4.1, u));
+                    // An enraged boss runs troops down (BOSS_ENRAGE.chaseMultiplier).
+                    this.steer(
+                        u,
+                        SLOT.x,
+                        SLOT.y,
+                        dt,
+                        scaleMoveSpeed(u.bodyProfile ? 1 : 4.1, u) * (u.enraged ? BOSS_ENRAGE.chaseMultiplier : 1),
+                    );
                     return;
                 }
             }

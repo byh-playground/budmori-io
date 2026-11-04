@@ -141,13 +141,15 @@ export class BossController {
                 SELECTED =
                     OWN_CLOCK ??
                     (NEAR
-                        ? (chooseBossPattern(
+                        ? (world.bossAreaBarrage(ELIGIBLE, B_LOCAL) ??
+                          chooseBossPattern(
                               RUNTIME,
                               ELIGIBLE.filter((id) => !BOSS_PATTERN_CONFIG[id].ownClock),
                               () => world.random(),
                               B_LOCAL,
-                          ) ?? BOSS_BASIC_PATTERN)
-                        : world.bossGapCloser(B_LOCAL));
+                          ) ??
+                          BOSS_BASIC_PATTERN)
+                        : world.bossGapCloser(TARGETS, B_LOCAL));
             if (SELECTED === BOSS_BASIC_PATTERN) {
                 // A slam counts toward the next special.
                 world.beginBossPattern(SELECTED, TARGETS.nearest, B_LOCAL);
@@ -233,6 +235,7 @@ export class BossController {
             B_LOCAL.patternRuntime.active = null;
             return;
         }
+        B_LOCAL.enraged = world.bossEnraged;
         this.updateStagger();
         this.recoverFromStagger(world);
         const STATS = unitStats(B_LOCAL);

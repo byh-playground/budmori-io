@@ -46,6 +46,9 @@ export const TOWER_ENCOUNTER_SETTINGS = Object.freeze({
     // A troop under the retreat command heals this share of its maximum health a second, so an army that runs and
     // comes back can win a fight it would lose standing.
     retreatRegen: 0.1,
+    // A tower boss enrages this far into the fight (BOSS_ENRAGE): no forced loss, but the retreat stops healing and
+    // the boss fires its area patterns and runs down the troops, so a fight drawn out by running round is lost.
+    enrageSeconds: 60,
     armyScaling: Object.freeze({ exponent: 0.25, referenceCount: 100, referenceTier: 3, fightSeconds: 40 }),
     // A small army meets fewer minions: one more minion may be alive per this many living troops (at least one).
     troopsPerMinion: 25,

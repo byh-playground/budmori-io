@@ -1,5 +1,6 @@
 import { BossPattern } from '../model-base.js';
 import { FEATURE } from './definition.js';
+import { gapCloserScale } from '../../../boss/boss-patterns.js';
 
 export class ChargeBossPattern extends BossPattern {
     constructor(dependencies) {
@@ -24,6 +25,9 @@ export class ChargeBossPattern extends BossPattern {
         area.endY = action.phase === 'recover' ? boss.y : END.y;
         area.x = SX;
         area.y = SY;
+    }
+    reachFor(boss) {
+        return super.reachFor(boss) * gapCloserScale(boss);
     }
     activate(_world, action, boss) {
         action.start = {
@@ -54,7 +58,7 @@ export class ChargeBossPattern extends BossPattern {
                 y: Math.sin(action.aim),
             },
             REMAINING = Math.max(0, this.reachFor(boss) - action.traveled),
-            DISTANCE = Math.min(this.config.speed * dt, REMAINING),
+            DISTANCE = Math.min(this.config.speed * gapCloserScale(boss) * dt, REMAINING),
             OLD = {
                 x: boss.x,
                 y: boss.y,
