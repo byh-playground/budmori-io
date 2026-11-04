@@ -239,6 +239,9 @@ class BossHitPresentation extends HitPresentation {
 class UnitHitPresentation extends HitPresentation {
     color = '231,147,83';
     observe(feel, event, _displayEvent, at) {
+        if (BOSS_QUAKE_PATTERNS.has(event.attackKind)) {
+            feel.quake(at);
+        }
         this.spawnNumber(feel, event, at, 'taken');
         feel.poses.set(event.unit, {
             at,
@@ -317,6 +320,14 @@ const COMBAT_EFFECT_PRESENTATIONS = new Map([
 
 // FarmSession supplies newly signaled notice batches. Presentation never polls
 // model history, pauses the simulation, or writes simulation state.
+// Camera rattle, in world units and milliseconds: `hit` scales with the strength of a hit on the boss, `boss` is a
+// boss swing or throw landing on the troops (BOSS_QUAKE_PATTERNS). `rate` is the wobble's angular speed per ms.
+const SHAKE = Object.freeze({
+    hit: Object.freeze({ amplitude: 0.09, ms: 220 }),
+    boss: Object.freeze({ amplitude: 0.35, ms: 320 }),
+    rate: 52 / 220,
+});
+const BOSS_QUAKE_PATTERNS = new Set(['attack.sweep-360', 'attack.spin-throw', 'attack.fan-sweep']);
 class CombatFeel {
     constructor(audio) {
         this.audio = audio;
@@ -328,7 +339,8 @@ class CombatFeel {
         this.poses = new Map();
         this.bossHits = new Map();
         this.shakeAt = -1e9;
-        this.shakePower = 0;
+        this.shakeAmplitude = 0;
+        this.shakeMs = SHAKE.hit.ms;
         this.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
         this.counts = {
             hits: 0,
@@ -438,16 +450,32 @@ class CombatFeel {
         };
     }
     kick(strength, at) {
+        this.rattle(at, Math.max(0, Math.min(3, strength || 1) - 0.8) * SHAKE.hit.amplitude, SHAKE.hit.ms);
+    }
+    // A boss swing or throw landing on the troops: a heavier, longer rattle than a hit on the boss.
+    quake(at) {
+        this.rattle(at, SHAKE.boss.amplitude, SHAKE.boss.ms);
+    }
+    // A weaker rattle never cuts a stronger one that is still going short.
+    rattle(at, amplitude, ms) {
+        if (amplitude < this.shakeLeft(at)) {
+            return;
+        }
         this.shakeAt = at;
-        this.shakePower = Math.max(0, Math.min(3, strength || 1) - 0.8);
+        this.shakeAmplitude = amplitude;
+        this.shakeMs = ms;
+    }
+    shakeLeft(displayTimeMs) {
+        const Q = (displayTimeMs - this.shakeAt) / this.shakeMs;
+        return Q < 0 || Q >= 1 ? 0 : (1 - Q) * this.shakeAmplitude;
     }
     // World-unit camera offset: a short rattle after strong hits.
     shake(displayTimeMs) {
-        const Q = (displayTimeMs - (this.shakeAt || -1e9)) / 220;
+        const Q = (displayTimeMs - this.shakeAt) / this.shakeMs;
         if (this.reduced || Q < 0 || Q >= 1) {
             return 0;
         }
-        return Math.sin(Q * 52) * (1 - Q) * 0.09 * (this.shakePower || 0);
+        return Math.sin(Q * this.shakeMs * SHAKE.rate) * (1 - Q) * this.shakeAmplitude;
     }
     sound(event) {
         COMBAT_EFFECT_PRESENTATIONS.get(event.kind)?.sound?.(this.audio, event);

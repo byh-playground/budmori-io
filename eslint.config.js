@@ -69,6 +69,8 @@ const MODEL_FILES = [
     'src/features/boss-patterns/mouth-summon/model.js',
     'src/features/boss-patterns/sweep-360/definition.js',
     'src/features/boss-patterns/sweep-360/model.js',
+    'src/features/boss-patterns/spin-throw/definition.js',
+    'src/features/boss-patterns/spin-throw/model.js',
     'src/features/farm-modes/breed/definition.js',
     'src/features/farm-modes/breed/model.js',
     'src/features/farm-modes/model-base.js',

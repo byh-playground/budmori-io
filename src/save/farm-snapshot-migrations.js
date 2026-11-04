@@ -3,7 +3,7 @@ import { specialAbilityCompositionFor } from '../units/unit-abilities.js';
 import { validateSnapshot } from './farm-snapshot-validation.js';
 import { freshTowerRun } from '../tower/tower-run.js';
 import { towerElement } from '../tower/tower-theme.js';
-import { MINION_KINDS, bossBreaksEarned, bossHealthFraction } from '../boss/boss-patterns.js';
+import { BOSS_PATTERN_IDS, MINION_KINDS, bossHealthFraction } from '../boss/boss-patterns.js';
 import { migratePlayerProgressionState } from '../model/player-progression.js';
 import { migrateLegacyBarleyArmorShredBuckets } from '../features/abilities/barley-shred/model.js';
 import { migrateBossRewardLedger } from './boss-reward-ledger.js';
@@ -156,11 +156,19 @@ export function normalizeSnapshot(raw, { clone = true } = {}) {
     // Add only absent combat fields of older boss checkpoints. Never allocate
     // identity or replace an existing action, generation, or attack budget.
     for (const BOSS of SNAPSHOT.bosses) {
-        // Before breaks (0.67.25): the steps already lost count as used, so a restored fight does not sweep at once.
         if (BOSS.patternRuntime) {
-            BOSS.patternRuntime.breaks ??= bossBreaksEarned(BOSS);
+            const RUNTIME = BOSS.patternRuntime;
+            // Breaks (0.67.25) gave way to the stagger recovery swing (0.67.40).
+            delete RUNTIME.breaks;
             // Before the stagger gauge (0.67.29): the gauge starts empty at the current health.
-            BOSS.patternRuntime.staggerFrom ??= bossHealthFraction(BOSS);
+            RUNTIME.staggerFrom ??= bossHealthFraction(BOSS);
+            // A boss down when saved before 0.67.40 gets up without the recovery swing.
+            RUNTIME.stagger ??= 'standing';
+            // A pattern added later (attack.spin-throw, 0.67.40) starts at the default weight, ready.
+            for (const ID of BOSS_PATTERN_IDS) {
+                RUNTIME.weights[ID] ??= 1;
+                RUNTIME.cooldowns[ID] ??= 0;
+            }
         }
         const LEGACY_SPECIAL = !Object.hasOwn(BOSS, 'specialAbility');
         for (const KEY of Object.keys(ACTOR_ATTACK_SNAPSHOT_SHAPE)) {

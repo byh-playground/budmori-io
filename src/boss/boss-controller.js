@@ -2,11 +2,9 @@ import { createBarleyArmorShredBuckets } from '../features/abilities/barley-shre
 import { unitStats, applyHealing, resolveKnockback } from '../units/unit-stats.js';
 import { bossStageStats } from './boss-rewards.js';
 import {
-    BOSS_BREAK,
     BOSS_PATTERN_CONFIG,
     BOSS_STAGGER,
     BOSS_PATTERN_IDS,
-    bossBreaksEarned,
     bossHealthFraction,
     createBossPatternRuntime,
     chooseBossPattern,
@@ -77,12 +75,42 @@ export class BossController {
         const BOSS = this.unit,
             RUNTIME = BOSS.patternRuntime,
             HEALTH = bossHealthFraction(BOSS);
-        if (BOSS.stun > 0 || HEALTH > RUNTIME.staggerFrom) {
+        if (BOSS.stun > 0 || RUNTIME.stagger !== 'standing' || HEALTH > RUNTIME.staggerFrom) {
             RUNTIME.staggerFrom = HEALTH;
         } else if (RUNTIME.staggerFrom - HEALTH >= BOSS_STAGGER.gauge - 1e-9) {
             RUNTIME.staggerFrom = HEALTH;
+            RUNTIME.stagger = 'down';
             BOSS.stun = Math.max(BOSS.stun, BOSS_STAGGER.seconds);
         }
+    }
+    // Up again after a stagger (BOSS_STAGGER.recovery): heal a share of the missing health and swing at once,
+    // dropping whatever the boss was doing when it went down. Standing again once that swing is over.
+    recoverFromStagger(world) {
+        const BOSS = this.unit,
+            RUNTIME = BOSS.patternRuntime,
+            RECOVERY = BOSS_STAGGER.recovery;
+        if (RUNTIME.stagger === 'rising') {
+            if (RUNTIME.active?.id !== RECOVERY.pattern || RUNTIME.active.phase === 'recover') {
+                RUNTIME.stagger = 'standing';
+            }
+            return;
+        }
+        if (RUNTIME.stagger !== 'down' || BOSS.stun > 0) {
+            return;
+        }
+        const STATS = unitStats(BOSS);
+        applyHealing(BOSS, (STATS.maxHp - BOSS.hp) * RECOVERY.healLost, STATS);
+        RUNTIME.staggerFrom = bossHealthFraction(BOSS);
+        const LIVING = world.livingBossTargets();
+        if (!LIVING.length) {
+            RUNTIME.stagger = 'standing';
+            return;
+        }
+        RUNTIME.stagger = 'rising';
+        BOSS.ability.interrupt();
+        BOSS.specialAbility?.interrupt();
+        world.beginBossPattern(RECOVERY.pattern, world.nearestBossTarget(LIVING, true, BOSS), BOSS);
+        world.activateBossPattern(RUNTIME.active, BOSS);
     }
     knock(nx, ny, power, _lift, source) {
         const UNIT = this.unit,
@@ -195,13 +223,8 @@ export class BossController {
             B_LOCAL.patternRuntime.active = null;
             return;
         }
-        // A break (BOSS_BREAK) goes off at once, whatever the boss is doing.
-        const BREAKS = bossBreaksEarned(B_LOCAL);
-        if (BREAKS > B_LOCAL.patternRuntime.breaks) {
-            B_LOCAL.patternRuntime.breaks = BREAKS;
-            world.bossSummonShockwave(B_LOCAL, BOSS_BREAK.shockwave);
-        }
         this.updateStagger();
+        this.recoverFromStagger(world);
         const STATS = unitStats(B_LOCAL);
         if (STATS.regen > 0) {
             applyHealing(B_LOCAL, STATS.regen * dt, STATS);

@@ -5,6 +5,7 @@ export const BOSS_PATTERN_IDS = Object.freeze([
     'attack.charge',
     'attack.leap-slam',
     'attack.fan-sweep',
+    'attack.spin-throw',
     'summon.mouth-t1',
     'signature.water',
     'signature.grass',
@@ -222,6 +223,31 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
         lift: 10.2,
         groundOnly: true,
     }),
+    // Spin throw: the boss spins on the spot with both hands out, `turns` times round over `active`; every
+    // `throwInterval` it flings `throwCount` troops in its reach, one from each of as many equal slices of the circle
+    // (the slices start at a random angle, the troop in each slice is drawn at random), so they fly off all round
+    // instead of in one wall. A throw is outward with `spin` of the turn's tangent, as high as the arm sweep's.
+    // On its own clock like the summon (from `firstEligible` s into the fight): a crowd keeps cutting the basic
+    // attacks short, so the rhythm's area slot comes round too rarely for the boss to be seen spinning.
+    'attack.spin-throw': Object.freeze({
+        kind: 'spin-throw',
+        ownClock: true,
+        unlockHp: 1,
+        firstEligible: 5,
+        windup: 1,
+        active: 2,
+        recover: 1,
+        cooldown: 12,
+        reach: 7.35,
+        turns: 3,
+        throwInterval: 0.2,
+        throwCount: 10,
+        spin: 0.5,
+        damageMultiplier: 1,
+        knockback: 13,
+        lift: 10.2,
+        groundOnly: true,
+    }),
     // Summon: a damage-free shockwave clears the ground around the boss as the windup starts, then the boss spits
     // `volleyCount` minions onto the cleared ring. How many may be alive at once, the kinds, when it unlocks and its
     // cooldown come from the floor's summon band (tower-encounter.js); unlockHp and cooldown here are the first band's.
@@ -348,25 +374,20 @@ export const BOSS_PHASE_THRESHOLDS = Object.freeze(
         (a, b) => b - a,
     ),
 );
-// Break: every time the boss loses another `step` of its health (80%, 60%, 40%, 20% left) it lets out a damage-free
-// shockwave at once (the summon's push), whatever it is doing, throwing the troops around it clear. A grown-up army
-// cannot just stand on the boss and melt it, and the push hurts nobody, so a big army is not punished for being big.
-// `patternRuntime.breaks` counts the breaks used; several steps lost in one blow still make one break.
-export const BOSS_BREAK = Object.freeze({
-    step: 0.2,
-    shockwave: Object.freeze({ radius: 7.2, knockback: 13, lift: 10.2 * 0.5 }),
-});
-export const BOSS_BREAK_COUNT = Math.round(1 / BOSS_BREAK.step) - 1;
-// The breaks a boss at this health has earned.
-export function bossBreaksEarned(boss) {
-    const LOST = 1 - Math.max(0, boss.hp) / Math.max(1, boss.maxHp);
-    return Math.min(BOSS_BREAK_COUNT, Math.floor(LOST / BOSS_BREAK.step + 1e-9));
-}
 // Stagger: the boss shrugs off single hits (super armor), but every `gauge` of its health lost since it last went
 // down puts it down for `seconds`, and a boss that is down (stunned by anything) takes `damageTaken` times the
 // damage. `patternRuntime.staggerFrom` is the health fraction the gauge counts from; damage taken while down does
-// not fill it, and healing drains it.
-export const BOSS_STAGGER = Object.freeze({ gauge: 0.1, seconds: 1, damageTaken: 1.5 });
+// not fill it, and healing drains it. Getting up from a stagger, the boss heals `recovery.healLost` of the health it
+// is missing and swings `recovery.pattern` at once, without its windup, throwing the troops that piled on while it was
+// down: a grown-up army cannot just stand on the boss and melt it. `patternRuntime.stagger` is 'standing', 'down'
+// (staggered) or 'rising' (the recovery swing until it ends); the gauge only fills while standing.
+export const BOSS_STAGGER_STATES = Object.freeze(['standing', 'down', 'rising']);
+export const BOSS_STAGGER = Object.freeze({
+    gauge: 0.1,
+    seconds: 2,
+    damageTaken: 1.5,
+    recovery: Object.freeze({ pattern: 'attack.sweep-360', healLost: 0.2 }),
+});
 export function bossHealthFraction(boss) {
     return Math.min(1, Math.max(0, boss.hp) / Math.max(1, boss.maxHp));
 }
@@ -389,8 +410,8 @@ export function createBossPatternRuntime() {
         ),
         active: null,
         encounterElapsed: 0,
-        breaks: 0,
         staggerFrom: 1,
+        stagger: 'standing',
     };
 }
 
