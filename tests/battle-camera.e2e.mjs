@@ -562,9 +562,13 @@ try {
     await page.setViewportSize(SIZE);
     await page.waitForFunction((width) => BUDMORI.renderer.canvas.width === width, SIZE.width);
     REPORT.checks.push('native viewport resize/rotation preserves center and releases captured drag');
-    await page.locator('label:has(input[name="battleCommand"][value="scatter"])').click();
+    const PAD = await page.locator('#battleCommandPad').boundingBox();
+    await page.mouse.move(PAD.x + PAD.width * 0.75, PAD.y + PAD.height / 2);
+    await page.mouse.down();
     await resume();
     await page.waitForFunction(() => BUDMORI.sim.battleCommand === 'scatter');
+    await page.mouse.up();
+    await page.waitForFunction(() => BUDMORI.sim.battleCommand === 'engage');
     await page.locator('#gameMenu').click();
     const MENU_CAMERA = await camera();
     await page.mouse.move(CX, CY);
@@ -588,7 +592,7 @@ try {
     await page.mouse.up();
     await page.mouse.wheel(0, -100);
     assert.deepEqual(await camera(), REWARD_CAMERA, 'automatic reward cancels a captured drag');
-    REPORT.checks.push('radio command, game-menu scroll and automatic reward interrupt gestures');
+    REPORT.checks.push('command pad hold and release, game-menu scroll and automatic reward interrupt gestures');
     assert.deepEqual(ERRORS, []);
     REPORT.status = 'passed';
 } catch (error) {

@@ -353,24 +353,18 @@
                 </section>
                 <section class="battle-commands" id="battleCommands" data-i18n-aria-label="battleCommands" hidden>
                     <small id="frontlineStatus" class="battle-commands__status"></small>
-                    <div class="battle-commands__choices" role="radiogroup" data-i18n-aria-label="battleCommandChoices">
-                        <label
-                            ><input type="radio" name="battleCommand" value="engage" checked /><span
-                                data-i18n="commandEngage"
-                            ></span
-                        ></label>
-                        <label
-                            ><input type="radio" name="battleCommand" value="scatter" /><span
-                                data-i18n="commandScatter"
-                            ></span
-                        ></label>
-                        <label
-                            ><input type="radio" name="battleCommand" value="retreat" /><span
-                                data-i18n="commandRetreat"
-                            ></span
-                        ></label>
-                    </div>
                     <small id="battleCommandNote" class="battle-commands__status" data-i18n="commandEngageNote"></small>
+                    <div
+                        class="battle-commands__pad"
+                        id="battleCommandPad"
+                        role="group"
+                        tabindex="0"
+                        data-mode="engage"
+                        data-i18n-aria-label="battleCommandChoices"
+                    >
+                        <span class="battle-commands__zone" data-mode="retreat" data-i18n="commandRetreat"></span>
+                        <span class="battle-commands__zone" data-mode="scatter" data-i18n="commandScatter"></span>
+                    </div>
                 </section>
                 <div class="work-hud" id="workHud">
                     <div class="work-hud__row">
