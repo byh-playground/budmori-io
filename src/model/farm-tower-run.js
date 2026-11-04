@@ -670,6 +670,8 @@ export const FARM_TOWER_RUN = (base) =>
             return (boss.maxHp ? boss.hp / boss.maxHp : 1) - EDGE - (boss.isFinalBoss ? 0.25 : 0);
         }
         battleTimeLimit() {
-            return 90 + 10 * Math.max(0, (this.boss.stage ?? 1) - 1);
+            return this.tower.active
+                ? TOWER_ENCOUNTER_SETTINGS.enrageSeconds
+                : 90 + 10 * Math.max(0, (this.boss.stage ?? 1) - 1);
         }
     };

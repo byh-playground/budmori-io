@@ -1,10 +1,14 @@
 import { BossPattern } from '../model-base.js';
 import { FEATURE } from './definition.js';
+import { gapCloserScale } from '../../../boss/boss-patterns.js';
 
 export class LeapBossPattern extends BossPattern {
     constructor(dependencies) {
         super(FEATURE, dependencies);
         this.physicalActive = true;
+    }
+    reachFor(boss) {
+        return super.reachFor(boss) * gapCloserScale(boss);
     }
     landingRadiusFor(boss) {
         return this.attackExtentFor(boss, this.config.landingRadius);
@@ -71,6 +75,8 @@ export class LeapBossPattern extends BossPattern {
             action.target,
             'leap',
         );
+        // Enraged it flies the same arc in a fraction of the time: twice as fast, as the charge.
+        action.path.duration /= gapCloserScale(boss);
         return;
     }
     expectedHits(world, targets, boss) {

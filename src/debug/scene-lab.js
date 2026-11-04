@@ -9,7 +9,8 @@
 //     "boss": { "hp": 1e7, "stun": 60, "giant": false, "x": 0, "y": 0, "pattern": "signature.water", "entry": false },
 //     "relics": { "meteor": 3 }, "bossRelics": { "hammer": 2 },    // formation skills of each side, id: level
 //     "charge": true,                                  // fill every skill slot once the fight starts
-//     "minions": "ranged"                              // every boss summon spits this MINION_KINDS kind
+//     "minions": "ranged",                             // every boss summon spits this MINION_KINDS kind
+//     "elapsed": 61                                    // fight seconds already gone (61 starts a tower boss enraged)
 //   }
 // `s` species 0-8, `t` tier 1-6, `n` copies spread on a circle of radius `ring` around (x, y).
 // Every field is optional. A boss without `stun` fights; `pattern` makes its next special exactly that pattern.
@@ -148,7 +149,7 @@ export function createLabScene(text) {
             }
             labStates(SPAWNED);
             world.farmBossEvent.phase = 'fighting';
-            world.farmBossEvent.elapsed = 0;
+            world.farmBossEvent.elapsed = P.elapsed ?? 0;
             world._unitSpatialDirty = true;
         },
         // Skill slots appear when the fight starts; fill them once so each skill fires at its own pace afterwards.

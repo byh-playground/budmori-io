@@ -433,6 +433,7 @@ class BossRender extends RENDER_OBJECT {
         species: R.STEP,
         ...PATTERN_RENDER_SCHEMA,
         patternReachScale: R.STEP,
+        enraged: R.STEP,
         element: R.STEP,
         stage: R.STEP,
         summonMouthX: R.STEP,
@@ -493,6 +494,7 @@ class BossRender extends RENDER_OBJECT {
         this.flash = b.flash;
         this.species = b.species ?? 3;
         this.stage = b.stage ?? 0;
+        this.enraged = !!b.enraged;
         updatePatternRender(this, b);
         this.patternReachScale = patternReachScale(b);
         this.summonMouthX = MOUTH.x ?? b.x;

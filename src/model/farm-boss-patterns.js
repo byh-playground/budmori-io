@@ -122,8 +122,7 @@ export const FARM_BOSS_PATTERNS = (base) =>
         }
         chargeBossTarget(living, grid = null, boss = this.boss) {
             grid ||= this.bossTargetGrid(living, boss);
-            const B_LOCAL = boss,
-                CONFIG_LOCAL = BOSS_PATTERN_CONFIG['attack.charge'];
+            const B_LOCAL = boss;
             if (!grid.units.length) {
                 return null;
             }
@@ -151,11 +150,12 @@ export const FARM_BOSS_PATTERNS = (base) =>
                 }
             }
             let best = null;
+            const REACH = BOSS_BEHAVIORS.forId('attack.charge').reachFor(B_LOCAL);
             for (const CANDIDATE of CANDIDATES.values()) {
                 const END = ARENA_GEOMETRY.clamp(
                         {
-                            x: B_LOCAL.x + Math.cos(CANDIDATE.angle) * CONFIG_LOCAL.reach,
-                            y: B_LOCAL.y + Math.sin(CANDIDATE.angle) * CONFIG_LOCAL.reach,
+                            x: B_LOCAL.x + Math.cos(CANDIDATE.angle) * REACH,
+                            y: B_LOCAL.y + Math.sin(CANDIDATE.angle) * REACH,
                         },
                         this,
                         B_LOCAL.radius + 0.25,
@@ -213,14 +213,15 @@ export const FARM_BOSS_PATTERNS = (base) =>
             // Leap candidates are clipped to the real maximum landing distance; score
             // the exact landing disk with a spatial-cell query, not a unit-pair pass.
             const CANDIDATES = new Map(),
-                SIZE = grid.cellSize;
+                SIZE = grid.cellSize,
+                REACH = BOSS_BEHAVIORS.forId('attack.leap-slam').reachFor(B_LOCAL);
             for (const UNIT_LOCAL of grid.groundUnits) {
                 let dx = UNIT_LOCAL.x - B_LOCAL.x;
                 let dy = UNIT_LOCAL.y - B_LOCAL.y;
                 const D_LOCAL = Math.hypot(dx, dy) || 1;
-                if (D_LOCAL > CONFIG_LOCAL.reach) {
-                    dx *= CONFIG_LOCAL.reach / D_LOCAL;
-                    dy *= CONFIG_LOCAL.reach / D_LOCAL;
+                if (D_LOCAL > REACH) {
+                    dx *= REACH / D_LOCAL;
+                    dy *= REACH / D_LOCAL;
                 }
                 const POINT = ARENA_GEOMETRY.clamp(
                         {
@@ -309,7 +310,10 @@ export const FARM_BOSS_PATTERNS = (base) =>
                 if (
                     BOSS_PATTERN_CONFIG[ID].basic ||
                     RUNTIME.cooldowns[ID] > 1e-9 ||
-                    this.bossHpRatioFor(boss) > this.bossPatternUnlockHp(ID)
+                    // Enraged every pattern is unlocked (the summon keeps its band): a boss kited at full health
+                    // still has its area patterns to rain down.
+                    ((!boss.enraged || ID === SUMMON_PATTERN_ID) &&
+                        this.bossHpRatioFor(boss) > this.bossPatternUnlockHp(ID))
                 ) {
                     continue;
                 }
@@ -323,11 +327,25 @@ export const FARM_BOSS_PATTERNS = (base) =>
             }
             return ELIGIBLE;
         }
-        // With no troop in the slam's reach: a ready gap closer (leap or charge) at random, whatever the rhythm, the
-        // boss's health or how many it would hit; null when both are cooling down and the boss has to walk.
-        bossGapCloser(boss = this.boss) {
-            const READY = BOSS_GAP_CLOSERS.filter((id) => boss.patternRuntime.cooldowns[id] <= 1e-9);
+        // With no troop in the slam's reach: a ready gap closer (leap or charge) that has troops in its own reach, at
+        // random, whatever the rhythm or the boss's health; null when none has and the boss has to walk.
+        bossGapCloser(targets, boss = this.boss) {
+            const READY = BOSS_GAP_CLOSERS.filter(
+                (id) =>
+                    boss.patternRuntime.cooldowns[id] <= 1e-9 &&
+                    BOSS_BEHAVIORS.forId(id).eligible(this, targets, 0, boss),
+            );
             return READY.length ? READY[Math.min(READY.length - 1, Math.floor(this.random() * READY.length))] : null;
+        }
+        // Enraged with a troop in reach: one of the ready area or signature patterns at random instead of the
+        // rhythm's slam.
+        bossAreaBarrage(eligible, boss = this.boss) {
+            const AREA = eligible.filter(
+                (id) => !BOSS_PATTERN_CONFIG[id].ownClock && !BOSS_GAP_CLOSERS.includes(id) && id !== SUMMON_PATTERN_ID,
+            );
+            return boss.enraged && AREA.length
+                ? AREA[Math.min(AREA.length - 1, Math.floor(this.random() * AREA.length))]
+                : null;
         }
         bossAttackWorthIt(behavior, targets, boss = this.boss) {
             const HITS = behavior.expectedHits(this, targets, boss);
