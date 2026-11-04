@@ -80,11 +80,16 @@ function recipesHtml(world) {
     return `<p>${CODEX.recipesIntro()}</p><p>${CODEX.recipesHowTo()}</p>${GROUPS.length ? GROUPS.join('') : `<p>${CODEX.recipesEmpty()}</p>`}`;
 }
 
-// The "?" beside a grid opens a note under it. It is built from the model's own tables, so the chart never drifts
-// from what the fights use.
-const HELP_ID = 'codexHelp';
-function helpHtml(label, noteHtml) {
-    return `<div class="codex-help"><button type="button" class="codex-help__button" aria-expanded="false" aria-controls="${HELP_ID}" aria-label="${label}" title="${label}">?</button></div><div class="codex-help__note" id="${HELP_ID}" hidden>${noteHtml}</div>`;
+// The "?" in the header (index.html) opens a note under the tabs. The note is built from the model's own tables, so
+// the chart never drifts from what the fights use. Only the temperament and element tabs have one.
+const HELP_BUTTON_ID = 'codexHelp',
+    HELP_NOTE_ID = 'codexHelpNote';
+const HELP_LABELS = Object.freeze({ forms: () => CODEX.helpTemperament(), colors: () => CODEX.helpElement() });
+export function codexHelpLabel(tab) {
+    return HELP_LABELS[tab]?.() ?? null;
+}
+function helpHtml(noteHtml) {
+    return `<div class="codex-help__note" id="${HELP_NOTE_ID}" hidden>${noteHtml}</div>`;
 }
 const SIGNED_PERCENT = (factor) => `${factor >= 1 ? '+' : '−'}${Math.round(Math.abs(factor - 1) * 100)}%`;
 function temperamentNote() {
@@ -110,11 +115,12 @@ function elementNote() {
         });
     return `<p>${CODEX.elementHelpIntro()}</p><table class="codex-chart"><thead><tr><th scope="col">${CODEX.elementHelpAttack()}</th>${HEAD}</tr></thead><tbody>${ROWS.join('')}</tbody></table><p>${CODEX.elementHelpTotal()}</p><p>${CODEX.elementHelpBoss()}</p>`;
 }
-// Opens or closes the note behind a "?" button; the codex body is not repainted, so nothing else resets.
-export function toggleCodexHelp(button) {
-    const NOTE = document.getElementById(HELP_ID),
-        OPEN = button.getAttribute('aria-expanded') !== 'true';
-    button.setAttribute('aria-expanded', String(OPEN));
+// Opens or closes the note; the codex body is not repainted, so nothing else resets.
+export function toggleCodexHelp() {
+    const BUTTON = document.getElementById(HELP_BUTTON_ID),
+        NOTE = document.getElementById(HELP_NOTE_ID),
+        OPEN = BUTTON.getAttribute('aria-expanded') !== 'true';
+    BUTTON.setAttribute('aria-expanded', String(OPEN));
     NOTE.hidden = !OPEN;
 }
 
@@ -137,7 +143,7 @@ export function codexHtml(world, tab) {
             TEMPERAMENTS.map((entry) => LOCALE.text(entry.name)),
             CODEX.formsGrid(),
             (column) => ({ temperament: column, element: 0 }),
-            helpHtml(CODEX.helpTemperament(), temperamentNote()),
+            helpHtml(temperamentNote()),
         );
     }
     if (tab === 'colors') {
@@ -146,7 +152,7 @@ export function codexHtml(world, tab) {
             ELEMENTS.slice(1, ELEMENT_COUNT + 1).map((entry) => LOCALE.text(entry.name)),
             CODEX.colorsGrid(),
             (column) => ({ temperament: 0, element: column + 1 }),
-            helpHtml(CODEX.helpElement(), elementNote()),
+            helpHtml(elementNote()),
         );
     }
     return recipesHtml(world);

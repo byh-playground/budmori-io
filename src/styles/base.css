@@ -1058,23 +1058,14 @@ body:has(#floorChip:not([hidden])) #gameplayDock .utility {
     font-size: var(--ui-fs-1);
 }
 .codex-help {
-    display: flex;
-    justify-content: flex-end;
-}
-.codex-help__button {
-    display: grid;
-    place-items: center;
-    width: 44px;
-    height: 44px;
-    border: var(--ui-bw) solid var(--ui-line);
-    border-radius: 50%;
-    background: var(--ui-base);
-    color: var(--ui-ink);
+    margin-left: auto;
+    margin-right: var(--ui-s2);
     font-weight: var(--ui-fw-b);
-    font-size: var(--ui-fs-3);
-    cursor: pointer;
 }
-.codex-help__button[aria-expanded='true'] {
+.codex-help[hidden] {
+    display: none;
+}
+.codex-help[aria-expanded='true'] {
     background: var(--ui-primary);
     border-color: var(--ui-primary);
     color: var(--ui-primary-ink);
