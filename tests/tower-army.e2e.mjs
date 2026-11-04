@@ -1,6 +1,6 @@
 // Fixed user flow: frontline commands, finite reinforcements, and a saved summit.
 // Logic only: a small mature roster, a test-lowered frontline cap (the product rule
-// min(maxFrontline, capacity / 2) is still checked) and durable targets. Movement,
+// frontline = capacity is still checked) and durable targets. Movement,
 // deployment, encounter transitions, input, native SVG rendering and storage run normally.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -276,8 +276,8 @@ try {
     }));
     assert.equal(
         REPORT.stages.deployment.productCap,
-        Math.min(500, Math.floor(REPORT.stages.deployment.capacity / 2)),
-        'product frontline cap is min(maxFrontline, capacity / 2)',
+        REPORT.stages.deployment.capacity,
+        'product frontline cap is the farm capacity',
     );
     assert.equal(REPORT.stages.deployment.cap, FRONTLINE);
     assert.equal(REPORT.stages.deployment.field, FRONTLINE, 'deployment stops at the frontline cap');

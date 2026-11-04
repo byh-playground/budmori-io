@@ -76,11 +76,10 @@ export const CONFIG = Object.freeze({
             resultFallVelocity: 0.2,
             maxMaterials: MAX_GRADE_MATERIAL_COUNT,
         }),
-        // The regular frontline is half of the farm's capacity, fixed for one floor.
+        // The regular frontline is the farm's whole capacity, fixed for one floor; owned units past it wait in reserve.
         deploy: Object.freeze({
             cooldownSeconds: 0.1,
             initialSeconds: 1.5,
-            maxFrontline: 500,
             scatterGap: 2.4,
         }),
         // Draft numbers for the tower: every 5th floor is a mid-boss; fallen units sleep tier (max 3) floors.
