@@ -10,8 +10,8 @@ const EASE = (t) => t * t * (3 - 2 * t);
 const HAND_FOLD_SECONDS = 0.4;
 
 export class CircleSweepPresentation extends BossAttackPresentation {
-    constructor() {
-        super(FEATURE, 'sweep', 0.14, 0.14);
+    constructor(feature = FEATURE) {
+        super(feature, 'sweep', 0.14, 0.14);
     }
     // Where a hand is after the given share of its half turn: on the ellipse the reach circle makes on screen.
     orbit(pose, key, turn) {
@@ -47,7 +47,11 @@ export class CircleSweepPresentation extends BossAttackPresentation {
             return;
         }
         super.recover(boss, pose);
-        this.place(pose, 1, 1 - EASE(clamp(pose.elapsed / HAND_FOLD_SECONDS, 0, 1)));
+        this.place(pose, this.finalTurn, 1 - EASE(clamp(pose.elapsed / HAND_FOLD_SECONDS, 0, 1)));
+    }
+    // Where in its turn (in half turns) a hand stops when the swing is over.
+    get finalTurn() {
+        return 1;
     }
     // The whole disc is the danger; the two bright arcs are the halves the hands have swept so far.
     drawTelegraph(renderer, area) {

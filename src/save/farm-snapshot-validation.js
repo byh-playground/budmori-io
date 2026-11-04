@@ -22,7 +22,7 @@ import { isValidPlayerProgressionState, FARM_BOSS_EVENT_MAX_STAGE } from '../mod
 import { hasUnitCapability, specialAbilityCompositionFor } from '../units/unit-abilities.js';
 import { kitSpecies } from '../units/species-catalog.js';
 import { mergeMaterialCostForTier } from '../units/unit-grades.js';
-import { BOSS_BREAK_COUNT, BOSS_PATTERN_IDS, BOSS_PATTERN_CONFIG, isBossMinion } from '../boss/boss-patterns.js';
+import { BOSS_PATTERN_IDS, BOSS_STAGGER_STATES, BOSS_PATTERN_CONFIG, isBossMinion } from '../boss/boss-patterns.js';
 import { BOSS_REWARD_SETTINGS, bossStageStats } from '../boss/boss-rewards.js';
 import { validateBossRewardLedger } from './boss-reward-ledger.js';
 import { resolveUnitStats } from '../units/unit-stats.js';
@@ -1501,7 +1501,7 @@ function validateBoss(boss, raw) {
         RUNTIME &&
             Number.isFinite(RUNTIME.encounterElapsed) &&
             RUNTIME.encounterElapsed >= 0 &&
-            INTEGER(RUNTIME.breaks, 0, BOSS_BREAK_COUNT) &&
+            BOSS_STAGGER_STATES.includes(RUNTIME.stagger) &&
             Number.isFinite(RUNTIME.staggerFrom) &&
             RUNTIME.staggerFrom >= 0 &&
             RUNTIME.staggerFrom <= 1 &&

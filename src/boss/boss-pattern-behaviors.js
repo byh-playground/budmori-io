@@ -3,6 +3,7 @@ import { SweepBossPattern } from '../features/boss-patterns/sweep-360/model.js';
 import { ChargeBossPattern } from '../features/boss-patterns/charge/model.js';
 import { LeapBossPattern } from '../features/boss-patterns/leap-slam/model.js';
 import { FanBossPattern } from '../features/boss-patterns/fan-sweep/model.js';
+import { SpinThrowBossPattern } from '../features/boss-patterns/spin-throw/model.js';
 import { MouthSummonBossPattern } from '../features/boss-patterns/mouth-summon/model.js';
 import {
     WaterJetPattern,
@@ -26,6 +27,7 @@ export function createBossPatternBehaviors(dependencies) {
                 new ChargeBossPattern(DEPENDENCIES),
                 new LeapBossPattern(DEPENDENCIES),
                 new FanBossPattern(DEPENDENCIES),
+                new SpinThrowBossPattern(DEPENDENCIES),
                 new MouthSummonBossPattern(DEPENDENCIES),
                 new WaterJetPattern(DEPENDENCIES),
                 new RootEruptionPattern(DEPENDENCIES),
