@@ -307,14 +307,25 @@ try {
     assert.ok(REPORT.stages.landscapeLayout.combatDamage > 0, 'the frame follows actual combat convergence');
     await page.setViewportSize({ width: 1000, height: 700 });
     await resume();
-    await page.locator('label:has(input[name="battleCommand"][value="scatter"])').click();
+    // The command pad is held: the right half scatters, the left half retreats, letting go engages again.
+    const HOLD = async (side) => {
+        const PAD = await page.locator('#battleCommandPad').boundingBox();
+        await page.mouse.move(PAD.x + PAD.width * (side === 'right' ? 0.75 : 0.25), PAD.y + PAD.height / 2);
+        await page.mouse.down();
+    };
+    await HOLD('right');
     await page.waitForFunction(() => BUDMORI.sim.battleCommand === 'scatter');
     await ticks(12);
     await capture('frontline-scatter-desktop.png');
+    await page.mouse.up();
+    await page.waitForFunction(() => BUDMORI.sim.battleCommand === 'engage');
     await page.setViewportSize({ width: 667, height: 375 });
+    await HOLD('right');
+    await page.waitForFunction(() => BUDMORI.sim.battleCommand === 'scatter');
     await capture('frontline-scatter-landscape.png');
+    await page.mouse.up();
     await resume();
-    await page.locator('label:has(input[name="battleCommand"][value="retreat"])').click();
+    await HOLD('left');
     await page.waitForFunction(() => BUDMORI.sim.battleCommand === 'retreat');
     const BEFORE = await page.evaluate(() =>
         BUDMORI.sim.units
@@ -332,9 +343,7 @@ try {
                 const UNIT = WORLD.units.find((unit) => unit.id === point.id);
                 return UNIT && Math.hypot(UNIT.x - point.x, UNIT.y - point.y) > 0.05;
             }).length,
-            selected: [...document.querySelectorAll('input[name="battleCommand"]')]
-                .filter((input) => input.checked)
-                .map((input) => input.value),
+            selected: [document.querySelector('#battleCommandPad').dataset.mode],
         };
     }, BEFORE);
     assert.equal(REPORT.stages.retreat.mode, 'retreat');
@@ -342,11 +351,11 @@ try {
     assert.ok(REPORT.stages.retreat.moved > 0, 'retreat must move actual frontline bodies');
     assert.deepEqual(REPORT.stages.retreat.selected, ['retreat']);
     await capture('frontline-retreat-landscape.png');
+    await page.mouse.up();
+    await page.waitForFunction(() => BUDMORI.sim.battleCommand === 'engage');
     await page.setViewportSize({ width: 390, height: 844 });
     await capture('frontline-retreat-mobile.png');
     await resume();
-    await page.locator('label:has(input[name="battleCommand"][value="engage"])').click();
-    await page.waitForFunction(() => BUDMORI.sim.battleCommand === 'engage');
     // The floor's one boss keeps fighting meanwhile, so more troops may fall: every fallen troop is replaced from the reserves.
     const BEFORE_LOSS = await page.evaluate(() => {
         const WORLD = BUDMORI.sim,

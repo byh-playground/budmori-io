@@ -519,12 +519,61 @@ DOLLAR('fightRetreat').onclick = () => {
     personalGarden?.retreatFromFight();
 };
 DOLLAR('bossChallenge').onclick = beginChallenge;
-DOLLAR('battleCommands').addEventListener('change', (event) => {
-    if (event.target.matches('input[name="battleCommand"]') && active && !home) {
-        active.queue('battle-command', { mode: event.target.value });
-        active.flushQueuedCommands();
+// The command pad: engaging is the default with neither button selected; a hold on the left button retreats and on the
+// right one scatters, sliding across switches at once and letting go engages again. Only this pad listens, the battlefield keeps the camera.
+const BATTLE_PAD = DOLLAR('battleCommandPad');
+let padPointerId = null;
+function padCommand(mode) {
+    if (!active || home || active.world.battleCommand === mode) {
+        return;
+    }
+    active.queue('battle-command', { mode });
+    active.flushQueuedCommands();
+    navigator.vibrate?.(8);
+}
+function padModeAt(clientX) {
+    const RECT = BATTLE_PAD.getBoundingClientRect();
+    return clientX < RECT.left + RECT.width / 2 ? 'retreat' : 'scatter';
+}
+function endPadPress() {
+    padPointerId = null;
+    padCommand('engage');
+}
+BATTLE_PAD.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || padPointerId !== null) {
+        return;
+    }
+    padPointerId = event.pointerId;
+    BATTLE_PAD.setPointerCapture(event.pointerId);
+    padCommand(padModeAt(event.clientX));
+    event.preventDefault();
+});
+BATTLE_PAD.addEventListener('pointermove', (event) => {
+    if (event.pointerId === padPointerId) {
+        padCommand(padModeAt(event.clientX));
     }
 });
+for (const TYPE of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+    BATTLE_PAD.addEventListener(TYPE, (event) => {
+        if (event.pointerId === padPointerId) {
+            endPadPress();
+        }
+    });
+}
+// Keyboard: hold an arrow key on the focused pad (left retreats, right scatters), release to engage.
+const PAD_KEYS = Object.freeze({ ArrowLeft: 'retreat', ArrowRight: 'scatter' });
+BATTLE_PAD.addEventListener('keydown', (event) => {
+    if (PAD_KEYS[event.key]) {
+        padCommand(PAD_KEYS[event.key]);
+        event.preventDefault();
+    }
+});
+BATTLE_PAD.addEventListener('keyup', (event) => {
+    if (PAD_KEYS[event.key]) {
+        padCommand('engage');
+    }
+});
+BATTLE_PAD.addEventListener('blur', () => padCommand('engage'));
 DOLLAR('summitSkip').onclick = () => active?.queue('tower-summit-skip', {});
 DOLLAR('towerSummit').addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
@@ -1651,9 +1700,7 @@ function syncBattleCommands(garden, visible, counts) {
         }),
     );
     syncText('battleCommandNote', BATTLE_COMMAND_NOTES[garden.battleCommand]());
-    for (const INPUT of DOLLAR('battleCommands').querySelectorAll('input')) {
-        INPUT.checked = INPUT.value === garden.battleCommand;
-    }
+    BATTLE_PAD.dataset.mode = garden.battleCommand;
 }
 function canUseWorldInput() {
     return !home && !menuOpen && !active.paused;
