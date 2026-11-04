@@ -65,7 +65,7 @@ npm run test:codex
 
 병력의 충돌 반경·높이와 표시 배율은 원본의 이름 있는 몸통 외곽선·지면 소켓을 공유합니다. 옥수수 낟알은 발사 순간 몸통 높이의 20%이며, 최소 표시 픽셀은 충돌 크기에 영향을 주지 않습니다. 측정 기준과 저장 호환성은 [몸 크기와 투사체 크기](docs/unit-body-dimensions.md)에 정리했습니다.
 
-CI는 최소입니다. [Check](.github/workflows/check.yml)가 `npm run check`(포맷·린트·PWA·manifest·소스 그래프 정적 검사)만 돌리고, 브라우저 시험은 CI에 두지 않습니다. 시험은 변경한 부분에 맞춰 로컬에서 실행합니다: 전투·카드(`npm test`), 카드 선택과 한 동작 전체 피해(`npm run test:stat-cards`), 새로고침마다 최신 버전·오프라인 시작·저장 후 새로고침(`npm run test:pwa-update`, 실제 서비스워커), 시작·그래픽 복구·병력 표현·농장·도감·합성·언어 전환·탑 병력(`npm run test:tower-army`)·전투 카메라(`npm run test:camera -- desktop|portrait|landscape`). 브라우저의 SDK 요청은 고정된 `vendor/upstream` 원본으로 응답하며, 서비스워커·전투·저장 판정은 실제 경로를 사용합니다.
+CI는 최소입니다. [Check](.github/workflows/check.yml)가 `npm run check`(포맷·린트·PWA 아이콘·manifest·소스 그래프 검사, PWA 아이콘 때문에 Chromium 설치만 함)만 돌리고, 브라우저 시험은 CI에 두지 않습니다. 시험은 변경한 부분에 맞춰 로컬에서 실행합니다: 전투·카드(`npm test`), 카드 선택과 한 동작 전체 피해(`npm run test:stat-cards`), 새로고침마다 최신 버전·오프라인 시작·저장 후 새로고침(`npm run test:pwa-update`, 실제 서비스워커), 시작·그래픽 복구·병력 표현·농장·도감·합성·언어 전환·탑 병력(`npm run test:tower-army`)·전투 카메라(`npm run test:camera -- desktop|portrait|landscape`). 브라우저의 SDK 요청은 고정된 `vendor/upstream` 원본으로 응답하며, 서비스워커·전투·저장 판정은 실제 경로를 사용합니다.
 
 별도 확장(`extended`) 작업은 없습니다. 탑 병력과 전투 카메라는 소수 병력과 고정 틱 진행으로 줄여 로컬 필수 시험으로 둡니다. 모바일은 Chromium 터치 에뮬레이션이며 실제 기기와 구분하고, 성능은 테스트로 측정하지 않습니다.
 
