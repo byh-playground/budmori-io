@@ -260,7 +260,8 @@ try {
         const { overallXpForLevel: XP } = await import('/src/model/player-progression.js');
         const { world: WORLD, unit: UNIT, check: CHECK, CONFIG } = globalThis.foodTest,
             RESULTS = [];
-        for (const COUNT of [0, 10, 50, 100, 200, 900]) {
+        // 500 is the farm's most units (FARM_MAX_UNITS): the biggest worker crowd it can hold.
+        for (const COUNT of [0, 10, 50, 100, 200, 500]) {
             const W = WORLD();
             W.playerProgression.overallXp = XP(50);
             for (let i = 0; i < COUNT; i++) {
