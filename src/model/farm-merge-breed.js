@@ -29,7 +29,7 @@ export const FARM_MERGE_BREED = (base) =>
             }
             try {
                 const OWNER = this.breedingReservationOwner(a, b),
-                    BIRTH_RESERVATION = this._activeBreedReservations?.get(OWNER) || null,
+                    BIRTH_RESERVATION = this.breedPairs.has(OWNER),
                     RESERVATIONS_AVAILABLE =
                         this.unitCollection.reservationOwner(a) === null ||
                         this.unitCollection.reservationOwner(a) === OWNER;
@@ -66,65 +66,29 @@ export const FARM_MERGE_BREED = (base) =>
         breedingReservationOwner(a, b) {
             return BREED_RESERVATION_OWNER(a.id, b.id);
         }
-        cancelBreedPlans() {
-            for (const OWNER of [...(this._activeBreedReservations?.keys() || [])]) {
-                this.releaseActiveBreedReservation(OWNER);
-            }
-            this._activeBreedReservations?.clear();
+        // Whether `a` and `b` may be matched now: neither is matched with someone else.
+        _pairedWithOther(a, b) {
+            const MATE_A = this.breedPairs.mateIdOf(a),
+                MATE_B = this.breedPairs.mateIdOf(b);
+            return (MATE_A !== 0 && MATE_A !== b.id) || (MATE_B !== 0 && MATE_B !== a.id);
         }
         reserveActiveBreedPair(a, b) {
-            const OWNER = this.breedingReservationOwner(a, b),
-                EXISTING = this._activeBreedReservations.get(OWNER);
-            if (EXISTING) {
-                return EXISTING.parentIds.includes(a.id) && EXISTING.parentIds.includes(b.id);
+            if (this.breedPairs.has(this.breedingReservationOwner(a, b))) {
+                return true;
             }
-            if (
-                !a ||
-                !b ||
-                !this.canBreedPair(a, b) ||
-                a.down > 0 ||
-                b.down > 0 ||
-                (a.mateId && a.mateId !== b.id) ||
-                (b.mateId && b.mateId !== a.id)
-            ) {
+            if (!a || !b || !this.canBreedPair(a, b) || a.down > 0 || b.down > 0 || this._pairedWithOther(a, b)) {
                 return false;
             }
-            const RESERVATION = { species: a.species, owner: OWNER };
-            if (!this.unitCollection.reserve(OWNER, [a, b])) {
-                return false;
-            }
-            this._activeBreedReservations.set(OWNER, {
-                owner: OWNER,
-                parentIds: [a.id, b.id],
-                reservation: RESERVATION,
-            });
-            a.mateId = b.id;
-            b.mateId = a.id;
-            return true;
-        }
-        releaseActiveBreedReservation(owner) {
-            const RESERVATION = this._activeBreedReservations?.get(owner);
-            if (!RESERVATION) {
-                return false;
-            }
-            this._activeBreedReservations.delete(owner);
-            this.unitCollection.releaseReservations(owner);
-            for (const ID of RESERVATION.parentIds) {
-                const UNIT_LOCAL = this.unitCollection.unitById(ID);
-                if (UNIT_LOCAL?.mateId === RESERVATION.parentIds.find((otherId) => otherId !== ID)) {
-                    UNIT_LOCAL.mateId = 0;
-                }
-            }
-            return true;
+            return this.breedPairs.reserve(a, b);
         }
         _isValidBreedReservation(unit, owner) {
             if (!owner?.startsWith('breed:')) {
                 return false;
             }
-            const MATE = this._unitById.get(unit.mateId);
+            const MATE = this._unitById.get(this.breedPairs.mateIdOf(unit));
             return !!(
                 MATE &&
-                MATE.mateId === unit.id &&
+                this.breedPairs.ownerOf(unit) === owner &&
                 this.unitCollection.reservationOwner(MATE) === owner &&
                 this.breedingReservationOwner(unit, MATE) === owner &&
                 this.canBreedPair(unit, MATE) &&
@@ -132,27 +96,21 @@ export const FARM_MERGE_BREED = (base) =>
                 !this.senseEnemy(MATE)
             );
         }
-        releaseMate(unit) {
+        // The units' spatial index is current before a pair is ended outside a step.
+        _currentSpatialIndex() {
             if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
                 this._rebuildUnitSpatialIndex(this.units);
             }
-            const MATE = this._unitById.get(unit.mateId);
-            if (
-                unit.mateId &&
-                this.releaseActiveBreedReservation(
-                    this.breedingReservationOwner(unit, this.unitCollection.unitById(unit.mateId)),
-                )
-            ) {
-                return true;
-            }
-            unit.mateId = 0;
-            if (MATE && MATE.mateId === unit.id) {
-                MATE.mateId = 0;
-            }
-            const OWNER = this.unitCollection.reservationOwner(unit);
-            if (OWNER?.startsWith('breed:')) {
-                this.unitCollection.releaseReservations(OWNER);
-            }
+        }
+        // The plan fell through: a mate that went away, an enemy, a merge that took a unit.
+        releaseMate(unit) {
+            this._currentSpatialIndex();
+            return this.breedPairs.releaseUnit(unit);
+        }
+        // The child came.
+        completeBreedPair(unit) {
+            this._currentSpatialIndex();
+            return this.breedPairs.complete(unit);
         }
         reconcileMateReservations() {
             const BATCH = !this._spatialStepActive;
@@ -180,22 +138,15 @@ export const FARM_MERGE_BREED = (base) =>
                     }
                 }
                 for (const UNIT_LOCAL of this.units) {
-                    if (!UNIT_LOCAL.mateId) {
-                        const OWNER = this.unitCollection.reservationOwner(UNIT_LOCAL);
-                        if (OWNER?.startsWith('breed:')) {
-                            this.unitCollection.releaseReservations(OWNER);
-                        }
+                    const OWNER = this.breedPairs.ownerOf(UNIT_LOCAL);
+                    if (!OWNER) {
                         continue;
                     }
-                    const MATE = this._unitById.get(UNIT_LOCAL.mateId);
+                    const MATE = this._unitById.get(this.breedPairs.mateIdOf(UNIT_LOCAL));
                     if (
                         !MATE ||
-                        MATE.mateId !== UNIT_LOCAL.id ||
                         !this.canBreedPair(UNIT_LOCAL, MATE) ||
-                        !this.unitCollection.reserve(this.breedingReservationOwner(UNIT_LOCAL, MATE), [
-                            UNIT_LOCAL,
-                            MATE,
-                        ])
+                        !this.unitCollection.reserve(OWNER, [UNIT_LOCAL, MATE])
                     ) {
                         this.releaseMate(UNIT_LOCAL);
                     }
@@ -227,9 +178,9 @@ export const FARM_MERGE_BREED = (base) =>
                     this.releaseMate(unit);
                     return null;
                 }
-                if (unit.mateId) {
-                    const CURRENT = this._unitById.get(unit.mateId);
-                    if (CURRENT && CURRENT.mateId === unit.id && this.canBreedPair(unit, CURRENT)) {
+                if (this.breedPairs.mateIdOf(unit)) {
+                    const CURRENT = this._unitById.get(this.breedPairs.mateIdOf(unit));
+                    if (CURRENT && this.canBreedPair(unit, CURRENT)) {
                         return CURRENT;
                     }
                     this.releaseMate(unit);
@@ -241,7 +192,7 @@ export const FARM_MERGE_BREED = (base) =>
                 for (const CANDIDATE of this.roster.residentsOfSpecies(unit.species)) {
                     if (
                         CANDIDATE === unit ||
-                        CANDIDATE.mateId ||
+                        this.breedPairs.mateIdOf(CANDIDATE) ||
                         CANDIDATE.hp <= 0 ||
                         CANDIDATE.down > 0 ||
                         !CANDIDATE.mature ||
@@ -716,11 +667,8 @@ export const FARM_MERGE_BREED = (base) =>
             }
             for (const UNIT_LOCAL of MATERIALS) {
                 this.clearFoodTargetSearch(UNIT_LOCAL);
-                const MATE = this._unitById.get(UNIT_LOCAL.mateId);
-                UNIT_LOCAL.mateId = 0;
-                if (MATE?.mateId === UNIT_LOCAL.id) {
-                    MATE.mateId = 0;
-                }
+                // A material that was matched to breed ends that pair too, with its mate.
+                this.breedPairs.releaseUnit(UNIT_LOCAL);
             }
             const TASK = {
                 phase: 'approach',

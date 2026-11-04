@@ -44,15 +44,12 @@ export class BreedFarmMode extends FarmMode {
         if (
             !world.canBreedPair(a, b, true) ||
             world.ownedPopulation >= world.capacity ||
-            (a.mateId && a.mateId !== b.id) ||
-            (b.mateId && b.mateId !== a.id) ||
+            world._pairedWithOther(a, b) ||
             !world.reserveActiveBreedPair(a, b)
         ) {
             return false;
         }
         {
-            a.mateId = b.id;
-            b.mateId = a.id;
             const CHILD = world.spawn(a.species, 1, (a.x + b.x) / 2, (a.y + b.y) / 2, {
                 birthReservationOwner: OWNER,
                 lineage: world.inheritLineage([a, b]),
@@ -68,7 +65,7 @@ export class BreedFarmMode extends FarmMode {
             a.cooldown = b.cooldown = world.breedCooldownDuration();
             a.cooldownDuration = b.cooldownDuration = a.cooldown;
             a.cooldownSetAtTick = b.cooldownSetAtTick = world.simulationTick;
-            world.releaseMate(a);
+            world.completeBreedPair(a);
             world.metrics.births++;
             world.emit('birth', CHILD.x, CHILD.y, 0.7);
         }

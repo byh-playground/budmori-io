@@ -148,7 +148,6 @@ function initializeFarmLifecycle(unit, x, y) {
         age: 0,
         cooldown: 0,
         cooldownDuration: 0,
-        mateId: 0,
         perceptionRange: CONFIG.unit.perceptionRange,
         home: {
             x,

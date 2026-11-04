@@ -109,6 +109,13 @@ function migrateBossMinionKinds(snapshot) {
     }
 }
 
+// A pair of mates is a plan, never saved: a save from before that still carries the units' mateId.
+function migrateUnitMates(snapshot) {
+    for (const UNIT of snapshot.units) {
+        delete UNIT.mateId;
+    }
+}
+
 export function normalizeSnapshot(raw, { clone = true } = {}) {
     const SNAPSHOT = clone ? structuredClone(raw) : raw,
         LEGACY_ENCOUNTER = Object.hasOwn(SNAPSHOT, 'boss') && !Object.hasOwn(SNAPSHOT, 'bosses');
@@ -151,6 +158,7 @@ export function normalizeSnapshot(raw, { clone = true } = {}) {
     }
     migrateBossEncounter(SNAPSHOT);
     migrateBossMinionKinds(SNAPSHOT);
+    migrateUnitMates(SNAPSHOT);
     for (const TARGET of [...SNAPSHOT.units, ...SNAPSHOT.bosses]) {
         TARGET.statProfile ??= null;
         TARGET.statModifiers ??= {};
