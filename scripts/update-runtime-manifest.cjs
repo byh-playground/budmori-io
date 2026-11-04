@@ -44,6 +44,7 @@ function prepareRuntime(root = PATH.resolve(__dirname, '..'), { check = false } 
         deterministic: 'BloomGamekitDeterministic',
         simloop: 'BloomGamekitSimloop',
         'work-scheduler': 'BloomGamekitWorkScheduler',
+        behavior: 'BloomGamekitBehavior',
         scenario: 'BloomGamekitScenario',
         save: 'BloomGamekitSave',
         pwa: 'BloomGamekitPwa',

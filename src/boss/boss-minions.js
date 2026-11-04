@@ -8,14 +8,70 @@ import {
 } from './boss-patterns.js';
 import { scaleMoveSpeed } from '../units/unit-stats.js';
 
+const {
+    BehaviorTree: BEHAVIOR_TREE,
+    action: ACTION_NODE,
+    guard: GUARD_NODE,
+    selector: SELECTOR_NODE,
+} = globalThis.BloomGamekitBehavior;
+const HOLD = () => true;
+
+// The minion being played this tick and what it sees, each read once on first use (one record per behaviour).
+class MinionTurn {
+    begin(behavior, world, unit, dt, living) {
+        this.behavior = behavior;
+        this.world = world;
+        this.unit = unit;
+        this.dt = dt;
+        this.living = living;
+        this._targets = this._fallback = this._nearest = this.pack = null;
+        return this;
+    }
+    get targets() {
+        return (this._targets ??= this.world.bossPatternTargets(this.living, this.unit));
+    }
+    // A caster's fallback target: the nearest for patterns, else the nearest ally at all.
+    get fallback() {
+        return (this._fallback ??=
+            this.targets.nearest || this.world.nearestBossTarget(this.living, undefined, this.unit));
+    }
+    get nearest() {
+        return (this._nearest ??= this.world.nearestBossTarget(this.living, true, this.unit));
+    }
+    get distance() {
+        return Math.hypot(this.unit.x - this.nearest.x, this.unit.y - this.nearest.y);
+    }
+    get ready() {
+        return this.behavior.ready(this.unit);
+    }
+    // Start `id` on `target` when it is off cooldown and reaches it.
+    castOn(id, target) {
+        if (!this.behavior.canCast(this.unit, id, this.world, target)) {
+            return false;
+        }
+        this.behavior.begin(this.world, this.unit, id, target);
+        return true;
+    }
+    steerAt(target) {
+        this.world.steer(this.unit, target.x, target.y, this.dt, this.behavior.speed(this.unit));
+        return true;
+    }
+}
+
 // A boss minion IS-A boss summon (the summoner shrunk to a giant unit, MINION_KINDS) and HAS-A behaviour: one
 // object per kind below. A behaviour casts boss-kit patterns with the minion as the caster (same targeting,
 // telegraph, hits). The cast in progress, the cooldowns and a bomber's chosen pack live on the minion
 // (patternRuntime); none of it is saved, so after a reload the minion starts over idle (a lit fuse is lit again
 // when it reaches a pack). While a cast runs the minion stands still and does nothing else.
 class BossMinionBehavior {
-    constructor(kind) {
+    constructor(kind, tree) {
         this.kind = kind;
+        this.tree = tree;
+        this.turn = new MinionTurn();
+    }
+    // True when the tree took the minion's turn; false leaves it to its ordinary intent.
+    act(world, unit, dt, living) {
+        return this.tree.decide(this.turn.begin(this, world, unit, dt, living)) !== null;
     }
     // The pattern ids whose cooldowns this minion runs down.
     patternIds(_unit) {
@@ -92,54 +148,86 @@ class BossMinionBehavior {
 
 // Today's minion: its summoner's element skill whenever that is ready and reaches, else the boss's slam on a troop in
 // reach, else it walks up as an ordinary unit.
+function casterCast(turn, id) {
+    const BEHAVIOR = id && BOSS_BEHAVIORS.forId(id);
+    if (
+        !BEHAVIOR ||
+        !(turn.unit.patternRuntime.cooldowns[id] <= 1e-9) ||
+        !BEHAVIOR.eligible(turn.world, turn.targets, 0, turn.unit)
+    ) {
+        return false;
+    }
+    turn.behavior.begin(
+        turn.world,
+        turn.unit,
+        id,
+        BEHAVIOR.selectedTarget(turn.world, turn.targets, turn.fallback, turn.unit),
+    );
+    return true;
+}
 class CasterMinion extends BossMinionBehavior {
+    constructor(kind) {
+        super(
+            kind,
+            new BEHAVIOR_TREE(
+                GUARD_NODE(
+                    'ready',
+                    (turn) => turn.ready,
+                    SELECTOR_NODE('cast', [
+                        ACTION_NODE('element skill', (turn) =>
+                            casterCast(turn, signaturePatternFor(turn.unit.enemyElement)),
+                        ),
+                        ACTION_NODE('slam', (turn) => casterCast(turn, BOSS_BASIC_PATTERN)),
+                    ]),
+                ),
+            ),
+        );
+    }
     patternIds(unit) {
         const ID = signaturePatternFor(unit.enemyElement);
         return ID ? [ID, BOSS_BASIC_PATTERN] : [BOSS_BASIC_PATTERN];
-    }
-    act(world, unit, _dt, living) {
-        if (!this.ready(unit)) {
-            return false;
-        }
-        const TARGETS = world.bossPatternTargets(living, unit),
-            FALLBACK = TARGETS.nearest || world.nearestBossTarget(living, undefined, unit);
-        for (const ID of this.patternIds(unit)) {
-            const BEHAVIOR = BOSS_BEHAVIORS.forId(ID);
-            if (unit.patternRuntime.cooldowns[ID] <= 1e-9 && BEHAVIOR.eligible(world, TARGETS, 0, unit)) {
-                this.begin(world, unit, ID, BEHAVIOR.selectedTarget(world, TARGETS, FALLBACK, unit));
-                return true;
-            }
-        }
-        return false;
     }
 }
 
 // Keeps keepDistance from its nearest ally: steps back first when one is inside fleeDistance, then the mortar when
 // ready, else a bolt; between casts it backs off when closer than keepDistance and closes in beyond its bolt's reach.
 class RangedMinion extends BossMinionBehavior {
-    act(world, unit, dt, living) {
-        const TARGET = world.nearestBossTarget(living, true, unit);
-        if (!this.ready(unit) || !TARGET) {
-            return true;
-        }
-        const DISTANCE = Math.hypot(unit.x - TARGET.x, unit.y - TARGET.y);
-        if (DISTANCE < this.kind.fleeDistance && this.stepBack(world, unit, dt, living)) {
-            return true;
-        }
-        for (const ID of [this.kind.pattern, this.kind.basic]) {
-            if (this.canCast(unit, ID, world, TARGET)) {
-                this.begin(world, unit, ID, TARGET);
-                return true;
-            }
-        }
-        if (DISTANCE < this.kind.keepDistance) {
-            this.stepBack(world, unit, dt, living);
-        } else if (DISTANCE > BOSS_BEHAVIORS.forId(this.kind.basic).reachFor(unit) + TARGET.radius) {
-            world.steer(unit, TARGET.x, TARGET.y, dt, this.speed(unit));
-        } else {
-            unit.vx = unit.vy = 0;
-        }
-        return true;
+    constructor(kind) {
+        super(
+            kind,
+            new BEHAVIOR_TREE(
+                SELECTOR_NODE('ranged', [
+                    GUARD_NODE('not ready', (turn) => !turn.ready || !turn.nearest, ACTION_NODE('hold', HOLD)),
+                    GUARD_NODE(
+                        'ally too close',
+                        (turn) => turn.distance < kind.fleeDistance,
+                        ACTION_NODE('flee', (turn) =>
+                            turn.behavior.stepBack(turn.world, turn.unit, turn.dt, turn.living),
+                        ),
+                    ),
+                    ACTION_NODE('mortar', (turn) => turn.castOn(kind.pattern, turn.nearest)),
+                    ACTION_NODE('bolt', (turn) => turn.castOn(kind.basic, turn.nearest)),
+                    GUARD_NODE(
+                        'inside keep distance',
+                        (turn) => turn.distance < kind.keepDistance,
+                        ACTION_NODE('back off', (turn) => {
+                            turn.behavior.stepBack(turn.world, turn.unit, turn.dt, turn.living);
+                            return true;
+                        }),
+                    ),
+                    GUARD_NODE(
+                        'out of bolt reach',
+                        (turn) =>
+                            turn.distance > BOSS_BEHAVIORS.forId(kind.basic).reachFor(turn.unit) + turn.nearest.radius,
+                        ACTION_NODE('close in', (turn) => turn.steerAt(turn.nearest)),
+                    ),
+                    ACTION_NODE('stand', (turn) => {
+                        turn.unit.vx = turn.unit.vy = 0;
+                        return true;
+                    }),
+                ]),
+            ),
+        );
     }
     // Away from the allies within keepDistance, around (never into) its own side's bosses; false when cornered.
     stepBack(world, unit, dt, living) {
@@ -153,20 +241,22 @@ class RangedMinion extends BossMinionBehavior {
 
 // Runs at the densest pack of allies and lights its fuse there (the blast pattern); it dies in the blast.
 class BomberMinion extends BossMinionBehavior {
-    act(world, unit, dt, living) {
-        if (!this.ready(unit)) {
-            return true;
-        }
-        const TARGET = this.pack(world, unit, dt, living);
-        if (!TARGET) {
-            return true;
-        }
-        if (this.canCast(unit, this.kind.pattern, world, TARGET)) {
-            this.begin(world, unit, this.kind.pattern, TARGET);
-            return true;
-        }
-        world.steer(unit, TARGET.x, TARGET.y, dt, this.speed(unit));
-        return true;
+    constructor(kind) {
+        super(
+            kind,
+            new BEHAVIOR_TREE(
+                SELECTOR_NODE('bomber', [
+                    GUARD_NODE('not ready', (turn) => !turn.ready, ACTION_NODE('hold', HOLD)),
+                    // Picking the pack keeps it for retargetSeconds, so it happens once per free tick.
+                    ACTION_NODE(
+                        'no pack',
+                        (turn) => !(turn.pack = turn.behavior.pack(turn.world, turn.unit, turn.dt, turn.living)),
+                    ),
+                    ACTION_NODE('light fuse', (turn) => turn.castOn(kind.pattern, turn.pack)),
+                    ACTION_NODE('run at pack', (turn) => turn.steerAt(turn.pack)),
+                ]),
+            ),
+        );
     }
     // The ally it runs at: kept for retargetSeconds while it lives, then picked again.
     pack(world, unit, dt, living) {

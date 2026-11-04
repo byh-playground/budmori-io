@@ -1,11 +1,9 @@
 import { hasFaction, FACTION_CONFIG, areOpposingFactions } from '../core/factions.js';
 import { scaleMoveSpeed } from '../units/unit-stats.js';
-import { BOSS_ENRAGE } from '../boss/boss-patterns.js';
 import { ARENA_GEOMETRY } from './arena-geometry.js';
 import { CONFIG } from './farm-config.js';
 import { scatterHeading } from './army-scatter.js';
-import { unitCapabilityComposition } from '../units/unit-abilities.js';
-import { kitSpecies } from '../units/species-catalog.js';
+import { ARMY_COMMAND, BattleTurn } from './unit-turn.js';
 
 const NO_BODIES = Object.freeze([]);
 
@@ -135,6 +133,9 @@ export const FARM_ARMY_BATTLE = (base) =>
             this.steer(unit, X, Y, dt, scaleMoveSpeed(unit.bodyProfile ? 1 : 4.1, unit) * Math.min(1, LENGTH));
             return true;
         }
+        get _battleTurn() {
+            return (this._battleTurnRecord ??= new BattleTurn());
+        }
         battleUnit(u, dt, enemy = null) {
             if (!u.dropLanded || (enemy && !areOpposingFactions(u, enemy))) {
                 return;
@@ -149,6 +150,8 @@ export const FARM_ARMY_BATTLE = (base) =>
             const RETREAT =
                     this.tower.active && this.battleCommand === 'retreat' && hasFaction(u, FACTION_CONFIG.PLAYER),
                 PARALLEL_GUARD = u.ability.guardAlongsideAttack?.(this);
+            // Every tick, whatever the command: retreat drops a basic attack not yet fired, a guard that runs
+            // alongside attacks starts, and the attack in progress plays on.
             if (RETREAT && u.ability.phase === 'windup') {
                 u.ability.interrupt();
             }
@@ -157,108 +160,8 @@ export const FARM_ARMY_BATTLE = (base) =>
             }
             const ACTIVE_ATTACK = u.specialAbility && u.specialAbility.phase !== 'idle' ? u.specialAbility : u.ability;
             const ATTACK_BUSY = ACTIVE_ATTACK.update(this, dt);
-            if (RETREAT) {
-                if (
-                    u.stun > 0 ||
-                    u.down > 0 ||
-                    u.z > 0.1 ||
-                    u.landingRecovery > 0 ||
-                    ACTIVE_ATTACK.phase === 'active' ||
-                    ACTIVE_ATTACK.phase === 'windup'
-                ) {
-                    return;
-                }
-                this._retreatArmyUnit(u, dt);
-                return;
-            }
-            // Scatter is separation on top of the same attack rule: a unit pushed out of reach cannot attack.
-            // The recovery after an attack is free time, so a scattering unit keeps spreading through it.
-            const RECOVER_SPREAD =
-                ATTACK_BUSY &&
-                ACTIVE_ATTACK.phase === 'recover' &&
-                this.tower.active &&
-                this.battleCommand === 'scatter' &&
-                hasFaction(u, FACTION_CONFIG.PLAYER);
-            if ((ATTACK_BUSY && !RECOVER_SPREAD) || u.stun > 0 || u.z > 0.1 || u.landingRecovery > 0) {
-                return;
-            }
-            if (!PARALLEL_GUARD && u.ability.isGuarding?.(this.simulationTick)) {
-                return;
-            }
-            if (!enemy) {
-                return;
-            }
-            const B_LOCAL = enemy,
-                DX = u.x - B_LOCAL.x,
-                DY = u.y - B_LOCAL.y,
-                N = Math.hypot(DX, DY) || 1,
-                TARGET_ID = enemy.id;
-            // Hold the current firing bearing. Ranged troops retreat from a boss that closes in;
-            // they never follow a rotating slot through its body to reach the opposite side.
-            const BEHAVIOR = unitCapabilityComposition(kitSpecies(u)),
-                STAND = B_LOCAL.radius + u.ability.attackRange(this),
-                MIN = STAND - 0.55,
-                MAX = STAND + BEHAVIOR.outerRangeSlack;
-            if (
-                this.tower.active &&
-                this.battleCommand === 'scatter' &&
-                hasFaction(u, FACTION_CONFIG.PLAYER) &&
-                this._scatterArmyUnit(u, dt, enemy, MAX, RECOVER_SPREAD)
-            ) {
-                return;
-            }
-            if (RECOVER_SPREAD) {
-                u.vx = u.vy = 0;
-                return;
-            }
-            if (N > MAX || (BEHAVIOR.retreatWithinRange && N < MIN)) {
-                const SLOT = ARENA_GEOMETRY.clamp(
-                    {
-                        x: B_LOCAL.x + (DX / N) * (STAND - (kitSpecies(u) === 4 ? 0.1 : 0)),
-                        y: B_LOCAL.y + (DY / N) * (STAND - (kitSpecies(u) === 4 ? 0.1 : 0)),
-                    },
-                    this,
-                    u.radius,
-                );
-                // A ranged actor at the wall can fire within its existing maximum
-                // range instead of endlessly steering toward a clamped retreat point.
-                if (N > MAX || Math.hypot(SLOT.x - u.x, SLOT.y - u.y) > 0.08) {
-                    // An enraged boss runs troops down (BOSS_ENRAGE.chaseMultiplier).
-                    this.steer(
-                        u,
-                        SLOT.x,
-                        SLOT.y,
-                        dt,
-                        scaleMoveSpeed(u.bodyProfile ? 1 : 4.1, u) * (u.enraged ? BOSS_ENRAGE.chaseMultiplier : 1),
-                    );
-                    return;
-                }
-            }
-            u.vx = u.vy = 0;
-            const TARGET = BEHAVIOR.aimAtCenter
-                ? {
-                      id: TARGET_ID,
-                      generation: B_LOCAL.generation,
-                      x: B_LOCAL.x,
-                      y: B_LOCAL.y,
-                  }
-                : {
-                      id: TARGET_ID,
-                      generation: B_LOCAL.generation,
-                      x: B_LOCAL.x + (DX / N) * (B_LOCAL.radius + u.radius - 0.16),
-                      y: B_LOCAL.y + (DY / N) * (B_LOCAL.radius + u.radius - 0.16),
-                  };
-            const SPECIAL_ABILITY = u.specialAbility;
-            if (
-                SPECIAL_ABILITY?.canBegin?.(this) &&
-                N <= B_LOCAL.radius + SPECIAL_ABILITY.spec.range + (u.tier - 1) * 0.12 + u.attackRangeOffset
-            ) {
-                SPECIAL_ABILITY.begin(this, TARGET);
-                return;
-            }
-            if (!PARALLEL_GUARD && u.ability.tryStartGuard?.(this, TARGET)) {
-                return;
-            }
-            u.ability.begin(this, TARGET);
+            ARMY_COMMAND.decide(
+                this._battleTurn.begin(this, u, dt, enemy, ACTIVE_ATTACK, ATTACK_BUSY, RETREAT, PARALLEL_GUARD),
+            );
         }
     };

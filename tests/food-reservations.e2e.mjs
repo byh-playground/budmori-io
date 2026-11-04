@@ -48,6 +48,7 @@ try {
     await PAGE.evaluate(async () => {
         globalThis.BloomGamekitDeterministic = await import('/vendor/upstream/deterministic.js');
         globalThis.BloomGamekitWorkScheduler = await import('/vendor/upstream/work-scheduler.js');
+        globalThis.BloomGamekitBehavior = await import('/vendor/upstream/behavior.js');
         const { Garden: GARDEN, CONFIG } = await import('/src/model/farm-model.js'),
             STATE = await import('/src/model/farm-state.js'),
             PROGRESS = await import('/src/model/farm-progress.js');

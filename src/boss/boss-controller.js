@@ -1,15 +1,8 @@
 import { createBarleyArmorShredBuckets } from '../features/abilities/barley-shred/model.js';
 import { unitStats, applyHealing, resolveKnockback } from '../units/unit-stats.js';
 import { bossStageStats } from './boss-rewards.js';
-import {
-    BOSS_PATTERN_CONFIG,
-    BOSS_STAGGER,
-    BOSS_PATTERN_IDS,
-    BOSS_BASIC_PATTERN,
-    bossHealthFraction,
-    createBossPatternRuntime,
-    chooseBossPattern,
-} from './boss-patterns.js';
+import { BOSS_STAGGER, BOSS_PATTERN_IDS, createBossPatternRuntime } from './boss-patterns.js';
+import { BossTurn, BOSS_TURN, BOSS_STAGGER_STATES } from './boss-turn.js';
 import { CONFIG, CLAMP } from '../model/farm-config.js';
 import { BOSS_BEHAVIORS } from '../boss/boss-behaviors.js';
 
@@ -18,6 +11,7 @@ import { BOSS_BEHAVIORS } from '../boss/boss-behaviors.js';
 export class BossController {
     constructor(unit) {
         this.unit = unit;
+        this.turn = new BossTurn(this);
     }
     configureStage(stage, species = this.unit.species) {
         const STATS = bossStageStats(stage),
@@ -72,47 +66,6 @@ export class BossController {
     receivedDamageScale() {
         return this.unit.stun > 0 ? BOSS_STAGGER.damageTaken : 1;
     }
-    updateStagger() {
-        const BOSS = this.unit,
-            RUNTIME = BOSS.patternRuntime,
-            HEALTH = bossHealthFraction(BOSS);
-        if (BOSS.stun > 0 || RUNTIME.stagger !== 'standing' || HEALTH > RUNTIME.staggerFrom) {
-            RUNTIME.staggerFrom = HEALTH;
-        } else if (RUNTIME.staggerFrom - HEALTH >= BOSS_STAGGER.gauge - 1e-9) {
-            RUNTIME.staggerFrom = HEALTH;
-            RUNTIME.stagger = 'down';
-            BOSS.stun = Math.max(BOSS.stun, BOSS_STAGGER.seconds);
-        }
-    }
-    // Up again after a stagger (BOSS_STAGGER.recovery): heal a share of the missing health and swing at once,
-    // dropping whatever the boss was doing when it went down. Standing again once that swing is over.
-    recoverFromStagger(world) {
-        const BOSS = this.unit,
-            RUNTIME = BOSS.patternRuntime,
-            RECOVERY = BOSS_STAGGER.recovery;
-        if (RUNTIME.stagger === 'rising') {
-            if (RUNTIME.active?.id !== RECOVERY.pattern || RUNTIME.active.phase === 'recover') {
-                RUNTIME.stagger = 'standing';
-            }
-            return;
-        }
-        if (RUNTIME.stagger !== 'down' || BOSS.stun > 0) {
-            return;
-        }
-        const STATS = unitStats(BOSS);
-        applyHealing(BOSS, Math.max(0, RUNTIME.risenFrom * STATS.maxHp - BOSS.hp) * RECOVERY.healLost, STATS);
-        RUNTIME.staggerFrom = RUNTIME.risenFrom = bossHealthFraction(BOSS);
-        const LIVING = world.livingBossTargets();
-        if (!LIVING.length) {
-            RUNTIME.stagger = 'standing';
-            return;
-        }
-        RUNTIME.stagger = 'rising';
-        BOSS.ability.interrupt();
-        BOSS.specialAbility?.interrupt();
-        world.beginBossPattern(RECOVERY.pattern, world.nearestBossTarget(LIVING, true, BOSS), BOSS);
-        world.activateBossPattern(RUNTIME.active, BOSS);
-    }
     knock(nx, ny, power, _lift, source) {
         const UNIT = this.unit,
             POWER = resolveKnockback(power, source, UNIT);
@@ -125,56 +78,6 @@ export class BossController {
         for (const ID of BOSS_PATTERN_IDS) {
             RUNTIME.cooldowns[ID] = Math.max(0, (RUNTIME.cooldowns[ID] || 0) - dt);
         }
-    }
-    updatePattern(world, dt, living) {
-        const B_LOCAL = this.unit,
-            RUNTIME = B_LOCAL.patternRuntime;
-        let action = RUNTIME.active;
-        if (!action) {
-            const TARGETS = world.bossPatternTargets(living, this.unit),
-                TARGET = TARGETS.nearest || world.nearestBossTarget(living, undefined, this.unit),
-                ELIGIBLE = world.eligibleBossPatterns(living, TARGETS, this.unit),
-                // A pattern on its own clock (the summon) comes before the rhythm and leaves its counters alone.
-                OWN_CLOCK = ELIGIBLE.find((id) => BOSS_PATTERN_CONFIG[id].ownClock) ?? null,
-                // With no troop in the slam's reach the boss closes the gap, or walks while both are cooling down.
-                NEAR = BOSS_BEHAVIORS.forId(BOSS_BASIC_PATTERN).eligible(world, TARGETS, 0, B_LOCAL),
-                SELECTED =
-                    OWN_CLOCK ??
-                    (NEAR
-                        ? (world.bossAreaBarrage(ELIGIBLE, B_LOCAL) ??
-                          chooseBossPattern(
-                              RUNTIME,
-                              ELIGIBLE.filter((id) => !BOSS_PATTERN_CONFIG[id].ownClock),
-                              () => world.random(),
-                              B_LOCAL,
-                          ) ??
-                          BOSS_BASIC_PATTERN)
-                        : world.bossGapCloser(TARGETS, B_LOCAL));
-            if (SELECTED === BOSS_BASIC_PATTERN) {
-                // A slam counts toward the next special.
-                world.beginBossPattern(SELECTED, TARGETS.nearest, B_LOCAL);
-                B_LOCAL.basicCount++;
-                action = RUNTIME.active;
-            } else if (SELECTED) {
-                const BEHAVIOR = BOSS_BEHAVIORS.forId(SELECTED),
-                    PICK = BEHAVIOR.selectedTarget(world, TARGETS, TARGET, this.unit) ?? TARGET;
-                if (!OWN_CLOCK) {
-                    B_LOCAL.basicCount = 0;
-                    B_LOCAL.specialCount++;
-                }
-                world.beginBossPattern(SELECTED, PICK, this.unit);
-                action = RUNTIME.active;
-                BEHAVIOR.selected(world, this.unit);
-            } else {
-                return false;
-            }
-        }
-        if (action.phase === 'active' && BOSS_BEHAVIORS.forId(action.id).physicalActive) {
-            return true;
-        }
-        action.phaseElapsed += dt;
-        BOSS_BEHAVIORS.update(world, action, dt, living, this.unit);
-        return true;
     }
     integrateKnockback(world, dt) {
         const BOSS = this.unit;
@@ -236,8 +139,8 @@ export class BossController {
             return;
         }
         B_LOCAL.enraged = world.bossEnraged;
-        this.updateStagger();
-        this.recoverFromStagger(world);
+        const TURN = this.turn.begin(world, dt);
+        BOSS_STAGGER_STATES.update(B_LOCAL.patternRuntime, TURN);
         const STATS = unitStats(B_LOCAL);
         if (STATS.regen > 0) {
             applyHealing(B_LOCAL, STATS.regen * dt, STATS);
@@ -245,33 +148,6 @@ export class BossController {
         // Cooldowns advance exactly once even while a basic cycle or card is
         // occupying the actor. Recovery also keeps advancing during a stun.
         this.advancePatternClock(dt);
-        const ACTIVE_ATTACK =
-            B_LOCAL.specialAbility && B_LOCAL.specialAbility.phase !== 'idle'
-                ? B_LOCAL.specialAbility
-                : B_LOCAL.ability;
-        if (B_LOCAL.stun > 0 || ACTIVE_ATTACK.phase !== 'idle') {
-            world.battleUnit(B_LOCAL, dt, null);
-            return;
-        }
-        if (
-            world.formationRuntime.bossCast?.casterId === B_LOCAL.id ||
-            B_LOCAL.z > 0.1 ||
-            B_LOCAL.landingRecovery > 0
-        ) {
-            return;
-        }
-        const LIVING = world.livingBossTargets();
-        if (!LIVING.length) {
-            return;
-        }
-        if (!this.updatePattern(world, dt, LIVING)) {
-            world.battleUnit(B_LOCAL, dt, world.nearestBossTarget(LIVING, false, this.unit));
-            B_LOCAL.facing = B_LOCAL.angle;
-            // A basic attack that just started counts toward the next special.
-            if (B_LOCAL.ability.phase !== 'idle') {
-                B_LOCAL.basicCount++;
-            }
-        }
-        world._settleBossHits(this.unit);
+        BOSS_TURN.decide(TURN);
     }
 }
