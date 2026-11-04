@@ -1,15 +1,17 @@
 import { BossPattern } from '../model-base.js';
 import { FEATURE } from './definition.js';
 
-// Reach only: the presentation puts the hand on the same spot the model hits.
-const GEOMETRY = new BossPattern(FEATURE, null);
-
-// Where the hand comes down: the target's spot, no farther from the boss than its reach.
+// How far from its centre a caster's hand comes down: past its own body edge, so the boss and a minion both reach
+// the troops pressed against them.
+export function slamReach(caster) {
+    return caster.radius + FEATURE.config.reachPastBody;
+}
+// Where the hand comes down: the target's spot, no farther from the caster than its reach.
 export function slamPoint(boss, target) {
     const DX = target.x - boss.x,
         DY = target.y - boss.y,
         D_LOCAL = Math.hypot(DX, DY),
-        REACH = GEOMETRY.reachFor(boss),
+        REACH = slamReach(boss),
         SCALE = D_LOCAL > REACH ? REACH / D_LOCAL : 1;
     return { x: boss.x + DX * SCALE, y: boss.y + DY * SCALE };
 }
@@ -19,6 +21,9 @@ export function slamPoint(boss, target) {
 export class SlamBossPattern extends BossPattern {
     constructor(dependencies) {
         super(FEATURE, dependencies);
+    }
+    reachFor(caster) {
+        return slamReach(caster);
     }
     writeArea(boss, action, _scene, pad, area) {
         const POINT = slamPoint(boss, action.target ?? boss);

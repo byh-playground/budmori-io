@@ -22,6 +22,7 @@ import { drawUnitFace } from './unit-face-draw.js';
 import { CombinePresentation } from '../features/farm-modes/combine/presentation.js';
 import { PassiveMarksPresentation } from '../tower/tower-passive-presentations.js';
 import { DEATH_TIMING } from './death-presentation.js';
+import { slamUnitMotion } from '../features/boss-patterns/slam/presentation.js';
 import { addMinionRings, drawMinionFuseGlow } from '../features/boss-patterns/minion/presentation.js';
 
 const BARLEY_SHRED_PRESENTATION = new BarleyArmorShredPresentation();
@@ -54,7 +55,7 @@ function unitMotion(u, sim, rest) {
     if (scenePresentation(sim.scene).victorious(sim)) {
         return 'victory';
     }
-    const COMBAT_MOTION = unitCombatMotion(u);
+    const COMBAT_MOTION = slamUnitMotion(u) ?? unitCombatMotion(u);
     if (COMBAT_MOTION) {
         return COMBAT_MOTION;
     }

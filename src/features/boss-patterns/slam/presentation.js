@@ -3,6 +3,17 @@ import { FEATURE } from './definition.js';
 import { slamPoint } from './model.js';
 import { WORLD_DEPTH_PROJECTION } from '../../../vector-sockets.js';
 
+// A minion is drawn as a troop sprite, not the boss rig: its slam plays the troop's own attack clips.
+export function slamUnitMotion(unit) {
+    if (unit.patternId !== FEATURE.id) {
+        return null;
+    }
+    if (unit.patternPhase === 'windup') {
+        return 'windup';
+    }
+    return unit.patternPhase === 'active' || (unit.patternPhaseElapsed || 0) < 0.12 ? 'fire' : 'recover';
+}
+
 // The lead hand goes up over the head in the windup and comes down on the spot the slam hits; the body squashes as
 // it lands and both settle back in the recovery.
 export class SlamPresentation extends BossAttackPresentation {
