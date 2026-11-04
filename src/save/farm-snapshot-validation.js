@@ -1421,10 +1421,17 @@ function validateTowerCheckpoint(raw) {
     }
     ASSERT(
         ENCOUNTER &&
-            Object.keys(ENCOUNTER).length === 7 &&
-            ['roster', 'nextIndex', 'elapsed', 'hitElapsed', 'clearedIds', 'floor', 'completed'].every((key) =>
-                Object.hasOwn(ENCOUNTER, key),
-            ) &&
+            Object.keys(ENCOUNTER).length === 8 &&
+            [
+                'roster',
+                'nextIndex',
+                'elapsed',
+                'hitElapsed',
+                'hitTroopSeconds',
+                'clearedIds',
+                'floor',
+                'completed',
+            ].every((key) => Object.hasOwn(ENCOUNTER, key)) &&
             Array.isArray(ENCOUNTER.roster) &&
             ENCOUNTER.roster.length >= 1 &&
             ENCOUNTER.roster.length <= 5 &&
@@ -1452,6 +1459,8 @@ function validateTowerCheckpoint(raw) {
             Number.isFinite(ENCOUNTER.hitElapsed) &&
             ENCOUNTER.hitElapsed >= 0 &&
             ENCOUNTER.hitElapsed <= ENCOUNTER.elapsed + 1e-9 &&
+            Number.isFinite(ENCOUNTER.hitTroopSeconds) &&
+            ENCOUNTER.hitTroopSeconds >= 0 &&
             Array.isArray(ENCOUNTER.clearedIds) &&
             new Set(ENCOUNTER.clearedIds).size === ENCOUNTER.clearedIds.length &&
             ENCOUNTER.clearedIds.every((id) => raw.bosses.some((boss) => boss.id === id && boss.hp <= 0)) &&
