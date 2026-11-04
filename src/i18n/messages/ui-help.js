@@ -103,8 +103,8 @@ export const HELP = LOCALE.messages({
         en: 'Temperament is a troop’s personality. Each one splits its stats differently',
     },
     termsPointElement: {
-        ko: '속성은 5가지가 있어요. 상대의 속성에 따라 추가 피해를 입혀요',
-        en: 'There are 5 elements. Hits deal extra damage depending on the target’s element',
+        ko: '속성은 5가지가 있어요. 속성 병력은 피해의 절반이 속성 피해로 더해지고, 상대의 속성에 따라 그 배율이 달라져요',
+        en: 'There are 5 elements. An element troop adds half its hit as element damage, and the target’s element changes that multiplier',
     },
 
     previewTitle: {
