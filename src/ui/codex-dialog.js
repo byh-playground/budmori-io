@@ -77,14 +77,18 @@ function recipesHtml(world) {
             );
             return `<section class="codex-uses" data-ingredient="${species}"><h3>${speciesName(species)}<span>${CODEX.owned({ count: COUNTS.get(species) || 0 })}</span></h3>${ROWS.length ? `<ul class="codex-recipes">${ROWS.join('')}</ul>` : `<p>${CODEX.noRecipes()}</p>`}</section>`;
         });
-    return `<p>${CODEX.recipesIntro()}</p><p>${CODEX.recipesHowTo()}</p>${GROUPS.length ? GROUPS.join('') : `<p>${CODEX.recipesEmpty()}</p>`}`;
+    return `${helpHtml(`<p>${CODEX.recipesIntro()}</p><p>${CODEX.recipesHowTo()}</p>`)}${GROUPS.length ? GROUPS.join('') : `<p>${CODEX.recipesEmpty()}</p>`}`;
 }
 
 // The "?" in the header (index.html) opens a note under the tabs. The note is built from the model's own tables, so
-// the chart never drifts from what the fights use. Only the temperament and element tabs have one.
+// the chart never drifts from what the fights use. Every codex tab has one.
 const HELP_BUTTON_ID = 'codexHelp',
     HELP_NOTE_ID = 'codexHelpNote';
-const HELP_LABELS = Object.freeze({ forms: () => CODEX.helpTemperament(), colors: () => CODEX.helpElement() });
+const HELP_LABELS = Object.freeze({
+    recipes: () => CODEX.helpRecipes(),
+    forms: () => CODEX.helpTemperament(),
+    colors: () => CODEX.helpElement(),
+});
 export function codexHelpLabel(tab) {
     return HELP_LABELS[tab]?.() ?? null;
 }

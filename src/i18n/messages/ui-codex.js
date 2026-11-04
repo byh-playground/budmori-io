@@ -5,6 +5,7 @@ export const CODEX = LOCALE.messages({
     tabRecipes: { ko: '조합식', en: 'Recipes' },
     tabForms: { ko: '성향', en: 'Temperaments' },
     tabColors: { ko: '속성', en: 'Elements' },
+    helpRecipes: { ko: '조합 설명 보기', en: 'Show how combining works' },
     helpTemperament: { ko: '성향별 능력치 변화 보기', en: 'Show stat changes by temperament' },
     helpElement: { ko: '속성 상성표 보기', en: 'Show the element chart' },
     temperamentHelpIntro: {
