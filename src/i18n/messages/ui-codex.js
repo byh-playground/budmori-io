@@ -13,14 +13,18 @@ export const CODEX = LOCALE.messages({
     },
     tiltRegen: { ko: '체력 재생 초당 최대 체력의 +1%', en: 'HP regen +1% of max HP per second' },
     elementHelpIntro: {
-        ko: '행은 공격하는 속성, 열은 맞는 쪽이에요. 숫자는 한 번 때릴 때의 피해 배율이에요. 무속성 병력은 항상 100%예요.',
-        en: 'Rows attack, columns are hit. Numbers are the damage multiplier per hit. Plain troops always deal 100%.',
+        ko: '속성 병력은 타격마다 피해의 절반이 속성 피해로 더해져요. 표는 그 속성 피해에 곱해지는 배율이에요(행은 공격, 열은 맞는 쪽). 무속성 병력은 더해지지 않아요.',
+        en: 'An element troop adds half of each hit as element damage. The chart shows the multiplier on that element damage (rows attack, columns are hit). Plain troops add none.',
+    },
+    elementHelpTotal: {
+        ko: '그래서 한 번 때릴 때 합계는 유리하면 피해의 200%, 보통이면 150%, 불리하면 125%예요.',
+        en: 'So one hit totals 200% of its damage on an advantage, 150% on an even match and 125% on a disadvantage.',
     },
     elementHelpAttack: { ko: '공격', en: 'Attack' },
     elementHelpPlain: { ko: '무속성', en: 'Plain' },
     elementHelpBoss: {
-        ko: '보스의 속성 공격은 상성에 따라 200%·100%·50%로 들어와요. 무속성 병력은 항상 150%를 맞아요.',
-        en: 'A boss’s element hit lands at 200%, 100% or 50% by the chart. Plain troops always take 150%.',
+        ko: '보스의 속성 공격은 전부 속성 피해예요. 상성에 따라 ×2·×1·×0.5로 들어오고, 무속성 병력은 항상 ×1.5를 맞아요.',
+        en: 'A boss’s element hits are all element damage. They land at ×2, ×1 or ×0.5 by the chart, and plain troops always take ×1.5.',
     },
     undiscovered: { ko: '미발견', en: 'Undiscovered' },
     selected: { ko: '선택됨', en: 'Selected' },

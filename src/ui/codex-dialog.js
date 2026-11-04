@@ -6,7 +6,7 @@ import {
     ELEMENTS,
     ELEMENT_COUNT,
     TEMPERAMENT_COUNT,
-    elementHitScale,
+    elementMultiplier,
 } from '../model/lineage.js';
 import { SPECIES_COUNT } from '../units/species-catalog.js';
 import { elementIconSvg } from '../units/species-face.js';
@@ -102,13 +102,13 @@ function elementNote() {
         HEAD = [...ELEMENT_LIST, ELEMENTS[0]].map((entry) => `<th scope="col">${NAME(entry)}</th>`).join(''),
         ROWS = ELEMENT_LIST.map((attacker) => {
             const CELLS = [...ELEMENT_LIST, ELEMENTS[0]].map((defender) => {
-                const SCALE = elementHitScale(attacker.id, defender.id),
-                    TONE = SCALE >= 2 ? ' class="is-strong"' : SCALE < 1.5 ? ' class="is-weak"' : '';
-                return `<td${TONE}>${Math.round(SCALE * 100)}%</td>`;
+                const MULTIPLIER = elementMultiplier(attacker.id, defender.id),
+                    TONE = MULTIPLIER > 1 ? ' class="is-strong"' : MULTIPLIER < 1 ? ' class="is-weak"' : '';
+                return `<td${TONE}>×${MULTIPLIER}</td>`;
             });
             return `<tr><th scope="row">${NAME(attacker)}</th>${CELLS.join('')}</tr>`;
         });
-    return `<p>${CODEX.elementHelpIntro()}</p><table class="codex-chart"><thead><tr><th scope="col">${CODEX.elementHelpAttack()}</th>${HEAD}</tr></thead><tbody>${ROWS.join('')}</tbody></table><p>${CODEX.elementHelpBoss()}</p>`;
+    return `<p>${CODEX.elementHelpIntro()}</p><table class="codex-chart"><thead><tr><th scope="col">${CODEX.elementHelpAttack()}</th>${HEAD}</tr></thead><tbody>${ROWS.join('')}</tbody></table><p>${CODEX.elementHelpTotal()}</p><p>${CODEX.elementHelpBoss()}</p>`;
 }
 // Opens or closes the note behind a "?" button; the codex body is not repainted, so nothing else resets.
 export function toggleCodexHelp(button) {
