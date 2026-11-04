@@ -1044,6 +1044,7 @@ body:has(#floorChip:not([hidden])) #gameplayDock .utility {
 }
 .codex-body {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     align-content: start;
     gap: var(--ui-s2);
     min-height: 0;
@@ -1055,6 +1056,63 @@ body:has(#floorChip:not([hidden])) #gameplayDock .utility {
 .codex-body p {
     color: var(--ui-ink-2);
     font-size: var(--ui-fs-1);
+}
+.codex-help {
+    display: flex;
+    justify-content: flex-end;
+}
+.codex-help__button {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border: var(--ui-bw) solid var(--ui-line);
+    border-radius: 50%;
+    background: var(--ui-base);
+    color: var(--ui-ink);
+    font-weight: var(--ui-fw-b);
+    font-size: var(--ui-fs-3);
+    cursor: pointer;
+}
+.codex-help__button[aria-expanded='true'] {
+    background: var(--ui-primary);
+    border-color: var(--ui-primary);
+    color: var(--ui-primary-ink);
+}
+.codex-help__note {
+    display: grid;
+    gap: var(--ui-s2);
+    padding: var(--ui-s3);
+    border-radius: var(--ui-r-s);
+    background: var(--ui-card);
+}
+.codex-help__note[hidden] {
+    display: none;
+}
+.codex-chart {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--ui-fs-1);
+    text-align: center;
+}
+.codex-chart th,
+.codex-chart td {
+    padding: var(--ui-s1) var(--ui-s2);
+    border-bottom: 1px solid var(--ui-line);
+}
+.codex-chart th[scope='row'] {
+    text-align: left;
+    white-space: nowrap;
+}
+.codex-chart td:only-of-type {
+    text-align: left;
+}
+.codex-chart .is-strong {
+    color: var(--ui-danger);
+    font-weight: var(--ui-fw-b);
+}
+.codex-chart .is-weak {
+    color: var(--ui-ink-3);
 }
 .codex-pic {
     position: relative;

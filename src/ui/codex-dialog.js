@@ -1,10 +1,19 @@
 import { LOCALE } from '../i18n/locale.js';
-import { RECIPES, TEMPERAMENTS, ELEMENTS, ELEMENT_COUNT, TEMPERAMENT_COUNT } from '../model/lineage.js';
+import {
+    RECIPES,
+    TEMPERAMENTS,
+    TEMPERAMENT_TILTS,
+    ELEMENTS,
+    ELEMENT_COUNT,
+    TEMPERAMENT_COUNT,
+    elementHitScale,
+} from '../model/lineage.js';
 import { SPECIES_COUNT } from '../units/species-catalog.js';
 import { elementIconSvg } from '../units/species-face.js';
 import { iconSvg } from './icons.js';
 import { speciesPortraitSource } from '../units/species-paint.js';
 import { CODEX } from '../i18n/messages/ui-codex.js';
+import { SPECIES_INFO } from '../i18n/messages/ui-species-info.js';
 import { speciesName } from '../i18n/messages/species.js';
 
 const TABS = Object.freeze([
@@ -71,7 +80,45 @@ function recipesHtml(world) {
     return `<p>${CODEX.recipesIntro()}</p><p>${CODEX.recipesHowTo()}</p>${GROUPS.length ? GROUPS.join('') : `<p>${CODEX.recipesEmpty()}</p>`}`;
 }
 
-function gridHtml(list, columns, label, lookFor) {
+// The "?" beside a grid opens a note under it. It is built from the model's own tables, so the chart never drifts
+// from what the fights use.
+const HELP_ID = 'codexHelp';
+function helpHtml(label, noteHtml) {
+    return `<div class="codex-help"><button type="button" class="codex-help__button" aria-expanded="false" aria-controls="${HELP_ID}" aria-label="${label}" title="${label}">?</button></div><div class="codex-help__note" id="${HELP_ID}" hidden>${noteHtml}</div>`;
+}
+const SIGNED_PERCENT = (factor) => `${factor >= 1 ? '+' : '−'}${Math.round(Math.abs(factor - 1) * 100)}%`;
+function temperamentNote() {
+    const ROWS = TEMPERAMENTS.map((entry, index) => {
+        const PARTS = Object.entries(TEMPERAMENT_TILTS[index]).map(([stat, factor]) =>
+            stat === 'regenPct' ? CODEX.tiltRegen() : `${SPECIES_INFO[stat]()} ${SIGNED_PERCENT(factor)}`,
+        );
+        return `<tr><th scope="row">${LOCALE.text(entry.name)}</th><td>${PARTS.join(' · ')}</td></tr>`;
+    });
+    return `<p>${CODEX.temperamentHelpIntro()}</p><table class="codex-chart"><tbody>${ROWS.join('')}</tbody></table>`;
+}
+function elementNote() {
+    const ELEMENT_LIST = ELEMENTS.slice(1, ELEMENT_COUNT + 1),
+        NAME = (entry) => LOCALE.text(entry.name),
+        HEAD = [...ELEMENT_LIST, ELEMENTS[0]].map((entry) => `<th scope="col">${NAME(entry)}</th>`).join(''),
+        ROWS = ELEMENT_LIST.map((attacker) => {
+            const CELLS = [...ELEMENT_LIST, ELEMENTS[0]].map((defender) => {
+                const SCALE = elementHitScale(attacker.id, defender.id),
+                    TONE = SCALE >= 2 ? ' class="is-strong"' : SCALE < 1.5 ? ' class="is-weak"' : '';
+                return `<td${TONE}>${Math.round(SCALE * 100)}%</td>`;
+            });
+            return `<tr><th scope="row">${NAME(attacker)}</th>${CELLS.join('')}</tr>`;
+        });
+    return `<p>${CODEX.elementHelpIntro()}</p><table class="codex-chart"><thead><tr><th scope="col">${CODEX.elementHelpAttack()}</th>${HEAD}</tr></thead><tbody>${ROWS.join('')}</tbody></table><p>${CODEX.elementHelpBoss()}</p>`;
+}
+// Opens or closes the note behind a "?" button; the codex body is not repainted, so nothing else resets.
+export function toggleCodexHelp(button) {
+    const NOTE = document.getElementById(HELP_ID),
+        OPEN = button.getAttribute('aria-expanded') !== 'true';
+    button.setAttribute('aria-expanded', String(OPEN));
+    NOTE.hidden = !OPEN;
+}
+
+function gridHtml(list, columns, label, lookFor, help = '') {
     const HEAD = columns.map((column) => `<th scope="col">${column}</th>`).join('');
     const ROWS = Array.from({ length: SPECIES_COUNT }, (_, species) => {
         const CELLS = columns.map((_, column) => {
@@ -80,7 +127,7 @@ function gridHtml(list, columns, label, lookFor) {
         });
         return `<tr><th scope="row">${speciesName(species)}</th>${CELLS.join('')}</tr>`;
     });
-    return `<table class="codex-grid" aria-label="${label}"><thead><tr><td></td>${HEAD}</tr></thead><tbody>${ROWS.join('')}</tbody></table><p class="codex-count">${list.length} / ${SPECIES_COUNT * columns.length}</p>`;
+    return `${help}<table class="codex-grid" aria-label="${label}"><thead><tr><td></td>${HEAD}</tr></thead><tbody>${ROWS.join('')}</tbody></table><p class="codex-count">${list.length} / ${SPECIES_COUNT * columns.length}</p>`;
 }
 
 export function codexHtml(world, tab) {
@@ -90,6 +137,7 @@ export function codexHtml(world, tab) {
             TEMPERAMENTS.map((entry) => LOCALE.text(entry.name)),
             CODEX.formsGrid(),
             (column) => ({ temperament: column, element: 0 }),
+            helpHtml(CODEX.helpTemperament(), temperamentNote()),
         );
     }
     if (tab === 'colors') {
@@ -98,6 +146,7 @@ export function codexHtml(world, tab) {
             ELEMENTS.slice(1, ELEMENT_COUNT + 1).map((entry) => LOCALE.text(entry.name)),
             CODEX.colorsGrid(),
             (column) => ({ temperament: 0, element: column + 1 }),
+            helpHtml(CODEX.helpElement(), elementNote()),
         );
     }
     return recipesHtml(world);

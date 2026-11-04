@@ -5,6 +5,23 @@ export const CODEX = LOCALE.messages({
     tabRecipes: { ko: '조합식', en: 'Recipes' },
     tabForms: { ko: '성향', en: 'Temperaments' },
     tabColors: { ko: '속성', en: 'Elements' },
+    helpTemperament: { ko: '성향별 능력치 변화 보기', en: 'Show stat changes by temperament' },
+    helpElement: { ko: '속성 상성표 보기', en: 'Show the element chart' },
+    temperamentHelpIntro: {
+        ko: '성향마다 능력치 하나는 오르고 다른 하나는 내려가요.',
+        en: 'Each temperament raises one stat and lowers another.',
+    },
+    tiltRegen: { ko: '체력 재생 초당 최대 체력의 +1%', en: 'HP regen +1% of max HP per second' },
+    elementHelpIntro: {
+        ko: '행은 공격하는 속성, 열은 맞는 쪽이에요. 숫자는 한 번 때릴 때의 피해 배율이에요. 무속성 병력은 항상 100%예요.',
+        en: 'Rows attack, columns are hit. Numbers are the damage multiplier per hit. Plain troops always deal 100%.',
+    },
+    elementHelpAttack: { ko: '공격', en: 'Attack' },
+    elementHelpPlain: { ko: '무속성', en: 'Plain' },
+    elementHelpBoss: {
+        ko: '보스의 속성 공격은 상성에 따라 200%·100%·50%로 들어와요. 무속성 병력은 항상 150%를 맞아요.',
+        en: 'A boss’s element hit lands at 200%, 100% or 50% by the chart. Plain troops always take 150%.',
+    },
     undiscovered: { ko: '미발견', en: 'Undiscovered' },
     selected: { ko: '선택됨', en: 'Selected' },
     recipeFound: { ko: '조합 발견', en: 'Combination found' },
