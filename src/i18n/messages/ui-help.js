@@ -36,8 +36,8 @@ export const HELP = LOCALE.messages({
     towerTitle: { ko: '보스와 탑', en: 'Bosses and the Tower' },
     towerPointFloors: { ko: '탑은 100층까지 이어져요', en: 'The tower goes up to floor 100' },
     towerPointFront: {
-        ko: '농장 정원의 절반만 전선에 서고, 쓰러진 자리는 예비대가 출전 순서대로 채워요',
-        en: 'Only half the farm capacity holds the front line; reserves fill fallen spots in deploy order',
+        ko: '농장 정원만큼의 병력이 전선에 서고, 쓰러진 자리는 예비대가 출전 순서대로 채워요',
+        en: 'Troops up to the farm capacity hold the front line; reserves fill fallen spots in deploy order',
     },
     towerPointOrders: {
         ko: '보스의 붉은 예고를 보고 교전·산개·후퇴 명령을 바꿔요',
