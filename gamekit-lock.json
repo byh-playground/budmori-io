@@ -1,8 +1,8 @@
 {
     "schemaVersion": 3,
     "repository": "byh-playground/bloom-gamekit",
-    "sourceCommit": "d3303a8520f8f14966fcfa3b3a27d0640322e900",
-    "distCommit": "97630a81da7e6c160d508f4ae39e180b7bd3834a",
+    "sourceCommit": "1e6f4081c38ce1c512e7e8533c3be5e8658672b0",
+    "distCommit": "9c036d3f6a586b77e83b70332584addcf5651463",
     "status": "verified immutable distribution",
     "esbuild": "0.28.2",
     "modules": [
@@ -25,6 +25,10 @@
         {
             "name": "work-scheduler",
             "bundleSHA256": "d3d3ba0deb261a2a17da2ef6950450d45b28bc4870208037d0833b01ad010a25"
+        },
+        {
+            "name": "behavior",
+            "bundleSHA256": "94c8e1f7e1e0985d073b06ca342fcb8e4a4638a609a691b578814c801a8cfebb"
         },
         {
             "name": "interpolation",
@@ -79,7 +83,7 @@
             "bundleSHA256": "e4523ccf348c313bbc9242f03dc376d79bc17940d8349494ddf35866c49bb995"
         }
     ],
-    "manifestSHA256": "5bb086fcf8bc50bcae0034c9eaf723d1d865eb865d952f234cb263a3677e92af",
+    "manifestSHA256": "fa2ff596d69da3fd4dcd446de3002e94a669f066848cc129288351ff3b037721",
     "assets": [
         {
             "file": "assets/fonts/noto-sans-kr-700-v1.json",
@@ -90,7 +94,7 @@
     ],
     "showcase": {
         "repository": "byh-playground/bloom-gamekit",
-        "distCommit": "97630a81da7e6c160d508f4ae39e180b7bd3834a",
+        "distCommit": "9c036d3f6a586b77e83b70332584addcf5651463",
         "module": "scenario.js",
         "bundleSHA256": "065c912be4b2cedfb4aded14fb8f94cc0d2311dc8ebccb066ec8327e982e601b"
     }

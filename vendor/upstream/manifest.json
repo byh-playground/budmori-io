@@ -34,16 +34,20 @@
       "sha256": "d3d3ba0deb261a2a17da2ef6950450d45b28bc4870208037d0833b01ad010a25"
     },
     {
+      "file": "behavior.js",
+      "sha256": "94c8e1f7e1e0985d073b06ca342fcb8e4a4638a609a691b578814c801a8cfebb"
+    },
+    {
       "file": "transport.js",
       "sha256": "8f7f9d68a2be3b1c7839ab0f975178b0bed4f454496ad4e91a5c28e6e3f0a6d3"
     },
     {
       "file": "replay.js",
-      "sha256": "c91ec3fb12e22f2fe29ce1555bd90f95dff81ae4959cde4c5a8b2d6f7a985122"
+      "sha256": "a9d59d5d1eca54a44102523082fae2e98fe186210510586cc04e4e13f675b817"
     },
     {
       "file": "rollback.js",
-      "sha256": "0e5a326b0fe1d786b9f232c8f3eac60653face995f2f23ef99a8a0750e08a9a5"
+      "sha256": "5d37db62a70697b358506b39fd5802b890e1175777f1760cb8d241ed62bdae0b"
     },
     {
       "file": "camera.js",
@@ -108,6 +112,10 @@
     {
       "file": "save.js",
       "sha256": "540b2af25e91bd6b5683c3ae8f80484a951baea9dc90452233dd72c26a4696ed"
+    },
+    {
+      "file": "metrics.js",
+      "sha256": "93e0dd795754ef2a24c949634ef425ab6a0f2134364f682bbd8b0126c8219c38"
     },
     {
       "file": "pwa.js",
