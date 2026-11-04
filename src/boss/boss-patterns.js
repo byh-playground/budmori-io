@@ -185,7 +185,8 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
         lift: 10.2,
         groundOnly: true,
     }),
-    // Slam: the basic attack. The lead hand comes down on the nearest troop within `reach` (or that far toward it),
+    // Slam: the basic attack of the boss and of a caster minion. The lead hand comes down on the nearest troop within
+    // `reachPastBody` of the body's edge (or that far toward it),
     // and everyone within `radius` of that spot is hit and thrown outward as hard as the arm sweep throws: three to
     // five troops of a tight pack. Its damage is split like any area hit; at `damageMultiplier` 0.5 four troops
     // together take about what one punch used to deal to a single troop.
@@ -198,7 +199,7 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
         active: 0.05,
         recover: 0.25,
         cooldown: 0,
-        reach: 5.3,
+        reachPastBody: 0.9,
         radius: 0.9,
         damageMultiplier: 0.5,
         knockback: 13,

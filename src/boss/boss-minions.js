@@ -1,5 +1,11 @@
 import { BOSS_BEHAVIORS } from './boss-behaviors.js';
-import { MINION_KINDS, createBossPatternRuntime, minionKindOf, signaturePatternFor } from './boss-patterns.js';
+import {
+    BOSS_BASIC_PATTERN,
+    MINION_KINDS,
+    createBossPatternRuntime,
+    minionKindOf,
+    signaturePatternFor,
+} from './boss-patterns.js';
 import { scaleMoveSpeed } from '../units/unit-stats.js';
 
 // A boss minion IS-A boss summon (the summoner shrunk to a giant unit, MINION_KINDS) and HAS-A behaviour: one
@@ -84,25 +90,27 @@ class BossMinionBehavior {
     }
 }
 
-// Today's minion: its ordinary melee basic, and its summoner's element skill whenever that is ready and reaches.
+// Today's minion: its summoner's element skill whenever that is ready and reaches, else the boss's slam on a troop in
+// reach, else it walks up as an ordinary unit.
 class CasterMinion extends BossMinionBehavior {
     patternIds(unit) {
         const ID = signaturePatternFor(unit.enemyElement);
-        return ID ? [ID] : [];
+        return ID ? [ID, BOSS_BASIC_PATTERN] : [BOSS_BASIC_PATTERN];
     }
     act(world, unit, _dt, living) {
-        const [ID] = this.patternIds(unit);
-        if (!ID || unit.patternRuntime.cooldowns[ID] > 1e-9 || unit.stun > 0 || unit.z > 0.1) {
+        if (!this.ready(unit)) {
             return false;
         }
         const TARGETS = world.bossPatternTargets(living, unit),
-            BEHAVIOR = BOSS_BEHAVIORS.forId(ID);
-        if (!BEHAVIOR.eligible(world, TARGETS, 0, unit)) {
-            return false;
+            FALLBACK = TARGETS.nearest || world.nearestBossTarget(living, undefined, unit);
+        for (const ID of this.patternIds(unit)) {
+            const BEHAVIOR = BOSS_BEHAVIORS.forId(ID);
+            if (unit.patternRuntime.cooldowns[ID] <= 1e-9 && BEHAVIOR.eligible(world, TARGETS, 0, unit)) {
+                this.begin(world, unit, ID, BEHAVIOR.selectedTarget(world, TARGETS, FALLBACK, unit));
+                return true;
+            }
         }
-        const FALLBACK = TARGETS.nearest || world.nearestBossTarget(living, undefined, unit);
-        this.begin(world, unit, ID, BEHAVIOR.selectedTarget(world, TARGETS, FALLBACK, unit));
-        return true;
+        return false;
     }
 }
 
