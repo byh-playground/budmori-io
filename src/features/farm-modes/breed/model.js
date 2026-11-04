@@ -1,27 +1,15 @@
 import { FarmMode } from '../model-base.js';
 import { FEATURE } from './definition.js';
-import { scaleMoveSpeed } from '../../../units/unit-stats.js';
+import { FARM_UNIT_TURN, FarmUnitTurn } from './turn.js';
 
 export class BreedFarmMode extends FarmMode {
     constructor(config) {
         super(FEATURE, config);
+        this.turn = new FarmUnitTurn();
     }
-    updateReady(world, u, dt) {
-        let target = null;
-        if (!u.fed) {
-            target = world.requestGroundFoodTarget(u);
-        } else if (u.cooldown === 0) {
-            target = world.findOrReserveMate(u);
-        }
-        const HAS_DESIGNATED_MATE = u.fed && target && world.hasFieldUnit(target);
-        if (u.fed && !HAS_DESIGNATED_MATE && world.avoidNearbyFood(u, dt)) {
-            return;
-        }
-        if (!target) {
-            this.wander(world, u, dt);
-            return;
-        }
-        world.steer(u, target.x, target.y, dt, scaleMoveSpeed(3.6, u));
+    // What a farm unit does this tick: the behaviour tree in turn.js.
+    update(world, unit, dt) {
+        FARM_UNIT_TURN.decide(this.turn.begin(this, world, unit, dt));
     }
     resolveContacts(world, units) {
         world.resolveFarmContactPairs(units);
