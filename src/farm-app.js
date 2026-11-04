@@ -48,7 +48,7 @@ import { speciesFacePortraitSource, speciesPortraitSource } from './units/specie
 import { HELP_MAX_FRAME_MS, HELP_PLAYBACK_RATE, helpSceneById } from './ui/help-scenes.js';
 import { labScene } from './debug/lab.js';
 import { createHelpPanel } from './ui/help-panel.js';
-import { codexHtml, CODEX_TABS, toggleCodexHelp } from './ui/codex-dialog.js';
+import { codexHtml, codexHelpLabel, CODEX_TABS, toggleCodexHelp } from './ui/codex-dialog.js';
 import { iconSvg, mountIcons } from './ui/icons.js';
 import { SeedlingReveal } from './ui/seedling-reveal.js';
 import { startAppShell } from './ui/app-shell.js';
@@ -908,6 +908,15 @@ function paintCodex() {
             `<button type="button" role="tab" data-tab="${tab.id}" aria-selected="${tab.id === codexTab}">${tab.label}</button>`,
     ).join('');
     DOLLAR('codexBody').innerHTML = codexHtml(personalGarden, codexTab);
+    // The "?" is only there on the tabs that have a note; every repaint closes it with the body.
+    const HELP = DOLLAR('codexHelp'),
+        HELP_LABEL = codexHelpLabel(codexTab);
+    HELP.hidden = !HELP_LABEL;
+    HELP.setAttribute('aria-expanded', 'false');
+    if (HELP_LABEL) {
+        HELP.setAttribute('aria-label', HELP_LABEL);
+        HELP.title = HELP_LABEL;
+    }
 }
 function openCodex(tab = codexTab) {
     codexTab = tab;
@@ -915,6 +924,7 @@ function openCodex(tab = codexTab) {
     DOLLAR('codexDialog').hidden = false;
 }
 DOLLAR('codexOpen').onclick = () => openCodex();
+DOLLAR('codexHelp').onclick = toggleCodexHelp;
 DOLLAR('codexClose').onclick = () => {
     DOLLAR('codexDialog').hidden = true;
 };
@@ -926,11 +936,6 @@ DOLLAR('codexTabs').addEventListener('click', (e) => {
     }
 });
 DOLLAR('codexBody').addEventListener('click', (e) => {
-    const HELP = e.target.closest('.codex-help__button');
-    if (HELP) {
-        toggleCodexHelp(HELP);
-        return;
-    }
     const RECIPE = e.target.closest('[data-recipe]'),
         TIER = e.target.closest('[data-tier]');
     if (RECIPE) {

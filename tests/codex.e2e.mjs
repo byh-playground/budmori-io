@@ -72,6 +72,9 @@ try {
         });
         await PAGE.locator('#codexOpen').click();
         assert.match(await PAGE.locator('#codexBody').innerText(), /병종을 발견하면/);
+        // The how-to lives behind the header "?": hidden until it is opened.
+        assert.doesNotMatch(await PAGE.locator('#codexBody').innerText(), /번식을 위해 최소 2마리를 남겨요/);
+        await PAGE.locator('#codexHelp').click();
         assert.match(await PAGE.locator('#codexBody').innerText(), /번식을 위해 최소 2마리를 남겨요\(전체 등급 합산\)/);
         assert.match(await PAGE.locator('#codexBody').innerText(), /같은 등급의 성체를 각 병종에서 1마리씩 조합/);
         assert.doesNotMatch(await PAGE.locator('#codexBody').innerText(), /각각 3마리/);
