@@ -48,7 +48,7 @@ import { speciesFacePortraitSource, speciesPortraitSource } from './units/specie
 import { HELP_MAX_FRAME_MS, HELP_PLAYBACK_RATE, helpSceneById } from './ui/help-scenes.js';
 import { labScene } from './debug/lab.js';
 import { createHelpPanel } from './ui/help-panel.js';
-import { codexHtml, CODEX_TABS } from './ui/codex-dialog.js';
+import { codexHtml, CODEX_TABS, toggleCodexHelp } from './ui/codex-dialog.js';
 import { iconSvg, mountIcons } from './ui/icons.js';
 import { SeedlingReveal } from './ui/seedling-reveal.js';
 import { startAppShell } from './ui/app-shell.js';
@@ -926,6 +926,11 @@ DOLLAR('codexTabs').addEventListener('click', (e) => {
     }
 });
 DOLLAR('codexBody').addEventListener('click', (e) => {
+    const HELP = e.target.closest('.codex-help__button');
+    if (HELP) {
+        toggleCodexHelp(HELP);
+        return;
+    }
     const RECIPE = e.target.closest('[data-recipe]'),
         TIER = e.target.closest('[data-tier]');
     if (RECIPE) {
