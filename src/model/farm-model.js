@@ -5,6 +5,7 @@ import { applyOffline } from '../save/farm-offline.js';
 import { Unit as UNIT } from './farm-unit.js';
 import { FARM_FOOD_FIELD } from './farm-food-field.js';
 import { FoodReservations } from '../features/farm-modes/food-reservations/model.js';
+import { FOOD_RESERVATION } from '../features/farm-modes/food-reservations/definition.js';
 import { BreedPairs } from './breed-pairs.js';
 import { FARM_CONTACT_SOLVER } from './farm-contact-solver.js';
 import { FARM_MERGE_BREED } from './farm-merge-breed.js';
@@ -489,7 +490,10 @@ const GARDEN = class Garden extends GARDEN_BASE {
     }
     _reset() {
         this._foodSearchScheduler?.dispose();
-        this._foodSearchScheduler = CREATE_BUDGETED_SCHEDULER({ unitsPerTick: 24, quantumUnits: 1 });
+        this._foodSearchScheduler = CREATE_BUDGETED_SCHEDULER({
+            unitsPerTick: FOOD_RESERVATION.searchUnitsPerTick,
+            quantumUnits: 1,
+        });
         this._lastFoodSearchSchedulerMetrics = this._foodSearchScheduler.metrics;
         this._foodSearchStates = new Map();
         this._foodReservations.reset();

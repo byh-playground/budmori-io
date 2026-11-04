@@ -252,6 +252,9 @@ export const FARM_FOOD_FIELD = (base) =>
             if (CX < 0 || CY < 0 || CX >= GRID.cellCount || CY >= GRID.cellCount) {
                 return null;
             }
+            // A seed takes the first food it finds on the rings; an adult wants the nearest one, which a pass over a short
+            // list finds for a fraction of the rings' cost.
+            const DIRECT = !unit.seedling && this._groundedFoodCount <= FOOD_RESERVATION.directScanLimit;
             const STATE = {
                 key: `food-target:${unit.id}:${++this._foodSearchJobSequence}`,
                 unit,
@@ -269,7 +272,7 @@ export const FARM_FOOD_FIELD = (base) =>
                 ringCellIndex: 0,
                 bucket: EMPTY_FOOD_SEARCH_BUCKET,
                 bucketIndex: 0,
-                phase: 'rings',
+                phase: DIRECT ? 'fallback' : 'rings',
                 fallbackIndex: 0,
                 nearest: null,
                 nearestDistance: Infinity,

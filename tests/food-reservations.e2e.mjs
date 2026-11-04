@@ -52,7 +52,9 @@ try {
         const { Garden: GARDEN, CONFIG } = await import('/src/model/farm-model.js'),
             STATE = await import('/src/model/farm-state.js'),
             PROGRESS = await import('/src/model/farm-progress.js');
-        globalThis.foodTest = { GARDEN, CONFIG, STATE, PROGRESS };
+        const { FOOD_RESERVATION: RESERVATION } =
+            await import('/src/features/farm-modes/food-reservations/definition.js');
+        globalThis.foodTest = { GARDEN, CONFIG, STATE, PROGRESS, BUDGET: RESERVATION.searchUnitsPerTick };
         globalThis.foodTest.check = (condition, message, detail = {}) => {
             if (!condition) {
                 throw new Error(message + ' ' + JSON.stringify(detail));
@@ -95,7 +97,10 @@ try {
             const W = world;
             for (let tick = 0; tick < count; tick++) {
                 W.step(0.05);
-                globalThis.foodTest.check(W._foodSearchScheduler.metrics.lastTickUnits <= 24, 'scheduler exceeded 24');
+                globalThis.foodTest.check(
+                    W._foodSearchScheduler.metrics.lastTickUnits <= globalThis.foodTest.BUDGET,
+                    'scheduler exceeded its budget',
+                );
                 const O = W._foodReservations;
                 globalThis.foodTest.check(O.byUnit.size === O.byFood.size, 'claim cardinality mismatch');
                 for (const [U, C] of O.byUnit) {
@@ -234,7 +239,10 @@ try {
         for (; tick < 1200 && SEEDS.some((u) => u.seedling); tick++) {
             SESSION.advance();
             maxClaims = Math.max(maxClaims, W._foodReservations.byUnit.size);
-            CHECK(W._foodSearchScheduler.metrics.lastTickUnits <= 24, 'automatic flow exceeded scheduler budget');
+            CHECK(
+                W._foodSearchScheduler.metrics.lastTickUnits <= globalThis.foodTest.BUDGET,
+                'automatic flow exceeded scheduler budget',
+            );
         }
         CHECK(
             SEEDS.every((u) => !u.seedling),
@@ -447,10 +455,11 @@ try {
             RESULTS = [];
         for (const PHASE of ['searching', 'ready', 'moving', 'tombstones']) {
             const W = WORLD();
-            for (let i = 0; i < 12; i++) {
-                UNIT(W, i % 2 ? 6 : 0, -3 + i * 0.5, 0, i >= 10);
+            // Enough units and foods that the searches outlast the first ticks of the broker's budget.
+            for (let i = 0; i < 60; i++) {
+                UNIT(W, i % 2 ? 6 : 0, -14 + i * 0.5, 0, i >= 58);
             }
-            for (let i = 0; i < 10; i++) {
+            for (let i = 0; i < 40; i++) {
                 FOOD(W, 5 + i * 0.3, 2);
             }
             STEP(W);
@@ -599,17 +608,20 @@ try {
         return { claimDoesNotWake: true, releaseWakes: true, noFreeFoodSkipsSearch: true };
     });
     console.log('PASS negative cache availability and no-free-food fast path', CACHE);
-    const ROLLBACK = await PAGE.evaluate(() => {
+    const ROLLBACK = await PAGE.evaluate(async () => {
+        const { overallXpForLevel: XP } = await import('/src/model/player-progression.js');
         const { world: WORLD, unit: UNIT, step: STEP, check: CHECK, STATE } = globalThis.foodTest,
             W = WORLD(),
-            POPULATION = 12;
-        // Enough eaters that some wait in a search queue while others hold claims at the checkpoint.
+            POPULATION = 150;
+        W.playerProgression.overallXp = XP(50);
+        // Enough eaters that some wait in a search queue while others hold claims at the checkpoint, spread wide so
+        // the run is not decided by how a crowd's contacts happen to be ordered.
         for (let i = 0; i < POPULATION; i++) {
             UNIT(
                 W,
                 i < POPULATION - 2 ? 0 : 2,
-                ((i % 4) - 1.5) * 0.85,
-                (Math.floor(i / 4) - 1.5) * 0.9,
+                ((i % 25) - 12) * 2.6,
+                (Math.floor(i / 25) - 2.5) * 5,
                 i >= POPULATION - 2,
             );
         }
