@@ -1,0 +1,23 @@
+name: Check
+on:
+    pull_request:
+    push:
+        branches: [main]
+    workflow_dispatch:
+permissions:
+    contents: read
+# CI is the minimum: static checks only. Browser scenarios run locally (README), never here.
+jobs:
+    check:
+        runs-on: ubuntu-24.04
+        timeout-minutes: 10
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+            - run: npm ci
+            - run: npm run check
