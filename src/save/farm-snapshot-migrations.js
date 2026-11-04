@@ -84,6 +84,8 @@ function migrateBossEncounter(snapshot) {
         delete ENCOUNTER.nextJoinAt;
         // Before 0.67.41 the encounter did not count from the first hit; an old fight counts all of it.
         ENCOUNTER.hitElapsed ??= ENCOUNTER.elapsed;
+        // Before the troops were counted over the fight the pace used the troops left at the end: 0 means "not counted".
+        ENCOUNTER.hitTroopSeconds ??= 0;
         // Tower floors no longer wait in 'dropping' for every boss to land: the fight runs while they leap in.
         if (snapshot.farmBossEvent?.phase === 'dropping') {
             snapshot.farmBossEvent.phase = 'fighting';

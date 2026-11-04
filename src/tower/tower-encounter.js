@@ -104,6 +104,9 @@ export function createTowerEncounter(floor) {
         elapsed: 0,
         // Seconds since the army first hit a boss: the pace leaves out the walk up to it.
         hitElapsed: 0,
+        // Living troop-seconds since the first hit: the pace divides by the troops that actually fought, not by who
+        // was left standing at the end of a bloody fight.
+        hitTroopSeconds: 0,
         clearedIds: [],
         floor,
         completed: false,

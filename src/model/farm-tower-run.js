@@ -372,18 +372,24 @@ export const FARM_TOWER_RUN = (base) =>
         }
         // The troops still in the climb.
         towerArmyCount() {
-            return this.unitCollection.items.filter(
-                (unit) => !unit.isBattleOnlySummon && !unit.isFormationClone && unit.hp > 0,
-            ).length;
+            let count = 0;
+            for (const UNIT of this.unitCollection.items) {
+                if (!UNIT.isBattleOnlySummon && !UNIT.isFormationClone && UNIT.hp > 0) {
+                    count++;
+                }
+            }
+            return count;
         }
         // After a won fight: boss health worn down per living troop per second from the first hit
-        // (armyScaling.fightSeconds).
+        // (armyScaling.fightSeconds). The troops are counted over the fight (hitTroopSeconds); only a fight saved
+        // before that was counted falls back to the troops left at the end.
         recordTowerArmyPace() {
             const SECONDS = this.bossEncounter?.hitElapsed ?? 0,
                 TROOPS = this.towerArmyCount(),
+                TROOP_SECONDS = this.bossEncounter?.hitTroopSeconds || SECONDS * TROOPS,
                 HEALTH = this.bosses.reduce((sum, boss) => sum + boss.maxHp, 0);
             if (SECONDS > 0 && TROOPS > 0) {
-                this.tower.armyPace = HEALTH / (SECONDS * TROOPS);
+                this.tower.armyPace = HEALTH / TROOP_SECONDS;
             }
         }
         joinNextBoss() {
@@ -440,6 +446,7 @@ export const FARM_TOWER_RUN = (base) =>
             ENCOUNTER.elapsed += dt;
             if (ENCOUNTER.hitElapsed > 0 || this.bosses.some((boss) => boss.hp < boss.maxHp)) {
                 ENCOUNTER.hitElapsed += dt;
+                ENCOUNTER.hitTroopSeconds += this.towerArmyCount() * dt;
             }
             for (const BOSS of this.bosses) {
                 if (BOSS.hp <= 0 && !ENCOUNTER.clearedIds.includes(BOSS.id)) {
