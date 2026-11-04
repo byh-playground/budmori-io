@@ -306,6 +306,7 @@ body > header {
 }
 .work-hud {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--ui-s2);
     width: 100%;
     padding: var(--ui-s3);
@@ -404,15 +405,18 @@ body > header {
     text-align: left;
     align-items: center;
 }
+.work-hud__row {
+    min-width: 0;
+}
 .work-hud__row > :first-child {
     white-space: nowrap;
 }
+/* 상태 문구는 길어질 수 있으니(먹이 가득 등) 잘라 내지 않고 줄을 바꿔 오른쪽에 붙인다 */
 .work-hud__row small {
     margin-left: auto;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    text-align: right;
     font-size: var(--ui-fs-1);
     color: var(--ui-ink-2);
 }
