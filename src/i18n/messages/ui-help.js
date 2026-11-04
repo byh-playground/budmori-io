@@ -95,16 +95,16 @@ export const HELP = LOCALE.messages({
 
     termsTitle: { ko: '병력 용어', en: 'Troop Terms' },
     termsPointTier: {
-        ko: '등급(T1~T6)은 합성할수록 올라가고, 높을수록 강해요',
-        en: 'Tier (T1 to T6) goes up as you merge, and higher tiers are stronger',
+        ko: '등급(T1~T6)은 합성할수록 올라가요. 높을수록 강해지고 공격 모션도 바뀌어요',
+        en: 'Tier (T1 to T6) goes up as you merge. Higher tiers are stronger and attack in new ways',
     },
     termsPointTemperament: {
-        ko: '성향은 병력의 성격이에요. 능력치가 조금씩 다르고, 전투마다 작은 힘을 들고 나와요',
-        en: 'Temperament is a troop’s personality. Stats differ a little, and each fight starts with a small power',
+        ko: '성향은 병력의 성격이에요. 성향마다 능력치의 배분이 달라요',
+        en: 'Temperament is a troop’s personality. Each one splits its stats differently',
     },
     termsPointElement: {
-        ko: '속성은 병력의 색이에요. 속성끼리는 서로 강하고 약해요',
-        en: 'Element is a troop’s color. Elements are strong and weak against one another',
+        ko: '속성은 5가지가 있어요. 상대의 속성에 따라 추가 피해를 입혀요',
+        en: 'There are 5 elements. Hits deal extra damage depending on the target’s element',
     },
 
     previewTitle: {
