@@ -415,7 +415,8 @@ export const FARM_TOWER_RUN = (base) =>
                         this.tower.armyPace
                             ? this.tower.armyPace *
                                   this.towerArmyCount() *
-                                  TOWER_ENCOUNTER_SETTINGS.armyScaling.fightSeconds
+                                  TOWER_ENCOUNTER_SETTINGS.armyScaling.fightSeconds *
+                                  TOWER_ENCOUNTER_SETTINGS.armyScaling.paceMargin
                             : STATS.hp * KIND.hp * BUDGET.hp * ARMY,
                     ),
                 ),
