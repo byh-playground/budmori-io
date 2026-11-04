@@ -1,4 +1,4 @@
-import { HELP_SCENES } from './help-scenes.js';
+import { HELP_CARDS } from './help-scenes.js';
 import { SHELL } from '../i18n/messages/shell.js';
 
 // The help tab: one pill tab per scene. A card is the real game in a frame (?help=<card>), so it is mounted only
@@ -53,7 +53,7 @@ export function createHelpPanel(dollar) {
         const SNAPSHOT = readSnapshot(frame);
         if (SNAPSHOT) {
             reveal();
-            CAPTION.textContent = HELP_SCENES[index].steps[SNAPSHOT.step] ?? '';
+            CAPTION.textContent = HELP_CARDS[index].steps[SNAPSHOT.step] ?? '';
             if (SNAPSHOT.state !== 'ended') {
                 endedAt = 0;
             } else if (endedAt === 0) {
@@ -72,6 +72,9 @@ export function createHelpPanel(dollar) {
     // The frame is the real game at the real window size, scaled down to fit the card: every proportion
     // (UI against the field, text against the boss) is what the player sees in play.
     function fit() {
+        if (HELP_CARDS[index].text) {
+            return;
+        }
         const WIDTH = window.innerWidth,
             HEIGHT = window.innerHeight,
             AVAILABLE_WIDTH = Math.max(120, STAGE.clientWidth),
@@ -99,8 +102,12 @@ export function createHelpPanel(dollar) {
         if (!visible) {
             return;
         }
-        const SCENE = HELP_SCENES[index];
+        const SCENE = HELP_CARDS[index];
         CAPTION.textContent = '';
+        if (SCENE.text) {
+            DEMO.replaceChildren();
+            return;
+        }
         endedAt = 0;
         startedAt = performance.now();
         frame = document.createElement('iframe');
@@ -114,7 +121,8 @@ export function createHelpPanel(dollar) {
         watch = requestAnimationFrame(observe);
     }
     function paintCard() {
-        const SCENE = HELP_SCENES[index];
+        const SCENE = HELP_CARDS[index];
+        STAGE.hidden = !!SCENE.text;
         POINTS.replaceChildren(
             ...SCENE.points.map((text) => {
                 const POINT = document.createElement('li');
@@ -127,12 +135,12 @@ export function createHelpPanel(dollar) {
         }
     }
     function show(next) {
-        index = Math.max(0, Math.min(HELP_SCENES.length - 1, next));
+        index = Math.max(0, Math.min(HELP_CARDS.length - 1, next));
         paintCard();
         mount();
     }
     TABS.replaceChildren(
-        ...HELP_SCENES.map((scene, cardIndex) => {
+        ...HELP_CARDS.map((scene, cardIndex) => {
             const TAB = document.createElement('button');
             TAB.type = 'button';
             TAB.role = 'tab';

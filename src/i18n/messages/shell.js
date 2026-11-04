@@ -32,19 +32,19 @@ export const SHELL = LOCALE.messages({
     showcaseLoading: { ko: '소개 준비 중…', en: 'Preparing intro…' },
     showcaseFailed: { ko: '소개를 불러오지 못했습니다 · 다시 시도', en: 'Couldn’t load the intro · Try again' },
     showcaseTitle: { ko: '버드모리', en: 'BUDMORI' },
-    showcaseFarmTitle: { ko: '농장에서 작은 병력을 키워요', en: 'Raise a small army on the farm' },
+    showcaseFarmTitle: { ko: '농장에서 키워요', en: 'Raise them on the farm' },
     showcaseFarmCaption: {
-        ko: '먹이를 마련하고 번식한 병력을 합체해 더 큰 부대로 성장시킵니다.',
-        en: 'Gather food, breed troops and merge them into a bigger army.',
+        ko: '먹이를 모아 번식하고, 합쳐서 더 큰 병력으로 키워요.',
+        en: 'Gather food, breed, and merge your troops into a bigger army.',
     },
-    showcaseBossTitle: { ko: '병력을 모아 보스에게 도전', en: 'Gather your troops and challenge the boss' },
+    showcaseBossTitle: { ko: '탑에서 싸워요', en: 'Fight in the tower' },
     showcaseBossCaption: {
-        ko: '실제 농장 병력이 출전하며 각자의 역할로 자동 전투합니다.',
-        en: 'Your real farm troops deploy and fight on their own, each in its role.',
+        ko: '병력이 보스와 자동으로 싸워요. 한 번 도전은 5~15분이에요.',
+        en: 'Your troops fight the boss on their own. A run takes 5 to 15 minutes.',
     },
-    showcaseChainTitle: { ko: '병종과 기술이 만드는 연쇄 전투', en: 'Chain battles of species and skills' },
+    showcaseChainTitle: { ko: '더 높이 올라가요', en: 'Climb higher' },
     showcaseChainCaption: {
-        ko: '생존 병력과 유물 보상을 바탕으로 다음 층에 도전합니다.',
-        en: 'Survivors and relic rewards carry you to the next floor.',
+        ko: '보상으로 병력과 새로운 힘을 얻고, 100층을 향해 다시 도전해요.',
+        en: 'Earn troops and new powers, then take on the next floors toward floor 100.',
     },
 });

@@ -37,7 +37,13 @@ export const HELP_SCENES = Object.freeze([
     Object.freeze({
         id: 'merge',
         title: HELP.mergeTitle(),
-        points: Object.freeze([HELP.mergePointOrder(), HELP.mergePointCost(), HELP.mergePointStats()]),
+        points: Object.freeze([
+            HELP.mergePointOrder(),
+            HELP.mergePointCost(),
+            HELP.mergePointStats(),
+            HELP.mergePointCombine(),
+            HELP.mergePointCombineKeep(),
+        ]),
         seed: 4102,
         rate: 1,
         durationMs: 5000,
@@ -69,7 +75,8 @@ export const HELP_SCENES = Object.freeze([
             HELP.towerPointFloors(),
             HELP.towerPointFront(),
             HELP.towerPointOrders(),
-            HELP.towerPointCards(),
+            HELP.towerPointRetreat(),
+            HELP.towerPointBosses(),
         ]),
         seed: 4104,
         rate: 4,
@@ -134,6 +141,25 @@ export const HELP_SCENES = Object.freeze([
         },
     }),
 ]);
+
+// Cards that explain a few words and play no run: the panel shows only their points. They are not scenes, so the
+// isolated frame (?help=<id>) never loads them.
+export const HELP_TEXT_CARDS = Object.freeze([
+    Object.freeze({
+        id: 'cards',
+        title: HELP.cardsTitle(),
+        text: true,
+        points: Object.freeze([HELP.cardsPointPick(), HELP.cardsPointRun(), HELP.cardsPointRelic()]),
+    }),
+    Object.freeze({
+        id: 'terms',
+        title: HELP.termsTitle(),
+        text: true,
+        points: Object.freeze([HELP.termsPointTier(), HELP.termsPointTemperament(), HELP.termsPointElement()]),
+    }),
+]);
+// The help tab, in order: the played scenes first, then the text cards.
+export const HELP_CARDS = Object.freeze([...HELP_SCENES, ...HELP_TEXT_CARDS]);
 
 export function helpSceneById(id) {
     return (
