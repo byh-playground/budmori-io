@@ -16,6 +16,9 @@ export const FARM_BOSS_EVENT = (base) =>
             if (outcome === 'victory' && this.bossEncounter && !this.bossEncounter.completed) {
                 return false;
             }
+            if (outcome === 'victory' && this.tower.active) {
+                this.recordTowerArmyPace();
+            }
             this.formationSkills.end();
             this.cleanupBattleSummons();
             // A cleared floor keeps the hand for the next one; any other ending sends everyone back to the farm.

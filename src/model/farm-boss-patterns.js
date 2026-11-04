@@ -6,9 +6,11 @@ import { bossAttackArea, BOSS_BEHAVIORS } from '../boss/boss-behaviors.js';
 import {
     BOSS_PATTERN_IDS,
     BOSS_HIT_SPLIT,
+    BOSS_HIT_CAPS,
     BOSS_PATTERN_CONFIG,
     BOSS_AREA_MIN_HITS,
     BOSS_ENRAGE,
+    BOSS_GAP_CLOSERS,
     drawMinionKind,
     SUMMON_PATTERN_ID,
 } from '../boss/boss-patterns.js';
@@ -304,7 +306,11 @@ export const FARM_BOSS_PATTERNS = (base) =>
                 ),
                 ELIGIBLE = [];
             for (const ID of BOSS_PATTERN_IDS) {
-                if (RUNTIME.cooldowns[ID] > 1e-9 || this.bossHpRatioFor(boss) > this.bossPatternUnlockHp(ID)) {
+                if (
+                    BOSS_PATTERN_CONFIG[ID].basic ||
+                    RUNTIME.cooldowns[ID] > 1e-9 ||
+                    this.bossHpRatioFor(boss) > this.bossPatternUnlockHp(ID)
+                ) {
                     continue;
                 }
                 const BEHAVIOR = BOSS_BEHAVIORS.forId(ID);
@@ -316,6 +322,12 @@ export const FARM_BOSS_PATTERNS = (base) =>
                 }
             }
             return ELIGIBLE;
+        }
+        // With no troop in the slam's reach: a ready gap closer (leap or charge) at random, whatever the rhythm, the
+        // boss's health or how many it would hit; null when both are cooling down and the boss has to walk.
+        bossGapCloser(boss = this.boss) {
+            const READY = BOSS_GAP_CLOSERS.filter((id) => boss.patternRuntime.cooldowns[id] <= 1e-9);
+            return READY.length ? READY[Math.min(READY.length - 1, Math.floor(this.random() * READY.length))] : null;
         }
         bossAttackWorthIt(behavior, targets, boss = this.boss) {
             const HITS = behavior.expectedHits(this, targets, boss);
@@ -478,6 +490,7 @@ export const FARM_BOSS_PATTERNS = (base) =>
                 );
                 const RECEIVED = applyDamageToTargets(B_LOCAL, [UNIT_LOCAL], {
                     armorForTarget: () => this.combatTargetDefense(UNIT_LOCAL).armor,
+                    maxLossForTarget: () => BOSS_HIT_CAPS.pattern * unitMaxHpFor(UNIT_LOCAL),
                     rawDamage: RAW_DAMAGE,
                     sourceKind: 'direct',
                     area: true,

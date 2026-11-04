@@ -361,6 +361,7 @@ export function applyDamage(
         armorPenetration = 0,
         critical = false,
         critMultiplier = COMMON_UNIT_STAT_DEFAULTS.critMultiplier,
+        maxLoss = Infinity,
     } = {},
 ) {
     if (!target || !Number.isFinite(target.hp)) {
@@ -370,7 +371,7 @@ export function applyDamage(
         };
     }
     const RESOLVED = resolveDamage(rawDamage, armor, armorPenetration, critical, critMultiplier);
-    const ACTUAL_LOSS = Math.min(Math.max(0, target.hp), RESOLVED.damage);
+    const ACTUAL_LOSS = Math.min(Math.max(0, target.hp), RESOLVED.damage, maxLoss);
     setHealth(target, Math.max(0, target.hp - ACTUAL_LOSS));
     return {
         ...RESOLVED,
@@ -402,6 +403,8 @@ export function applyDamageToTargets(
         sourceKind = 'direct',
         sourceStatOverrides,
         armorForTarget = (target) => combatStats(target).armor,
+        // The most one hit may take from this target, after armor and crit (BOSS_HIT_CAPS).
+        maxLossForTarget = () => Infinity,
         roll = () => 1,
     } = {},
 ) {
@@ -415,6 +418,7 @@ export function applyDamageToTargets(
             armorPenetration: SOURCE_STATS?.armorPenetration || 0,
             critical: CRITICAL,
             critMultiplier: SOURCE_STATS?.critMultiplier ?? COMMON_UNIT_STAT_DEFAULTS.critMultiplier,
+            maxLoss: maxLossForTarget(TARGET),
         });
         HITS.push(RESULT);
         totalActualLoss += RESULT.actualLoss;

@@ -4,6 +4,7 @@ import { ChargeBossPattern } from '../features/boss-patterns/charge/model.js';
 import { LeapBossPattern } from '../features/boss-patterns/leap-slam/model.js';
 import { FanBossPattern } from '../features/boss-patterns/fan-sweep/model.js';
 import { SpinThrowBossPattern } from '../features/boss-patterns/spin-throw/model.js';
+import { SlamBossPattern } from '../features/boss-patterns/slam/model.js';
 import { MouthSummonBossPattern } from '../features/boss-patterns/mouth-summon/model.js';
 import {
     WaterJetPattern,
@@ -23,6 +24,7 @@ export function createBossPatternBehaviors(dependencies) {
     const PATTERNS = Object.freeze(
         Object.fromEntries(
             [
+                new SlamBossPattern(DEPENDENCIES),
                 new SweepBossPattern(DEPENDENCIES),
                 new ChargeBossPattern(DEPENDENCIES),
                 new LeapBossPattern(DEPENDENCIES),

@@ -1,6 +1,7 @@
 // Shared Farm/Raid boss kit. Pattern behavior is shared by species; species
 // only selects the authored body and the T1 reward/summon identity.
 export const BOSS_PATTERN_IDS = Object.freeze([
+    'attack.slam',
     'attack.sweep-360',
     'attack.charge',
     'attack.leap-slam',
@@ -20,14 +21,17 @@ export const BOSS_PATTERN_IDS = Object.freeze([
 // every unit hit and the rest (65%) is split among all the units hit in the same moment: one unit takes it all, a crowd
 // takes just over 35% each, so a tight pack is hurt a little more but never in proportion to its size.
 export const BOSS_HIT_SPLIT = Object.freeze({ everyone: 0.35 });
-// The boss's basic attack is its own fast single-target unit attack (no pattern); every pattern here is a special.
-// The boss's basic attack comes once per half second (windup + recovery + the strike itself), faster than the same species in the army.
+// The boss's basic attack is the slam (attack.slam, `basic`): it never takes a special's turn in the rhythm.
+// Only a boss that walks into its species' own attack range before the slam's swings that attack, once per half second.
 export const BOSS_BASIC_TIMING = Object.freeze({ windup: 0.2, recovery: 0.25 });
 // A pattern worth using must reach at least this many units, otherwise the basic attack does the job.
 export const BOSS_AREA_MIN_HITS = 2;
+// The boss's basic attack, and what it uses instead when no troop is within the slam's reach.
+export const BOSS_BASIC_PATTERN = 'attack.slam';
+export const BOSS_GAP_CLOSERS = Object.freeze(['attack.leap-slam', 'attack.charge']);
 // Rhythm: `basicsPerSpecial` basic attacks, then one special; every `specialsPerArea`-th special is an area pattern
 // and the others are the boss's own element skill. An unavailable special is skipped for the other kind, never queued.
-export const BOSS_RHYTHM = Object.freeze({ basicsPerSpecial: 4, specialsPerArea: 3 });
+export const BOSS_RHYTHM = Object.freeze({ basicsPerSpecial: 7, specialsPerArea: 3 });
 // Each element band's boss has one signature skill. All of its damage is element damage (see elementDamageTaken) and it
 // is used on the shared cooldown. Water: a narrow jet that pushes. Grass: roots erupt under the target. Fire: a long
 // breath that burns several times. Ice: a pulse around the boss that freezes. Lightning: a chain that jumps `hops` times,
@@ -177,6 +181,26 @@ export const BOSS_PATTERN_CONFIG = Object.freeze({
         cooldown: 16,
         reach: 7.35,
         damageMultiplier: 2.5,
+        knockback: 13,
+        lift: 10.2,
+        groundOnly: true,
+    }),
+    // Slam: the basic attack. The lead hand comes down on the nearest troop within `reach` (or that far toward it),
+    // and everyone within `radius` of that spot is hit and thrown outward as hard as the arm sweep throws: three to
+    // five troops of a tight pack. Its damage is split like any area hit; at `damageMultiplier` 0.5 four troops
+    // together take about what one punch used to deal to a single troop.
+    // When no troop is within reach the boss uses a gap closer (leap or charge, whichever is ready) or walks.
+    'attack.slam': Object.freeze({
+        kind: 'slam',
+        basic: true,
+        unlockHp: 1,
+        windup: 0.2,
+        active: 0.05,
+        recover: 0.25,
+        cooldown: 0,
+        reach: 5.3,
+        radius: 0.9,
+        damageMultiplier: 0.5,
         knockback: 13,
         lift: 10.2,
         groundOnly: true,
@@ -378,7 +402,8 @@ export const BOSS_PHASE_THRESHOLDS = Object.freeze(
 // down puts it down for `seconds`, and a boss that is down (stunned by anything) takes `damageTaken` times the
 // damage. `patternRuntime.staggerFrom` is the health fraction the gauge counts from; damage taken while down does
 // not fill it, and healing drains it. Getting up from a stagger, the boss heals `recovery.healLost` of the health it
-// is missing and swings `recovery.pattern` at once, without its windup, throwing the troops that piled on while it was
+// lost since it last got up (`patternRuntime.risenFrom`, the health fraction then; full at the start), so every
+// stagger still leaves it lower than the one before, and swings `recovery.pattern` at once, without its windup, throwing the troops that piled on while it was
 // down: a grown-up army cannot just stand on the boss and melt it. `patternRuntime.stagger` is 'standing', 'down'
 // (staggered) or 'rising' (the recovery swing until it ends); the gauge only fills while standing.
 export const BOSS_STAGGER_STATES = Object.freeze(['standing', 'down', 'rising']);
@@ -400,6 +425,10 @@ export function bossStaggerGauge(boss) {
     const FROM = boss.patternRuntime?.staggerFrom ?? 1;
     return Math.min(1, Math.max(0, (FROM - bossHealthFraction(boss)) / BOSS_STAGGER.gauge));
 }
+// Hit cap: a boss or minion pattern hit takes at most `pattern` of the troop's maximum health, after armor and crits,
+// so a grown troop shrugs off what a weak one cannot and one swing never wipes the crowd that piled on, whatever the
+// floor's boss attack is.
+export const BOSS_HIT_CAPS = Object.freeze({ pattern: 0.25 });
 export const BOSS_AIM_TURN_RATE = 5.5;
 export function createBossPatternRuntime() {
     return {
@@ -412,6 +441,7 @@ export function createBossPatternRuntime() {
         encounterElapsed: 0,
         staggerFrom: 1,
         stagger: 'standing',
+        risenFrom: 1,
     };
 }
 

@@ -370,6 +370,22 @@ export const FARM_TOWER_RUN = (base) =>
             }
             return strength;
         }
+        // The troops still in the climb.
+        towerArmyCount() {
+            return this.unitCollection.items.filter(
+                (unit) => !unit.isBattleOnlySummon && !unit.isFormationClone && unit.hp > 0,
+            ).length;
+        }
+        // After a won fight: boss health worn down per living troop per second from the first hit
+        // (armyScaling.fightSeconds).
+        recordTowerArmyPace() {
+            const SECONDS = this.bossEncounter?.hitElapsed ?? 0,
+                TROOPS = this.towerArmyCount(),
+                HEALTH = this.bosses.reduce((sum, boss) => sum + boss.maxHp, 0);
+            if (SECONDS > 0 && TROOPS > 0) {
+                this.tower.armyPace = HEALTH / (SECONDS * TROOPS);
+            }
+        }
         joinNextBoss() {
             const ENCOUNTER = this.bossEncounter,
                 ENTRY = ENCOUNTER?.roster[ENCOUNTER.nextIndex];
@@ -387,8 +403,17 @@ export const FARM_TOWER_RUN = (base) =>
                 FLIGHT = Math.sqrt((8 * TOWER_ENCOUNTER_SETTINGS.launchApex) / GRAVITY);
             BOSS.controller.configureStage(ENCOUNTER.floor, ENTRY.species);
             BOSS.setBaseStats({
-                maxHp: Math.max(1, Math.round(STATS.hp * KIND.hp * BUDGET.hp * ARMY)),
-                attackPower: STATS.attackPower * KIND.attack * BUDGET.attack * ARMY,
+                maxHp: Math.max(
+                    1,
+                    Math.round(
+                        this.tower.armyPace
+                            ? this.tower.armyPace *
+                                  this.towerArmyCount() *
+                                  TOWER_ENCOUNTER_SETTINGS.armyScaling.fightSeconds
+                            : STATS.hp * KIND.hp * BUDGET.hp * ARMY,
+                    ),
+                ),
+                attackPower: STATS.attackPower * KIND.attack * BUDGET.attack,
             });
             BOSS.setStatModifiers(runStatModifiers(this.tower.bossCards, 'boss'));
             BOSS.setHealth(BOSS.maxHp);
@@ -413,6 +438,9 @@ export const FARM_TOWER_RUN = (base) =>
                 return this.boss.hp <= 0;
             }
             ENCOUNTER.elapsed += dt;
+            if (ENCOUNTER.hitElapsed > 0 || this.bosses.some((boss) => boss.hp < boss.maxHp)) {
+                ENCOUNTER.hitElapsed += dt;
+            }
             for (const BOSS of this.bosses) {
                 if (BOSS.hp <= 0 && !ENCOUNTER.clearedIds.includes(BOSS.id)) {
                     BOSS.die();

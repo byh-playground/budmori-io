@@ -20,6 +20,7 @@ import { ChargePresentation } from '../features/boss-patterns/charge/presentatio
 import { LeapSlamPresentation } from '../features/boss-patterns/leap-slam/presentation.js';
 import { FanSweepPresentation } from '../features/boss-patterns/fan-sweep/presentation.js';
 import { SpinThrowPresentation } from '../features/boss-patterns/spin-throw/presentation.js';
+import { SlamPresentation } from '../features/boss-patterns/slam/presentation.js';
 import { drawElementMark } from './unit-face-overlay.js';
 import { elementCheekColor, unitLook } from '../units/species-face.js';
 import { drawUnitFace } from './unit-face-draw.js';
@@ -34,6 +35,7 @@ const IDLE_PRESENTATION = new BossAttackPresentation();
 const BARLEY_SHRED_PRESENTATION = new BarleyArmorShredPresentation();
 const BOSS_PRESENTATIONS = new Map(
     [
+        new SlamPresentation(),
         new CircleSweepPresentation(),
         new ChargePresentation(),
         new LeapSlamPresentation(),
