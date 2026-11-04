@@ -5,6 +5,7 @@ import {
     BOSS_PATTERN_CONFIG,
     BOSS_STAGGER,
     BOSS_PATTERN_IDS,
+    BOSS_BASIC_PATTERN,
     bossHealthFraction,
     createBossPatternRuntime,
     chooseBossPattern,
@@ -99,8 +100,8 @@ export class BossController {
             return;
         }
         const STATS = unitStats(BOSS);
-        applyHealing(BOSS, (STATS.maxHp - BOSS.hp) * RECOVERY.healLost, STATS);
-        RUNTIME.staggerFrom = bossHealthFraction(BOSS);
+        applyHealing(BOSS, Math.max(0, RUNTIME.risenFrom * STATS.maxHp - BOSS.hp) * RECOVERY.healLost, STATS);
+        RUNTIME.staggerFrom = RUNTIME.risenFrom = bossHealthFraction(BOSS);
         const LIVING = world.livingBossTargets();
         if (!LIVING.length) {
             RUNTIME.stagger = 'standing';
@@ -135,17 +136,26 @@ export class BossController {
                 ELIGIBLE = world.eligibleBossPatterns(living, TARGETS, this.unit),
                 // A pattern on its own clock (the summon) comes before the rhythm and leaves its counters alone.
                 OWN_CLOCK = ELIGIBLE.find((id) => BOSS_PATTERN_CONFIG[id].ownClock) ?? null,
+                // With no troop in the slam's reach the boss closes the gap, or walks while both are cooling down.
+                NEAR = BOSS_BEHAVIORS.forId(BOSS_BASIC_PATTERN).eligible(world, TARGETS, 0, B_LOCAL),
                 SELECTED =
                     OWN_CLOCK ??
-                    chooseBossPattern(
-                        RUNTIME,
-                        ELIGIBLE.filter((id) => !BOSS_PATTERN_CONFIG[id].ownClock),
-                        () => world.random(),
-                        B_LOCAL,
-                    );
-            if (SELECTED) {
+                    (NEAR
+                        ? (chooseBossPattern(
+                              RUNTIME,
+                              ELIGIBLE.filter((id) => !BOSS_PATTERN_CONFIG[id].ownClock),
+                              () => world.random(),
+                              B_LOCAL,
+                          ) ?? BOSS_BASIC_PATTERN)
+                        : world.bossGapCloser(B_LOCAL));
+            if (SELECTED === BOSS_BASIC_PATTERN) {
+                // A slam counts toward the next special.
+                world.beginBossPattern(SELECTED, TARGETS.nearest, B_LOCAL);
+                B_LOCAL.basicCount++;
+                action = RUNTIME.active;
+            } else if (SELECTED) {
                 const BEHAVIOR = BOSS_BEHAVIORS.forId(SELECTED),
-                    PICK = BEHAVIOR.selectedTarget(world, TARGETS, TARGET, this.unit);
+                    PICK = BEHAVIOR.selectedTarget(world, TARGETS, TARGET, this.unit) ?? TARGET;
                 if (!OWN_CLOCK) {
                     B_LOCAL.basicCount = 0;
                     B_LOCAL.specialCount++;

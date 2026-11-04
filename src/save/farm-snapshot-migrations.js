@@ -82,6 +82,8 @@ function migrateBossEncounter(snapshot) {
         BAND_ELEMENT = towerElement(snapshot.tower?.active ? snapshot.tower.floor : 1);
     if (ENCOUNTER) {
         delete ENCOUNTER.nextJoinAt;
+        // Before 0.67.41 the encounter did not count from the first hit; an old fight counts all of it.
+        ENCOUNTER.hitElapsed ??= ENCOUNTER.elapsed;
         // Tower floors no longer wait in 'dropping' for every boss to land: the fight runs while they leap in.
         if (snapshot.farmBossEvent?.phase === 'dropping') {
             snapshot.farmBossEvent.phase = 'fighting';
@@ -164,6 +166,8 @@ export function normalizeSnapshot(raw, { clone = true } = {}) {
             RUNTIME.staggerFrom ??= bossHealthFraction(BOSS);
             // A boss down when saved before 0.67.40 gets up without the recovery swing.
             RUNTIME.stagger ??= 'standing';
+            // Before the heal counted from the last stand-up (0.67.41): count from the current health.
+            RUNTIME.risenFrom ??= bossHealthFraction(BOSS);
             // A pattern added later (attack.spin-throw, 0.67.40) starts at the default weight, ready.
             for (const ID of BOSS_PATTERN_IDS) {
                 RUNTIME.weights[ID] ??= 1;

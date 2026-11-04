@@ -1405,6 +1405,9 @@ function validateTowerCheckpoint(raw) {
     if (TOWER.summitElapsed !== undefined) {
         ASSERT(Number.isFinite(TOWER.summitElapsed) && TOWER.summitElapsed >= 0);
     }
+    if (TOWER.armyPace !== undefined) {
+        ASSERT(Number.isFinite(TOWER.armyPace) && TOWER.armyPace >= 0);
+    }
     if (TOWER.startFloor !== undefined) {
         ASSERT(INTEGER(TOWER.startFloor, 0, FARM_BOSS_EVENT_MAX_STAGE));
     }
@@ -1418,8 +1421,8 @@ function validateTowerCheckpoint(raw) {
     }
     ASSERT(
         ENCOUNTER &&
-            Object.keys(ENCOUNTER).length === 6 &&
-            ['roster', 'nextIndex', 'elapsed', 'clearedIds', 'floor', 'completed'].every((key) =>
+            Object.keys(ENCOUNTER).length === 7 &&
+            ['roster', 'nextIndex', 'elapsed', 'hitElapsed', 'clearedIds', 'floor', 'completed'].every((key) =>
                 Object.hasOwn(ENCOUNTER, key),
             ) &&
             Array.isArray(ENCOUNTER.roster) &&
@@ -1446,6 +1449,9 @@ function validateTowerCheckpoint(raw) {
             ) &&
             Number.isFinite(ENCOUNTER.elapsed) &&
             ENCOUNTER.elapsed >= 0 &&
+            Number.isFinite(ENCOUNTER.hitElapsed) &&
+            ENCOUNTER.hitElapsed >= 0 &&
+            ENCOUNTER.hitElapsed <= ENCOUNTER.elapsed + 1e-9 &&
             Array.isArray(ENCOUNTER.clearedIds) &&
             new Set(ENCOUNTER.clearedIds).size === ENCOUNTER.clearedIds.length &&
             ENCOUNTER.clearedIds.every((id) => raw.bosses.some((boss) => boss.id === id && boss.hp <= 0)) &&
@@ -1502,6 +1508,9 @@ function validateBoss(boss, raw) {
             Number.isFinite(RUNTIME.encounterElapsed) &&
             RUNTIME.encounterElapsed >= 0 &&
             BOSS_STAGGER_STATES.includes(RUNTIME.stagger) &&
+            Number.isFinite(RUNTIME.risenFrom) &&
+            RUNTIME.risenFrom >= 0 &&
+            RUNTIME.risenFrom <= 1 &&
             Number.isFinite(RUNTIME.staggerFrom) &&
             RUNTIME.staggerFrom >= 0 &&
             RUNTIME.staggerFrom <= 1 &&

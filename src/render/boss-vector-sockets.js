@@ -88,7 +88,14 @@ export function bossHandRig(compiled) {
         Object.freeze(REST[SIDE]);
         Object.freeze(CHANNELS[SIDE]);
     }
-    return Object.freeze({ radius, rest: Object.freeze(REST), channels: Object.freeze(CHANNELS) });
+    // The authored ground baseline from the body's middle, where a hand put on the ground goes.
+    const GROUND = SOCKETS.ground?.point ?? CENTRE;
+    return Object.freeze({
+        radius,
+        rest: Object.freeze(REST),
+        ground: Object.freeze({ x: (GROUND[0] - CENTRE[0]) * SCALE, y: (GROUND[1] - CENTRE[1]) * SCALE }),
+        channels: Object.freeze(CHANNELS),
+    });
 }
 export function bossSummonPose(b, parts = new Set()) {
     const CONFIG = BOSS_PATTERN_CONFIG['summon.mouth-t1'],

@@ -39,7 +39,14 @@ export const TOWER_ENCOUNTER_SETTINGS = Object.freeze({
     // tower-climb.mjs against 0.5, which flattened a 400-troop army to a 200-troop one) keeps bigger armies clearly
     // ahead while narrowing the spread. The reference is `referenceCount` plain (cardless) troops of
     // `referenceTier`, the species in turn.
-    armyScaling: Object.freeze({ exponent: 0.25, referenceCount: 100, referenceTier: 3 }),
+    // The army only moves the boss's health, so each fight lasts about `fightSeconds`; the floor's own attack is what
+    // gets harder. The first fight of a climb uses the floor budget × the army scale; every later boss's health is
+    // the pace the army kept in its last won fight (tower.armyPace: boss health worn down per living troop per
+    // second from its first hit, staggers, heals and armor included) × the troops in the climb × `fightSeconds`.
+    // A troop under the retreat command heals this share of its maximum health a second, so an army that runs and
+    // comes back can win a fight it would lose standing.
+    retreatRegen: 0.1,
+    armyScaling: Object.freeze({ exponent: 0.25, referenceCount: 100, referenceTier: 3, fightSeconds: 40 }),
     // A small army meets fewer minions: one more minion may be alive per this many living troops (at least one).
     troopsPerMinion: 25,
     launchApex: 7,
@@ -92,6 +99,8 @@ export function createTowerEncounter(floor) {
         roster: ROSTER,
         nextIndex: 0,
         elapsed: 0,
+        // Seconds since the army first hit a boss: the pace leaves out the walk up to it.
+        hitElapsed: 0,
         clearedIds: [],
         floor,
         completed: false,

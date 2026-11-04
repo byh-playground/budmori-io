@@ -171,9 +171,8 @@ UnitCollection의 건강 Signal로 부상자 집합을 유지하므로 치유의
 전투 개체·복사체·게이지·버프·비행 개체 스냅샷도 디스크에 저장하지 않습니다.
 내부 결정론 checkpoint만 별도 formationRuntime과 임시 Unit 필드를 보존합니다.
 
-기본 PR 검증은 `tests/source-smoke.e2e.mjs`의 원본 ESM 시작과 실제 9종 혼합 전투입니다.
-같은 흐름에 보스 광역의 대상별 충전, 카드 선택·다음 전투 덱 유지·재도전 초기화와 양 진영 5개 스킬의
-공유 모델/표시 DTO 렌더를 확인합니다. 기존 `tests/smoke.e2e.mjs`의 상세 검증은 필요할 때 별도로 실행합니다.
+카드 선택과 실제 병종 공격 흐름은 `npm run test:stat-cards`가 확인합니다. 기존 `tests/smoke.e2e.mjs`의
+상세 검증은 필요할 때 별도로 실행합니다.
 개발 중 집중 모델·모션 검증은 임시로만 실행하고 결과를 PR에 남기며 영구 단위 테스트 파일은 추가하지 않습니다.
 
 공식 GitHub CI의 Chromium은 SwiftShader를 사용합니다. source smoke는 원본 `index.html`과 ESM을 제공하고,

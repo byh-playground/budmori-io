@@ -65,7 +65,10 @@ export const APP_TOWER = LOCALE.messages({
     },
     deckCard: { ko: ({ slot, name }) => `${slot}번 ${name}`, en: ({ slot, name }) => `No. ${slot} ${name}` },
     commandScatter: { ko: '간격을 넓히며 공격해요', en: 'Spread out and attack' },
-    commandRetreat: { ko: '공격을 멈추고 적에게서 물러나요', en: 'Stop attacking and fall back' },
+    commandRetreat: {
+        ko: '공격을 멈추고 물러나며 체력을 빠르게 회복해요',
+        en: 'Stop attacking, fall back and heal fast',
+    },
     frontlineStatus: {
         ko: ({ fighters, limit, reserves }) => `전선 ${fighters}/${limit} · 예비대 ${reserves}`,
         en: ({ fighters, limit, reserves }) => `Front line ${fighters}/${limit} · Reserves ${reserves}`,
