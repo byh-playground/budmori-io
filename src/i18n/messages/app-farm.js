@@ -52,11 +52,8 @@ export const APP_FARM = LOCALE.messages({
         en: ({ workers, perMinute }) =>
             `${workers} ${LOCALE.plural(workers, { one: 'worker', other: 'workers' })} · ${perMinute} food/min`,
     },
-    workFoodFull: {
-        ko: '농장에 먹이가 가득해요 · 일꾼은 쉬는 중이에요',
-        en: 'The farm is full of food · Workers are resting',
-    },
-    workNoWorkers: { ko: '일꾼이 없어서 먹이가 안 만들어져요', en: 'No workers, so no food is made' },
+    workFoodFull: { ko: '먹이 가득 · 일꾼 쉼', en: 'Food full · idle' },
+    workNoWorkers: { ko: '일꾼 없음 · 먹이 안 만들어짐', en: 'No workers · no food' },
     workHudBreed: { ko: ({ count }) => `번식 ${count}`, en: ({ count }) => `Breeding ${count}` },
     workHudFood: { ko: ({ count }) => `먹이 ${count}`, en: ({ count }) => `Food ${count}` },
 });
