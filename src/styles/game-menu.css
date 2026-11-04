@@ -396,6 +396,12 @@ html.help-scene.barley-attack-preview #battleCommands {
     display: grid;
     gap: var(--ui-s3);
 }
+.help-stage[hidden] {
+    display: none;
+}
+.help-body:has(.help-stage[hidden]) {
+    grid-template-columns: minmax(0, 1fr);
+}
 .help-caption {
     min-height: 1.6em;
     margin: 0;

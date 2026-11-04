@@ -1089,7 +1089,7 @@ await check('help cards play the real game in an isolated frame and leave the sa
             `help replay did not finish through its native clock ${JSON.stringify(frameObservation)}`,
         );
         expect(
-            frameObservation.step === 'done' && frameObservation.tabs === 3,
+            frameObservation.step === 'done' && frameObservation.tabs === 5,
             `help card state ${JSON.stringify(frameObservation)}`,
         );
     } catch (error) {
