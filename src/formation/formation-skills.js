@@ -1,7 +1,7 @@
 import { formationDamageForTarget } from './formation-damage.js';
 import { createFormationRuntime, FORMATION_COOLDOWN_SECONDS } from './formation-skill-state.js';
 import { applyDamage, unitMaxHpFor } from '../units/unit-stats.js';
-import { FixedSpatialGrid } from '../core/spatial-grid.js';
+import { createFarmGrid } from '../core/spatial-grid.js';
 import { GiantSkill } from '../features/formation-skills/giant/model.js';
 import { LightningSkill } from '../features/formation-skills/lightning/model.js';
 import { LargeMeteorSkill } from '../features/formation-skills/meteor/model.js';
@@ -36,7 +36,7 @@ export class FormationSkills {
         this.bossContexts = new Map();
         this.rebuildInjured();
         this.scratch = [];
-        this.air = new FixedSpatialGrid();
+        this.air = createFarmGrid();
         this.airScratch = [];
         this.subscriptions = [
             world.unitCollection.onAdded.on(({ unitId }) => {
@@ -275,7 +275,7 @@ export class FormationSkills {
         this.air.clear();
         for (const EFFECT of this.effects) {
             if (EFFECT.kind === 'ufo' || EFFECT.kind === 'storm-cloud') {
-                this.air.insert(EFFECT);
+                this.air.insert(EFFECT, EFFECT.x, EFFECT.y);
             }
         }
         let write = 0;
@@ -478,7 +478,7 @@ export class FormationSkills {
     nearby(x, y, radius) {
         this.world._beginSpatialQueryBatch();
         try {
-            return this.world.unitSpatial.queryAABB(x - radius, y - radius, x + radius, y + radius, this.scratch);
+            return this.world.unitSpatial.queryRect(x - radius, y - radius, x + radius, y + radius, this.scratch);
         } finally {
             this.world._endSpatialQueryBatch();
         }
@@ -559,7 +559,7 @@ export class FormationSkills {
         return this.world.unitCollection.items.length + count <= this.world.battleCapacity;
     }
     separateAir(effect, dt) {
-        for (const OTHER of this.air.queryAABB(
+        for (const OTHER of this.air.queryRect(
             effect.x - 1.4,
             effect.y - 1.4,
             effect.x + 1.4,
@@ -577,7 +577,7 @@ export class FormationSkills {
             effect.x += (DISTANCE ? DX / DISTANCE : Math.cos(ANGLE)) * FORCE;
             effect.y += (DISTANCE ? DY / DISTANCE : Math.sin(ANGLE)) * FORCE;
         }
-        this.air.update(effect);
+        this.air.move(effect, effect.x, effect.y);
     }
     dispose() {
         this.releaseBossHealth();

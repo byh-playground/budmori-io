@@ -72,7 +72,7 @@ export const FARM_BOSS_PATTERNS = (base) =>
                 GROUND_UNITS = this._bossGroundUnits;
             UNITS.length = 0;
             GROUND_UNITS.length = 0;
-            this.unitSpatial.queryAABB(
+            this.unitSpatial.queryRect(
                 B_LOCAL.x - EXTENT,
                 B_LOCAL.y - EXTENT,
                 B_LOCAL.x + EXTENT,
@@ -104,7 +104,7 @@ export const FARM_BOSS_PATTERNS = (base) =>
             };
         }
         eachBossGridUnit(grid, minX, minY, maxX, maxY, visit, groundOnly = false, boss = this.boss) {
-            this.unitSpatial.queryAABB(minX, minY, maxX, maxY, this._bossQueryCandidates);
+            this.unitSpatial.queryRect(minX, minY, maxX, maxY, this._bossQueryCandidates);
             const B_LOCAL = boss;
             for (const UNIT_LOCAL of this._bossQueryCandidates) {
                 if (

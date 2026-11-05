@@ -85,6 +85,10 @@
         {
             "name": "face",
             "bundleSHA256": "d7f8330ca99a837f602535ae703a7cdd8c88a3b12862058f1c34d34dd74e78ed"
+        },
+        {
+            "name": "spatial",
+            "bundleSHA256": "1fb88fa46dde9cdc85e2cc0d9349572362227daa69a11662eb2e37000d36c2f2"
         }
     ],
     "manifestSHA256": "e701c1e57fd22b9935aa3f893246700282304b0f016f3348744710ef69989306",

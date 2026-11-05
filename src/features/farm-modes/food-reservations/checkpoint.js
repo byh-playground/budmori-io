@@ -1,4 +1,4 @@
-import { FixedSpatialGrid } from '../../../core/spatial-grid.js';
+import { FARM_GRID_COLS } from '../../../core/spatial-grid.js';
 
 const STATE_FIELDS =
     'key revision claimRevision availabilityRevision x y centerX centerY maxRing ring ringCellIndex bucketIndex phase fallbackIndex nearestDistance nearestOrder status maxDistance'.split(
@@ -81,7 +81,7 @@ export function restoreFoodRuntime(owner, data) {
     W.food.forEach((food, index) => {
         W._foodOrder.set(food, index);
         if (food.phase === 'grounded') {
-            W.foodSpatial.insert(food);
+            W.foodSpatial.insert(food, food.x, food.y);
             W._groundedFoods.push(food);
         }
     });
@@ -140,7 +140,7 @@ export function validateFoodRuntime(data, raw, assert) {
     const INT = (value) => Number.isSafeInteger(value) && value >= 0,
         INDEX = (value, length) => INT(value) && value < length,
         UNITS = new Map(raw.units.map((unit) => [unit.id, unit])),
-        CELL_COUNT = new FixedSpatialGrid().cellCount,
+        CELL_COUNT = FARM_GRID_COLS,
         UNIQUE_LIVE = (indices) =>
             new Set(indices.filter((index) => index !== null)).size ===
             indices.filter((index) => index !== null).length;
