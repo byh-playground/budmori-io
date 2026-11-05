@@ -595,14 +595,14 @@ export class UnitPresentation {
         return POSE;
     }
     drawHealing(u, sim) {
-        const AGE = sim.time - u.healedAt,
-            DURATION = 0.75;
-        if (!(u.healedAt >= 0) || AGE < 0 || AGE >= DURATION || u.hp <= 0 || u.down > 0) {
+        const DURATION = CONFIG.unit.healingFeedbackSeconds,
+            REMAINING = u.healingUntil - sim.time;
+        if (!(REMAINING > 0) || u.hp <= 0 || u.down > 0) {
             return;
         }
         const R = this.renderer,
             Q = ((sim.time + u.id * 0.1) % DURATION) / DURATION,
-            ALPHA = (1 - AGE / DURATION) * Math.sin(Math.PI * Q),
+            ALPHA = Math.min(1, REMAINING / DURATION) * Math.sin(Math.PI * Q),
             SIZE = Math.max(0.2, u.radius * 0.5, (4 * R.pixelRatio) / R.scale),
             P = R.project(u.x, u.y, (u.z || 0) + u.height + SIZE + Q * 0.5),
             S = SIZE * R.scale,

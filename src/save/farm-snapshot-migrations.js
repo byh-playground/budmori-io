@@ -160,6 +160,7 @@ export function normalizeSnapshot(raw, { clone = true } = {}) {
     migrateBossMinionKinds(SNAPSHOT);
     migrateUnitMates(SNAPSHOT);
     for (const TARGET of [...SNAPSHOT.units, ...SNAPSHOT.bosses]) {
+        TARGET.healingUntil ??= 0;
         TARGET.statProfile ??= null;
         TARGET.statModifiers ??= {};
         TARGET.giantSizeMultiplier ??= 3;

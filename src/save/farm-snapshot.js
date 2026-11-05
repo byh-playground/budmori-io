@@ -15,6 +15,7 @@ export const UNIT_SNAPSHOT_SHAPE = {
     angle: 0,
     stun: 0,
     flash: 0,
+    healingUntil: 0,
     bounce: 0,
     ability: {
         phase: 'idle',
@@ -99,7 +100,7 @@ export const UNIT_SNAPSHOT_SHAPE = {
 // field/default contract without copying farm-only lifecycle fields to the boss.
 export const ACTOR_ATTACK_SNAPSHOT_SHAPE = Object.fromEntries(
     [
-        'x y z vx vy vz angle stun flash bounce ability specialAbility',
+        'x y z vx vy vz angle stun flash healingUntil bounce ability specialAbility',
         'kidneyLeapReadyTick kidneyLeapLastUseTick peaRecoveryPending peaCounterExpiresAtTick peaCounterPending',
         'peaRecoveryBoostExpiresAtTick peaRecoveryBoostMultiplier id generation species tier statProfile statModifiers',
         'permanentStatMultiplier growthMaxHpMultiplier faction growth growthElapsed growthDuration hp ownerId farmId',
