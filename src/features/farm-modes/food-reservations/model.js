@@ -249,7 +249,7 @@ export class FoodReservations {
             if (!winner?.seedling) {
                 const R = this.maxPickupRadius;
                 this.work.pickupQueries++;
-                W.unitSpatial.queryAABB(FOOD.x - R, FOOD.y - R, FOOD.x + R, FOOD.y + R, this.nearbyUnits);
+                W.unitSpatial.queryRect(FOOD.x - R, FOOD.y - R, FOOD.x + R, FOOD.y + R, this.nearbyUnits);
                 let distance = winner ? Math.hypot(winner.x - FOOD.x, winner.y - FOOD.y) : Infinity;
                 for (const UNIT of this.nearbyUnits) {
                     this.work.pickupChecks++;

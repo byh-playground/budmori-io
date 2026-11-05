@@ -519,7 +519,7 @@ export const FARM_CONTACT_SOLVER = (base) =>
         ) {
             const GAP = this.tower.active && this.battleCommand === 'scatter' ? CONFIG.farm.deploy.scatterGap : 0.22,
                 RADIUS = queryRadius ?? unit.radius + CONFIG.unit.maxRadius + GAP;
-            this.unitSpatial.queryAABB(
+            this.unitSpatial.queryRect(
                 unit.x - RADIUS,
                 unit.y - RADIUS,
                 unit.x + RADIUS,

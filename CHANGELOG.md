@@ -4,7 +4,13 @@
 
 - 후퇴·자연 재생·흡혈·회복 능력으로 실제 체력이 늘어날 때 유닛 위에 초록 회복 십자가를 표시합니다. 지속 회복은 표시를 갱신하고, 회복 종료 뒤 사라집니다. 만피·회복 차단·체력 초기화에는 표시하지 않습니다.
 
-## 미출시 — 내부 구조 정리 (제품 버전 0.67.57 유지)
+## 미출시 — 공간 격자 이관 (제품 버전 0.67.57 유지)
+
+- 농장 공간 격자를 GameKit `spatial` 모듈의 `UniformGrid`로 바꿨습니다. 자체 구현 `FixedSpatialGrid`(273줄)를 지우고 `src/core/spatial-grid.js`는 농장의 칸 크기·세계 범위(`createFarmGrid`)만 가집니다. 유닛·먹이·공중 효과 격자와 보스 패턴·접촉·먹이 탐색·대형 스킬의 질의가 같은 모듈을 씁니다. 먹이 탐색 고리의 칸 계산 코드는 모듈의 `ringCell`·`ringCellCount`로 대체했습니다(34줄).
+- 질의 결과의 순서(칸 행 우선, 칸 안은 삽입 순서)와 먹이 탐색 체크포인트의 칸 목록 순서는 이관 전후 같고, 시뮬레이션 상태 해시도 같습니다(상세는 PR).
+- 이 GameKit 핀은 앞선 face 이관에서 올렸고, 여기서는 `spatial` 모듈을 고정 목록에 더했습니다.
+
+## 미출시 — 얼굴 구조 정리 (제품 버전 0.67.57 유지)
 
 - 얼굴 표정 정의와 그리기를 GameKit `face` 모듈로 옮겼습니다. 게임의 `src/units/face-layer.js`(표정 13종 기하 397줄), `src/render/unit-face-draw.js`, `src/render/unit-overlay-images.js`를 지우고, 병력·보스·땅콩 분열 효과는 `renderer.faceOverlay.draw(compiled, actor, faceId, matrix, alpha, cheekColor)`(`FaceOverlay`), 초상화는 `faceSvg`를 씁니다. 속성 표시 그림은 같은 모듈의 `OperationImages`로 올립니다(`src/render/element-mark.js`). 상태→표정(`unitLook`)과 속성 색·도형은 게임에 남았습니다.
 - GameKit을 0.46.5(dist `53cd8b5`)로 올리고 `face` 모듈을 고정했습니다. 이미 쓰던 19개 모듈의 번들은 한 바이트도 바뀌지 않았습니다(바뀐 transport·rollback·metrics는 이 게임이 쓰지 않습니다).

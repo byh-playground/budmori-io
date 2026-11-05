@@ -131,7 +131,7 @@ FormationSkills가 편성 게이지·효과 수명을 소유하고 UnitCollectio
 전투 시간 조건을 위한 공통 집계는 있지만 현재 9종에는 처치·수동 도약·시간 조건을 배정하지 않았습니다.
 
 UnitCollection의 건강 Signal로 부상자 집합을 유지하므로 치유의 비가 매 틱 전체 병력을 스냅샷하지 않습니다.
-밀집도·범위 적중·공중 분리는 기존 FixedSpatialGrid를 사용합니다. 원본 저장소와 고정 GameKit에는 별도
+밀집도·범위 적중·공중 분리는 농장 격자(GameKit `spatial`의 `UniformGrid`, `src/core/spatial-grid.js`의 `createFarmGrid`)를 사용합니다. 원본 저장소와 고정 GameKit에는 별도
 공중 soft-separation API가 없어 두 비행 스킬이 동일한 격자 기반 완만한 반발 경로를 공유합니다.
 강제로 완전 비겹침을 보장하지 않습니다. 효과의 age·위치는 기존 GameKit presentation 보간으로 표시합니다.
 
