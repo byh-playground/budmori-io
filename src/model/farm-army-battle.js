@@ -106,7 +106,7 @@ export const FARM_ARMY_BATTLE = (base) =>
             this._prepareArmySpacing();
             const GAP = CONFIG.farm.deploy.scatterGap,
                 QUERY_RADIUS = unit.radius + this._armySpacingRadius + GAP;
-            this.unitSpatial.queryAABB(
+            this.unitSpatial.queryRect(
                 unit.x - QUERY_RADIUS,
                 unit.y - QUERY_RADIUS,
                 unit.x + QUERY_RADIUS,

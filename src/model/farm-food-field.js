@@ -14,7 +14,7 @@ export const FARM_FOOD_FIELD = (base) =>
         _refreshFoodSearchSnapshot() {
             const CELLS = new Map();
             for (const KEY of this.foodSpatial.usedCells) {
-                const BUCKET = this.foodSpatial.cells[KEY];
+                const BUCKET = this.foodSpatial.cellItems(KEY);
                 if (BUCKET?.length) {
                     CELLS.set(KEY, BUCKET.slice());
                 }
@@ -37,7 +37,7 @@ export const FARM_FOOD_FIELD = (base) =>
                 const FOOD = this.food[index];
                 this._foodOrder.set(FOOD, index);
                 if (FOOD.phase === 'grounded') {
-                    this.foodSpatial.insert(FOOD);
+                    this.foodSpatial.insert(FOOD, FOOD.x, FOOD.y);
                     NEXT_FOODS.push(FOOD);
                     grounded++;
                 }
@@ -70,13 +70,13 @@ export const FARM_FOOD_FIELD = (base) =>
             }
             this._foodOrder.set(food, this.food.length - 1);
             if (food.phase === 'grounded') {
-                this.foodSpatial.insert(food);
+                this.foodSpatial.insert(food, food.x, food.y);
                 this._groundedFoodCount = (this._groundedFoodCount || 0) + 1;
                 this._groundedFoodRevision++;
             }
         }
         consumeGroundFood(food, unit = null) {
-            if (food?.phase !== 'grounded' || !this.foodSpatial.itemCells.has(food)) {
+            if (food?.phase !== 'grounded' || !this.foodSpatial.has(food)) {
                 return false;
             }
             if (!this._foodReservations.canConsume(food, unit)) {
@@ -109,7 +109,7 @@ export const FARM_FOOD_FIELD = (base) =>
         }
         updateFoodSpatial(food) {
             const START = this.profiler?.start();
-            this.foodSpatial.update(food);
+            this.foodSpatial.move(food, food.x, food.y);
             this.profiler?.end('spatial', START);
         }
         avoidNearbyFood(u, dt) {
@@ -122,7 +122,7 @@ export const FARM_FOOD_FIELD = (base) =>
             if (!this._spatialStepActive) {
                 this._rebuildFoodSpatialIndex();
             }
-            this.foodSpatial.queryAABB(u.x - RADIUS, u.y - RADIUS, u.x + RADIUS, u.y + RADIUS, this._foodCandidates);
+            this.foodSpatial.queryRect(u.x - RADIUS, u.y - RADIUS, u.x + RADIUS, u.y + RADIUS, this._foodCandidates);
             this._foodCandidates.sort(
                 (a, b) => (this._foodOrder.get(a) ?? Infinity) - (this._foodOrder.get(b) ?? Infinity),
             );
@@ -197,13 +197,13 @@ export const FARM_FOOD_FIELD = (base) =>
             const GRID = this.foodSpatial,
                 CX = GRID.cellX(x),
                 CY = GRID.cellY(y);
-            if (CX < 0 || CY < 0 || CX >= GRID.cellCount || CY >= GRID.cellCount) {
+            if (CX < 0 || CY < 0 || CX >= GRID.cols || CY >= GRID.rows) {
                 return null;
             }
             let nearest = null;
             let nearestDistance = Infinity;
             let nearestOrder = Infinity;
-            const MAX_RING = Math.max(CX, CY, GRID.cellCount - 1 - CX, GRID.cellCount - 1 - CY);
+            const MAX_RING = Math.max(CX, CY, GRID.cols - 1 - CX, GRID.rows - 1 - CY);
             for (let ring = 0; ring <= MAX_RING; ring++) {
                 GRID.queryCellRing(CX, CY, ring, this._foodCandidates);
                 for (const FOOD of this._foodCandidates) {
@@ -243,13 +243,13 @@ export const FARM_FOOD_FIELD = (base) =>
             return nearest;
         }
         _isCurrentGroundedFood(food) {
-            return !!food && food.phase === 'grounded' && this.foodSpatial.itemCells.has(food);
+            return !!food && food.phase === 'grounded' && this.foodSpatial.has(food);
         }
         _startFoodTargetSearch(unit) {
             const GRID = this.foodSpatial,
                 CX = GRID.cellX(unit.x),
                 CY = GRID.cellY(unit.y);
-            if (CX < 0 || CY < 0 || CX >= GRID.cellCount || CY >= GRID.cellCount) {
+            if (CX < 0 || CY < 0 || CX >= GRID.cols || CY >= GRID.rows) {
                 return null;
             }
             // A seed takes the first food it finds on the rings; an adult wants the nearest one, which a pass over a short
@@ -267,7 +267,7 @@ export const FARM_FOOD_FIELD = (base) =>
                 y: unit.y,
                 centerX: CX,
                 centerY: CY,
-                maxRing: Math.max(CX, CY, GRID.cellCount - 1 - CX, GRID.cellCount - 1 - CY),
+                maxRing: Math.max(CX, CY, GRID.cols - 1 - CX, GRID.rows - 1 - CY),
                 ring: 0,
                 ringCellIndex: 0,
                 bucket: EMPTY_FOOD_SEARCH_BUCKET,
@@ -316,8 +316,9 @@ export const FARM_FOOD_FIELD = (base) =>
                     return { done: true, unitsUsed, result: state.nearest };
                 }
                 if (state.phase === 'rings') {
-                    const RING_CELLS = state.ring === 0 ? 1 : 8 * state.ring,
-                        RING_COMPLETE = state.ringCellIndex >= RING_CELLS && state.bucketIndex >= state.bucket.length;
+                    const RING_COMPLETE =
+                        state.ringCellIndex >= GRID.ringCellCount(state.ring) &&
+                        state.bucketIndex >= state.bucket.length;
                     if (RING_COMPLETE) {
                         if (
                             state.nearest &&
@@ -367,25 +368,7 @@ export const FARM_FOOD_FIELD = (base) =>
                     }
                     continue;
                 }
-                const RING = state.ring,
-                    INDEX = state.ringCellIndex++,
-                    EDGE_COUNT = RING === 0 ? 1 : 2 * (2 * RING + 1);
-                let cellX, cellY;
-                if (RING === 0) {
-                    cellX = state.centerX;
-                    cellY = state.centerY;
-                } else if (INDEX < EDGE_COUNT) {
-                    cellX = state.centerX - RING + Math.floor(INDEX / 2);
-                    cellY = INDEX % 2 === 0 ? state.centerY - RING : state.centerY + RING;
-                } else {
-                    const INNER_INDEX = INDEX - EDGE_COUNT;
-                    cellX = INNER_INDEX % 2 === 0 ? state.centerX - RING : state.centerX + RING;
-                    cellY = state.centerY - RING + 1 + Math.floor(INNER_INDEX / 2);
-                }
-                const CELL_KEY =
-                    cellX >= 0 && cellY >= 0 && cellX < GRID.cellCount && cellY < GRID.cellCount
-                        ? cellY * GRID.cellCount + cellX
-                        : -1;
+                const CELL_KEY = GRID.ringCell(state.centerX, state.centerY, state.ring, state.ringCellIndex++);
                 state.bucket =
                     CELL_KEY < 0 ? EMPTY_FOOD_SEARCH_BUCKET : SNAPSHOT.cells.get(CELL_KEY) || EMPTY_FOOD_SEARCH_BUCKET;
                 state.bucketIndex = 0;

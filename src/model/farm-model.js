@@ -57,7 +57,7 @@ import {} from '../vector-sockets.js';
 import { BOSS_PHASE_THRESHOLDS } from '../boss/boss-patterns.js';
 import { isWorkBasisPoints, isBreedWeights } from './play-choices.js';
 import { FACTION_CONFIG, hasFaction, areOpposingFactions } from '../core/factions.js';
-import { FixedSpatialGrid } from '../core/spatial-grid.js';
+import { createFarmGrid } from '../core/spatial-grid.js';
 import {} from './army-scatter.js';
 import { CONFIG, CLAMP, STATS, MUTABLE_STATS } from './farm-config.js';
 import { bossAttackArea } from '../boss/boss-behaviors.js';
@@ -103,8 +103,8 @@ const GARDEN = class Garden extends GARDEN_BASE {
         this.notices = [];
         this.eventSequence = 0;
         this.mergeTasks = [];
-        this.unitSpatial = new FixedSpatialGrid();
-        this.foodSpatial = new FixedSpatialGrid();
+        this.unitSpatial = createFarmGrid();
+        this.foodSpatial = createFarmGrid();
         this._unitById = new Map();
         this._unitStepOrder = new Map();
         this._unitAliveState = new Map();
@@ -322,7 +322,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
             GROUP.length = 0;
         }
         for (const UNIT_LOCAL of this.units) {
-            GRID.insert(UNIT_LOCAL);
+            GRID.insert(UNIT_LOCAL, UNIT_LOCAL.x, UNIT_LOCAL.y);
             this._unitById.set(UNIT_LOCAL.id, UNIT_LOCAL);
             if (hasSpeciesGroup(UNIT_LOCAL)) {
                 this._speciesGroups[UNIT_LOCAL.species].push(UNIT_LOCAL);
@@ -350,7 +350,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
             this._unitSpatialDirty = true;
             return;
         }
-        this.unitSpatial.insert(unit);
+        this.unitSpatial.insert(unit, unit.x, unit.y);
         this._unitById.set(unit.id, unit);
         this._unitStepOrder.set(unit, -1);
         if (hasSpeciesGroup(unit)) {
@@ -467,7 +467,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
         if (!this._spatialStepActive && this._spatialQueryDepth === 0) {
             this._rebuildUnitSpatialIndex(this.units);
         }
-        this.unitSpatial.queryAABB(minX, minY, maxX, maxY, out);
+        this.unitSpatial.queryRect(minX, minY, maxX, maxY, out);
         let length = 0;
         for (let index = 0; index < out.length; index++) {
             const UNIT_LOCAL = out[index];
@@ -1571,7 +1571,7 @@ const GARDEN = class Garden extends GARDEN_BASE {
     }
     updateUnitSpatial(unit) {
         const START = this.profiler?.start();
-        this.unitSpatial.update(unit);
+        this.unitSpatial.move(unit, unit.x, unit.y);
         this.profiler?.end('spatial', START);
     }
     advancePhysics(dt, units, scene) {
