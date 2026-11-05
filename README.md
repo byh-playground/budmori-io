@@ -202,7 +202,7 @@ GameKit pwa 계약(SDK 0.41.2)은 **페이지를 읽을 때(새로고침 포함)
 - `src/app/farm-session.js`: 로컬 명령과 실행 세션.
 - `src/render/farm-renderer.js`: 실제 WebGL 투영, GameKit troop/boss vector assets, 전투 예고.
 - `assets/troops/*.svg`: 캐릭터 몸체·클립·소켓 원본(표정 없음).
-- `src/units/face-layer.js`, `src/render/unit-face-draw.js`: 모든 병종이 공유하는 표정 생성과 그리기.
+- GameKit `face` 모듈(`FaceOverlay`·`faceSvg`): 모든 병종이 공유하는 표정 생성과 그리기. 게임은 `src/units/species-face.js`(상태→표정, 속성→볼 색, 속성 표시 도형)와 `src/render/element-mark.js`(속성 표시 그리기)만 가집니다.
 - `src/render/combat-feel.js`, `src/render/food-feel.js`: 확정 사건을 읽는 제한된 표현·오디오.
 - `src/farm-app.js`: 시작·복귀·농장 입력·라우팅·성장 UI.
 - `src/abilities/ability-progression.js`: 능력·일반 강화 구매, 환불, 적용 등급과 노드 상태 판정. 모델과 성장 UI가 같은 도메인 규칙을 사용합니다.

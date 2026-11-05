@@ -8,10 +8,10 @@
 
 - 병종마다 가진 얼굴 자원은 `body` part의 socket 세 개뿐입니다: `face-eye-left`, `face-eye-right`, `face-mouth`.
   눈 크기·입 폭·볼 위치는 두 눈 사이 간격에 비례해 정해집니다.
-- `src/units/face-layer.js`는 socket 세 점에서 상태 표정 8종(중립·웃음·집중·공격·놀람·아픔·배고픔·기절)과 성향 표정 5종(느긋·소심·발끈·까불·다정)을 베지어 경로로 만듭니다. 순수 함수이며 SVG 캔버스 좌표를 씁니다.
-- `src/render/unit-face-draw.js`는 몸이 그려진 직후 현재 자세의 socket 세 점으로 anchor 삼각형을 변환해 그립니다. 찌그러짐·기울기·튀어오름이 몸과 함께 움직이고, 몸이 스프라이트이든 native 벡터이든 같은 경로입니다.
-- 얼굴은 표정 13종 × 눈·눈·입 3개, 흰 볼 1개, 속성 표시 5개인 45개 공유 이미지로 조합합니다. 시작과 그래픽 복구 때만 아틀라스에 올립니다. 확대 시 원본 벡터와 초상화에서는 같은 색의 연속 경로를 하나로 합칩니다. 서로 겹치는 도형의 순서(눈 위의 하이라이트, 입 위의 이빨)는 바뀌지 않습니다.
-- UI 초상화(`species-paint.js`)는 같은 경로를 SVG `path`로 바꿔 몸 SVG 끝에 `face-layer` 그룹 하나로 붙입니다.
+- 표정 13종(상태 8종·성향 5종)의 부품 정의와 그리기는 GameKit `face` 모듈(`geometry.js`의 `faceParts`·`buildFace`·`faceSvg`, `FaceOverlay`, `OperationImages`)이 가집니다. socket 세 점에서 눈·입·볼을 베지어 경로로 만드는 순수 함수이며 SVG 캔버스 좌표를 씁니다. 게임에는 표정 정의가 없고, 어떤 상태에서 어떤 표정을 지을지(`unitLook`)와 속성 표시 도형만 남아 있습니다.
+- 병력·보스·땅콩 분열 효과는 몸을 그린 직후 `renderer.faceOverlay.draw(compiled, actor, faceId, matrix, alpha, cheekColor)`로 얼굴을 얹습니다. 모듈이 현재 자세의 socket 세 점으로 anchor 삼각형을 변환해 그려, 찌그러짐·기울기·튀어오름이 몸과 함께 움직이고 몸이 스프라이트이든 native 벡터이든 같은 경로입니다.
+- 얼굴은 표정 13종 × 눈·눈·입 3개와 흰 볼 1개의 40개 공유 이미지(`FaceOverlay`), 속성 표시 5개(`renderer.elementMarks`, `OperationImages`)를 합친 45개 이미지로 조합합니다. 시작과 그래픽 복구 때만 아틀라스에 올립니다. 이미지를 반 크기보다 크게 늘리게 되는 확대에서는 같은 부품을 경로로 그리며(`drawFacePaths`), 같은 색의 연속 경로는 하나로 합칩니다. 서로 겹치는 도형의 순서(눈 위의 하이라이트, 입 위의 이빨)는 바뀌지 않습니다.
+- UI 초상화(`species-paint.js`)는 `faceSvg`로 같은 경로를 SVG `path`로 바꿔 몸 SVG 끝에 `face-layer` 그룹 하나로 붙입니다.
 
 ## 깊이와 배치
 

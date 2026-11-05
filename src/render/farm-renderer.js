@@ -10,7 +10,7 @@ import { scenePresentation } from './farm-render-scenes.js';
 import { FoodPresentation, ProjectilePresentation } from './farm-render-items.js';
 import { UnitPresentation } from './farm-render-units.js';
 import { UnitSpriteAtlas, UNIT_SPRITE_ATLAS } from './unit-sprite-atlas.js';
-import { UnitOverlayImages } from './unit-overlay-images.js';
+import { createElementMarkImages } from './element-mark.js';
 import { unitCullingEnabled, unitMayBeVisible } from './farm-render-visibility.js';
 import { UNIT_GRADES } from '../units/unit-grades.js';
 import { CornAttachmentPresentation } from '../features/abilities/corn-attachment/presentation.js';
@@ -38,6 +38,7 @@ import { DeathPresentation } from './death-presentation.js';
 const { bosses: BOSS_VECTOR_ASSETS, troops: TROOP_VECTOR_ASSETS } = globalThis.BudmoriVectorResources;
 // Original SVG sources are compiled once by the startup loader before this module runs.
 const { WebGLDevice: WEB_GL_DEVICE, VectorContext: VECTOR_CONTEXT } = globalThis.BloomGamekitRendering;
+const { FaceOverlay: FACE_OVERLAY } = globalThis.BloomGamekitFace;
 const { createVectorActor: CREATE_VECTOR_ACTOR, holdVectorAsset: HOLD_VECTOR_ASSET } =
     globalThis.BloomGamekitVectorAssets;
 function renderedBossAttackArea(boss, scene, scratch, area) {
@@ -140,7 +141,8 @@ const DIORAMA = class Diorama {
             });
         }
         this.unitSprites = new UnitSpriteAtlas(this, this.unitArtMode === 'sprite');
-        this.unitOverlays = new UnitOverlayImages(this);
+        this.faceOverlay = new FACE_OVERLAY(this.ctx);
+        this.elementMarks = createElementMarkImages(this.ctx);
         this.unitPresentation.prepareBodyGroups();
         this.bossAssets = new Map(
             Object.entries(BOSS_VECTOR_ASSETS).map(([id, compiled]) => [
@@ -194,7 +196,8 @@ const DIORAMA = class Diorama {
             height: this.canvas.height,
             clearColor: [0.9, 0.92, 0.87, 1],
         });
-        this.unitOverlays.prepare();
+        this.faceOverlay.prepare();
+        this.elementMarks.prepare();
         if (!deferSpritePreparation) {
             this.unitSprites.prepare();
         }
@@ -208,7 +211,8 @@ const DIORAMA = class Diorama {
         // after this listener, so image preparation cannot advance game time.
         this.onSpritesRestored = () => {
             // Overlays already uploaded are replayed by the device; this only uploads them if start could not.
-            this.unitOverlays.prepare();
+            this.faceOverlay.prepare();
+            this.elementMarks.prepare();
             if (
                 !this.assetsReady ||
                 this.unitSprites.disposed ||
@@ -1278,7 +1282,8 @@ const DIORAMA = class Diorama {
         this.canvas.removeEventListener('webglcontextrestored', this.onSpritesRestored);
         disposeEffectPresentations(this);
         this.unitSprites.dispose();
-        this.unitOverlays.dispose();
+        this.faceOverlay.dispose();
+        this.elementMarks.dispose();
         for (const SPECIES of this.vectorAssets.keys()) {
             unbindBossSocketAsset(SPECIES, this.bossSpeciesAssets.get(SPECIES));
         }

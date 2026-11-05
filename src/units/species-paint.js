@@ -1,5 +1,6 @@
-import { faceSvg } from './face-layer.js';
 import { elementCheekColor, unitLook } from './species-face.js';
+
+const { faceSvg: FACE_SVG } = globalThis.BloomGamekitFace;
 
 const PORTRAITS = new Map();
 const ROOTS = new Map();
@@ -27,7 +28,7 @@ export function speciesFacePortraitSource(species, faceId, element = 0) {
                 mouth: SOCKETS['face-mouth'].point,
             },
             LAYER = new DOMParser().parseFromString(
-                `<g xmlns="http://www.w3.org/2000/svg" id="face-layer">${faceSvg(FACE, ANCHOR, COLOR)}</g>`,
+                `<g xmlns="http://www.w3.org/2000/svg" id="face-layer">${FACE_SVG(FACE, ANCHOR, COLOR)}</g>`,
                 'image/svg+xml',
             ).documentElement;
         SVG.appendChild(SVG.ownerDocument.importNode(LAYER, true));

@@ -19,7 +19,7 @@ if (new URLSearchParams(location.search).get('showcaseDemo') !== '1') {
         }
         if (!pending) {
             pending =
-                import('https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@9c036d3f6a586b77e83b70332584addcf5651463/scenario.js')
+                import('https://cdn.jsdelivr.net/gh/byh-playground/bloom-gamekit@53cd8b5666e9632b0b78f3109b24cc62e99efb93/scenario.js')
                     .then(({ installShowcase }) => {
                         hostInstance = installShowcase({
                             locale: LOCALE.locale,

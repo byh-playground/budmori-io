@@ -5,10 +5,13 @@ import { speciesById, SPECIES_COUNT } from '../src/units/species-catalog.js';
 
 // Every species and the sprout carry a face.
 const FACE_SPECIES = Array.from({ length: SPECIES_COUNT + 1 }, (_, id) => id);
-import { FACE_IDS, STATE_FACES, TEMPERAMENT_FACES, buildFace } from '../src/units/face-layer.js';
-import { elementCheekColor, unitLook } from '../src/units/species-face.js';
-import { speciesPortraitSource } from '../src/units/species-paint.js';
 import { TEMPERAMENTS } from '../src/model/lineage.js';
+
+// The game reads the pinned face module from a page global; this Node check installs the same verified bytes.
+globalThis.BloomGamekitFace = await import('../vendor/upstream/face.js');
+const { FACE_IDS, STATE_FACES, TEMPERAMENT_FACES, buildFace: BUILD_FACE } = globalThis.BloomGamekitFace;
+const { elementCheekColor: ELEMENT_CHEEK_COLOR, unitLook: UNIT_LOOK } = await import('../src/units/species-face.js');
+const { speciesPortraitSource: SPECIES_PORTRAIT_SOURCE } = await import('../src/units/species-paint.js');
 
 globalThis.DOMParser = DOMParser;
 globalThis.XMLSerializer = XMLSerializer;
@@ -65,7 +68,7 @@ for (const SPECIES of FACE_SPECIES) {
         GAP = SOCKETS[1][0] - SOCKETS[0][0],
         SEEN = new Set();
     for (const FACE of FACE_IDS) {
-        const OPS = buildFace(FACE, ANCHOR, null);
+        const OPS = BUILD_FACE(FACE, ANCHOR, null);
         assert.ok(OPS.length >= 3, FACE + ' has parts');
         for (const OP of OPS) {
             assert.ok(OP.fill || OP.stroke, 'Every operation has a colour');
@@ -83,21 +86,21 @@ for (const SPECIES of FACE_SPECIES) {
         SEEN.add(JSON.stringify(OPS));
     }
     assert.equal(SEEN.size, FACE_IDS.length, 'All faces differ in every SPECIES');
-    assert.notDeepEqual(buildFace('neutral', ANCHOR, null), buildFace('neutral', ANCHOR, '#4a9de0'), 'Cheek colour');
+    assert.notDeepEqual(BUILD_FACE('neutral', ANCHOR, null), BUILD_FACE('neutral', ANCHOR, '#4a9de0'), 'Cheek colour');
 }
 
 // State faces take priority over temperament; temperament only shows while nothing else happens.
 assert.equal(TEMPERAMENT_FACES.length, TEMPERAMENTS.length);
 for (let temperament = 0; temperament < TEMPERAMENTS.length; temperament++) {
-    assert.deepEqual(unitLook('neutral', temperament), { body: 'neutral', face: TEMPERAMENT_FACES[temperament] });
+    assert.deepEqual(UNIT_LOOK('neutral', temperament), { body: 'neutral', face: TEMPERAMENT_FACES[temperament] });
     for (const STATE of STATE_FACES.filter((face) => face !== 'neutral')) {
-        assert.deepEqual(unitLook(STATE, temperament), { body: 'neutral', face: STATE });
+        assert.deepEqual(UNIT_LOOK(STATE, temperament), { body: 'neutral', face: STATE });
     }
-    assert.deepEqual(unitLook('sleep', temperament), { body: 'neutral', face: 'happy' });
-    assert.deepEqual(unitLook('guard', temperament), { body: 'guard', face: null });
-    assert.deepEqual(unitLook('guard-attack', temperament), { body: 'neutral', face: 'attack' });
+    assert.deepEqual(UNIT_LOOK('sleep', temperament), { body: 'neutral', face: 'happy' });
+    assert.deepEqual(UNIT_LOOK('guard', temperament), { body: 'guard', face: null });
+    assert.deepEqual(UNIT_LOOK('guard-attack', temperament), { body: 'neutral', face: 'attack' });
 }
-assert.deepEqual(unitLook('neutral', -1), { body: 'neutral', face: 'neutral' }, 'Enemies and seedlings');
+assert.deepEqual(UNIT_LOOK('neutral', -1), { body: 'neutral', face: 'neutral' }, 'Enemies and seedlings');
 assert.deepEqual(
     TEMPERAMENTS.map((entry) => entry.name.ko),
     ['느긋', '소심', '발끈', '까불', '다정'],
@@ -108,7 +111,7 @@ for (const SPECIES of FACE_SPECIES) {
     const BODY = new DOMParser().parseFromString(SOURCES[SPECIES], 'image/svg+xml').documentElement,
         BODY_COUNT = BODY.getElementsByTagName('*').length;
     for (let temperament = 0; temperament < TEMPERAMENTS.length; temperament++) {
-        const URI = speciesPortraitSource(SPECIES, 1, temperament),
+        const URI = SPECIES_PORTRAIT_SOURCE(SPECIES, 1, temperament),
             PORTRAIT = new DOMParser().parseFromString(
                 decodeURIComponent(URI.split(',').slice(1).join(',')),
                 'image/svg+xml',
@@ -116,11 +119,11 @@ for (const SPECIES of FACE_SPECIES) {
             LAYER = [...PORTRAIT.getElementsByTagName('g')].filter((node) => node.getAttribute('id') === 'face-layer');
         assert.equal(LAYER.length, 1, 'One face layer over the body');
         assert.ok(PORTRAIT.getElementsByTagName('*').length > BODY_COUNT, 'Face is added to the body');
-        assert.ok(URI.includes(encodeURIComponent(elementCheekColor(1))), 'Cheeks use the element colour');
-        assert.equal(speciesPortraitSource(SPECIES, 1, temperament), URI, 'Finite portrait cache');
+        assert.ok(URI.includes(encodeURIComponent(ELEMENT_CHEEK_COLOR(1))), 'Cheeks use the element colour');
+        assert.equal(SPECIES_PORTRAIT_SOURCE(SPECIES, 1, temperament), URI, 'Finite portrait cache');
     }
 }
-assert.equal(elementCheekColor(0), null);
+assert.equal(ELEMENT_CHEEK_COLOR(0), null);
 for (const FILE of ['src/render/farm-render-units.js', 'src/ui/codex-dialog.js']) {
     assert.doesNotMatch(
         fs.readFileSync(new URL('../' + FILE, import.meta.url), 'utf8'),

@@ -30,6 +30,7 @@ const MODULES = Object.freeze({
     pwa: 'BloomGamekitPwa',
     boot: 'BloomGamekitBoot',
     i18n: 'BloomGamekitI18n',
+    face: 'BloomGamekitFace',
 });
 // Every generated file the pinned dist manifest lists, in its order. Browser bundles are `.js`; Node tools
 // such as the PWA generator and the module-graph lister are `.mjs` and are only run locally (scripts/pwa.mjs,
@@ -45,6 +46,7 @@ const DIST_FILES = Object.freeze(
         'simloop',
         'work-scheduler',
         'behavior',
+        'spatial',
         'transport',
         'replay',
         'rollback',
@@ -56,6 +58,7 @@ const DIST_FILES = Object.freeze(
         'navigation',
         'scenario',
         'object-pool',
+        'geometry',
         'pixel-physics',
         'bm',
         'bm-mock',
@@ -68,6 +71,7 @@ const DIST_FILES = Object.freeze(
         'pwa',
         'boot',
         'i18n',
+        'face',
     ]
         .map((name) => name + '.js')
         .concat(['pwa-build.mjs', 'boot-build.mjs']),
