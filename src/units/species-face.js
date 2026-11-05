@@ -1,5 +1,6 @@
 import { ELEMENTS } from '../model/lineage.js';
-import { TEMPERAMENT_FACES } from './face-layer.js';
+
+const { TEMPERAMENT_FACES } = globalThis.BloomGamekitFace;
 
 // A unit's look is two independent things: the body variant the SVG mesh draws ('guard' hides the whole
 // body inside the walnut shell) and the face layer drawn on top of it. Temperament only shows while nothing

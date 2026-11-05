@@ -1,6 +1,8 @@
 import { ELEMENTS } from '../model/lineage.js';
 import { bossLeafCount, bossAuraLevel, BOSS_LEAF_ANGLES } from '../tower/boss-growth.js';
-import { faceAnchor, posedFace, POSED } from './unit-face-draw.js';
+
+const { faceAnchor: FACE_ANCHOR, posedFace: POSED_FACE } = globalThis.BloomGamekitFace;
+const POSED = [0, 0, 0, 0, 0, 0];
 
 // Where the extra leaves grow and how big the aura is, in the sprout body's own canvas (320 x 350).
 const LEAF_BASE = Object.freeze([160, 168]),
@@ -37,8 +39,8 @@ export function drawBossGrowth(ctx, record, player, matrix, element, floor, alph
     if (LEAVES <= 1 && AURA <= 0) {
         return;
     }
-    const REST = faceAnchor(record.compiled),
-        P = posedFace(player, REST, POSED),
+    const REST = FACE_ANCHOR(record.compiled),
+        P = POSED_FACE(player, REST, POSED),
         COLOR = ELEMENTS[element]?.color;
     ctx.save();
     ctx.transform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]);

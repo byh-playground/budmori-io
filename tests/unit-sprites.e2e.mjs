@@ -54,7 +54,7 @@ const REPORT = {
             'src/render/unit-sprite-atlas.js',
             'src/render/farm-render-units.js',
             'src/render/farm-renderer.js',
-            'src/render/unit-face-overlay.js',
+            'src/render/element-mark.js',
             'src/render/unit-art.js',
             'src/units/species-face.js',
             'src/units/species-paint.js',

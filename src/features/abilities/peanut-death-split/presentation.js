@@ -1,4 +1,3 @@
-import { drawUnitFace } from '../../../render/unit-face-draw.js';
 import { ABILITIES } from '../../../i18n/messages/abilities.js';
 const PEANUT_PLAYERS_BY_RENDERER = new WeakMap();
 
@@ -57,7 +56,7 @@ export class PeanutDeathSplitPresentation {
             matrix: MATRIX,
             alpha: ALPHA,
         });
-        drawUnitFace(renderer, RECORD, player, 'surprised', null, MATRIX, ALPHA);
+        renderer.faceOverlay.draw(RECORD.compiled, player, 'surprised', MATRIX, ALPHA);
         if (ELAPSED_MS >= CLIP.durationMs) {
             player.dispose();
             players.delete(effect.eventId);

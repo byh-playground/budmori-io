@@ -180,9 +180,9 @@ export async function unitDepthBatchingScenario(app) {
         // Freeze the original non-ordered reference; the new SDK can batch painterActors itself.
         // This is fixture-only state, restored even when drawing fails; no product debug mode is added.
         MESHES.ordered = ordered ? ORDERED : null;
-        const DRAW_FACE = R.unitOverlays.drawFace;
+        const DRAW_FACE = R.faceOverlay.draw;
         let vectorFaces = 0;
-        R.unitOverlays.drawFace = function (...args) {
+        R.faceOverlay.draw = function (...args) {
             const RESULT = DRAW_FACE.apply(this, args);
             vectorFaces += Number(!RESULT);
             return RESULT;
@@ -190,7 +190,7 @@ export async function unitDepthBatchingScenario(app) {
         try {
             R.render(view, null, 2000000);
         } finally {
-            R.unitOverlays.drawFace = DRAW_FACE;
+            R.faceOverlay.draw = DRAW_FACE;
             MESHES.ordered = ORDERED;
         }
         const PIXELS = new Uint8Array(R.canvas.width * R.canvas.height * 4);
