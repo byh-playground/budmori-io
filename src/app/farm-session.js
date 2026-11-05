@@ -252,6 +252,7 @@ class UnitRender extends RENDER_OBJECT {
         isDowned: R.STATE_KEY,
         stun: R.LINEAR,
         flash: R.LINEAR,
+        healingUntil: R.STEP,
         bounce: R.LINEAR,
         ...UNIT_ATTACK_SCHEMA,
         commandBeatLife: R.LINEAR,
@@ -319,6 +320,7 @@ class UnitRender extends RENDER_OBJECT {
         this.isDowned = u.hp <= 0;
         this.stun = u.stun;
         this.flash = u.flash;
+        this.healingUntil = u.healingUntil;
         this.bounce = u.bounce;
         updateUnitAttackRender(this, u, world);
         this.cooldown = u.cooldown;

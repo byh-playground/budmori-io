@@ -388,7 +388,7 @@ export function applyHealing(target, amount, receiverStats = combatStats(target)
         : 1;
     const REQUESTED = Number.isFinite(amount) ? Math.max(0, amount) * RECEIVED : 0;
     const HEALED = Math.min(Math.max(0, MAX_HP - target.hp), REQUESTED);
-    setHealth(target, target.hp + HEALED);
+    setHealth(target, target.hp + HEALED, HEALED);
     return HEALED;
 }
 
@@ -455,9 +455,9 @@ function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
 }
 
-function setHealth(target, value) {
+function setHealth(target, value, healed = 0) {
     if (typeof target.setHealth === 'function') {
-        target.setHealth(value);
+        target.setHealth(value, { healed });
     } else {
         // Numeric DTO/fixture consumers retain the public helper contract.
         // All live combatants, including the boss, use Unit.setHealth.

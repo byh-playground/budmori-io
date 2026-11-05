@@ -25,6 +25,7 @@ const BODY = class Body {
             angle: 0,
             stun: 0,
             flash: 0,
+            healingUntil: 0,
             bounce: 0,
         });
     }
@@ -308,14 +309,18 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
     set moveSpeed(value) {
         this.setBaseStats({ moveSpeed: value });
     }
-    setHealth(value) {
+    setHealth(value, { healed = 0 } = {}) {
         const PREVIOUS = this.hp;
         this.hp = value;
         if (PREVIOUS !== value) {
+            if (healed > 0 && value > PREVIOUS) {
+                this.healingUntil = (this._world?.time ?? 0) + CONFIG.unit.healingFeedbackSeconds;
+            }
             this.onHealthChanged.emit({ unitId: this.id, previousHp: PREVIOUS, hp: value });
         }
     }
     die() {
+        this.healingUntil = 0;
         this.ability?.interrupt();
         this.specialAbility?.interrupt();
         this.barleyArmorShredBuckets = createBarleyArmorShredBuckets();
@@ -338,6 +343,7 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
             vz: 0,
             stun: 0,
             flash: 0,
+            healingUntil: 0,
             bounce: 0,
             angle: 0,
             deathSplitHandled: false,

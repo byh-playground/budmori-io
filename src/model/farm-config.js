@@ -137,6 +137,7 @@ export const CONFIG = Object.freeze({
         speciesCount: SPECIES_COUNT,
         maxTier: MAX_UNIT_TIER,
         maxRadius: maximumUnitRadius(MAX_UNIT_TIER),
+        healingFeedbackSeconds: 0.75,
         perceptionRange: 18,
         corpseRecoverySeconds: 60,
     }),
