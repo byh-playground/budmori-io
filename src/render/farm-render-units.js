@@ -594,6 +594,28 @@ export class UnitPresentation {
         this.drawVectorUnit(u, sim, POSE.p, POSE.r, rest);
         return POSE;
     }
+    drawHealing(u, sim) {
+        const AGE = sim.time - u.healedAt,
+            DURATION = 0.75;
+        if (!(u.healedAt >= 0) || AGE < 0 || AGE >= DURATION || u.hp <= 0 || u.down > 0) {
+            return;
+        }
+        const R = this.renderer,
+            Q = ((sim.time + u.id * 0.1) % DURATION) / DURATION,
+            ALPHA = (1 - AGE / DURATION) * Math.sin(Math.PI * Q),
+            SIZE = Math.max(0.2, u.radius * 0.5, (4 * R.pixelRatio) / R.scale),
+            P = R.project(u.x, u.y, (u.z || 0) + u.height + SIZE + Q * 0.5),
+            S = SIZE * R.scale,
+            A = { x: P.x - S, y: P.y },
+            B = { x: P.x + S, y: P.y },
+            C = { x: P.x, y: P.y - S },
+            D = { x: P.x, y: P.y + S };
+        R.ellipse(P.x, P.y, S * 1.5, S * 1.5, `rgba(83,217,133,${ALPHA * 0.15})`);
+        R.line(A, B, SIZE * 0.65, `rgba(46,151,86,${ALPHA})`);
+        R.line(C, D, SIZE * 0.65, `rgba(46,151,86,${ALPHA})`);
+        R.line(A, B, SIZE * 0.3, `rgba(207,255,218,${ALPHA})`);
+        R.line(C, D, SIZE * 0.3, `rgba(207,255,218,${ALPHA})`);
+    }
     draw(u, sim) {
         const C = this.renderer.ctx,
             DEPTH = C.depth,
@@ -613,6 +635,7 @@ export class UnitPresentation {
         this.drawSleepIndicator(REST, POSE);
         PASSIVE_MARKS.drawUnit(this.renderer, u, sim.time);
         BARLEY_SHRED_PRESENTATION.drawStatus(this.renderer, u);
+        this.drawHealing(u, sim);
         C.depth = DEPTH;
     }
 }

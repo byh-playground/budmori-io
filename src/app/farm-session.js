@@ -252,6 +252,7 @@ class UnitRender extends RENDER_OBJECT {
         isDowned: R.STATE_KEY,
         stun: R.LINEAR,
         flash: R.LINEAR,
+        healedAt: R.STEP,
         bounce: R.LINEAR,
         ...UNIT_ATTACK_SCHEMA,
         commandBeatLife: R.LINEAR,
@@ -319,6 +320,7 @@ class UnitRender extends RENDER_OBJECT {
         this.isDowned = u.hp <= 0;
         this.stun = u.stun;
         this.flash = u.flash;
+        this.healedAt = session.healingTimes.get(u) ?? -1;
         this.bounce = u.bounce;
         updateUnitAttackRender(this, u, world);
         this.cooldown = u.cooldown;
@@ -747,6 +749,8 @@ class FarmSession {
         this.pendingNotices = [];
         this.presentationNotices = [];
         this.unsubscribeNotices = null;
+        this.unsubscribeHealing = null;
+        this.healingTimes = new WeakMap();
         this.noticeWorld = null;
         this.localPlayerId = 'solo';
         this.presentationRevision = 0;
@@ -832,9 +836,12 @@ class FarmSession {
         this.capturePresentation('reset');
     }
     bindNoticeJournal() {
+        this.unsubscribeHealing?.();
+        this.unsubscribeHealing = null;
         this.unsubscribeNotices?.();
         this.unsubscribeNotices = null;
         if (this.noticeWorld !== this.world) {
+            this.healingTimes = new WeakMap();
             this.pendingNotices.length = 0;
             this.presentationNotices.length = 0;
         }
@@ -842,6 +849,14 @@ class FarmSession {
         if (this.closed) {
             return;
         }
+        this.unsubscribeHealing = this.world.unitCollection.onHealthChanged.on((event) => {
+            if (event.healed > 0) {
+                const UNIT = this.world.unitCollection.unitById(event.unitId);
+                if (UNIT) {
+                    this.healingTimes.set(UNIT, this.world.time);
+                }
+            }
+        });
         // Signals only enqueue committed facts. Effects and audio wait for the
         // presentation frame and its interpolated clock, including while paused.
         this.unsubscribeNotices = this.world.onNotice.on((notice) => {
@@ -1277,6 +1292,9 @@ class FarmSession {
     }
     dispose() {
         this.closed = true;
+        this.unsubscribeHealing?.();
+        this.unsubscribeHealing = null;
+        this.healingTimes = new WeakMap();
         this.clockSuspendedAtMs = null;
         this.unsubscribeNotices?.();
         this.unsubscribeNotices = null;

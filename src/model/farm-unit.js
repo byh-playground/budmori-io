@@ -308,11 +308,15 @@ const UNIT = class Unit extends ATTACKING_BODY(KNOCKABLE(BODY)) {
     set moveSpeed(value) {
         this.setBaseStats({ moveSpeed: value });
     }
-    setHealth(value) {
+    setHealth(value, { healed = 0 } = {}) {
         const PREVIOUS = this.hp;
         this.hp = value;
         if (PREVIOUS !== value) {
-            this.onHealthChanged.emit({ unitId: this.id, previousHp: PREVIOUS, hp: value });
+            const EVENT = { unitId: this.id, previousHp: PREVIOUS, hp: value };
+            if (healed > 0 && value > PREVIOUS) {
+                EVENT.healed = Math.min(value - PREVIOUS, healed);
+            }
+            this.onHealthChanged.emit(EVENT);
         }
     }
     die() {
