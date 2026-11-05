@@ -1,30 +1,30 @@
-tree b288d5afe7a66bccaf1533dacdb83f9719b8af28
-parent 03f9b792a64c8ee4471d035416aa5ccad013ded5
-author byh020907 <byh020907@naver.com> 1793774940 +0900
-committer GitHub <noreply@github.com> 1793774940 +0900
+tree d11bc573b0430cc47153d355656b973c4428fce0
+parent 9eafd9bf3c781f75fffa16cb444860fc9071ddd2
+author byh020907 <byh020907@naver.com> 1793798493 +0900
+committer GitHub <noreply@github.com> 1793798493 +0900
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- wsFcBAABCAAQBQJq6tVdCRC1aQ7uu5UhlAAAJMIQAH/qB5y2Petc01xvbtqR1/L0
- f4FZzt/9kWIdR0gxUKsIhZOMphfl1RFGmRtWgTsLDr81xi/QQENu42r46GA/5Afl
- te/FcFo39A/rj+iraaeMk6Lp32HaqsHh0948oxaTVcTUn1UYsC65WiRRoBhAFlqU
- JlXDjED5pl1XMDUOGpxA2j6k5ORr0wzUydrKHyTwA9uFs/17GQ9JvrqOefy1SEqJ
- BJP7td/fIJ/+Us5ZTeLfcWTO35uZeSnxxT3jnmzj7oLGXGOqVJqO94Cv7XV8PziG
- 03lUx4oDWvhdQ6S4J1KgP9T6sdH1RloPTO1oztol/D3JTMivgA/gTpMwt2qqsDi2
- Em4/39Ls7KYV0h/v5zmFZmTR4QQ6UGXUCyBlEUAUgscZOG+0PSx2HPP1ZJhCeu4s
- C81uQXDOquTfEd7EC75iKUsR7yCsfkSjmLdKuTCArf+QgqFev5QtksZ6zGHITWCJ
- BhWP9bDlOSvNJs47NaGXfAViH3bU3fBGmqhXBchn6ok/Zgz02+qA47pv4stikjdW
- Jsyz5JL8YJx9I34yyUHVnE9bGmXazyjO4AnYvE6IhM1wqtVlqgGuoc4qzNpTJjhv
- WbW65YEZJ/gJ6HHWnleGTu5KUNAEUXrhFkYhrNrque/Gl0UGrbBwxMRtbSHg0uJw
- C6AxWtus8LSHAjqi6tAR
- =BOSe
+ wsFcBAABCAAQBQJq6zFdCRC1aQ7uu5UhlAAAHikQAC4BjvYpzQCvTibqs78VisGw
+ K2gK7UEooXHZVFKLtdbdaQ36/tJobaz4t65Ec5nTk2C42z2wLxdpcHjTZi1kBoa3
+ oIWOWsrp3fHbJSXu3qurkKxy1LKR+UvnuPahl2jKWoYmTszrBABYS9CocshMjU23
+ e4HTsnZ7LaxOvsGIghb+nJF0ydfoVKTYqhp05hq7BSUGH11EjMr5NiLj7peJmYDy
+ qK3lAz/BcHx4aAetO6ja20hkIV9sEWbseaRUkDtivy9J9y2ahnMKbcB6fAAgp8W1
+ 4doFVAmO+PgZUNU+w/ZU28sfDKUu6Fh5HS5Nsha1gr7kjXB/E1c+gPx1sqqn8DYN
+ XVyaZgeD78fbUh4eTQLhs71w7280JtygoFujyatrob9z4wBzgX3jCM/W04tt5b2q
+ W4JkKGq7Q8PJdk7u5A9tORnDj2AtkcdxgCfwZ8Li1se+/Np8w/PKAEagnQbTcaUt
+ +fmpL4mNJ7BX3XqnZBca0Qgxcp67xUcs8h8j45jAOlfSZS76Rf2O4mDDlcQHiXvy
+ CQ1ppNVj7B4CxDghbo17HHrVfboP6W5/IxBm6XneEu+9DLY54v3yo1RpaCPi6FXd
+ d+qKTop4w2yhpgT7ls5TlfMsc1oowjdqooTgKdWnKSlBmVxBht8XMkTup/Q5SVA5
+ DkJagc5wEltmW6qt40RS
+ =8s7V
  -----END PGP SIGNATURE-----
  
 
-[feature] behavior 모듈: 행동트리(결정)·상태 기계(실행 단계) (v0.45.1) (#206)
+[fix] metrics 숨김 때 beacon으로 보낸 배치를 메모리에 남기고 다시 보이면 재전송 (v0.46.5) (#215)
 
-- BehaviorTree·action·guard·selector: RUNNING 없는 결정 전용 트리, decide가 행동 이름을 돌려줌
-- StateMachine: 현재 상태는 행위자 레코드의 문자열 필드, to 밖의 전이는 오류
-- work-scheduler 예제를 탭 페이지로 바꾸고 행동 탭 추가, previews 시나리오에 행동 탭·side-battle 준비 확인
-- .prettierignore에 .claude/ 추가(저장소 안 worktree)
+- beacon은 도착을 알려 주지 않으므로 fetch 200을 받을 때까지 OUTBOX에 남김
+- visibilitychange visible·bfcache pageshow에서 같은 seq로 fetch, 숨긴 동안 주기 전송은 쉼
+- 브라우저 저장소 미사용(D-237): 숨긴 채 탭이 사라지면 도착 못 한 배치는 잃음
+- 고정 시나리오: 숨김 beacon을 끊은 뒤 다시 보일 때 같은 seq가 한 행으로 도착
 
 Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>

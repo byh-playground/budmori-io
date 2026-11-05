@@ -96,10 +96,10 @@ try {
                 return FILL(...args);
             };
             // Faces drawn from the shared overlay images skip ctx.fill; record the cheek colour they were asked for.
-            const OVERLAYS = R.unitOverlays,
-                DRAW_FACE = OVERLAYS.drawFace.bind(OVERLAYS);
-            OVERLAYS.drawFace = (anchor, faceId, cheekColor, ...rest) => {
-                const DRAWN = DRAW_FACE(anchor, faceId, cheekColor, ...rest);
+            const OVERLAY = R.faceOverlay,
+                DRAW_FACE = OVERLAY.draw.bind(OVERLAY);
+            OVERLAY.draw = (compiled, actor, faceId, matrix, alpha, cheekColor) => {
+                const DRAWN = DRAW_FACE(compiled, actor, faceId, matrix, alpha, cheekColor);
                 if (DRAWN && cheekColor) {
                     globalThis.__paintAudit.colours.add(String(cheekColor).toLowerCase());
                 }

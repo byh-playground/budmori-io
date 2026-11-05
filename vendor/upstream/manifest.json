@@ -38,8 +38,12 @@
       "sha256": "94c8e1f7e1e0985d073b06ca342fcb8e4a4638a609a691b578814c801a8cfebb"
     },
     {
+      "file": "spatial.js",
+      "sha256": "1fb88fa46dde9cdc85e2cc0d9349572362227daa69a11662eb2e37000d36c2f2"
+    },
+    {
       "file": "transport.js",
-      "sha256": "8f7f9d68a2be3b1c7839ab0f975178b0bed4f454496ad4e91a5c28e6e3f0a6d3"
+      "sha256": "37e3e42647709bd0551020cf810266e97440b1a219fa6dd8c6ca6f5acfe838af"
     },
     {
       "file": "replay.js",
@@ -47,7 +51,7 @@
     },
     {
       "file": "rollback.js",
-      "sha256": "5d37db62a70697b358506b39fd5802b890e1175777f1760cb8d241ed62bdae0b"
+      "sha256": "9042a4dc2107431d636d1d31bc115742bf52f5f4e142ceedcd237991a8f62ecb"
     },
     {
       "file": "camera.js",
@@ -80,6 +84,10 @@
     {
       "file": "object-pool.js",
       "sha256": "4291d6d90f23b47024153e2d2db9e1af7f8b78586c8c0ee279621d42dc54f10b"
+    },
+    {
+      "file": "geometry.js",
+      "sha256": "59f7523a6a5ccdf721e0946f234b62d771a13493c25598208795299304c6e76d"
     },
     {
       "file": "pixel-physics.js",
@@ -115,7 +123,7 @@
     },
     {
       "file": "metrics.js",
-      "sha256": "93e0dd795754ef2a24c949634ef425ab6a0f2134364f682bbd8b0126c8219c38"
+      "sha256": "645eaae91b16c3a141bc6d7f98562baa6c64eaabedcaea50ad288b8a78394838"
     },
     {
       "file": "pwa.js",
@@ -128,6 +136,10 @@
     {
       "file": "i18n.js",
       "sha256": "e4523ccf348c313bbc9242f03dc376d79bc17940d8349494ddf35866c49bb995"
+    },
+    {
+      "file": "face.js",
+      "sha256": "d7f8330ca99a837f602535ae703a7cdd8c88a3b12862058f1c34d34dd74e78ed"
     },
     {
       "file": "pwa-build.mjs",

@@ -21,9 +21,8 @@ import { LeapSlamPresentation } from '../features/boss-patterns/leap-slam/presen
 import { FanSweepPresentation } from '../features/boss-patterns/fan-sweep/presentation.js';
 import { SpinThrowPresentation } from '../features/boss-patterns/spin-throw/presentation.js';
 import { SlamPresentation } from '../features/boss-patterns/slam/presentation.js';
-import { drawElementMark } from './unit-face-overlay.js';
+import { drawElementMark } from './element-mark.js';
 import { elementCheekColor, unitLook } from '../units/species-face.js';
-import { drawUnitFace } from './unit-face-draw.js';
 import { drawBossGrowth } from './boss-growth-draw.js';
 import { SIGNATURE_PRESENTATIONS } from '../features/boss-patterns/signature/presentation.js';
 import { MouthSummonPresentation } from '../features/boss-patterns/mouth-summon/presentation.js';
@@ -393,14 +392,13 @@ export class BossPresentation {
             drawBossGrowth(this.renderer.ctx, RECORD, PLAYER, MATRIX, B.element, world.tower.floor);
         }
         this.renderer.ctx.drawVectorActor(PLAYER, { matrix: MATRIX, alpha: ALPHA });
-        drawUnitFace(
-            this.renderer,
-            RECORD,
+        this.renderer.faceOverlay.draw(
+            RECORD.compiled,
             PLAYER,
             LOOK.face,
-            elementCheekColor(world.tower.active ? B.element : 0),
             MATRIX,
             ALPHA,
+            elementCheekColor(world.tower.active ? B.element : 0),
         );
         PRESENTATION.drawRelease(this.renderer, B, POSE, MOUTH_SCREEN);
         if (world.tower.active && B.hp > 0) {

@@ -16,9 +16,8 @@ import { BarleyArmorShredPresentation } from '../features/abilities/barley-shred
 import { ATTACK_TYPES, CONFIG, clamp } from '../model/farm-model.js';
 import { farmBreedingCooldown, unitRestPresentation } from '../ui/farm-indicators.js';
 import { scenePresentation } from './farm-render-scenes.js';
-import { drawElementMark } from './unit-face-overlay.js';
+import { drawElementMark } from './element-mark.js';
 import { elementCheekColor, unitLook } from '../units/species-face.js';
-import { drawUnitFace } from './unit-face-draw.js';
 import { CombinePresentation } from '../features/farm-modes/combine/presentation.js';
 import { PassiveMarksPresentation } from '../tower/tower-passive-presentations.js';
 import { DEATH_TIMING } from './death-presentation.js';
@@ -536,15 +535,16 @@ export class UnitPresentation {
         if (C.depthTest) {
             C.depth -= this.renderer.actorLayerOffset;
         }
-        drawUnitFace(
-            this.renderer,
-            PREPARED.record,
-            ART.player,
-            PREPARED.face,
-            PREPARED.cheekColor,
-            ART.matrix,
-            ART.options.alpha,
-        );
+        if (PREPARED.face) {
+            this.renderer.faceOverlay.draw(
+                PREPARED.record.compiled,
+                ART.player,
+                PREPARED.face,
+                ART.matrix,
+                ART.options.alpha,
+                PREPARED.cheekColor,
+            );
+        }
         drawUnitAttackContact(this.renderer, u, ART.player, ART.matrix);
         this.drawElementIndicator(u, sim);
         if (PREPARED.death) {
@@ -552,7 +552,7 @@ export class UnitPresentation {
         }
         return true;
     }
-    // The face is a layer drawn over the body (unit-face-draw.js); this is only the separate element icon.
+    // The face is a layer drawn over the body (GameKit face module); this is only the separate element icon.
     drawElementIndicator(u, sim) {
         if (u.hp <= 0 || u.isSeedling || u.isFormationClone) {
             return;

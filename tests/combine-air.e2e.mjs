@@ -177,8 +177,9 @@ try {
                 if (hidden) {
                     return DRAW_BODY.call(this, unit, world, point, radius, rest, hidden);
                 }
-                const FACE_DRAW = R.unitOverlays.drawFace,
-                    DRAW_REGION = R.ctx.drawRegion;
+                const FACE_DRAW = R.faceOverlay.draw,
+                    DRAW_REGION = R.ctx.drawRegion,
+                    RESTORE = R.ctx.restore;
                 let faceMatrix,
                     faceAnchor,
                     submittedFace,
@@ -187,17 +188,23 @@ try {
                     drawingAtlasFace = false;
                 // Observe the composed transform at the official face boundary. Body/atlas internals may
                 // submit other transforms before this call, so their ordinal position is not a contract.
-                R.unitOverlays.drawFace = function (anchor, face, ...args) {
-                    faceMatrix = VALUES(R.ctx.getTransform());
-                    faceAnchor = anchor;
+                R.faceOverlay.draw = function (compiled, actor, face, ...args) {
+                    faceAnchor = globalThis.BloomGamekitFace.faceAnchor(compiled);
                     submittedFace = face;
                     drawingAtlasFace = true;
+                    // The module composes the body matrix and the posed face triangle itself; read the result
+                    // just before it restores the transform.
+                    R.ctx.restore = function () {
+                        faceMatrix = VALUES(R.ctx.getTransform());
+                        return RESTORE.call(this);
+                    };
                     try {
-                        const USED_ATLAS = FACE_DRAW.call(this, anchor, face, ...args);
+                        const USED_ATLAS = FACE_DRAW.call(this, compiled, actor, face, ...args);
                         faceBackend = USED_ATLAS ? 'atlas' : 'paths';
                         return USED_ATLAS;
                     } finally {
                         drawingAtlasFace = false;
+                        R.ctx.restore = RESTORE;
                     }
                 };
                 R.ctx.drawRegion = function (...args) {
@@ -210,7 +217,7 @@ try {
                 try {
                     result = DRAW_BODY.call(this, unit, world, point, radius, rest, hidden);
                 } finally {
-                    R.unitOverlays.drawFace = FACE_DRAW;
+                    R.faceOverlay.draw = FACE_DRAW;
                     R.ctx.drawRegion = DRAW_REGION;
                 }
                 const ENTRY = this.preparedVisibleUnits.get(unit.id),
